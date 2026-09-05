@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringBookingMessageRequests, notifications, users } from "@shared/schema";
 import { dmMessages } from "@shared/schema.dm";
@@ -65,7 +65,7 @@ r.get("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
   // Reading never creates the conversation: a booking nobody has messaged on yet is an empty conversation, not a
   // reason to write a thread and two participant rows into the database.
   const threadId = await findBookingConversation(id);
-  if (!threadId) return res.json({ messages: [], nextCursor: null, editable });
+  if (!threadId) return res.json({ messages: [], nextCursor: null, editable, unreadStartId: null });
   if (page.cursor && !await messageCursorExists(threadId, page.cursor)) return res.status(400).json({ message: "Unknown message cursor" });
   const boundary = page.cursor
     ? sql`(${dmMessages.createdAt}, ${dmMessages.id}) < (SELECT m.created_at, m.id FROM dm_messages m WHERE m.id = ${page.cursor})`
@@ -78,7 +78,10 @@ r.get("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
     .limit(page.limit);
   const { rows: ordered, nextCursor } = cateringMessagePageFrom(rows, page.limit);
   const names = await senderNames(ordered.map((row) => row.senderId));
-  res.json({ messages: ordered.map((row) => serializeBookingMessage(row, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, names })), nextCursor, editable });
+  // The authoritative start of this actor's unread range, so a capped count never leaves the client unable to
+  // locate it. Actor- and booking-scoped, and null once nothing is unread.
+  const unreadStartId = await unreadStartMessageId(threadId, userId);
+  res.json({ messages: ordered.map((row) => serializeBookingMessage(row, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, names })), nextCursor, editable, unreadStartId });
 } catch (error) { invalid(error, res, next); } });
 
 /**
@@ -266,22 +269,56 @@ r.post("/bookings/:id/messages/read", requireAuth, async (req, res, next) => { t
  * A bounded unread count for one participant. It reads at most ceiling+1 rows, so a conversation with thousands of
  * unread messages costs the same as one with three and the workspace renders "99+" rather than an unbounded total.
  */
-export async function unreadMessageCount(threadId: string, userId: string): Promise<{ count: number; capped: boolean }> {
+/**
+ * The SQL predicate for "after this participant's stored read marker", or undefined when everything counts.
+ *
+ * `(created_at, id) > (marker's stored created_at, id)` -- the same pair, read back at full stored precision, that
+ * message pagination orders by. Two messages sharing a `created_at` are separated by their ids, so marking the
+ * earlier one read leaves the later one unread; a plain `created_at >` comparison would mark both. It is derived
+ * once here so the unread COUNT and the unread START can never disagree about where the range begins.
+ */
+async function unreadBoundaryCondition(threadId: string, userId: string) {
   const participant = await conversationParticipant(threadId, userId);
   // The marker must still be a message of THIS thread; otherwise the timestamp fallback applies rather than a
   // comparison against a row that is not there, which would silently count nothing.
   const markerIsInThread = participant?.lastReadMessageId ? Boolean(await messageInThread(threadId, participant.lastReadMessageId)) : false;
   const boundary = cateringUnreadBoundary(participant, markerIsInThread);
-  // `(created_at, id) > (marker's stored created_at, id)` -- the same pair, read back at full stored precision, that
-  // message pagination orders by. Two messages sharing a `created_at` are separated by their ids, so marking the
-  // earlier one read leaves the later one unread; a plain `created_at >` comparison would mark both.
-  const after = boundary.kind === "after_message"
-    ? sql`(${dmMessages.createdAt}, ${dmMessages.id}) > (SELECT b.created_at, b.id FROM dm_messages b WHERE b.id = ${boundary.messageId})`
-    : boundary.kind === "after_timestamp" ? sql`${dmMessages.createdAt} > ${boundary.since}` : undefined;
+  if (boundary.kind === "after_message") {
+    return sql`(${dmMessages.createdAt}, ${dmMessages.id}) > (SELECT b.created_at, b.id FROM dm_messages b WHERE b.id = ${boundary.messageId})`;
+  }
+  return boundary.kind === "after_timestamp" ? sql`${dmMessages.createdAt} > ${boundary.since}` : undefined;
+}
+
+export async function unreadMessageCount(threadId: string, userId: string): Promise<{ count: number; capped: boolean }> {
+  const after = await unreadBoundaryCondition(threadId, userId);
   const rows = await db.select({ id: dmMessages.id }).from(dmMessages)
     .where(and(eq(dmMessages.threadId, threadId), ne(dmMessages.senderId, userId), after))
     .limit(CATERING_UNREAD_COUNT_CEILING + 1);
   return boundedUnreadCount(rows.length);
+}
+
+/**
+ * The EARLIEST unread incoming message for this participant, or null when nothing is unread.
+ *
+ * The count is bounded at a ceiling and reports `capped` beyond it, which makes it a lower bound rather than a
+ * total -- and a client cannot locate the start of a range whose size it does not know. That left a participant
+ * with more than the ceiling's worth of backlog permanently unable to prove they had read it. This answers the
+ * question directly instead, and it is never capped.
+ *
+ * Same thread, same participant, same boundary condition and the same `ne(senderId, userId)` exclusion the count
+ * uses -- so the two can never describe different ranges. Ordered ASCENDING by the identical `(created_at, id)`
+ * pair, so a tie in the timestamp is broken by id exactly as it is everywhere else, and limited to one row.
+ *
+ * It is derived entirely from the AUTHENTICATED actor's own persisted marker. Nothing about the counterpart's read
+ * state is read or returned, and the actor's own messages can never be the answer.
+ */
+export async function unreadStartMessageId(threadId: string, userId: string): Promise<string | null> {
+  const after = await unreadBoundaryCondition(threadId, userId);
+  const [row] = await db.select({ id: dmMessages.id }).from(dmMessages)
+    .where(and(eq(dmMessages.threadId, threadId), ne(dmMessages.senderId, userId), after))
+    .orderBy(asc(dmMessages.createdAt), asc(dmMessages.id))
+    .limit(1);
+  return row?.id ?? null;
 }
 
 export default r;

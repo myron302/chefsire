@@ -69,7 +69,14 @@ export type CateringBookingMessageView = {
   text: string; createdAt: string; mine: boolean;
 };
 /** Oldest-first for display, plus the boundary that loads the page before it. `nextCursor` is null at the beginning. */
-export type CateringBookingMessagePageView = { messages: CateringBookingMessageView[]; nextCursor: string | null; editable: boolean };
+/**
+ * `unreadStartId` is the earliest unread INCOMING message for the authenticated actor, or null when nothing is
+ * unread. It exists because `unreadMessageCount` is bounded at a ceiling and reports `capped` beyond it -- a lower
+ * bound, not a total -- and a client cannot locate the start of a range whose size it does not know. Derived
+ * server-side from that actor's own persisted read marker, in the same `(created_at, id)` ordering, and never
+ * capped.
+ */
+export type CateringBookingMessagePageView = { messages: CateringBookingMessageView[]; nextCursor: string | null; editable: boolean; unreadStartId?: string | null };
 export type CateringBookingReadStateView = { lastReadMessageId: string | null; lastReadAt: string | null; unreadCount: number };
 
 export const cateringBookingMessagesKey = (userId: string, bookingId: string) => ["catering", "booking-messages", userId, bookingId] as const;

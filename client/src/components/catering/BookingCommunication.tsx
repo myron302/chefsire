@@ -85,7 +85,9 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   const pageKey = cateringMessagePageKey(query.data?.pages, hasOlderPages);
   // The oldest loaded message that must actually be seen before the newest one may be marked read, derived from the
   // server's own unread count and the `mine` flags rather than from any new API field.
-  const unreadStart = cateringUnreadStart(messages, unreadCount, unreadCountCapped);
+  // The endpoint's own answer, which is never capped; the count and `mine` flags remain only as the fallback for a
+  // page cached before the field existed.
+  const unreadStart = cateringUnreadStart(messages, unreadCount, unreadCountCapped, query.data?.pages[0]?.unreadStartId);
   const unreadStartId = cateringUnreadStartId(unreadStart);
   // What any observation is evidence ABOUT: this newest message, this rendering, this required range.
   const generation = cateringViewGeneration(latestId, pageKey, unreadStart);

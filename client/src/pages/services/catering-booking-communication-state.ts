@@ -194,10 +194,11 @@ export function cateringMessagePageKey(pages: readonly { messages: readonly unkn
  * page set. Nothing about that sequence involves the reader looking at the backlog that was just loaded, yet the
  * read marker is chronological: advancing it to the newest message sweeps every one of those messages read.
  *
- * The boundary is derived from data the server already returns rather than a new field. `unreadCount` is the
- * authoritative number of INCOMING messages after the actor's stored marker, and the loaded messages carry `mine`
- * in the same deterministic order the marker uses -- so the oldest unread message is simply the Nth-from-last
- * incoming message. Three answers, and the difference between the last two is the point:
+ * The boundary comes from the endpoint's own `unreadStartId`: the earliest unread incoming message for this actor,
+ * derived server-side from their persisted marker and never capped. A count alone could not supply it, because the
+ * count is bounded at a ceiling and reports `capped` beyond it -- a lower bound, not a total -- so a large backlog
+ * could never be located and the participant stayed stuck at "99+" forever. Three answers, and the difference
+ * between the last two is the point:
  *
  *  - `none`: nothing is unread, so there is no range to traverse and the bottom alone decides.
  *  - `message`: this exact message must be seen before the boundary may advance past it.
@@ -206,9 +207,25 @@ export function cateringMessagePageKey(pages: readonly { messages: readonly unkn
  */
 export type CateringUnreadStart = { kind: "none" } | { kind: "unresolved" } | { kind: "message"; id: string };
 
-export function cateringUnreadStart(messages: readonly { id: string; mine: boolean }[], unreadCount: number, capped = false): CateringUnreadStart {
+export function cateringUnreadStart(
+  messages: readonly { id: string; mine: boolean }[],
+  unreadCount: number,
+  capped = false,
+  authoritativeStartId?: string | null,
+): CateringUnreadStart {
+  // The endpoint's own answer wins whenever it has given one. It is derived from the actor's persisted marker and
+  // is never capped, so it resolves a backlog of any size -- which is what stops a count past the ceiling from
+  // leaving the range permanently unidentifiable and the participant permanently stuck at "99+".
+  if (authoritativeStartId !== undefined) {
+    if (authoritativeStartId === null) return { kind: "none" };
+    // Known, but not yet fetched: identified is not the same as loaded, and an unloaded message cannot be seen.
+    return messages.some((message) => message.id === authoritativeStartId)
+      ? { kind: "message", id: authoritativeStartId }
+      : { kind: "unresolved" };
+  }
+  // Fallback for a page cached before the field existed. It is the previous derivation exactly, including refusing
+  // a capped count -- conservative, and self-healing the moment a current response arrives.
   if (!Number.isFinite(unreadCount) || unreadCount <= 0) return { kind: "none" };
-  // A capped count is a floor, not a total: the range may begin further back than anything loaded can show.
   if (capped) return { kind: "unresolved" };
   const incoming = messages.filter((message) => !message.mine);
   // Fewer incoming messages loaded than are unread means the range starts in a page nobody has fetched.

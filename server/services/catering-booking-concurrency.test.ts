@@ -286,7 +286,9 @@ test("the read marker update introduces no new lock ordering", () => {
 });
 
 test("unread is counted against the (created_at, id) pair, so equal timestamps cannot collapse", () => {
-  const unread = communicationRoute.slice(communicationRoute.indexOf("export async function unreadMessageCount"));
+  // The boundary condition is shared by the unread COUNT and the unread START, so they can never describe
+  // different ranges; the slice starts where it is derived.
+  const unread = communicationRoute.slice(communicationRoute.indexOf("async function unreadBoundaryCondition"));
   // The same full-precision row comparison message pagination uses, against the marker's stored pair.
   assert.equal(unread.includes("(${dmMessages.createdAt}, ${dmMessages.id}) > (SELECT b.created_at, b.id FROM dm_messages b WHERE b.id = ${boundary.messageId})"), true);
   // The timestamp comparison survives only as the fallback for a row carrying no usable marker.

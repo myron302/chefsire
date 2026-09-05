@@ -290,8 +290,9 @@ test("the unread-start sentinel is rendered at the first unread message and is p
 });
 
 test("the required boundary is derived from authoritative data, not invented", () => {
-  // The server's own unread count plus the `mine` flags, in the order the marker uses. No new API field.
-  assert.equal(source.includes("const unreadStart = cateringUnreadStart(messages, unreadCount, unreadCountCapped);"), true);
+  // The endpoint's own authoritative boundary, which is never capped; the count and `mine` flags are only the
+  // fallback for a page cached before the field existed.
+  assert.equal(source.includes("cateringUnreadStart(messages, unreadCount, unreadCountCapped, query.data?.pages[0]?.unreadStartId)"), true);
   assert.equal(source.includes("const generation = cateringViewGeneration(latestId, pageKey, unreadStart);"), true);
   // A capped count is threaded in so an unknown range can be refused rather than guessed at.
   assert.equal(source.includes("unreadCountCapped"), true);

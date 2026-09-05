@@ -26,7 +26,7 @@ const page = (editable: boolean) => ({ editable });
 
 test("both endpoints already report editable, so no API field was invented for this", () => {
   assert.equal(messageRoute.includes("const editable = mayPostCateringBookingMessage(booking.status as never);"), true);
-  assert.equal(messageRoute.includes("nextCursor, editable })"), true);
+  assert.equal(messageRoute.includes("nextCursor, editable, unreadStartId })"), true);
   assert.equal(fileRoute.includes("editable: mayMutateCateringFiles(booking.status as never)"), true);
   // Each is re-derived from the persisted booking status on every request, which is what makes it authoritative.
   for (const [label, route] of [["messages", messageRoute], ["files", fileRoute]] as const) {

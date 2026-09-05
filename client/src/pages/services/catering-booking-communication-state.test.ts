@@ -493,3 +493,94 @@ test("10, 11 & 12. read-attempt bounding, manual retry and send-side behaviour a
   viewed = recordCateringViewedBoundary(viewed, A);
   assert.equal(recordCateringViewedBoundary(viewed, A), viewed, "recording the same boundary twice is a no-op");
 });
+
+
+/**
+ * A capped count is a LOWER BOUND, not a total. Refusing to resolve on it was safe but permanent: a participant
+ * with more than the ceiling's worth of backlog could load every page, read every message, and still never satisfy
+ * the traversal requirement -- the range could not be located, so no read request was ever sent and the workspace
+ * stayed at "99+" forever. The endpoint now answers the question directly with `unreadStartId`, which is derived
+ * from that actor's persisted marker and is never capped.
+ */
+const backlog = (ids: string[]) => ids.map((id) => theirs(id));
+
+test("cap 1 & 2. a capped count resolves from the authoritative boundary instead of dead-ending", () => {
+  const loaded = backlog(["m001", "m002", "m003"]);
+  // The count says 99 and admits it is capped; the boundary says exactly where the range starts.
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m001"), { kind: "message", id: "m001" });
+  // Without the authoritative field the old conservative answer is still what happens -- and only then.
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true), { kind: "unresolved" });
+});
+
+test("cap 3 & 11. a boundary that is known but not yet loaded still blocks, across as many pages as it takes", () => {
+  // Only the newest page is loaded; the start of the backlog is far above it.
+  let loaded = backlog(["m120", "m121", "m122"]);
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m001"), { kind: "unresolved" });
+  const g1 = gen("m122", "1:3:more", cateringUnreadStart(loaded, 99, true, "m001"));
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g1), g1, true, cateringUnreadStart(loaded, 99, true, "m001")), false);
+  // Paging back still does not resolve it until the message itself is present.
+  loaded = [...backlog(["m060", "m061"]), ...loaded];
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m001"), { kind: "unresolved" });
+  // The page carrying it lands.
+  loaded = [...backlog(["m001", "m002"]), ...loaded];
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m001"), { kind: "message", id: "m001" });
+});
+
+test("cap 4 & 5. loading every page is not traversal; actually viewing the range is", () => {
+  const loaded = backlog(["m001", "m002", "m003"]);
+  const start = cateringUnreadStart(loaded, 99, true, "m001");
+  const g = gen("m003", "3:3:end", start);
+  // Everything is loaded and the reader is at the bottom -- still nothing, because the backlog was not looked at.
+  const bottomOnly = seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g);
+  assert.equal(mayRecordCateringViewedBoundary(bottomOnly, g, false, start), false);
+  // Traversing the start of the range and returning to the bottom is what allows the request.
+  const traversed = seeBottom(seeUnreadStart(bottomOnly, g), g);
+  assert.equal(mayRecordCateringViewedBoundary(traversed, g, false, start), true);
+});
+
+test("cap 6. once the server marker moves, the boundary is null and nothing more is required", () => {
+  // After a successful explicit read the next response reports no unread range at all -- server truth, not a local
+  // guess -- and the ordinary bottom-only rule applies again.
+  const loaded = backlog(["m001", "m002"]);
+  assert.deepEqual(cateringUnreadStart(loaded, 0, false, null), { kind: "none" });
+  const g = gen("m002", "1:2:end", cateringUnreadStart(loaded, 0, false, null));
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g), g, false, cateringUnreadStart(loaded, 0, false, null)), true);
+  // A null boundary wins even against a stale non-zero count from the parent summary.
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, null), { kind: "none" });
+});
+
+test("cap 7, 8 & 9. the exact boundary is used, whatever precedes it and whoever sent it", () => {
+  // Already-read messages and the actor's own messages both sit before the boundary; neither becomes the start.
+  const loaded = [theirs("m1"), mine("m2"), theirs("m3"), mine("m4"), theirs("m5")];
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m3"), { kind: "message", id: "m3" });
+  assert.equal(cateringUnreadStartId(cateringUnreadStart(loaded, 99, true, "m3")), "m3");
+  // The server never nominates one of the actor's own messages, and the client never invents one either: it only
+  // ever echoes the id it was given.
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m5"), { kind: "message", id: "m5" });
+  // Traversal is required for that exact message, not for the top of the loaded set.
+  const start = cateringUnreadStart(loaded, 99, true, "m3");
+  const g = gen("m5", "1:5:end", start);
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g), g, false, start), false);
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, g), g), g, false, start), true);
+});
+
+test("cap 10. a new incoming message during traversal still needs its own newest evidence", () => {
+  const loaded = backlog(["m1", "m2"]);
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
+  const before = gen("m2", "1:2:end", start);
+  const traversed = seeBottom(seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, before), before);
+  assert.equal(mayRecordCateringViewedBoundary(traversed, before, false, start), true);
+  // The server marker has not moved, so the boundary is unchanged and the traversal stands -- but the newest
+  // message is different and must be observed again.
+  const after = gen("m3", "1:3:end", start);
+  assert.equal(cateringUnreadRangeWasTraversed(traversed, after, start), true);
+  assert.equal(mayRecordCateringViewedBoundary(traversed, after, false, start), false);
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(traversed, after), after, false, start), true);
+});
+
+test("cap 12. the uncapped fallback is unchanged when the field is absent", () => {
+  const loaded = [theirs("m1"), mine("m2"), theirs("m3"), theirs("m4")];
+  assert.deepEqual(cateringUnreadStart(loaded, 2), { kind: "message", id: "m3" });
+  assert.deepEqual(cateringUnreadStart(loaded, 0), { kind: "none" });
+  assert.deepEqual(cateringUnreadStart(loaded, 9), { kind: "unresolved" });
+});
