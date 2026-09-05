@@ -129,5 +129,5 @@ test("the #files fragment landing fix is untouched, and now lands on a list that
   assert.equal(source.includes(`<Card id="files">`), true);
   const workspace = fs.readFileSync(path.join(here, "..", "..", "pages", "services", "catering-booking-workspace.tsx"), "utf8");
   assert.equal(workspace.includes("cateringWorkspaceSectionFromHash(window.location.hash)"), true);
-  assert.equal(workspace.includes("landingRef.current = recordCateringSectionLanding(landingRef.current, section);"), true);
+  assert.equal(workspace.includes("landingRef.current = recordCateringSectionLanding(landingRef.current, identity);"), true);
 });

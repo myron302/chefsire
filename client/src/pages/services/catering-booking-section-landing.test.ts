@@ -41,7 +41,7 @@ test("3. a hash present before the data resolves is honoured afterwards", () => 
   // fragment that is still sitting in the address bar from the cold navigation.
   assert.equal(landingEffect.includes("if (!workspace || typeof window === \"undefined\") return;"), true);
   assert.equal(landingEffect.includes("cateringWorkspaceSectionFromHash(window.location.hash)"), true);
-  assert.equal(landingEffect.includes("}, [Boolean(workspace)]);"), true);
+  assert.equal(landingEffect.includes("}, [params.bookingId, Boolean(workspace)]);"), true);
   // Nothing has been landed on before that first run, so the fragment is still pending and is acted on.
   assert.equal(shouldLandOnCateringSection(EMPTY_CATERING_SECTION_LANDING, "communication"), true);
   assert.equal(shouldLandOnCateringSection(EMPTY_CATERING_SECTION_LANDING, "files"), true);
@@ -70,7 +70,7 @@ test("5. rerenders never scroll or focus again", () => {
   // Same object back, so nothing downstream sees a change either.
   assert.equal(recordCateringSectionLanding(landing, "files"), landing);
   assert.equal(landingEffect.includes("const landingRef = useRef<CateringSectionLanding>(EMPTY_CATERING_SECTION_LANDING);"), true);
-  assert.equal(landingEffect.includes("landingRef.current = recordCateringSectionLanding(landingRef.current, section);"), true);
+  assert.equal(landingEffect.includes("landingRef.current = recordCateringSectionLanding(landingRef.current, identity);"), true);
   // The record is written BEFORE the scroll, so a scroll that itself triggers a re-run cannot loop.
   assert.equal(landingEffect.indexOf("landingRef.current = recordCateringSectionLanding") < landingEffect.indexOf("scrollIntoView"), true);
   assert.equal(landingEffect.includes("setLanding"), false, "landing state must not live in React state");
@@ -172,11 +172,11 @@ test("6. an unknown hash neither crashes nor poisons a later valid navigation", 
 test("7. the reset happens before the early return, and cold-load handling is unchanged", () => {
   // The record is written on the not-landing path too -- that is the whole fix.
   const guard = landingEffect.slice(landingEffect.indexOf("if (!shouldLandOnCateringSection"), landingEffect.indexOf("const element ="));
-  assert.equal(guard.includes("landingRef.current = recordCateringSectionLanding(landingRef.current, section);"), true);
+  assert.equal(guard.includes("landingRef.current = recordCateringSectionLanding(landingRef.current, identity);"), true);
   assert.equal(guard.indexOf("recordCateringSectionLanding") < guard.indexOf("return;"), true, "the record must be updated before returning");
   // Cold async load and the hashchange listener are both still there.
   assert.equal(landingEffect.includes("if (!workspace || typeof window === \"undefined\") return;"), true);
-  assert.equal(landingEffect.includes("}, [Boolean(workspace)]);"), true);
+  assert.equal(landingEffect.includes("}, [params.bookingId, Boolean(workspace)]);"), true);
   assert.equal(landingEffect.includes(`window.addEventListener("hashchange", land);`), true);
   // And a known section that simply is not rendered yet still leaves the record alone, so it can land later.
   assert.equal(landingEffect.includes("if (!element) return;"), true);

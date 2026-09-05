@@ -59,19 +59,48 @@ export function boundedCount(counted: number, ceiling: number): { count: number;
 }
 
 /**
+ * The row bound a page query must ask the database for: one more than the page the client is served.
+ *
+ * That extra row is a lookahead and never part of the answer. It is the only authoritative evidence that an older
+ * row exists. Reading exactly `limit` rows cannot distinguish "the page is full and more remain" from "the page is
+ * full and that is the whole collection", so a cursor derived from a full page alone is a guess -- and it is wrong
+ * precisely when the collection size is an exact multiple of the page size, which is not a rare shape.
+ */
+export function cateringPageQueryLimit(limit: number): number {
+  return Math.max(0, limit) + 1;
+}
+
+/**
+ * Splits a `limit + 1` lookahead read into the page itself and the fact of whether anything lies beyond it.
+ *
+ * The lookahead row is dropped here, so it cannot reach a caller and no route can serialize it into a response.
+ * `hasMore` is true only when a row past the page was actually read, which means a caller that reads exactly
+ * `limit` rows (no lookahead) gets `hasMore: false`: this fails closed, under-offering a cursor rather than
+ * inventing one for a page that does not exist.
+ */
+function lookaheadPage<T>(descendingRows: readonly T[], limit: number): { page: readonly T[]; hasMore: boolean } {
+  const size = Math.max(0, limit);
+  return { page: descendingRows.slice(0, size), hasMore: descendingRows.length > size };
+}
+
+/**
  * How a message page is served. The server reads newest-first from the keyset boundary so "load older" is one bounded
  * query, and the page is reversed for display: the client always renders oldest-to-newest. `nextCursor` is the oldest
- * message in the page, and it is only offered when the page was actually full -- a short page has nothing before it.
+ * message ACTUALLY RETURNED in the page -- never the lookahead row -- and it is offered only when the lookahead
+ * proved an older message exists, so an exactly-full page at the start of the conversation ends pagination instead
+ * of leaving "load older" open on a page that would come back empty.
  */
 export function cateringMessagePageFrom<T extends { id: string }>(descendingRows: readonly T[], limit: number): { rows: T[]; nextCursor: string | null } {
-  const rows = [...descendingRows].reverse();
-  const nextCursor = descendingRows.length === limit && descendingRows.length > 0 ? descendingRows[descendingRows.length - 1].id : null;
+  const { page, hasMore } = lookaheadPage(descendingRows, limit);
+  const rows = [...page].reverse();
+  const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].id : null;
   return { rows, nextCursor };
 }
-/** Files list newest-first, which is how the UI shows them, so only the boundary is derived here. */
+/** Files list newest-first, which is how the UI shows them, so only the boundary is derived -- same lookahead rule. */
 export function cateringFilePageFrom<T extends { id: string }>(descendingRows: readonly T[], limit: number): { rows: T[]; nextCursor: string | null } {
-  const nextCursor = descendingRows.length === limit && descendingRows.length > 0 ? descendingRows[descendingRows.length - 1].id : null;
-  return { rows: [...descendingRows], nextCursor };
+  const { page, hasMore } = lookaheadPage(descendingRows, limit);
+  const nextCursor = hasMore && page.length > 0 ? page[page.length - 1].id : null;
+  return { rows: [...page], nextCursor };
 }
 
 /**

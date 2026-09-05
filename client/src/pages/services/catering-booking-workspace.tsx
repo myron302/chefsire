@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import BookingCommunication from "@/components/catering/BookingCommunication";
 import BookingFiles from "@/components/catering/BookingFiles";
-import { activeTaskEditor, cateringActivityTaskTitle, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskEditPayload, cateringTaskReorderControls, cateringTaskReorderPayload, cateringTaskStatusPayload, closeTaskEditorAfterSave, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, mayOpenTaskEditor, mayReloadConflictedTask, maySubmitTaskEditor, moveCateringTaskInGlobalOrder, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, openTaskEditorIfAllowed, preserveTaskEditorAfterSaveFailure, reloadableTaskForEditor, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type CateringTaskMoveDirection, type CateringTaskReorderControls, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit, type TaskEditorState, type WorkspaceFormState, cateringWorkspaceSectionFromHash, shouldLandOnCateringSection, recordCateringSectionLanding, EMPTY_CATERING_SECTION_LANDING, type CateringSectionLanding } from "./catering-booking-workspace-state";
+import { activeTaskEditor, cateringActivityTaskTitle, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskEditPayload, cateringTaskReorderControls, cateringTaskReorderPayload, cateringTaskStatusPayload, closeTaskEditorAfterSave, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, mayOpenTaskEditor, mayReloadConflictedTask, maySubmitTaskEditor, moveCateringTaskInGlobalOrder, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, openTaskEditorIfAllowed, preserveTaskEditorAfterSaveFailure, reloadableTaskForEditor, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type CateringTaskMoveDirection, type CateringTaskReorderControls, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit, type TaskEditorState, type WorkspaceFormState, cateringWorkspaceSectionFromHash, cateringSectionLandingIdentity, shouldLandOnCateringSection, recordCateringSectionLanding, EMPTY_CATERING_SECTION_LANDING, type CateringSectionLanding } from "./catering-booking-workspace-state";
 
 const statuses = { pending_confirmation: "Pending customer confirmation", confirmed: "Confirmed booking", cancelled: "Cancelled booking", completed: "Completed event" } as const;
 const activityLabels: Record<string, string> = { booking_offered: "Booking terms offered", customer_confirmed: "Customer confirmed booking", booking_cancelled: "Booking cancelled", booking_completed: "Event marked complete", details_updated: "Event details updated", shared_requirement_added: "Customer requirement added", shared_requirement_updated: "Customer requirement updated", shared_requirement_completed: "Customer requirement completed", shared_requirement_deleted: "Customer requirement removed", shared_file_uploaded: "File shared", shared_file_removed: "Shared file removed", provider_file_uploaded: "Provider-only file added", provider_file_removed: "Provider-only file removed" };
@@ -41,27 +41,34 @@ export default function CateringBookingWorkspace({ params }: { params: { booking
   //
   // The landing record lives in a ref, so remembering it causes no render and cannot feed back into the effect that
   // wrote it -- no scroll loop, and an ordinary refetch or rerender re-runs this effect to no effect at all. Back
-  // and forward keep working because `hashchange` is handled too and the record holds only the LAST fragment acted
+  // and forward keep working because `hashchange` is handled too and the record holds only the LAST identity acted
   // on, so returning to an earlier section lands again.
+  //
+  // That identity is booking-scoped, and the effect depends on the booking id rather than merely on whether a
+  // workspace exists. The router keeps this component mounted across `/bookings/A#files` -> `/bookings/B#files`:
+  // the fragment never changes, so `hashchange` never fires, and a fragment-keyed record would say B's section had
+  // already been landed on. Keying by booking and re-running on the booking id fixes both halves -- the record from
+  // A cannot match B, and the effect actually runs again to notice.
   const landingRef = useRef<CateringSectionLanding>(EMPTY_CATERING_SECTION_LANDING);
   useEffect(() => {
     if (!workspace || typeof window === "undefined") return;
     const land = () => {
       const section = cateringWorkspaceSectionFromHash(window.location.hash);
-      if (!shouldLandOnCateringSection(landingRef.current, section)) {
+      const identity = cateringSectionLandingIdentity(params.bookingId, section);
+      if (!shouldLandOnCateringSection(landingRef.current, identity)) {
         // Record the CURRENT navigation state even when there is nothing to land on. Clearing the hash, or moving
         // to a fragment this workspace does not recognise, leaves `section` null -- and returning without recording
         // used to strand the old value, so Back or Forward to that very same fragment found it already "landed" and
-        // did nothing. Recording is a no-op when the fragment has not changed, so this cannot make a rerender land
+        // did nothing. Recording is a no-op when the identity has not changed, so this cannot make a rerender land
         // twice; it only stops a stale record from suppressing a genuine navigation.
-        landingRef.current = recordCateringSectionLanding(landingRef.current, section);
+        landingRef.current = recordCateringSectionLanding(landingRef.current, identity);
         return;
       }
       const element = document.getElementById(section!);
       // An unknown fragment resolves to null above and never reaches here; a known one whose section is not rendered
       // for this actor simply does nothing, rather than throwing.
       if (!element) return;
-      landingRef.current = recordCateringSectionLanding(landingRef.current, section);
+      landingRef.current = recordCateringSectionLanding(landingRef.current, identity);
       element.scrollIntoView({ behavior: "smooth", block: "start" });
       // Focus follows the scroll so the section is where keyboard and screen-reader users continue from, rather than
       // the top of the document. `tabindex="-1"` makes it programmatically focusable without adding a tab stop, and
@@ -72,7 +79,7 @@ export default function CateringBookingWorkspace({ params }: { params: { booking
     land();
     window.addEventListener("hashchange", land);
     return () => window.removeEventListener("hashchange", land);
-  }, [Boolean(workspace)]);
+  }, [params.bookingId, Boolean(workspace)]);
   const request = async ({ path, method, body }: WorkspaceMutation) => { const response = await fetch(`/api/catering/bookings/${params.bookingId}${path}`, { method, credentials: "include", headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }); const value = await response.json().catch(() => ({})); if (!response.ok) throw Object.assign(new Error(value.message || "Workspace could not be updated"), { code: typeof value.code === "string" ? value.code : undefined }); return value; };
   const mutation = useMutation({ mutationFn: request, onSuccess: (response, variables) => { const submittedIdentity = variables.formIdentity; const submittedTaskEdit = variables.submittedTaskEdit; if (submittedTaskEdit) setTaskEditor((current) => closeTaskEditorAfterSave(current, submittedTaskEdit)); const submittedTaskDraft = variables.submittedTaskDraft; if (variables.path === "/tasks" && submittedTaskDraft && submittedIdentity) setTaskForm((current) => reconcileWorkspaceFormAfterSave(current, submittedIdentity, submittedTaskDraft, EMPTY_CATERING_TASK_DRAFT)); const submittedProviderDraft = variables.submittedProviderDraft; const submittedCustomerNotes = variables.submittedCustomerNotes; if (variables.path === "/details" && response.details && submittedIdentity) { if (submittedProviderDraft) setProviderForm((current) => reconcileWorkspaceFormAfterSave(current, submittedIdentity, submittedProviderDraft, providerDraftFrom(response.details))); else if (submittedCustomerNotes !== undefined) setCustomerForm((current) => reconcileWorkspaceFormAfterSave(current, submittedIdentity, submittedCustomerNotes, response.details.customerNotes ?? "")); } cache.invalidateQueries({ queryKey: key }); }, onError: (error, variables) => { const conflict = isCateringTaskVersionConflict(error); if (shouldRefetchWorkspaceAfterError(error)) cache.invalidateQueries({ queryKey: key }); const submittedTaskEdit = variables.submittedTaskEdit; if (submittedTaskEdit) setTaskEditor((current) => conflict ? markTaskEditorConflict(current, submittedTaskEdit) : preserveTaskEditorAfterSaveFailure(current)); else if (variables.submittedTaskDraft) setTaskForm(preserveWorkspaceFormAfterSaveFailure); else if (variables.submittedProviderDraft) setProviderForm(preserveWorkspaceFormAfterSaveFailure); else if (variables.submittedCustomerNotes !== undefined) setCustomerForm(preserveWorkspaceFormAfterSaveFailure); } });
   if (loading) return <main className="mx-auto max-w-5xl p-4" role="status">Loading account…</main>;

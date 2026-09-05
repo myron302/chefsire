@@ -340,21 +340,38 @@ export function cateringWorkspaceSectionFromHash(hash: string): string | null {
   return (CATERING_WORKSPACE_SECTION_IDS as readonly string[]).includes(id) ? id : null;
 }
 
-/** Which fragment has already been landed on. Held in a ref by the component, so recording one causes no render. */
+/**
+ * What a landing is remembered as: the BOOKING it happened on plus the fragment, never the fragment alone.
+ *
+ * The router reuses this page component across bookings -- only the route parameter changes -- so a ref holding
+ * "already landed on #files" survives the move from one booking to the next. Keyed by fragment alone it then
+ * suppresses the landing on the second booking entirely: the participant follows a notification link to booking B's
+ * files and is left at the top of B's page, which is precisely the cold-load failure this whole mechanism exists to
+ * fix. Including the booking id makes B's `#files` a different identity from A's, so it lands.
+ *
+ * Null for a section that names nothing: an absent, empty or unrecognised fragment has no landing to identify.
+ */
+export function cateringSectionLandingIdentity(bookingId: string, section: string | null): string | null {
+  return section === null ? null : `${bookingId}:${section}`;
+}
+
+/** Which landing identity has already been acted on. Held in a ref by the component, so recording causes no render. */
 export type CateringSectionLanding = { landedOn: string | null };
 export const EMPTY_CATERING_SECTION_LANDING: CateringSectionLanding = { landedOn: null };
 
 /**
- * Whether to scroll and focus. A null section (no fragment, or one naming nothing) never lands, and a section
+ * Whether to scroll and focus. A null identity (no fragment, or one naming nothing) never lands, and an identity
  * already landed on never lands again -- so a refetch, a rerender, or the effect re-running does nothing at all.
+ * Because the identity carries the booking, "already landed" is always a statement about THIS booking.
  */
-export function shouldLandOnCateringSection(state: CateringSectionLanding, section: string | null): boolean {
-  return section !== null && state.landedOn !== section;
+export function shouldLandOnCateringSection(state: CateringSectionLanding, identity: string | null): boolean {
+  return identity !== null && state.landedOn !== identity;
 }
 /**
- * Records the landing. Navigating away and back re-lands, because the fragment in between differs: this remembers
- * the last fragment acted on, not every fragment ever seen, which is what keeps back/forward working.
+ * Records the landing. Navigating away and back re-lands, because the identity in between differs: this remembers
+ * the last identity acted on, not every one ever seen, which is what keeps back/forward -- and moving between
+ * bookings that deep-link to the same section -- working.
  */
-export function recordCateringSectionLanding(state: CateringSectionLanding, section: string | null): CateringSectionLanding {
-  return state.landedOn === section ? state : { landedOn: section };
+export function recordCateringSectionLanding(state: CateringSectionLanding, identity: string | null): CateringSectionLanding {
+  return state.landedOn === identity ? state : { landedOn: identity };
 }

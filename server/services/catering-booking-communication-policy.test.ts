@@ -46,23 +46,32 @@ test("the early communication guard tells a closed booking from a wrong actor", 
   assert.equal(cateringCommunicationGuard("confirmed", null), "forbidden");
   assert.equal(cateringCommunicationGuard("cancelled", null), "forbidden");
 });
-test("message pages are served newest-first and rendered oldest-first, with a boundary only when full", () => {
-  const rows = [{ id: "c" }, { id: "b" }, { id: "a" }];
-  const full = cateringMessagePageFrom(rows, 3);
-  assert.deepEqual(full.rows.map((row) => row.id), ["a", "b", "c"]);
-  // The boundary is the oldest message in the page, so "load older" continues from it.
-  assert.equal(full.nextCursor, "a");
-  // A short page has nothing before it, so no boundary is offered and the client stops.
-  const short = cateringMessagePageFrom(rows, 30);
+test("message pages are served newest-first and rendered oldest-first, with a boundary only when a row proves one", () => {
+  // The route reads `limit + 1` rows. Here three rows come back for a two-message page, so the third is the
+  // lookahead: it is the evidence an older message exists, and it is not part of the page.
+  const read = [{ id: "c" }, { id: "b" }, { id: "a" }];
+  const full = cateringMessagePageFrom(read, 2);
+  assert.deepEqual(full.rows.map((row) => row.id), ["b", "c"]);
+  // The boundary is the oldest message ACTUALLY RETURNED, so "load older" resumes strictly before it and the
+  // lookahead row becomes the first row of the next page rather than one that is skipped or served twice.
+  assert.equal(full.nextCursor, "b");
+  // An exactly-full page with no lookahead behind it is the end of the conversation: no boundary is offered, so
+  // the client stops instead of fetching a page that would come back empty.
+  const exact = cateringMessagePageFrom(read, 3);
+  assert.deepEqual(exact.rows.map((row) => row.id), ["a", "b", "c"]);
+  assert.equal(exact.nextCursor, null);
+  // A short page has nothing before it either.
+  const short = cateringMessagePageFrom(read, 30);
   assert.deepEqual(short.rows.map((row) => row.id), ["a", "b", "c"]);
   assert.equal(short.nextCursor, null);
   assert.deepEqual(cateringMessagePageFrom([], 30), { rows: [], nextCursor: null });
   assert.deepEqual(cateringMessagePageFrom([], 0), { rows: [], nextCursor: null });
 });
 test("file pages keep newest-first order and derive the same style of boundary", () => {
-  const rows = [{ id: "c" }, { id: "b" }, { id: "a" }];
-  assert.deepEqual(cateringFilePageFrom(rows, 3), { rows, nextCursor: "a" });
-  assert.deepEqual(cateringFilePageFrom(rows, 20).nextCursor, null);
+  const read = [{ id: "c" }, { id: "b" }, { id: "a" }];
+  assert.deepEqual(cateringFilePageFrom(read, 2), { rows: [{ id: "c" }, { id: "b" }], nextCursor: "b" });
+  assert.deepEqual(cateringFilePageFrom(read, 3), { rows: read, nextCursor: null });
+  assert.deepEqual(cateringFilePageFrom(read, 20).nextCursor, null);
 });
 test("a read marker is accepted only when the message belongs to this booking conversation", () => {
   assert.deepEqual(resolveCateringReadMarker("m1", { id: "m9" }, true), { kind: "mark", messageId: "m1" });

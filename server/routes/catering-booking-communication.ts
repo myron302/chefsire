@@ -12,7 +12,7 @@ import { requireAuth } from "../middleware";
 import { serializeBookingMessage, type SerializableBookingMessage } from "../serializers/catering-booking-message";
 import { lockActiveCateringBooking, ownedCateringBooking } from "../services/catering-booking-access";
 import { conversationMemberIds, conversationParticipant, ensureBookingConversation, findBookingConversation } from "../services/catering-booking-conversation";
-import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, boundedUnreadCount, cateringCounterpart, cateringMessagePageFrom, cateringUnreadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "../services/catering-booking-communication-policy";
+import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, boundedUnreadCount, cateringCounterpart, cateringMessagePageFrom, cateringPageQueryLimit, cateringUnreadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "../services/catering-booking-communication-policy";
 
 const r = Router();
 const NOT_FOUND = { message: "Booking conversation not found" } as const;
@@ -75,7 +75,9 @@ r.get("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
     .from(dmMessages)
     .where(and(eq(dmMessages.threadId, threadId), boundary))
     .orderBy(desc(dmMessages.createdAt), desc(dmMessages.id))
-    .limit(page.limit);
+    // One row more than the page: the lookahead is what proves an older message exists. `cateringMessagePageFrom`
+    // drops it, so it is never serialized -- the client sees at most `page.limit` messages either way.
+    .limit(cateringPageQueryLimit(page.limit));
   const { rows: ordered, nextCursor } = cateringMessagePageFrom(rows, page.limit);
   const names = await senderNames(ordered.map((row) => row.senderId));
   // The authoritative start of this actor's unread range, so a capped count never leaves the client unable to

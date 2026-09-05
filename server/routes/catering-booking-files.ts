@@ -12,7 +12,7 @@ import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeBookingFile } from "../serializers/catering-booking-file";
 import { lockActiveCateringBooking, ownedCateringBooking } from "../services/catering-booking-access";
-import { cateringCounterpart, cateringFilePageFrom, boundedCount } from "../services/catering-booking-communication-policy";
+import { cateringCounterpart, cateringFilePageFrom, cateringPageQueryLimit, boundedCount } from "../services/catering-booking-communication-policy";
 import { CATERING_FILE_DOWNLOAD_HEADERS, cateringFileActivity, cateringFileContentDisposition, cateringFileStorageKey, cateringFileVisibleTo, resolveCateringFileSlot, resolveCateringUpload, shouldNotifyCateringFileUpload } from "../services/catering-booking-file-policy";
 import { validateCateringFileContent } from "../services/catering-booking-file-content";
 import { privateStorageProvider, readPrivateObject, removePrivateObject, writePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
@@ -96,7 +96,9 @@ r.get("/bookings/:id/files", requireAuth, async (req, res, next) => { try {
   const rows: CateringBookingFile[] = await db.select().from(cateringBookingFiles)
     .where(and(scope, boundary))
     .orderBy(desc(cateringBookingFiles.createdAt), desc(cateringBookingFiles.id))
-    .limit(page.limit);
+    // One row more than the page: the lookahead is what proves an older file exists. `cateringFilePageFrom` drops
+    // it, so it is never serialized -- the client sees at most `page.limit` files either way.
+    .limit(cateringPageQueryLimit(page.limit));
   const { rows: ordered, nextCursor } = cateringFilePageFrom(rows, page.limit);
   const names = await uploaderNames(ordered.map((row) => row.uploadedBy));
   res.json({ files: ordered.map((row) => serializeBookingFile(row, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, status: booking.status as never, names })), nextCursor, editable: mayMutateCateringFiles(booking.status as never) });

@@ -312,11 +312,12 @@ test("message and file pages stay deterministic when rows share a created_at", (
   assert.equal(filesRoute.includes("(SELECT f.created_at, f.id FROM catering_booking_files f WHERE f.id = "), true);
   assert.equal(communicationRoute.includes("desc(dmMessages.createdAt), desc(dmMessages.id)"), true);
   assert.equal(filesRoute.includes("desc(cateringBookingFiles.createdAt), desc(cateringBookingFiles.id)"), true);
-  // Three rows with one identical timestamp still page in a stable order and hand back the last id as the boundary.
+  // Three rows with one identical timestamp still page in a stable order, and for a two-row page the boundary is
+  // the oldest row actually served -- the third row read is the lookahead that proved the boundary was real.
   const sameInstant = ["c", "b", "a"].map((id) => ({ id, createdAt: "2026-09-01T12:00:00.000Z" }));
   assert.deepEqual(cateringMessagePageFrom(sameInstant, 3).rows.map((row) => row.id), ["a", "b", "c"]);
-  assert.equal(cateringMessagePageFrom(sameInstant, 3).nextCursor, "a");
-  assert.equal(cateringFilePageFrom(sameInstant, 3).nextCursor, "a");
+  assert.equal(cateringMessagePageFrom(sameInstant, 2).nextCursor, "b");
+  assert.equal(cateringFilePageFrom(sameInstant, 2).nextCursor, "b");
 });
 
 test("a cursor is validated against what the actor may see, so a probe is not a usable boundary", () => {
