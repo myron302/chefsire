@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { assertPrivateR2Isolated, deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
+import { assertPrivateR2Configured, assertPrivateR2Isolated, deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
 import { assertPrivateRootIsolatedFrom, canonicalizePath, firstPrivateRootConflict, isSameOrInside, type PublicStaticRoot } from "./private-storage-path";
 import { CLIENT_STATIC_DIR_CANDIDATES } from "./public-static-dirs";
 import { UPLOADS_DIR } from "./uploads-dir";
@@ -44,8 +44,11 @@ function resolvePrivateRoot(): string {
   return root;
 }
 export const PRIVATE_STORAGE_ROOT: string = resolvePrivateRoot();
-// Surfaced at initialization as well as at first use, so an unsafe bucket collision is not discovered only when a
-// participant tries to upload. It throws only when BOTH buckets are set and equal, never for an unconfigured one.
+// Both surfaced at initialization as well as at first use, so bad configuration is discovered before a participant
+// tries to upload rather than after. `assertPrivateR2Configured` throws only when R2_PRIVATE_BUCKET is set and a
+// connection variable is missing -- never for a deployment that simply has no private bucket. The isolation check
+// throws only when BOTH buckets are set and equal.
+assertPrivateR2Configured();
 assertPrivateR2Isolated();
 
 /**
@@ -129,9 +132,11 @@ const O_NOFOLLOW = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0;
  * Which backend a new object is written to.
  *
  * R2 is used only when an explicitly private bucket is configured, and only when that bucket is not the public one.
- * A collision throws here, before a provider is chosen and long before any byte is written -- an unsafely configured
- * deployment must never be quietly downgraded to local storage, because the administrator would go on believing
- * their R2 bucket is in use. An absent R2_PRIVATE_BUCKET is the separate, legitimate local-fallback case.
+ * Both a collision and a half-configured private R2 throw here, before a provider is chosen and long before any
+ * byte is written -- an unsafely configured deployment must never be quietly downgraded to local storage, because
+ * the administrator would go on believing their R2 bucket is in use. `isPrivateR2Configured` throws rather than
+ * answering false for a partial configuration, so this function cannot reach `return "local"` for one. An absent
+ * R2_PRIVATE_BUCKET is the separate, legitimate local-fallback case.
  */
 export function privateStorageProvider(): PrivateStorageProvider {
   if (!isPrivateR2Configured()) return "local";

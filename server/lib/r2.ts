@@ -77,13 +77,72 @@ export function publicUrl(key: string): string {
  * They also use their own bucket. The bucket behind R2_BUCKET is the public media bucket -- R2_PUBLIC_BASE_URL exists
  * precisely so its objects can be served directly -- so writing a booking document there and calling it private would
  * not be true. R2_PRIVATE_BUCKET must therefore name a bucket with no public access binding, and it may not be the
- * public bucket itself: that collision throws rather than being tolerated. When R2_PRIVATE_BUCKET is simply absent,
- * `isPrivateR2Configured()` is false and callers fall back to private local storage -- an unconfigured deployment and
- * an unsafely configured one are deliberately different outcomes.
+ * public bucket itself: that collision throws rather than being tolerated.
+ *
+ * DEPLOYMENT RULE. Private R2 configuration has exactly three states, and the difference between the last two is
+ * the point:
+ *
+ *   R2_PRIVATE_BUCKET absent  -> private R2 is intentionally not configured; local private storage is used. This is
+ *                                the supported development and single-instance deployment.
+ *   R2_PRIVATE_BUCKET set, and every connection variable set -> private R2 is used.
+ *   R2_PRIVATE_BUCKET set, but a connection variable missing or blank -> CONFIGURATION ERROR. It does not fall back.
+ *
+ * The bucket name is the operator's explicit statement of intent. Once it is set, quietly using local storage
+ * because a credential was missing is the dangerous outcome, not the safe one: in a multi-replica or ephemeral
+ * deployment the metadata row records `storageProvider: "local"`, only the instance that accepted the upload holds
+ * the bytes, no other replica can serve the download, and a redeploy destroys them -- all without the operator ever
+ * being told their configuration was incomplete.
+ */
+
+/** Everything private R2 needs. The bucket is listed last because it is also the intent signal for the others. */
+export const PRIVATE_R2_REQUIRED_VARS = ["R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PRIVATE_BUCKET"] as const;
+
+/** Whitespace-only is missing: an empty or blank value configures nothing. */
+const isBlank = (value: string | undefined): boolean => (value ?? "").trim() === "";
+
+/** The names of the required variables that are missing or blank, in declaration order. */
+export function missingPrivateR2Vars(): string[] {
+  return PRIVATE_R2_REQUIRED_VARS.filter((name) => isBlank(process.env[name]));
+}
+
+export type PrivateR2Configuration = "absent" | "complete" | "partial";
+/**
+ * The canonical three-state rule. Every private-R2 decision resolves through this so startup and runtime can never
+ * disagree about what the environment says.
+ */
+export function privateR2Configuration(): PrivateR2Configuration {
+  if (isBlank(process.env.R2_PRIVATE_BUCKET)) return "absent";
+  return missingPrivateR2Vars().length === 0 ? "complete" : "partial";
+}
+
+/**
+ * Fails closed on a half-configured private R2.
+ *
+ * The message names the variables that are missing so the deployment is fixable, and nothing else: no value, no
+ * credential, no endpoint. An absent bucket is not an error -- that is the legitimate local deployment.
+ */
+export function assertPrivateR2Configured(): void {
+  if (privateR2Configuration() !== "partial") return;
+  throw new Error(
+    "R2_PRIVATE_BUCKET is configured, but private R2 configuration is incomplete. " +
+    `Missing: ${missingPrivateR2Vars().join(", ")}. ` +
+    "Private booking documents will not silently fall back to local storage: local storage is only correct when " +
+    "R2_PRIVATE_BUCKET is unset, because a multi-replica or ephemeral deployment cannot serve or retain them. " +
+    "Set the missing variables, or unset R2_PRIVATE_BUCKET to use local private storage deliberately.",
+  );
+}
+
+/**
+ * Whether private R2 is the storage to use.
+ *
+ * It THROWS on a partial configuration rather than answering false, and that is deliberate: a boolean has only two
+ * answers and the third state is the dangerous one. Returning false for a half-configured deployment is exactly how
+ * an explicitly requested private bucket became a silent local fallback, so the ambiguity is removed at the one
+ * place every caller asks.
  */
 export function isPrivateR2Configured(): boolean {
-  const names = ["R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PRIVATE_BUCKET"] as const;
-  return names.every((name) => Boolean(process.env[name]?.trim()));
+  assertPrivateR2Configured();
+  return privateR2Configuration() === "complete";
 }
 
 /**
@@ -140,6 +199,9 @@ export function assertPrivateR2Isolated(): void {
 function privateBucket(): string {
   const bucket = process.env.R2_PRIVATE_BUCKET?.trim();
   if (!bucket) throw new Error("R2_PRIVATE_BUCKET is required to store private booking documents");
+  // Defensive, and consistent with the startup check: a helper reached directly still refuses a half-configured
+  // deployment rather than attempting a request with no credentials.
+  assertPrivateR2Configured();
   assertPrivateR2Isolated();
   return bucket;
 }
