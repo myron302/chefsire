@@ -118,7 +118,7 @@ test("4 & 11-12. polling stops on that response, while load, focus refetch and p
   assert.equal(options.includes("enabled:"), false);
   assert.equal(options.includes("refetchOnWindowFocus: true"), true);
   assert.equal(comms.includes("getNextPageParam: (lastPage) => nextCateringMessageCursor(lastPage)"), true);
-  assert.equal(comms.includes("combineCateringMessagePages(query.data?.pages ?? [])"), true);
+  assert.equal(comms.includes("combineCateringMessagePages(loadedPages)"), true);
 });
 
 test("6 & 7. the workspace is refreshed once on the first terminal observation, never on the polls after", () => {
@@ -153,7 +153,7 @@ test("13. the files section had the same stale-parent bug and now reads the same
   }
   // Terminal files stay readable and the read-only banner explains why.
   assert.equal(files.includes("CATERING_FILES_READ_ONLY_BANNER"), true);
-  assert.equal(files.includes("combineCateringFilePages(query.data?.pages ?? [])"), true);
+  assert.equal(files.includes("combineCateringFilePages(loadedPages)"), true);
   // Row-level delete still additionally requires the server's own per-file permission.
   assert.equal(files.includes("{editable && file.mayDelete &&"), true);
 });

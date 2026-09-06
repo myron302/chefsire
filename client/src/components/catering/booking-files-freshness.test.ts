@@ -83,7 +83,10 @@ test("download and delete still reauthorize per request, unaffected by list fres
 test("pagination, history and ordering survive the refresh", () => {
   // Cursor pages, deduplicated by id when combined, so a refreshed page cannot duplicate a row.
   assert.equal(source.includes("getNextPageParam: (lastPage) => nextCateringFileCursor(lastPage)"), true);
-  assert.equal(source.includes("combineCateringFilePages(query.data?.pages ?? [])"), true);
+  assert.equal(source.includes("combineCateringFilePages(loadedPages)"), true);
+  // And a refresh cannot drop history the participant already loaded: the refreshed pages are a window, and files
+  // below it are preserved rather than discarded when a new upload shifts every page boundary down.
+  assert.equal(source.includes("cateringPreservedHistory(historyRef.current, identity,"), true);
   // No page cap: loaded history is never dropped to keep polling cheap.
   assert.equal(stripComments(queryOptions).includes("maxPages"), false);
   // Actor-scoped key, unchanged.

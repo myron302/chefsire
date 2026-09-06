@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { cateringPreservedHistory, emptyCateringLoadedHistory, forgetCateringHistoryRecord, type CateringLoadedHistory } from "@/pages/services/catering-booking-loaded-history";
 import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, enterCateringMutation, exitCateringMutation, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome } from "@/pages/services/catering-booking-mutation-origin";
 import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, emptyCateringFileDraft, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
 
@@ -43,6 +44,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // -- the draft, the file input -- may only be touched when the completion belongs to this booking.
   const identityRef = useRef(identity);
   useEffect(() => { identityRef.current = identity; }, [identity]);
+  // History this participant has already loaded. A poll refetches every loaded page and re-derives each cursor from
+  // the page before it, so one new file shifts every boundary down and the oldest loaded file falls out of the last
+  // page -- it was never removed, and without this it would vanish on a timer and have to be loaded again.
+  const historyRef = useRef<CateringLoadedHistory<CateringBookingFileView>>(emptyCateringLoadedHistory());
   // Upload and delete requests in flight, per booking: `useMutation().isPending` is a property of the hook, so an
   // upload started on one booking would otherwise disable the controls and announce progress on another.
   // Kept apart, as the hook flags were: an upload in flight disables the upload control, a delete in flight
@@ -90,7 +95,14 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     },
     getNextPageParam: (lastPage) => nextCateringFileCursor(lastPage),
   });
-  const files = combineCateringFilePages(query.data?.pages ?? []);
+  // The refreshed pages are an authoritative WINDOW over the newest end of the collection, not the whole of it, so
+  // history already loaded below that window is preserved rather than dropped. A file the window DOES cover and no
+  // longer returns has been removed and disappears; only files older than its last one are kept, and a removal this
+  // client itself performed drops its record outright. Nothing is preserved once the window reaches the beginning.
+  const loadedPages = query.data?.pages;
+  const history = cateringPreservedHistory(historyRef.current, identity, loadedPages ? combineCateringFilePages(loadedPages) : null, !query.hasNextPage);
+  useEffect(() => { historyRef.current = history; });
+  const files = history.items;
   // The fingerprint of the newest page this actor may see. Only ids already serialized to them are read, so a
   // provider-private change is invisible here for a customer exactly as it is everywhere else.
   const fileBoundary = cateringFileBoundary(query.data?.pages);
@@ -175,7 +187,14 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     // Success alone arms the suppression, and only for the booking the delete actually happened on; `onSettled` runs
     // after a failure too, and a failed delete changes no boundary, so arming there would leave an arming waiting to
     // swallow a counterpart's next change.
-    onSuccess: (_body, attempt) => { ledgerRef.current = expectCateringFileRemoval(ledgerRef.current, attempt.origin, attempt.fileId); setRemoveOutcome(cateringMutationOutcome(attempt.origin, "succeeded")); },
+    // The server accepted this removal, which is authoritative about that file even where it sits below the
+    // refreshed window and the list endpoint alone could not prove it gone. Forgetting it here is what stops the
+    // preserved tail from rendering it again on the next merge.
+    onSuccess: (_body, attempt) => {
+      ledgerRef.current = expectCateringFileRemoval(ledgerRef.current, attempt.origin, attempt.fileId);
+      historyRef.current = forgetCateringHistoryRecord(historyRef.current, attempt.origin.identity, attempt.fileId);
+      setRemoveOutcome(cateringMutationOutcome(attempt.origin, "succeeded"));
+    },
     onError: (error: Error, attempt) => setRemoveOutcome(cateringMutationOutcome(attempt.origin, "failed", error.message)),
     onSettled: (_body, _error, attempt) => { setRemoveInFlight((current) => exitCateringMutation(current, attempt.origin)); invalidateOrigin(attempt.origin); },
   });

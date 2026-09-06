@@ -123,7 +123,7 @@ test("8. pagination is untouched: only the newest page is fingerprinted", () => 
   assert.equal(workspaceRefreshes(s), 0, "loading an older page must not look like a change");
   assert.equal(cateringFileBoundary([pageOf("f5", "f4"), pageOf("f3")]), cateringFileBoundary([pageOf("f5", "f4")]));
   // And the component still combines and paginates exactly as before.
-  assert.equal(source.includes("combineCateringFilePages(query.data?.pages ?? [])"), true);
+  assert.equal(source.includes("combineCateringFilePages(loadedPages)"), true);
   assert.equal(source.includes("getNextPageParam: (lastPage) => nextCateringFileCursor(lastPage)"), true);
   assert.equal(boundaryEffect.includes("fetchNextPage"), false);
 });
@@ -229,7 +229,8 @@ test("8. the component arms suppression on success only, never from onError or o
   assert.equal(/expectCateringFile(Addition|Removal)/.test(uploadError), false, "an upload error must not arm anything");
   // Delete arms in onSuccess, by the id the request named; onSettled only refetches.
   const remove = source.slice(source.indexOf("const remove = useMutation"));
-  assert.equal(remove.includes("onSuccess: (_body, attempt) => { ledgerRef.current = expectCateringFileRemoval(ledgerRef.current, attempt.origin, attempt.fileId);"), true);
+  assert.equal(remove.includes("ledgerRef.current = expectCateringFileRemoval(ledgerRef.current, attempt.origin, attempt.fileId);"), true);
+  assert.equal(remove.slice(0, remove.indexOf("onError:")).includes("forgetCateringHistoryRecord(historyRef.current, attempt.origin.identity, attempt.fileId)"), true, "a removal this client performed must not come back from preserved history");
   const settled = remove.slice(remove.indexOf("onSettled:"));
   assert.equal(/expectCateringFile(Addition|Removal)/.test(settled), false, "onSettled runs after failure too and must not arm");
   // Exactly two arming sites, both on success, and each names its own booking and its own file.

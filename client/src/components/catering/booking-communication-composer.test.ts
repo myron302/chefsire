@@ -217,7 +217,7 @@ test("each observation is stamped with the boundary it was collected for", () =>
   assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)"), true);
   assert.equal(/cateringThreadEndIsOnScreen\(visibility\)/.test(source), false, "the boundary-free form must be gone");
   // And the rendered page set is part of the stamp, so a prepend cannot reuse evidence about the shorter thread.
-  assert.equal(source.includes("const pageKey = cateringMessagePageKey(query.data?.pages, hasOlderPages);"), true);
+  assert.equal(source.includes("const pageKey = `${cateringMessagePageKey(loadedPages, hasOlderPages)}:${messages.length}`;"), true);
 });
 
 test("a boundary change re-creates both observers, which is what supplies fresh evidence", () => {

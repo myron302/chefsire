@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { cateringBookingMessagesKey, type CateringBookingMessagePageView } from "@shared/catering-booking-communication";
+import { cateringBookingMessagesKey, type CateringBookingMessagePageView, type CateringBookingMessageView } from "@shared/catering-booking-communication";
 import { cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cateringPreservedHistory, emptyCateringLoadedHistory, type CateringLoadedHistory } from "@/pages/services/catering-booking-loaded-history";
 import { EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_UNSENT_MESSAGES, applyForCateringOrigin, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringUnsentMessage, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome, type CateringUnsentMessages } from "@/pages/services/catering-booking-mutation-origin";
 import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringMessagePageKey, cateringReadableBoundary, cateringThreadEndIsOnScreen, cateringUnreadStart, cateringUnreadStartId, cateringViewGeneration, mayRecordCateringViewedBoundary, recordCateringMessageCoverage, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
 
@@ -55,6 +56,10 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   const deliveredRef = useRef<string | null>(null);
   // Whether this section has already told the workspace that the booking went terminal.
   const terminalSeenRef = useRef(false);
+  // History this participant has already loaded. A poll refetches every loaded page and re-derives each cursor from
+  // the page before it, so one new message shifts every boundary down and the oldest loaded message falls out of
+  // the last page -- it was never deleted, and without this it would vanish on a timer and have to be loaded again.
+  const historyRef = useRef<CateringLoadedHistory<CateringBookingMessageView>>(emptyCateringLoadedHistory());
   const messagesKey = cateringBookingMessagesKey(userId, bookingId);
   // The identity every attempt started from this render is stamped with.
   const origin = cateringMutationOrigin(userId, bookingId);
@@ -94,15 +99,23 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     getNextPageParam: (lastPage) => nextCateringMessageCursor(lastPage),
   });
 
-  const messages = combineCateringMessagePages(query.data?.pages ?? []);
-  const latestId = latestCateringMessageId(messages);
   // What the booking-scoped endpoint itself last said about whether this booking can still be written to, and the
   // state this section acts on. The parent prop is only a fallback until the endpoint has answered once.
   const hasOlderPages = Boolean(query.hasNextPage);
+  // The refreshed pages are an authoritative WINDOW over the newest end of the conversation, not the whole of it,
+  // so history already loaded below that window is preserved rather than dropped. A message the window DOES cover
+  // and no longer returns is gone; only messages older than its last one are kept. Derived from the ref's committed
+  // value during render and written back after, so nothing flickers out and back in between the two.
+  const loadedPages = query.data?.pages;
+  const history = cateringPreservedHistory(historyRef.current, identity, loadedPages ? [...combineCateringMessagePages(loadedPages)].reverse() : null, !hasOlderPages);
+  useEffect(() => { historyRef.current = history; });
+  // Rendered oldest-to-newest, which is the order the thread reads in.
+  const messages = [...history.items].reverse();
+  const latestId = latestCateringMessageId(messages);
   // What is currently RENDERED, not just which message is newest. Prepending an older page leaves `latestId`
   // untouched, so without this an observation made before the prepend would still read as evidence about the
-  // thread that exists after it.
-  const pageKey = cateringMessagePageKey(query.data?.pages, hasOlderPages);
+  // thread that exists after it. The preserved tail counts too: it is on screen.
+  const pageKey = `${cateringMessagePageKey(loadedPages, hasOlderPages)}:${messages.length}`;
   // The oldest loaded message that must actually be seen before the newest one may be marked read, derived from the
   // server's own unread count and the `mine` flags rather than from any new API field.
   // The endpoint's own answer, which is never capped; the count and `mine` flags remain only as the fallback for a

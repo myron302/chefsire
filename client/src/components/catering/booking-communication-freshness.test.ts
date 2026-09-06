@@ -99,7 +99,10 @@ test("7. repeated polls cause no duplicate automatic read requests", () => {
 test("8. polling preserves loaded pagination and history", () => {
   // Cursor-based pages, deduplicated by id when combined, so a refreshed page cannot duplicate or reorder a message.
   assert.equal(source.includes("getNextPageParam: (lastPage) => nextCateringMessageCursor(lastPage)"), true);
-  assert.equal(source.includes("combineCateringMessagePages(query.data?.pages ?? [])"), true);
+  assert.equal(source.includes("combineCateringMessagePages(loadedPages)"), true);
+  // And a refresh cannot drop history the participant already loaded: the refreshed pages are a window, and what
+  // lies below it is preserved rather than discarded when a new message shifts every page boundary down.
+  assert.equal(source.includes("cateringPreservedHistory(historyRef.current, identity,"), true);
   // No page cap: nothing discards older loaded pages to keep polling cheap.
   assert.equal(stripComments(queryOptions).includes("maxPages"), false, "loaded history must not be dropped by the refresh");
   // The scroll position is restored only after an explicit older-page fetch, which sets the marker. A poll never
