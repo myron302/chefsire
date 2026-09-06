@@ -7,17 +7,12 @@ import morgan from "morgan";
 import passport from "passport";
 import cookieParser from "cookie-parser";
 import path from "node:path";
-import fs from "node:fs";
-import { fileURLToPath } from "node:url";
 import routes from "./routes";
 import { setupGoogleOAuth } from "./services/google-oauth.service";
 import { setupFacebookOAuth } from "./services/facebook-oauth.service";
 import { setupTikTokOAuth } from "./services/tiktok-oauth.service";
 import { UPLOADS_DIR } from "./lib/uploads-dir";
-
-// Define __dirname for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./lib/public-static-dirs";
 
 const app = express();
 
@@ -98,27 +93,14 @@ app.use(
   }),
 );
 
-// Serve built client at dist/public
-// Try multiple possible locations for the client build
-const possibleClientDirs = [
-  path.resolve(process.cwd(), "dist/public"),      // If running from project root
-  path.resolve(process.cwd(), "../dist/public"),   // If running from server/ directory
-  path.resolve(__dirname, "../../dist/public"),    // Relative to bundled server location
-];
-
-let clientDir = "";
-let hasClient = false;
-
-for (const dir of possibleClientDirs) {
-  if (fs.existsSync(dir)) {
-    clientDir = dir;
-    hasClient = true;
-    break;
-  }
-}
+// Serve built client at dist/public. The candidate locations and the choice between them live in
+// lib/public-static-dirs, which is also what private booking storage validates itself against: this mount is
+// unauthenticated, so the isolation check has to be reading the same list the app actually serves from.
+const clientDir = resolveClientStaticDir() ?? "";
+const hasClient = clientDir !== "";
 
 if (!hasClient) {
-  console.warn('[WARN] Client bundle not found. Checked:', possibleClientDirs);
+  console.warn('[WARN] Client bundle not found. Checked:', CLIENT_STATIC_DIR_CANDIDATES);
 }
 
 if (hasClient) {

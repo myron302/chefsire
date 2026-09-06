@@ -1,0 +1,326 @@
+import { Router } from "express";
+import { randomUUID } from "crypto";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { z } from "zod";
+import { cateringBookingMessageRequests, notifications, users } from "@shared/schema";
+import { dmMessages } from "@shared/schema.dm";
+import { cateringBookingIdSchema } from "@shared/catering-bookings";
+import { CATERING_COMMUNICATION_SECTION, CATERING_MESSAGE_NOTIFICATION, CATERING_UNREAD_COUNT_CEILING, cateringBookingMessagePageSchema, cateringBookingMessageReadSchema, cateringBookingMessageSendSchema, cateringBookingSectionPath, mayPostCateringBookingMessage } from "@shared/catering-booking-communication";
+import { cateringWorkspaceRole } from "@shared/catering-booking-operations";
+import { db } from "../db";
+import { requireAuth } from "../middleware";
+import { serializeBookingMessage, type SerializableBookingMessage } from "../serializers/catering-booking-message";
+import { lockActiveCateringBooking, ownedCateringBooking } from "../services/catering-booking-access";
+import { conversationMemberIds, conversationParticipant, ensureBookingConversation, findBookingConversation } from "../services/catering-booking-conversation";
+import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, boundedUnreadCount, cateringCounterpart, cateringMessagePageFrom, cateringPageQueryLimit, cateringUnreadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "../services/catering-booking-communication-policy";
+
+const r = Router();
+const NOT_FOUND = { message: "Booking conversation not found" } as const;
+type Res = Parameters<Parameters<typeof r.get>[1]>[1];
+
+/**
+ * Signals that this send's client request token was already claimed by an accepted send. It is thrown, never
+ * returned, so the transaction that had already inserted a message rolls that insert back: a retry must resolve to
+ * the message the first attempt persisted, and must not leave a second copy of it behind.
+ */
+class DuplicateBookingMessage extends Error {}
+
+function invalid(error: unknown, res: Res, next: (error: unknown) => void) {
+  if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message });
+  next(error);
+}
+
+/** Display names for the senders in one page, looked up once rather than per message. */
+async function senderNames(ids: readonly string[]): Promise<Map<string, string | null>> {
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) return new Map();
+  const rows = await db.select({ id: users.id, displayName: users.displayName, username: users.username }).from(users).where(inArray(users.id, unique));
+  return new Map(rows.map((row: { id: string; displayName: string | null; username: string | null }) => [row.id, row.displayName || row.username || null] as const));
+}
+
+/**
+ * The keyset boundary for one page, resolved from the booking's own thread.
+ *
+ * The cursor is the id of the oldest message the client already holds, and the comparison below reads that row's
+ * `(created_at, id)` from the database itself rather than trusting a timestamp the client round-tripped. That is what
+ * makes the ordering deterministic even when many messages share a created_at to the microsecond: the pair is
+ * compared at full stored precision, so no row is ever skipped or served twice at a page boundary. A cursor naming a
+ * message in any other thread resolves to nothing and is refused, so a foreign message id is not a usable boundary.
+ */
+async function messageInThread(threadId: string, messageId: string): Promise<{ id: string; createdAt: Date } | undefined> {
+  const [row] = await db.select({ id: dmMessages.id, createdAt: dmMessages.createdAt }).from(dmMessages).where(and(eq(dmMessages.id, messageId), eq(dmMessages.threadId, threadId))).limit(1);
+  return row;
+}
+async function messageCursorExists(threadId: string, cursor: string): Promise<boolean> {
+  return Boolean(await messageInThread(threadId, cursor));
+}
+
+r.get("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
+  const id = cateringBookingIdSchema.parse(req.params.id);
+  const userId = (req.user as { id: string }).id;
+  const page = cateringBookingMessagePageSchema.parse(req.query);
+  const booking = await ownedCateringBooking(id, userId);
+  if (!booking) return res.status(404).json(NOT_FOUND);
+  const editable = mayPostCateringBookingMessage(booking.status as never);
+  // Reading never creates the conversation: a booking nobody has messaged on yet is an empty conversation, not a
+  // reason to write a thread and two participant rows into the database.
+  const threadId = await findBookingConversation(id);
+  if (!threadId) return res.json({ messages: [], nextCursor: null, editable, unreadStartId: null });
+  if (page.cursor && !await messageCursorExists(threadId, page.cursor)) return res.status(400).json({ message: "Unknown message cursor" });
+  const boundary = page.cursor
+    ? sql`(${dmMessages.createdAt}, ${dmMessages.id}) < (SELECT m.created_at, m.id FROM dm_messages m WHERE m.id = ${page.cursor})`
+    : undefined;
+  // `db` is untyped at this repo's boundary, so the row shape is stated here rather than inferred as `any`.
+  const rows: SerializableBookingMessage[] = await db.select({ id: dmMessages.id, senderId: dmMessages.senderId, body: dmMessages.body, createdAt: dmMessages.createdAt })
+    .from(dmMessages)
+    .where(and(eq(dmMessages.threadId, threadId), boundary))
+    .orderBy(desc(dmMessages.createdAt), desc(dmMessages.id))
+    // One row more than the page: the lookahead is what proves an older message exists. `cateringMessagePageFrom`
+    // drops it, so it is never serialized -- the client sees at most `page.limit` messages either way.
+    .limit(cateringPageQueryLimit(page.limit));
+  const { rows: ordered, nextCursor } = cateringMessagePageFrom(rows, page.limit);
+  const names = await senderNames(ordered.map((row) => row.senderId));
+  // The authoritative start of this actor's unread range, so a capped count never leaves the client unable to
+  // locate it. Actor- and booking-scoped, and null once nothing is unread.
+  const unreadStartId = await unreadStartMessageId(threadId, userId);
+  res.json({ messages: ordered.map((row) => serializeBookingMessage(row, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, names })), nextCursor, editable, unreadStartId });
+} catch (error) { invalid(error, res, next); } });
+
+/**
+ * Advances one participant's read marker to `messageId`, and only ever forward.
+ *
+ * This is deliberately ONE conditional statement rather than read-compare-write. Two tabs marking different
+ * messages concurrently would race a read-then-write: both could read the old marker, both could decide they
+ * advance, and the later writer could win with the older message. Here the comparison lives in the WHERE clause, so
+ * the second statement blocks on the row the first is updating and -- under READ COMMITTED, which re-evaluates the
+ * predicate against the committed row version -- re-checks monotonicity against the value that actually won. A
+ * stale marker therefore matches nothing and updates no row, rather than regressing it.
+ *
+ * The three accepted cases are: no marker yet, a marker that is no longer a message of this thread (the shape the
+ * generic DM read route can leave behind, which cannot be compared), and a strictly later `(created_at, id)` pair --
+ * the same ordering message pagination and unread counting use, so an equal timestamp is decided by id.
+ *
+ * This is the ONLY thing that advances a booking read marker, and it is reached from exactly one caller: the
+ * explicit read route. The send path deliberately does not call it -- see `persistBookingMessage` for why sending
+ * is not evidence of reading.
+ *
+ * Lock ordering: this statement takes exactly one row lock, on `dm_participants`, and holds it only for its own
+ * duration. It acquires nothing else and now runs outside the send transaction entirely, so it cannot form a cycle
+ * with the send flow -- which takes the booking row lock, then the conversation advisory lock, then writes
+ * `dm_messages`. No path acquires these in the opposite order, so no deadlock is introduced.
+ */
+async function advanceReadMarker(executor: typeof db, threadId: string, userId: string, messageId: string): Promise<void> {
+  await executor.execute(sql`
+    UPDATE dm_participants AS p
+    SET last_read_message_id = m.id, last_read_at = m.created_at
+    FROM dm_messages AS m
+    WHERE m.id = ${messageId}
+      AND m.thread_id = ${threadId}
+      AND p.thread_id = ${threadId}
+      AND p.user_id = ${userId}
+      AND (
+        p.last_read_message_id IS NULL
+        OR NOT EXISTS (SELECT 1 FROM dm_messages AS b WHERE b.id = p.last_read_message_id AND b.thread_id = ${threadId})
+        OR (m.created_at, m.id) > (SELECT b.created_at, b.id FROM dm_messages AS b WHERE b.id = p.last_read_message_id)
+      )
+  `);
+}
+
+type BookingMessageSendResult =
+  | { kind: "read_only" } | { kind: "membership" } | { kind: "duplicate" }
+  | { kind: "sent"; threadId: string; message: SerializableBookingMessage };
+
+/**
+ * Persists one booking message, or resolves why it could not be.
+ *
+ * Everything authoritative happens inside one transaction: the booking row lock decides terminal state, the
+ * conversation is created lazily and idempotently under its own lock, and the linked thread's membership is
+ * compared against the persisted booking before a word is written. The sender is the authenticated actor; no
+ * senderId, threadId or participantId is ever read from the request.
+ */
+async function persistBookingMessage(bookingId: string, booking: { id: string; providerId: string; customerId: string }, userId: string, input: { text: string; clientRequestId?: string }): Promise<BookingMessageSendResult> {
+  try {
+    return await db.transaction(async (tx: typeof db) => {
+      // Terminal state is decided here, under the booking row lock, so a booking that goes cancelled or completed
+      // mid-flight refuses rather than persisting a message into a historical conversation.
+      const active = await lockActiveCateringBooking(tx, bookingId);
+      if (!active) return { kind: "read_only" } as const;
+      const threadId = await ensureBookingConversation(tx, booking);
+      const outcome = resolveCateringMessageSend({ active, memberIds: await conversationMemberIds(tx, threadId) }, booking);
+      if (outcome.kind !== "send") return outcome;
+      // The id is generated here so the idempotency ledger can point at the message from the same transaction.
+      const messageId = randomUUID();
+      const [message] = await tx.insert(dmMessages).values({ id: messageId, threadId, senderId: userId, body: input.text, attachments: [] }).returning();
+      if (input.clientRequestId) {
+        // Uniqueness is (booking, sender, clientRequestId), so a retry of an already-accepted send claims nothing.
+        const claimed = await tx.insert(cateringBookingMessageRequests)
+          .values({ bookingId, senderId: userId, clientRequestId: input.clientRequestId, messageId })
+          .onConflictDoNothing()
+          .returning({ messageId: cateringBookingMessageRequests.messageId });
+        if (claimed.length === 0) throw new DuplicateBookingMessage();
+      }
+      // Sending deliberately does NOT touch the sender's read marker.
+      //
+      // The marker records which INCOMING messages the actor has actually been shown. Sending is not evidence of
+      // having seen anything: a customer sitting at the top of a thread with five unread provider messages, who
+      // types a reply, has read none of them -- yet advancing their marker to the message they just sent would
+      // sweep all five behind the boundary and report them read. Nor does it buy anything, because
+      // `unreadMessageCount` already excludes the actor's own messages with `ne(senderId, userId)`: an outgoing
+      // message can never count towards its own sender's unread total whether a marker moves or not.
+      //
+      // So the only path that may advance this actor's boundary is the explicit read route below, which acts on
+      // client evidence that a specific message was displayed. Fetching a page, loading the workspace, creating the
+      // conversation and sending a reply all leave read state exactly as they found it.
+      return { kind: "sent", threadId, message } as const;
+    });
+  } catch (error) {
+    // The duplicate is thrown rather than returned on purpose: returning would COMMIT the message this transaction
+    // already inserted, and the retry would leave a second copy of a message that was already accepted.
+    if (error instanceof DuplicateBookingMessage) return { kind: "duplicate" };
+    throw error;
+  }
+}
+
+r.post("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
+  const id = cateringBookingIdSchema.parse(req.params.id);
+  const userId = (req.user as { id: string }).id;
+  const input = cateringBookingMessageSendSchema.parse(req.body ?? {});
+  const booking = await ownedCateringBooking(id, userId);
+  if (!booking) return res.status(404).json(NOT_FOUND);
+  const role = cateringWorkspaceRole(booking, userId)!;
+  // Early refusal for a booking that is already terminal. The authoritative check still happens under the lock below.
+  if (!mayPostCateringBookingMessage(booking.status as never)) return res.status(CATERING_COMMUNICATION_READ_ONLY_REFUSAL.status).json({ message: CATERING_COMMUNICATION_READ_ONLY_REFUSAL.message, code: CATERING_COMMUNICATION_READ_ONLY_REFUSAL.code });
+
+  const result = await persistBookingMessage(id, booking, userId, input);
+
+  if (result.kind === "read_only") { const refusal = CATERING_MESSAGE_SEND_REFUSALS.read_only; return res.status(409).json({ message: refusal.message, code: refusal.code }); }
+  if (result.kind === "membership") { const refusal = CATERING_MESSAGE_SEND_REFUSALS.membership; return res.status(409).json({ message: refusal.message, code: refusal.code }); }
+  if (result.kind === "duplicate") {
+    // The retry is answered with the message the first attempt already persisted, so a double tap or a client
+    // timeout after a successful insert never produces a second message and never fabricates a new one either. A
+    // token that names no accepted send is refused rather than answered with an invented success.
+    const existing = await duplicateMessage(id, userId, input.clientRequestId!);
+    if (!existing) return res.status(409).json({ message: "This message could not be resolved. Reload the conversation." });
+    const duplicateNames = await senderNames([existing.senderId]);
+    return res.status(200).json({ message: serializeBookingMessage(existing, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, names: duplicateNames }), duplicate: true });
+  }
+
+  // Notification is best-effort and deliberately outside the transaction: a notification that fails to persist never
+  // rolls back a message that already did, which is how ChefSire's existing message and task notifications behave.
+  // The body never travels -- the copy is neutral for both participants -- and the link goes to this booking's own
+  // workspace Communication section rather than the generic inbox.
+  const counterpartId = cateringCounterpart(booking, userId);
+  if (counterpartId) {
+    const counterpart = await conversationParticipant(result.threadId, counterpartId).catch(() => undefined);
+    if (shouldNotifyBookingMessage(counterpartId, counterpart?.notificationsMuted ?? false)) {
+      await db.insert(notifications).values({
+        userId: counterpartId, type: CATERING_MESSAGE_NOTIFICATION.type, title: CATERING_MESSAGE_NOTIFICATION.title, message: CATERING_MESSAGE_NOTIFICATION.message,
+        linkUrl: cateringBookingSectionPath(role === "provider" ? "customer" : "provider", id, CATERING_COMMUNICATION_SECTION),
+      }).catch(() => undefined);
+    }
+  }
+  const names = await senderNames([result.message.senderId]);
+  res.status(201).json({ message: serializeBookingMessage(result.message, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, names }) });
+} catch (error) { invalid(error, res, next); } });
+
+/** Reads back the message an already-accepted client request produced, scoped to this booking and this sender. */
+async function duplicateMessage(bookingId: string, senderId: string, clientRequestId: string) {
+  const [row] = await db.select({ id: dmMessages.id, senderId: dmMessages.senderId, body: dmMessages.body, createdAt: dmMessages.createdAt })
+    .from(cateringBookingMessageRequests)
+    .innerJoin(dmMessages, eq(dmMessages.id, cateringBookingMessageRequests.messageId))
+    .where(and(eq(cateringBookingMessageRequests.bookingId, bookingId), eq(cateringBookingMessageRequests.senderId, senderId), eq(cateringBookingMessageRequests.clientRequestId, clientRequestId)))
+    .limit(1);
+  return row;
+}
+
+r.post("/bookings/:id/messages/read", requireAuth, async (req, res, next) => { try {
+  const id = cateringBookingIdSchema.parse(req.params.id);
+  const userId = (req.user as { id: string }).id;
+  const input = cateringBookingMessageReadSchema.parse(req.body ?? {});
+  const booking = await ownedCateringBooking(id, userId);
+  if (!booking) return res.status(404).json(NOT_FOUND);
+  // Marking a historical conversation read is allowed: reading never closes, only sending does.
+  const threadId = await findBookingConversation(id);
+  if (!threadId) return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
+  // The thread is derived from the booking, never supplied. A message id is accepted only if it belongs to THIS
+  // booking's conversation, so a message borrowed from another thread can never become this booking's read marker.
+  const requested = input.lastReadMessageId ? await messageInThread(threadId, input.lastReadMessageId) : undefined;
+  // `db` is untyped at this repo's boundary, so the row shape is stated rather than inferred as `any`.
+  const latestRows: { id: string; createdAt: Date }[] = await db.select({ id: dmMessages.id, createdAt: dmMessages.createdAt }).from(dmMessages).where(eq(dmMessages.threadId, threadId)).orderBy(desc(dmMessages.createdAt), desc(dmMessages.id)).limit(1);
+  const marker = resolveCateringReadMarker(input.lastReadMessageId, latestRows[0], Boolean(requested));
+  if (marker.kind === "foreign_message") return res.status(400).json({ message: "That message does not belong to this booking conversation" });
+  // An empty conversation has no message to be the boundary, and none is fabricated.
+  if (marker.kind === "empty") return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
+  // A "mark" always names a message that was just read back from this thread, so this cannot be missing. It is
+  // checked rather than asserted so a future change to the policy cannot produce a marker with no stored row behind
+  // it; the update below would also match nothing in that case, so this only avoids a pointless statement.
+  if (!(requested ?? latestRows[0])) return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
+  // The boundary is the SELECTED MESSAGE, never the wall clock. Writing `now` would mark as read every message that
+  // happens to predate this request -- including one the other participant sent while this request was in flight,
+  // and any message the caller has not seen when they deliberately marked an older one. `lastReadAt` is copied from
+  // the message's own stored `created_at`, so it keeps the full precision a JS Date round-trip would truncate, and
+  // `lastReadMessageId` carries the tiebreak a timestamp alone cannot express. The update only ever moves forward.
+  await advanceReadMarker(db, threadId, userId, marker.messageId);
+  // The response reports the AUTHORITATIVE marker, not the one this request asked for: a stale request from a second
+  // tab is a successful no-op, and telling it that it set a marker it did not set would simply be untrue.
+  const [current, unread] = await Promise.all([conversationParticipant(threadId, userId), unreadMessageCount(threadId, userId)]);
+  res.json({ lastReadMessageId: current?.lastReadMessageId ?? null, lastReadAt: current?.lastReadAt?.toISOString() ?? null, unreadCount: unread.count });
+} catch (error) { invalid(error, res, next); } });
+
+/**
+ * A bounded unread count for one participant. It reads at most ceiling+1 rows, so a conversation with thousands of
+ * unread messages costs the same as one with three and the workspace renders "99+" rather than an unbounded total.
+ */
+/**
+ * The SQL predicate for "after this participant's stored read marker", or undefined when everything counts.
+ *
+ * `(created_at, id) > (marker's stored created_at, id)` -- the same pair, read back at full stored precision, that
+ * message pagination orders by. Two messages sharing a `created_at` are separated by their ids, so marking the
+ * earlier one read leaves the later one unread; a plain `created_at >` comparison would mark both. It is derived
+ * once here so the unread COUNT and the unread START can never disagree about where the range begins.
+ */
+async function unreadBoundaryCondition(threadId: string, userId: string) {
+  const participant = await conversationParticipant(threadId, userId);
+  // The marker must still be a message of THIS thread; otherwise the timestamp fallback applies rather than a
+  // comparison against a row that is not there, which would silently count nothing.
+  const markerIsInThread = participant?.lastReadMessageId ? Boolean(await messageInThread(threadId, participant.lastReadMessageId)) : false;
+  const boundary = cateringUnreadBoundary(participant, markerIsInThread);
+  if (boundary.kind === "after_message") {
+    return sql`(${dmMessages.createdAt}, ${dmMessages.id}) > (SELECT b.created_at, b.id FROM dm_messages b WHERE b.id = ${boundary.messageId})`;
+  }
+  return boundary.kind === "after_timestamp" ? sql`${dmMessages.createdAt} > ${boundary.since}` : undefined;
+}
+
+export async function unreadMessageCount(threadId: string, userId: string): Promise<{ count: number; capped: boolean }> {
+  const after = await unreadBoundaryCondition(threadId, userId);
+  const rows = await db.select({ id: dmMessages.id }).from(dmMessages)
+    .where(and(eq(dmMessages.threadId, threadId), ne(dmMessages.senderId, userId), after))
+    .limit(CATERING_UNREAD_COUNT_CEILING + 1);
+  return boundedUnreadCount(rows.length);
+}
+
+/**
+ * The EARLIEST unread incoming message for this participant, or null when nothing is unread.
+ *
+ * The count is bounded at a ceiling and reports `capped` beyond it, which makes it a lower bound rather than a
+ * total -- and a client cannot locate the start of a range whose size it does not know. That left a participant
+ * with more than the ceiling's worth of backlog permanently unable to prove they had read it. This answers the
+ * question directly instead, and it is never capped.
+ *
+ * Same thread, same participant, same boundary condition and the same `ne(senderId, userId)` exclusion the count
+ * uses -- so the two can never describe different ranges. Ordered ASCENDING by the identical `(created_at, id)`
+ * pair, so a tie in the timestamp is broken by id exactly as it is everywhere else, and limited to one row.
+ *
+ * It is derived entirely from the AUTHENTICATED actor's own persisted marker. Nothing about the counterpart's read
+ * state is read or returned, and the actor's own messages can never be the answer.
+ */
+export async function unreadStartMessageId(threadId: string, userId: string): Promise<string | null> {
+  const after = await unreadBoundaryCondition(threadId, userId);
+  const [row] = await db.select({ id: dmMessages.id }).from(dmMessages)
+    .where(and(eq(dmMessages.threadId, threadId), ne(dmMessages.senderId, userId), after))
+    .orderBy(asc(dmMessages.createdAt), asc(dmMessages.id))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+export default r;
