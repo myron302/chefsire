@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
-import { cateringBookingFilePresenceKey, cateringBookingFilesKey, cateringFileBoundary, cateringFilePresencePath, cateringFileSnapshot, type CateringBookingFilePresenceView, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
+import { cateringBookingFilePresenceKey, cateringBookingFilePresencePrefix, cateringBookingFilesKey, cateringFileBoundary, cateringFilePresencePath, cateringFileSnapshot, type CateringBookingFilePresenceView, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
 import { cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -279,6 +279,13 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     if (observedEditable !== false || terminalSeenRef.current) return;
     terminalSeenRef.current = true;
     for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });
+    // And one last reconciliation of the files only preserved history is holding. Closure stops the recurring poll
+    // -- including the presence check's -- so a counterpart's removal made just before the booking closed would
+    // otherwise never be established, leaving that file on screen with a download that answers 404 until a focus
+    // transition or a reload. Terminal means no NEW mutations, not that a removal already made stays hidden. The
+    // prefix covers whichever id set is currently being asked about, and no further removal can follow this one,
+    // so a single refresh at the transition is enough.
+    cache.invalidateQueries({ queryKey: cateringBookingFilePresencePrefix(userId, bookingId) });
   }, [observedEditable]);
 
   const submit = (event: FormEvent) => {

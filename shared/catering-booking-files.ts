@@ -247,8 +247,15 @@ export const cateringBookingFilePresenceSchema = z.object({
 }).strict();
 /** The request is echoed so the client can subtract without depending on which request an answer belongs to. */
 export type CateringBookingFilePresenceView = { requested: string[]; active: string[] };
+/**
+ * Every presence query for one actor's view of one booking, whatever set of ids it is currently asking about. The
+ * full key appends that set, so this prefix is what a one-off refresh invalidates when the recurring poll has
+ * stopped -- a booking going terminal stops mutations, not the truth about a removal already made.
+ */
+export const cateringBookingFilePresencePrefix = (userId: string, bookingId: string) =>
+  ["catering", "booking-file-presence", userId, bookingId] as const;
 export const cateringBookingFilePresenceKey = (userId: string, bookingId: string, fingerprint: string) =>
-  ["catering", "booking-file-presence", userId, bookingId, fingerprint] as const;
+  [...cateringBookingFilePresencePrefix(userId, bookingId), fingerprint] as const;
 export function cateringFilePresencePath(bookingId: string, ids: readonly string[]): string {
   return `/api/catering/bookings/${bookingId}/files/active?ids=${encodeURIComponent(ids.join(","))}`;
 }

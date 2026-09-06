@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CATERING_FILE_PRESENCE_MAXIMUM, cateringBookingFilePresenceSchema, cateringFilePresencePath } from "@shared/catering-booking-files";
+import { CATERING_FILE_PRESENCE_MAXIMUM, cateringBookingFilePresenceKey, cateringBookingFilePresencePrefix, cateringBookingFilePresenceSchema, cateringFilePresencePath } from "@shared/catering-booking-files";
 import { effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { EMPTY_CATERING_REMOVED_RECORDS, cateringPreservedHistory, cateringPreservedTailIds, cateringReconciledRemovals, cateringRemovedIds, emptyCateringLoadedHistory, recordCateringRemovedRecords, type CateringLoadedHistory, type CateringRemovedRecords } from "./catering-booking-loaded-history";
 import { EMPTY_CATERING_FILE_LEDGER, cateringMutationOrigin, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, settleCateringRemovedFiles, type CateringFileLedger } from "./catering-booking-mutation-origin";
@@ -423,4 +423,55 @@ test("18. the newest-page delta and preserved-history reconciliation stay separa
   assert.equal(own.refreshActivity, false);
   assert.equal(own.next.pending.size, 0, "and the expectation is consumed exactly once");
   assert.equal(settleCateringRemovedFiles(EMPTY_CATERING_FILE_LEDGER, A.identity, []).refreshActivity, false);
+});
+
+test("19. a booking closing runs one last reconciliation, so a removal made just before it is not stranded", () => {
+  // The presence check polls on the same policy as the list, so closure stops it. A counterpart removal made in the
+  // gap before its next poll would otherwise never be established: the file would sit on screen offering a download
+  // that answers 404 until a focus transition or a reload.
+  const all = collection(20);
+  const v = view(5);
+  v.load(all);
+  v.loadMore(all);
+  const grown = [file(21), ...all];
+  v.poll(grown);
+  assert.deepEqual(v.preserved, ["f11"]);
+  // The counterpart removes f11 and the booking is cancelled before the next presence poll would have run.
+  const afterDelete = grown.filter((item) => item.id !== "f11");
+  v.poll(afterDelete);
+  assert.equal(ids(v.items).includes("f11"), true, "the newest pages still cannot settle it");
+  // The transition invalidates the presence queries, which is the refresh that settles it.
+  v.reconcile(afterDelete);
+  assert.equal(ids(v.items).includes("f11"), false);
+});
+
+test("20. the transition invalidates every presence question for that booking, and only once", () => {
+  // The full key appends the id set being asked about, so the prefix covers whichever question is in flight.
+  const prefix = cateringBookingFilePresencePrefix("user-1", "booking-a");
+  for (const fingerprint of ["f11", "f11,f10", ""]) {
+    const full = cateringBookingFilePresenceKey("user-1", "booking-a", fingerprint);
+    assert.deepEqual(full.slice(0, prefix.length), [...prefix], fingerprint);
+  }
+  // And it is another booking's business only.
+  assert.notDeepEqual([...prefix], [...cateringBookingFilePresencePrefix("user-1", "booking-b")]);
+  assert.notDeepEqual([...prefix], [...cateringBookingFilePresencePrefix("user-2", "booking-a")]);
+  // The component fires it from the same latch that already refreshes the workspace once per observed transition,
+  // so a closed booking's later polls repeat neither.
+  const terminal = component.slice(component.indexOf("if (observedEditable !== false || terminalSeenRef.current) return;"), component.indexOf("const submit = (event: FormEvent)"));
+  assert.equal(terminal.includes("terminalSeenRef.current = true;"), true);
+  assert.equal(terminal.includes("cache.invalidateQueries({ queryKey: cateringBookingFilePresencePrefix(userId, bookingId) });"), true);
+  assert.equal(terminal.indexOf("terminalSeenRef.current = true;") < terminal.indexOf("cateringBookingFilePresencePrefix"), true, "latched before it fires");
+  assert.equal((component.match(/cateringBookingFilePresencePrefix\(userId, bookingId\)/g) ?? []).length, 1, "one refresh at the transition, not one per poll");
+});
+
+test("21. that refresh reconciles without reopening the booking to mutation", () => {
+  // Nothing about the transition re-enables a write: the controls still obey the authoritative editable answer.
+  assert.equal(observedCateringEditable([{ editable: false }]), false);
+  assert.equal(effectiveCateringEditable(true, observedCateringEditable([{ editable: false }])), false);
+  assert.equal(component.includes("const canMutate = effectiveCateringEditable(editable, observedEditable);"), true);
+  assert.equal(component.includes("disabled={!mayUploadCateringFile(draft, canMutate, uploading)}"), true);
+  assert.equal(component.includes("editable={canMutate}"), true);
+  // The presence request itself is a read: it names ids and asks which are still visible, nothing more.
+  assert.equal(presenceRoute.includes("r.get("), true);
+  assert.equal(/db\.(insert|update|delete)/.test(presenceRoute), false, "reconciliation writes nothing");
 });
