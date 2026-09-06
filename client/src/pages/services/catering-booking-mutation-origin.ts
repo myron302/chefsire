@@ -268,6 +268,22 @@ export function cateringFileDelta(previous: readonly string[], next: readonly st
 const sameIds = (left: readonly string[], right: readonly string[]) => left.length === right.length && left.every((id, index) => id === right[index]);
 
 /**
+ * Settles files an authoritative reconciliation proved removed, outside the newest page entirely.
+ *
+ * A file preserved below the refreshed window is invisible to the page delta above -- nothing newer will ever
+ * mention it -- so its removal arrives through the presence check instead. The same attribution rule applies: a
+ * removal this actor performed is already accounted for and announces nothing, and anything else is a counterpart's
+ * and refreshes Activity. Expectations are consumed exactly once, so a repeat answer cannot announce it twice.
+ */
+export function settleCateringRemovedFiles(ledger: CateringFileLedger, identity: string, removedIds: readonly string[]): { next: CateringFileLedger; refreshActivity: boolean } {
+  if (removedIds.length === 0) return { next: ledger, refreshActivity: false };
+  const pending = cateringFilePending(ledger, identity);
+  const unexplained = removedIds.some((id) => !pending.removals.has(id));
+  const settled: CateringFilePending = { additions: pending.additions, removals: withoutIds(pending.removals, removedIds) };
+  return { next: withPending(ledger, identity, settled), refreshActivity: unexplained };
+}
+
+/**
  * Records one authoritative snapshot and answers whether it contains anything this actor did not do.
  *
  * A first snapshot for a booking is a baseline: files that already existed are not activity. It still reconciles

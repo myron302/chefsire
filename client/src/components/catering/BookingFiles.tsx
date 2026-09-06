@@ -1,14 +1,14 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
-import { cateringBookingFilesKey, cateringFileBoundary, cateringFileSnapshot, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
+import { cateringBookingFilePresenceKey, cateringBookingFilesKey, cateringFileBoundary, cateringFilePresencePath, cateringFileSnapshot, type CateringBookingFilePresenceView, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
 import { cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { cateringPreservedHistory, emptyCateringLoadedHistory, forgetCateringHistoryRecord, type CateringLoadedHistory } from "@/pages/services/catering-booking-loaded-history";
-import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, enterCateringMutation, exitCateringMutation, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome } from "@/pages/services/catering-booking-mutation-origin";
+import { EMPTY_CATERING_REMOVED_RECORDS, cateringPreservedHistory, cateringPreservedTailIds, cateringReconciledRemovals, cateringRemovedIds, emptyCateringLoadedHistory, recordCateringRemovedRecords, type CateringLoadedHistory, type CateringRemovedRecords } from "@/pages/services/catering-booking-loaded-history";
+import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, enterCateringMutation, exitCateringMutation, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, settleCateringRemovedFiles, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome } from "@/pages/services/catering-booking-mutation-origin";
 import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, emptyCateringFileDraft, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
 
 /**
@@ -48,6 +48,9 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // the page before it, so one new file shifts every boundary down and the oldest loaded file falls out of the last
   // page -- it was never removed, and without this it would vanish on a timer and have to be loaded again.
   const historyRef = useRef<CateringLoadedHistory<CateringBookingFileView>>(emptyCateringLoadedHistory());
+  // Files proved gone, per booking: a delete this client performed, or one the presence check below established.
+  // Page absence is never one of them.
+  const [removed, setRemoved] = useState<CateringRemovedRecords>(EMPTY_CATERING_REMOVED_RECORDS);
   // Upload and delete requests in flight, per booking: `useMutation().isPending` is a property of the hook, so an
   // upload started on one booking would otherwise disable the controls and announce progress on another.
   // Kept apart, as the hook flags were: an upload in flight disables the upload control, a delete in flight
@@ -100,9 +103,14 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // longer returns has been removed and disappears; only files older than its last one are kept, and a removal this
   // client itself performed drops its record outright. Nothing is preserved once the window reaches the beginning.
   const loadedPages = query.data?.pages;
-  const history = cateringPreservedHistory(historyRef.current, identity, loadedPages ? combineCateringFilePages(loadedPages) : null, !query.hasNextPage);
+  const refreshedFiles = loadedPages ? combineCateringFilePages(loadedPages) : null;
+  const history = cateringPreservedHistory(historyRef.current, identity, refreshedFiles, !query.hasNextPage, cateringRemovedIds(removed, identity));
   useEffect(() => { historyRef.current = history; });
   const files = history.items;
+  // The ids the refreshed window says nothing about. They exist only in preserved history, so nothing the list
+  // endpoint returns can ever settle whether they are still there -- which is the one question below.
+  const preservedIds = cateringPreservedTailIds(history, refreshedFiles);
+  const preservedFingerprint = preservedIds.join(",");
   // The fingerprint of the newest page this actor may see. Only ids already serialized to them are read, so a
   // provider-private change is invisible here for a customer exactly as it is everywhere else.
   const fileBoundary = cateringFileBoundary(query.data?.pages);
@@ -118,6 +126,50 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const removing = cateringMutationIsPending(removeInFlight, identity);
   const uploadResult = visibleCateringMutationOutcome(uploadOutcome, identity);
   const removeResult = visibleCateringMutationOutcome(removeOutcome, identity);
+
+  /**
+   * Reconciles the files only preserved history is holding.
+   *
+   * Newest-window polling cannot prove one of them was removed: nothing newer will ever mention it again, so a file
+   * its uploader deleted would render indefinitely, offering a download that answers 404, until the participant
+   * paginated back down to it by hand. This asks the server the one question the window cannot answer -- of these
+   * ids I already hold, which may I still see -- and the answer is a subset of what was sent, so it discloses
+   * nothing new to anyone.
+   *
+   * It runs only while something is actually preserved, at the same cadence as the list and from the same policy,
+   * so a terminal booking stops the recurring poll exactly as the list does while still loading and refreshing on
+   * focus: read-only means no new mutations, not that a removal already made should stay on screen forever.
+   */
+  const reconcile = useQuery({
+    queryKey: cateringBookingFilePresenceKey(userId, bookingId, preservedFingerprint),
+    enabled: preservedIds.length > 0,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: () => cateringWorkspacePollInterval(canMutate),
+    refetchIntervalInBackground: false,
+    queryFn: async (): Promise<CateringBookingFilePresenceView> => {
+      const response = await fetch(cateringFilePresencePath(bookingId, preservedIds), { credentials: "include" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw Object.assign(new Error(body.message || "Files could not be reconciled"), { code: typeof body.code === "string" ? body.code : undefined });
+      return body;
+    },
+  });
+  // The answer names the ids it was asked about, so what it proves gone is read from the answer rather than from
+  // whatever is preserved right now: an answer that lands late still removes exactly the files it settled, and
+  // removals accumulate rather than being recomputed, so no later refresh can bring one back.
+  useEffect(() => {
+    const answer = reconcile.data;
+    if (!answer) return;
+    const gone = cateringReconciledRemovals(answer.requested, answer.active);
+    if (gone.length === 0) return;
+    setRemoved((current) => recordCateringRemovedRecords(current, identity, gone));
+    // A removal outside the newest page is invisible to the page delta, so it is attributed here instead, by the
+    // same rule: one this actor performed is already accounted for, and a counterpart's refreshes Activity. The id
+    // leaves preserved history with this answer, so it is never asked about -- or announced -- twice.
+    const settled = settleCateringRemovedFiles(ledgerRef.current, identity, gone);
+    ledgerRef.current = settled.next;
+    if (settled.refreshActivity) for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });
+  }, [reconcile.data, identity]);
 
   // Both mutations invalidate only this actor's own booking file and workspace caches, and always the ORIGINATING
   // booking's -- never whichever booking happens to be rendered when the request lands. Another participant's
@@ -192,7 +244,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     // preserved tail from rendering it again on the next merge.
     onSuccess: (_body, attempt) => {
       ledgerRef.current = expectCateringFileRemoval(ledgerRef.current, attempt.origin, attempt.fileId);
-      historyRef.current = forgetCateringHistoryRecord(historyRef.current, attempt.origin.identity, attempt.fileId);
+      setRemoved((current) => recordCateringRemovedRecords(current, attempt.origin.identity, [attempt.fileId]));
       setRemoveOutcome(cateringMutationOutcome(attempt.origin, "succeeded"));
     },
     onError: (error: Error, attempt) => setRemoveOutcome(cateringMutationOutcome(attempt.origin, "failed", error.message)),

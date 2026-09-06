@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cateringFileSnapshot } from "@shared/catering-booking-files";
 import { effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
-import { cateringPreservedHistory, cateringRecordIsOlder, emptyCateringLoadedHistory, forgetCateringHistoryRecord, type CateringLoadedHistory } from "./catering-booking-loaded-history";
+import { EMPTY_CATERING_REMOVED_RECORDS, cateringPreservedHistory, cateringRecordIsOlder, cateringRemovedIds, emptyCateringLoadedHistory, recordCateringRemovedRecords, type CateringLoadedHistory, type CateringRemovedRecords } from "./catering-booking-loaded-history";
 import { EMPTY_CATERING_FILE_LEDGER, cateringFileDelta, cateringMutationOrigin, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot } from "./catering-booking-mutation-origin";
 
 /**
@@ -46,12 +46,14 @@ function serve(all: readonly Record[], cursor: string | null, limit: number): Pa
 function view(limit: number, identity = "user-1:booking-a") {
   let pages: Page[] = [];
   let history: CateringLoadedHistory<Record> = emptyCateringLoadedHistory();
+  let removed: CateringRemovedRecords = EMPTY_CATERING_REMOVED_RECORDS;
   const settle = () => {
-    if (pages.length === 0) { history = cateringPreservedHistory(history, identity, null, false); return; }
+    const gone = cateringRemovedIds(removed, identity);
+    if (pages.length === 0) { history = cateringPreservedHistory(history, identity, null, false, gone); return; }
     const seen = new Set<string>();
     const combined: Record[] = [];
     for (const page of pages) for (const item of page.items) { if (seen.has(item.id)) continue; seen.add(item.id); combined.push(item); }
-    history = cateringPreservedHistory(history, identity, combined, pages[pages.length - 1].nextCursor === null);
+    history = cateringPreservedHistory(history, identity, combined, pages[pages.length - 1].nextCursor === null, gone);
   };
   return {
     get items() { return history.items; },
@@ -79,7 +81,7 @@ function view(limit: number, identity = "user-1:booking-a") {
       pages = [...pages, serve(all, last.nextCursor, limit)];
       settle();
     },
-    forget(recordId: string) { history = forgetCateringHistoryRecord(history, identity, recordId); },
+    forget(recordId: string) { removed = recordCateringRemovedRecords(removed, identity, [recordId]); settle(); },
     moveTo(other: string) { identity = other; pages = []; settle(); },
   };
 }
@@ -288,7 +290,7 @@ test("15. a removal this client performed is not resurrected from preserved hist
   assert.equal(ids(v.items).includes("f01"), false, "a file this client deleted must not come back");
   assertContinuous(v.items, "local removal");
   // And the component does exactly that, on the originating booking's identity.
-  assert.equal(filesComponent.includes("historyRef.current = forgetCateringHistoryRecord(historyRef.current, attempt.origin.identity, attempt.fileId);"), true);
+  assert.equal(filesComponent.includes("setRemoved((current) => recordCateringRemovedRecords(current, attempt.origin.identity, [attempt.fileId]));"), true);
 });
 
 test("16. preserved history does not reach the Activity delta, so local attribution is unchanged", () => {

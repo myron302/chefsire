@@ -5,7 +5,7 @@ import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringBookingActivity, cateringBookingFiles, cateringBookingStorageOrphans, notifications, users, type CateringBookingFile } from "@shared/schema";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
-import { CATERING_FILE_COUNT_CEILING, CATERING_FILE_LIMIT_CODE, CATERING_FILE_MAX_BYTES, CATERING_UPLOAD_MULTIPART, CATERING_UPLOAD_MULTIPART_MESSAGES, cateringFileLimitMessage, CATERING_FILE_NOTIFICATION, CATERING_FILE_NOT_FOUND_MESSAGE, CATERING_FILE_READ_ONLY_MESSAGE, CATERING_FILE_SIZE_MESSAGE, CATERING_FILE_TYPE_MESSAGE, cateringBookingFilePageSchema, cateringFileUploadFieldsSchema, mayMutateCateringFiles, type CateringFileVisibility } from "@shared/catering-booking-files";
+import { CATERING_FILE_COUNT_CEILING, CATERING_FILE_LIMIT_CODE, CATERING_FILE_MAX_BYTES, CATERING_UPLOAD_MULTIPART, CATERING_UPLOAD_MULTIPART_MESSAGES, cateringFileLimitMessage, CATERING_FILE_NOTIFICATION, CATERING_FILE_NOT_FOUND_MESSAGE, CATERING_FILE_READ_ONLY_MESSAGE, CATERING_FILE_SIZE_MESSAGE, CATERING_FILE_TYPE_MESSAGE, cateringBookingFilePageSchema, cateringBookingFilePresenceSchema, cateringFileUploadFieldsSchema, mayMutateCateringFiles, type CateringFileVisibility } from "@shared/catering-booking-files";
 import { CATERING_FILES_SECTION, cateringBookingSectionPath } from "@shared/catering-booking-communication";
 import { CATERING_WORKSPACE_READ_ONLY_CODE, cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import { db } from "../db";
@@ -103,6 +103,40 @@ r.get("/bookings/:id/files", requireAuth, async (req, res, next) => { try {
   const { rows: ordered, nextCursor } = cateringFilePageFrom(rows, page.limit);
   const names = await uploaderNames(ordered.map((row) => row.uploadedBy));
   res.json({ files: ordered.map((row) => serializeBookingFile(row, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, status: booking.status as never, names })), nextCursor, editable: mayMutateCateringFiles(booking.status as never) });
+} catch (error) { invalid(error, res, next); } });
+
+/**
+ * Which of these files this actor may still see.
+ *
+ * The list endpoint serves a newest-first window, and a client that has paged into older history keeps those rows
+ * locally so a shifted page boundary does not make them vanish. That leaves one thing the window can never answer:
+ * whether a file below it has since been removed. Nothing newer will ever mention it again, so without this it
+ * would render forever with a download that answers 404.
+ *
+ * The question is asked about ids the caller already holds and the answer is a SUBSET of them, so it discloses
+ * nothing new. Exactly the same visibility filter the list uses is applied, so a provider-private id supplied by a
+ * customer is simply absent from the answer -- indistinguishable from a removed file and from an id that never
+ * existed, which is what stops this from becoming a probe. Only ids are read: no storage key, no filename, no
+ * count of anything hidden, and no timestamp that could date a private file's removal.
+ */
+r.get("/bookings/:id/files/active", requireAuth, async (req, res, next) => { try {
+  const id = cateringBookingIdSchema.parse(req.params.id);
+  const userId = (req.user as { id: string }).id;
+  const asked = cateringBookingFilePresenceSchema.parse(req.query);
+  const booking = await ownedCateringBooking(id, userId);
+  if (!booking) return res.status(404).json(NOT_FOUND);
+  const role = cateringWorkspaceRole(booking, userId)!;
+  // Scoped to this booking, to rows that are not tombstoned, and to the visibilities this actor may observe. A
+  // bounded `IN` over the primary key, so this stays a cheap indexed lookup however deep the history is.
+  const rows: { id: string }[] = await db.select({ id: cateringBookingFiles.id }).from(cateringBookingFiles)
+    .where(and(
+      eq(cateringBookingFiles.bookingId, id),
+      isNull(cateringBookingFiles.deletedAt),
+      visibilityFilter(role),
+      inArray(cateringBookingFiles.id, asked.ids),
+    ));
+  const visible = new Set(rows.map((row) => row.id));
+  res.json({ requested: asked.ids, active: asked.ids.filter((candidate) => visible.has(candidate)) });
 } catch (error) { invalid(error, res, next); } });
 
 /**

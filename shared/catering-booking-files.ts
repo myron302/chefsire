@@ -220,3 +220,35 @@ export function formatCateringBoundedCount(count: number, ceiling: number): stri
 }
 
 export const cateringBookingFilesKey = (userId: string, bookingId: string) => ["catering", "booking-files", userId, bookingId] as const;
+
+/**
+ * Reconciling files the client still holds but the newest page no longer covers.
+ *
+ * Background polling refreshes a WINDOW over the newest end of the collection, and history loaded below that window
+ * is preserved rather than dropped, because absence from a shifted page proves nothing. That is right for a file
+ * merely displaced by newer uploads and wrong for one the uploader has since removed: nothing in the newest pages
+ * can ever mention it again, so it would sit in the rendering forever, offering a download that answers 404, until
+ * the participant happened to paginate back down to it by hand.
+ *
+ * So the client asks the only question it actually needs answered: of these files I am already holding, which may I
+ * still see? The answer is a subset of what the caller supplied, so it can disclose nothing the caller did not
+ * already have -- an id that is provider-private to a customer is simply absent, exactly as a deleted one is and
+ * exactly as an id that never existed is, which is what keeps the three indistinguishable. No storage key, no
+ * count, no timestamp and no id the actor was not already served is involved.
+ *
+ * It is bounded by what a client can be holding below the window, and it is idempotent: asking twice answers the
+ * same, and a file's absence is permanent, so acting on it can never need to be undone.
+ */
+export const CATERING_FILE_PRESENCE_MAXIMUM = 200;
+export const cateringBookingFilePresenceSchema = z.object({
+  ids: z.string()
+    .transform((raw) => raw.split(",").filter((id) => id !== ""))
+    .pipe(z.array(z.string().uuid()).min(1).max(CATERING_FILE_PRESENCE_MAXIMUM)),
+}).strict();
+/** The request is echoed so the client can subtract without depending on which request an answer belongs to. */
+export type CateringBookingFilePresenceView = { requested: string[]; active: string[] };
+export const cateringBookingFilePresenceKey = (userId: string, bookingId: string, fingerprint: string) =>
+  ["catering", "booking-file-presence", userId, bookingId, fingerprint] as const;
+export function cateringFilePresencePath(bookingId: string, ids: readonly string[]): string {
+  return `/api/catering/bookings/${bookingId}/files/active?ids=${encodeURIComponent(ids.join(","))}`;
+}

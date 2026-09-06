@@ -230,7 +230,7 @@ test("8. the component arms suppression on success only, never from onError or o
   // Delete arms in onSuccess, by the id the request named; onSettled only refetches.
   const remove = source.slice(source.indexOf("const remove = useMutation"));
   assert.equal(remove.includes("ledgerRef.current = expectCateringFileRemoval(ledgerRef.current, attempt.origin, attempt.fileId);"), true);
-  assert.equal(remove.slice(0, remove.indexOf("onError:")).includes("forgetCateringHistoryRecord(historyRef.current, attempt.origin.identity, attempt.fileId)"), true, "a removal this client performed must not come back from preserved history");
+  assert.equal(remove.slice(0, remove.indexOf("onError:")).includes("recordCateringRemovedRecords(current, attempt.origin.identity, [attempt.fileId])"), true, "a removal this client performed must not come back from preserved history");
   const settled = remove.slice(remove.indexOf("onSettled:"));
   assert.equal(/expectCateringFile(Addition|Removal)/.test(settled), false, "onSettled runs after failure too and must not arm");
   // Exactly two arming sites, both on success, and each names its own booking and its own file.
