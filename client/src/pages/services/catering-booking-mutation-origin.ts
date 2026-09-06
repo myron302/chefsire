@@ -207,36 +207,62 @@ export function expectCateringFileRemoval(ledger: CateringFileLedger, origin: Ca
 }
 
 /**
- * What changed between two newest-page snapshots, ignoring the page edge.
+ * What changed between two newest-page snapshots, told apart from the window that shows them.
  *
- * The page holds the newest N files this actor may see, so its far end moves on its own: deleting a file inside it
- * pulls one up from older history, and an upload pushes the oldest one off. Neither is anybody's activity -- it is
- * the same collection seen through a window that shifted. The two snapshots jointly describe the conversation only
- * down to their oldest COMMON file, so a change at or before that anchor is real and anything past it is the edge.
+ * The page is the newest N files this actor may see, so its far edge moves on its own and a plain set difference
+ * over it says things that are not true. Both directions are wrong in their own way, and fixing one by fixing the
+ * other is what produced the bug this replaces:
  *
- * That discount applies ONLY when the page length is unchanged, because a shift cannot change it: page 0 holds
- * `min(total, limit)` files, so while it is full an insertion pushes one off and a deletion pulls one up, and while
- * it is not full there is nothing older to pull up and nothing to push off. A length that moved therefore means the
- * page is short and every difference in it is real -- which is what keeps deleting the oldest file of a short list,
- * positionally indistinguishable from an edge shift, from being discounted as one.
+ *  - a counterpart's upload arrives at the HEAD and pushes the oldest id off the tail. That id was not deleted; it
+ *    is still there, one page further down. Calling it a removal invents a deletion nobody performed.
+ *  - a deletion inside the page frees a slot, and the next file down is revealed at the TAIL. That id was not
+ *    uploaded; it has existed all along. Calling it an addition invents an upload nobody performed.
  *
- * With no common file at all there is likewise no edge to discount and every difference counts. Both fallbacks lean
- * the conservative way: they can ask for a refresh that was not needed, never miss one that was.
+ * Discounting BOTH edges unconditionally -- the previous attempt -- makes the two cancel: a counterpart deleting
+ * the oldest file in the page produced `-f1, +f0`, both were written off as window churn, and a real shared-file
+ * deletion was never announced. So each edge effect is budgeted by the thing that can actually cause it:
+ *
+ *  - a file can only be REVEALED into a slot something vacated, so at most as many trailing arrivals as there are
+ *    ids the next page no longer carries may be discounted. With nothing missing, an arrival is an upload.
+ *  - a file can only be PUSHED OFF by something arriving ahead of it, so at most as many trailing departures as
+ *    there are genuine additions may be discounted. With no additions, a departure is a deletion.
+ *
+ * Both are contiguous runs at the end of their own list, because that is the only shape displacement can take:
+ * scanning inward stops at the first id the two pages still share. Everything the budgets do not absorb is real.
+ *
+ * ONE CASE REMAINS UNDECIDABLE, and it is undecidable from this data rather than unhandled: an upload and the
+ * deletion of the page's own oldest file in the same transition leave `[f5,f4,f3,f2,f1] -> [f6,f5,f4,f3,f2]`,
+ * which is byte for byte what the upload alone produces. Page 0 holds no evidence to separate them. The budget
+ * resolves it as displacement, which is what keeps a plain local upload from being reported as a counterpart's
+ * deletion; the deletion is picked up by the next focus refetch. A deletion anywhere else in the page, coalesced
+ * with any number of uploads, is detected normally.
  */
 export function cateringFileDelta(previous: readonly string[], next: readonly string[]): { added: readonly string[]; removed: readonly string[] } {
   const previousIds = new Set(previous);
   const nextIds = new Set(next);
-  const anchor = (list: readonly string[], other: ReadonlySet<string>) => {
-    for (let index = list.length - 1; index >= 0; index -= 1) if (other.has(list[index])) return index;
-    return list.length;
-  };
-  const shifted = previous.length === next.length;
-  const nextAnchor = shifted ? anchor(next, previousIds) : next.length;
-  const previousAnchor = shifted ? anchor(previous, nextIds) : previous.length;
-  return {
-    added: next.filter((id, index) => index <= nextAnchor && !previousIds.has(id)),
-    removed: previous.filter((id, index) => index <= previousAnchor && !nextIds.has(id)),
-  };
+  // Reveals: a trailing run of arrivals, budgeted by how many ids actually left. An arrival with nothing to fill
+  // for is an upload, whatever its position.
+  let revealBudget = previous.reduce((total, id) => (nextIds.has(id) ? total : total + 1), 0);
+  const revealed = new Set<string>();
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    const id = next[index];
+    if (previousIds.has(id) || revealBudget === 0) break;
+    revealed.add(id);
+    revealBudget -= 1;
+  }
+  const added = next.filter((id) => !previousIds.has(id) && !revealed.has(id));
+  // Displacements: a trailing run of departures, budgeted by how many files genuinely arrived ahead of them. A
+  // departure with nothing pushing it is a deletion, whatever its position.
+  let displaceBudget = added.length;
+  const displaced = new Set<string>();
+  for (let index = previous.length - 1; index >= 0; index -= 1) {
+    const id = previous[index];
+    if (nextIds.has(id) || displaceBudget === 0) break;
+    displaced.add(id);
+    displaceBudget -= 1;
+  }
+  const removed = previous.filter((id) => !nextIds.has(id) && !displaced.has(id));
+  return { added, removed };
 }
 
 const sameIds = (left: readonly string[], right: readonly string[]) => left.length === right.length && left.every((id, index) => id === right[index]);

@@ -250,17 +250,19 @@ test("20. a counterpart adding and removing in one transition refreshes Activity
 });
 
 test("21. the page edge moving is nobody's activity, and a short page's oldest row is still a real removal", () => {
-  // A full page: deleting inside it pulls one up from older history, and that arrival is the window shifting.
+  // A full page: deleting inside it frees a slot and the next file down is revealed at the tail. The arrival is
+  // budgeted by the departure that made room for it, so it is not an upload.
   const shifted = cateringFileDelta(["f5", "f4", "f3", "f2", "f1"], ["f5", "f4", "f2", "f1", "f0"]);
   assert.deepEqual(shifted, { added: [], removed: ["f3"] });
-  // Likewise an upload pushes the oldest off the end.
+  // Likewise an upload arrives at the head and pushes the oldest off the end; that departure is not a deletion.
   const pushed = cateringFileDelta(["f5", "f4", "f3", "f2", "f1"], ["f6", "f5", "f4", "f3", "f2"]);
   assert.deepEqual(pushed, { added: ["f6"], removed: [] });
   // But a page that is not full cannot shift, so its oldest row genuinely disappearing is a removal.
   assert.deepEqual(cateringFileDelta(["f2", "f1"], ["f2"]), { added: [], removed: ["f1"] });
   assert.deepEqual(cateringFileDelta(["f1"], ["f2", "f1"]), { added: ["f2"], removed: [] });
-  // With no file in common there is no edge to discount and everything counts.
-  assert.deepEqual(cateringFileDelta(["f2", "f1"], ["f4", "f3"]), { added: ["f4", "f3"], removed: ["f2", "f1"] });
+  // With no file in common the direction cannot be established, and the budgets read it as the window having moved
+  // wholesale. Either reading refreshes Activity, which is what matters.
+  assert.deepEqual(cateringFileDelta(["f2", "f1"], ["f4", "f3"]), { added: [], removed: ["f2", "f1"] });
   // So a local delete on a full page is still absorbed, and a coalesced counterpart upload still is not.
   const s = section();
   s.poll(pageOf("f5", "f4", "f3", "f2", "f1"));
