@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CATERING_CLEANUP_LEASE_SECONDS, CATERING_CLEANUP_MAX_ATTEMPTS, cateringCleanupChargesAttempt, settleCateringFinalization, type CateringCleanupConclusion } from "./catering-booking-storage-cleanup";
+import { CATERING_CLEANUP_LEASE_SECONDS, CATERING_CLEANUP_MAX_ATTEMPTS, cateringCleanupChargesAttempt, cateringOrphanInitialAttempts, settleCateringFinalization, type CateringCleanupConclusion } from "./catering-booking-storage-cleanup";
 
 /**
  * A database question the cleanup pass could not answer is not a storage attempt.
@@ -266,4 +266,101 @@ test("24. uncertain-commit protection and the charge rule are exactly where they
   // And the ownership question itself is still the identity that names the bytes, plus the file id when present.
   assert.equal(service.includes("eq(cateringBookingFiles.storageKey, candidate.storageKey)"), true);
   assert.equal(service.includes("return candidate.fileId === null || row.id === candidate.fileId;"), true);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Where an orphan's attempt count starts.
+// ---------------------------------------------------------------------------------------------------------------
+/**
+ * The counter bounds retries against STORAGE, so it may only ever count deletes that were actually attempted.
+ * An `uncertain_commit` orphan is recorded precisely because the upload's transaction rejected and its commit state
+ * could not be verified: nothing was deleted, deliberately, because the bytes may belong to a row that committed
+ * after all. Letting the column default of one apply there spent an attempt on a database question before storage
+ * had been asked anything, leaving nine for the work the ceiling exists to bound.
+ */
+test("origin 1 & 2. an orphan starts with the storage attempts it has actually spent", () => {
+  assert.equal(cateringOrphanInitialAttempts("uncertain_commit"), 0, "no delete was attempted");
+  assert.equal(cateringOrphanInitialAttempts("failed_delete"), 1, "the compensating delete really did fail");
+  // And the route passes the origin explicitly rather than leaving it to the column default.
+  const filesRoute = fs.readFileSync(path.join(here, "..", "routes", "catering-booking-files.ts"), "utf8");
+  assert.equal(filesRoute.includes("cleanupAttempts: cateringOrphanInitialAttempts(origin)"), true);
+  assert.equal(filesRoute.includes(`await recordStorageOrphan({ ...stored, reason: "uncertain_commit" }, "commit state could not be verified", "uncertain_commit");`), true);
+  assert.equal(filesRoute.includes(`String(deleteError), "failed_delete");`), true);
+  // Every insert names an origin: no path may fall back to the default again.
+  assert.equal((filesRoute.match(/recordStorageOrphan\(/g) ?? []).length, 3, "two call sites and the definition");
+});
+
+test("origin 3. the first cleanup delete on an uncertain-commit orphan is its first attempt", async () => {
+  const row = orphanRow({ fileId: null, cleanupAttempts: cateringOrphanInitialAttempts("uncertain_commit") });
+  const storage = storageHolding(row.storageKey);
+  storage.breakWith("R2 unavailable");
+  await reconcile([row], storage, T0, UNOWNED);
+  assert.equal(row.cleanupAttempts, 1, "0 -> 1, and only because a delete was attempted and failed");
+  assert.equal(storage.calls, 1);
+});
+
+test("origin 4. the ceiling is exactly ten real storage attempts, from either origin", async () => {
+  for (const origin of ["uncertain_commit", "failed_delete"] as const) {
+    const spent = cateringOrphanInitialAttempts(origin);
+    const row = orphanRow({ fileId: null, cleanupAttempts: spent });
+    const storage = storageHolding(row.storageKey);
+    storage.breakWith("R2 unavailable");
+    for (let pass = 0; pass < CATERING_CLEANUP_MAX_ATTEMPTS + 3; pass += 1) {
+      await reconcile([row], storage, LATER(3600 * (pass + 1)), UNOWNED);
+    }
+    assert.equal(row.cleanupAttempts, CATERING_CLEANUP_MAX_ATTEMPTS, origin);
+    // An uncertain-commit orphan gets all ten deletes; one recorded after a failed delete has already had one.
+    assert.equal(storage.calls, CATERING_CLEANUP_MAX_ATTEMPTS - spent, origin);
+    assert.equal(eligible(row, LATER(3600 * 100)), false, origin);
+  }
+});
+
+test("origin 5. a database question that deletes nothing still consumes no attempt", async () => {
+  const row = orphanRow({ cleanupAttempts: cateringOrphanInitialAttempts("uncertain_commit") });
+  const storage = storageHolding(row.storageKey);
+  for (let pass = 0; pass < 12; pass += 1) await reconcile([row], storage, LATER(3600 * (pass + 1)), UNANSWERABLE);
+  assert.equal(row.cleanupAttempts, 0, "recording the row spent none, and neither did the lookups");
+  assert.equal(storage.calls, 0);
+  assert.equal(eligible(row, LATER(3600 * 20)), true);
+});
+
+test("origin 6 & 7. a successful cleanup and the lease it ran under are unchanged", async () => {
+  const row = orphanRow({ fileId: null, cleanupAttempts: cateringOrphanInitialAttempts("uncertain_commit") });
+  const storage = storageHolding(row.storageKey);
+  const outcome = await reconcile([row], storage, T0, UNOWNED);
+  assert.deepEqual(outcome, { scanned: 1, removed: 1, failed: 0, retained: 0 });
+  assert.equal(row.cleanupAttempts, 0, "a success charges nothing, whatever the origin");
+  assert.notEqual(row.resolvedAt, null);
+  assert.equal(row.cleanupClaimToken, null);
+  assert.equal(row.cleanupClaimedUntil, null);
+  // A stale token still finalizes nothing, on either origin.
+  const claimed = orphanRow({ cleanupAttempts: 0, cleanupClaimToken: "someone-else", cleanupClaimedUntil: LATER(120) });
+  settle(claimed, "storage_failed", new Error("late"), "a-stale-token");
+  assert.equal(claimed.cleanupAttempts, 0);
+  assert.equal(claimed.cleanupClaimToken, "someone-else");
+});
+
+test("origin 8. a row already at the ceiling stays there and is never handed out again", async () => {
+  const row = orphanRow({ fileId: null, cleanupAttempts: CATERING_CLEANUP_MAX_ATTEMPTS });
+  const storage = storageHolding(row.storageKey);
+  const outcome = await reconcile([row], storage, T0, UNOWNED);
+  assert.deepEqual(outcome, { scanned: 0, removed: 0, failed: 0, retained: 0 });
+  assert.equal(row.cleanupAttempts, CATERING_CLEANUP_MAX_ATTEMPTS);
+  assert.equal(storage.calls, 0);
+  assert.equal(row.resolvedAt, null, "exhausted is not resolved: it stays visible to an operator");
+});
+
+test("origin 9. two orphans never share, reset or lend each other attempts", async () => {
+  const uncertain = orphanRow({ id: "orphan-uncertain", storageKey: "catering-bookings/b1/one", fileId: null, cleanupAttempts: cateringOrphanInitialAttempts("uncertain_commit") });
+  const failed = orphanRow({ id: "orphan-failed", storageKey: "catering-bookings/b1/two", fileId: null, cleanupAttempts: cateringOrphanInitialAttempts("failed_delete") });
+  const storage = storageHolding(uncertain.storageKey, failed.storageKey);
+  storage.breakWith("R2 unavailable");
+  await reconcile([uncertain, failed], storage, T0, UNOWNED);
+  assert.equal(uncertain.cleanupAttempts, 1);
+  assert.equal(failed.cleanupAttempts, 2, "each row counts only its own attempts");
+  // Recording a second ledger row for the same object does not hand the first one more attempts: the counter lives
+  // on the row, and each row is claimed, charged and exhausted on its own.
+  const duplicate = orphanRow({ id: "orphan-duplicate", storageKey: uncertain.storageKey, fileId: null, cleanupAttempts: cateringOrphanInitialAttempts("uncertain_commit") });
+  assert.equal(duplicate.cleanupAttempts, 0);
+  assert.equal(uncertain.cleanupAttempts, 1);
 });

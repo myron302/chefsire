@@ -2,7 +2,8 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { ArrowDown, ArrowUp, Check, Trash2 } from "lucide-react";
-import { cateringBookingWorkspaceKey, type CateringBookingDetailsView, type CateringBookingTaskView, type CateringBookingWorkspaceView } from "@shared/catering-booking-operations";
+import { cateringPreservedHistory, emptyCateringLoadedHistory, type CateringLoadedHistory } from "./catering-booking-loaded-history";
+import { cateringBookingWorkspaceKey, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView, type CateringBookingWorkspaceView } from "@shared/catering-booking-operations";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 import { useUser } from "@/contexts/UserContext";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,16 @@ export default function CateringBookingWorkspace({ params }: { params: { booking
   const workspace = query.data?.pages[0];
   const formIdentity = `${user?.id ?? "anonymous"}:${params.bookingId}`;
   useEffect(() => { const details = workspace?.details; if (details) { setProviderForm((current) => hydrateWorkspaceForm(current, formIdentity, providerDraftFrom(details))); setCustomerForm((current) => hydrateWorkspaceForm(current, formIdentity, details.customerNotes ?? "")); setTaskForm((current) => current.identity === formIdentity ? current : { identity: formIdentity, value: EMPTY_CATERING_TASK_DRAFT, dirty: false }); } }, [formIdentity, workspace?.details.updatedAt]);
+  // Activity a participant has already paged into. The workspace endpoint paginates activity by OFFSET, so a single
+  // new event at the head shifts every following page boundary down and the last refetched page returns one row
+  // short at its tail: a file upload or removal invalidates this query, and the oldest event the participant had
+  // deliberately loaded silently disappears. The refetched pages are an authoritative window over the newest end of
+  // the feed, so history below that window is preserved rather than dropped, merged by stable event id. Activity is
+  // append-only truthful history -- events are never edited or removed -- so nothing preserved can go stale.
+  const activityHistoryRef = useRef<CateringLoadedHistory<CateringBookingActivityView>>(emptyCateringLoadedHistory());
+  const activityPages = query.data?.pages;
+  const activityHistory = cateringPreservedHistory(activityHistoryRef.current, formIdentity, activityPages ? combineCateringActivityPages(activityPages) : null, !query.hasNextPage);
+  useEffect(() => { activityHistoryRef.current = activityHistory; });
   const persistedTaskIds = (workspace?.tasks ?? []).map((task) => task.id).join("\u0000");
   const workspaceEditable = workspace?.editable ?? false;
   // An editor left open on a task another tab deleted, or on a booking that became cancelled or completed, closes once
@@ -86,7 +97,7 @@ export default function CateringBookingWorkspace({ params }: { params: { booking
   if (!user) return <main className="mx-auto max-w-5xl space-y-4 p-4"><h1 className="text-2xl font-bold">Sign in to view this event</h1><Button asChild><Link href="/login">Sign in</Link></Button></main>;
   if (query.isLoading) return <main className="mx-auto max-w-5xl p-4" role="status">Loading event workspace…</main>;
   if (!workspace) return <main className="mx-auto max-w-5xl space-y-3 p-4"><div role="alert"><h1 className="text-2xl font-bold">Event workspace unavailable</h1><p>{query.error?.message}</p></div><Button variant="outline" onClick={() => query.refetch()}>Retry</Button></main>;
-  const provider = workspace.role === "provider"; const { privateTasks, requirements } = splitCateringWorkspaceTasks(workspace.tasks); const activity = combineCateringActivityPages(query.data?.pages ?? []);
+  const provider = workspace.role === "provider"; const { privateTasks, requirements } = splitCateringWorkspaceTasks(workspace.tasks); const activity = activityHistory.items;
   const draft = providerForm.value; const customerNotes = customerForm.value; const taskDraft = taskForm.value;
   const updateDraft = <K extends keyof ProviderDetailsDraft,>(field: K, value: ProviderDetailsDraft[K]) => setProviderForm((current) => editWorkspaceFormField(current, field, value));
   const updateTaskDraft = <K extends keyof CateringTaskDraft,>(field: K, value: CateringTaskDraft[K]) => setTaskForm((current) => editWorkspaceForm(current, { ...current.value, [field]: value }));

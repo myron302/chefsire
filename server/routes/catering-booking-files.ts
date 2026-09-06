@@ -15,7 +15,7 @@ import { lockActiveCateringBooking, ownedCateringBooking } from "../services/cat
 import { cateringCounterpart, cateringFilePageFrom, cateringPageQueryLimit, boundedCount } from "../services/catering-booking-communication-policy";
 import { CATERING_FILE_DOWNLOAD_HEADERS, cateringFileActivity, cateringFileContentDisposition, cateringFileStorageKey, cateringFileVisibleTo, resolveCateringFileSlot, resolveCateringUpload, shouldNotifyCateringFileUpload } from "../services/catering-booking-file-policy";
 import { validateCateringFileContent } from "../services/catering-booking-file-content";
-import { CATERING_CLEANUP_MAX_ATTEMPTS, cateringCleanupChargesAttempt, settleCateringFinalization, type CateringCleanupConclusion } from "../services/catering-booking-storage-cleanup";
+import { CATERING_CLEANUP_MAX_ATTEMPTS, cateringCleanupChargesAttempt, cateringOrphanInitialAttempts, settleCateringFinalization, type CateringCleanupConclusion, type CateringOrphanOrigin } from "../services/catering-booking-storage-cleanup";
 import { privateStorageProvider, readPrivateObject, removePrivateObject, writePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
 
 const r = Router();
@@ -372,7 +372,10 @@ async function compensateUncertainUpload(stored: { provider: PrivateStorageProvi
   const state = await uploadCommitState(stored);
   if (state === "committed") return;
   if (state === "absent") return compensateStoredObject(stored);
-  await recordStorageOrphan({ ...stored, reason: "uncertain_commit" }, "commit state could not be verified");
+  // Nothing was deleted here, and deliberately so: the bytes may belong to a row that committed after all. The
+  // ledger row therefore starts with no storage attempt spent -- the ten are for retrying storage, not for asking
+  // the database a question it could not answer.
+  await recordStorageOrphan({ ...stored, reason: "uncertain_commit" }, "commit state could not be verified", "uncertain_commit");
 }
 
 /**
@@ -412,17 +415,22 @@ async function compensateStoredObject(stored: { provider: PrivateStorageProvider
   try {
     await removePrivateObject(stored.provider, stored.storageKey);
   } catch (deleteError) {
-    await recordStorageOrphan(stored, deleteError instanceof Error ? deleteError.message : String(deleteError));
+    // The delete really was attempted and it really did fail, so that attempt is recorded as spent.
+    await recordStorageOrphan(stored, deleteError instanceof Error ? deleteError.message : String(deleteError), "failed_delete");
   }
 }
 
 /**
  * Records one object for later reconciliation, carrying the file id the upload generated so the cleanup pass can
  * tell an object nothing owns from one whose metadata turned out to have committed after all.
+ *
+ * `origin` decides how many storage attempts the row starts with, and it is passed explicitly rather than left to
+ * the column default: the counter bounds retries against STORAGE, so it may only count deletes that were actually
+ * attempted. See `cateringOrphanInitialAttempts`.
  */
-async function recordStorageOrphan(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; reason: string }, cleanupError: string): Promise<void> {
+async function recordStorageOrphan(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; reason: string }, cleanupError: string, origin: CateringOrphanOrigin): Promise<void> {
   try {
-    await db.insert(cateringBookingStorageOrphans).values({ bookingId: stored.bookingId, storageProvider: stored.provider, storageKey: stored.storageKey, fileId: stored.fileId, reason: stored.reason, cleanupError });
+    await db.insert(cateringBookingStorageOrphans).values({ bookingId: stored.bookingId, storageProvider: stored.provider, storageKey: stored.storageKey, fileId: stored.fileId, reason: stored.reason, cleanupError, cleanupAttempts: cateringOrphanInitialAttempts(origin) });
   } catch (ledgerError) {
     // The ledger is the last place this can be recorded, so a failure there is logged rather than swallowed. The
     // object is still on disk either way: nothing is deleted on a path that could not establish ownership.

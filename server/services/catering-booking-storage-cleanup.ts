@@ -142,6 +142,24 @@ export function cateringCleanupChargesAttempt(conclusion: CateringCleanupConclus
 }
 
 /**
+ * The storage delete attempts already spent when an orphan is first recorded.
+ *
+ * The counter exists to bound how often a broken storage backend is retried, so it has to count actual deletes.
+ * The two ways an orphan comes into existence have spent different numbers of them:
+ *
+ *  - `failed_delete`: the compensating delete was attempted and it failed. That is one real attempt, and recording
+ *    it as one is what stops a permanently failing object from being retried an eleventh time.
+ *  - `uncertain_commit`: the upload's transaction rejected and its commit state could not be verified, so nothing
+ *    was deleted at all -- deliberately, because the bytes may belong to a row that committed after all. Letting
+ *    the column default apply here charged an attempt for a database question, spending one of the ten before
+ *    storage had ever been asked anything.
+ */
+export type CateringOrphanOrigin = "uncertain_commit" | "failed_delete";
+export function cateringOrphanInitialAttempts(origin: CateringOrphanOrigin): number {
+  return origin === "failed_delete" ? 1 : 0;
+}
+
+/**
  * Runs the bookkeeping half and reports rather than throws.
  *
  * The caller has, by construction, already completed the irreversible half when this is reached, so there is
