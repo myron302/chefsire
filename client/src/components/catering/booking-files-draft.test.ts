@@ -32,12 +32,15 @@ test("the file input's DOM value is reset only when the draft was actually clear
 
 test("the completion is resolved outside the state updater, so a double-invoked updater cannot touch the DOM", () => {
   // React may call a state updater twice; a DOM write inside one would run twice too.
-  assert.equal(uploadMutation.includes("setDrafts((current) => updateCateringFileDrafts(current, attempt.origin.identity, attempt.role, () => resolved.next));"), true);
-  assert.equal(/setDrafts\(\(current\)[\s\S]*inputRef\.current\.value/.test(uploadMutation), false);
-  // The drafts are mirrored in a ref so the callback sees the participant's current selection on the ORIGINATING
-  // booking, not a stale closure and not whichever booking is on screen when the completion lands.
-  assert.equal(source.includes("const draftsRef = useRef(drafts);"), true);
-  assert.equal(source.includes("useEffect(() => { draftsRef.current = drafts; }, [drafts]);"), true);
+  assert.equal(uploadMutation.includes("applyDraft(attempt.origin.identity, attempt.role, () => resolved.next);"), true);
+  // Stronger than it was: the drafts have no functional updater at all, so nothing can run twice inside one.
+  assert.equal(source.includes("setDrafts((current)"), false);
+  assert.equal((source.match(/setDrafts\(/g) ?? []).length, 1, "the only setDrafts is the mirror write inside applyDraft");
+  // The ref is the AUTHORITATIVE store, written synchronously by every transition, not a passive mirror of state:
+  // a mirror is one commit behind, and a completion landing in that window read the previous draft.
+  assert.equal(source.includes("const draftsRef = useRef<CateringFileDrafts>(EMPTY_CATERING_FILE_DRAFTS);"), true);
+  assert.equal(/useEffect\(\(\) => \{ draftsRef\.current = drafts/.test(source), false, "a passive mirror is what created the stale-read race");
+  assert.equal(/draftsRef\.current = next;\s*setDrafts\(next\);/.test(source), true);
 });
 
 test("a failed upload leaves the draft entirely alone", () => {
@@ -49,7 +52,7 @@ test("a failed upload leaves the draft entirely alone", () => {
 test("the submitted attempt carries the identity the completion is matched on", () => {
   // requestId plus visibility: a replacement file mints a new token, and a visibility change differs on its own.
   assert.equal(uploadMutation.includes("attempt: UploadAttempt"), true);
-  assert.equal(source.includes("upload.mutate({ origin, role, file: draft.file, visibility: draft.visibility, requestId: draft.requestId })"), true);
+  assert.equal(source.includes("upload.mutate({ origin, role, file: current.file, visibility: current.visibility, requestId: current.requestId })"), true);
 });
 
 test("idempotency is unchanged: one token per selection, sent with every attempt at it", () => {
@@ -71,7 +74,7 @@ test("upload and pending controls remain accessible", () => {
 
 test("no duplicate upload can be caused by the draft/attempt split", () => {
   // The submit guard still refuses while a request is pending, so the split introduces no second request.
-  assert.equal(source.includes("if (!mayUploadCateringFile(draft, canMutate, uploading) || !draft.file || !draft.visibility || !draft.requestId) return;"), true);
+  assert.equal(source.includes("if (!mayUploadCateringFile(current, canMutate, uploading) || !current.file || !current.visibility || !current.requestId) return;"), true);
 });
 
 test("a preserved draft is handed a fresh idempotency token by the component", () => {
@@ -81,10 +84,10 @@ test("a preserved draft is handed a fresh idempotency token by the component", (
   assert.equal(source.includes("crypto.randomUUID()"), true);
   // Minting happens outside the state updater for the same reason the DOM reset does: React may invoke an updater
   // twice, and a token minted in there would differ between the two invocations.
-  assert.equal(/setDrafts\(\(current\)[\s\S]*crypto\.randomUUID/.test(uploadMutation), false);
+  assert.equal(/setDrafts\([\s\S]*crypto\.randomUUID/.test(uploadMutation), false);
   // The submit path reads the token off the live draft, so the re-minted one is what the next upload carries.
   const submit = source.slice(source.indexOf("const submit = (event: FormEvent)"), source.indexOf("return <Card id=\"files\""));
-  assert.equal(submit.includes("requestId: draft.requestId"), true);
+  assert.equal(submit.includes("requestId: current.requestId"), true);
 });
 
 test("a failed upload still leaves the draft and its token untouched, so Try again stays idempotent", () => {
@@ -100,10 +103,12 @@ test("the component records the attempt on submit, so a later intent change mint
   const submit = source.slice(source.indexOf("const submit = (event: FormEvent)"), source.indexOf("return <Card id=\"files\""));
   // Recorded before the request goes out: from that moment the token's fate is unknowable from the client, and an
   // ambiguous failure is exactly a request that may already have been accepted.
-  assert.equal(submit.includes("setDrafts((current) => updateCateringFileDrafts(current, identity, role, markCateringFileAttempted));"), true);
-  assert.equal(submit.indexOf("updateCateringFileDrafts(current, identity, role, markCateringFileAttempted)") < submit.indexOf("upload.mutate("), true);
-  // The submitted token is the draft's own, so an exact retry of the same intent stays idempotent.
-  assert.equal(submit.includes("requestId: draft.requestId"), true);
+  assert.equal(submit.includes("applyDraft(identity, role, markCateringFileAttempted);"), true);
+  assert.equal(submit.indexOf("applyDraft(identity, role, markCateringFileAttempted)") < submit.indexOf("upload.mutate("), true);
+  // The submitted token is the AUTHORITATIVE draft's own, so an exact retry of the same intent stays idempotent
+  // and a token a completion has already settled can never be spent a second time.
+  assert.equal(submit.includes("const current = cateringFileDraftFor(draftsRef.current, identity, role);"), true);
+  assert.equal(submit.includes("requestId: current.requestId"), true);
 });
 
 test("a visibility change goes through the state machine with a real mint function", () => {

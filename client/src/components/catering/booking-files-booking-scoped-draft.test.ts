@@ -381,7 +381,7 @@ test("20. the component reads and writes both answers per booking, with no singl
   assert.equal(source.includes("visibleCateringMutationOutcome"), false);
   // Every write names the booking it belongs to: the ORIGINATING one on a completion, the displayed one when a
   // control starts an attempt.
-  const writes = [...source.matchAll(/set(?:Upload|Remove)Outcomes\(\(current\) => (\w+)\(current, ([\w.]+)/g)].map((match) => `${match[1]}(${match[2]})`);
+  const writes = [...source.matchAll(/set(?:Upload|Remove)Outcomes\(\((\w+)\) => (\w+)\(\1, ([\w.]+)/g)].map((match) => `${match[2]}(${match[3]})`);
   assert.deepEqual(writes, [
     "recordCateringMutationOutcome(attempt.origin)",
     "recordCateringMutationOutcome(attempt.origin)",

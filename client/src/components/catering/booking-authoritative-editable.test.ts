@@ -145,7 +145,7 @@ test("13. the files section had the same stale-parent bug and now reads the same
   // Every editable-driven surface obeys it: the upload form, the upload control, and each row's delete control.
   assert.equal(files.includes("{canMutate\n"), true);
   assert.equal(files.includes("disabled={!mayUploadCateringFile(draft, canMutate, uploading)}"), true);
-  assert.equal(files.includes("if (!mayUploadCateringFile(draft, canMutate, uploading)"), true);
+  assert.equal(files.includes("if (!mayUploadCateringFile(current, canMutate, uploading)"), true);
   assert.equal(files.includes("editable={canMutate}"), true);
   // The bare prop no longer drives any decision in either component.
   for (const [label, source] of [["communication", comms], ["files", files]] as const) {

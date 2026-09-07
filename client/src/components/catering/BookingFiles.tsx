@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { EMPTY_CATERING_REMOVED_RECORDS, cateringPreservedHistory, cateringPreservedTailIds, cateringReconciledRemovals, cateringRemovedIds, emptyCateringLoadedHistory, recordCateringRemovedRecords, type CateringLoadedHistory, type CateringRemovedRecords } from "@/pages/services/catering-booking-loaded-history";
 import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_MUTATION_OUTCOMES, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcomeFor, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, clearCateringMutationOutcome, enterCateringMutation, exitCateringMutation, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, recordCateringMutationOutcome, settleCateringRemovedFiles, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcomes } from "@/pages/services/catering-booking-mutation-origin";
-import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, EMPTY_CATERING_FILE_DRAFTS, cateringFileDownloadPath, cateringFileDraftFor, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, updateCateringFileDrafts, type CateringFileDrafts } from "@/pages/services/catering-booking-files-state";
+import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, EMPTY_CATERING_FILE_DRAFTS, cateringFileDownloadPath, cateringFileDraftFor, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, updateCateringFileDrafts, type CateringFileDraft, type CateringFileDrafts } from "@/pages/services/catering-booking-files-state";
 
 /**
  * An upload or a delete, immutable once started, carrying the booking it belongs to. This section stays mounted
@@ -33,8 +33,30 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // One upload draft PER BOOKING. An upload outlives the booking that started it, and the draft carries that
   // upload's idempotency token, so emptying it on navigation is what used to let a retry mint a second token and
   // store the same file twice.
+  //
+  // The REF is the authoritative store and the state is its rendering mirror, not the other way round. A mirror
+  // maintained by a passive effect is always one commit behind: a completion that resolved between a draft
+  // transition and that effect read the PREVIOUS draft, judged it to still match the attempt, and cleared a
+  // replacement the participant had already chosen. Every transition below writes the ref FIRST and synchronously,
+  // so there is no window in which the two disagree about what has been selected.
+  const draftsRef = useRef<CateringFileDrafts>(EMPTY_CATERING_FILE_DRAFTS);
   const [drafts, setDrafts] = useState<CateringFileDrafts>(EMPTY_CATERING_FILE_DRAFTS);
   const draft = cateringFileDraftFor(drafts, identity, role);
+  /**
+   * The ONE path every draft transition takes, for one booking, from the authoritative store.
+   *
+   * It is deliberately not a functional `setDrafts` updater. React may invoke an updater more than once, and these
+   * transitions mint idempotency tokens -- two invocations would mint two different ones -- while the completion
+   * path also has to read the result to decide whether to touch the DOM. Doing the work here instead keeps minting
+   * and every DOM write out of the updater entirely, and hands the completion an answer it can act on directly.
+   */
+  const applyDraft = (target: string, targetRole: "provider" | "customer", apply: (state: CateringFileDraft) => CateringFileDraft): CateringFileDrafts => {
+    const next = updateCateringFileDrafts(draftsRef.current, target, targetRole, apply);
+    if (next === draftsRef.current) return next;
+    draftsRef.current = next;
+    setDrafts(next);
+    return next;
+  };
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Whether this section has already told the workspace that the booking went terminal.
   const terminalSeenRef = useRef(false);
@@ -43,11 +65,6 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // this actor caused on one booking can never be absorbed as "mine" on another, and a counterpart change that
   // lands in the same response as a local one is still announced because it is not one of the expected deltas.
   const ledgerRef = useRef<CateringFileLedger>(EMPTY_CATERING_FILE_LEDGER);
-  // Mirrors the live drafts so a mutation callback, which fires long after its render, resolves against what the
-  // participant currently has selected on the ORIGINATING booking rather than the draft captured when the upload
-  // started -- and never against whichever booking is on screen when it lands.
-  const draftsRef = useRef(drafts);
-  useEffect(() => { draftsRef.current = drafts; }, [drafts]);
   // The booking currently on screen, readable from a callback that closed over an older render. The one piece of
   // state that is NOT keyed by booking -- the file input's own DOM value -- may only be touched when the completion
   // belongs to this booking; everything else settles its own booking's entry and needs no such guard.
@@ -220,14 +237,20 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
       // The draft settled is the ORIGINATING booking's, whatever is on screen: that is the draft holding this
       // upload's token, and leaving it unsettled would offer Upload again under a token the server has now spent.
       // Every other booking's draft is untouched, so a completion for A can never clear or re-token B's.
-      // Resolved against that booking's current draft outside the state updater, so neither the DOM reset nor
-      // minting a token is a side effect inside a function React may invoke twice.
+      //
+      // It is read from the AUTHORITATIVE store, which every transition has already written synchronously, so this
+      // is the draft the participant actually has right now -- not the one they had when React last committed. A
+      // newer selection, a changed visibility, or a newer attempt on the same booking therefore all fail the match
+      // and are preserved, which is the whole point of resolving rather than clearing. Resolved out here rather
+      // than inside an updater, so neither minting a token nor the DOM reset below runs in a function React may
+      // invoke twice.
       const resolved = completeCateringFileUpload(cateringFileDraftFor(draftsRef.current, attempt.origin.identity, attempt.role), attempt, attempt.role, () => crypto.randomUUID());
-      // The input is the one shared DOM control, so it is reset only when the booking that cleared its draft is the
-      // one still on screen -- clearing it for a completion that landed elsewhere would wipe a selection the
-      // participant is making right now on a different booking.
+      applyDraft(attempt.origin.identity, attempt.role, () => resolved.next);
+      // The input is the one shared DOM control, so it is reset only when this completion actually cleared a draft
+      // AND that booking is the one still on screen. Never because an older upload merely succeeded: a preserved
+      // newer selection must keep the control that holds it. Written here rather than in an updater React may run
+      // twice.
       if (resolved.cleared && attempt.origin.identity === identityRef.current && inputRef.current) inputRef.current.value = "";
-      setDrafts((current) => updateCateringFileDrafts(current, attempt.origin.identity, attempt.role, () => resolved.next));
       // Armed only for an upload that actually created a file, and armed for the ORIGINATING booking alone. A retry
       // answered from the idempotency ledger (`duplicate`) added nothing, so the next boundary change is not this
       // request's doing and must not be absorbed. Arming on anything less than a real creation is how a FAILED
@@ -311,13 +334,16 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!mayUploadCateringFile(draft, canMutate, uploading) || !draft.file || !draft.visibility || !draft.requestId) return;
+    // Read from the authoritative store for the same reason the completion does: this is the one place a token is
+    // spent, and spending the render's copy could send one a completion has already settled.
+    const current = cateringFileDraftFor(draftsRef.current, identity, role);
+    if (!mayUploadCateringFile(current, canMutate, uploading) || !current.file || !current.visibility || !current.requestId) return;
     // The token is now possibly spent: the outcome of this request is not knowable from here, and an ambiguous
     // failure is exactly a request that may already have been accepted. Recording that is what makes a later
     // change of visibility mint a new token instead of retrying a changed intent under the old one.
-    setDrafts((current) => updateCateringFileDrafts(current, identity, role, markCateringFileAttempted));
-    setUploadOutcomes((current) => clearCateringMutationOutcome(current, origin));
-    upload.mutate({ origin, role, file: draft.file, visibility: draft.visibility, requestId: draft.requestId });
+    applyDraft(identity, role, markCateringFileAttempted);
+    setUploadOutcomes((outcomes) => clearCateringMutationOutcome(outcomes, origin));
+    upload.mutate({ origin, role, file: current.file, visibility: current.visibility, requestId: current.requestId });
   };
 
   return <Card id="files"><CardHeader><CardTitle>Files</CardTitle><CardDescription>{role === "provider" ? "Booking documents. Files you mark provider-only are never shown to the customer." : "Documents shared between you and your caterer."}</CardDescription></CardHeader><CardContent className="space-y-4">
@@ -335,7 +361,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
           <div><Label htmlFor="catering-file">Add a file</Label>
             <input id="catering-file" ref={inputRef} type="file" accept={CATERING_FILE_ACCEPT} className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2"
               aria-describedby="catering-file-help"
-              onChange={(event) => { const chosen = event.target.files?.[0] ?? null; setDrafts((current) => updateCateringFileDrafts(current, identity, role, (state) => selectCateringFile(state, chosen, chosen ? crypto.randomUUID() : null))); }} />
+              onChange={(event) => { const chosen = event.target.files?.[0] ?? null; applyDraft(identity, role, (state) => selectCateringFile(state, chosen, chosen ? crypto.randomUUID() : null)); }} />
             <p id="catering-file-help" className="mt-1 text-sm text-muted-foreground">PDF, JPEG, PNG or WebP, up to 15 MB.</p>
             {/* The staged selection, named from the retained `File`. Coming back to a booking restores the draft but
                 cannot refill the control above -- browsers do not allow it -- so without this the section would offer
@@ -346,7 +372,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
           {choices.length > 0 && <fieldset className="space-y-2"><legend className="text-sm font-medium">Who can see this file?</legend>
             {choices.map((choice) => <label key={choice.value} className="flex min-h-11 items-start gap-2">
               <input type="radio" name="catering-file-visibility" className="mt-1 h-5 w-5" value={choice.value} checked={draft.visibility === choice.value}
-                onChange={() => setDrafts((current) => updateCateringFileDrafts(current, identity, role, (state) => chooseCateringVisibility(state, choice.value, () => crypto.randomUUID())))} />
+                onChange={() => applyDraft(identity, role, (state) => chooseCateringVisibility(state, choice.value, () => crypto.randomUUID()))} />
               <span className="min-w-0"><span className="block font-medium">{choice.label}</span><span className="block text-sm text-muted-foreground">{choice.description}</span></span>
             </label>)}
           </fieldset>}

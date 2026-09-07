@@ -476,7 +476,7 @@ test("20. no file completion handler reads the booking from render scope", () =>
   assert.equal(filesSource.includes("`/api/catering/bookings/${attempt.origin.bookingId}/files/${attempt.fileId}`"), true);
   // The draft an upload settles is the ORIGINATING booking's, so it needs no rendered-booking guard at all. The one
   // thing that does is the file input's own DOM value, which is a single control shared by every booking.
-  assert.equal(uploadBlock.includes("updateCateringFileDrafts(current, attempt.origin.identity, attempt.role"), true);
+  assert.equal(uploadBlock.includes("applyDraft(attempt.origin.identity, attempt.role"), true);
   assert.equal(uploadBlock.includes(`if (resolved.cleared && attempt.origin.identity === identityRef.current && inputRef.current) inputRef.current.value = "";`), true);
   assert.equal(removeBlock.includes("setDraft"), false);
 });
