@@ -27,6 +27,48 @@ export const EMPTY_CATERING_COMPOSER: CateringComposerState = { identity: "", te
 export function hydrateCateringComposer(state: CateringComposerState, identity: string): CateringComposerState {
   return state.identity === identity ? state : { identity, text: "", pending: null };
 }
+
+/**
+ * One composer PER BOOKING, because a send outlives the booking that started it.
+ *
+ * A single slot rehydrated on navigation threw away whatever the booking being left still held. Send on booking A,
+ * navigate to B and back before the request settles, and A's composer was replaced by an empty one: the text was
+ * gone, the attempt was gone, and -- worst -- the `clientRequestId` was gone, so Send was offered again and a
+ * second attempt would carry a FRESH idempotency token. Two tokens are two logical messages to the server, which
+ * is right to store both. A failure that landed while B was displayed had nothing left to fail against either, so
+ * the refused text vanished with it.
+ *
+ * So each booking keeps its own composer, and a completion settles the one belonging to the attempt's own booking
+ * whatever is on screen. Nothing is keyed by "the current booking": the identity is the actor-and-booking pair the
+ * rest of this section already uses, so two bookings, or the same booking under two actors, never collide.
+ *
+ * An entry is held only while it is worth holding -- an unsent draft, an attempt in flight, a failed attempt to
+ * retry -- and drops out when it becomes empty, so the map is bounded by the bookings actually being composed on
+ * rather than by every booking visited.
+ */
+export type CateringComposers = ReadonlyMap<string, CateringComposerState>;
+export const EMPTY_CATERING_COMPOSERS: CateringComposers = new Map();
+
+/** This booking's composer, or a fresh empty one. Never another booking's. */
+export function cateringComposerFor(composers: CateringComposers, identity: string): CateringComposerState {
+  return hydrateCateringComposer(composers.get(identity) ?? EMPTY_CATERING_COMPOSER, identity);
+}
+/** Whether a composer holds anything worth keeping: typed text, or an attempt in flight or failed. */
+export function cateringComposerIsEmpty(state: CateringComposerState): boolean {
+  return state.pending === null && state.text === "";
+}
+/**
+ * Applies one transition to ONE booking's composer. The identity is passed in rather than read from anywhere
+ * ambient, so an asynchronous completion settles the booking it belongs to and leaves every other one alone.
+ */
+export function updateCateringComposer(composers: CateringComposers, identity: string, apply: (state: CateringComposerState) => CateringComposerState): CateringComposers {
+  const current = cateringComposerFor(composers, identity);
+  const next = apply(current);
+  if (next === current) return composers;
+  const composed = new Map(composers);
+  if (cateringComposerIsEmpty(next)) composed.delete(identity); else composed.set(identity, next);
+  return composed;
+}
 export function editCateringComposer(state: CateringComposerState, text: string): CateringComposerState {
   return { ...state, text };
 }

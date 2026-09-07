@@ -161,7 +161,7 @@ test("4. repeated quiet polls with the same latestId do not re-invalidate", () =
   assert.equal(source.includes("cache.clear()"), false);
   assert.equal(source.includes("cache.invalidateQueries()"), false);
   // And the watermark resets with the conversation, so switching bookings cannot suppress its first refresh.
-  const hydrate = source.slice(source.indexOf("useEffect(() => { setComposer("), source.indexOf("const query = useInfiniteQuery"));
+  const hydrate = source.slice(source.indexOf("useEffect(() => { setReadMark("), source.indexOf("const query = useInfiniteQuery"));
   assert.equal(hydrate.includes("deliveredRef.current = null;"), true);
 });
 

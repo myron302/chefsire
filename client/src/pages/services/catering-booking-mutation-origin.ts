@@ -82,6 +82,31 @@ export function visibleCateringMutationOutcome(outcome: CateringMutationOutcome 
 }
 
 /**
+ * The same, per booking, for a surface where two bookings can each have an attempt outstanding.
+ *
+ * One slot is enough while only the booking on screen can be mutated, because an outcome for another booking is
+ * simply not shown. It is not enough once a completion for one booking can land while another is being composed
+ * on: the later outcome would overwrite the earlier, and returning to the first booking would find its result gone.
+ */
+export type CateringMutationOutcomes = ReadonlyMap<string, CateringMutationOutcome>;
+export const EMPTY_CATERING_MUTATION_OUTCOMES: CateringMutationOutcomes = new Map();
+export function cateringMutationOutcomeFor(outcomes: CateringMutationOutcomes, identity: string): CateringMutationOutcome | null {
+  return outcomes.get(identity) ?? null;
+}
+export function recordCateringMutationOutcome(outcomes: CateringMutationOutcomes, origin: CateringMutationOrigin, status: "succeeded" | "failed", message: string | null = null): CateringMutationOutcomes {
+  const next = new Map(outcomes);
+  next.set(origin.identity, cateringMutationOutcome(origin, status, message));
+  return next;
+}
+/** Clears one booking's outcome, so a new attempt does not start under the last one's answer. */
+export function clearCateringMutationOutcome(outcomes: CateringMutationOutcomes, origin: CateringMutationOrigin): CateringMutationOutcomes {
+  if (!outcomes.has(origin.identity)) return outcomes;
+  const next = new Map(outcomes);
+  next.delete(origin.identity);
+  return next;
+}
+
+/**
  * Which bookings currently have a request of this kind in flight.
  *
  * `useMutation().isPending` is a hook-level boolean for the same reason, so an upload started on A disables the

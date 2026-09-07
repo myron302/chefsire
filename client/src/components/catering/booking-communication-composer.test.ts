@@ -21,7 +21,7 @@ test("the composer stays editable while a send is in flight and after one fails"
   // No disabled binding at all: with the attempt held separately, editing during a send is safe rather than lossy.
   assert.equal(textarea.slice(0, textarea.indexOf("/>")).includes("disabled"), false, "the composer must not be disabled during a send");
   assert.equal(composerForm.includes("value={ownComposer.text}"), true);
-  assert.equal(composerForm.includes("editCateringComposer(hydrateCateringComposer(current, identity), event.target.value)"), true);
+  assert.equal(composerForm.includes("updateCateringComposer(current, identity, (state) => editCateringComposer(state, event.target.value))"), true);
 });
 
 test("clearing the composer goes through the state machine, never an unconditional reset", () => {
@@ -184,7 +184,7 @@ test("an environment that cannot observe leaves messages unread rather than fals
 });
 
 test("the visibility state resets with the conversation, so it never carries across bookings", () => {
-  const hydrate = source.slice(source.indexOf("useEffect(() => { setComposer("), source.indexOf("const query = useInfiniteQuery"));
+  const hydrate = source.slice(source.indexOf("useEffect(() => { setReadMark("), source.indexOf("const query = useInfiniteQuery"));
   assert.equal(hydrate.includes("setVisibility(EMPTY_CATERING_THREAD_VISIBILITY)"), true);
   assert.equal(hydrate.includes("}, [identity]);"), true);
 });
