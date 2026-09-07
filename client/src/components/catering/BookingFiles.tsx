@@ -1,14 +1,14 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
-import { cateringBookingFilePresenceKey, cateringBookingFilePresencePrefix, cateringBookingFilesKey, cateringFileBoundary, cateringFilePresencePath, cateringFileSnapshot, type CateringBookingFilePresenceView, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
+import { EMPTY_CATERING_FILE_PRESENCE, cateringBookingFilePresenceKey, cateringBookingFilePresencePrefix, cateringBookingFilesKey, cateringFileBoundary, cateringFilePresencePath, cateringFileSnapshot, cateringMergePresenceAnswer, cateringPresenceChunks, cateringPresenceQuestion, type CateringBookingFilePresenceView, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
 import { cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { EMPTY_CATERING_REMOVED_RECORDS, cateringPreservedHistory, cateringPreservedTailIds, cateringReconciledRemovals, cateringRemovedIds, emptyCateringLoadedHistory, recordCateringRemovedRecords, type CateringLoadedHistory, type CateringRemovedRecords } from "@/pages/services/catering-booking-loaded-history";
-import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_MUTATION_OUTCOMES, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcomeFor, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, clearCateringMutationOutcome, enterCateringMutation, exitCateringMutation, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, recordCateringMutationOutcome, settleCateringRemovedFiles, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcomes } from "@/pages/services/catering-booking-mutation-origin";
+import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_MUTATION_OUTCOMES, EMPTY_CATERING_TERMINAL_SEEN, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcomeFor, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, cateringTerminalConvergenceIsDue, clearCateringMutationOutcome, enterCateringMutation, exitCateringMutation, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, recordCateringMutationOutcome, recordCateringTerminalConvergence, settleCateringRemovedFiles, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcomes, type CateringTerminalSeen } from "@/pages/services/catering-booking-mutation-origin";
 import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, EMPTY_CATERING_FILE_DRAFTS, cateringFileDownloadPath, cateringFileDraftFor, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, updateCateringFileDrafts, type CateringFileDraft, type CateringFileDrafts } from "@/pages/services/catering-booking-files-state";
 
 /**
@@ -58,8 +58,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     return next;
   };
   const inputRef = useRef<HTMLInputElement | null>(null);
-  // Whether this section has already told the workspace that the booking went terminal.
-  const terminalSeenRef = useRef(false);
+  // WHICH bookings this section has already told the workspace went terminal. Per booking, because the observation
+  // is per booking: a single flag left a second terminal booking unconverged, since the reading it depended on had
+  // not changed.
+  const terminalSeenRef = useRef<CateringTerminalSeen>(EMPTY_CATERING_TERMINAL_SEEN);
   // The newest-page snapshot accounted for and the exact deltas this actor's own mutations are expected to produce,
   // BOTH keyed by booking. A poll that found a real change can then be told from a quiet one per booking, a change
   // this actor caused on one booking can never be absorbed as "mine" on another, and a counterpart change that
@@ -101,7 +103,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // Returning to a booking therefore restores the draft but NOT `input.value`: a file input cannot be repopulated
   // programmatically, and nothing here pretends otherwise. The retained selection is named from the `File` itself
   // below, so what is staged is visible and uploadable without the control being refilled.
-  useEffect(() => { if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity]);
+  useEffect(() => { if (inputRef.current) inputRef.current.value = ""; }, [identity]);
 
   const query = useInfiniteQuery({
     queryKey: filesKey,
@@ -145,8 +147,15 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const files = history.items;
   // The ids the refreshed window says nothing about. They exist only in preserved history, so nothing the list
   // endpoint returns can ever settle whether they are still there -- which is the one question below.
-  const preservedIds = cateringPreservedTailIds(history, refreshedFiles);
+  // Canonical, so the same set of ids is the same question however preserved history happens to be ordered, and
+  // so the chunk boundaries below are derived deterministically from it rather than from that ordering.
+  const preservedIds = cateringPresenceQuestion(cateringPreservedTailIds(history, refreshedFiles));
   const preservedFingerprint = preservedIds.join(",");
+  // Split into requests the server will accept. Preserved history is bounded only by how much has been loaded and
+  // since displaced, so it can exceed the schema's maximum; one oversized request answered 400 and stopped
+  // reconciliation entirely, which is self-sustaining because reconciliation is the only thing that shrinks the
+  // set. Every id is covered by exactly one chunk and none is dropped.
+  const presenceChunks = cateringPresenceChunks(preservedIds);
   // The fingerprint of the newest page this actor may see. Only ids already serialized to them are read, so a
   // provider-private change is invisible here for a customer exactly as it is everywhere else.
   const fileBoundary = cateringFileBoundary(query.data?.pages);
@@ -183,11 +192,23 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     refetchOnWindowFocus: true,
     refetchInterval: () => cateringWorkspacePollInterval(canMutate),
     refetchIntervalInBackground: false,
+    // One reconciliation, assembled from bounded requests, and ALL OR NOTHING. Presence is authoritative deletion
+    // evidence, so a chunk that failed is not evidence of anything: throwing leaves the query's last successful
+    // answer in place and applies none of this cycle, rather than letting the chunks that did answer imply that
+    // whatever the failed one asked about is gone. Each answer is folded in through the shared merge, which keeps
+    // only ids that chunk actually asked about and that the response actually echoed.
     queryFn: async (): Promise<CateringBookingFilePresenceView> => {
-      const response = await fetch(cateringFilePresencePath(bookingId, preservedIds), { credentials: "include" });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw Object.assign(new Error(body.message || "Files could not be reconciled"), { code: typeof body.code === "string" ? body.code : undefined });
-      return body;
+      let reconciled = EMPTY_CATERING_FILE_PRESENCE;
+      for (const chunk of presenceChunks) {
+        const response = await fetch(cateringFilePresencePath(bookingId, chunk), { credentials: "include" });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw Object.assign(new Error(body.message || "Files could not be reconciled"), { code: typeof body.code === "string" ? body.code : undefined });
+        // A response that is not the shape this endpoint promises settles nothing, and guessing at it could only
+        // ever invent a deletion. It fails the whole reconciliation exactly as a transport failure does.
+        if (!Array.isArray(body.requested) || !Array.isArray(body.active)) throw new Error("Files could not be reconciled");
+        reconciled = cateringMergePresenceAnswer(reconciled, chunk, body as CateringBookingFilePresenceView);
+      }
+      return reconciled;
     },
   });
   // The answer names the ids it was asked about, so what it proves gone is read from the answer rather than from
@@ -319,9 +340,13 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // rather than only this section knowing. Latched in a ref so it fires once per newly observed transition and
   // never on the polls that follow, and it cannot loop: the workspace refetch changes the parent prop, not this
   // endpoint's answer.
+  // Recorded PER BOOKING, so navigating from one terminal booking straight to another still converges the second:
+  // the reading does not change across that navigation, so the identity has to be part of what decides this and
+  // part of what the effect watches. An identity already in the ledger converges no further, so returning to a
+  // booking cannot loop.
   useEffect(() => {
-    if (observedEditable !== false || terminalSeenRef.current) return;
-    terminalSeenRef.current = true;
+    if (!cateringTerminalConvergenceIsDue(terminalSeenRef.current, identity, observedEditable)) return;
+    terminalSeenRef.current = recordCateringTerminalConvergence(terminalSeenRef.current, identity);
     for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });
     // And one last reconciliation of the files only preserved history is holding. Closure stops the recurring poll
     // -- including the presence check's -- so a counterpart's removal made just before the booking closed would
@@ -330,7 +355,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     // prefix covers whichever id set is currently being asked about, and no further removal can follow this one,
     // so a single refresh at the transition is enough.
     cache.invalidateQueries({ queryKey: cateringBookingFilePresencePrefix(userId, bookingId) });
-  }, [observedEditable]);
+  }, [observedEditable, identity]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();

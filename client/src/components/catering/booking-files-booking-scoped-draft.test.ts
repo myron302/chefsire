@@ -256,7 +256,7 @@ test("11. the identity a transition applies to is passed in, never read from any
 
 test("12. the component keeps the draft across navigation and never pretends to refill the file input", () => {
   // The reset that destroyed the pending draft is gone; only the DOM control's own value resets with the booking.
-  assert.equal(source.includes(`useEffect(() => { if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity]);`), true);
+  assert.equal(source.includes(`useEffect(() => { if (inputRef.current) inputRef.current.value = ""; }, [identity]);`), true);
   assert.equal(source.includes("setDrafts(EMPTY_CATERING_FILE_DRAFTS)"), false);
   assert.equal(source.includes("emptyCateringFileDraft"), false, "the component has no way to blank a draft");
   // Every write to the input's value is the empty string: a file input cannot be repopulated, and nothing here

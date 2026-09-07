@@ -107,6 +107,38 @@ export function clearCateringMutationOutcome(outcomes: CateringMutationOutcomes,
 }
 
 /**
+ * The bookings whose one-shot terminal convergence has already run, in this mounted section.
+ *
+ * When a section's own endpoint first reports a booking terminal, the parent workspace summary is stale -- it was
+ * fetched once and does not poll -- so the section refreshes it, and the files section also runs one last presence
+ * reconciliation. That has to happen exactly once PER BOOKING, and a single boolean could not express it: the flag
+ * was reset on navigation while the effect depended only on the editable reading, so moving from one terminal
+ * booking straight to another left the reading unchanged at `false`, the effect never re-ran, and the second
+ * booking never converged. Its workspace kept whatever it had -- possibly still editable -- and its final
+ * reconciliation never happened.
+ *
+ * A ledger of identities settles it: the reading is per booking, so the record of having acted on it must be too.
+ * An entry is added once and never removed, so returning to a booking does not converge it again and no sequence of
+ * navigations can produce a loop; the ledger is bounded by the bookings visited while the section stays mounted.
+ */
+export type CateringTerminalSeen = ReadonlySet<string>;
+export const EMPTY_CATERING_TERMINAL_SEEN: CateringTerminalSeen = new Set();
+/**
+ * Whether this booking's convergence is due. Only an authoritative `false` counts: `undefined` is "this endpoint
+ * has not answered for this booking yet", which is what a freshly switched-to booking reads before its own first
+ * page arrives, and it must never be mistaken for a terminal observation belonging to the booking just left.
+ */
+export function cateringTerminalConvergenceIsDue(seen: CateringTerminalSeen, identity: string, observedEditable: boolean | undefined): boolean {
+  return observedEditable === false && !seen.has(identity);
+}
+export function recordCateringTerminalConvergence(seen: CateringTerminalSeen, identity: string): CateringTerminalSeen {
+  if (seen.has(identity)) return seen;
+  const next = new Set(seen);
+  next.add(identity);
+  return next;
+}
+
+/**
  * Which bookings currently have a request of this kind in flight.
  *
  * `useMutation().isPending` is a hook-level boolean for the same reason, so an upload started on A disables the

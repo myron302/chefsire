@@ -408,7 +408,12 @@ test("17. the request contract is bounded, validated and built from the ids the 
   assert.throws(() => cateringBookingFilePresenceSchema.parse({ ids: uuids[0], extra: "1" } as never));
   assert.throws(() => cateringBookingFilePresenceSchema.parse({ ids: new Array(CATERING_FILE_PRESENCE_MAXIMUM + 1).fill(uuids[0]).join(",") }));
   // The client asks only about what the window cannot settle, and only while there is something to ask about.
-  assert.equal(component.includes("const preservedIds = cateringPreservedTailIds(history, refreshedFiles);"), true);
+  // The client asks only about what the window cannot settle, canonically, and in requests the schema accepts.
+  assert.equal(component.includes("const preservedIds = cateringPresenceQuestion(cateringPreservedTailIds(history, refreshedFiles));"), true);
+  assert.equal(component.includes("const presenceChunks = cateringPresenceChunks(preservedIds);"), true);
+  assert.equal(component.includes("for (const chunk of presenceChunks) {"), true);
+  assert.equal(component.includes("cateringFilePresencePath(bookingId, chunk)"), true);
+  assert.equal(component.includes("cateringFilePresencePath(bookingId, preservedIds)"), false, "one oversized request is what answered 400 forever");
   assert.equal(component.includes("enabled: preservedIds.length > 0,"), true);
   assert.equal(component.includes("cateringReconciledRemovals(answer.requested, answer.active)"), true);
 });
@@ -461,10 +466,13 @@ test("20. the transition invalidates every presence question for that booking, a
   assert.notDeepEqual([...prefix], [...cateringBookingFilePresencePrefix("user-2", "booking-a")]);
   // The component fires it from the same latch that already refreshes the workspace once per observed transition,
   // so a closed booking's later polls repeat neither.
-  const terminal = component.slice(component.indexOf("if (observedEditable !== false || terminalSeenRef.current) return;"), component.indexOf("const submit = (event: FormEvent)"));
-  assert.equal(terminal.includes("terminalSeenRef.current = true;"), true);
+  const terminal = component.slice(component.indexOf("if (!cateringTerminalConvergenceIsDue(terminalSeenRef.current, identity, observedEditable)) return;"), component.indexOf("const submit = (event: FormEvent)"));
+  const latch = "terminalSeenRef.current = recordCateringTerminalConvergence(terminalSeenRef.current, identity);";
+  assert.equal(terminal.includes(latch), true);
   assert.equal(terminal.includes("cache.invalidateQueries({ queryKey: cateringBookingFilePresencePrefix(userId, bookingId) });"), true);
-  assert.equal(terminal.indexOf("terminalSeenRef.current = true;") < terminal.indexOf("cateringBookingFilePresencePrefix"), true, "latched before it fires");
+  assert.equal(terminal.indexOf(latch) < terminal.indexOf("cateringBookingFilePresencePrefix"), true, "latched before it fires");
+  // Per booking, so a second terminal booking still gets its own final reconciliation.
+  assert.equal(component.includes("}, [observedEditable, identity]);"), true);
   assert.equal((component.match(/cateringBookingFilePresencePrefix\(userId, bookingId\)/g) ?? []).length, 1, "one refresh at the transition, not one per poll");
 });
 

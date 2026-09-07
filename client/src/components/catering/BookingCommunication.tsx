@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cateringPreservedHistory, emptyCateringLoadedHistory, type CateringLoadedHistory } from "@/pages/services/catering-booking-loaded-history";
-import { EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_UNSENT_MESSAGES, applyForCateringOrigin, cateringMutationIsPending, cateringMutationOrigin, EMPTY_CATERING_MUTATION_OUTCOMES, cateringMutationOutcomeFor, clearCateringMutationOutcome, recordCateringMutationOutcome, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringUnsentMessage, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcomes, type CateringUnsentMessages } from "@/pages/services/catering-booking-mutation-origin";
+import { EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_TERMINAL_SEEN, EMPTY_CATERING_UNSENT_MESSAGES, applyForCateringOrigin, cateringMutationIsPending, cateringMutationOrigin, EMPTY_CATERING_MUTATION_OUTCOMES, cateringMutationOutcomeFor, clearCateringMutationOutcome, recordCateringMutationOutcome, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringTerminalConvergenceIsDue, cateringUnsentMessage, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, recordCateringTerminalConvergence, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcomes, type CateringTerminalSeen, type CateringUnsentMessages } from "@/pages/services/catering-booking-mutation-origin";
 import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSERS, cateringComposerFor, updateCateringComposer, type CateringComposers, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringMessagePageKey, cateringReadableBoundary, cateringThreadEndIsOnScreen, cateringUnreadStart, cateringUnreadStartId, cateringViewGeneration, mayRecordCateringViewedBoundary, recordCateringMessageCoverage, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
 
 /**
@@ -58,7 +58,10 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   // from a poll that delivers nothing.
   const deliveredRef = useRef<string | null>(null);
   // Whether this section has already told the workspace that the booking went terminal.
-  const terminalSeenRef = useRef(false);
+  // WHICH bookings this section has already told the workspace went terminal, per booking for the same reason the
+  // files section keeps it per booking: the observation is per booking, so a single flag left a second terminal
+  // booking unconverged because the reading it depended on had not changed across the navigation.
+  const terminalSeenRef = useRef<CateringTerminalSeen>(EMPTY_CATERING_TERMINAL_SEEN);
   // History this participant has already loaded. A poll refetches every loaded page and re-derives each cursor from
   // the page before it, so one new message shifts every boundary down and the oldest loaded message falls out of
   // the last page -- it was never deleted, and without this it would vanish on a timer and have to be loaded again.
@@ -69,7 +72,7 @@ export default function BookingCommunication({ bookingId, userId, role, editable
 
   // The composer is deliberately absent from this reset: it is keyed by booking, so leaving one no longer
   // discards it, and a completion still settles the booking it belongs to.
-  useEffect(() => { setReadMark((current) => hydrateCateringReadMark(current, identity)); setViewed((current) => hydrateCateringViewed(current, identity)); setVisibility(EMPTY_CATERING_THREAD_VISIBILITY); deliveredRef.current = null; terminalSeenRef.current = false; }, [identity]);
+  useEffect(() => { setReadMark((current) => hydrateCateringReadMark(current, identity)); setViewed((current) => hydrateCateringViewed(current, identity)); setVisibility(EMPTY_CATERING_THREAD_VISIBILITY); deliveredRef.current = null; }, [identity]);
 
   const query = useInfiniteQuery({
     queryKey: messagesKey,
@@ -218,11 +221,14 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   // rather than only this section knowing. Latched in a ref so it fires once per newly observed transition and
   // never on the polls that follow, and it cannot loop: the workspace refetch changes the parent prop, not this
   // endpoint's answer.
+  // Recorded PER BOOKING: navigating from one terminal booking straight to another leaves the reading unchanged at
+  // `false`, so a single flag never re-fired and the second booking's workspace was never refreshed. An identity
+  // already in the ledger converges no further, so no navigation sequence can loop.
   useEffect(() => {
-    if (observedEditable !== false || terminalSeenRef.current) return;
-    terminalSeenRef.current = true;
+    if (!cateringTerminalConvergenceIsDue(terminalSeenRef.current, identity, observedEditable)) return;
+    terminalSeenRef.current = recordCateringTerminalConvergence(terminalSeenRef.current, identity);
     for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });
-  }, [observedEditable]);
+  }, [observedEditable, identity]);
 
   // Watches the end-of-thread sentinel, which takes TWO observations OF THAT SAME ELEMENT, and each of them has to
   // be stamped with the message boundary it was collected for.

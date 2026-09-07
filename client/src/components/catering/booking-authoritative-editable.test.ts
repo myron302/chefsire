@@ -124,19 +124,24 @@ test("4 & 11-12. polling stops on that response, while load, focus refetch and p
 test("6 & 7. the workspace is refreshed once on the first terminal observation, never on the polls after", () => {
   for (const [label, source] of [["communication", comms], ["files", files]] as const) {
     const terminal = source.slice(source.indexOf("// The first time this section's own endpoint reports"));
-    const effect = terminal.slice(0, terminal.indexOf("}, [observedEditable]);"));
-    // Latched in a ref: fires on the transition, and the guard short-circuits every later render.
-    assert.equal(effect.includes("if (observedEditable !== false || terminalSeenRef.current) return;"), true, label);
-    assert.equal(effect.indexOf("terminalSeenRef.current = true;") < effect.indexOf("cache.invalidateQueries("), true, label);
+    const effect = terminal.slice(0, terminal.indexOf("}, [observedEditable, identity]);"));
+    // Latched PER BOOKING: fires on each booking's own first terminal observation, and the guard short-circuits
+    // every later render of it. A single boolean could not express that -- navigating from one terminal booking to
+    // another left the reading unchanged, so the effect never re-ran and the second never converged.
+    assert.equal(effect.includes("if (!cateringTerminalConvergenceIsDue(terminalSeenRef.current, identity, observedEditable)) return;"), true, label);
+    assert.equal(effect.indexOf("terminalSeenRef.current = recordCateringTerminalConvergence(terminalSeenRef.current, identity);") < effect.indexOf("cache.invalidateQueries("), true, label);
     // Actor-scoped, so no other user's cache is touched.
     assert.equal(effect.includes("for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });"), true, label);
     assert.equal(source.includes("cache.clear()"), false, label);
-    // It cannot loop: the workspace refetch changes the parent prop, never this endpoint's answer.
-    assert.equal(terminal.includes("}, [observedEditable]);"), true, label);
-    // A ref, so recording it renders nothing.
-    assert.equal(source.includes("const terminalSeenRef = useRef(false);"), true, label);
-    // And it resets with the booking, so a different booking is not silently treated as already reported.
-    assert.equal(source.includes("terminalSeenRef.current = false;"), true, label);
+    // The identity is watched as well as the reading, which is what makes a terminal-to-terminal navigation fire.
+    // It still cannot loop: the workspace refetch changes the parent prop, never this endpoint's answer, and an
+    // identity already in the ledger converges no further.
+    assert.equal(terminal.includes("}, [observedEditable, identity]);"), true, label);
+    // A ref, so recording it renders nothing, and a ledger rather than a flag.
+    assert.equal(source.includes("const terminalSeenRef = useRef<CateringTerminalSeen>(EMPTY_CATERING_TERMINAL_SEEN);"), true, label);
+    // Nothing resets it on navigation any more: forgetting a booking is exactly how it would converge twice.
+    assert.equal(source.includes("terminalSeenRef.current = false;"), false, label);
+    assert.equal(source.includes("terminalSeenRef.current = EMPTY_CATERING_TERMINAL_SEEN"), false, label);
   }
 });
 

@@ -132,7 +132,7 @@ test("9 & 10. terminal transition still stops polling, and a boundary change wit
   // The two effects are independent and each latches: the terminal one fires once on the transition, the boundary
   // one once per genuine change. Neither re-runs the other, so a final poll that carries both cannot loop.
   assert.equal(source.includes("cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages)))"), true);
-  assert.equal(source.includes("if (observedEditable !== false || terminalSeenRef.current) return;"), true);
+  assert.equal(source.includes("if (!cateringTerminalConvergenceIsDue(terminalSeenRef.current, identity, observedEditable)) return;"), true);
   assert.equal(boundaryEffect.includes("const observed = observeCateringFileSnapshot(ledgerRef.current, identity, fileSnapshot);"), true);
   assert.equal(boundaryEffect.includes("}, [fileBoundary, identity]);"), true);
   // A last poll delivering a change is still announced exactly once even though polling then stops.
@@ -170,7 +170,7 @@ test("12. the cache key is actor-scoped, and the bookkeeping resets with the boo
   // either -- the draft holds the upload's idempotency token. Only the file input's own DOM value resets, because
   // it is one control shared by every booking and cannot show a filename belonging to the booking just left.
   assert.equal(source.includes("const ledgerRef = useRef<CateringFileLedger>(EMPTY_CATERING_FILE_LEDGER);"), true);
-  assert.equal(source.includes(`useEffect(() => { if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity]);`), true);
+  assert.equal(source.includes(`useEffect(() => { if (inputRef.current) inputRef.current.value = ""; }, [identity]);`), true);
   assert.equal(source.includes("setDrafts(EMPTY_CATERING_FILE_DRAFTS)"), false, "the per-booking drafts must not be wiped on navigation");
   assert.equal(source.includes("ledgerRef.current = EMPTY_CATERING_FILE_LEDGER"), false, "the per-booking ledger must not be wiped on navigation");
   // An empty conversation of files still records a baseline rather than being treated as a change.

@@ -261,3 +261,60 @@ export const cateringBookingFilePresenceKey = (userId: string, bookingId: string
 export function cateringFilePresencePath(bookingId: string, ids: readonly string[]): string {
   return `/api/catering/bookings/${bookingId}/files/active?ids=${encodeURIComponent(ids.join(","))}`;
 }
+
+/**
+ * The canonical form of one presence question: de-duplicated, and in a fixed order.
+ *
+ * The set is what is being asked, not the sequence, so two readings of the same preserved history ask the same
+ * question however that history happens to be ordered. That keeps the query identity -- and therefore the chunk
+ * boundaries derived from it -- stable across a reordering that changes nothing about what is being asked.
+ */
+export function cateringPresenceQuestion(ids: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const canonical: string[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    canonical.push(id);
+  }
+  return canonical.sort();
+}
+/**
+ * The canonical question, split into requests the server will actually accept.
+ *
+ * `cateringBookingFilePresenceSchema` refuses more than `CATERING_FILE_PRESENCE_MAXIMUM` ids, and preserved history
+ * is bounded only by how much a participant has loaded and how much has since been displaced -- so a long-lived
+ * workspace can hold more than that. Asking for all of them at once answered 400, which stopped reconciliation
+ * altogether; and because reconciliation is the only thing that SHRINKS the preserved set, the failure sustained
+ * itself: removed files stayed on screen offering downloads that answer 404, permanently.
+ *
+ * Chunking is deterministic, derived from the canonical set, and covers it exactly: every id appears in exactly one
+ * chunk and no chunk exceeds the maximum. Nothing above the limit is discarded.
+ */
+export function cateringPresenceChunks(ids: readonly string[]): string[][] {
+  const canonical = cateringPresenceQuestion(ids);
+  const chunks: string[][] = [];
+  for (let start = 0; start < canonical.length; start += CATERING_FILE_PRESENCE_MAXIMUM) {
+    chunks.push(canonical.slice(start, start + CATERING_FILE_PRESENCE_MAXIMUM));
+  }
+  return chunks;
+}
+export const EMPTY_CATERING_FILE_PRESENCE: CateringBookingFilePresenceView = { requested: [], active: [] };
+/**
+ * Folds one chunk's answer into the reconciliation being assembled.
+ *
+ * Presence is authoritative DELETION evidence -- an id that was asked about and not answered with is gone for good
+ * -- so what may be folded in is deliberately narrow: only ids this chunk actually asked about AND that this
+ * response actually echoed. An answer naming something that was not asked is ignored, and an id the answer simply
+ * omits from `requested` is never treated as settled, so a truncated or mismatched response can never be read as a
+ * deletion. `active` is likewise kept to what the merged request covers.
+ */
+export function cateringMergePresenceAnswer(total: CateringBookingFilePresenceView, asked: readonly string[], answer: CateringBookingFilePresenceView): CateringBookingFilePresenceView {
+  const askedIds = new Set(asked);
+  const settled = answer.requested.filter((id) => askedIds.has(id));
+  const covered = new Set(settled);
+  return {
+    requested: [...total.requested, ...settled],
+    active: [...total.active, ...answer.active.filter((id) => covered.has(id))],
+  };
+}
