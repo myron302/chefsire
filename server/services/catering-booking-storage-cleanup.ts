@@ -134,11 +134,51 @@ const chargeAttempt = (column: typeof cateringBookingFiles.cleanupAttempts | typ
  * it meant a transiently unavailable database could burn all ten attempts on a row `removePrivateObject` was never
  * called for, stranding the object permanently.
  *
+ * A fourth failure is not a storage attempt either: the write that records the delete is ABOUT to be attempted can
+ * itself fail. When it does, the delete is not attempted at all -- an unrecorded delete would be indistinguishable
+ * from one that never happened, and every later decision about this row would be a guess.
+ *
  * So a conclusion is one of these, and only the storage failure charges the ceiling.
  */
-export type CateringCleanupConclusion = "removed" | "storage_failed" | "ownership_failed" | "unfinalized";
+export type CateringCleanupConclusion = "removed" | "storage_failed" | "ownership_failed" | "unfinalized" | "unrecorded";
 export function cateringCleanupChargesAttempt(conclusion: CateringCleanupConclusion): boolean {
   return conclusion === "storage_failed";
+}
+
+/**
+ * Whether reclaiming a row whose lease lapsed charges the abandoned attempt.
+ *
+ * An expired token says an execution did not conclude. It does NOT say what that execution did. Treating the token
+ * alone as evidence of a storage attempt charged the budget for outages: an ownership lookup fails while the
+ * database is down, the release that would have recorded "nothing was attempted" fails for the same reason, the
+ * lease lapses, and the reclaim charges an attempt for a delete nobody ever called. Repeat that ten times and the
+ * object is stranded without storage having been asked once.
+ *
+ * `cleanup_delete_attempted_at` is the evidence instead. It is cleared on every fresh claim and stamped, durably
+ * and under the claim's own token, immediately before `removePrivateObject` is entered. So the reclaim knows which
+ * side of that boundary the abandoned execution died on: before it, nothing was attempted and nothing is charged;
+ * at or after it, the delete may well have happened, and charging it once is the conservative reading.
+ */
+export type CateringReclaimEvidence = { hadToken: boolean; deleteAttempted: boolean };
+export function cateringReclaimChargesAttempt(evidence: CateringReclaimEvidence): boolean {
+  return evidence.hadToken && evidence.deleteAttempted;
+}
+
+/**
+ * Records that this claim is entering the storage delete, and answers whether it may.
+ *
+ * `entered`: the row is still this worker's and the evidence is persisted. `lost`: the claim has been taken over,
+ * so this worker deletes nothing -- the newer holder owns the row. `unrecorded`: the write failed, so the attempt
+ * cannot be accounted for and is therefore not made; the row is left for a later pass, uncharged.
+ */
+export type CateringDeleteEntry = "entered" | "lost" | "unrecorded";
+async function enterDeleteAttempt(mark: () => Promise<{ id: string }[]>): Promise<CateringDeleteEntry> {
+  try {
+    const marked = await mark();
+    return marked.length > 0 ? "entered" : "lost";
+  } catch {
+    return "unrecorded";
+  }
 }
 
 /**
@@ -186,8 +226,8 @@ export type CateringOrphanClaim = CateringCleanupClaim & { fileId: string | null
 async function claimTombstones(limit: number): Promise<CateringCleanupClaim[]> {
   const claimToken = randomUUID();
   return db.transaction(async (tx: typeof db) => {
-    const rows: { id: string; storageProvider: string; storageKey: string; previousToken: string | null; cleanupAttempts: number }[] = await tx
-      .select({ id: cateringBookingFiles.id, storageProvider: cateringBookingFiles.storageProvider, storageKey: cateringBookingFiles.storageKey, previousToken: cateringBookingFiles.cleanupClaimToken, cleanupAttempts: cateringBookingFiles.cleanupAttempts })
+    const rows: { id: string; storageProvider: string; storageKey: string; previousToken: string | null; deleteAttemptedAt: Date | null; cleanupAttempts: number }[] = await tx
+      .select({ id: cateringBookingFiles.id, storageProvider: cateringBookingFiles.storageProvider, storageKey: cateringBookingFiles.storageKey, previousToken: cateringBookingFiles.cleanupClaimToken, deleteAttemptedAt: cateringBookingFiles.cleanupDeleteAttemptedAt, cleanupAttempts: cateringBookingFiles.cleanupAttempts })
       .from(cateringBookingFiles)
       .where(and(
         isNotNull(cateringBookingFiles.deletedAt),
@@ -203,19 +243,23 @@ async function claimTombstones(limit: number): Promise<CateringCleanupClaim[]> {
     // abandoned attempt is charged now. If charging it reaches the ceiling the row is finished: the stale lease is
     // released and it is NOT handed to a worker, because attempting another delete would spend an attempt beyond
     // the maximum. It stays pending-but-exhausted for an operator to look at.
-    const abandoned = rows.filter((row) => row.previousToken !== null);
+    // Only an execution that reached the storage delete is charged for having abandoned one. A lease that lapsed
+    // before that boundary did no storage work, so it is released and re-handed out uncharged.
+    const abandoned = rows.filter((row) => cateringReclaimChargesAttempt({ hadToken: row.previousToken !== null, deleteAttempted: row.deleteAttemptedAt !== null }));
     const exhausted = abandoned.filter((row) => row.cleanupAttempts + 1 >= CATERING_CLEANUP_MAX_ATTEMPTS).map((row) => row.id);
     if (exhausted.length > 0) {
       await tx.update(cateringBookingFiles)
-        .set({ cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts), cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .set({ cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts), cleanupClaimToken: null, cleanupClaimedUntil: null, cleanupDeleteAttemptedAt: null })
         .where(inArray(cateringBookingFiles.id, exhausted));
     }
     const claimable = rows.filter((row) => !exhausted.includes(row.id));
     if (claimable.length === 0) return [];
+    // Every fresh claim starts with no delete attempted, so the marker always describes THIS claim and never a
+    // previous one.
     await tx.update(cateringBookingFiles)
-      .set({ cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry })
+      .set({ cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry, cleanupDeleteAttemptedAt: null })
       .where(inArray(cateringBookingFiles.id, claimable.map((row) => row.id)));
-    const charged = claimable.filter((row) => row.previousToken !== null).map((row) => row.id);
+    const charged = claimable.filter((row) => abandoned.some((item) => item.id === row.id)).map((row) => row.id);
     if (charged.length > 0) {
       await tx.update(cateringBookingFiles)
         .set({ cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts) })
@@ -228,8 +272,8 @@ async function claimTombstones(limit: number): Promise<CateringCleanupClaim[]> {
 async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
   const claimToken = randomUUID();
   return db.transaction(async (tx: typeof db) => {
-    const rows: { id: string; storageProvider: string; storageKey: string; fileId: string | null; previousToken: string | null; cleanupAttempts: number }[] = await tx
-      .select({ id: cateringBookingStorageOrphans.id, storageProvider: cateringBookingStorageOrphans.storageProvider, storageKey: cateringBookingStorageOrphans.storageKey, fileId: cateringBookingStorageOrphans.fileId, previousToken: cateringBookingStorageOrphans.cleanupClaimToken, cleanupAttempts: cateringBookingStorageOrphans.cleanupAttempts })
+    const rows: { id: string; storageProvider: string; storageKey: string; fileId: string | null; previousToken: string | null; deleteAttemptedAt: Date | null; cleanupAttempts: number }[] = await tx
+      .select({ id: cateringBookingStorageOrphans.id, storageProvider: cateringBookingStorageOrphans.storageProvider, storageKey: cateringBookingStorageOrphans.storageKey, fileId: cateringBookingStorageOrphans.fileId, previousToken: cateringBookingStorageOrphans.cleanupClaimToken, deleteAttemptedAt: cateringBookingStorageOrphans.cleanupDeleteAttemptedAt, cleanupAttempts: cateringBookingStorageOrphans.cleanupAttempts })
       .from(cateringBookingStorageOrphans)
       .where(and(
         isNull(cateringBookingStorageOrphans.resolvedAt),
@@ -244,19 +288,23 @@ async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
     // abandoned attempt is charged now. If charging it reaches the ceiling the row is finished: the stale lease is
     // released and it is NOT handed to a worker, because attempting another delete would spend an attempt beyond
     // the maximum. It stays pending-but-exhausted for an operator to look at.
-    const abandoned = rows.filter((row) => row.previousToken !== null);
+    // Only an execution that reached the storage delete is charged for having abandoned one. A lease that lapsed
+    // before that boundary did no storage work, so it is released and re-handed out uncharged.
+    const abandoned = rows.filter((row) => cateringReclaimChargesAttempt({ hadToken: row.previousToken !== null, deleteAttempted: row.deleteAttemptedAt !== null }));
     const exhausted = abandoned.filter((row) => row.cleanupAttempts + 1 >= CATERING_CLEANUP_MAX_ATTEMPTS).map((row) => row.id);
     if (exhausted.length > 0) {
       await tx.update(cateringBookingStorageOrphans)
-        .set({ cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts), cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .set({ cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts), cleanupClaimToken: null, cleanupClaimedUntil: null, cleanupDeleteAttemptedAt: null })
         .where(inArray(cateringBookingStorageOrphans.id, exhausted));
     }
     const claimable = rows.filter((row) => !exhausted.includes(row.id));
     if (claimable.length === 0) return [];
+    // Every fresh claim starts with no delete attempted, so the marker always describes THIS claim and never a
+    // previous one.
     await tx.update(cateringBookingStorageOrphans)
-      .set({ cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry })
+      .set({ cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry, cleanupDeleteAttemptedAt: null })
       .where(inArray(cateringBookingStorageOrphans.id, claimable.map((row) => row.id)));
-    const charged = claimable.filter((row) => row.previousToken !== null).map((row) => row.id);
+    const charged = claimable.filter((row) => abandoned.some((item) => item.id === row.id)).map((row) => row.id);
     if (charged.length > 0) {
       await tx.update(cateringBookingStorageOrphans)
         .set({ cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts) })
@@ -300,16 +348,31 @@ export async function reconcileCateringFileTombstones(limit = CATERING_CLEANUP_B
   let removed = 0; let failed = 0;
   const settle = (candidate: CateringCleanupClaim, conclusion: CateringCleanupConclusion, error: unknown) => db.update(cateringBookingFiles)
     // Only a storage failure charges the ceiling. A finalization failure releases the lease and records why, so the
-    // next pass re-claims the row cleanly -- it is not an abandoned execution and must not be charged as one.
+    // next pass re-claims the row cleanly -- it is not an abandoned execution and must not be charged as one. The
+    // marker is cleared with the lease, so a released row carries no evidence of an attempt it did not make.
     .set({
       ...(cateringCleanupChargesAttempt(conclusion) ? { cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts) } : {}),
       cleanupError: errorMessage(error),
       cleanupClaimToken: null,
       cleanupClaimedUntil: null,
+      cleanupDeleteAttemptedAt: null,
     })
     .where(and(eq(cateringBookingFiles.id, candidate.id), eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken)))
     .catch(() => undefined);
   for (const candidate of candidates) {
+    // The boundary. Nothing below may be reached without durable, token-conditioned evidence that this claim is
+    // entering the delete -- which is also what stops a worker whose lease was taken over from deleting anything.
+    const entry = await enterDeleteAttempt(() => db.update(cateringBookingFiles)
+      .set({ cleanupDeleteAttemptedAt: sql`now()` })
+      .where(and(eq(cateringBookingFiles.id, candidate.id), eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken)))
+      .returning({ id: cateringBookingFiles.id }));
+    if (entry !== "entered") {
+      // `lost`: a newer holder owns this row and will do the work. `unrecorded`: the evidence could not be written,
+      // so the delete is not attempted at all rather than made unaccountable. Neither is a storage attempt.
+      if (entry === "unrecorded") await settle(candidate, "unrecorded", new Error("cleanup attempt could not be recorded"));
+      failed += 1;
+      continue;
+    }
     try {
       await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
     } catch (error) {
@@ -321,7 +384,7 @@ export async function reconcileCateringFileTombstones(limit = CATERING_CLEANUP_B
     }
     // The object is gone from here on, so nothing below may charge a storage attempt for failing to say so.
     const finalized = await settleCateringFinalization(() => db.update(cateringBookingFiles)
-      .set({ objectDeletedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })
+      .set({ objectDeletedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null, cleanupDeleteAttemptedAt: null })
       .where(and(
         eq(cateringBookingFiles.id, candidate.id),
         eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken),
@@ -350,7 +413,7 @@ export async function reconcileCateringStorageOrphans(limit = CATERING_CLEANUP_B
   const candidates = await claimOrphans(boundCateringCleanupBatch(limit));
   let removed = 0; let failed = 0; let retained = 0;
   const resolve = (candidate: CateringOrphanClaim) => db.update(cateringBookingStorageOrphans)
-    .set({ resolvedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })
+    .set({ resolvedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null, cleanupDeleteAttemptedAt: null })
     .where(and(
       eq(cateringBookingStorageOrphans.id, candidate.id),
       eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken),
@@ -362,6 +425,7 @@ export async function reconcileCateringStorageOrphans(limit = CATERING_CLEANUP_B
       cleanupError: errorMessage(error),
       cleanupClaimToken: null,
       cleanupClaimedUntil: null,
+      cleanupDeleteAttemptedAt: null,
     })
     .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)))
     .catch(() => undefined);
@@ -381,6 +445,18 @@ export async function reconcileCateringStorageOrphans(limit = CATERING_CLEANUP_B
     // A committed file row owns these bytes, so nothing is deleted; otherwise the object goes now, and only THAT
     // failing is a storage attempt.
     if (!owned) {
+      // The boundary. The ownership lookup above is a database question and is never charged, so the evidence that
+      // this claim reached the delete is written here -- durably, and under this claim's own token, which also
+      // stops a worker whose lease was taken over from deleting anything.
+      const entry = await enterDeleteAttempt(() => db.update(cateringBookingStorageOrphans)
+        .set({ cleanupDeleteAttemptedAt: sql`now()` })
+        .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)))
+        .returning({ id: cateringBookingStorageOrphans.id }));
+      if (entry !== "entered") {
+        if (entry === "unrecorded") await settle(candidate, "unrecorded", new Error("cleanup attempt could not be recorded"));
+        failed += 1;
+        continue;
+      }
       try {
         await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
       } catch (error) {

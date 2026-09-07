@@ -268,12 +268,16 @@ test("BOTH queues claim with a durable lease, not a transaction-local lock alone
     assert.equal(body.includes("leaseIsAvailable("), true, claim);
     assert.equal(body.includes("cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry"), true, claim);
     assert.equal(body.includes("const claimToken = randomUUID();") || service.slice(at - 120, at).includes("randomUUID"), true, claim);
-    // An abandoned execution is charged on reclaim, and a fresh row is charged nothing.
-    assert.equal(body.includes("rows.filter((row) => row.previousToken !== null)"), true, claim);
+    // An abandoned execution is charged on reclaim only when it reached the storage delete, and a fresh row is
+    // charged nothing. An expired token alone is not evidence that anything was deleted.
+    assert.equal(body.includes("cateringReclaimChargesAttempt({ hadToken: row.previousToken !== null, deleteAttempted: row.deleteAttemptedAt !== null })"), true, claim);
+    assert.equal(body.includes("deleteAttemptedAt: "), true, claim);
+    // And every fresh claim starts with no delete attempted, so the marker describes this claim alone.
+    assert.equal(body.includes("cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry, cleanupDeleteAttemptedAt: null"), true, claim);
     // A reclaim that reaches the ceiling releases the lease and is excluded from the returned candidates, so no
     // further storage delete is attempted for it.
     assert.equal(body.includes("row.cleanupAttempts + 1 >= CATERING_CLEANUP_MAX_ATTEMPTS"), true, claim);
-    assert.equal(body.includes("cleanupClaimToken: null, cleanupClaimedUntil: null })"), true, claim);
+    assert.equal(body.includes("cleanupClaimToken: null, cleanupClaimedUntil: null, cleanupDeleteAttemptedAt: null })"), true, claim);
     assert.equal(body.includes("const claimable = rows.filter((row) => !exhausted.includes(row.id));"), true, claim);
     assert.equal(body.includes("return claimable.map("), true, claim);
     assert.equal(body.includes("return rows.map("), false, claim);

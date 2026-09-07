@@ -95,6 +95,12 @@ ALTER TABLE catering_booking_files ADD COLUMN IF NOT EXISTS cleanup_claim_token 
 ALTER TABLE catering_booking_files ADD COLUMN IF NOT EXISTS cleanup_claimed_until timestamptz;
 ALTER TABLE catering_booking_storage_orphans ADD COLUMN IF NOT EXISTS cleanup_claim_token varchar;
 ALTER TABLE catering_booking_storage_orphans ADD COLUMN IF NOT EXISTS cleanup_claimed_until timestamptz;
+-- Durable evidence that a claim actually entered the storage delete. `cleanup_attempts` bounds retries against
+-- STORAGE, so it may only count deletes that were begun: a claim whose lease expired before this was stamped did
+-- no storage work, and charging it would spend the budget on database outages and crashes instead. Cleared on every
+-- fresh claim, stamped immediately before `removePrivateObject`. Additive, nullable and idempotent.
+ALTER TABLE catering_booking_files ADD COLUMN IF NOT EXISTS cleanup_delete_attempted_at timestamptz;
+ALTER TABLE catering_booking_storage_orphans ADD COLUMN IF NOT EXISTS cleanup_delete_attempted_at timestamptz;
 -- No new index is needed for the owner lookup: catering_booking_files.storage_key is already UNIQUE, so a storage
 -- key identifies at most one file row exactly.
 

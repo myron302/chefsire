@@ -479,6 +479,10 @@ export const cateringBookingFiles = pgTable("catering_booking_files", {
   // abandoned claim recover itself with no reaper and no manual intervention. Both are null when unclaimed.
   cleanupClaimToken: varchar("cleanup_claim_token"),
   cleanupClaimedUntil: timestamp("cleanup_claimed_until", { withTimezone: true }),
+  // Durable evidence that the CURRENT claim entered `removePrivateObject`. Cleared on every fresh claim and
+  // stamped immediately before the delete is attempted, so a lease that expires without settling can be told apart
+  // by whoever reclaims it: null means no storage work was ever begun and no attempt may be charged for it.
+  cleanupDeleteAttemptedAt: timestamp("cleanup_delete_attempted_at", { withTimezone: true }),
   /** Upload retry token, unique per (booking, uploader) when present, so a retried upload adds no second copy. */
   clientRequestId: uuid("client_request_id"),
 }, (t) => ({
@@ -519,6 +523,10 @@ export const cateringBookingStorageOrphans = pgTable("catering_booking_storage_o
   // abandoned claim recover itself with no reaper and no manual intervention. Both are null when unclaimed.
   cleanupClaimToken: varchar("cleanup_claim_token"),
   cleanupClaimedUntil: timestamp("cleanup_claimed_until", { withTimezone: true }),
+  // Durable evidence that the CURRENT claim entered `removePrivateObject`. Cleared on every fresh claim and
+  // stamped immediately before the delete is attempted, so a lease that expires without settling can be told apart
+  // by whoever reclaims it: null means no storage work was ever begun and no attempt may be charged for it.
+  cleanupDeleteAttemptedAt: timestamp("cleanup_delete_attempted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
 }, (t) => ({

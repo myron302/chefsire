@@ -48,8 +48,8 @@ test("a later retry removes the object and the completion is persisted", async (
   assert.equal(await storage.statPrivateObject("local", key), null);
   // Success writes objectDeletedAt and clears the recorded error.
   // Success writes the completion timestamp, clears the recorded error, and releases the claim.
-  assert.equal(service.includes("set({ objectDeletedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })"), true);
-  assert.equal(service.includes("set({ resolvedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })"), true);
+  assert.equal(service.includes("set({ objectDeletedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null, cleanupDeleteAttemptedAt: null })"), true);
+  assert.equal(service.includes("set({ resolvedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null, cleanupDeleteAttemptedAt: null })"), true);
 });
 
 test("repeated retries are harmless and an already-cleaned object is not an error", async () => {
