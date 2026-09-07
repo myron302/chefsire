@@ -142,6 +142,65 @@ export function mayUploadCateringFile<F extends CateringSelectedFile>(draft: Cat
   return editable && !pending && draft.file !== null && draft.visibility !== null && draft.error === null;
 }
 
+/**
+ * One draft PER BOOKING, for the same reason the conversation keeps one composer per booking: an upload outlives
+ * the booking that started it.
+ *
+ * A single slot emptied on navigation threw away whatever the booking being left still held. Choose a file on
+ * booking A, press Upload, navigate to B and back before the request settles, and A's draft was replaced by an
+ * empty one: the selected `File` was gone, and -- worst -- so was its `requestId`. That token is the server's
+ * idempotency key for this upload intent. Pressing Upload again after an AMBIGUOUS failure would then carry a
+ * FRESHLY MINTED token, which the server is right to treat as a second upload, so a request that had in fact been
+ * accepted would be stored twice. Retry idempotency depends entirely on that one token surviving, and it survived
+ * only while the participant stayed on the booking.
+ *
+ * So each booking keeps its own draft, and a completion resolves the draft belonging to the ATTEMPT's booking
+ * whatever is on screen. The key is the same actor-and-booking identity the rest of this section uses, so two
+ * bookings, or the same booking under two actors, never collide.
+ *
+ * The browser's file input cannot be repopulated programmatically -- assigning to `input.value` is forbidden for
+ * exactly the reason it would be useful -- so the DOM control is NOT the retained state and returning to a booking
+ * does not refill it. The authoritative selection is the `File` object held here, which is what an upload reads and
+ * what the section names on screen; the input is only how a NEW selection is made.
+ *
+ * An entry is held only while it holds something -- a selection, a validation error, a live token -- and drops out
+ * when it returns to its role's empty draft, so the map is bounded by the bookings actually being uploaded on
+ * rather than by every booking visited.
+ */
+export type CateringFileDrafts<F extends CateringSelectedFile = File> = ReadonlyMap<string, CateringFileDraft<F>>;
+export const EMPTY_CATERING_FILE_DRAFTS: CateringFileDrafts<never> = new Map();
+
+/** This booking's draft, or a fresh empty one for this role. Never another booking's. */
+export function cateringFileDraftFor<F extends CateringSelectedFile = File>(drafts: CateringFileDrafts<F>, identity: string, role: "provider" | "customer"): CateringFileDraft<F> {
+  return drafts.get(identity) ?? emptyCateringFileDraft<F>(role);
+}
+/**
+ * Whether a draft holds anything worth keeping, judged field by field against the empty draft for its role rather
+ * than by any single field, so a draft that still carries only a spent-token-free selection-free state is dropped
+ * whatever future field is added to it.
+ */
+export function cateringFileDraftIsEmpty<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, role: "provider" | "customer"): boolean {
+  const empty = emptyCateringFileDraft<F>(role);
+  return draft.file === empty.file && draft.visibility === empty.visibility && draft.error === empty.error && draft.requestId === empty.requestId && draft.attempted === empty.attempted;
+}
+/**
+ * Applies one transition to ONE booking's draft. The identity is passed in rather than read from anywhere ambient,
+ * so an asynchronous completion settles the booking it belongs to and leaves every other one exactly as it was.
+ */
+export function updateCateringFileDrafts<F extends CateringSelectedFile>(drafts: CateringFileDrafts<F>, identity: string, role: "provider" | "customer", apply: (draft: CateringFileDraft<F>) => CateringFileDraft<F>): CateringFileDrafts<F> {
+  const current = cateringFileDraftFor(drafts, identity, role);
+  const next = apply(current);
+  if (next === current) return drafts;
+  // An empty result for a booking that holds no entry is not a change: the fresh empty draft handed to `apply` is a
+  // new object every time, so without this a completion that settles an already-settled draft would return a new map
+  // and rerender the section for nothing.
+  const empty = cateringFileDraftIsEmpty(next, role);
+  if (empty && !drafts.has(identity)) return drafts;
+  const composed = new Map(drafts);
+  if (empty) composed.delete(identity); else composed.set(identity, next);
+  return composed;
+}
+
 /** Pages arrive newest-first and append older ones, de-duplicated by id so an overlapping refetch never repeats a file. */
 export function combineCateringFilePages(pages: readonly CateringBookingFilePageView[]): CateringBookingFileView[] {
   const seen = new Set<string>();

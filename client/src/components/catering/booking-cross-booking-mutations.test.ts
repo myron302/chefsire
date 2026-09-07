@@ -3,9 +3,9 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_UNSENT_MESSAGES, applyForCateringOrigin, expectCateringFileAddition, expectCateringFileRemoval, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginIsCurrent, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringUnsentMessage, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, observeCateringFileSnapshot, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome, type CateringUnsentMessages } from "@/pages/services/catering-booking-mutation-origin";
+import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_MUTATION_OUTCOMES, EMPTY_CATERING_UNSENT_MESSAGES, applyForCateringOrigin, expectCateringFileAddition, expectCateringFileRemoval, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringMutationOutcomeFor, cateringOriginFileInvalidations, cateringOriginIsCurrent, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringUnsentMessage, clearCateringMutationOutcome, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, observeCateringFileSnapshot, recordCateringMutationOutcome, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome, type CateringMutationOutcomes, type CateringUnsentMessages } from "@/pages/services/catering-booking-mutation-origin";
 import { EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, completeCateringMessageSend, completeCateringReadMark, editCateringComposer, failCateringMessageSend, failCateringReadMark, hydrateCateringComposer, hydrateCateringReadMark, maySendCateringMessage, startCateringMessageSend, startCateringReadMark, type CateringComposerState, type CateringReadMarkState } from "@/pages/services/catering-booking-communication-state";
-import { completeCateringFileUpload, emptyCateringFileDraft, markCateringFileAttempted, selectCateringFile, type CateringFileDraft, type CateringSelectedFile } from "@/pages/services/catering-booking-files-state";
+import { completeCateringFileUpload, EMPTY_CATERING_FILE_DRAFTS, cateringFileDraftFor, updateCateringFileDrafts, markCateringFileAttempted, selectCateringFile, type CateringFileDraft, type CateringSelectedFile } from "@/pages/services/catering-booking-files-state";
 
 /**
  * Asynchronous booking mutations must complete against the booking that STARTED them.
@@ -252,52 +252,58 @@ type Chosen = CateringSelectedFile;
 type UploadAttempt = { origin: CateringMutationOrigin; requestId: string; visibility: "provider" | "shared" };
 type Files = {
   identity: string;
-  draft: CateringFileDraft<Chosen>;
+  drafts: CateringFileDrafts<Chosen>;
   ledger: CateringFileLedger;
   inFlight: CateringInFlight;
-  uploadOutcome: CateringMutationOutcome | null;
-  removeOutcome: CateringMutationOutcome | null;
+  uploadOutcomes: CateringMutationOutcomes;
+  removeOutcomes: CateringMutationOutcomes;
   invalidated: string[];
 };
+/** What the section renders for the booking on screen. */
+const shownDraft = (state: Files) => cateringFileDraftFor(state.drafts, state.identity, ROLE);
 const ROLE = "provider" as const;
 const pdf = (name: string): Chosen => ({ name, type: "application/pdf", size: 2048 });
 
 function openFiles(origin: CateringMutationOrigin): Files {
-  return { identity: origin.identity, draft: emptyCateringFileDraft<Chosen>(ROLE), ledger: EMPTY_CATERING_FILE_LEDGER, inFlight: EMPTY_CATERING_IN_FLIGHT, uploadOutcome: null, removeOutcome: null, invalidated: [] };
+  return { identity: origin.identity, drafts: EMPTY_CATERING_FILE_DRAFTS, ledger: EMPTY_CATERING_FILE_LEDGER, inFlight: EMPTY_CATERING_IN_FLIGHT, uploadOutcomes: EMPTY_CATERING_MUTATION_OUTCOMES, removeOutcomes: EMPTY_CATERING_MUTATION_OUTCOMES, invalidated: [] };
 }
-/** The draft and the file input reset with the booking on screen; the ledger is keyed by booking and does not. */
+/**
+ * Only the booking on screen changes. The drafts, the ledger and the outcomes are all keyed by booking and survive:
+ * the draft holds the in-flight upload's idempotency token, so emptying it here is exactly what used to make a
+ * retry mint a second token. The file input's own DOM value does reset, and has no analogue in this simulator.
+ */
 function navigateFiles(state: Files, origin: CateringMutationOrigin): Files {
-  return { ...state, identity: origin.identity, draft: emptyCateringFileDraft<Chosen>(ROLE) };
+  return { ...state, identity: origin.identity };
 }
 function chooseFile(state: Files, name: string, requestId: string): Files {
-  return { ...state, draft: selectCateringFile(state.draft, pdf(name), requestId) };
+  return { ...state, drafts: updateCateringFileDrafts(state.drafts, state.identity, ROLE, (draft) => selectCateringFile(draft, pdf(name), requestId)) };
 }
 function submitUpload(state: Files, origin: CateringMutationOrigin): { state: Files; attempt: UploadAttempt } {
-  const attempt: UploadAttempt = { origin, requestId: state.draft.requestId!, visibility: state.draft.visibility! };
-  return { state: { ...state, draft: markCateringFileAttempted(state.draft), uploadOutcome: null, inFlight: enterCateringMutation(state.inFlight, origin) }, attempt };
+  const draft = cateringFileDraftFor(state.drafts, origin.identity, ROLE);
+  const attempt: UploadAttempt = { origin, requestId: draft.requestId!, visibility: draft.visibility! };
+  return { state: { ...state, drafts: updateCateringFileDrafts(state.drafts, origin.identity, ROLE, markCateringFileAttempted), uploadOutcomes: clearCateringMutationOutcome(state.uploadOutcomes, origin), inFlight: enterCateringMutation(state.inFlight, origin) }, attempt };
 }
 function uploadSucceeded(state: Files, attempt: UploadAttempt, fileId: string): Files {
-  let draft = state.draft;
-  // Visible local state only when the completion belongs to the booking still on screen.
-  if (cateringOriginIsCurrent(attempt.origin, state.identity)) draft = completeCateringFileUpload(draft, attempt, ROLE, () => "minted").next;
+  // The ORIGINATING booking's draft is settled whatever is on screen: it holds this upload's now-spent token.
+  const resolved = completeCateringFileUpload(cateringFileDraftFor(state.drafts, attempt.origin.identity, ROLE), attempt, ROLE, () => "minted");
   return {
     ...state,
-    draft,
+    drafts: updateCateringFileDrafts(state.drafts, attempt.origin.identity, ROLE, () => resolved.next),
     // The exact addition the server's own answer says to expect, on the ORIGINATING booking.
     ledger: expectCateringFileAddition(state.ledger, attempt.origin, fileId),
     inFlight: exitCateringMutation(state.inFlight, attempt.origin),
-    uploadOutcome: cateringMutationOutcome(attempt.origin, "succeeded"),
+    uploadOutcomes: recordCateringMutationOutcome(state.uploadOutcomes, attempt.origin, "succeeded"),
     invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(attempt.origin).map(key)],
   };
 }
 function uploadFailed(state: Files, attempt: UploadAttempt, message: string): Files {
-  return { ...state, inFlight: exitCateringMutation(state.inFlight, attempt.origin), uploadOutcome: cateringMutationOutcome(attempt.origin, "failed", message), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(attempt.origin).map(key)] };
+  return { ...state, inFlight: exitCateringMutation(state.inFlight, attempt.origin), uploadOutcomes: recordCateringMutationOutcome(state.uploadOutcomes, attempt.origin, "failed", message), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(attempt.origin).map(key)] };
 }
 function removeSucceeded(state: Files, origin: CateringMutationOrigin, fileId: string): Files {
-  return { ...state, ledger: expectCateringFileRemoval(state.ledger, origin, fileId), removeOutcome: cateringMutationOutcome(origin, "succeeded"), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(origin).map(key)] };
+  return { ...state, ledger: expectCateringFileRemoval(state.ledger, origin, fileId), removeOutcomes: recordCateringMutationOutcome(state.removeOutcomes, origin, "succeeded"), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(origin).map(key)] };
 }
 function removeFailed(state: Files, origin: CateringMutationOrigin, message: string): Files {
-  return { ...state, removeOutcome: cateringMutationOutcome(origin, "failed", message), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(origin).map(key)] };
+  return { ...state, removeOutcomes: recordCateringMutationOutcome(state.removeOutcomes, origin, "failed", message), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(origin).map(key)] };
 }
 /** One poll landing: the newest authoritative page, newest first, for the booking on screen. */
 function observeBoundary(state: Files, origin: CateringMutationOrigin, snapshot: readonly string[] | null): { state: Files; refreshed: boolean } {
@@ -314,7 +320,7 @@ test("10. an upload that lands after navigating away refreshes its own booking's
   state = uploadSucceeded(state, started.attempt, "a2");
   assert.deepEqual(touched(state).sort(), cateringOriginFileInvalidations(A).map(key).sort());
   assert.equal(mentions(state, B), false, "B must not be invalidated by A's upload");
-  assert.equal(visibleCateringMutationOutcome(state.uploadOutcome, B.identity), null, "B must not announce A's upload");
+  assert.equal(cateringMutationOutcomeFor(state.uploadOutcomes, B.identity), null, "B must not announce A's upload");
 });
 
 test("11. a successful upload expects its exact addition, on its own booking alone", () => {
@@ -354,7 +360,7 @@ test("13. a delete that lands after navigating away invalidates and suppresses o
   assert.equal(mentions(state, B), false);
   assert.deepEqual([...(state.ledger.pending.get(A.identity)?.removals ?? [])], ["a1"]);
   assert.equal(state.ledger.pending.has(B.identity), false);
-  assert.equal(visibleCateringMutationOutcome(state.removeOutcome, B.identity), null);
+  assert.equal(cateringMutationOutcomeFor(state.removeOutcomes, B.identity), null);
 });
 
 test("14. a failed upload or delete arms suppression on no booking at all", () => {
@@ -392,20 +398,20 @@ test("16. an upload completing after navigation leaves the other booking's draft
   const started = submitUpload(state, A);
   state = navigateFiles(started.state, B);
   state = chooseFile(state, "invoice.pdf", "up-7");
-  const before = state.draft;
+  const before = shownDraft(state);
   state = uploadSucceeded(state, started.attempt, "a2");
-  assert.equal(state.draft, before, "A's completion must not clear or re-token B's draft");
-  assert.equal(state.draft.file?.name, "invoice.pdf");
-  assert.equal(state.draft.requestId, "up-7");
-  assert.equal(state.draft.visibility, before.visibility);
+  assert.equal(shownDraft(state), before, "A's completion must not clear or re-token B's draft");
+  assert.equal(shownDraft(state).file?.name, "invoice.pdf");
+  assert.equal(shownDraft(state).requestId, "up-7");
+  assert.equal(shownDraft(state).visibility, before.visibility);
 });
 
 test("17. a delete error stays on the booking it happened on", () => {
   let state = openFiles(A);
   state = navigateFiles(state, B);
   state = removeFailed(state, A, "This file could not be removed");
-  assert.equal(visibleCateringMutationOutcome(state.removeOutcome, B.identity), null);
-  assert.equal(visibleCateringMutationOutcome(state.removeOutcome, A.identity)?.message, "This file could not be removed");
+  assert.equal(cateringMutationOutcomeFor(state.removeOutcomes, B.identity), null);
+  assert.equal(cateringMutationOutcomeFor(state.removeOutcomes, A.identity)?.message, "This file could not be removed");
 });
 
 test("18. returning to a booking still refreshes its Activity for a change made while away", () => {
@@ -468,8 +474,10 @@ test("20. no file completion handler reads the booking from render scope", () =>
   assert.equal(/\bconst invalidate = \(\) =>/.test(filesSource), false, "a render-scope invalidate closure must not return");
   assert.equal(filesSource.includes("`/api/catering/bookings/${attempt.origin.bookingId}/files`"), true);
   assert.equal(filesSource.includes("`/api/catering/bookings/${attempt.origin.bookingId}/files/${attempt.fileId}`"), true);
-  // The draft is the one piece of visible state an upload touches, and it is gated on the rendered booking.
-  assert.equal(uploadBlock.includes("if (attempt.origin.identity === identityRef.current) {"), true);
+  // The draft an upload settles is the ORIGINATING booking's, so it needs no rendered-booking guard at all. The one
+  // thing that does is the file input's own DOM value, which is a single control shared by every booking.
+  assert.equal(uploadBlock.includes("updateCateringFileDrafts(current, attempt.origin.identity, attempt.role"), true);
+  assert.equal(uploadBlock.includes(`if (resolved.cleared && attempt.origin.identity === identityRef.current && inputRef.current) inputRef.current.value = "";`), true);
   assert.equal(removeBlock.includes("setDraft"), false);
 });
 
@@ -482,8 +490,8 @@ test("21. hook-level success, error and pending flags no longer drive either ren
   }
   // What replaced them is identity-scoped in both sections.
   assert.equal(comms.includes("cateringMutationOutcomeFor(sendOutcomes, identity)"), true);
-  assert.equal(filesSource.includes("visibleCateringMutationOutcome(uploadOutcome, identity)"), true);
-  assert.equal(filesSource.includes("visibleCateringMutationOutcome(removeOutcome, identity)"), true);
+  assert.equal(filesSource.includes("cateringMutationOutcomeFor(uploadOutcomes, identity)"), true);
+  assert.equal(filesSource.includes("cateringMutationOutcomeFor(removeOutcomes, identity)"), true);
   assert.equal(filesSource.includes("cateringMutationIsPending(uploadInFlight, identity)"), true);
   assert.equal(filesSource.includes("cateringMutationIsPending(removeInFlight, identity)"), true);
   assert.equal(comms.includes("cateringMutationIsPending(readInFlight, identity)"), true);

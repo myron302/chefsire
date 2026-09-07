@@ -166,9 +166,12 @@ test("12. the cache key is actor-scoped, and the bookkeeping resets with the boo
   assert.equal(source.includes("cache.invalidateQueries()"), false);
   // One ref, so recording renders nothing. It is NOT reset when the booking changes, because both halves of it
   // are keyed by booking: each booking keeps its own baseline and its own arming, and a completion for one can
-  // never consume the other's. The draft and the file input, which are what is on screen, still reset.
+  // never consume the other's. The upload drafts are keyed by booking for the same reason and are not reset
+  // either -- the draft holds the upload's idempotency token. Only the file input's own DOM value resets, because
+  // it is one control shared by every booking and cannot show a filename belonging to the booking just left.
   assert.equal(source.includes("const ledgerRef = useRef<CateringFileLedger>(EMPTY_CATERING_FILE_LEDGER);"), true);
-  assert.equal(source.includes(`setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity, role]);`), true);
+  assert.equal(source.includes(`useEffect(() => { if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity]);`), true);
+  assert.equal(source.includes("setDrafts(EMPTY_CATERING_FILE_DRAFTS)"), false, "the per-booking drafts must not be wiped on navigation");
   assert.equal(source.includes("ledgerRef.current = EMPTY_CATERING_FILE_LEDGER"), false, "the per-booking ledger must not be wiped on navigation");
   // An empty conversation of files still records a baseline rather than being treated as a change.
   assert.equal(cateringFileBoundary([pageOf()]), "");
