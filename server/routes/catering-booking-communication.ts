@@ -13,7 +13,7 @@ import { serializeBookingMessage, type SerializableBookingMessage } from "../ser
 import { cateringOrderToken } from "../services/catering-booking-order-token";
 import { lockActiveCateringBooking, ownedCateringBooking } from "../services/catering-booking-access";
 import { conversationMemberIds, conversationParticipant, ensureBookingConversation, findBookingConversation } from "../services/catering-booking-conversation";
-import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, boundedUnreadCount, cateringCounterpart, cateringMessagePageFrom, cateringPageQueryLimit, cateringUnreadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "../services/catering-booking-communication-policy";
+import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, boundedUnreadCount, cateringCounterpart, cateringMessagePageFrom, cateringMutePreference, cateringPageQueryLimit, cateringUnreadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "../services/catering-booking-communication-policy";
 
 const r = Router();
 const NOT_FOUND = { message: "Booking conversation not found" } as const;
@@ -214,8 +214,18 @@ r.post("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
   // workspace Communication section rather than the generic inbox.
   const counterpartId = cateringCounterpart(booking, userId);
   if (counterpartId) {
-    const counterpart = await conversationParticipant(result.threadId, counterpartId).catch(() => undefined);
-    if (shouldNotifyBookingMessage(counterpartId, counterpart?.notificationsMuted ?? false)) {
+    // Fail closed. A lookup that throws and a thread with no participant row are both "we do not know what this
+    // person chose", and neither is permission to notify them: a recipient who had muted this conversation used to
+    // be notified anyway whenever the read failed, because a missing row read as `not muted`. The message itself
+    // has already persisted and is readable in the workspace regardless -- a notification is the secondary half,
+    // and skipping one is recoverable in a way that sending an unwanted one is not.
+    const counterpart = await conversationParticipant(result.threadId, counterpartId).catch((lookupError) => {
+      // Logged so an outage is visible to operators rather than silently suppressing notifications forever. It
+      // records that the preference could not be read, never what it was.
+      console.error("catering booking message notification preference could not be read", { bookingId: id, lookupError });
+      return undefined;
+    });
+    if (shouldNotifyBookingMessage(counterpartId, cateringMutePreference(counterpart))) {
       await db.insert(notifications).values({
         userId: counterpartId, type: CATERING_MESSAGE_NOTIFICATION.type, title: CATERING_MESSAGE_NOTIFICATION.title, message: CATERING_MESSAGE_NOTIFICATION.message,
         linkUrl: cateringBookingSectionPath(role === "provider" ? "customer" : "provider", id, CATERING_COMMUNICATION_SECTION),

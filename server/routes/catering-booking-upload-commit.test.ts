@@ -127,8 +127,11 @@ test("8. resolving uncertainty creates no second file, activity, notification or
   // It only reads, and then either deletes the object or records the ledger row.
   assert.equal(resolve.includes("uploadCommitState(stored)"), true);
   assert.equal(resolve.includes(`if (state === "committed") return;`), true);
-  assert.equal(resolve.includes(`if (state === "absent") return compensateStoredObject(stored);`), true);
-  assert.equal(resolve.includes(`recordStorageOrphan({ ...stored, reason: "uncertain_commit" }`), true);
+  // An absent reading deletes only when the failure itself proves the transaction was decided; anything else is a
+  // commit that may still be in flight, and it is deferred to the ledger rather than acted on.
+  assert.equal(resolve.includes(`if (state === "absent" && cateringCommitIsDecided(error)) return compensateStoredObject(stored);`), true);
+  assert.equal(resolve.includes(`if (state === "absent") return compensateStoredObject(stored);`), false);
+  assert.equal(resolve.includes(`recordStorageOrphan({ ...stored, reason: CATERING_UNCERTAIN_COMMIT_REASON }`), true);
 });
 
 test("only the uncertain path verifies: a resolved transaction still compensates directly", () => {
@@ -142,7 +145,7 @@ test("only the uncertain path verifies: a resolved transaction still compensates
   assert.equal(resolved.includes("await compensateStoredObject(stored);"), true);
   assert.equal(resolved.includes("compensateUncertainUpload"), false);
   // The outer catch -- the only place an uncertain commit can surface -- is the one that verifies.
-  assert.equal(handler.includes("if (stored) await compensateUncertainUpload(stored);"), true);
+  assert.equal(handler.includes("if (stored) await compensateUncertainUpload(stored, error);"), true);
   // A storage write that itself threw never ran a transaction, so it compensates directly too.
   const writeFailure = handler.slice(handler.indexOf("} catch (writeError) {"), handler.indexOf("const result = await db.transaction"));
   assert.equal(writeFailure.includes("await compensateStoredObject(stored)"), true);

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, isNotNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { cateringBookingFiles, cateringBookingStorageOrphans } from "@shared/schema";
 import { db } from "../db";
 import { removePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
@@ -200,6 +200,71 @@ export function cateringOrphanInitialAttempts(origin: CateringOrphanOrigin): num
 }
 
 /**
+ * The `reason` an uncertain-commit orphan carries. Written by the upload compensation and read by the claim below,
+ * from this one constant, so the two halves of the deferral cannot drift into disagreeing about which rows it
+ * applies to.
+ */
+export const CATERING_UNCERTAIN_COMMIT_REASON = "uncertain_commit";
+/**
+ * How long an uncertain-commit object is left alone before it may be deleted, in seconds.
+ *
+ * A transaction can reject to the application because the connection dropped while PostgreSQL was still processing
+ * COMMIT. The server finishes that COMMIT regardless, and the row becomes visible to a NEW snapshot moments later.
+ * So an immediate read that finds nothing is not proof of rollback -- it may simply be earlier than the commit it
+ * is asking about -- and deleting on the strength of it leaves an active file row pointing at bytes that are gone.
+ * That is unrecoverable; retaining an object that turns out to be unowned is not, which is why the window is
+ * generous rather than tight. It is measured from the row's own `created_at` against the DATABASE clock, so it
+ * survives a worker restart and needs no process-local state.
+ */
+export const CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS = 900;
+
+/**
+ * Whether the error that aborted an upload's transaction proves the commit did not happen.
+ *
+ * PostgreSQL answers a statement it processed with a SQLSTATE. If the server reported a unique violation, a check
+ * violation, a serialization failure or a deadlock, it processed that statement and aborted the transaction: the
+ * outcome is DECIDED, no commit is in flight, and a fresh read that finds no row is authoritative.
+ *
+ * A failure with no SQLSTATE is a different animal entirely -- a socket reset, a timeout, a driver-level fault --
+ * and it says nothing about what the server did with the transaction. Neither does a connection exception (class
+ * 08) or an operator intervention (57P01-57P03), which are precisely the codes raised when the link dies around a
+ * COMMIT. Those are INDETERMINATE, and an object whose commit is indeterminate is never deleted on one reading.
+ *
+ * The default is indeterminate: an unrecognised failure is treated as the dangerous case, not the convenient one.
+ */
+const CATERING_INDETERMINATE_COMMIT_CODES = ["57P01", "57P02", "57P03"];
+const CATERING_INDETERMINATE_COMMIT_CLASSES = ["08"];
+export function cateringCommitIsDecided(error: unknown): boolean {
+  const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
+  if (typeof code !== "string" || !/^[0-9A-Z]{5}$/.test(code)) return false;
+  if (CATERING_INDETERMINATE_COMMIT_CODES.includes(code)) return false;
+  return !CATERING_INDETERMINATE_COMMIT_CLASSES.includes(code.slice(0, 2));
+}
+
+/**
+ * Whether an orphan row has waited out its reconciliation window and may be handed to a worker.
+ *
+ * Only uncertain-commit rows wait: every other orphan was recorded after the commit outcome was already known, so
+ * there is nothing left to become visible. Waiting costs no storage attempt at all -- an unripe row is simply not
+ * claimed -- which is what keeps the ten from being spent on the passage of time.
+ *
+ * This is the rule the claim query enforces in SQL against the database clock; it is stated here too so it can be
+ * reasoned about and tested directly.
+ */
+export function cateringUncertainCommitIsRipe(row: { reason: string; createdAt: Date }, now: Date): boolean {
+  if (row.reason !== CATERING_UNCERTAIN_COMMIT_REASON) return true;
+  return now.getTime() - row.createdAt.getTime() >= CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS * 1000;
+}
+/**
+ * The same rule as a claim predicate, read from the database clock so it is independent of any process, of any
+ * worker's uptime, and of clock skew between them.
+ */
+const uncertainCommitIsRipe = () => or(
+  ne(cateringBookingStorageOrphans.reason, CATERING_UNCERTAIN_COMMIT_REASON),
+  lte(cateringBookingStorageOrphans.createdAt, sql`now() - (${CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS} * interval '1 second')`),
+);
+
+/**
  * Runs the bookkeeping half and reports rather than throws.
  *
  * The caller has, by construction, already completed the irreversible half when this is reached, so there is
@@ -279,6 +344,13 @@ async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
         isNull(cateringBookingStorageOrphans.resolvedAt),
         lt(cateringBookingStorageOrphans.cleanupAttempts, CATERING_CLEANUP_MAX_ATTEMPTS),
         leaseIsAvailable(cateringBookingStorageOrphans.cleanupClaimedUntil),
+        // An uncertain-commit row is not even LOOKED at until its reconciliation window has passed. Filtering here
+        // rather than after the claim is what makes waiting free: an unripe row is never claimed, so it cannot be
+        // charged an attempt, cannot have a lease to abandon, and cannot reach the storage delete at all. When
+        // it finally is claimed, the ownership check below is a second authoritative reading of the same question
+        // the compensation asked at the moment of failure -- and by then any commit that was in flight has long
+        // since become visible.
+        uncertainCommitIsRipe(),
       ))
       .orderBy(asc(cateringBookingStorageOrphans.createdAt), asc(cateringBookingStorageOrphans.id))
       .limit(limit)

@@ -89,9 +89,11 @@ test("unread and file counts are bounded and report their ceiling truthfully", (
   assert.deepEqual(boundedCount(0, 999), { count: 0, capped: false });
 });
 test("an existing DM mute is honoured for booking messages, and a missing counterpart notifies nobody", () => {
-  assert.equal(shouldNotifyBookingMessage("customer", false), true);
-  assert.equal(shouldNotifyBookingMessage("customer", true), false);
-  assert.equal(shouldNotifyBookingMessage(null, false), false);
+  assert.equal(shouldNotifyBookingMessage("customer", "enabled"), true);
+  assert.equal(shouldNotifyBookingMessage("customer", "muted"), false);
+  // A preference that could not be read is not consent, so it is not delivered either.
+  assert.equal(shouldNotifyBookingMessage("customer", "unknown"), false);
+  assert.equal(shouldNotifyBookingMessage(null, "enabled"), false);
 });
 test("a notification that fails never rolls back a message that already persisted", () => {
   assert.equal(CATERING_NOTIFICATION_FAILURE_ROLLS_BACK_SEND, false);

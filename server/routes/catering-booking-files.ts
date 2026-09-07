@@ -16,7 +16,7 @@ import { cateringCounterpart, cateringFilePageFrom, cateringPageQueryLimit, boun
 import { CATERING_FILE_DOWNLOAD_HEADERS, cateringFileActivity, cateringFileContentDisposition, cateringFileStorageKey, cateringFileVisibleTo, resolveCateringFileSlot, resolveCateringUpload, shouldNotifyCateringFileUpload } from "../services/catering-booking-file-policy";
 import { validateCateringFileContent } from "../services/catering-booking-file-content";
 import { cateringOrderToken } from "../services/catering-booking-order-token";
-import { CATERING_CLEANUP_MAX_ATTEMPTS, cateringCleanupChargesAttempt, cateringOrphanInitialAttempts, settleCateringFinalization, type CateringCleanupConclusion, type CateringOrphanOrigin } from "../services/catering-booking-storage-cleanup";
+import { CATERING_CLEANUP_MAX_ATTEMPTS, CATERING_UNCERTAIN_COMMIT_REASON, cateringCleanupChargesAttempt, cateringCommitIsDecided, cateringOrphanInitialAttempts, settleCateringFinalization, type CateringCleanupConclusion, type CateringOrphanOrigin } from "../services/catering-booking-storage-cleanup";
 import { privateStorageProvider, readPrivateObject, removePrivateObject, writePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
 
 const r = Router();
@@ -321,7 +321,7 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
     // established that the metadata did not commit. A transaction whose COMMIT succeeded and whose connection then
     // dropped rejects here exactly like one that rolled back, and deleting the object in that case would strand a
     // committed, active file row pointing at bytes that no longer exist.
-    if (stored) await compensateUncertainUpload(stored);
+    if (stored) await compensateUncertainUpload(stored, error);
     invalid(error, res, next);
   }
 }
@@ -360,25 +360,39 @@ async function uploadCommitState(stored: { provider: PrivateStorageProvider; sto
 /**
  * Resolves an upload that failed AFTER its object was written, without ever destroying bytes that may be owned.
  *
- * Three outcomes, and they are deliberately different:
+ * The decision needs TWO readings, not one: what the database says about this upload's row now, and whether the
+ * failure that got us here proves anything about the transaction's fate.
  *
- *  - `absent`: the database answered, and this upload's row is not there. Nothing owns the object, so it is
- *    compensated exactly as before.
  *  - `committed`: the COMMIT actually succeeded and the driver simply never got to say so. The row is live, the
  *    retry will resolve to it through the accepted-token lookup, and its bytes must still be there when the
  *    participant downloads it. The object is left untouched and nothing is recorded -- there is no orphan.
- *  - `unknown`: the verification could not run at all. Deleting is unrecoverable and leaving bytes is not, so the
- *    object survives and an `uncertain_commit` ledger row records enough identity for reconciliation to decide
- *    later. If even that write fails the object still survives; a stranded object is logged, never guessed at.
+ *  - `absent`, and the database itself reported the failure with a SQLSTATE: the server processed the statement and
+ *    aborted the transaction. The outcome is DECIDED, no commit can still be in flight, and one fresh read is
+ *    therefore authoritative. This is the ordinary rollback -- a unique violation, a check violation, a deadlock --
+ *    and it is compensated immediately, exactly as before.
+ *  - `absent`, but the failure was a dropped connection, a timeout, or anything else with no SQLSTATE: the row is
+ *    not there YET. A transaction can reject to the application because the link died while PostgreSQL was still
+ *    processing COMMIT, and that COMMIT completes anyway; a read taken in the moments after the rejection can
+ *    legitimately precede it. Deleting on the strength of that reading is how an active file row ends up pointing
+ *    at bytes that no longer exist -- permanently, and with no way back.
+ *  - `unknown`: the verification could not run at all, so there is nothing to reason from.
+ *
+ * The last two are the same situation and are handled the same way: nothing is deleted, and an `uncertain_commit`
+ * ledger row records enough identity for reconciliation to settle it once the window has passed. Retaining an
+ * object that turns out to be unowned costs storage for that window; the alternative costs a file. If even the
+ * ledger write fails the object still survives; a stranded object is logged, never guessed at.
  */
-async function compensateUncertainUpload(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; uploadedBy: string; reason: string }): Promise<void> {
+async function compensateUncertainUpload(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; uploadedBy: string; reason: string }, error: unknown): Promise<void> {
   const state = await uploadCommitState(stored);
   if (state === "committed") return;
-  if (state === "absent") return compensateStoredObject(stored);
-  // Nothing was deleted here, and deliberately so: the bytes may belong to a row that committed after all. The
-  // ledger row therefore starts with no storage attempt spent -- the ten are for retrying storage, not for asking
-  // the database a question it could not answer.
-  await recordStorageOrphan({ ...stored, reason: "uncertain_commit" }, "commit state could not be verified", "uncertain_commit");
+  if (state === "absent" && cateringCommitIsDecided(error)) return compensateStoredObject(stored);
+  // Nothing was deleted here, and deliberately so: the bytes may belong to a row that is about to commit, or to one
+  // that already has and cannot be seen. The ledger row therefore starts with no storage attempt spent -- the ten
+  // are for retrying storage, not for waiting out a commit or asking the database a question it could not answer.
+  const detail = state === "absent"
+    ? "commit outcome indeterminate: no row was visible immediately after the failure"
+    : "commit state could not be verified";
+  await recordStorageOrphan({ ...stored, reason: CATERING_UNCERTAIN_COMMIT_REASON }, detail, "uncertain_commit");
 }
 
 /**

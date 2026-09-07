@@ -170,16 +170,42 @@ export function cateringReadMarkerAdvances(selected: { createdAt: Date; id: stri
 }
 
 /**
+ * What a recipient's persisted notification preference was established to be.
+ *
+ * `unknown` is a THIRD answer, not a synonym for "not muted". The preference lives in the counterpart's participant
+ * row, and reading it can fail -- a transient database error, a thread whose participant row is not there -- and a
+ * failed read says nothing at all about what the participant chose. Collapsing it into a boolean is what turned an
+ * outage into a notification for someone who had explicitly switched them off.
+ */
+export type CateringMutePreference = "enabled" | "muted" | "unknown";
+/**
+ * Reads the preference from a participant row, or reports that there is none to read.
+ *
+ * Only an explicit `false` on a row that was actually returned means enabled. No row, a read that threw, and a
+ * column that is somehow not a boolean all answer `unknown`, because none of them is evidence of consent.
+ */
+export function cateringMutePreference(participant: { notificationsMuted?: unknown } | null | undefined): CateringMutePreference {
+  if (!participant) return "unknown";
+  if (participant.notificationsMuted === false) return "enabled";
+  if (participant.notificationsMuted === true) return "muted";
+  return "unknown";
+}
+
+/**
  * Notification delivery for a booking message, decided from persisted state only. A muted counterpart participant
  * row is honoured -- that is the existing DM mute semantic, and a booking conversation is a DM thread -- and a
  * booking whose two roles are the same account notifies nobody.
+ *
+ * It FAILS CLOSED. Delivery requires a counterpart AND a preference that was actually read AND that says enabled.
+ * A notification is secondary to the message, which is already persisted and readable in the workspace either way;
+ * an unwanted one cannot be taken back, so an unanswerable preference is treated as the mute it may well be.
  *
  * Known limitation, deliberately not papered over: booking FILE notifications have no equivalent persisted mute
  * setting anywhere in ChefSire today, so they are always delivered. Reusing the DM participant mute for them would
  * silently redefine what that switch means, and Phase 2I does not invent a new notification settings surface.
  */
-export function shouldNotifyBookingMessage(counterpartId: string | null, counterpartMuted: boolean): boolean {
-  return counterpartId !== null && !counterpartMuted;
+export function shouldNotifyBookingMessage(counterpartId: string | null, preference: CateringMutePreference): boolean {
+  return counterpartId !== null && preference === "enabled";
 }
 /**
  * A notification that fails to persist does not undo a message that already did. The message is the durable record

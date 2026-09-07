@@ -284,7 +284,7 @@ test("origin 1 & 2. an orphan starts with the storage attempts it has actually s
   // And the route passes the origin explicitly rather than leaving it to the column default.
   const filesRoute = fs.readFileSync(path.join(here, "..", "routes", "catering-booking-files.ts"), "utf8");
   assert.equal(filesRoute.includes("cleanupAttempts: cateringOrphanInitialAttempts(origin)"), true);
-  assert.equal(filesRoute.includes(`await recordStorageOrphan({ ...stored, reason: "uncertain_commit" }, "commit state could not be verified", "uncertain_commit");`), true);
+  assert.equal(filesRoute.includes(`await recordStorageOrphan({ ...stored, reason: CATERING_UNCERTAIN_COMMIT_REASON }, detail, "uncertain_commit");`), true);
   assert.equal(filesRoute.includes(`String(deleteError), "failed_delete");`), true);
   // Every insert names an origin: no path may fall back to the default again.
   assert.equal((filesRoute.match(/recordStorageOrphan\(/g) ?? []).length, 3, "two call sites and the definition");
