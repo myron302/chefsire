@@ -67,6 +67,13 @@ export const CATERING_MESSAGE_NOTIFICATION = { type: "catering_booking_message",
 export type CateringBookingMessageView = {
   id: string; senderId: string; senderRole: "provider" | "customer"; senderName: string | null;
   text: string; createdAt: string; mine: boolean;
+  /**
+   * The row's authoritative place in the list query's own ordering, produced in SQL at full `timestamptz`
+   * precision. Opaque, for comparison only, and never a display value -- `createdAt` is that, and it has already
+   * lost the microseconds Postgres orders by. Absent on the single-message send responses, which nothing
+   * reconciles history from.
+   */
+  orderToken?: string;
 };
 /** Oldest-first for display, plus the boundary that loads the page before it. `nextCursor` is null at the beginning. */
 /**

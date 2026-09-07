@@ -1,6 +1,12 @@
 import type { CateringBookingMessageView } from "@shared/catering-booking-communication";
 
-export type SerializableBookingMessage = { id: string; senderId: string; body: string; createdAt: Date };
+/**
+ * `orderToken` is the row's authoritative place in the list query's own ordering, produced in SQL at full
+ * `timestamptz` precision. The paginated list supplies it; the single-message send responses do not, because
+ * nothing reconciles history from them. It is opaque and for comparison only -- `createdAt` remains the display
+ * value, and the two are deliberately separate concerns.
+ */
+export type SerializableBookingMessage = { id: string; senderId: string; body: string; createdAt: Date; orderToken?: string };
 export type BookingMessageContext = { providerId: string; customerId: string; actorId: string; names: ReadonlyMap<string, string | null> };
 
 /**
@@ -17,6 +23,7 @@ export function serializeBookingMessage(row: SerializableBookingMessage, context
     senderName: context.names.get(row.senderId) ?? null,
     text: row.body,
     createdAt: row.createdAt.toISOString(),
+    ...(row.orderToken === undefined ? {} : { orderToken: row.orderToken }),
     mine: row.senderId === context.actorId,
   };
 }

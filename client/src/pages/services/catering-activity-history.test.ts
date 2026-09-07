@@ -28,8 +28,12 @@ const filesComponent = fs.readFileSync(path.join(here, "..", "..", "components",
 
 type Event = CateringBookingActivityView & { visibility: "shared" | "provider" };
 type Page = { activity: CateringBookingActivityView[]; activityPagination: { page: number; limit: number; total: number; totalPages: number } };
-const event = (ordinal: number, visibility: Event["visibility"] = "shared", eventType = "shared_file_uploaded"): Event =>
-  ({ id: `a${String(ordinal).padStart(2, "0")}`, eventType: eventType as never, metadata: {}, createdAt: new Date(Date.UTC(2026, 8, 1, 0, 0, ordinal)).toISOString(), visibility });
+const event = (ordinal: number, visibility: Event["visibility"] = "shared", eventType = "shared_file_uploaded"): Event => {
+  const id = `a${String(ordinal).padStart(2, "0")}`;
+  const createdAt = new Date(Date.UTC(2026, 8, 1, 0, 0, ordinal)).toISOString();
+  // The server's own ordering value: full-precision instant, then id -- what reconciliation compares.
+  return { id, eventType: eventType as never, metadata: {}, createdAt, orderToken: `${createdAt.slice(0, -1)}000|${id}`, visibility };
+};
 /** A feed newest first, exactly as the route orders it: desc(created_at), desc(id). */
 const feed = (highest: number, lowest = 1) => Array.from({ length: highest - lowest + 1 }, (_, index) => event(highest - index));
 const ids = (items: readonly { id: string }[]) => items.map((item) => item.id);
@@ -178,14 +182,15 @@ test("11. a terminal booking's activity stays readable and keeps its loaded hist
 });
 
 test("12. events sharing an instant order deterministically by id", () => {
+  // One displayed millisecond, five different microsecond instants, with the ids running the other way.
   const instant = "2026-09-01T12:00:00.000Z";
-  const tied = ["a05", "a04", "a03", "a02", "a01"].map((id) => ({ ...event(1), id, createdAt: instant }));
-  assert.equal(cateringRecordIsOlder({ id: "a01", createdAt: instant }, { id: "a02", createdAt: instant }), true);
+  const tied = ["a05", "a04", "a03", "a02", "a01"].map((id, index) => ({ ...event(1), id, createdAt: instant, orderToken: `2026-09-01T12:00:00.000${String(500 - index * 100).padStart(3, "0")}|${id}` }));
+  assert.equal(cateringRecordIsOlder(tied[4], tied[3]), true);
   const v = view(3);
   v.load(tied);
   v.loadMore(tied);
   assert.deepEqual(ids(v.items), ids(tied));
-  v.refresh([{ ...event(1), id: "a06", createdAt: instant }, ...tied]);
+  v.refresh([{ ...event(1), id: "a06", createdAt: instant, orderToken: "2026-09-01T12:00:00.000600|a06" }, ...tied]);
   assert.deepEqual(ids(v.items), ["a06", "a05", "a04", "a03", "a02", "a01"]);
   assertContinuous(v.items, "tied instants");
   // Which is the route's own ordering, tie-break included.

@@ -25,10 +25,14 @@ const component = fs.readFileSync(path.join(here, "..", "..", "components", "cat
 const route = fs.readFileSync(path.join(here, "..", "..", "..", "..", "server", "routes", "catering-booking-files.ts"), "utf8");
 const presenceRoute = route.slice(route.indexOf(`r.get("/bookings/:id/files/active"`), route.indexOf("/**\n * Uploads one booking file."));
 
-type File = { id: string; createdAt: string; visibility: "shared" | "provider" };
+type File = { id: string; createdAt: string; visibility: "shared" | "provider"; orderToken: string };
 type Page = { items: readonly File[]; nextCursor: string | null };
-const file = (ordinal: number, visibility: File["visibility"] = "shared"): File =>
-  ({ id: `f${String(ordinal).padStart(2, "0")}`, createdAt: new Date(Date.UTC(2026, 8, 1, 0, 0, ordinal)).toISOString(), visibility });
+/** `orderToken` is the server's own ordering value: full-precision instant, then id -- what reconciliation compares. */
+const file = (ordinal: number, visibility: File["visibility"] = "shared"): File => {
+  const id = `f${String(ordinal).padStart(2, "0")}`;
+  const createdAt = new Date(Date.UTC(2026, 8, 1, 0, 0, ordinal)).toISOString();
+  return { id, createdAt, visibility, orderToken: `${createdAt.slice(0, -1)}000|${id}` };
+};
 const collection = (highest: number, lowest = 1) => Array.from({ length: highest - lowest + 1 }, (_, index) => file(highest - index));
 const ids = (items: readonly File[]) => items.map((item) => item.id);
 /** Exactly the server's own filter: this actor's visibilities, and never a tombstoned row. */

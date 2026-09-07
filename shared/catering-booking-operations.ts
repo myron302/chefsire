@@ -147,7 +147,8 @@ export function cateringWorkspaceRole(booking: { providerId: string; customerId:
 
 export type CateringBookingDetailsView = { venueName: string | null; venueAddress: string | null; venueCity: string | null; venueState: string | null; venuePostalCode: string | null; venueInstructions: string | null; arrivalTime: string | null; serviceStartTime: string | null; serviceEndTime: string | null; setupNotes: string | null; accessNotes: string | null; kitchenAvailable: boolean | null; refrigerationAvailable: boolean | null; powerAvailable: boolean | null; waterAvailable: boolean | null; indoorOutdoor: "indoor" | "outdoor" | "both" | null; customerNotes: string | null; providerNotes?: string | null; updatedAt: string | null };
 export type CateringBookingTaskView = { id: string; title: string; description: string | null; status: "pending" | "completed"; visibility: "provider" | "shared"; dueDate: string | null; dueTime: string | null; sortOrder: number; createdAt: string; completedAt: string | null; updatedAt: string };
-export type CateringBookingActivityView = { id: string; eventType: CateringBookingActivityEventType; metadata: Record<string, string>; createdAt: string };
+/** `orderToken` is the row's authoritative ordering value, produced in SQL at full precision: opaque, comparison only. */
+export type CateringBookingActivityView = { id: string; eventType: CateringBookingActivityEventType; metadata: Record<string, string>; createdAt: string; orderToken?: string };
 /**
  * Bounded Phase 2I summaries. Neither collection is inlined -- messages and files stay on their own paginated APIs --
  * and both counts are capped rather than run as unbounded totals. `activeFileCount` is counted per actor, so a

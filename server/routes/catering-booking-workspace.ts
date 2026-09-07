@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, asc, count, desc, eq, max, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, getTableColumns, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringBookingActivity, cateringBookingDetails, cateringBookings, cateringBookingTasks, notifications, type CateringBookingDetails, type CateringBookingTask } from "@shared/schema";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
@@ -8,6 +8,7 @@ import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
+import { cateringOrderToken } from "../services/catering-booking-order-token";
 import { lockActiveCateringBooking, ownedCateringBooking } from "../services/catering-booking-access";
 import { findBookingConversation } from "../services/catering-booking-conversation";
 import { unreadMessageCount } from "./catering-booking-communication";
@@ -52,7 +53,9 @@ r.get("/bookings/:id/workspace", requireAuth, async (req, res, next) => { try {
   const [detailsRows, taskRows, activityRows, totals] = await Promise.all([
     db.select().from(cateringBookingDetails).where(eq(cateringBookingDetails.bookingId, id)).limit(1),
     db.select().from(cateringBookingTasks).where(and(eq(cateringBookingTasks.bookingId, id), role === "customer" ? eq(cateringBookingTasks.visibility, "shared") : undefined)).orderBy(asc(cateringBookingTasks.sortOrder), asc(cateringBookingTasks.id)).limit(CATERING_BOOKING_TASK_LIMIT),
-    db.select().from(cateringBookingActivity).where(activityWhere).orderBy(desc(cateringBookingActivity.createdAt), desc(cateringBookingActivity.id)).limit(page.limit).offset((page.page - 1) * page.limit),
+    // Plus the row's authoritative place in this query's own ordering, computed in SQL at full `timestamptz`
+    // precision before the driver rounds it to a millisecond `Date`.
+    db.select({ ...getTableColumns(cateringBookingActivity), orderToken: cateringOrderToken(cateringBookingActivity.createdAt, cateringBookingActivity.id) }).from(cateringBookingActivity).where(activityWhere).orderBy(desc(cateringBookingActivity.createdAt), desc(cateringBookingActivity.id)).limit(page.limit).offset((page.page - 1) * page.limit),
     db.select({ value: count() }).from(cateringBookingActivity).where(activityWhere),
   ]);
   const total = Number(totals[0]?.value ?? 0);

@@ -1,9 +1,15 @@
 import { mayDeleteCateringFile, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
 import type { CateringBookingStatus } from "@shared/catering-bookings";
 
+/**
+ * `orderToken` is the row's authoritative place in the list query's own ordering, produced in SQL at full
+ * `timestamptz` precision. The paginated list supplies it; the single-file upload responses do not, because nothing
+ * reconciles history from them. It is opaque and for comparison only, and carries no storage key, no filename and
+ * nothing beyond the two values the ORDER BY already uses.
+ */
 export type SerializableBookingFile = {
   id: string; visibility: string; originalFilename: string; contentType: string; byteSize: number;
-  uploadedBy: string; createdAt: Date; deletedAt: Date | null;
+  uploadedBy: string; createdAt: Date; deletedAt: Date | null; orderToken?: string;
 };
 export type BookingFileContext = { providerId: string; customerId: string; actorId: string; status: CateringBookingStatus; names: ReadonlyMap<string, string | null> };
 
@@ -28,6 +34,7 @@ export function serializeBookingFile(row: SerializableBookingFile, context: Book
     uploadedByRole,
     uploaderName: context.names.get(row.uploadedBy) ?? null,
     createdAt: row.createdAt.toISOString(),
+    ...(row.orderToken === undefined ? {} : { orderToken: row.orderToken }),
     mine: row.uploadedBy === context.actorId,
     mayDelete: mayDeleteCateringFile(context.actorId, { uploadedBy: row.uploadedBy, deletedAt: row.deletedAt === null ? null : row.deletedAt.toISOString() }, context.status),
   };

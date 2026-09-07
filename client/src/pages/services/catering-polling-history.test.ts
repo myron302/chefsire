@@ -26,10 +26,19 @@ const comms = fs.readFileSync(path.join(here, "..", "..", "components", "caterin
 const filesComponent = fs.readFileSync(path.join(here, "..", "..", "components", "catering", "BookingFiles.tsx"), "utf8");
 const route = fs.readFileSync(path.join(here, "..", "..", "..", "..", "server", "routes", "catering-booking-files.ts"), "utf8");
 
-type Record = { id: string; createdAt: string };
+type Record = { id: string; createdAt: string; orderToken: string };
 type Page = { items: readonly Record[]; nextCursor: string | null };
-/** `r03` sorts after `r02`, and its instant does too, so newest-first is unambiguous. */
-const record = (ordinal: number, prefix = "r"): Record => ({ id: `${prefix}${String(ordinal).padStart(2, "0")}`, createdAt: new Date(Date.UTC(2026, 8, 1, 0, 0, ordinal)).toISOString() });
+/**
+ * `r03` sorts after `r02`, and its instant does too, so newest-first is unambiguous. `orderToken` is what the
+ * server now produces: the full-precision instant as fixed-width UTC text, then the id -- the very pair the query
+ * orders by, and the only thing reconciliation compares.
+ */
+const tokenFor = (createdAt: string, id: string) => `${createdAt.slice(0, -1)}000|${id}`;
+const record = (ordinal: number, prefix = "r"): Record => {
+  const id = `${prefix}${String(ordinal).padStart(2, "0")}`;
+  const createdAt = new Date(Date.UTC(2026, 8, 1, 0, 0, ordinal)).toISOString();
+  return { id, createdAt, orderToken: tokenFor(createdAt, id) };
+};
 /** A collection newest first, exactly as every list route serves it. */
 const collection = (highest: number, lowest = 1, prefix = "r") => Array.from({ length: highest - lowest + 1 }, (_, index) => record(highest - index, prefix));
 const ids = (items: readonly Record[]) => items.map((item) => item.id);
@@ -208,10 +217,12 @@ test("8. a booking going terminal keeps its loaded history and stays read-only",
 });
 
 test("9. records sharing an instant are ordered and judged by the id tie-break", () => {
+  // One displayed millisecond, five different microsecond instants. The ids run the other way on purpose, so a
+  // comparison that fell back to them would order these backwards.
   const instant = "2026-09-01T12:00:00.000Z";
-  const tied = ["r05", "r04", "r03", "r02", "r01"].map((id) => ({ id, createdAt: instant }));
-  assert.equal(cateringRecordIsOlder({ id: "r01", createdAt: instant }, { id: "r02", createdAt: instant }), true);
-  assert.equal(cateringRecordIsOlder({ id: "r03", createdAt: instant }, { id: "r02", createdAt: instant }), false);
+  const tied = ["r05", "r04", "r03", "r02", "r01"].map((id, index) => ({ id, createdAt: instant, orderToken: `2026-09-01T12:00:00.000${String(500 - index * 100).padStart(3, "0")}|${id}` }));
+  assert.equal(cateringRecordIsOlder(tied[4], tied[3]), true);
+  assert.equal(cateringRecordIsOlder(tied[2], tied[3]), false);
   const v = view(3);
   v.load(tied);
   v.loadMore(tied);

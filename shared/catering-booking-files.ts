@@ -172,6 +172,8 @@ export type CateringBookingFileView = {
   id: string; visibility: CateringFileVisibility; filename: string; contentType: string; byteSize: number;
   uploadedBy: string; uploadedByRole: "provider" | "customer"; uploaderName: string | null;
   createdAt: string; mine: boolean; mayDelete: boolean;
+  /** The row's authoritative ordering value, produced in SQL at full precision. Opaque, comparison only. */
+  orderToken?: string;
 };
 export type CateringBookingFilePageView = { files: CateringBookingFileView[]; nextCursor: string | null; editable: boolean };
 

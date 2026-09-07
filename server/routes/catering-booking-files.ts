@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { randomUUID, createHash } from "crypto";
 import multer from "multer";
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringBookingActivity, cateringBookingFiles, cateringBookingStorageOrphans, notifications, users, type CateringBookingFile } from "@shared/schema";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
@@ -15,6 +15,7 @@ import { lockActiveCateringBooking, ownedCateringBooking } from "../services/cat
 import { cateringCounterpart, cateringFilePageFrom, cateringPageQueryLimit, boundedCount } from "../services/catering-booking-communication-policy";
 import { CATERING_FILE_DOWNLOAD_HEADERS, cateringFileActivity, cateringFileContentDisposition, cateringFileStorageKey, cateringFileVisibleTo, resolveCateringFileSlot, resolveCateringUpload, shouldNotifyCateringFileUpload } from "../services/catering-booking-file-policy";
 import { validateCateringFileContent } from "../services/catering-booking-file-content";
+import { cateringOrderToken } from "../services/catering-booking-order-token";
 import { CATERING_CLEANUP_MAX_ATTEMPTS, cateringCleanupChargesAttempt, cateringOrphanInitialAttempts, settleCateringFinalization, type CateringCleanupConclusion, type CateringOrphanOrigin } from "../services/catering-booking-storage-cleanup";
 import { privateStorageProvider, readPrivateObject, removePrivateObject, writePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
 
@@ -94,7 +95,9 @@ r.get("/bookings/:id/files", requireAuth, async (req, res, next) => { try {
     ? sql`(${cateringBookingFiles.createdAt}, ${cateringBookingFiles.id}) < (SELECT f.created_at, f.id FROM catering_booking_files f WHERE f.id = ${page.cursor})`
     : undefined;
   // `db` is untyped at this repo's boundary, so the row shape is stated here rather than inferred as `any`.
-  const rows: CateringBookingFile[] = await db.select().from(cateringBookingFiles)
+  // Every column the serializer reads, plus the row's authoritative place in this query's own ordering, computed
+  // in SQL at full `timestamptz` precision before the driver rounds it to a millisecond `Date`.
+  const rows: (CateringBookingFile & { orderToken: string })[] = await db.select({ ...getTableColumns(cateringBookingFiles), orderToken: cateringOrderToken(cateringBookingFiles.createdAt, cateringBookingFiles.id) }).from(cateringBookingFiles)
     .where(and(scope, boundary))
     .orderBy(desc(cateringBookingFiles.createdAt), desc(cateringBookingFiles.id))
     // One row more than the page: the lookahead is what proves an older file exists. `cateringFilePageFrom` drops

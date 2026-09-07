@@ -34,13 +34,27 @@ export function emptyCateringLoadedHistory<T>(): CateringLoadedHistory<T> {
 }
 
 /**
- * The endpoints' own ordering: newest first, by `(created_at, id)` descending, with the id as the tie-break for
- * records sharing an instant. Comparing the pair rather than the timestamp alone is what keeps a record that ties
- * with the window's last one from being judged "outside the window" and preserved after it was deleted.
+ * The endpoints' own ordering, read from the server rather than reconstructed from what reached the browser.
+ *
+ * This compared `createdAt`, falling back to the id when two records looked simultaneous -- and that was wrong at
+ * the point it mattered most. `created_at` is `timestamptz`, which Postgres keeps to MICROSECONDS and orders by;
+ * the driver parses it into a JavaScript `Date`, which holds MILLISECONDS, and `toISOString()` writes down what is
+ * left. Two records a thousandth of a millisecond apart therefore arrive bearing the same instant, the comparison
+ * fell through to their ids, and ids say nothing whatever about the microseconds that were dropped. An older
+ * already-loaded record could be judged newer than the refreshed boundary and thrown out of the preserved tail.
+ *
+ * `orderToken` is the same ordering computed IN SQL, before any of that: the full-precision instant as fixed-width
+ * UTC text, then the id, which is exactly the `(created_at, id)` pair every one of these queries orders by. Its
+ * lexical order is that ordering, because the timestamp half is fixed width and numeric and the id half decides
+ * only a genuine full-precision tie -- the same case the database resolves by id.
+ *
+ * A record without one cannot be placed, and is therefore treated as outside the window and preserved: that can
+ * only keep a record too long, never discard a loaded one, which is the safe direction. It arises for a page
+ * cached before the field existed, and heals on the next response.
  */
-export function cateringRecordIsOlder(candidate: { id: string; createdAt: string }, boundary: { id: string; createdAt: string }): boolean {
-  if (candidate.createdAt !== boundary.createdAt) return candidate.createdAt < boundary.createdAt;
-  return candidate.id < boundary.id;
+export function cateringRecordIsOlder(candidate: { orderToken?: string }, boundary: { orderToken?: string }): boolean {
+  if (candidate.orderToken === undefined || boundary.orderToken === undefined) return true;
+  return candidate.orderToken < boundary.orderToken;
 }
 
 /**
@@ -53,7 +67,7 @@ export function cateringRecordIsOlder(candidate: { id: string; createdAt: string
  * Identity is the actor and booking the history belongs to. A different one discards it entirely, so navigating
  * between bookings can never render one booking's records inside another.
  */
-export function cateringPreservedHistory<T extends { id: string; createdAt: string }>(
+export function cateringPreservedHistory<T extends { id: string; orderToken?: string }>(
   previous: CateringLoadedHistory<T>,
   identity: string,
   refreshed: readonly T[] | null,
