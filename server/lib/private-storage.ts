@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { assertPrivateR2Configured, assertPrivateR2Isolated, deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
+import { assertPrivateR2Configured, assertPrivateR2Isolated, deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, probePrivateObject, putPrivateObject, type PrivateObjectPresence } from "./r2";
 import { assertPrivateRootIsolatedFrom, canonicalizePath, firstPrivateRootConflict, isSameOrInside, type PublicStaticRoot } from "./private-storage-path";
 import { CLIENT_STATIC_DIR_CANDIDATES } from "./public-static-dirs";
 import { UPLOADS_DIR } from "./uploads-dir";
@@ -214,6 +214,29 @@ export async function statPrivateObject(provider: PrivateStorageProvider, storag
     return stat.isFile() ? { byteSize: stat.size } : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * The three-state presence reading reconciliation needs, as distinct from `statPrivateObject`'s two.
+ *
+ * A write whose outcome was indeterminate may still materialize AFTER the compensating delete ran, so the only
+ * thing that can retire such a key is storage itself saying the object is not there. A failure to reach storage
+ * says nothing at all, and treating it as absence would strand exactly the bytes this exists to catch -- so it
+ * answers `unknown` and the record stays pending. An unsafe key is refused by `resolvePrivatePath` rather than
+ * being reported as absent, exactly as it is for a delete.
+ */
+export { type PrivateObjectPresence } from "./r2";
+export async function privateObjectPresence(provider: PrivateStorageProvider, storageKey: string): Promise<PrivateObjectPresence> {
+  if (provider === "r2") return probePrivateObject(storageKey);
+  const target = resolvePrivatePath(storageKey);
+  try {
+    // `lstat` for the same reason `statPrivateObject` uses it: a symlink sitting where a private object should be
+    // describes something outside this tree, so it is not this object.
+    const stat = await fs.promises.lstat(target);
+    return stat.isFile() ? "present" : "absent";
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "absent" : "unknown";
   }
 }
 

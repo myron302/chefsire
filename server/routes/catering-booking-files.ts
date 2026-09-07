@@ -16,7 +16,7 @@ import { cateringCounterpart, cateringFilePageFrom, cateringPageQueryLimit, boun
 import { CATERING_FILE_DOWNLOAD_HEADERS, cateringFileActivity, cateringFileContentDisposition, cateringFileStorageKey, cateringFileVisibleTo, resolveCateringFileSlot, resolveCateringUpload, shouldNotifyCateringFileUpload } from "../services/catering-booking-file-policy";
 import { validateCateringFileContent } from "../services/catering-booking-file-content";
 import { cateringOrderToken } from "../services/catering-booking-order-token";
-import { CATERING_CLEANUP_MAX_ATTEMPTS, CATERING_UNCERTAIN_COMMIT_REASON, cateringCleanupChargesAttempt, cateringCommitIsDecided, cateringOrphanInitialAttempts, settleCateringFinalization, type CateringCleanupConclusion, type CateringOrphanOrigin } from "../services/catering-booking-storage-cleanup";
+import { CATERING_CLEANUP_MAX_ATTEMPTS, CATERING_UNCERTAIN_COMMIT_REASON, CATERING_UNCERTAIN_WRITE_REASON, cateringCleanupChargesAttempt, cateringCommitIsDecided, cateringOrphanInitialAttempts, settleCateringFinalization, type CateringCleanupConclusion, type CateringOrphanOrigin } from "../services/catering-booking-storage-cleanup";
 import { privateStorageProvider, readPrivateObject, removePrivateObject, writePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
 
 const r = Router();
@@ -237,11 +237,12 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
     try {
       await writePrivateObject(provider, storageKey, content.body, upload.type.contentType);
     } catch (writeError) {
-      // Uncertain rather than known-failed: the object may exist. Compensate for the key we know, record it if that
-      // cannot be confirmed, and answer with a failure -- never a success, and never a fresh key that abandons this
-      // one. Rethrown so the outer handler answers the request; the compensation has already happened here.
-      stored.reason = "uncertain_upload";
-      await compensateStoredObject(stored);
+      // Uncertain rather than known-failed: the object may exist, or may be about to. Compensate for the key we
+      // know, keep it under reconciliation either way, and answer with a failure -- never a success, and never a
+      // fresh key that abandons this one. Rethrown so the outer handler answers the request; the compensation has
+      // already happened here.
+      stored.reason = CATERING_UNCERTAIN_WRITE_REASON;
+      await compensateUncertainWrite(stored);
       stored = null;
       throw writeError;
     }
@@ -424,9 +425,39 @@ async function duplicateFile(bookingId: string, uploadedBy: string, clientReques
 }
 
 /**
+ * Resolves an upload whose STORAGE WRITE did not report success, without letting the bytes escape tracking.
+ *
+ * A PUT can time out at the client while the service is still committing it. The object then appears AFTERWARDS --
+ * and a compensating DELETE issued in between succeeds, because at the moment it ran the key genuinely was not
+ * there. Treating that success as conclusive and forgetting the key is how a private object ends up in the bucket
+ * with no file row and no ledger entry: nothing knows it exists, so nothing will ever collect it.
+ *
+ * So the delete is still attempted immediately -- if the object IS there it goes now -- but the key is recorded
+ * either way, and it is the reconciliation pass that retires it, after the uncertainty window and only once storage
+ * itself has answered. The ledger row's origin follows the module's existing rule exactly: a delete that FAILED is
+ * one real attempt spent (`failed_delete`), and a delete that succeeded has never charged one anywhere here, so it
+ * starts at zero.
+ *
+ * If even the ledger write fails the object still survives; a stranded object is logged, never guessed at.
+ */
+async function compensateUncertainWrite(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; reason: string }): Promise<void> {
+  try {
+    await removePrivateObject(stored.provider, stored.storageKey);
+  } catch (deleteError) {
+    // The delete really was attempted and it really did fail, so that attempt is recorded as spent -- and the key
+    // stays tracked for the same reason it would have anyway.
+    return recordStorageOrphan(stored, deleteError instanceof Error ? deleteError.message : String(deleteError), "failed_delete");
+  }
+  await recordStorageOrphan(stored, "storage write outcome indeterminate: a delayed object may still appear", "uncertain_write");
+}
+
+/**
  * Removes an object whose metadata never persisted. If the delete itself fails, the stranded bytes are recorded so
  * they can be reconciled later: silent permanent orphan accumulation is not an acceptable design, and neither is
  * pretending the compensation succeeded.
+ *
+ * Used only where the storage write itself was ACKNOWLEDGED, so the object's existence is not in doubt and a
+ * successful delete really does end the matter. An indeterminate write goes through `compensateUncertainWrite`.
  */
 async function compensateStoredObject(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; reason: string }): Promise<void> {
   try {

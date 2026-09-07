@@ -269,12 +269,19 @@ test("14. a genuine full-precision tie falls to the id, exactly as the database 
 test("15. the token is produced in SQL by all three list queries, from one definition", () => {
   // Built before the driver rounds anything: full `timestamptz` precision as fixed-width UTC text, then the id --
   // the same pair every one of these queries orders by.
-  assert.equal(tokenService.includes(`to_char(${"${createdAt}"} AT TIME ZONE 'UTC', ${"${CATERING_ORDER_TOKEN_FORMAT}"}) || ${"${CATERING_ORDER_TOKEN_SEPARATOR}"} || ${"${id}"}`), true);
+  // Two helpers, because the two column types need opposite treatment: a `timestamptz` must be pinned to UTC
+  // before it can be formatted, and a `timestamp` without time zone must NOT be, because pinning it turns it into
+  // a `timestamptz` whose `to_char` then follows the session's TimeZone.
+  assert.equal(tokenService.includes(`to_char(${"${createdAt}"} AT TIME ZONE 'UTC', ${"${CATERING_ORDER_TOKEN_FORMAT}"})`), true);
+  assert.equal(tokenService.includes(`to_char(${"${createdAt}"}, ${"${CATERING_ORDER_TOKEN_FORMAT}"})`), true);
+  assert.equal(tokenService.includes(`${"${formatted}"} || ${"${CATERING_ORDER_TOKEN_SEPARATOR}"} || ${"${id}"}`), true);
   assert.equal(tokenService.includes(`export const CATERING_ORDER_TOKEN_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS.US';`), true);
   const tokenCode = tokenService.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
   assert.equal(tokenCode.includes("Date"), false, "nothing here goes through a JavaScript Date");
   assert.equal(tokenCode.includes("toISOString"), false);
-  assert.equal(messagesRoute.includes("orderToken: cateringOrderToken(dmMessages.createdAt, dmMessages.id)"), true);
+  // `dm_messages.created_at` is `timestamp` WITHOUT time zone, so it takes the unzoned helper; the other two are
+  // `timestamptz` and take the pinned one.
+  assert.equal(messagesRoute.includes("orderToken: cateringUnzonedOrderToken(dmMessages.createdAt, dmMessages.id)"), true);
   assert.equal(filesRoute.includes("orderToken: cateringOrderToken(cateringBookingFiles.createdAt, cateringBookingFiles.id)"), true);
   assert.equal(workspaceRoute.includes("orderToken: cateringOrderToken(cateringBookingActivity.createdAt, cateringBookingActivity.id)"), true);
   // And each query's ORDER BY really is the pair the token encodes.

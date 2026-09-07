@@ -227,6 +227,29 @@ export async function headPrivateObject(key: string): Promise<{ byteSize: number
   }
 }
 
+/**
+ * Whether the object is there, is definitely not there, or could not be asked about.
+ *
+ * `headPrivateObject` collapses every failure into `null` because its callers only need a size, and for them a key
+ * that cannot be read is as good as absent. Reconciliation cannot use that reading: it decides whether bytes may
+ * stop being tracked, and "the service did not answer" is not "the object is not there". So this reports the third
+ * state, and only a genuine not-found is read as absence.
+ */
+export type PrivateObjectPresence = "present" | "absent" | "unknown";
+function objectIsMissing(error: unknown): boolean {
+  const shaped = error as { name?: unknown; Code?: unknown; $metadata?: { httpStatusCode?: unknown } } | null;
+  if (!shaped) return false;
+  return shaped.name === "NotFound" || shaped.name === "NoSuchKey" || shaped.Code === "NoSuchKey" || shaped.$metadata?.httpStatusCode === 404;
+}
+export async function probePrivateObject(key: string): Promise<PrivateObjectPresence> {
+  try {
+    await r2Client.send(new HeadObjectCommand({ Bucket: privateBucket(), Key: key }));
+    return "present";
+  } catch (error) {
+    return objectIsMissing(error) ? "absent" : "unknown";
+  }
+}
+
 export async function deletePrivateObject(key: string): Promise<void> {
   await r2Client.send(new DeleteObjectCommand({ Bucket: privateBucket(), Key: key }));
 }

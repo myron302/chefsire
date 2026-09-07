@@ -189,8 +189,9 @@ test("an uncertain write compensates for the key it knows rather than abandoning
   const writeCatch = upload.slice(upload.indexOf("} catch (writeError) {"));
   // The same key is compensated, recorded as uncertain, and the failure is rethrown -- never a fresh key, and never
   // a success.
-  assert.equal(writeCatch.includes(`stored.reason = "uncertain_upload";`), true);
-  assert.equal(writeCatch.includes("await compensateStoredObject(stored);"), true);
+  assert.equal(writeCatch.includes("stored.reason = CATERING_UNCERTAIN_WRITE_REASON;"), true);
+  assert.equal(writeCatch.includes("await compensateUncertainWrite(stored);"), true);
+  assert.equal(writeCatch.includes("await compensateStoredObject(stored);"), false, "a successful delete is not proof a delayed write cannot still land");
   assert.equal(writeCatch.includes("throw writeError;"), true);
   assert.equal(writeCatch.includes("cateringFileStorageKey("), false, "an uncertain write must not be retried under a new key");
   // The compensating delete is idempotent, so attempting it for a write that truly failed is never an error.
@@ -216,7 +217,7 @@ test("an object stored with no owning metadata row is compensated, and an unreco
   // The reason travels with the compensation identity, so the ledger distinguishes an upload whose metadata failed
   // from one whose write outcome was never confirmed.
   assert.equal(filesRoute.includes(`reason: "orphaned_upload"`), true);
-  assert.equal(filesRoute.includes(`stored.reason = "uncertain_upload";`), true);
+  assert.equal(filesRoute.includes("stored.reason = CATERING_UNCERTAIN_WRITE_REASON;"), true);
   // The reason travels on the compensation identity into the one place that writes the ledger.
   assert.equal(filesRoute.includes("reason: stored.reason"), true);
   assert.equal(migration.includes("CREATE TABLE IF NOT EXISTS catering_booking_storage_orphans"), true);

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, isNotNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, isNotNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { cateringBookingFiles, cateringBookingStorageOrphans } from "@shared/schema";
 import { db } from "../db";
-import { removePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
+import { privateObjectPresence, removePrivateObject, type PrivateObjectPresence, type PrivateStorageProvider } from "../lib/private-storage";
 
 /**
  * Reconciliation for catering booking objects whose storage deletion did not complete.
@@ -138,9 +138,14 @@ const chargeAttempt = (column: typeof cateringBookingFiles.cleanupAttempts | typ
  * itself fail. When it does, the delete is not attempted at all -- an unrecorded delete would be indistinguishable
  * from one that never happened, and every later decision about this row would be a guess.
  *
+ * A fifth is the storage equivalent of the ownership lookup. An uncertain-WRITE row has to establish whether the
+ * object exists at all before it may stop being tracked, and that is a HEAD. A HEAD that fails is storage declining
+ * to answer, not `removePrivateObject` failing -- nothing was deleted and nothing was attempted -- so charging it
+ * would let an unreachable backend burn all ten attempts on a key it was never asked to delete.
+ *
  * So a conclusion is one of these, and only the storage failure charges the ceiling.
  */
-export type CateringCleanupConclusion = "removed" | "storage_failed" | "ownership_failed" | "unfinalized" | "unrecorded";
+export type CateringCleanupConclusion = "removed" | "storage_failed" | "ownership_failed" | "presence_failed" | "unfinalized" | "unrecorded";
 export function cateringCleanupChargesAttempt(conclusion: CateringCleanupConclusion): boolean {
   return conclusion === "storage_failed";
 }
@@ -193,30 +198,43 @@ async function enterDeleteAttempt(mark: () => Promise<{ id: string }[]>): Promis
  *    was deleted at all -- deliberately, because the bytes may belong to a row that committed after all. Letting
  *    the column default apply here charged an attempt for a database question, spending one of the ten before
  *    storage had ever been asked anything.
+ *  - `uncertain_write`: the storage PUT's outcome was indeterminate and the compensating delete SUCCEEDED. A
+ *    delete that succeeded has never charged an attempt anywhere in this module -- only a failed one does -- so
+ *    this starts at zero too. The record exists not because that delete failed but because it may have run before
+ *    the write it was compensating for. A compensating delete that FAILED is `failed_delete` as it always was.
  */
-export type CateringOrphanOrigin = "uncertain_commit" | "failed_delete";
+export type CateringOrphanOrigin = "uncertain_commit" | "uncertain_write" | "failed_delete";
 export function cateringOrphanInitialAttempts(origin: CateringOrphanOrigin): number {
   return origin === "failed_delete" ? 1 : 0;
 }
 
 /**
- * The `reason` an uncertain-commit orphan carries. Written by the upload compensation and read by the claim below,
- * from this one constant, so the two halves of the deferral cannot drift into disagreeing about which rows it
- * applies to.
+ * The two `reason` values that mark a row as deferred. Written by the upload compensation and read by the claim
+ * below, from these constants, so the two halves cannot drift into disagreeing about which rows wait.
+ *
+ * They are the same shape of problem at the two ends of an upload. `uncertain_commit`: the metadata transaction
+ * rejected and may yet become visible. `uncertain_write`: the storage PUT rejected and the object may yet
+ * materialize. In both, something that is not there NOW may be there shortly, and acting on the immediate reading
+ * is what loses data -- a live file whose bytes were deleted, or bytes nothing tracks any more.
  */
 export const CATERING_UNCERTAIN_COMMIT_REASON = "uncertain_commit";
+export const CATERING_UNCERTAIN_WRITE_REASON = "uncertain_write";
+const CATERING_DEFERRED_REASONS = [CATERING_UNCERTAIN_COMMIT_REASON, CATERING_UNCERTAIN_WRITE_REASON];
 /**
- * How long an uncertain-commit object is left alone before it may be deleted, in seconds.
+ * How long a deferred object is left alone before reconciliation may retire it, in seconds.
  *
  * A transaction can reject to the application because the connection dropped while PostgreSQL was still processing
- * COMMIT. The server finishes that COMMIT regardless, and the row becomes visible to a NEW snapshot moments later.
- * So an immediate read that finds nothing is not proof of rollback -- it may simply be earlier than the commit it
- * is asking about -- and deleting on the strength of it leaves an active file row pointing at bytes that are gone.
- * That is unrecoverable; retaining an object that turns out to be unowned is not, which is why the window is
- * generous rather than tight. It is measured from the row's own `created_at` against the DATABASE clock, so it
- * survives a worker restart and needs no process-local state.
+ * COMMIT; the server finishes that COMMIT regardless and the row becomes visible to a NEW snapshot moments later.
+ * An R2 PUT can time out at the client while the service is still committing the write; the object then appears
+ * afterwards, and a compensating DELETE issued in between succeeds precisely because the key is not there yet.
+ * Neither immediate reading is proof of anything, and acting on one is unrecoverable in both directions: a live
+ * file whose bytes were destroyed, or an untracked private object nothing will ever collect.
+ *
+ * Retaining an object that turns out to be unowned is recoverable, which is why the window is generous rather than
+ * tight. It is measured from the row's own `created_at` against the DATABASE clock, so it survives a worker
+ * restart, is shared by every replica, and needs no process-local state.
  */
-export const CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS = 900;
+export const CATERING_UNCERTAINTY_GRACE_SECONDS = 900;
 
 /**
  * Whether the error that aborted an upload's transaction proves the commit did not happen.
@@ -244,24 +262,24 @@ export function cateringCommitIsDecided(error: unknown): boolean {
 /**
  * Whether an orphan row has waited out its reconciliation window and may be handed to a worker.
  *
- * Only uncertain-commit rows wait: every other orphan was recorded after the commit outcome was already known, so
+ * Only the two deferred reasons wait: every other orphan was recorded after both outcomes were already known, so
  * there is nothing left to become visible. Waiting costs no storage attempt at all -- an unripe row is simply not
  * claimed -- which is what keeps the ten from being spent on the passage of time.
  *
  * This is the rule the claim query enforces in SQL against the database clock; it is stated here too so it can be
  * reasoned about and tested directly.
  */
-export function cateringUncertainCommitIsRipe(row: { reason: string; createdAt: Date }, now: Date): boolean {
-  if (row.reason !== CATERING_UNCERTAIN_COMMIT_REASON) return true;
-  return now.getTime() - row.createdAt.getTime() >= CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS * 1000;
+export function cateringReconciliationIsRipe(row: { reason: string; createdAt: Date }, now: Date): boolean {
+  if (!CATERING_DEFERRED_REASONS.includes(row.reason)) return true;
+  return now.getTime() - row.createdAt.getTime() >= CATERING_UNCERTAINTY_GRACE_SECONDS * 1000;
 }
 /**
  * The same rule as a claim predicate, read from the database clock so it is independent of any process, of any
  * worker's uptime, and of clock skew between them.
  */
-const uncertainCommitIsRipe = () => or(
-  ne(cateringBookingStorageOrphans.reason, CATERING_UNCERTAIN_COMMIT_REASON),
-  lte(cateringBookingStorageOrphans.createdAt, sql`now() - (${CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS} * interval '1 second')`),
+const reconciliationIsRipe = () => or(
+  notInArray(cateringBookingStorageOrphans.reason, CATERING_DEFERRED_REASONS),
+  lte(cateringBookingStorageOrphans.createdAt, sql`now() - (${CATERING_UNCERTAINTY_GRACE_SECONDS} * interval '1 second')`),
 );
 
 /**
@@ -286,7 +304,7 @@ export async function settleCateringFinalization(finalize: () => Promise<unknown
 const leaseExpiry = sql`now() + (${CATERING_CLEANUP_LEASE_SECONDS} * interval '1 second')`;
 
 export type CateringCleanupClaim = { id: string; storageProvider: string; storageKey: string; claimToken: string };
-export type CateringOrphanClaim = CateringCleanupClaim & { fileId: string | null };
+export type CateringOrphanClaim = CateringCleanupClaim & { fileId: string | null; reason: string };
 
 async function claimTombstones(limit: number): Promise<CateringCleanupClaim[]> {
   const claimToken = randomUUID();
@@ -337,8 +355,8 @@ async function claimTombstones(limit: number): Promise<CateringCleanupClaim[]> {
 async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
   const claimToken = randomUUID();
   return db.transaction(async (tx: typeof db) => {
-    const rows: { id: string; storageProvider: string; storageKey: string; fileId: string | null; previousToken: string | null; deleteAttemptedAt: Date | null; cleanupAttempts: number }[] = await tx
-      .select({ id: cateringBookingStorageOrphans.id, storageProvider: cateringBookingStorageOrphans.storageProvider, storageKey: cateringBookingStorageOrphans.storageKey, fileId: cateringBookingStorageOrphans.fileId, previousToken: cateringBookingStorageOrphans.cleanupClaimToken, deleteAttemptedAt: cateringBookingStorageOrphans.cleanupDeleteAttemptedAt, cleanupAttempts: cateringBookingStorageOrphans.cleanupAttempts })
+    const rows: { id: string; storageProvider: string; storageKey: string; fileId: string | null; reason: string; previousToken: string | null; deleteAttemptedAt: Date | null; cleanupAttempts: number }[] = await tx
+      .select({ id: cateringBookingStorageOrphans.id, storageProvider: cateringBookingStorageOrphans.storageProvider, storageKey: cateringBookingStorageOrphans.storageKey, fileId: cateringBookingStorageOrphans.fileId, reason: cateringBookingStorageOrphans.reason, previousToken: cateringBookingStorageOrphans.cleanupClaimToken, deleteAttemptedAt: cateringBookingStorageOrphans.cleanupDeleteAttemptedAt, cleanupAttempts: cateringBookingStorageOrphans.cleanupAttempts })
       .from(cateringBookingStorageOrphans)
       .where(and(
         isNull(cateringBookingStorageOrphans.resolvedAt),
@@ -347,10 +365,10 @@ async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
         // An uncertain-commit row is not even LOOKED at until its reconciliation window has passed. Filtering here
         // rather than after the claim is what makes waiting free: an unripe row is never claimed, so it cannot be
         // charged an attempt, cannot have a lease to abandon, and cannot reach the storage delete at all. When
-        // it finally is claimed, the ownership check below is a second authoritative reading of the same question
-        // the compensation asked at the moment of failure -- and by then any commit that was in flight has long
-        // since become visible.
-        uncertainCommitIsRipe(),
+        // it finally is claimed, the checks below are a second authoritative reading of the same question the
+        // compensation asked at the moment of failure -- and by then any commit or any write that was in flight
+        // has long since become visible.
+        reconciliationIsRipe(),
       ))
       .orderBy(asc(cateringBookingStorageOrphans.createdAt), asc(cateringBookingStorageOrphans.id))
       .limit(limit)
@@ -382,7 +400,7 @@ async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
         .set({ cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts) })
         .where(inArray(cateringBookingStorageOrphans.id, charged));
     }
-    return claimable.map((row) => ({ id: row.id, storageProvider: row.storageProvider, storageKey: row.storageKey, fileId: row.fileId, claimToken }));
+    return claimable.map((row) => ({ id: row.id, storageProvider: row.storageProvider, storageKey: row.storageKey, fileId: row.fileId, reason: row.reason, claimToken }));
   });
 }
 
@@ -517,9 +535,31 @@ export async function reconcileCateringStorageOrphans(limit = CATERING_CLEANUP_B
     // A committed file row owns these bytes, so nothing is deleted; otherwise the object goes now, and only THAT
     // failing is a storage attempt.
     if (!owned) {
-      // The boundary. The ownership lookup above is a database question and is never charged, so the evidence that
-      // this claim reached the delete is written here -- durably, and under this claim's own token, which also
-      // stops a worker whose lease was taken over from deleting anything.
+      // Second phase, for an uncertain WRITE only: ask STORAGE whether the object is there. This row exists because
+      // a PUT's outcome was unknown and the compensating delete may have run before the write landed, so the one
+      // thing that can retire it is storage itself answering. A HEAD that fails is storage declining to answer --
+      // nothing was deleted, nothing was attempted -- so the row stays pending and no attempt is charged, exactly
+      // as an unanswerable ownership lookup does. `present` and `absent` both go on to the delete below, which is
+      // idempotent: it removes a delayed object that did materialize, and completes harmlessly for one that never
+      // did, which is what finally lets the record resolve.
+      if (candidate.reason === CATERING_UNCERTAIN_WRITE_REASON) {
+        let presence: PrivateObjectPresence;
+        try {
+          presence = await privateObjectPresence(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
+        } catch (error) {
+          await settle(candidate, "presence_failed", error);
+          failed += 1;
+          continue;
+        }
+        if (presence === "unknown") {
+          await settle(candidate, "presence_failed", new Error("storage presence could not be established"));
+          failed += 1;
+          continue;
+        }
+      }
+      // The boundary. The questions above are lookups and are never charged, so the evidence that this claim
+      // reached the delete is written here -- durably, and under this claim's own token, which also stops a worker
+      // whose lease was taken over from deleting anything.
       const entry = await enterDeleteAttempt(() => db.update(cateringBookingStorageOrphans)
         .set({ cleanupDeleteAttemptedAt: sql`now()` })
         .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)))

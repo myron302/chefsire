@@ -144,11 +144,14 @@ test("only the uncertain path verifies: a resolved transaction still compensates
   assert.equal(resolved.length > 0, true);
   assert.equal(resolved.includes("await compensateStoredObject(stored);"), true);
   assert.equal(resolved.includes("compensateUncertainUpload"), false);
+  assert.equal(resolved.includes("compensateUncertainWrite"), false, "the transaction outcome was known, so the write outcome is not in question here");
   // The outer catch -- the only place an uncertain commit can surface -- is the one that verifies.
   assert.equal(handler.includes("if (stored) await compensateUncertainUpload(stored, error);"), true);
-  // A storage write that itself threw never ran a transaction, so it compensates directly too.
+  // A storage write that itself threw never ran a transaction, so there is no commit to verify -- but its own
+  // outcome is indeterminate, so it keeps the key under reconciliation rather than compensating directly.
   const writeFailure = handler.slice(handler.indexOf("} catch (writeError) {"), handler.indexOf("const result = await db.transaction"));
-  assert.equal(writeFailure.includes("await compensateStoredObject(stored)"), true);
+  assert.equal(writeFailure.includes("await compensateUncertainWrite(stored);"), true);
+  assert.equal(writeFailure.includes("await compensateStoredObject(stored)"), false);
   assert.equal(writeFailure.includes("compensateUncertainUpload"), false);
 });
 

@@ -121,8 +121,8 @@ test("F. an incomplete write can never be reported as a successful upload", asyn
   // And the caller treats a throw as the uncertain write it is: the route compensates and never answers 201.
   const route = fs.readFileSync(path.join(here, "..", "routes", "catering-booking-files.ts"), "utf8");
   const attempt = route.slice(route.indexOf("await writePrivateObject(provider"), route.indexOf("const result = await db.transaction"));
-  assert.equal(attempt.includes(`stored.reason = "uncertain_upload"`), true);
-  assert.equal(attempt.includes("await compensateStoredObject(stored)"), true);
+  assert.equal(attempt.includes("stored.reason = CATERING_UNCERTAIN_WRITE_REASON"), true);
+  assert.equal(attempt.includes("await compensateUncertainWrite(stored)"), true);
   assert.equal(attempt.includes("throw writeError"), true);
 });
 

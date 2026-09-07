@@ -287,7 +287,7 @@ test("origin 1 & 2. an orphan starts with the storage attempts it has actually s
   assert.equal(filesRoute.includes(`await recordStorageOrphan({ ...stored, reason: CATERING_UNCERTAIN_COMMIT_REASON }, detail, "uncertain_commit");`), true);
   assert.equal(filesRoute.includes(`String(deleteError), "failed_delete");`), true);
   // Every insert names an origin: no path may fall back to the default again.
-  assert.equal((filesRoute.match(/recordStorageOrphan\(/g) ?? []).length, 3, "two call sites and the definition");
+  assert.equal((filesRoute.match(/recordStorageOrphan\(/g) ?? []).length, 5, "four call sites and the definition");
 });
 
 test("origin 3. the first cleanup delete on an uncertain-commit orphan is its first attempt", async () => {

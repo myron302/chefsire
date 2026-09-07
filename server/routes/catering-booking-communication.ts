@@ -10,7 +10,7 @@ import { cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeBookingMessage, type SerializableBookingMessage } from "../serializers/catering-booking-message";
-import { cateringOrderToken } from "../services/catering-booking-order-token";
+import { cateringUnzonedOrderToken } from "../services/catering-booking-order-token";
 import { lockActiveCateringBooking, ownedCateringBooking } from "../services/catering-booking-access";
 import { conversationMemberIds, conversationParticipant, ensureBookingConversation, findBookingConversation } from "../services/catering-booking-conversation";
 import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, boundedUnreadCount, cateringCounterpart, cateringMessagePageFrom, cateringMutePreference, cateringPageQueryLimit, cateringUnreadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "../services/catering-booking-communication-policy";
@@ -74,7 +74,7 @@ r.get("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
   // `db` is untyped at this repo's boundary, so the row shape is stated here rather than inferred as `any`.
   // `orderToken` is the row's authoritative place in this query's own ordering, computed in SQL at full
   // `timestamptz` precision before the driver rounds it to a millisecond `Date`.
-  const rows: SerializableBookingMessage[] = await db.select({ id: dmMessages.id, senderId: dmMessages.senderId, body: dmMessages.body, createdAt: dmMessages.createdAt, orderToken: cateringOrderToken(dmMessages.createdAt, dmMessages.id) })
+  const rows: SerializableBookingMessage[] = await db.select({ id: dmMessages.id, senderId: dmMessages.senderId, body: dmMessages.body, createdAt: dmMessages.createdAt, orderToken: cateringUnzonedOrderToken(dmMessages.createdAt, dmMessages.id) })
     .from(dmMessages)
     .where(and(eq(dmMessages.threadId, threadId), boundary))
     .orderBy(desc(dmMessages.createdAt), desc(dmMessages.id))

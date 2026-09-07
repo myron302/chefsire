@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CATERING_CLEANUP_LEASE_SECONDS, CATERING_CLEANUP_MAX_ATTEMPTS, CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS, CATERING_UNCERTAIN_COMMIT_REASON, cateringCleanupChargesAttempt, cateringCommitIsDecided, cateringOrphanInitialAttempts, cateringReclaimChargesAttempt, cateringUncertainCommitIsRipe, type CateringCleanupConclusion } from "./catering-booking-storage-cleanup";
+import { CATERING_CLEANUP_LEASE_SECONDS, CATERING_CLEANUP_MAX_ATTEMPTS, CATERING_UNCERTAINTY_GRACE_SECONDS, CATERING_UNCERTAIN_COMMIT_REASON, cateringCleanupChargesAttempt, cateringCommitIsDecided, cateringOrphanInitialAttempts, cateringReclaimChargesAttempt, cateringReconciliationIsRipe, type CateringCleanupConclusion } from "./catering-booking-storage-cleanup";
 
 /**
  * One absent read immediately after an indeterminate COMMIT is not proof of rollback.
@@ -27,7 +27,7 @@ const service = fs.readFileSync(path.join(here, "catering-booking-storage-cleanu
 const route = fs.readFileSync(path.join(here, "..", "routes", "catering-booking-files.ts"), "utf8");
 
 const SECOND = 1000;
-const GRACE = CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS * SECOND;
+const GRACE = CATERING_UNCERTAINTY_GRACE_SECONDS * SECOND;
 
 // ---------------------------------------------------------------------------------------------------------------
 // The compensation decision, at the moment the upload fails.
@@ -123,7 +123,7 @@ const claimable = (row: OrphanRow, now: number) =>
   row.resolvedAt === null
   && row.cleanupAttempts < CATERING_CLEANUP_MAX_ATTEMPTS
   && (row.cleanupClaimedUntil === null || row.cleanupClaimedUntil <= now)
-  && cateringUncertainCommitIsRipe({ reason: row.reason, createdAt: new Date(row.createdAt) }, new Date(now));
+  && cateringReconciliationIsRipe({ reason: row.reason, createdAt: new Date(row.createdAt) }, new Date(now));
 
 /** Whether a committed file row owns the object; `null` stands for a lookup that failed. */
 type Ownership = () => boolean | null;
@@ -250,8 +250,8 @@ test("11. a failed-delete orphan waits for nothing: it was recorded after the ou
   const storage = storageHolding(row.storageKey);
   const pass = reconcile([row], storage, now, absent);
   assert.equal(pass.removed, 1, "no grace applies to a row whose commit outcome was never in doubt");
-  assert.equal(cateringUncertainCommitIsRipe({ reason: "orphaned_upload", createdAt: new Date(now) }, new Date(now)), true);
-  assert.equal(cateringUncertainCommitIsRipe({ reason: "uncertain_upload", createdAt: new Date(now) }, new Date(now)), true);
+  assert.equal(cateringReconciliationIsRipe({ reason: "orphaned_upload", createdAt: new Date(now) }, new Date(now)), true);
+  assert.equal(cateringReconciliationIsRipe({ reason: "uncertain_upload", createdAt: new Date(now) }, new Date(now)), true);
 });
 
 test("12. an object whose row committed never reaches storage, over any number of passes", () => {
@@ -309,16 +309,16 @@ test("14. two ledger rows for the same upload keep their own budgets and their o
 test("15. ripeness is derived from the row and the clock alone, so it survives a worker restart", () => {
   const now = new Date(1_700_000_000_000);
   const row = { reason: CATERING_UNCERTAIN_COMMIT_REASON, createdAt: new Date(now.getTime() - GRACE) };
-  assert.equal(cateringUncertainCommitIsRipe(row, now), true);
-  assert.equal(cateringUncertainCommitIsRipe({ ...row, createdAt: new Date(now.getTime() - GRACE + 1) }, now), false);
+  assert.equal(cateringReconciliationIsRipe(row, now), true);
+  assert.equal(cateringReconciliationIsRipe({ ...row, createdAt: new Date(now.getTime() - GRACE + 1) }, now), false);
   // Nothing process-local is involved: the same row and the same instant answer the same way in any order.
-  assert.equal(cateringUncertainCommitIsRipe(row, now), true);
+  assert.equal(cateringReconciliationIsRipe(row, now), true);
   // The query enforces it against the DATABASE clock and the row's persisted `created_at`, never an app timestamp.
   const claim = service.slice(service.indexOf("async function claimOrphans"), service.indexOf("async function objectHasOwner"));
-  assert.equal(claim.includes("uncertainCommitIsRipe()"), true);
-  assert.equal(service.includes("lte(cateringBookingStorageOrphans.createdAt, sql`now() - (${CATERING_UNCERTAIN_COMMIT_GRACE_SECONDS} * interval '1 second')`)"), true);
-  assert.equal(service.includes("ne(cateringBookingStorageOrphans.reason, CATERING_UNCERTAIN_COMMIT_REASON)"), true);
-  assert.equal(/const uncertainCommitIsRipe[\s\S]{0,400}Date\.now\(\)/.test(service), false, "the app clock must not decide this");
+  assert.equal(claim.includes("reconciliationIsRipe()"), true);
+  assert.equal(service.includes("lte(cateringBookingStorageOrphans.createdAt, sql`now() - (${CATERING_UNCERTAINTY_GRACE_SECONDS} * interval '1 second')`)"), true);
+  assert.equal(service.includes("notInArray(cateringBookingStorageOrphans.reason, CATERING_DEFERRED_REASONS)"), true);
+  assert.equal(/const reconciliationIsRipe[\s\S]{0,400}Date\.now\(\)/.test(service), false, "the app clock must not decide this");
 });
 
 test("16. the route defers instead of deleting, and both ends name the same reason", () => {
