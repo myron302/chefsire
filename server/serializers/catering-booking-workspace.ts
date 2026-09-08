@@ -7,4 +7,9 @@ export function serializeBookingDetails(row: CateringBookingDetails | undefined,
   return role === "provider" ? { ...shared, providerNotes: row.providerNotes } : shared;
 }
 export function serializeBookingTask(row: CateringBookingTask) { return { id: row.id, title: row.title, description: row.description, status: row.status, visibility: row.visibility, dueDate: row.dueDate, dueTime: row.dueTime, sortOrder: row.sortOrder, createdAt: row.createdAt.toISOString(), completedAt: row.completedAt?.toISOString() ?? null, updatedAt: row.updatedAt.toISOString() }; }
-export function serializeBookingActivity(row: CateringBookingActivity) { return { id: row.id, eventType: row.eventType, metadata: row.metadata, createdAt: row.createdAt.toISOString() }; }
+/**
+ * `orderToken` is the row's authoritative place in the activity query's own ordering, produced in SQL at full
+ * `timestamptz` precision before the driver rounds it to a millisecond `Date`. Opaque, comparison-only, and
+ * separate from `createdAt`, which remains the display value.
+ */
+export function serializeBookingActivity(row: CateringBookingActivity & { orderToken?: string }) { return { id: row.id, eventType: row.eventType, metadata: row.metadata, createdAt: row.createdAt.toISOString(), ...(row.orderToken === undefined ? {} : { orderToken: row.orderToken }) }; }

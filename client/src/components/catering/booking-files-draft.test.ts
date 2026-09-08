@@ -1,0 +1,121 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Draft-preservation regressions for the booking Files section.
+ *
+ * The upload controls stay usable while a request is in flight, so a completing older upload must never clear a
+ * replacement the participant has already chosen -- the same class of draft loss already fixed in the message
+ * composer. The state machine is covered by `catering-booking-files-state.test.ts`; asserted here is that the
+ * component wires it up the way the machine assumes. There is no DOM harness in this suite, so these are structural
+ * assertions against the component source.
+ */
+const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "BookingFiles.tsx"), "utf8");
+const uploadMutation = source.slice(source.indexOf("const upload = useMutation"), source.indexOf("const remove = useMutation"));
+
+test("an upload success clears the draft only through the attempt comparison", () => {
+  assert.equal(uploadMutation.includes("completeCateringFileUpload(cateringFileDraftFor(cateringFileSession.read().drafts, attempt.origin.identity, attempt.role), attempt, attempt.role, () => crypto.randomUUID())"), true);
+  // The old unconditional reset is gone: it is what deleted a replacement selection.
+  assert.equal(/onSuccess:[\s\S]*emptyCateringFileDraft/.test(uploadMutation), false, "success must not reset the draft unconditionally");
+  // Stronger than it was: the component no longer has any way to build an empty draft, so it cannot blank one.
+  assert.equal(source.includes("emptyCateringFileDraft"), false);
+});
+
+test("the file input's DOM value is reset only when the draft was actually cleared", () => {
+  assert.equal(uploadMutation.includes(`if (resolved.cleared && attempt.origin.identity === identityRef.current && inputRef.current) inputRef.current.value = "";`), true);
+  // A preserved replacement must stay in the control, so the reset is never unconditional either.
+  assert.equal(/onSuccess:[\s\S]*?if \(inputRef\.current\) inputRef\.current\.value = "";/.test(uploadMutation), false);
+});
+
+test("the completion is resolved outside the state updater, so a double-invoked updater cannot touch the DOM", () => {
+  // React may call a state updater twice; a DOM write inside one would run twice too.
+  assert.equal(uploadMutation.includes("applyDraft(attempt.origin.identity, attempt.role, () => resolved.next);"), true);
+  // Stronger than it was: the drafts have no functional updater at all, so nothing can run twice inside one.
+  assert.equal(source.includes("setDrafts("), false, "there is no component-local draft state left to update");
+  // The SESSION STORE is the authoritative holder, and the component subscribes to it. It is synchronous, so a
+  // completion resolves against what is true now rather than a commit behind -- and it is module-scoped, so it
+  // survives the unmount that used to destroy an in-flight upload's token along with its draft.
+  assert.equal(source.includes("const session = useCateringSession(cateringFileSession);"), true);
+  assert.equal(source.includes("const next = updateCateringFileDrafts(cateringFileSession.read().drafts, target, targetRole, apply);"), true);
+  assert.equal(source.includes(`setSession("drafts", () => next);`), true);
+  assert.equal(source.includes("useRef<CateringFileDrafts>"), false, "a component ref cannot outlive the component");
+});
+
+test("a failed upload leaves the draft entirely alone", () => {
+  const onError = uploadMutation.slice(uploadMutation.indexOf("onError:"));
+  assert.equal(onError.includes("setDraft"), false, "a failure must not touch the live draft");
+  assert.equal(onError.includes("invalidateOrigin(attempt.origin)"), true);
+});
+
+test("the submitted attempt carries the identity the completion is matched on", () => {
+  // requestId plus visibility: a replacement file mints a new token, and a visibility change differs on its own.
+  assert.equal(uploadMutation.includes("attempt: UploadAttempt"), true);
+  assert.equal(source.includes("upload.mutate({ origin, role, file: current.file, visibility: current.visibility, requestId: current.requestId })"), true);
+});
+
+test("idempotency is unchanged: one token per selection, sent with every attempt at it", () => {
+  assert.equal(uploadMutation.includes(`form.append("clientRequestId", attempt.requestId)`), true);
+  assert.equal(source.includes("selectCateringFile(state, chosen, chosen ? crypto.randomUUID() : null)"), true);
+});
+
+test("upload and pending controls remain accessible", () => {
+  const form = source.slice(source.indexOf(`<form className="space-y-3 border-t pt-4"`));
+  assert.equal(form.includes(`<Label htmlFor="catering-file">`), true);
+  assert.equal(form.includes(`aria-describedby="catering-file-help"`), true);
+  // Pending state is announced politely rather than only shown as a disabled button.
+  assert.equal(form.includes(`role="status" aria-live="polite"`), true);
+  assert.equal(form.includes("Uploading your file…"), true);
+  const uploadButton = form.slice(form.indexOf("<Button type=\"submit\""), form.indexOf("Upload file"));
+  assert.equal(uploadButton.includes("min-h-11"), true);
+  assert.equal(uploadButton.includes("disabled={!mayUploadCateringFile(draft, canMutate, uploading)}"), true);
+});
+
+test("no duplicate upload can be caused by the draft/attempt split", () => {
+  // The submit guard still refuses while a request is pending, so the split introduces no second request.
+  assert.equal(source.includes("if (!mayUploadCateringFile(current, canMutate, uploading) || !current.file || !current.visibility || !current.requestId) return;"), true);
+});
+
+test("a preserved draft is handed a fresh idempotency token by the component", () => {
+  // The mint is injected as a callback rather than being reached for inside the reducer, and it is the real UUID
+  // source -- the same one a new file selection uses, so a re-minted draft is indistinguishable from a fresh one.
+  assert.equal(uploadMutation.includes("() => crypto.randomUUID()"), true);
+  assert.equal(source.includes("crypto.randomUUID()"), true);
+  // Minting happens outside the state updater for the same reason the DOM reset does: React may invoke an updater
+  // twice, and a token minted in there would differ between the two invocations.
+  assert.equal(/setSession\("drafts"[\s\S]*crypto\.randomUUID/.test(uploadMutation), false);
+  // The submit path reads the token off the live draft, so the re-minted one is what the next upload carries.
+  const submit = source.slice(source.indexOf("const submit = (event: FormEvent)"), source.indexOf("return <Card id=\"files\""));
+  assert.equal(submit.includes("requestId: current.requestId"), true);
+});
+
+test("a failed upload still leaves the draft and its token untouched, so Try again stays idempotent", () => {
+  // Only onSuccess resolves the draft. onError does nothing but refresh the list, which is what keeps a retry of an
+  // unresolved attempt carrying the same token.
+  const onError = uploadMutation.slice(uploadMutation.indexOf("onError:"));
+  assert.equal(onError.includes("setDraft"), false, "a failure must not rewrite the draft");
+  assert.equal(onError.includes("randomUUID"), false, "a failure must not mint a new token");
+  assert.equal(onError.includes("invalidateOrigin(attempt.origin)"), true);
+});
+
+test("the component records the attempt on submit, so a later intent change mints a new token", () => {
+  const submit = source.slice(source.indexOf("const submit = (event: FormEvent)"), source.indexOf("return <Card id=\"files\""));
+  // Recorded before the request goes out: from that moment the token's fate is unknowable from the client, and an
+  // ambiguous failure is exactly a request that may already have been accepted.
+  assert.equal(submit.includes("applyDraft(identity, role, markCateringFileAttempted);"), true);
+  assert.equal(submit.indexOf("applyDraft(identity, role, markCateringFileAttempted)") < submit.indexOf("upload.mutate("), true);
+  // The submitted token is the AUTHORITATIVE draft's own, so an exact retry of the same intent stays idempotent
+  // and a token a completion has already settled can never be spent a second time.
+  assert.equal(submit.includes("const current = cateringFileDraftFor(cateringFileSession.read().drafts, identity, role);"), true);
+  assert.equal(submit.includes("requestId: current.requestId"), true);
+});
+
+test("a visibility change goes through the state machine with a real mint function", () => {
+  assert.equal(source.includes("chooseCateringVisibility(state, choice.value, () => crypto.randomUUID())"), true);
+  // The same UUID source a new file selection uses, so a re-minted draft is indistinguishable from a fresh one.
+  assert.equal(source.includes("selectCateringFile(state, chosen, chosen ? crypto.randomUUID() : null)"), true);
+  // Nothing else rewrites the token: minting belongs to selection, visibility change, and the success path alone.
+  assert.equal((source.match(/crypto\.randomUUID\(\)/g) ?? []).length, 3);
+});

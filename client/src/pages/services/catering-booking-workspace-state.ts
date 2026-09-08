@@ -315,3 +315,63 @@ export function cateringActivityTaskTitle(activity: { eventType: string; metadat
   const title = (metadata as Record<string, unknown>).taskTitle;
   return typeof title === "string" && title.trim() !== "" ? title : null;
 }
+
+
+/**
+ * Deep-linked workspace sections.
+ *
+ * A booking notification links to `.../bookings/<id>#communication` or `#files`. On a COLD load that fragment is
+ * resolved by the browser while the workspace is still showing its loading state, so the target element does not
+ * exist yet -- and nothing resolves it a second time once the data lands. The participant is told they have a new
+ * message and dropped at the top of the page instead.
+ *
+ * The fix is a second resolution after the workspace mounts, which needs two pure pieces: which section a fragment
+ * names, and whether that section has already been landed on. The landing record is what stops an ordinary rerender
+ * from re-scrolling or re-stealing focus, and it is why this is a value rather than a bare boolean.
+ */
+export const CATERING_WORKSPACE_SECTION_IDS = ["communication", "files", "activity"] as const;
+
+/** The section a location fragment names, or null for an absent, empty or unrecognised one. */
+export function cateringWorkspaceSectionFromHash(hash: string): string | null {
+  const id = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (id === "") return null;
+  // An allowlist rather than a `getElementById` on whatever the fragment says: a hostile or stale link must not be
+  // able to name an arbitrary element for the workspace to scroll to and focus.
+  return (CATERING_WORKSPACE_SECTION_IDS as readonly string[]).includes(id) ? id : null;
+}
+
+/**
+ * What a landing is remembered as: the BOOKING it happened on plus the fragment, never the fragment alone.
+ *
+ * The router reuses this page component across bookings -- only the route parameter changes -- so a ref holding
+ * "already landed on #files" survives the move from one booking to the next. Keyed by fragment alone it then
+ * suppresses the landing on the second booking entirely: the participant follows a notification link to booking B's
+ * files and is left at the top of B's page, which is precisely the cold-load failure this whole mechanism exists to
+ * fix. Including the booking id makes B's `#files` a different identity from A's, so it lands.
+ *
+ * Null for a section that names nothing: an absent, empty or unrecognised fragment has no landing to identify.
+ */
+export function cateringSectionLandingIdentity(bookingId: string, section: string | null): string | null {
+  return section === null ? null : `${bookingId}:${section}`;
+}
+
+/** Which landing identity has already been acted on. Held in a ref by the component, so recording causes no render. */
+export type CateringSectionLanding = { landedOn: string | null };
+export const EMPTY_CATERING_SECTION_LANDING: CateringSectionLanding = { landedOn: null };
+
+/**
+ * Whether to scroll and focus. A null identity (no fragment, or one naming nothing) never lands, and an identity
+ * already landed on never lands again -- so a refetch, a rerender, or the effect re-running does nothing at all.
+ * Because the identity carries the booking, "already landed" is always a statement about THIS booking.
+ */
+export function shouldLandOnCateringSection(state: CateringSectionLanding, identity: string | null): boolean {
+  return identity !== null && state.landedOn !== identity;
+}
+/**
+ * Records the landing. Navigating away and back re-lands, because the identity in between differs: this remembers
+ * the last identity acted on, not every one ever seen, which is what keeps back/forward -- and moving between
+ * bookings that deep-link to the same section -- working.
+ */
+export function recordCateringSectionLanding(state: CateringSectionLanding, identity: string | null): CateringSectionLanding {
+  return state.landedOn === identity ? state : { landedOn: identity };
+}
