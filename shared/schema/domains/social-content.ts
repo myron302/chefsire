@@ -534,6 +534,178 @@ export const cateringBookingStorageOrphans = pgTable("catering_booking_storage_o
   attemptsCheck: check("catering_booking_storage_orphans_attempts_check", sql`${t.cleanupAttempts} >= 0`),
 }));
 
+/**
+ * Phase 2J: the booking's run-of-show.
+ *
+ * Ordering is PERSISTED (`sort_order`), never inferred from a client array at read time, and every mutation carries
+ * the row's `updated_at` as an optimistic-concurrency precondition -- so two tabs reordering at once refuse rather
+ * than silently interleaving. `visibility` is the only thing that decides whether a customer may see an item, and it
+ * is applied as a SQL filter, so a provider-private item never reaches a customer's list, count, activity feed or
+ * readiness summary.
+ */
+export const cateringBookingExecutionTimeline = pgTable("catering_booking_execution_timeline", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 32 }).default("custom").notNull(),
+  /** Event-local wall clock, exactly as Phase 2H stores arrival and service times. Never a device timezone. */
+  scheduledTime: varchar("scheduled_time", { length: 5 }),
+  endTime: varchar("end_time", { length: 5 }),
+  visibility: varchar("visibility", { length: 20 }).default("provider_private").notNull(),
+  sortOrder: integer("sort_order").notNull(),
+  isBlocker: boolean("is_blocker").default(false).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  completedBy: varchar("completed_by").references(() => users.id, { onDelete: "restrict" }),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  /** Creation retry token, unique per (booking, creator) when present, so a retried create adds no second item. */
+  clientRequestId: uuid("client_request_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  bookingSortIdx: index("catering_execution_timeline_booking_sort_idx").on(t.bookingId, t.sortOrder, t.id),
+  bookingItemUnique: uniqueIndex("catering_execution_timeline_booking_id_uidx").on(t.bookingId, t.id),
+  requestUnique: uniqueIndex("catering_execution_timeline_request_uidx").on(t.bookingId, t.createdBy, t.clientRequestId).where(sql`${t.clientRequestId} IS NOT NULL`),
+  categoryCheck: check("catering_execution_timeline_category_check", sql`${t.category} IN ('arrival', 'load_in', 'setup', 'food_prep', 'guest_arrival', 'service', 'cake_or_special_moment', 'cleanup', 'breakdown', 'load_out', 'custom')`),
+  visibilityCheck: check("catering_execution_timeline_visibility_check", sql`${t.visibility} IN ('shared', 'provider_private')`),
+  sortOrderCheck: check("catering_execution_timeline_sort_order_check", sql`${t.sortOrder} >= 0`),
+  scheduledTimeCheck: check("catering_execution_timeline_scheduled_time_check", sql`${t.scheduledTime} IS NULL OR ${t.scheduledTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  endTimeCheck: check("catering_execution_timeline_end_time_check", sql`${t.endTime} IS NULL OR ${t.endTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  timeRangeCheck: check("catering_execution_timeline_time_range_check", sql`${t.scheduledTime} IS NULL OR ${t.endTime} IS NULL OR ${t.endTime} >= ${t.scheduledTime}`),
+  completedByCheck: check("catering_execution_timeline_completed_by_check", sql`(${t.completedAt} IS NULL AND ${t.completedBy} IS NULL) OR (${t.completedAt} IS NOT NULL AND ${t.completedBy} IS NOT NULL)`),
+}));
+
+/**
+ * Phase 2J: booking-scoped crew assignments.
+ *
+ * There is deliberately NO visibility column. These rows are never customer-visible under any value, so a column
+ * would imply a setting that could disclose them; the customer serializer has no representation for them at all and
+ * the customer's execution payload carries no `staff` key. `worker_name` is a LABEL: it is not a foreign key to
+ * `users`, it creates no profile, and it links to no ChefSire account.
+ */
+export const cateringBookingStaffAssignments = pgTable("catering_booking_staff_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  workerName: varchar("worker_name", { length: 120 }).notNull(),
+  role: varchar("role", { length: 24 }).notNull(),
+  /** Required exactly when `role` is 'custom', and forbidden otherwise -- so the allowlist cannot be bypassed. */
+  customRole: varchar("custom_role", { length: 60 }),
+  contactNote: varchar("contact_note", { length: 200 }),
+  arrivalTime: varchar("arrival_time", { length: 5 }),
+  departureTime: varchar("departure_time", { length: 5 }),
+  responsibilityNote: text("responsibility_note"),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  clientRequestId: uuid("client_request_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  bookingIdx: index("catering_execution_staff_booking_idx").on(t.bookingId, t.createdAt, t.id),
+  bookingStaffUnique: uniqueIndex("catering_execution_staff_booking_id_uidx").on(t.bookingId, t.id),
+  requestUnique: uniqueIndex("catering_execution_staff_request_uidx").on(t.bookingId, t.createdBy, t.clientRequestId).where(sql`${t.clientRequestId} IS NOT NULL`),
+  roleCheck: check("catering_execution_staff_role_check", sql`${t.role} IN ('lead', 'chef', 'prep', 'server', 'bartender', 'runner', 'setup', 'breakdown', 'driver', 'coordinator', 'custom')`),
+  customRoleCheck: check("catering_execution_staff_custom_role_check", sql`(${t.role} = 'custom' AND ${t.customRole} IS NOT NULL) OR (${t.role} <> 'custom' AND ${t.customRole} IS NULL)`),
+  arrivalTimeCheck: check("catering_execution_staff_arrival_time_check", sql`${t.arrivalTime} IS NULL OR ${t.arrivalTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  departureTimeCheck: check("catering_execution_staff_departure_time_check", sql`${t.departureTime} IS NULL OR ${t.departureTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  timeRangeCheck: check("catering_execution_staff_time_range_check", sql`${t.arrivalTime} IS NULL OR ${t.departureTime} IS NULL OR ${t.departureTime} >= ${t.arrivalTime}`),
+}));
+
+/**
+ * Phase 2J: equipment and rentals for one booking.
+ *
+ * `status` is an OPERATIONAL status and shares no vocabulary with the booking lifecycle: a cancelled rental says
+ * nothing about the booking, and neither does a returned chafer. Quantity is bounded in the database rather than
+ * trusted from a type, and visibility works exactly as it does on the run-of-show.
+ */
+export const cateringBookingEquipment = pgTable("catering_booking_equipment", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  sourceType: varchar("source_type", { length: 24 }).notNull(),
+  sourceName: varchar("source_name", { length: 160 }),
+  /** A rental can be collected the day before and returned the day after, so a real date accompanies the clock. */
+  pickupDate: date("pickup_date", { mode: "string" }),
+  pickupTime: varchar("pickup_time", { length: 5 }),
+  returnDate: date("return_date", { mode: "string" }),
+  returnTime: varchar("return_time", { length: 5 }),
+  status: varchar("status", { length: 16 }).default("planned").notNull(),
+  isBlocker: boolean("is_blocker").default(false).notNull(),
+  notes: text("notes"),
+  visibility: varchar("visibility", { length: 20 }).default("provider_private").notNull(),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  clientRequestId: uuid("client_request_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  bookingIdx: index("catering_execution_equipment_booking_idx").on(t.bookingId, t.createdAt, t.id),
+  bookingEquipmentUnique: uniqueIndex("catering_execution_equipment_booking_id_uidx").on(t.bookingId, t.id),
+  requestUnique: uniqueIndex("catering_execution_equipment_request_uidx").on(t.bookingId, t.createdBy, t.clientRequestId).where(sql`${t.clientRequestId} IS NOT NULL`),
+  visibleIdx: index("catering_execution_equipment_visible_idx").on(t.bookingId, t.visibility, t.createdAt, t.id),
+  statusCheck: check("catering_execution_equipment_status_check", sql`${t.status} IN ('planned', 'confirmed', 'received', 'in_use', 'returned', 'cancelled')`),
+  sourceCheck: check("catering_execution_equipment_source_check", sql`${t.sourceType} IN ('provider_owned', 'rental', 'venue_supplied', 'customer_supplied')`),
+  visibilityCheck: check("catering_execution_equipment_visibility_check", sql`${t.visibility} IN ('shared', 'provider_private')`),
+  quantityCheck: check("catering_execution_equipment_quantity_check", sql`${t.quantity} >= 1 AND ${t.quantity} <= 9999`),
+  pickupTimeCheck: check("catering_execution_equipment_pickup_time_check", sql`${t.pickupTime} IS NULL OR ${t.pickupTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  returnTimeCheck: check("catering_execution_equipment_return_time_check", sql`${t.returnTime} IS NULL OR ${t.returnTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+}));
+
+/**
+ * Phase 2J: operational access instructions for the event location Phase 2H already records.
+ *
+ * There is no address, city, state, postal code or event date column here on purpose. Those stay authoritative on
+ * `catering_bookings` and `catering_booking_details`; this table holds INSTRUCTIONS about reaching and working in
+ * that already-recorded place, so there is no second source of truth to drift. One row per booking, keyed by the
+ * booking itself, with a single provider-private column the customer serializer never emits.
+ */
+export const cateringBookingAccessDetails = pgTable("catering_booking_access_details", {
+  bookingId: varchar("booking_id").primaryKey().references(() => cateringBookings.id, { onDelete: "restrict" }),
+  loadInEntrance: varchar("load_in_entrance", { length: 240 }),
+  loadingDockNotes: text("loading_dock_notes"),
+  elevatorNotes: text("elevator_notes"),
+  kitchenAccessNotes: text("kitchen_access_notes"),
+  parkingInstructions: text("parking_instructions"),
+  securityCheckInNotes: text("security_check_in_notes"),
+  accessWindowStart: varchar("access_window_start", { length: 5 }),
+  accessWindowEnd: varchar("access_window_end", { length: 5 }),
+  venueContactName: varchar("venue_contact_name", { length: 120 }),
+  venueContactPhone: varchar("venue_contact_phone", { length: 40 }),
+  /** Provenance of the venue contact, so customer-supplied details are never re-attributed to the provider. */
+  venueContactSource: varchar("venue_contact_source", { length: 16 }),
+  powerWaterNotes: text("power_water_notes"),
+  trashRemovalNotes: text("trash_removal_notes"),
+  specialRestrictions: text("special_restrictions"),
+  providerPrivateNotes: text("provider_private_notes"),
+  accessConfirmed: boolean("access_confirmed").default(false).notNull(),
+  updatedBy: varchar("updated_by").references(() => users.id, { onDelete: "restrict" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  contactSourceCheck: check("catering_execution_access_contact_source_check", sql`${t.venueContactSource} IS NULL OR ${t.venueContactSource} IN ('provider', 'customer')`),
+  windowStartCheck: check("catering_execution_access_window_start_check", sql`${t.accessWindowStart} IS NULL OR ${t.accessWindowStart} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  windowEndCheck: check("catering_execution_access_window_end_check", sql`${t.accessWindowEnd} IS NULL OR ${t.accessWindowEnd} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  windowRangeCheck: check("catering_execution_access_window_range_check", sql`${t.accessWindowStart} IS NULL OR ${t.accessWindowEnd} IS NULL OR ${t.accessWindowEnd} >= ${t.accessWindowStart}`),
+}));
+
+/**
+ * Phase 2J: event-day milestones, provider-only.
+ *
+ * The primary key is (booking, milestone key), so a milestone is STATE rather than an event stream: asking to
+ * complete the same key twice leaves one row in one state, which is what makes a retry from a phone harmless with
+ * no idempotency token at all. Completing every one of them still does not complete the BOOKING -- the Phase 2G
+ * provider completion action remains the only mechanism for that.
+ */
+export const cateringBookingExecutionMilestones = pgTable("catering_booking_execution_milestones", {
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  milestoneKey: varchar("milestone_key", { length: 32 }).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  completedBy: varchar("completed_by").references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  pk: primaryKey({ name: "catering_booking_execution_milestones_pkey", columns: [t.bookingId, t.milestoneKey] }),
+  keyCheck: check("catering_execution_milestone_key_check", sql`${t.milestoneKey} IN ('crew_confirmed', 'equipment_loaded', 'departed_for_venue', 'arrived', 'load_in_complete', 'setup_complete', 'food_ready', 'service_started', 'service_complete', 'cleanup_complete', 'load_out_complete')`),
+  completedByCheck: check("catering_execution_milestone_completed_by_check", sql`(${t.completedAt} IS NULL AND ${t.completedBy} IS NULL) OR (${t.completedAt} IS NOT NULL AND ${t.completedBy} IS NOT NULL)`),
+}));
+
 export const cateringReviews = pgTable("catering_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),

@@ -329,7 +329,11 @@ export function cateringActivityTaskTitle(activity: { eventType: string; metadat
  * names, and whether that section has already been landed on. The landing record is what stops an ordinary rerender
  * from re-scrolling or re-stealing focus, and it is why this is a value rather than a bare boolean.
  */
-export const CATERING_WORKSPACE_SECTION_IDS = ["communication", "files", "activity"] as const;
+// Phase 2J adds "execution", so the notification deep-link a shared timeline or access change sends actually
+// lands on the execution card rather than being refused by this allowlist and dropping the participant at the
+// top of the page. The allowlist itself is unchanged in kind: a fragment naming anything else still resolves to
+// null and scrolls nowhere.
+export const CATERING_WORKSPACE_SECTION_IDS = ["communication", "files", "activity", "execution"] as const;
 
 /** The section a location fragment names, or null for an absent, empty or unrecognised one. */
 export function cateringWorkspaceSectionFromHash(hash: string): string | null {
