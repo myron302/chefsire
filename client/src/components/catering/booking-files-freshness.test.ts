@@ -103,7 +103,7 @@ test("a refresh does not disturb the upload draft or its idempotency token", () 
   const code = stripComments(queryOptions);
   assert.equal(code.includes("setDraft"), false);
   // The draft is only ever rewritten by selection, visibility choice, the attempt marker, and a matching success.
-  assert.equal(source.includes("completeCateringFileUpload(cateringFileDraftFor(draftsRef.current, attempt.origin.identity, attempt.role), attempt, attempt.role, () => crypto.randomUUID())"), true);
+  assert.equal(source.includes("completeCateringFileUpload(cateringFileDraftFor(cateringFileSession.read().drafts, attempt.origin.identity, attempt.role), attempt, attempt.role, () => crypto.randomUUID())"), true);
   assert.equal(source.includes("applyDraft(identity, role, markCateringFileAttempted);"), true);
   assert.equal((source.match(/crypto\.randomUUID\(\)/g) ?? []).length, 3);
 });

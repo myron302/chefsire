@@ -9,16 +9,17 @@ import { EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_MUTATION_OUTCOMES, cateringMut
 /**
  * The completion must decide against the TRUE LATEST draft.
  *
- * The booking-scoped drafts are held in a ref as well as in React state, and the ref used to be a passive MIRROR of
- * the state: `useEffect(() => { draftsRef.current = drafts; }, [drafts])`. A passive effect runs after the commit,
+ * The booking-scoped drafts were held in a ref as well as in React state, and the ref used to be a passive MIRROR
+ * of the state: `useEffect(() => { draftsRef.current = drafts; }, [drafts])`. A passive effect runs after the commit,
  * so between a draft transition and that effect the two disagreed -- and an upload that resolved inside that window
  * read the PREVIOUS draft. It then judged that draft to still match the completing attempt, cleared it, and reset
  * the file input, destroying a replacement the participant had already chosen. The window is not theoretical: a
  * selection change and a settling `fetch` promise routinely land in the same event-loop turn.
  *
- * The fix inverts the relationship. The REF is authoritative and every transition writes it synchronously, through
- * one path, before mirroring into state for rendering. There is then no window at all: whatever the participant has
- * most recently done is what the completion reads.
+ * The fix inverts the relationship. A module-scoped SESSION STORE is authoritative and every transition writes it
+ * synchronously, through one path; the component merely subscribes to it for rendering. There is then no window at
+ * all: whatever the participant has most recently done is what the completion reads. (The store later replaced the
+ * ref outright, so the same authority now also survives the section unmounting.)
  *
  * Both arrangements are modelled below -- the current one and the old passive mirror -- so each race case is
  * asserted to be handled AND asserted to have been mishandled before. Without the counterfactual these tests would
@@ -308,18 +309,19 @@ test("18. one booking's transition is still invisible to another's completion de
 // ---------------------------------------------------------------------------------------------------------------
 
 test("19. the ref is authoritative and written synchronously by the one transition path", () => {
-  assert.equal(source.includes("const draftsRef = useRef<CateringFileDrafts>(EMPTY_CATERING_FILE_DRAFTS);"), true);
-  // The passive mirror that created the window is gone.
+  assert.equal(source.includes("const session = useCateringSession(cateringFileSession);"), true);
+  // The passive mirror that created the window is gone, and so is the ref it was mirroring into.
   assert.equal(/useEffect\(\(\) => \{ draftsRef\.current = drafts/.test(source), false);
-  // Exactly one place writes the ref, and it mirrors into state in the same breath.
-  assert.equal((source.match(/draftsRef\.current = /g) ?? []).length, 1);
-  assert.equal(/draftsRef\.current = next;\s*setDrafts\(next\);/.test(source), true);
-  // Every transition goes through it, and none of them reaches setDrafts directly.
-  assert.equal((source.match(/setDrafts\(/g) ?? []).length, 1);
+  assert.equal(source.includes("draftsRef"), false);
+  // Exactly one place writes the drafts, from the store's own synchronous reading.
+  assert.equal((source.match(/setSession\("drafts"/g) ?? []).length, 1);
+  assert.equal(source.includes("const next = updateCateringFileDrafts(cateringFileSession.read().drafts, target, targetRole, apply);"), true);
+  // Every transition goes through it, and none of them reaches component state directly.
+  assert.equal(source.includes("setDrafts("), false);
   assert.equal((source.match(/applyDraft\(/g) ?? []).length, 4, "selection, visibility, submit and completion, and nothing else");
   // Both readers of the truth read the ref: the completion and the one place a token is spent.
-  assert.equal(source.includes("completeCateringFileUpload(cateringFileDraftFor(draftsRef.current, attempt.origin.identity, attempt.role), attempt, attempt.role, () => crypto.randomUUID())"), true);
-  assert.equal(source.includes("const current = cateringFileDraftFor(draftsRef.current, identity, role);"), true);
+  assert.equal(source.includes("completeCateringFileUpload(cateringFileDraftFor(cateringFileSession.read().drafts, attempt.origin.identity, attempt.role), attempt, attempt.role, () => crypto.randomUUID())"), true);
+  assert.equal(source.includes("const current = cateringFileDraftFor(cateringFileSession.read().drafts, identity, role);"), true);
 });
 
 test("20. nothing non-idempotent happens inside a React state updater", () => {
@@ -333,7 +335,7 @@ test("20. nothing non-idempotent happens inside a React state updater", () => {
   }
   // The remaining functional updaters are the pure per-booking counters and outcome maps, which have no read-then-
   // decide step and are therefore safest as updaters.
-  assert.equal(source.includes("setDrafts((current)"), false);
+  assert.equal(source.includes("setDrafts("), false);
   // And the completion's own DOM write stands outside everything, guarded on a real clear.
   assert.equal(source.includes(`if (resolved.cleared && attempt.origin.identity === identityRef.current && inputRef.current) inputRef.current.value = "";`), true);
   const writes = [...source.matchAll(/inputRef\.current\.value = ([^;]+);/g)].map((match) => match[1]);

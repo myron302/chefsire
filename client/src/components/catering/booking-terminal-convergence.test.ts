@@ -167,7 +167,7 @@ test("13. convergence is refresh only: it re-enables no mutation and writes noth
   for (const [label, source] of [["files", files], ["communication", comms]] as const) {
     const start = source.indexOf("// The first time this section's own endpoint reports");
     const effect = source.slice(start, source.indexOf("}, [observedEditable, identity]);", start));
-    for (const forbidden of ["mutate(", ".insert(", "setDrafts", "applyDraft", "setComposers", "POST", "DELETE"]) {
+    for (const forbidden of ["mutate(", ".insert(", "setSession", "applyDraft", "POST", "DELETE"]) {
       assert.equal(effect.includes(forbidden), false, `${label}: ${forbidden}`);
     }
     assert.equal(effect.includes("cache.invalidateQueries("), true, label);

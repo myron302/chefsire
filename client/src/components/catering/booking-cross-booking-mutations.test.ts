@@ -212,7 +212,7 @@ test("7. once the booking is terminal the refused text stays visible and read-on
   assert.equal(terminal.includes("{CATERING_COMMUNICATION_READ_ONLY_BANNER}"), true, "the closed-booking banner must still appear");
   assert.equal(terminal.includes("Unsent message"), true);
   assert.equal(terminal.includes("readOnly value={unsentText}"), true);
-  assert.equal(comms.includes("const unsentText = pending?.text ?? cateringUnsentMessage(unsent, identity);"), true);
+  assert.equal(comms.includes("const unsentText = pending?.text ?? cateringUnsentMessage(session.unsent, identity);"), true);
   // No control that could send, retry or discard survives into the terminal rendering.
   assert.equal(terminal.includes("<Button"), false, "a terminal booking must offer no send or retry control");
   assert.equal(terminal.includes("onSubmit"), false);
@@ -452,6 +452,7 @@ test("19. no communication completion handler reads the booking from render scop
   // The send settles the ORIGINATING booking's own composer entry rather than guarding a single shared slot, so
   // an attempt that resolves off screen still resolves. The read marker is a single slot and stays origin-guarded.
   assert.equal(sendBlock.includes("updateCateringComposer(current, attempt.origin.identity"), true);
+  assert.equal(sendBlock.includes(`setSession("composers"`), true, "and it settles the SESSION store, which outlives this component");
   assert.equal(sendBlock.includes("applyForCateringOrigin("), false, "a per-booking entry needs no current-booking guard");
   assert.equal(readBlock.includes("applyForCateringOrigin(current, attempt.origin"), true);
   // The requests themselves address the originating booking too, so a late-started fetch cannot cross bookings.
@@ -489,11 +490,11 @@ test("21. hook-level success, error and pending flags no longer drive either ren
     }
   }
   // What replaced them is identity-scoped in both sections.
-  assert.equal(comms.includes("cateringMutationOutcomeFor(sendOutcomes, identity)"), true);
-  assert.equal(filesSource.includes("cateringMutationOutcomeFor(uploadOutcomes, identity)"), true);
-  assert.equal(filesSource.includes("cateringMutationOutcomeFor(removeOutcomes, identity)"), true);
-  assert.equal(filesSource.includes("cateringMutationIsPending(uploadInFlight, identity)"), true);
-  assert.equal(filesSource.includes("cateringMutationIsPending(removeInFlight, identity)"), true);
+  assert.equal(comms.includes("cateringMutationOutcomeFor(session.sendOutcomes, identity)"), true);
+  assert.equal(filesSource.includes("cateringMutationOutcomeFor(session.uploadOutcomes, identity)"), true);
+  assert.equal(filesSource.includes("cateringMutationOutcomeFor(session.removeOutcomes, identity)"), true);
+  assert.equal(filesSource.includes("cateringMutationIsPending(session.uploadInFlight, identity)"), true);
+  assert.equal(filesSource.includes("cateringMutationIsPending(session.removeInFlight, identity)"), true);
   assert.equal(comms.includes("cateringMutationIsPending(readInFlight, identity)"), true);
 });
 

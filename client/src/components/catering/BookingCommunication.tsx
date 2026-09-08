@@ -7,7 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cateringPreservedHistory, emptyCateringLoadedHistory, type CateringLoadedHistory } from "@/pages/services/catering-booking-loaded-history";
-import { EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_TERMINAL_SEEN, EMPTY_CATERING_UNSENT_MESSAGES, applyForCateringOrigin, cateringMutationIsPending, cateringMutationOrigin, EMPTY_CATERING_MUTATION_OUTCOMES, cateringMutationOutcomeFor, clearCateringMutationOutcome, recordCateringMutationOutcome, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringTerminalConvergenceIsDue, cateringUnsentMessage, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, recordCateringTerminalConvergence, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcomes, type CateringTerminalSeen, type CateringUnsentMessages } from "@/pages/services/catering-booking-mutation-origin";
+import { EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_TERMINAL_SEEN, applyForCateringOrigin, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcomeFor, clearCateringMutationOutcome, recordCateringMutationOutcome, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringTerminalConvergenceIsDue, cateringUnsentMessage, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, recordCateringTerminalConvergence, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringInFlight, type CateringMutationOrigin, type CateringTerminalSeen } from "@/pages/services/catering-booking-mutation-origin";
+import { cateringCommunicationSession, type CateringCommunicationSession } from "@/pages/services/catering-booking-workspace-session";
+import { updateCateringSessionField, useCateringSession } from "@/pages/services/catering-booking-session-store";
 import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSERS, cateringComposerFor, updateCateringComposer, type CateringComposers, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringMessagePageKey, cateringReadableBoundary, cateringThreadEndIsOnScreen, cateringUnreadStart, cateringUnreadStartId, cateringViewGeneration, mayRecordCateringViewedBoundary, recordCateringMessageCoverage, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
 
 /**
@@ -26,24 +28,24 @@ type ReadAttempt = { origin: CateringMutationOrigin; lastReadMessageId: string }
 export default function BookingCommunication({ bookingId, userId, role, editable, unreadCount, unreadCountCapped = false }: { bookingId: string; userId: string; role: "provider" | "customer"; editable: boolean; unreadCount: number; unreadCountCapped?: boolean }) {
   const cache = useQueryClient();
   const identity = `${userId}:${bookingId}`;
-  // One composer per booking. A send outlives the booking that started it, so replacing a single slot on
-  // navigation discarded the text, the attempt and -- worst -- its idempotency token, which made Send available
-  // again and a second attempt carry a FRESH token: two logical messages for one.
-  const [composers, setComposers] = useState<CateringComposers>(EMPTY_CATERING_COMPOSERS);
+  // One composer per booking, held for the browser SESSION rather than for this component's lifetime.
+  //
+  // A send outlives the booking that started it, so replacing a single slot on navigation discarded the text, the
+  // attempt and -- worst -- its idempotency token, which made Send available again and a second attempt carry a
+  // FRESH token: two logical messages for one. A send also outlives this SECTION. Following Back out of the
+  // workspace unmounts it, and component state died with it, reproducing exactly that defect one level up: a fresh
+  // instance knew nothing of the request still in flight, offered Send, and minted a new token. The store is
+  // module-scoped, so an unmount is not an event it observes at all.
+  const session = useCateringSession(cateringCommunicationSession);
+  const setSession = <K extends keyof CateringCommunicationSession>(field: K, apply: (value: CateringCommunicationSession[K]) => CateringCommunicationSession[K]) =>
+    updateCateringSessionField(cateringCommunicationSession, field, apply);
   const [readMark, setReadMark] = useState<CateringReadMarkState>(EMPTY_CATERING_READ_MARK);
   const [viewed, setViewed] = useState<CateringViewedState>(EMPTY_CATERING_VIEWED);
   // Both halves of "the end of the thread is on screen", tracked separately because they change independently:
   // scrolling the page moves the container, scrolling the thread moves the sentinel within it.
   const [visibility, setVisibility] = useState<CateringThreadVisibility>(EMPTY_CATERING_THREAD_VISIBILITY);
-  // The outcome of the last send, stamped with the booking it happened on. `useMutation().isSuccess` is a property
-  // of the hook rather than of a booking, so it would announce "Message sent." on whichever booking is rendered
-  // when the request lands.
-  const [sendOutcomes, setSendOutcomes] = useState<CateringMutationOutcomes>(EMPTY_CATERING_MUTATION_OUTCOMES);
   // Read receipts in flight, per booking, for the same reason: A's request must not disable B's retry control.
   const [readInFlight, setReadInFlight] = useState<CateringInFlight>(EMPTY_CATERING_IN_FLIGHT);
-  // Text that was submitted and refused, kept per booking so a booking that closes mid-send does not take the
-  // participant's words down with the composer. Local recovery state only; nothing here is persisted or retried.
-  const [unsent, setUnsent] = useState<CateringUnsentMessages>(EMPTY_CATERING_UNSENT_MESSAGES);
   // Marks the end of the thread. When it is on screen the newest loaded message is genuinely displayed, which is
   // the only thing that may advance the read boundary -- fetching a page is not reading it.
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -138,7 +140,7 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   const viewedId = cateringReadableBoundary(viewed, identity);
   // The local state as it applies to the booking being rendered RIGHT NOW. The reset below runs in an effect, which
   // commits a render later, so reading the raw state would show one frame of the previous booking's composer.
-  const ownComposer = cateringComposerFor(composers, identity);
+  const ownComposer = cateringComposerFor(session.composers, identity);
   const ownReadMark = hydrateCateringReadMark(readMark, identity);
   const readPending = cateringMutationIsPending(readInFlight, identity);
 
@@ -154,9 +156,9 @@ export default function BookingCommunication({ bookingId, userId, role, editable
       // whatever composer happens to be on screen.
       // Settles the ORIGINATING booking's composer, whatever is on screen: an off-screen booking's attempt must
       // still resolve, and only its own.
-      setComposers((current) => updateCateringComposer(current, attempt.origin.identity, (state) => completeCateringMessageSend(state, attempt.clientRequestId)));
-      setUnsent((current) => clearCateringUnsentMessage(current, attempt.origin));
-      setSendOutcomes((current) => recordCateringMutationOutcome(current, attempt.origin, "succeeded"));
+      setSession("composers", (current) => updateCateringComposer(current, attempt.origin.identity, (state) => completeCateringMessageSend(state, attempt.clientRequestId)));
+      setSession("unsent", (current) => clearCateringUnsentMessage(current, attempt.origin));
+      setSession("sendOutcomes", (current) => recordCateringMutationOutcome(current, attempt.origin, "succeeded"));
       // The caches refreshed are the ORIGINATING booking's, whether or not it is still displayed -- a completion
       // that landed after a route change must leave the booking it belongs to fresh and the one on screen alone.
       // Only this actor's own booking message and workspace caches are invalidated -- never a broad clear, and never
@@ -164,10 +166,10 @@ export default function BookingCommunication({ bookingId, userId, role, editable
       for (const queryKey of cateringOriginMessageInvalidations(attempt.origin)) cache.invalidateQueries({ queryKey });
     },
     onError: (error: Error, attempt) => {
-      setComposers((current) => updateCateringComposer(current, attempt.origin.identity, (state) => failCateringMessageSend(state, attempt.clientRequestId, error.message)));
+      setSession("composers", (current) => updateCateringComposer(current, attempt.origin.identity, (state) => failCateringMessageSend(state, attempt.clientRequestId, error.message)));
       // Kept against the ORIGIN, so a booking that goes terminal mid-send can still show what was never delivered.
-      setUnsent((current) => recordCateringUnsentMessage(current, attempt.origin, attempt.text));
-      setSendOutcomes((current) => recordCateringMutationOutcome(current, attempt.origin, "failed", error.message));
+      setSession("unsent", (current) => recordCateringUnsentMessage(current, attempt.origin, attempt.text));
+      setSession("sendOutcomes", (current) => recordCateringMutationOutcome(current, attempt.origin, "failed", error.message));
       // A booking that closed while the composer was open means this section is stale, so the workspace is refetched.
       if (isCateringCommunicationReadOnly(error)) {
         for (const queryKey of cateringOriginMessageInvalidations(attempt.origin)) cache.invalidateQueries({ queryKey });
@@ -332,26 +334,32 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     // Guarded here as well as by the control, so no send can be initiated once the endpoint has reported the
     // booking terminal -- whatever a stale parent prop still says.
     if (!maySendCateringMessage(ownComposer, canSend)) return;
-    const started = startCateringMessageSend(ownComposer, crypto.randomUUID());
+    // Read from the session store rather than from this render: a completion may have settled this booking's
+    // composer moments ago, and submitting the rendered copy could spend a token that is already resolved.
+    const current = cateringComposerFor(cateringCommunicationSession.read().composers, identity);
+    const started = startCateringMessageSend(current, crypto.randomUUID());
     if (!started) return;
-    setComposers((current) => updateCateringComposer(current, identity, () => started.next));
-    setSendOutcomes((current) => clearCateringMutationOutcome(current, origin));
+    setSession("composers", (composers) => updateCateringComposer(composers, identity, () => started.next));
+    setSession("sendOutcomes", (outcomes) => clearCateringMutationOutcome(outcomes, origin));
     send.mutate({ origin, ...started.payload });
   };
   const retry = () => {
     if (!canSend) return;
-    const retried = retryCateringMessageSend(ownComposer);
+    // Likewise from the store: the retry's whole purpose is to resend under the ORIGINAL token, so it is read
+    // from the authoritative composer rather than from whatever this render captured.
+    const current = cateringComposerFor(cateringCommunicationSession.read().composers, identity);
+    const retried = retryCateringMessageSend(current);
     if (!retried) return;
-    setComposers((current) => updateCateringComposer(current, identity, () => retried.next));
-    setSendOutcomes((current) => clearCateringMutationOutcome(current, origin));
+    setSession("composers", (composers) => updateCateringComposer(composers, identity, () => retried.next));
+    setSession("sendOutcomes", (outcomes) => clearCateringMutationOutcome(outcomes, origin));
     send.mutate({ origin, ...retried.payload });
   };
   const pending = ownComposer.pending;
   // Only an outcome recorded for THIS booking may be announced here.
-  const outcome = cateringMutationOutcomeFor(sendOutcomes, identity);
+  const outcome = cateringMutationOutcomeFor(session.sendOutcomes, identity);
   // What was typed or submitted and has not been delivered, as it applies to this booking. The attempt's own text
   // wins while it exists; the per-booking record is what survives a navigation away and back.
-  const unsentText = pending?.text ?? cateringUnsentMessage(unsent, identity);
+  const unsentText = pending?.text ?? cateringUnsentMessage(session.unsent, identity);
   const typedText = ownComposer.text.trim();
 
   return <Card id="communication"><CardHeader><CardTitle>Communication</CardTitle><CardDescription>Messages about this booking stay with this booking. They are separate from your ordinary direct messages.</CardDescription></CardHeader><CardContent className="space-y-4">
@@ -393,12 +401,12 @@ export default function BookingCommunication({ bookingId, userId, role, editable
               a send only clears this box when it still holds exactly what was submitted, so nothing typed here is
               ever destroyed by an attempt resolving. */}
           <Textarea id="catering-message" className="min-h-24" rows={3} value={ownComposer.text}
-            onChange={(event) => setComposers((current) => updateCateringComposer(current, identity, (state) => editCateringComposer(state, event.target.value)))} />
+            onChange={(event) => setSession("composers", (current) => updateCateringComposer(current, identity, (state) => editCateringComposer(state, event.target.value)))} />
           <div className="flex flex-wrap gap-2">
             <Button type="submit" className="min-h-11" disabled={!maySendCateringMessage(ownComposer, canSend)}>Send message</Button>
             {pending?.status === "failed" && <>
               <Button type="button" variant="outline" className="min-h-11" onClick={retry}>Try again</Button>
-              <Button type="button" variant="ghost" className="min-h-11" onClick={() => { setComposers((current) => updateCateringComposer(current, identity, discardCateringMessageSend)); setUnsent((current) => clearCateringUnsentMessage(current, origin)); }}>Discard unsent message</Button>
+              <Button type="button" variant="ghost" className="min-h-11" onClick={() => { setSession("composers", (current) => updateCateringComposer(current, identity, discardCateringMessageSend)); setSession("unsent", (current) => clearCateringUnsentMessage(current, origin)); }}>Discard unsent message</Button>
             </>}
           </div>
           {/* One live region carries every send outcome, so a screen reader hears the result without moving focus. */}

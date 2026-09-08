@@ -298,9 +298,13 @@ test("13. the map holds only what is worth holding, and the component is wired t
   held = updateCateringComposer(held, A.identity, (state) => editCateringComposer(state, ""));
   assert.equal(held.has(A.identity), true, "an attempt in flight keeps the entry even with an empty box");
   // The component holds one composer per booking and no longer rehydrates a single slot on navigation.
-  assert.equal(component.includes("const [composers, setComposers] = useState<CateringComposers>(EMPTY_CATERING_COMPOSERS);"), true);
-  assert.equal(component.includes("const ownComposer = cateringComposerFor(composers, identity);"), true);
+  // Held in the module-scoped session store rather than in component state, so it survives the section unmounting
+  // as well as the booking changing -- an in-flight send's token outlives both.
+  assert.equal(component.includes("const session = useCateringSession(cateringCommunicationSession);"), true);
+  assert.equal(component.includes("const ownComposer = cateringComposerFor(session.composers, identity);"), true);
+  assert.equal(component.includes("useState<CateringComposers>"), false, "component state dies with the component");
   assert.equal(/useEffect\(\(\) => \{ setComposer\(/.test(component), false, "the single-slot rehydrate is gone");
   assert.equal(component.includes("updateCateringComposer(current, attempt.origin.identity"), true, "completions settle the originating booking");
+  assert.equal((component.match(/setSession\("composers"/g) ?? []).length, 6, "success, failure, submit, retry, typing, discard");
   assert.equal((component.match(/updateCateringComposer\(current, attempt\.origin\.identity/g) ?? []).length, 2, "success and failure both");
 });

@@ -257,7 +257,7 @@ test("11. the identity a transition applies to is passed in, never read from any
 test("12. the component keeps the draft across navigation and never pretends to refill the file input", () => {
   // The reset that destroyed the pending draft is gone; only the DOM control's own value resets with the booking.
   assert.equal(source.includes(`useEffect(() => { if (inputRef.current) inputRef.current.value = ""; }, [identity]);`), true);
-  assert.equal(source.includes("setDrafts(EMPTY_CATERING_FILE_DRAFTS)"), false);
+  assert.equal(source.includes("EMPTY_CATERING_FILE_DRAFTS"), false);
   assert.equal(source.includes("emptyCateringFileDraft"), false, "the component has no way to blank a draft");
   // Every write to the input's value is the empty string: a file input cannot be repopulated, and nothing here
   // invents a path or a filename to put in it.
@@ -268,7 +268,7 @@ test("12. the component keeps the draft across navigation and never pretends to 
   // The retained selection is named from the `File` itself, so a restored draft is visible and uploadable even
   // though the control beside it reads empty.
   assert.equal(source.includes("Ready to upload: {draft.file.name}"), true);
-  assert.equal(source.includes("const draft = cateringFileDraftFor(drafts, identity, role);"), true);
+  assert.equal(source.includes("const draft = cateringFileDraftFor(session.drafts, identity, role);"), true);
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -372,16 +372,17 @@ test("19. one booking can hold at most one attempt of each kind, so no stale ans
 });
 
 test("20. the component reads and writes both answers per booking, with no single slot left", () => {
-  assert.equal(source.includes("const [uploadOutcomes, setUploadOutcomes] = useState<CateringMutationOutcomes>(EMPTY_CATERING_MUTATION_OUTCOMES);"), true);
-  assert.equal(source.includes("const [removeOutcomes, setRemoveOutcomes] = useState<CateringMutationOutcomes>(EMPTY_CATERING_MUTATION_OUTCOMES);"), true);
-  assert.equal(source.includes("cateringMutationOutcomeFor(uploadOutcomes, identity)"), true);
-  assert.equal(source.includes("cateringMutationOutcomeFor(removeOutcomes, identity)"), true);
+  // Held in the session store, so an answer that arrived while the section was unmounted is still reported.
+  assert.equal(source.includes(`setSession("uploadOutcomes"`), true);
+  assert.equal(source.includes(`setSession("removeOutcomes"`), true);
+  assert.equal(source.includes("cateringMutationOutcomeFor(session.uploadOutcomes, identity)"), true);
+  assert.equal(source.includes("cateringMutationOutcomeFor(session.removeOutcomes, identity)"), true);
   // The single slots and their unconditional resets are gone.
-  assert.equal(/setUploadOutcome\(|setRemoveOutcome\(/.test(source), false);
+  assert.equal(/setUploadOutcomes?\(|setRemoveOutcomes?\(/.test(source), false);
   assert.equal(source.includes("visibleCateringMutationOutcome"), false);
   // Every write names the booking it belongs to: the ORIGINATING one on a completion, the displayed one when a
   // control starts an attempt.
-  const writes = [...source.matchAll(/set(?:Upload|Remove)Outcomes\(\((\w+)\) => (\w+)\(\1, ([\w.]+)/g)].map((match) => `${match[2]}(${match[3]})`);
+  const writes = [...source.matchAll(/setSession\("(?:upload|remove)Outcomes", \((\w+)\) => (\w+)\(\1, ([\w.]+)/g)].map((match) => `${match[2]}(${match[3]})`);
   assert.deepEqual(writes, [
     "recordCateringMutationOutcome(attempt.origin)",
     "recordCateringMutationOutcome(attempt.origin)",

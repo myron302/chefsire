@@ -33,7 +33,10 @@ test("clearing the composer goes through the state machine, never an uncondition
 
 test("a retry resends the failed attempt rather than whatever is currently typed", () => {
   const retry = source.slice(source.indexOf("const retry = ()"), source.indexOf("const pending ="));
-  assert.equal(retry.includes("retryCateringMessageSend(ownComposer)"), true);
+  // Read from the session store, not from this render: the retry's whole purpose is to resend under the ORIGINAL
+  // token, and the store is what still holds it after a route change unmounted and remounted this section.
+  assert.equal(retry.includes("const current = cateringComposerFor(cateringCommunicationSession.read().composers, identity);"), true);
+  assert.equal(retry.includes("retryCateringMessageSend(current)"), true);
   // The payload comes from the state machine's attempt record, not from `composer.text`.
   assert.equal(retry.includes("send.mutate({ origin, ...retried.payload })"), true);
   assert.equal(retry.includes("composer.text"), false, "a retry must not read the live composer draft");
@@ -62,7 +65,7 @@ test("send, retry and discard controls remain reachable and accessible", () => {
 test("duplicate-send protection is unchanged: the send control is gated by the state machine", () => {
   assert.equal(composerForm.includes("disabled={!maySendCateringMessage(ownComposer, canSend)}"), true);
   // A fresh token per composition, reused by the retry path through the attempt record.
-  assert.equal(source.includes("startCateringMessageSend(ownComposer, crypto.randomUUID())"), true);
+  assert.equal(source.includes("startCateringMessageSend(current, crypto.randomUUID())"), true);
 });
 
 /**

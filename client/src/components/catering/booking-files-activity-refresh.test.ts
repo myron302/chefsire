@@ -171,7 +171,7 @@ test("12. the cache key is actor-scoped, and the bookkeeping resets with the boo
   // it is one control shared by every booking and cannot show a filename belonging to the booking just left.
   assert.equal(source.includes("const ledgerRef = useRef<CateringFileLedger>(EMPTY_CATERING_FILE_LEDGER);"), true);
   assert.equal(source.includes(`useEffect(() => { if (inputRef.current) inputRef.current.value = ""; }, [identity]);`), true);
-  assert.equal(source.includes("setDrafts(EMPTY_CATERING_FILE_DRAFTS)"), false, "the per-booking drafts must not be wiped on navigation");
+  assert.equal(source.includes("EMPTY_CATERING_FILE_DRAFTS"), false, "the per-booking drafts must not be wiped on navigation, and the component cannot reach the empty value");
   assert.equal(source.includes("ledgerRef.current = EMPTY_CATERING_FILE_LEDGER"), false, "the per-booking ledger must not be wiped on navigation");
   // An empty conversation of files still records a baseline rather than being treated as a change.
   assert.equal(cateringFileBoundary([pageOf()]), "");

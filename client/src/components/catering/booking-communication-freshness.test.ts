@@ -120,8 +120,10 @@ test("6. polling does not clear drafts or disturb send state", () => {
   assert.equal(source.includes("completeCateringMessageSend(state, attempt.clientRequestId)"), true);
   assert.equal(source.includes('text: ""'), false, "clearing belongs to completeCateringMessageSend alone");
   // Idempotent sends are unchanged: one token per composition, reused by the retry path.
-  assert.equal(source.includes("startCateringMessageSend(ownComposer, crypto.randomUUID())"), true);
-  assert.equal(source.includes("retryCateringMessageSend(ownComposer)"), true);
+  assert.equal(source.includes("startCateringMessageSend(current, crypto.randomUUID())"), true);
+  assert.equal(source.includes("retryCateringMessageSend(current)"), true);
+  // Both read the authoritative session composer, which survives this section unmounting.
+  assert.equal((source.match(/cateringComposerFor\(cateringCommunicationSession\.read\(\)\.composers, identity\)/g) ?? []).length, 2);
 });
 
 /**
