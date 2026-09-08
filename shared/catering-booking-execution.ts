@@ -93,6 +93,30 @@ export const CATERING_EXECUTION_EQUIPMENT_LIMIT = 100;
 export const CATERING_EQUIPMENT_QUANTITY_MINIMUM = 1;
 export const CATERING_EQUIPMENT_QUANTITY_MAXIMUM = 9999;
 
+/**
+ * The ONE event-local time-range rule in this phase: a range is ordered when either end is absent, or when the end
+ * does not precede the start.
+ *
+ * It lives here, in the contract, because four different layers have to agree on it -- the create schemas, the
+ * merged-state validation each PATCH runs against the authoritative row, and the database CHECK that backs both.
+ * Restating the comparison in each of them is exactly how a partial update came to produce a state the schema had
+ * accepted and the CHECK then rejected.
+ *
+ * An absent end is deliberately valid: clearing one side of a range is a real edit, not an invalid one.
+ */
+export function cateringTimeRangeIsOrdered(start: string | null | undefined, end: string | null | undefined): boolean {
+  return start == null || end == null || start <= end;
+}
+
+/**
+ * The wording every rejected time range answers with -- whether the request's OWN fields were out of order, or the
+ * state they would merge into was. A participant who moves a start time past a persisted end time is told the same
+ * thing either way, because from their point of view it is the same mistake.
+ */
+export const CATERING_TIMELINE_TIME_RANGE_MESSAGE = "Timeline end time must not precede its start time";
+export const CATERING_STAFF_TIME_RANGE_MESSAGE = "Crew departure time must not precede arrival time";
+export const CATERING_ACCESS_WINDOW_MESSAGE = "The access window end must not precede its start";
+
 const optionalText = (maximum: number) => z.string().trim().max(maximum).nullable().optional();
 /** Event-local 24-hour wall clock, exactly as Phase 2H stores arrival and service times. Never a device timezone. */
 const wallClock = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:mm event-local time").nullable();
@@ -128,8 +152,8 @@ export const cateringTimelineCreateSchema = z.object({
   isBlocker: z.boolean().default(false),
   clientRequestId,
 }).strict().refine(
-  (value) => value.scheduledTime == null || value.endTime == null || value.scheduledTime <= value.endTime,
-  { message: "Timeline end time must not precede its start time", path: ["endTime"] },
+  (value) => cateringTimeRangeIsOrdered(value.scheduledTime, value.endTime),
+  { message: CATERING_TIMELINE_TIME_RANGE_MESSAGE, path: ["endTime"] },
 );
 
 /** Every timeline field a PATCH may persist, plus the version precondition. At least one real field is required. */
@@ -176,11 +200,11 @@ function staffRoleIsCoherent(value: { role?: string; customRole?: string | null 
   return value.role === "custom" ? Boolean(value.customRole && value.customRole.trim()) : !value.customRole;
 }
 function staffTimesAreOrdered(value: { arrivalTime?: string | null; departureTime?: string | null }): boolean {
-  return value.arrivalTime == null || value.departureTime == null || value.arrivalTime <= value.departureTime;
+  return cateringTimeRangeIsOrdered(value.arrivalTime, value.departureTime);
 }
 export const cateringStaffCreateSchema = z.object({ ...staffShape, clientRequestId }).strict()
   .refine(staffRoleIsCoherent, { message: "A custom crew role must be named, and a listed role must not carry one", path: ["customRole"] })
-  .refine(staffTimesAreOrdered, { message: "Crew departure time must not precede arrival time", path: ["departureTime"] });
+  .refine(staffTimesAreOrdered, { message: CATERING_STAFF_TIME_RANGE_MESSAGE, path: ["departureTime"] });
 export const cateringStaffUpdateSchema = z.object({
   workerName: staffShape.workerName.optional(),
   role: staffShape.role.optional(),
@@ -192,7 +216,7 @@ export const cateringStaffUpdateSchema = z.object({
   expectedUpdatedAt: cateringExecutionVersionSchema,
 }).strict()
   .refine((value) => Object.keys(value).some((key) => key !== "expectedUpdatedAt"), "At least one crew field is required")
-  .refine(staffTimesAreOrdered, { message: "Crew departure time must not precede arrival time", path: ["departureTime"] });
+  .refine(staffTimesAreOrdered, { message: CATERING_STAFF_TIME_RANGE_MESSAGE, path: ["departureTime"] });
 export const cateringStaffDeleteSchema = z.object({ expectedUpdatedAt: cateringExecutionVersionSchema }).strict();
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -284,8 +308,8 @@ export const cateringAccessSaveSchema = z.object({
    */
   expectedUpdatedAt: cateringExecutionVersionSchema.optional(),
 }).strict().refine(
-  (value) => value.accessWindowStart == null || value.accessWindowEnd == null || value.accessWindowStart <= value.accessWindowEnd,
-  { message: "The access window end must not precede its start", path: ["accessWindowEnd"] },
+  (value) => cateringTimeRangeIsOrdered(value.accessWindowStart, value.accessWindowEnd),
+  { message: CATERING_ACCESS_WINDOW_MESSAGE, path: ["accessWindowEnd"] },
 );
 /** The access fields a customer may ever observe. `providerPrivateNotes` is deliberately absent from this list. */
 export const CATERING_ACCESS_SHARED_FIELDS = [

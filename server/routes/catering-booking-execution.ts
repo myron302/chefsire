@@ -46,7 +46,9 @@ import {
   CATERING_EXECUTION_NOT_FOUND_REFUSAL,
   CATERING_EXECUTION_READ_ONLY_REFUSAL,
   CATERING_EXECUTION_SET_CHANGED_REFUSAL,
+  CATERING_ACCESS_SAVE_REFUSALS,
   CATERING_STAFF_PATCH_REFUSALS,
+  CATERING_TIMELINE_PATCH_REFUSALS,
   cateringExecutionActivityVisibility,
   cateringExecutionGuard,
   cateringReadinessFacts,
@@ -327,6 +329,9 @@ r.patch("/bookings/:id/execution/timeline/:itemId", requireAuth, async (req, res
       updatedAt: row.updatedAt, completedAt: row.completedAt,
     }, input, new Date());
     if (outcome.kind === "conflict") return { kind: "conflict" } as const;
+    // Refused against the authoritative locked row, so the invalid merged range never reaches the UPDATE and the
+    // database CHECK never has to be the one to say no.
+    if (outcome.kind === "invalid_time_range") return { kind: "invalid_time_range" } as const;
     if (outcome.kind === "unchanged") return { kind: "updated", item: row, notify: false } as const;
     const [updated] = await tx.update(cateringBookingExecutionTimeline).set({
       title: outcome.next.title, description: outcome.next.description, category: outcome.next.category,
@@ -349,6 +354,7 @@ r.patch("/bookings/:id/execution/timeline/:itemId", requireAuth, async (req, res
   });
   if (result.kind === "not_found") return refuse(res, CATERING_EXECUTION_NOT_FOUND_REFUSAL);
   if (result.kind === "conflict") return refuse(res, CATERING_EXECUTION_CONFLICT_REFUSAL);
+  if (result.kind === "invalid_time_range") return res.status(400).json({ message: CATERING_TIMELINE_PATCH_REFUSALS.invalid_time_range });
   if (result.kind === "read_only") return readOnlyRace(res, "run-of-show item");
   if (result.notify) await notifyCounterpart(booking, userId, id, CATERING_EXECUTION_TIMELINE_NOTIFICATION);
   res.json({ item: serializeExecutionTimelineItem(result.item) });
@@ -621,11 +627,18 @@ r.put("/bookings/:id/execution/access", requireAuth, async (req, res, next) => {
   const input = cateringAccessSaveSchema.parse(req.body ?? {});
   const { expectedUpdatedAt: _precondition, ...fields } = input;
   const now = new Date();
-  const result = await db.transaction(async (tx: typeof db) => {
+  // `db` is untyped at this repo's boundary, so the outcome union is stated rather than inferred as `any`.
+  type AccessSaveResult =
+    | { kind: "read_only" } | { kind: "conflict" } | { kind: "invalid_time_range" }
+    | { kind: "saved"; access: CateringBookingAccessDetail; notify: boolean };
+  const result: AccessSaveResult = await db.transaction(async (tx: typeof db) => {
     const active = await lockActiveCateringBooking(tx, id);
     if (!active) return { kind: "read_only" } as const;
     await lockCollection(tx, "access", id);
     const [existing] = await tx.select().from(cateringBookingAccessDetails).where(eq(cateringBookingAccessDetails.bookingId, id)).limit(1);
+    // Resolved against the authoritative row loaded INSIDE the transaction, under the access lock: the version
+    // precondition and the merged-window validation are both decided from it, so neither a stale save nor an
+    // invalid merged range reaches the upsert below.
     const outcome = resolveCateringAccessSave({ existing: existing as (CateringBookingAccessDetail & { updatedAt: Date }) | undefined }, input);
     if (outcome.kind !== "save") return outcome;
     // Upsert under the access lock, with the version precondition already satisfied above. The client never supplies
@@ -646,6 +659,7 @@ r.put("/bookings/:id/execution/access", requireAuth, async (req, res, next) => {
   });
   if (result.kind === "read_only") return readOnlyRace(res, "access instructions");
   if (result.kind === "conflict") return refuse(res, CATERING_EXECUTION_CONFLICT_REFUSAL);
+  if (result.kind === "invalid_time_range") return res.status(400).json({ message: CATERING_ACCESS_SAVE_REFUSALS.invalid_time_range });
   if (result.notify) await notifyCounterpart(booking, userId, id, CATERING_EXECUTION_ACCESS_NOTIFICATION);
   res.json({ access: serializeExecutionAccess(result.access, "provider") });
 } catch (error) { invalid(error, res, next); } });

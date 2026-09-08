@@ -12,10 +12,14 @@ import {
   CATERING_EXECUTION_TIMELINE_LIMIT,
   CATERING_EXECUTION_VERSION_CONFLICT_CODE,
   CATERING_EXECUTION_VERSION_CONFLICT_MESSAGE,
+  CATERING_ACCESS_WINDOW_MESSAGE,
+  CATERING_STAFF_TIME_RANGE_MESSAGE,
+  CATERING_TIMELINE_TIME_RANGE_MESSAGE,
   cateringEquipmentIsSettled,
   cateringEquipmentIsUnconfirmed,
   cateringExecutionActivityVisibility,
   cateringExecutionVisibleTo,
+  cateringTimeRangeIsOrdered,
   deriveCateringReadiness,
   mayMutateCateringExecution,
   type CateringAccessSharedField,
@@ -194,6 +198,16 @@ export type CateringTimelineVersionedState = CateringTimelinePersistedState & { 
 export function resolveCateringTimelinePatch(current: CateringTimelineVersionedState, input: CateringTimelinePatchInput & { expectedUpdatedAt: string }, now: Date) {
   if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
   const next = nextCateringTimelineState(current, input);
+  // The MERGED range, not the request's own fields.
+  //
+  // Each field a PATCH carries is individually valid -- the schema only ever sees one side of the range -- so a
+  // request moving the start of an 09:00-10:00 item to 11:00 passes validation, merges into 11:00-10:00, and used to
+  // reach SQL, where the CHECK rejected it as a 500. It is a client validation failure and is now answered as one,
+  // decided against the authoritative locked row, before anything is written. The CHECK remains the final backstop.
+  //
+  // Clearing a side still works: `cateringTimeRangeIsOrdered` treats an absent end as ordered, so setting either
+  // time to null is a valid edit rather than a refusal.
+  if (!cateringTimeRangeIsOrdered(next.scheduledTime, next.endTime)) return { kind: "invalid_time_range" } as const;
   const changed = cateringTimelinePersistedChanges(current, next);
   if (changed.length === 0) return { kind: "unchanged" } as const;
   return {
@@ -282,9 +296,9 @@ export function cateringStaffPersistedChanges(current: CateringStaffPersistedSta
 export function cateringStaffStateIsCoherent(next: CateringStaffPersistedState): boolean {
   return next.role === "custom" ? Boolean(next.customRole && next.customRole.trim()) : !next.customRole;
 }
-/** And the merged times must still run forwards, for exactly the same reason. */
+/** And the merged times must still run forwards, for exactly the same reason, by the one shared range rule. */
 export function cateringStaffTimesAreOrdered(next: CateringStaffPersistedState): boolean {
-  return next.arrivalTime == null || next.departureTime == null || next.arrivalTime <= next.departureTime;
+  return cateringTimeRangeIsOrdered(next.arrivalTime, next.departureTime);
 }
 export function resolveCateringStaffPatch(current: CateringStaffPersistedState & { updatedAt: Date }, input: Partial<CateringStaffPersistedState> & { expectedUpdatedAt: string }, now: Date) {
   if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
@@ -300,7 +314,18 @@ export function resolveCateringStaffDelete(current: { updatedAt: Date }, expecte
 }
 export const CATERING_STAFF_PATCH_REFUSALS: Record<"invalid_role" | "invalid_time_range", string> = {
   invalid_role: "A custom crew role must be named, and a listed role must not carry one",
-  invalid_time_range: "Crew departure time must not precede arrival time",
+  invalid_time_range: CATERING_STAFF_TIME_RANGE_MESSAGE,
+};
+/**
+ * The merged-state refusals, worded exactly as the schema words its own. A participant who moved a start time past
+ * a persisted end time is told the same thing whether the conflict was inside their request or between their
+ * request and the record -- because from where they are standing it is the same mistake.
+ */
+export const CATERING_TIMELINE_PATCH_REFUSALS: Record<"invalid_time_range", string> = {
+  invalid_time_range: CATERING_TIMELINE_TIME_RANGE_MESSAGE,
+};
+export const CATERING_ACCESS_SAVE_REFUSALS: Record<"invalid_time_range", string> = {
+  invalid_time_range: CATERING_ACCESS_WINDOW_MESSAGE,
 };
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -385,6 +410,21 @@ export function cateringAccessConfirmationChanged(existing: CateringAccessState 
 }
 
 /**
+ * The access window a save would actually leave behind: each end taken from the request when the request carries it,
+ * and from the persisted record when it does not.
+ *
+ * Field PRESENCE is what decides, not truthiness, so an explicit `null` clears the value while an omitted field
+ * inherits the persisted one. That distinction is the whole point: without it, a save that omits the end time reads
+ * as clearing it and a range that is really becoming invalid looks fine.
+ */
+export function mergeCateringAccessWindow(existing: CateringAccessState | undefined, input: CateringAccessState) {
+  const previous = existing ?? {};
+  const pick = (field: "accessWindowStart" | "accessWindowEnd") =>
+    (field in input ? input[field] : previous[field]) as string | null | undefined;
+  return { accessWindowStart: pick("accessWindowStart"), accessWindowEnd: pick("accessWindowEnd") };
+}
+
+/**
  * Resolves a locked access save.
  *
  * The version precondition covers BOTH shapes of this write. An absent `expectedUpdatedAt` asserts "no access record
@@ -401,6 +441,17 @@ export function resolveCateringAccessSave(locked: { existing: (CateringAccessSta
   } else if (input.expectedUpdatedAt === undefined || !cateringExecutionVersionMatches(existing, input.expectedUpdatedAt)) {
     return { kind: "conflict" } as const;
   }
+  // The MERGED window, not the request's own fields.
+  //
+  // This endpoint accepts partial saves, so a request that moves only the start of a persisted 08:00-09:00 window to
+  // 10:00 is individually valid, merges into 10:00-09:00, and used to reach SQL where the CHECK rejected it as a
+  // 500. It is a client validation failure and is answered as one, decided against the authoritative row loaded
+  // inside the transaction, before the upsert. The CHECK remains the final backstop.
+  //
+  // A CREATE takes the same path with no persisted side, so the merge is just the request and the prospective state
+  // is validated exactly as an update's is.
+  const window = mergeCateringAccessWindow(existing, input);
+  if (!cateringTimeRangeIsOrdered(window.accessWindowStart, window.accessWindowEnd)) return { kind: "invalid_time_range" } as const;
   const sharedChanges = cateringAccessSharedChanges(existing, input);
   const confirmationChanged = cateringAccessConfirmationChanged(existing, input);
   return {
@@ -424,18 +475,39 @@ export function resolveCateringAccessSave(locked: { existing: (CateringAccessSta
  * which writes no row, no timestamp and no activity. A phone that sends the same completion three times therefore
  * produces exactly one milestone, one completion instant and one activity row.
  *
- * The version precondition still applies, so an undo composed against a state another device has already changed
- * refuses rather than silently reverting it.
+ * ORDER MATTERS, and it is the whole fix here. The already-satisfied check runs BEFORE the version precondition,
+ * because those two questions are asked of different things: the precondition asks "is your view of this record
+ * current?", and a retry's view is legitimately not -- its own successful first attempt is what moved the version
+ * on. Checking the version first turned the exact case this design exists for into a conflict:
+ *
+ *   1. the provider taps "service started"; the server commits it and bumps `updated_at`
+ *   2. the response is lost on a venue's wifi
+ *   3. the phone retries with the `expectedUpdatedAt` it still holds -- the pre-commit one
+ *   4. the row already says completed, but the version no longer matches, so the retry was refused
+ *
+ * A precondition exists to stop a stale write from OVERWRITING newer state. A request that would write nothing
+ * overwrites nothing, so there is nothing for it to protect against, and it resolves as already satisfied whatever
+ * version it names. Nothing is written on that path: `completedAt` and `completedBy` keep the instant and the actor
+ * the first attempt recorded, no second activity row appears, and no notification exists here in any branch.
+ *
+ * The protection is fully intact for a request that WOULD change the authoritative state: an undo composed against
+ * a state another device has already moved on from still refuses rather than silently reverting it.
  */
 export function resolveCateringMilestoneToggle(current: { completedAt: Date | null; updatedAt: Date } | undefined, input: { completed: boolean; expectedUpdatedAt?: string }, now: Date) {
+  // Already satisfied: the persisted state IS the requested state, so this request has nothing to write and no
+  // stale-write risk to protect against. Whatever version it names, it is a retry of something that already
+  // happened -- in either direction, completing or reopening.
+  if (current && (current.completedAt !== null) === input.completed) return { kind: "unchanged" } as const;
   if (!current) {
+    // No row at all. There is no persisted state to have already satisfied, so a precondition naming a version
+    // cannot be met and this stays a conflict.
     if (input.expectedUpdatedAt !== undefined) return { kind: "conflict" } as const;
     // A first touch that asks for "not completed" still creates the row, so the key has a version to edit from.
     return { kind: "create", completedAt: input.completed ? now : null, activity: input.completed } as const;
   }
+  // Past here the request genuinely changes the authoritative state, which is exactly when a stale version must
+  // refuse.
   if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
-  const wasCompleted = current.completedAt !== null;
-  if (wasCompleted === input.completed) return { kind: "unchanged" } as const;
   return {
     kind: "update",
     completedAt: input.completed ? now : null,
