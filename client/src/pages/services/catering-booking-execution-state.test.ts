@@ -44,7 +44,7 @@ import {
   shouldRefetchExecutionAfterError,
   splitCateringEquipment,
   splitCateringTimeline,
-  withCateringRequestId,
+  prepareCateringCreate,
   type CateringAccessFormState,
   type CateringTimelineDraft,
 } from "./catering-booking-execution-state";
@@ -120,23 +120,28 @@ test("a conflict keeps the edit but is not retryable, and a closed booking is ne
 test("a draft mints its token once and keeps it across a failed attempt", () => {
   let minted = 0;
   const mint = () => `token-${++minted}`;
-  const first = withCateringRequestId(EMPTY_CATERING_TIMELINE_DRAFT, mint);
-  assert.equal(first.requestId, "token-1");
+  const draft = { ...EMPTY_CATERING_TIMELINE_DRAFT, title: "Load in" };
+  const first = prepareCateringCreate(draft, cateringTimelineCreatePayload, mint);
+  assert.equal(first.draft.requestId, "token-1");
   // The retry after a failure reuses the SAME token, which is what makes a request that actually arrived resolve to
   // the record it already created rather than adding a second one.
-  const retry = withCateringRequestId(first, mint);
-  assert.equal(retry.requestId, "token-1");
+  const retry = prepareCateringCreate(first.draft, cateringTimelineCreatePayload, mint);
+  assert.equal(retry.draft.requestId, "token-1");
   assert.equal(minted, 1);
-  assert.equal(retry, first, "an unchanged draft is not even reallocated");
+  assert.equal(retry.draft, first.draft, "an unchanged draft is not even reallocated");
+  assert.equal(retry.body.clientRequestId, "token-1", "and the body carries the token the draft holds");
 });
 
 test("an accepted submit resets the draft and spends its token", () => {
-  const used = withCateringRequestId(EMPTY_CATERING_TIMELINE_DRAFT, () => "token-1");
+  const used = prepareCateringCreate({ ...EMPTY_CATERING_TIMELINE_DRAFT, title: "x" }, cateringTimelineCreatePayload, () => "token-1");
   const reset = resetCateringDraft(EMPTY_CATERING_TIMELINE_DRAFT);
   assert.equal(reset.requestId, null, "reusing a spent token would resolve to the record just created");
-  assert.notEqual(used.requestId, reset.requestId);
-  assert.equal(resetCateringDraft(EMPTY_CATERING_STAFF_DRAFT).requestId, null);
-  assert.equal(resetCateringDraft(EMPTY_CATERING_EQUIPMENT_DRAFT).requestId, null);
+  assert.equal(reset.requestFingerprint, null, "and its binding goes with it");
+  assert.notEqual(used.draft.requestId, reset.requestId);
+  for (const empty of [EMPTY_CATERING_STAFF_DRAFT, EMPTY_CATERING_EQUIPMENT_DRAFT]) {
+    assert.equal(resetCateringDraft(empty).requestId, null);
+    assert.equal(resetCateringDraft(empty).requestFingerprint, null);
+  }
 });
 
 test("a payload carries its token only when one has been minted", () => {

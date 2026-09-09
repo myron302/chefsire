@@ -15,8 +15,9 @@ import {
   CATERING_ACCESS_WINDOW_MESSAGE,
   CATERING_STAFF_TIME_RANGE_MESSAGE,
   CATERING_TIMELINE_TIME_RANGE_MESSAGE,
-  cateringEquipmentIsSettled,
+  cateringEquipmentIsBlocking,
   cateringEquipmentIsUnconfirmed,
+  cateringTimelineItemIsBlocking,
   cateringExecutionActivityVisibility,
   cateringExecutionVisibleTo,
   cateringTimeRangeIsOrdered,
@@ -196,7 +197,17 @@ export type CateringTimelineVersionedState = CateringTimelinePersistedState & { 
  * likewise writes nothing -- so a retried PATCH neither bumps a version nor produces a second activity row.
  */
 export function resolveCateringTimelinePatch(current: CateringTimelineVersionedState, input: CateringTimelinePatchInput & { expectedUpdatedAt: string }, now: Date) {
-  if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
+  // ORDER: merge, validate the merged state, decide whether anything would actually change, and only THEN consult
+  // the version precondition.
+  //
+  // Checking the version first made an exact retry impossible, exactly as it did for milestones. A provider edits an
+  // item, the server commits it and bumps `updated_at`, the response is lost, and the phone resends the same body
+  // with the `expectedUpdatedAt` it still holds -- stale precisely BECAUSE the first attempt succeeded. That request
+  // would write nothing, so it overwrites nothing, and there is no stale-write risk for a precondition to protect
+  // against. It resolves as unchanged: no new version, no `completedAt` re-stamp, no second activity row and no
+  // second notification.
+  //
+  // The precondition keeps its full force for a request that WOULD write. That is the only case it was ever about.
   const next = nextCateringTimelineState(current, input);
   // The MERGED range, not the request's own fields.
   //
@@ -209,7 +220,11 @@ export function resolveCateringTimelinePatch(current: CateringTimelineVersionedS
   // time to null is a valid edit rather than a refusal.
   if (!cateringTimeRangeIsOrdered(next.scheduledTime, next.endTime)) return { kind: "invalid_time_range" } as const;
   const changed = cateringTimelinePersistedChanges(current, next);
+  // Already satisfied -- every requested value is what the row already holds. Nothing to write, whatever version the
+  // request names, so this is where an exact retry lands.
   if (changed.length === 0) return { kind: "unchanged" } as const;
+  // Past here the request genuinely changes the authoritative row, which is when a stale base must refuse.
+  if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
   return {
     kind: "update",
     next,
@@ -235,7 +250,8 @@ export function resolveCateringTimelineDelete(current: { updatedAt: Date; title:
 }
 
 export type CateringTimelineReorderEntry = { id: string; expectedUpdatedAt: string };
-export type CateringLockedTimelineVersion = { id: string; updatedAt: Date };
+/** `sortOrder` is carried so an exact reorder retry can be recognised as already applied rather than refused. */
+export type CateringLockedTimelineVersion = { id: string; updatedAt: Date; sortOrder: number };
 /**
  * Resolves a locked reorder into four distinct outcomes, in the order the route must decide them: a booking that
  * went read-only under the lock, a submission that is not the complete current set, a stale version on any item, and
@@ -254,6 +270,11 @@ export function resolveCateringTimelineReorder(locked: readonly CateringLockedTi
   const submittedIds = new Set(submitted.map((entry) => entry.id));
   // Exact membership in both directions, so neither a duplicate nor an item missing from the request slips through.
   if (submittedIds.size !== submitted.length || submitted.length !== locked.length || locked.some((item) => !submittedIds.has(item.id))) return { kind: "membership" } as const;
+  // Already applied. A drag that committed and whose response was lost is resent with the pre-commit versions, so
+  // checking those first refused the retry -- even though the collection is already in exactly the requested order
+  // and the request would move nothing. Comparing the ORDER, not the versions, is what recognises that.
+  const persistedOrder = [...locked].sort((left, right) => left.sortOrder - right.sortOrder || (left.id < right.id ? -1 : 1));
+  if (persistedOrder.every((item, index) => item.id === submitted[index].id)) return { kind: "unchanged" } as const;
   const versions = new Map(locked.map((item) => [item.id, item.updatedAt]));
   if (submitted.some((entry) => !cateringExecutionVersionMatches({ updatedAt: versions.get(entry.id)! }, entry.expectedUpdatedAt))) return { kind: "conflict" } as const;
   // The submitted POSITION is the sort order. A client-supplied sortOrder is never read, only the array index.
@@ -300,12 +321,14 @@ export function cateringStaffStateIsCoherent(next: CateringStaffPersistedState):
 export function cateringStaffTimesAreOrdered(next: CateringStaffPersistedState): boolean {
   return cateringTimeRangeIsOrdered(next.arrivalTime, next.departureTime);
 }
+/** Same ordering rule as the timeline: an already-satisfied request is settled before any version is consulted. */
 export function resolveCateringStaffPatch(current: CateringStaffPersistedState & { updatedAt: Date }, input: Partial<CateringStaffPersistedState> & { expectedUpdatedAt: string }, now: Date) {
-  if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
   const next = nextCateringStaffState(current, input);
   if (!cateringStaffStateIsCoherent(next)) return { kind: "invalid_role" } as const;
   if (!cateringStaffTimesAreOrdered(next)) return { kind: "invalid_time_range" } as const;
+  // Nothing to write, so nothing to overwrite: an exact retry after a lost response lands here.
   if (cateringStaffPersistedChanges(current, next).length === 0) return { kind: "unchanged" } as const;
+  if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
   return { kind: "update", next, updatedAt: now } as const;
 }
 export function resolveCateringStaffDelete(current: { updatedAt: Date }, expectedUpdatedAt: string) {
@@ -375,11 +398,12 @@ export function cateringEquipmentActivityFor(current: CateringEquipmentPersisted
   if (!wasShared) return { eventType: "shared_equipment_added", name: next.name };
   return changed.includes("status") ? { eventType: "shared_equipment_status_changed", name: next.name } : null;
 }
+/** Same ordering rule again: a status tap that already landed is a no-op retry, not a conflict. */
 export function resolveCateringEquipmentPatch(current: CateringEquipmentPersistedState & { updatedAt: Date }, input: Partial<CateringEquipmentPersistedState> & { expectedUpdatedAt: string }, now: Date) {
-  if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
   const next = nextCateringEquipmentState(current, input);
   const changed = cateringEquipmentPersistedChanges(current, next);
   if (changed.length === 0) return { kind: "unchanged" } as const;
+  if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
   return { kind: "update", next, updatedAt: now, activity: cateringEquipmentActivityFor(current, next, changed) } as const;
 }
 export function resolveCateringEquipmentDelete(current: { updatedAt: Date }, expectedUpdatedAt: string) {
@@ -403,6 +427,22 @@ export type CateringAccessState = Partial<Record<CateringAccessSharedField | "pr
 export function cateringAccessSharedChanges(existing: CateringAccessState | undefined, input: CateringAccessState): CateringAccessSharedField[] {
   const previous = existing ?? {};
   return CATERING_ACCESS_SHARED_FIELDS.filter((field) => field in input && input[field] !== (previous[field] ?? null));
+}
+/**
+ * EVERY field an access save would change, shared and private alike.
+ *
+ * `cateringAccessSharedChanges` answers what the customer can see, which is the right question for activity and
+ * notifications and the wrong one for "would this write anything at all" -- a save that only edits the private note
+ * changes the record without changing anything shared.
+ */
+export const CATERING_ACCESS_ALL_FIELDS = [...CATERING_ACCESS_SHARED_FIELDS, "providerPrivateNotes", "accessConfirmed"] as const;
+export function cateringAccessChangedFields(existing: CateringAccessState | undefined, input: CateringAccessState): string[] {
+  const previous = existing ?? {};
+  return CATERING_ACCESS_ALL_FIELDS.filter((field) => {
+    if (!(field in input)) return false;
+    const persisted = field === "accessConfirmed" ? (previous[field] ?? false) : (previous[field] ?? null);
+    return input[field] !== persisted;
+  });
 }
 export function cateringAccessConfirmationChanged(existing: CateringAccessState | undefined, input: CateringAccessState): boolean {
   const previous = existing ?? {};
@@ -435,6 +475,11 @@ export function mergeCateringAccessWindow(existing: CateringAccessState | undefi
 export function resolveCateringAccessSave(locked: { existing: (CateringAccessState & { updatedAt: Date }) | undefined } | null, input: CateringAccessState & { expectedUpdatedAt?: string }) {
   if (!locked) return { kind: "read_only" } as const;
   const existing = locked.existing;
+  // Already satisfied. The same ordering rule the timeline and the milestones follow: a save whose every field is
+  // already what the record holds writes nothing, so it overwrites nothing and no version needs defending. This is
+  // where a retry after a lost response lands -- and it also stops an ordinary re-save from bumping the version and
+  // the `updatedBy` for no reason.
+  if (existing && cateringAccessChangedFields(existing, input).length === 0) return { kind: "unchanged" } as const;
   if (!existing) {
     // A precondition naming a version cannot be satisfied by a record that does not exist.
     if (input.expectedUpdatedAt !== undefined) return { kind: "conflict" } as const;
@@ -555,8 +600,10 @@ export function cateringReadinessFacts(rows: CateringReadinessSourceRows, role: 
       return typeof value === "string" ? value.trim() !== "" : value != null;
     }),
     unconfirmedEquipmentCount: equipment.filter((item) => cateringEquipmentIsUnconfirmed(item.status as CateringEquipmentStatus)).length,
-    blockingEquipmentCount: equipment.filter((item) => item.isBlocker && !cateringEquipmentIsSettled(item.status as CateringEquipmentStatus)).length,
-    openBlockingTimelineCount: timeline.filter((item) => item.isBlocker && item.completedAt === null).length,
+    // Both counts go through the canonical blocking predicates rather than restating them, so the readiness summary
+    // and the interface's Blocking badge are the same judgement about the same row and cannot disagree.
+    blockingEquipmentCount: equipment.filter((item) => cateringEquipmentIsBlocking({ isBlocker: item.isBlocker, status: item.status as CateringEquipmentStatus })).length,
+    openBlockingTimelineCount: timeline.filter((item) => cateringTimelineItemIsBlocking({ isBlocker: item.isBlocker, completed: item.completedAt !== null })).length,
     outstandingSharedRequirementCount: rows.outstandingSharedRequirementCount,
     guestCountRecorded: typeof rows.guestCount === "number" && rows.guestCount > 0,
   };

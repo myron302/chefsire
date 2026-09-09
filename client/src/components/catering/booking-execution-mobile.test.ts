@@ -146,13 +146,16 @@ test("the read-only banner replaces the controls rather than merely greying them
 
 test("a failed save keeps the participant's work and says plainly that nothing was saved", () => {
   assert.equal(component.includes("cateringExecutionFailureNotice(error)"), true);
-  assert.equal(component.includes("setAccessForm(preserveCateringAccessForm)"), true);
+  // A refused access save is preserved, and a STALE one is additionally marked for rebasing so the form is not
+  // deadlocked on a version it can never satisfy.
+  assert.equal(component.includes("markCateringAccessConflict : preserveCateringAccessForm"), true);
   assert.equal(component.includes("markCateringTimelineEditorConflict(current, variables.itemId!)"), true);
-  // The draft is reset ONLY in the success handler, so a failure never discards a half-typed record.
+  // A draft is settled ONLY in the success handler, and even there only against the exact submitted attempt -- so a
+  // failure never discards a half-typed record, and neither does a success that landed after newer edits.
   const success = component.slice(component.indexOf("onSuccess: (value"), component.indexOf("onError: (error"));
   const failure = component.slice(component.indexOf("onError: (error"), component.indexOf("const pending = mutation.isPending"));
-  assert.equal(success.includes("resetCateringDraft"), true);
-  assert.equal(failure.includes("resetCateringDraft"), false);
+  assert.equal(success.includes("settleCateringCreateDraft(live, variables."), true);
+  assert.equal(failure.includes("settleCateringCreateDraft"), false);
   assert.equal(failure.includes("EMPTY_CATERING_TIMELINE_DRAFT"), false);
 });
 
@@ -163,12 +166,15 @@ test("a transport failure is reported as a transport failure, not as a server re
   assert.equal(component.includes("{ offline: true }"), true);
 });
 
-test("the idempotency token is minted at submit and survives a retry", () => {
-  for (const draft of ["timelineDraft", "staffDraft", "equipmentDraft"]) {
-    assert.equal(component.includes(`withCateringRequestId(${draft}, () => crypto.randomUUID())`), true, draft);
+test("the idempotency token is bound to its material payload and survives an exact retry", () => {
+  for (const [draft, build] of [["timelineDraft", "cateringTimelineCreatePayload"], ["staffDraft", "cateringStaffCreatePayload"], ["equipmentDraft", "cateringEquipmentCreatePayload"]]) {
+    assert.equal(component.includes(`prepareCateringCreate(${draft}, ${build}, () => crypto.randomUUID())`), true, draft);
   }
-  // The attempt is written back into state BEFORE the request, so the retry after a failure carries the same token.
-  assert.equal((component.match(/setTimelineDraft\(attempt\);|setStaffDraft\(attempt\);|setEquipmentDraft\(attempt\);/g) ?? []).length, 3);
+  // The prepared attempt is written back into state BEFORE the request, so an exact retry carries the same token --
+  // and a materially changed payload carries a new one, which is what stops an old idempotent response from being
+  // read as the newer record having been saved.
+  assert.equal((component.match(/setTimelineDraft\(attempt\.draft\);|setStaffDraft\(attempt\.draft\);|setEquipmentDraft\(attempt\.draft\);/g) ?? []).length, 3);
+  assert.equal((component.match(/body: attempt\.body/g) ?? []).length, 3, "the body sent is the one built from the stored attempt");
 });
 
 test("layout wraps and content breaks rather than scrolling the page sideways", () => {

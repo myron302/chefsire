@@ -398,11 +398,20 @@ r.post("/bookings/:id/execution/timeline/reorder", requireAuth, async (req, res,
   const result = await db.transaction(async (tx: typeof db) => {
     if (!await lockActiveCateringBooking(tx, id)) return { kind: "read_only" } as const;
     await lockCollection(tx, "timeline", id);
-    const rows = await tx.select({ id: cateringBookingExecutionTimeline.id, updatedAt: cateringBookingExecutionTimeline.updatedAt })
+    // `sortOrder` comes back too, so a reorder that is already applied is recognised as a no-op retry rather than
+    // refused on the pre-commit versions it necessarily still carries.
+    const rows = await tx.select({ id: cateringBookingExecutionTimeline.id, updatedAt: cateringBookingExecutionTimeline.updatedAt, sortOrder: cateringBookingExecutionTimeline.sortOrder })
       .from(cateringBookingExecutionTimeline).where(eq(cateringBookingExecutionTimeline.bookingId, id));
     // Membership first, then every submitted version, both against the authoritative locked rows. A booking that
     // went read-only, an incomplete set and a stale version are three different refusals, and none of them writes.
-    const outcome = resolveCateringTimelineReorder(rows as { id: string; updatedAt: Date }[], input.items);
+    const outcome = resolveCateringTimelineReorder(rows as { id: string; updatedAt: Date; sortOrder: number }[], input.items);
+    if (outcome.kind === "unchanged") {
+      // Already in the requested order: nothing is written, no version moves, and the client is handed the
+      // authoritative collection exactly as it stands.
+      const current = await tx.select().from(cateringBookingExecutionTimeline).where(eq(cateringBookingExecutionTimeline.bookingId, id))
+        .orderBy(asc(cateringBookingExecutionTimeline.sortOrder), asc(cateringBookingExecutionTimeline.id));
+      return { kind: "reordered", items: current as CateringBookingExecutionTimelineItem[] } as const;
+    }
     if (outcome.kind !== "reorder") return outcome;
     const now = new Date();
     for (const { id: itemId, sortOrder } of outcome.updates) {
@@ -640,6 +649,8 @@ r.put("/bookings/:id/execution/access", requireAuth, async (req, res, next) => {
     // precondition and the merged-window validation are both decided from it, so neither a stale save nor an
     // invalid merged range reaches the upsert below.
     const outcome = resolveCateringAccessSave({ existing: existing as (CateringBookingAccessDetail & { updatedAt: Date }) | undefined }, input);
+    // A save that would change nothing writes nothing -- no upsert, no version bump, no activity, no notification.
+    if (outcome.kind === "unchanged") return { kind: "saved", access: existing as CateringBookingAccessDetail, notify: false } as const;
     if (outcome.kind !== "save") return outcome;
     // Upsert under the access lock, with the version precondition already satisfied above. The client never supplies
     // `updatedAt` or `updatedBy`: both are stamped here from the server clock and the authenticated session.

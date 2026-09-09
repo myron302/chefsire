@@ -76,6 +76,27 @@ export function cateringEquipmentIsUnconfirmed(status: CateringEquipmentStatus):
 export function cateringEquipmentIsSettled(status: CateringEquipmentStatus): boolean { return CATERING_EQUIPMENT_SETTLED_STATUSES.includes(status); }
 
 /**
+ * Whether one record is ACTUALLY an unresolved execution dependency right now.
+ *
+ * `isBlocker` alone is not that question. It is a persisted intent -- "this thing is on the critical path" -- and it
+ * stays true for the life of the record, because a chafer that was blocking last Tuesday is still the item that was
+ * blocking. What decides whether it is blocking TODAY is that intent AND the record's own progress: an item that has
+ * been received, put into use, returned or cancelled is settled, and a run-of-show item that is done is done.
+ *
+ * These two predicates are the single definition of that, used by the server's readiness derivation and by the
+ * interface's Blocking badge alike. Keeping them here is what stops the badge from claiming a rental is blocking the
+ * event while the readiness summary beside it -- computed from the same row -- reports ready. The alternative, which
+ * this replaces, was for the badge to read `isBlocker` on its own; the fix is emphatically NOT to clear the stored
+ * flag when a record settles, because that would destroy the operational record of what actually held the event up.
+ */
+export function cateringEquipmentIsBlocking(item: { isBlocker: boolean; status: CateringEquipmentStatus }): boolean {
+  return item.isBlocker && !cateringEquipmentIsSettled(item.status);
+}
+export function cateringTimelineItemIsBlocking(item: { isBlocker: boolean; completed: boolean }): boolean {
+  return item.isBlocker && !item.completed;
+}
+
+/**
  * The event-day milestone allowlist. These are provider-only operational checkpoints, and completing every one of
  * them still does not complete the booking: the Phase 2G provider completion action remains the authoritative
  * mechanism, and nothing in this module calls it.

@@ -3,6 +3,8 @@ import {
   CATERING_EXECUTION_SET_CHANGED_CODE,
   CATERING_EXECUTION_VERSION_CONFLICT_CODE,
   CATERING_WORKSPACE_READ_ONLY_CODE,
+  cateringEquipmentIsBlocking,
+  cateringTimelineItemIsBlocking,
   type CateringEquipmentSource,
   type CateringEquipmentStatus,
   type CateringExecutionAccessView,
@@ -71,37 +73,51 @@ export function cateringExecutionFailureNotice(error: CateringExecutionError): {
  * ------------------------------------------------------------------------------------------------------------- */
 
 /**
- * A draft carries the idempotency token for the attempt it will make.
+ * What every create draft carries alongside its fields: the idempotency token, and the material payload that token
+ * was minted FOR.
  *
- * The token is minted once, when the participant starts filling the form, and SURVIVES a failed submit. That is the
- * whole point: a mobile browser that times out may already have created the record, and retrying under the same
- * token resolves to it rather than adding a duplicate. It is replaced only after a submit the server accepted, at
- * which point it is spent and reusing it would resolve to the record just created.
+ * The fingerprint is the load-bearing half. A token that is reused simply because one exists is a token that can be
+ * pointed at a payload it was never issued for, and the server -- correctly -- answers such a request with the
+ * record the token already produced. The client then reads that as "my current draft was saved" and clears work
+ * that was never persisted at all:
+ *
+ *   1. payload A is submitted under token X;  2. the server commits A;  3. the response is lost;
+ *   4. the provider materially edits the draft into payload B;  5. a retry under X returns A;
+ *   6. the client clears B, which never existed anywhere.
+ *
+ * Binding the token to a fingerprint of its payload makes that impossible: an exact retry of A reuses X (which is
+ * what idempotency is for), and B is a different payload, so it gets its own token and is genuinely created.
  */
-export type CateringTimelineDraft = {
+export type CateringDraftToken = {
+  requestId: string | null;
+  /** The material payload `requestId` was minted for, or null when no token has been minted yet. */
+  requestFingerprint: string | null;
+};
+export type CateringTimelineDraft = CateringDraftToken & {
   title: string; description: string; category: CateringTimelineCategory;
   scheduledTime: string; endTime: string; visibility: CateringExecutionVisibility; isBlocker: boolean;
-  requestId: string | null;
 };
 export const EMPTY_CATERING_TIMELINE_DRAFT: CateringTimelineDraft = {
-  title: "", description: "", category: "setup", scheduledTime: "", endTime: "", visibility: "provider_private", isBlocker: false, requestId: null,
+  title: "", description: "", category: "setup", scheduledTime: "", endTime: "", visibility: "provider_private", isBlocker: false,
+  requestId: null, requestFingerprint: null,
 };
-export type CateringStaffDraft = {
+export type CateringStaffDraft = CateringDraftToken & {
   workerName: string; role: CateringStaffRole; customRole: string; contactNote: string;
-  arrivalTime: string; departureTime: string; responsibilityNote: string; requestId: string | null;
+  arrivalTime: string; departureTime: string; responsibilityNote: string;
 };
 export const EMPTY_CATERING_STAFF_DRAFT: CateringStaffDraft = {
-  workerName: "", role: "server", customRole: "", contactNote: "", arrivalTime: "", departureTime: "", responsibilityNote: "", requestId: null,
+  workerName: "", role: "server", customRole: "", contactNote: "", arrivalTime: "", departureTime: "", responsibilityNote: "",
+  requestId: null, requestFingerprint: null,
 };
-export type CateringEquipmentDraft = {
+export type CateringEquipmentDraft = CateringDraftToken & {
   name: string; quantity: string; sourceType: CateringEquipmentSource; sourceName: string;
   pickupDate: string; pickupTime: string; returnDate: string; returnTime: string;
   status: CateringEquipmentStatus; isBlocker: boolean; notes: string; visibility: CateringExecutionVisibility;
-  requestId: string | null;
 };
 export const EMPTY_CATERING_EQUIPMENT_DRAFT: CateringEquipmentDraft = {
   name: "", quantity: "1", sourceType: "provider_owned", sourceName: "", pickupDate: "", pickupTime: "",
-  returnDate: "", returnTime: "", status: "planned", isBlocker: false, notes: "", visibility: "provider_private", requestId: null,
+  returnDate: "", returnTime: "", status: "planned", isBlocker: false, notes: "", visibility: "provider_private",
+  requestId: null, requestFingerprint: null,
 };
 
 /** An empty text input means "not set", which the API spells `null`. An empty string would be a value. */
@@ -110,17 +126,74 @@ export function optionalText(value: string): string | null {
   return trimmed === "" ? null : trimmed;
 }
 /**
- * Ensures a draft carries a token before it is submitted, minting one only if it has none.
+ * The MATERIAL part of a create request: the body the server will act on, with the idempotency token removed.
  *
- * Minting on submit rather than on every keystroke keeps the token stable across edits, and re-minting is exactly
- * what must NOT happen on a retry.
+ * Derived from the real payload builders rather than from the draft, so only fields that actually travel in the
+ * request participate. A draft's own bookkeeping -- the token, the fingerprint -- is client-only and is excluded by
+ * construction, because it never appears in a built body at all.
  */
-export function withCateringRequestId<T extends { requestId: string | null }>(draft: T, mint: () => string): T {
-  return draft.requestId ? draft : { ...draft, requestId: mint() };
+export function cateringMaterialPayload(body: Record<string, unknown>): Record<string, unknown> {
+  const { clientRequestId: _token, ...material } = body;
+  return material;
 }
-/** After an accepted submit the token is spent, so the reset draft gets a fresh one only when it is next needed. */
-export function resetCateringDraft<T extends { requestId: string | null }>(empty: T): T {
-  return { ...empty, requestId: null };
+/** A stable fingerprint of that material payload: key order cannot change the answer. */
+export function cateringMaterialFingerprint(body: Record<string, unknown>): string {
+  const material = cateringMaterialPayload(body);
+  return JSON.stringify(Object.keys(material).sort().map((field) => [field, material[field]]));
+}
+
+/**
+ * Prepares one create attempt: the draft to store, and the body to send.
+ *
+ * The token is reused only when the material payload is IDENTICAL to the one it was minted for -- which is exactly
+ * an exact retry, and exactly when the server resolving to the already-created record is the right answer. Any
+ * material change mints a fresh token, so the changed payload is created rather than silently answered with the
+ * older record.
+ *
+ * The body is built from the draft that will be stored, so the token in the request and the token in the draft are
+ * always the same one.
+ */
+export function prepareCateringCreate<T extends CateringDraftToken>(
+  draft: T,
+  build: (draft: T) => Record<string, unknown>,
+  mint: () => string,
+): { draft: T; body: Record<string, unknown> } {
+  const fingerprint = cateringMaterialFingerprint(build(draft));
+  const reusable = draft.requestId !== null && draft.requestFingerprint === fingerprint;
+  const next = reusable ? draft : { ...draft, requestId: mint(), requestFingerprint: fingerprint };
+  return { draft: next, body: build(next) };
+}
+
+/** After an accepted submit the token is spent, so the reset draft carries neither it nor its fingerprint. */
+export function resetCateringDraft<T extends CateringDraftToken>(empty: T): T {
+  return { ...empty, requestId: null, requestFingerprint: null };
+}
+
+/**
+ * Whether the live draft is still exactly the attempt that was submitted.
+ *
+ * Drafts are flat records of scalars, so this is a whole-value comparison including the token and its fingerprint --
+ * any keystroke, any changed select, any newer attempt makes it false.
+ */
+export function cateringDraftIsUnchanged<T extends CateringDraftToken>(live: T, submitted: T): boolean {
+  const fields = Object.keys(live as object).concat(Object.keys(submitted as object));
+  return fields.every((field) => (live as Record<string, unknown>)[field] === (submitted as Record<string, unknown>)[field]);
+}
+
+/**
+ * Settles a create draft against the exact attempt the server just accepted.
+ *
+ * The form stays editable while a request is in flight -- deliberately, because a provider on a slow venue
+ * connection should not be made to wait -- so by the time a response lands the draft may already hold the NEXT
+ * record they are typing. Clearing unconditionally is how that record disappeared: submit A, start typing B, A
+ * succeeds, B is wiped, and nothing anywhere records that B ever existed.
+ *
+ * So the completion clears only what it actually accounts for. If the live draft is still the submitted attempt, the
+ * form empties as it should. If it has moved on, the newer edits are kept and it is left entirely alone -- the
+ * created record appears in the list above either way, which is the real confirmation that A landed.
+ */
+export function settleCateringCreateDraft<T extends CateringDraftToken>(live: T, submitted: T, empty: T): T {
+  return cateringDraftIsUnchanged(live, submitted) ? resetCateringDraft(empty) : live;
 }
 
 export function cateringTimelineCreatePayload(draft: CateringTimelineDraft) {
@@ -200,7 +273,7 @@ export function maySubmitCateringEquipmentDraft(draft: CateringEquipmentDraft, e
  */
 export type OpenCateringTimelineEditor = {
   identity: string; itemId: string; expectedUpdatedAt: string; conflict: boolean;
-  draft: Omit<CateringTimelineDraft, "requestId">;
+  draft: Omit<CateringTimelineDraft, keyof CateringDraftToken>;
 };
 export type CateringTimelineEditorState = OpenCateringTimelineEditor | null;
 
@@ -251,6 +324,27 @@ export function cateringTimelineDeletePayload(item: CateringExecutionTimelineIte
 }
 export function cateringExecutionDeletePayload(record: { updatedAt: string }) {
   return { expectedUpdatedAt: record.updatedAt };
+}
+
+/**
+ * Settles the open item editor against the exact draft that was submitted.
+ *
+ * Closing on success was unconditional, which is the same bug the create drafts had: the fields stay editable while
+ * the request is in flight, so a provider who kept typing after pressing Save had those words closed away and lost.
+ * If the editor still holds what was sent, it closes as it should. If it has moved on, it stays OPEN with the newer
+ * text and is rebased onto the version the save just produced -- so the next Save is judged against the row as it
+ * now is, rather than conflicting against the version this very request superseded.
+ */
+export function settleCateringTimelineEditor(
+  live: CateringTimelineEditorState,
+  submitted: { itemId: string; draft: OpenCateringTimelineEditor["draft"] },
+  savedUpdatedAt: string,
+): CateringTimelineEditorState {
+  if (!live || live.itemId !== submitted.itemId) return live;
+  const untouched = (Object.keys(live.draft) as (keyof OpenCateringTimelineEditor["draft"])[])
+    .every((field) => live.draft[field] === submitted.draft[field]);
+  if (untouched) return null;
+  return { ...live, expectedUpdatedAt: savedUpdatedAt, conflict: false };
 }
 
 /** A refused save marks the open editor rather than closing it, so nothing the participant typed is discarded. */
@@ -360,7 +454,16 @@ export function cateringAccessSavePayload(draft: CateringAccessDraft) {
  * typing; the version they are editing against is likewise kept, so the save they eventually make is judged against
  * the state they actually saw.
  */
-export type CateringAccessFormState = { identity: string; value: CateringAccessDraft | null; dirty: boolean };
+/**
+ * The access form's local state.
+ *
+ * `rebase` is set when the server refused a save because the form's `expectedUpdatedAt` was stale. Without it, a
+ * conflict was terminal: the form stays dirty so the refetch cannot hydrate it, the stale version therefore stays
+ * in the draft, and every subsequent Save conflicts again -- forever, until the provider hard-refreshes and loses
+ * everything they had typed. The flag is what lets the next authoritative payload hand the form a fresh version
+ * WITHOUT touching a single edited field.
+ */
+export type CateringAccessFormState = { identity: string; value: CateringAccessDraft | null; dirty: boolean; rebase?: boolean };
 export function hydrateCateringAccessForm(current: CateringAccessFormState, identity: string, next: CateringAccessDraft): CateringAccessFormState {
   if (current.identity === identity && current.dirty) return current;
   return { identity, value: next, dirty: false };
@@ -373,15 +476,99 @@ export function editCateringAccessField<K extends keyof CateringAccessDraft>(cur
 export function preserveCateringAccessForm(current: CateringAccessFormState): CateringAccessFormState {
   return current.value ? { ...current, dirty: true } : current;
 }
-/** An accepted save re-bases the form on the authoritative response, including its new version. */
-export function settleCateringAccessForm(current: CateringAccessFormState, identity: string, saved: CateringExecutionAccessView): CateringAccessFormState {
+
+/**
+ * Marks a dirty access form as needing its concurrency version rebased, after the server refused the save as stale.
+ *
+ * The edits are untouched -- this only records that the version they are based on is no longer current, so the next
+ * authoritative payload can supply a usable one.
+ */
+export function markCateringAccessConflict(current: CateringAccessFormState): CateringAccessFormState {
+  return current.value ? { ...current, dirty: true, rebase: true } : current;
+}
+
+/**
+ * REBASES a dirty access form onto the authoritative version, keeping every edited field exactly as it is.
+ *
+ * This is the whole of the fix. Only `expectedUpdatedAt` moves; every instruction the provider typed stays. The
+ * next Save is then judged against the version the server actually holds, so it can succeed -- no hard refresh, no
+ * lost draft, and optimistic concurrency fully intact, because the form is still stating a real version it has now
+ * genuinely observed.
+ *
+ * It applies only to a form that asked to be rebased and only when the authoritative record actually carries a
+ * DIFFERENT version, so a refetch that has not landed yet leaves the flag set and tries again on the next one. The
+ * lost-response case resolves through here too: if the save really did commit before the response was lost, the
+ * refetch shows those values, the rebase supplies the new version, and re-saving an unchanged record is a harmless
+ * no-op server-side (no activity, no notification).
+ */
+export function rebaseCateringAccessForm(current: CateringAccessFormState, identity: string, authoritative: CateringExecutionAccessView): CateringAccessFormState {
+  if (!current.value || current.identity !== identity || !current.rebase) return current;
+  if (authoritative.updatedAt === current.value.expectedUpdatedAt) return current;
+  return { ...current, value: { ...current.value, expectedUpdatedAt: authoritative.updatedAt }, dirty: true, rebase: false };
+}
+
+/**
+ * The one path the component's hydration effect takes, so the three cases cannot be applied in the wrong order.
+ *
+ * A clean form (or a different booking) hydrates wholesale. A dirty form awaiting a rebase keeps its edits and takes
+ * the new version. A dirty form that is merely dirty is left completely alone.
+ */
+export function reconcileCateringAccessForm(current: CateringAccessFormState, identity: string, authoritative: CateringExecutionAccessView): CateringAccessFormState {
+  if (current.identity !== identity || !current.dirty) return hydrateCateringAccessForm(current, identity, cateringAccessDraftFrom(authoritative));
+  return rebaseCateringAccessForm(current, identity, authoritative);
+}
+/**
+ * An accepted save re-bases the form on the authoritative response -- but only when the form still holds what was
+ * actually sent.
+ *
+ * Same rule as everywhere else in this module: a provider may have kept typing while the save was in flight, and
+ * replacing the form with the server's answer would discard those words. When the live form has moved on, its edits
+ * are kept and only the concurrency version is taken from the response, so the next Save is judged against the row
+ * this save just produced instead of conflicting against the version it replaced.
+ */
+export function settleCateringAccessForm(
+  current: CateringAccessFormState,
+  identity: string,
+  saved: CateringExecutionAccessView,
+  submitted?: CateringAccessDraft,
+): CateringAccessFormState {
   if (current.identity !== identity) return current;
-  return { identity, value: cateringAccessDraftFrom(saved), dirty: false };
+  const live = current.value;
+  const untouched = !submitted || !live
+    || (Object.keys(live) as (keyof CateringAccessDraft)[]).every((field) => live[field] === submitted[field]);
+  // Clean, and rebased onto the version just written -- so there is nothing left to reconcile.
+  if (untouched) return { identity, value: cateringAccessDraftFrom(saved), dirty: false, rebase: false };
+  return { identity, value: { ...live!, expectedUpdatedAt: saved.updatedAt }, dirty: true, rebase: false };
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
  * Presentation
  * ------------------------------------------------------------------------------------------------------------- */
+
+/**
+ * Whether the interface shows a Blocking badge, by the SAME predicate the server's readiness derivation uses.
+ *
+ * Reading `isBlocker` alone made the badge disagree with the readiness summary rendered a few lines above it: a
+ * rental that had been received, put into use, returned or cancelled is settled and no longer counted as blocking
+ * by the server, yet still wore a destructive "Blocking" badge. These re-export the canonical predicates rather
+ * than restating the status list, so the two readings cannot drift. The persisted `isBlocker` flag is untouched --
+ * it is the record of what was on the critical path, and hiding a badge is not a reason to erase it.
+ */
+export { cateringEquipmentIsBlocking, cateringTimelineItemIsBlocking };
+
+/**
+ * Whether a read-only access record has any instruction TEXT to show, which is a different question from whether it
+ * has anything meaningful to say.
+ *
+ * Confirmation and instructions are separate facts. A record with `accessConfirmed: true` and no notes is a real,
+ * meaningful state -- the caterer has confirmed they can get in -- and rendering "No access instructions have been
+ * added." instead of it told the customer the opposite of the truth. So the empty-instructions message is now
+ * exactly that, shown alongside the confirmation rather than in place of it.
+ */
+export function cateringAccessHasInstructions(entries: readonly unknown[]): boolean {
+  return entries.length > 0;
+}
+export const CATERING_ACCESS_NO_INSTRUCTIONS = "No access instructions have been added.";
 
 /** The readiness badge's visual weight. Derived from the state alone, never from a count the client computed. */
 export function cateringReadinessVariant(state: CateringReadinessState): "default" | "secondary" | "destructive" {

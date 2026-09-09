@@ -13,8 +13,10 @@ import {
   nextCateringTimelineState,
   resolveCateringAccessSave,
   resolveCateringMilestoneToggle,
+  resolveCateringEquipmentPatch,
   resolveCateringStaffPatch,
   resolveCateringTimelinePatch,
+  resolveCateringTimelineReorder,
   type CateringTimelinePersistedState,
 } from "./catering-booking-execution-policy";
 import {
@@ -193,10 +195,84 @@ test("F2: an invalid merged state never reaches the write path", () => {
   assert.equal(cateringTimeRangeIsOrdered("11:00", "10:00"), false);
 });
 
-test("F2: the version precondition is still decided first", () => {
-  // A stale edit is a conflict even when it would ALSO have been invalid, so a client is told the real problem:
-  // reload, rather than fix a range it is no longer editing the current version of.
-  assert.deepEqual(resolveCateringTimelinePatch(item(), { scheduledTime: "11:00", expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
+test("F2: an invalid merged range is reported as such, whatever version the request holds", () => {
+  // The merged state is validated before the version precondition is consulted, so a request that could never be
+  // written is told what is actually wrong with it rather than being sent to reload first. The range it merges into
+  // is computed from the authoritative row either way.
+  assert.deepEqual(resolveCateringTimelinePatch(item(), { scheduledTime: "11:00", expectedUpdatedAt: stale }, NOW), { kind: "invalid_time_range" });
+  // A stale request whose merged range is FINE and which would genuinely change the row is still a conflict -- see
+  // the F5 suite below, which owns that ordering.
+  assert.deepEqual(resolveCateringTimelinePatch(item(), { title: "Renamed", expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
+});
+
+/* ================================================================================================================ *
+ * FINDING 5 -- an already-satisfied timeline PATCH retry must not conflict either
+ * ================================================================================================================ */
+
+test("F5: the retry that motivated this -- successful PATCH, lost response, exact resend", () => {
+  // The provider renames an item. The server commits it and bumps the version.
+  const before = item({ title: "Setup" });
+  const applied = resolveCateringTimelinePatch(before, { title: "Setup crew", expectedUpdatedAt: version }, NOW);
+  assert.equal(applied.kind, "update");
+  // The response is lost. The row now holds the new title at a new version; the phone still holds the old one.
+  const persisted = item({ title: "Setup crew" });
+  const retry = resolveCateringTimelinePatch({ ...persisted, updatedAt: NOW }, { title: "Setup crew", expectedUpdatedAt: version }, NOW);
+  // Every requested value is already what the row holds, so there is nothing to write and nothing to protect.
+  assert.deepEqual(retry, { kind: "unchanged" });
+});
+
+test("F5: the required invariant, both halves", () => {
+  const current = item({ title: "Setup", scheduledTime: "09:00", endTime: "10:00" });
+  // Stale version + requested state already equals authoritative state -> unchanged.
+  assert.deepEqual(resolveCateringTimelinePatch(current, { title: "Setup", expectedUpdatedAt: stale }, NOW), { kind: "unchanged" });
+  assert.deepEqual(resolveCateringTimelinePatch(current, { scheduledTime: "09:00", endTime: "10:00", expectedUpdatedAt: stale }, NOW), { kind: "unchanged" });
+  assert.deepEqual(resolveCateringTimelinePatch(current, { completed: false, isBlocker: false, expectedUpdatedAt: stale }, NOW), { kind: "unchanged" });
+  // Stale version + requested state DIFFERS from authoritative state -> conflict.
+  assert.deepEqual(resolveCateringTimelinePatch(current, { title: "Something else", expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
+  assert.deepEqual(resolveCateringTimelinePatch(current, { completed: true, expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
+  assert.deepEqual(resolveCateringTimelinePatch(current, { visibility: "shared", expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
+});
+
+test("F5: an unchanged retry writes no activity and no notification", () => {
+  // A shared item is the case that would duplicate customer-visible history if this were mishandled.
+  const shared = item({ visibility: "shared", title: "Guests arrive" });
+  const retry = resolveCateringTimelinePatch(shared, { title: "Guests arrive", visibility: "shared", expectedUpdatedAt: stale }, NOW);
+  assert.deepEqual(retry, { kind: "unchanged" });
+  assert.equal("activity" in retry, false);
+  assert.equal("notify" in retry, false);
+  assert.equal("next" in retry, false, "and no next state, so no version bump and no completedAt re-stamp");
+});
+
+test("F5: a completion retry does not re-stamp the original completion instant", () => {
+  const completedAt = new Date("2026-09-08T11:30:00.000Z");
+  const done = { ...item({ visibility: "shared" }), completed: true, completedAt, updatedAt: VERSION };
+  // The completion committed, the response was lost, the phone resends the same tick with its old version.
+  const retry = resolveCateringTimelinePatch(done, { completed: true, expectedUpdatedAt: stale }, NOW);
+  assert.deepEqual(retry, { kind: "unchanged" }, "so the route writes nothing and the original instant survives");
+});
+
+test("F5: merged time-range validation is preserved and still runs before all of this", () => {
+  // An invalid merged range is refused whether or not the request would otherwise have been a no-op.
+  assert.deepEqual(resolveCateringTimelinePatch(item(), { scheduledTime: "11:00", expectedUpdatedAt: version }, NOW), { kind: "invalid_time_range" });
+  assert.deepEqual(resolveCateringTimelinePatch(item(), { scheduledTime: "11:00", expectedUpdatedAt: stale }, NOW), { kind: "invalid_time_range" });
+  // And a valid change on the current version still proceeds normally.
+  assert.equal(resolveCateringTimelinePatch(item(), { scheduledTime: "09:30", expectedUpdatedAt: version }, NOW).kind, "update");
+});
+
+test("F5: a genuine change on the CURRENT version is unaffected, so this is not a blanket pass", () => {
+  const outcome = resolveCateringTimelinePatch(item(), { title: "Renamed", expectedUpdatedAt: version }, NOW);
+  assert.equal(outcome.kind, "update");
+  assert.equal(outcome.kind === "update" && outcome.updatedAt.getTime(), NOW.getTime());
+  // A missing or malformed precondition on a genuinely-changing request still fails closed.
+  assert.equal(resolveCateringTimelinePatch(item(), { title: "Renamed", expectedUpdatedAt: "not a date" }, NOW).kind, "conflict");
+});
+
+test("F5: the timeline and milestone resolvers now share the same ordering rule", () => {
+  // Both answer "already satisfied" before consulting a version, and both keep the precondition for real writes.
+  assert.deepEqual(resolveCateringMilestoneToggle({ completedAt: VERSION, updatedAt: VERSION }, { completed: true, expectedUpdatedAt: stale }, NOW), { kind: "unchanged" });
+  assert.deepEqual(resolveCateringTimelinePatch(item(), { title: "Setup", expectedUpdatedAt: stale }, NOW), { kind: "unchanged" });
+  assert.deepEqual(resolveCateringMilestoneToggle({ completedAt: null, updatedAt: VERSION }, { completed: true, expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
+  assert.deepEqual(resolveCateringTimelinePatch(item(), { title: "Other", expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
 });
 
 test("F2: an unrelated field change on an item with a valid range is unaffected", () => {
@@ -402,4 +478,73 @@ test("the access save still resolves against the row loaded inside the transacti
   assert.equal(handler.indexOf("resolveCateringAccessSave(") < handler.indexOf("tx.insert(cateringBookingAccessDetails)"), true);
   // And it is still provider-only: the shared resolver runs the guard before the transaction opens.
   assert.equal(handler.includes("resolveExecutionRequest(req as never, res, true)"), true);
+});
+
+
+/* ================================================================================================================ *
+ * NARROW AUDIT -- the same ordering rule, applied everywhere it belongs
+ * ================================================================================================================ */
+
+test("AUDIT: a crew PATCH retry is already-satisfied, not a conflict", () => {
+  const crew = { workerName: "Ada", role: "chef", customRole: null, contactNote: null, arrivalTime: "07:00", departureTime: "15:00", responsibilityNote: null, updatedAt: VERSION };
+  // The rename committed, the response was lost, the phone resends the same body with its pre-commit version.
+  assert.deepEqual(resolveCateringStaffPatch(crew, { workerName: "Ada", expectedUpdatedAt: stale }, NOW), { kind: "unchanged" });
+  // A request that would genuinely change the row still refuses on a stale version.
+  assert.deepEqual(resolveCateringStaffPatch(crew, { workerName: "Grace", expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
+  // And validation still runs on the merged state before any of it.
+  assert.equal(resolveCateringStaffPatch(crew, { arrivalTime: "16:00", expectedUpdatedAt: stale }, NOW).kind, "invalid_time_range");
+});
+
+test("AUDIT: an equipment status retry is already-satisfied, not a conflict", () => {
+  const equipment = {
+    name: "Chafer", quantity: 6, sourceType: "rental", sourceName: null,
+    pickupDate: null, pickupTime: null, returnDate: null, returnTime: null,
+    status: "received", isBlocker: false, notes: null, visibility: "shared", updatedAt: VERSION,
+  };
+  // Tapping "received" twice on a bad connection must not produce a conflict or a second activity row.
+  const retry = resolveCateringEquipmentPatch(equipment, { status: "received", expectedUpdatedAt: stale }, NOW);
+  assert.deepEqual(retry, { kind: "unchanged" });
+  assert.equal("activity" in retry, false);
+  // A real transition on a stale version still refuses.
+  assert.deepEqual(resolveCateringEquipmentPatch(equipment, { status: "returned", expectedUpdatedAt: stale }, NOW), { kind: "conflict" });
+});
+
+test("AUDIT: a reorder that is already applied is a no-op retry, not a conflict", () => {
+  const ordered = [
+    { id: "a", updatedAt: NOW, sortOrder: 0 },
+    { id: "b", updatedAt: NOW, sortOrder: 1 },
+    { id: "c", updatedAt: NOW, sortOrder: 2 },
+  ];
+  const entry = (id: string) => ({ id, expectedUpdatedAt: stale });
+  // The drag committed and bumped every version; the retry necessarily carries the old ones. The collection is
+  // already in exactly the requested order, so the request would move nothing.
+  assert.deepEqual(resolveCateringTimelineReorder(ordered, [entry("a"), entry("b"), entry("c")]), { kind: "unchanged" });
+  // A genuinely different order on stale versions is still a conflict.
+  assert.deepEqual(resolveCateringTimelineReorder(ordered, [entry("c"), entry("b"), entry("a")]), { kind: "conflict" });
+  // Membership is still decided before any of this.
+  assert.equal(resolveCateringTimelineReorder(ordered, [entry("a"), entry("b")]).kind, "membership");
+});
+
+test("AUDIT: an access save that changes nothing writes nothing", () => {
+  const persisted = { updatedAt: VERSION, parkingInstructions: "Rear lot", accessConfirmed: true, providerPrivateNotes: "private" };
+  // Every field is already what the record holds -- the retry after a lost response, and also an ordinary re-save.
+  assert.deepEqual(resolveCateringAccessSave({ existing: persisted as never }, { parkingInstructions: "Rear lot", accessConfirmed: true, providerPrivateNotes: "private", expectedUpdatedAt: stale } as never), { kind: "unchanged" });
+  // A private-only change is still a change, so it is not swallowed by the shared-field comparison.
+  assert.equal(resolveCateringAccessSave({ existing: persisted as never }, { providerPrivateNotes: "different", expectedUpdatedAt: version } as never).kind, "save");
+  assert.deepEqual(resolveCateringAccessSave({ existing: persisted as never }, { providerPrivateNotes: "different", expectedUpdatedAt: stale } as never), { kind: "conflict" });
+  // A create is unaffected: there is no persisted state for it to have already satisfied.
+  assert.equal(resolveCateringAccessSave({ existing: undefined }, { parkingInstructions: "Rear lot" }).kind, "save");
+});
+
+test("AUDIT: every resolver now answers an exact retry the same way", () => {
+  // One rule, six places: milestone, timeline PATCH, crew PATCH, equipment PATCH, reorder, access save.
+  const crew = { workerName: "Ada", role: "chef", customRole: null, contactNote: null, arrivalTime: null, departureTime: null, responsibilityNote: null, updatedAt: VERSION };
+  const equipment = { name: "Chafer", quantity: 1, sourceType: "rental", sourceName: null, pickupDate: null, pickupTime: null, returnDate: null, returnTime: null, status: "planned", isBlocker: false, notes: null, visibility: "shared", updatedAt: VERSION };
+  const ordered = [{ id: "a", updatedAt: NOW, sortOrder: 0 }];
+  assert.equal(resolveCateringMilestoneToggle({ completedAt: VERSION, updatedAt: VERSION }, { completed: true, expectedUpdatedAt: stale }, NOW).kind, "unchanged");
+  assert.equal(resolveCateringTimelinePatch(item(), { title: "Setup", expectedUpdatedAt: stale }, NOW).kind, "unchanged");
+  assert.equal(resolveCateringStaffPatch(crew, { workerName: "Ada", expectedUpdatedAt: stale }, NOW).kind, "unchanged");
+  assert.equal(resolveCateringEquipmentPatch(equipment, { status: "planned", expectedUpdatedAt: stale }, NOW).kind, "unchanged");
+  assert.equal(resolveCateringTimelineReorder(ordered, [{ id: "a", expectedUpdatedAt: stale }]).kind, "unchanged");
+  assert.equal(resolveCateringAccessSave({ existing: { updatedAt: VERSION, accessConfirmed: false } as never }, { accessConfirmed: false, expectedUpdatedAt: stale } as never).kind, "unchanged");
 });
