@@ -706,6 +706,36 @@ export const cateringBookingExecutionMilestones = pgTable("catering_booking_exec
   completedByCheck: check("catering_execution_milestone_completed_by_check", sql`(${t.completedAt} IS NULL AND ${t.completedBy} IS NULL) OR (${t.completedAt} IS NOT NULL AND ${t.completedBy} IS NOT NULL)`),
 }));
 
+/**
+ * Phase 2J: the durable record that one create retry token has already been spent.
+ *
+ * The created ROW cannot be the idempotency record, because these rows are deletable. Create a run-of-show item
+ * with token T, lose the response, watch the item arrive by polling, delete it deliberately, and then let the
+ * original request retry: a lookup over the live rows finds nothing, T looks unused, and the item the provider
+ * just removed is resurrected -- with a second activity row and a second notification behind it. The same path
+ * exists for crew and for equipment.
+ *
+ * So consumption is recorded HERE instead, in a table nothing deletes. `resource_id` names what the first attempt
+ * created and is deliberately NOT a foreign key: an FK would either cascade this tombstone away with the row or
+ * refuse the delete, and both defeat the purpose. A retry is therefore answered in one of exactly two ways -- with
+ * the record, if it still exists, or with "already consumed, and it is gone" -- and never by creating anything.
+ *
+ * The primary key IS the scope: one booking, one creator, one resource type, one token. Types are namespaced, so a
+ * client that reuses a token across two collections gets two independent creates rather than one collision.
+ */
+export const cateringBookingExecutionCreateRequests = pgTable("catering_booking_execution_create_requests", {
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  resourceType: varchar("resource_type", { length: 16 }).notNull(),
+  clientRequestId: uuid("client_request_id").notNull(),
+  /** The record the accepted attempt created. Not an FK on purpose -- it must outlive that record. */
+  resourceId: varchar("resource_id").notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  pk: primaryKey({ name: "catering_booking_execution_create_requests_pkey", columns: [t.bookingId, t.createdBy, t.resourceType, t.clientRequestId] }),
+  resourceTypeCheck: check("catering_execution_create_request_type_check", sql`${t.resourceType} IN ('timeline', 'staff', 'equipment')`),
+}));
+
 export const cateringReviews = pgTable("catering_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),

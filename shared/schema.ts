@@ -29,6 +29,7 @@ import {
   cateringBookingEquipment,
   cateringBookingAccessDetails,
   cateringBookingExecutionMilestones,
+  cateringBookingExecutionCreateRequests,
   cateringPortfolioItems,
   cateringPackages,
   cateringAvailabilitySettings,
@@ -69,6 +70,7 @@ export {
   cateringBookingEquipment,
   cateringBookingAccessDetails,
   cateringBookingExecutionMilestones,
+  cateringBookingExecutionCreateRequests,
   cateringPortfolioItems,
   cateringPackages,
   cateringAvailabilitySettings,
@@ -842,6 +844,7 @@ export type CateringBookingStaffAssignment = typeof cateringBookingStaffAssignme
 export type CateringBookingEquipmentItem = typeof cateringBookingEquipment.$inferSelect;
 export type CateringBookingAccessDetail = typeof cateringBookingAccessDetails.$inferSelect;
 export type CateringBookingExecutionMilestone = typeof cateringBookingExecutionMilestones.$inferSelect;
+export type CateringBookingExecutionCreateRequest = typeof cateringBookingExecutionCreateRequests.$inferSelect;
 export type CateringReview = typeof cateringReviews.$inferSelect;
 export type InsertCateringInquiry = z.infer<typeof insertCateringInquirySchema>;
 export type Product = typeof products.$inferSelect;

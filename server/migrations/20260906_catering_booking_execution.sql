@@ -154,6 +154,28 @@ CREATE TABLE IF NOT EXISTS catering_booking_execution_milestones (
   CONSTRAINT catering_execution_milestone_completed_by_check CHECK ((completed_at IS NULL AND completed_by IS NULL) OR (completed_at IS NOT NULL AND completed_by IS NOT NULL))
 );
 
+-- The durable record that one create retry token has already been spent.
+--
+-- The created ROW cannot be the idempotency record, because these rows are deletable: create an item with token T,
+-- lose the response, watch it arrive by polling, delete it deliberately, then let the original request retry -- a
+-- lookup over the live rows finds nothing, T looks unused, and the deleted item is resurrected with a second
+-- activity row and a second notification behind it. Consumption is recorded here instead, in a table nothing
+-- deletes. resource_id names what the accepted attempt created and is deliberately NOT a foreign key: an FK would
+-- either cascade this tombstone away with the row or refuse the delete, and both defeat the purpose.
+--
+-- The primary key IS the scope -- one booking, one creator, one resource type, one token -- so the three
+-- collections are namespaced and a token reused across them cannot collide.
+CREATE TABLE IF NOT EXISTS catering_booking_execution_create_requests (
+  booking_id varchar NOT NULL REFERENCES catering_bookings(id) ON DELETE RESTRICT,
+  created_by varchar NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  resource_type varchar(16) NOT NULL,
+  client_request_id uuid NOT NULL,
+  resource_id varchar NOT NULL,
+  consumed_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT catering_booking_execution_create_requests_pkey PRIMARY KEY (booking_id, created_by, resource_type, client_request_id),
+  CONSTRAINT catering_execution_create_request_type_check CHECK (resource_type IN ('timeline', 'staff', 'equipment'))
+);
+
 -- Phase 2J extends the Phase 2H/2I activity allowlist by exactly eight events and removes none. Seven describe a
 -- SHARED execution change and are written with 'shared' visibility; the milestone one is written with 'provider'
 -- visibility, so a customer's activity feed never contains it.

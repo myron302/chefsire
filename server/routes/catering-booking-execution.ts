@@ -5,6 +5,7 @@ import {
   cateringBookingAccessDetails,
   cateringBookingActivity,
   cateringBookingEquipment,
+  cateringBookingExecutionCreateRequests,
   cateringBookingExecutionMilestones,
   cateringBookingExecutionTimeline,
   cateringBookingStaffAssignments,
@@ -12,6 +13,7 @@ import {
   notifications,
   type CateringBookingAccessDetail,
   type CateringBookingEquipmentItem,
+  type CateringBookingExecutionCreateRequest,
   type CateringBookingExecutionTimelineItem,
   type CateringBookingStaffAssignment,
 } from "@shared/schema";
@@ -19,6 +21,8 @@ import { cateringBookingIdSchema } from "@shared/catering-bookings";
 import { CATERING_WORKSPACE_READ_ONLY_CODE, cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import {
   CATERING_EXECUTION_ACCESS_NOTIFICATION,
+  CATERING_EXECUTION_CREATE_CONSUMED_CODE,
+  CATERING_EXECUTION_CREATE_CONSUMED_MESSAGE,
   CATERING_EXECUTION_MILESTONE_KEYS,
   CATERING_EXECUTION_TIMELINE_NOTIFICATION,
   cateringAccessSaveSchema,
@@ -35,6 +39,7 @@ import {
   cateringTimelineReorderSchema,
   cateringTimelineUpdateSchema,
   type CateringBookingExecutionView,
+  type CateringExecutionCreateType,
 } from "@shared/catering-booking-execution";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
@@ -122,24 +127,33 @@ function readOnlyRace(res: Res, what: string) {
  *
  * Named per collection AND per booking, so a reorder of one booking's run-of-show never serializes against another
  * booking's equipment. It is what makes the collection limits real under concurrency: two simultaneous creates
- * cannot both read a count below the maximum and both insert.
+ * cannot both read a count below the maximum and both insert. It is also what the create routes hold while they
+ * resolve a retry token, so the token decision and the limit decision see the same collection.
+ *
+ * The name is a closed union: the three limited collections plus the two single-row records that also serialize.
  */
-async function lockCollection(tx: typeof db, collection: string, bookingId: string) {
+type CateringExecutionLock = CateringExecutionCollection | "access" | "milestones";
+async function lockCollection(tx: typeof db, collection: CateringExecutionLock, bookingId: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`catering-execution-${collection}:${bookingId}`}))`);
 }
-/** The locked size of one collection, plus its highest sort order where the collection is ordered. */
-async function lockedTimelineCounts(tx: typeof db, bookingId: string) {
-  await lockCollection(tx, "timeline", bookingId);
+/**
+ * The size of one collection, plus its highest sort order where the collection is ordered.
+ *
+ * These no longer take the collection lock themselves. The lock is acquired by the create route BEFORE it resolves
+ * the retry token, because the token has to win over the limit: a retry of a request that already succeeded is not
+ * a create, so a collection that filled up in the meantime -- possibly with the very row that token produced -- is
+ * not its refusal. Counting under a lock the caller already holds is the same guarantee it always was.
+ */
+async function timelineCounts(tx: typeof db, bookingId: string) {
   const [{ value, maxSortOrder }] = await tx.select({ value: count(), maxSortOrder: max(cateringBookingExecutionTimeline.sortOrder) })
     .from(cateringBookingExecutionTimeline).where(eq(cateringBookingExecutionTimeline.bookingId, bookingId));
   return { itemCount: Number(value), maxSortOrder: maxSortOrder == null ? null : Number(maxSortOrder) };
 }
 /**
- * The locked size of one unordered collection. `maxSortOrder` is null because neither crew nor equipment is ordered:
- * both are read by creation time, so there is no position for a create to append to.
+ * The size of one unordered collection. `maxSortOrder` is null because neither crew nor equipment is ordered: both
+ * are read by creation time, so there is no position for a create to append to.
  */
-async function lockedCount(tx: typeof db, collection: CateringExecutionCollection, bookingId: string, table: typeof cateringBookingStaffAssignments | typeof cateringBookingEquipment) {
-  await lockCollection(tx, collection, bookingId);
+async function collectionCount(tx: typeof db, bookingId: string, table: typeof cateringBookingStaffAssignments | typeof cateringBookingEquipment) {
   const [{ value }] = await tx.select({ value: count() }).from(table as never).where(eq(table.bookingId, bookingId));
   return { itemCount: Number(value), maxSortOrder: null };
 }
@@ -170,26 +184,44 @@ async function notifyCounterpart(booking: { providerId: string; customerId: stri
 }
 
 /**
- * Resolves the record one creation retry token already produced.
+ * Resolves whether one creation retry token has already been spent, from the DURABLE ledger.
  *
- * The scope is exactly (booking, creator, token), matching the partial unique index, so a token belonging to another
- * actor or replayed against another booking resolves to nothing and is treated as a new create rather than handed
- * somebody else's record.
+ * The created row is not the idempotency record, because it can be deleted. Create an item with token T, lose the
+ * response, watch it arrive by polling, delete it deliberately, and let the original request retry: a lookup over
+ * the live rows finds nothing, T reads as unused, and the item the provider just removed comes back -- with a
+ * second activity row and a second notification behind it. The ledger is a table nothing deletes, so a spent token
+ * stays spent for the life of the booking.
+ *
+ * The scope is exactly (booking, creator, resource type, token), which is the ledger's primary key, so a token
+ * belonging to another actor, replayed against another booking, or reused across two collections resolves to
+ * nothing here and is treated as a new create rather than handed somebody else's record.
+ *
+ * Always called INSIDE the transaction and AFTER the collection lock, so what it reads cannot change underneath the
+ * decision it feeds.
  */
-async function duplicateTimelineItem(bookingId: string, createdBy: string, clientRequestId: string, executor: typeof db = db) {
-  const [row] = await executor.select().from(cateringBookingExecutionTimeline)
-    .where(and(eq(cateringBookingExecutionTimeline.bookingId, bookingId), eq(cateringBookingExecutionTimeline.createdBy, createdBy), eq(cateringBookingExecutionTimeline.clientRequestId, clientRequestId))).limit(1);
-  return row as CateringBookingExecutionTimelineItem | undefined;
+async function consumedCreateRequest(tx: typeof db, bookingId: string, createdBy: string, resourceType: CateringExecutionCreateType, clientRequestId: string) {
+  const [row] = await tx.select().from(cateringBookingExecutionCreateRequests).where(and(
+    eq(cateringBookingExecutionCreateRequests.bookingId, bookingId),
+    eq(cateringBookingExecutionCreateRequests.createdBy, createdBy),
+    eq(cateringBookingExecutionCreateRequests.resourceType, resourceType),
+    eq(cateringBookingExecutionCreateRequests.clientRequestId, clientRequestId),
+  )).limit(1);
+  return row as CateringBookingExecutionCreateRequest | undefined;
 }
-async function duplicateStaffAssignment(bookingId: string, createdBy: string, clientRequestId: string, executor: typeof db = db) {
-  const [row] = await executor.select().from(cateringBookingStaffAssignments)
-    .where(and(eq(cateringBookingStaffAssignments.bookingId, bookingId), eq(cateringBookingStaffAssignments.createdBy, createdBy), eq(cateringBookingStaffAssignments.clientRequestId, clientRequestId))).limit(1);
-  return row as CateringBookingStaffAssignment | undefined;
+/**
+ * Records the token as spent, in the SAME transaction as the insert it accompanies.
+ *
+ * That is the whole atomicity guarantee: a rolled-back create leaves no consumed token, and a committed create
+ * cannot leave the token unconsumed. Under the collection lock the primary key can only be violated by a request
+ * this same code would already have answered from the ledger, so a violation aborts the transaction rather than
+ * producing a row whose token was never recorded.
+ */
+async function consumeCreateRequest(tx: typeof db, bookingId: string, createdBy: string, resourceType: CateringExecutionCreateType, clientRequestId: string, resourceId: string) {
+  await tx.insert(cateringBookingExecutionCreateRequests).values({ bookingId, createdBy, resourceType, clientRequestId, resourceId });
 }
-async function duplicateEquipment(bookingId: string, createdBy: string, clientRequestId: string, executor: typeof db = db) {
-  const [row] = await executor.select().from(cateringBookingEquipment)
-    .where(and(eq(cateringBookingEquipment.bookingId, bookingId), eq(cateringBookingEquipment.createdBy, createdBy), eq(cateringBookingEquipment.clientRequestId, clientRequestId))).limit(1);
-  return row as CateringBookingEquipmentItem | undefined;
+/** The one body a spent token whose record has since been deleted is answered with, for all three collections. */
+function consumedCreate(res: Res) {
+  return res.status(200).json({ duplicate: true, consumed: true, code: CATERING_EXECUTION_CREATE_CONSUMED_CODE, message: CATERING_EXECUTION_CREATE_CONSUMED_MESSAGE });
 }
 
 /**
@@ -273,25 +305,36 @@ r.post("/bookings/:id/execution/timeline", requireAuth, async (req, res, next) =
   if (!resolved) return;
   const { id, userId, booking } = resolved;
   const input = cateringTimelineCreateSchema.parse(req.body ?? {});
-  // An already-accepted token is resolved BEFORE the transaction, so an ordinary retry costs one indexed lookup and
-  // cannot be refused by a collection that filled up in the meantime. The lookup inside the transaction stays as
-  // the concurrency backstop for two simultaneous first attempts, and the unique index behind that.
-  if (input.clientRequestId) {
-    const accepted = await duplicateTimelineItem(id, userId, input.clientRequestId);
-    if (accepted) return res.status(200).json({ item: serializeExecutionTimelineItem(accepted, "provider"), duplicate: true });
-  }
   const result = await db.transaction(async (tx: typeof db) => {
-    const active = await lockActiveCateringBooking(tx, id);
-    const outcome = resolveCateringTimelineCreate(active ? await lockedTimelineCounts(tx, id) : null, input);
+    if (!await lockActiveCateringBooking(tx, id)) return { kind: "read_only" } as const;
+    // ORDER MATTERS, and this is the order: booking lock, collection lock, retry token, limit, insert.
+    //
+    // The token is resolved under the lock and BEFORE the limit is evaluated, because a retry of a request that
+    // already succeeded is not a create at all. Two identical attempts can overlap on the last free slot: the first
+    // fills the collection and commits, the second then acquires this lock and finds the collection full. Judging
+    // the limit first refused that second attempt with 409 -- even though it is the retry of the request that made
+    // the very row now filling the slot, and the right answer is that row.
+    await lockCollection(tx, "timeline", id);
+    if (input.clientRequestId) {
+      const spent = await consumedCreateRequest(tx, id, userId, "timeline", input.clientRequestId);
+      if (spent) {
+        const [existing] = await tx.select().from(cateringBookingExecutionTimeline)
+          .where(and(eq(cateringBookingExecutionTimeline.id, spent.resourceId), eq(cateringBookingExecutionTimeline.bookingId, id))).limit(1);
+        // Still there: the retry converges on it. Gone: the provider deleted it deliberately after the create
+        // succeeded, so the answer is that the token is spent -- never a second copy of what they removed.
+        return existing ? { kind: "duplicate", item: existing as CateringBookingExecutionTimelineItem } as const : { kind: "consumed" } as const;
+      }
+    }
+    const outcome = resolveCateringTimelineCreate(await timelineCounts(tx, id), input);
     if (outcome.kind !== "create") return outcome;
-    const already = input.clientRequestId ? await duplicateTimelineItem(id, userId, input.clientRequestId, tx) : undefined;
-    if (already) return { kind: "duplicate", item: already } as const;
     const [row] = await tx.insert(cateringBookingExecutionTimeline).values({
       bookingId: id, createdBy: userId, sortOrder: outcome.sortOrder,
       title: input.title, description: input.description ?? null, category: input.category,
       scheduledTime: input.scheduledTime ?? null, endTime: input.endTime ?? null,
       visibility: input.visibility, isBlocker: input.isBlocker, clientRequestId: input.clientRequestId ?? null,
     }).returning();
+    // Same transaction as the insert, so the token is consumed if and only if the row was created.
+    if (input.clientRequestId) await consumeCreateRequest(tx, id, userId, "timeline", input.clientRequestId, (row as CateringBookingExecutionTimelineItem).id);
     if (outcome.activity) await tx.insert(cateringBookingActivity).values({
       bookingId: id, actorUserId: userId, eventType: outcome.activity.eventType,
       visibility: cateringExecutionActivityVisibility(input.visibility), metadata: { title: outcome.activity.title },
@@ -300,8 +343,9 @@ r.post("/bookings/:id/execution/timeline", requireAuth, async (req, res, next) =
   });
   if (result.kind === "read_only") return readOnlyRace(res, "run-of-show item");
   if (result.kind === "limit") return res.status(409).json({ message: CATERING_EXECUTION_LIMIT_MESSAGES.timeline });
-  // A retry that resolved inside the lock is answered with the record the first attempt made, and notifies nobody:
-  // the notification for that record was already sent when it was actually created.
+  // A retry is answered with the record the first attempt made, and notifies nobody: the notification for that
+  // record was already sent when it was actually created.
+  if (result.kind === "consumed") return consumedCreate(res);
   if (result.kind === "duplicate") return res.status(200).json({ item: serializeExecutionTimelineItem(result.item, "provider"), duplicate: true });
   if (result.notify) await notifyCounterpart(booking, userId, id, CATERING_EXECUTION_TIMELINE_NOTIFICATION);
   res.status(201).json({ item: serializeExecutionTimelineItem(result.item, "provider") });
@@ -440,27 +484,34 @@ r.post("/bookings/:id/execution/staff", requireAuth, async (req, res, next) => {
   if (!resolved) return;
   const { id, userId } = resolved;
   const input = cateringStaffCreateSchema.parse(req.body ?? {});
-  if (input.clientRequestId) {
-    const accepted = await duplicateStaffAssignment(id, userId, input.clientRequestId);
-    if (accepted) return res.status(200).json({ assignment: serializeExecutionStaffAssignment(accepted), duplicate: true });
-  }
   const result = await db.transaction(async (tx: typeof db) => {
-    const active = await lockActiveCateringBooking(tx, id);
-    const outcome = resolveCateringStaffCreate(active ? await lockedCount(tx, "staff", id, cateringBookingStaffAssignments) : null);
+    if (!await lockActiveCateringBooking(tx, id)) return { kind: "read_only" } as const;
+    // Same order as the run-of-show: collection lock, then the retry token, then the limit. A retry that overlaps
+    // the attempt filling the last slot resolves to that attempt's record rather than being refused as a create.
+    await lockCollection(tx, "staff", id);
+    if (input.clientRequestId) {
+      const spent = await consumedCreateRequest(tx, id, userId, "staff", input.clientRequestId);
+      if (spent) {
+        const [existing] = await tx.select().from(cateringBookingStaffAssignments)
+          .where(and(eq(cateringBookingStaffAssignments.id, spent.resourceId), eq(cateringBookingStaffAssignments.bookingId, id))).limit(1);
+        return existing ? { kind: "duplicate", assignment: existing as CateringBookingStaffAssignment } as const : { kind: "consumed" } as const;
+      }
+    }
+    const outcome = resolveCateringStaffCreate(await collectionCount(tx, id, cateringBookingStaffAssignments));
     if (outcome.kind !== "create") return outcome;
-    const already = input.clientRequestId ? await duplicateStaffAssignment(id, userId, input.clientRequestId, tx) : undefined;
-    if (already) return { kind: "duplicate", assignment: already } as const;
     const [row] = await tx.insert(cateringBookingStaffAssignments).values({
       bookingId: id, createdBy: userId, workerName: input.workerName, role: input.role,
       customRole: input.customRole ?? null, contactNote: input.contactNote ?? null,
       arrivalTime: input.arrivalTime ?? null, departureTime: input.departureTime ?? null,
       responsibilityNote: input.responsibilityNote ?? null, clientRequestId: input.clientRequestId ?? null,
     }).returning();
+    if (input.clientRequestId) await consumeCreateRequest(tx, id, userId, "staff", input.clientRequestId, (row as CateringBookingStaffAssignment).id);
     // No activity row and no notification, in any branch. Staffing is provider-private in every channel.
     return { kind: "created", assignment: row as CateringBookingStaffAssignment } as const;
   });
   if (result.kind === "read_only") return readOnlyRace(res, "crew assignment");
   if (result.kind === "limit") return res.status(409).json({ message: CATERING_EXECUTION_LIMIT_MESSAGES.staff });
+  if (result.kind === "consumed") return consumedCreate(res);
   if (result.kind === "duplicate") return res.status(200).json({ assignment: serializeExecutionStaffAssignment(result.assignment), duplicate: true });
   res.status(201).json({ assignment: serializeExecutionStaffAssignment(result.assignment) });
 } catch (error) { invalid(error, res, next); } });
@@ -536,16 +587,20 @@ r.post("/bookings/:id/execution/equipment", requireAuth, async (req, res, next) 
   if (!resolved) return;
   const { id, userId } = resolved;
   const input = cateringEquipmentCreateSchema.parse(req.body ?? {});
-  if (input.clientRequestId) {
-    const accepted = await duplicateEquipment(id, userId, input.clientRequestId);
-    if (accepted) return res.status(200).json({ equipment: serializeExecutionEquipment(accepted), duplicate: true });
-  }
   const result = await db.transaction(async (tx: typeof db) => {
-    const active = await lockActiveCateringBooking(tx, id);
-    const outcome = resolveCateringEquipmentCreate(active ? await lockedCount(tx, "equipment", id, cateringBookingEquipment) : null, input);
+    if (!await lockActiveCateringBooking(tx, id)) return { kind: "read_only" } as const;
+    // Collection lock, then the retry token, then the limit -- identically to the other two creates.
+    await lockCollection(tx, "equipment", id);
+    if (input.clientRequestId) {
+      const spent = await consumedCreateRequest(tx, id, userId, "equipment", input.clientRequestId);
+      if (spent) {
+        const [existing] = await tx.select().from(cateringBookingEquipment)
+          .where(and(eq(cateringBookingEquipment.id, spent.resourceId), eq(cateringBookingEquipment.bookingId, id))).limit(1);
+        return existing ? { kind: "duplicate", equipment: existing as CateringBookingEquipmentItem } as const : { kind: "consumed" } as const;
+      }
+    }
+    const outcome = resolveCateringEquipmentCreate(await collectionCount(tx, id, cateringBookingEquipment), input);
     if (outcome.kind !== "create") return outcome;
-    const already = input.clientRequestId ? await duplicateEquipment(id, userId, input.clientRequestId, tx) : undefined;
-    if (already) return { kind: "duplicate", equipment: already } as const;
     const [row] = await tx.insert(cateringBookingEquipment).values({
       bookingId: id, createdBy: userId, name: input.name, quantity: input.quantity,
       sourceType: input.sourceType, sourceName: input.sourceName ?? null,
@@ -554,6 +609,7 @@ r.post("/bookings/:id/execution/equipment", requireAuth, async (req, res, next) 
       status: input.status, isBlocker: input.isBlocker, notes: input.notes ?? null,
       visibility: input.visibility, clientRequestId: input.clientRequestId ?? null,
     }).returning();
+    if (input.clientRequestId) await consumeCreateRequest(tx, id, userId, "equipment", input.clientRequestId, (row as CateringBookingEquipmentItem).id);
     if (outcome.activity) await tx.insert(cateringBookingActivity).values({
       bookingId: id, actorUserId: userId, eventType: outcome.activity.eventType,
       visibility: cateringExecutionActivityVisibility(input.visibility), metadata: { name: outcome.activity.name },
@@ -562,6 +618,7 @@ r.post("/bookings/:id/execution/equipment", requireAuth, async (req, res, next) 
   });
   if (result.kind === "read_only") return readOnlyRace(res, "equipment record");
   if (result.kind === "limit") return res.status(409).json({ message: CATERING_EXECUTION_LIMIT_MESSAGES.equipment });
+  if (result.kind === "consumed") return consumedCreate(res);
   if (result.kind === "duplicate") return res.status(200).json({ equipment: serializeExecutionEquipment(result.equipment), duplicate: true });
   // Equipment never notifies. It writes shared history where the record is shared, which the customer reads in the
   // workspace, but a chafer moving from planned to confirmed is not worth a push.

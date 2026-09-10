@@ -8,8 +8,10 @@ import {
   EMPTY_CATERING_EQUIPMENT_DRAFT,
   EMPTY_CATERING_STAFF_DRAFT,
   EMPTY_CATERING_TIMELINE_DRAFT,
+  CATERING_EXECUTION_CONSUMED_NOTICE,
   cateringAccessDraftFrom,
   cateringAccessReconcileKey,
+  cateringCreateWasConsumed,
   cateringAccessSavePayload,
   cateringDraftIsUnchanged,
   cateringEquipmentCreatePayload,
@@ -50,6 +52,7 @@ import {
 } from "./catering-booking-execution-state";
 import {
   CATERING_ACCESS_FIELDS,
+  CATERING_EXECUTION_CREATE_CONSUMED_MESSAGE,
   cateringAccessFieldLimit,
   cateringAccessSaveSchema,
   CATERING_EQUIPMENT_STATUSES,
@@ -1029,4 +1032,78 @@ test("P2: the component's access effect is keyed on the reconcile key, not on th
   assert.equal(component.includes("}, [identity, cateringAccessReconcileKey(execution?.access, accessForm)]);"), true);
   // The dependency it replaced must not survive anywhere as the access trigger.
   assert.equal(component.includes("execution?.access.updatedAt"), false);
+});
+
+
+/* ================================================================================================================ *
+ * P2 -- a consumed create token whose record was deleted
+ * ================================================================================================================ */
+
+/**
+ * The server now answers a create retry in one of three ways: the record it made, "already consumed and the record
+ * is gone", or an ordinary create. The middle one arrives on the SUCCESS path -- the request it retries did
+ * succeed, so nothing failed and nothing should be retried -- but it carries no record at all. The client's job is
+ * to not invent one, to retire the spent token, and to say something true.
+ */
+const consumedResponse = { duplicate: true, consumed: true, code: "catering_execution_create_already_consumed", message: CATERING_EXECUTION_CREATE_CONSUMED_MESSAGE };
+
+test("P2: a consumed-and-deleted response is recognised, and an ordinary create is not", () => {
+  assert.equal(cateringCreateWasConsumed(consumedResponse), true);
+  // A retry whose record still exists is a plain duplicate and carries one -- it must NOT be treated as consumed.
+  assert.equal(cateringCreateWasConsumed({ duplicate: true, item: { id: "item-1" } }), false);
+  assert.equal(cateringCreateWasConsumed({ item: { id: "item-1" } }), false);
+  assert.equal(cateringCreateWasConsumed({}), false);
+  assert.equal(cateringCreateWasConsumed(null), false);
+  assert.equal(cateringCreateWasConsumed(undefined), false);
+  // Both flags are required, so a stray `consumed` on some other response cannot trigger it.
+  assert.equal(cateringCreateWasConsumed({ consumed: true }), false);
+});
+
+test("P2: the consumed response carries no record, so there is nothing to render a phantom from", () => {
+  for (const key of ["item", "assignment", "equipment"]) {
+    assert.equal(key in consumedResponse, false, key);
+  }
+  // And the notice the participant is shown is truthful and explicitly not retryable: the same token can only ever
+  // produce this same answer.
+  assert.equal(CATERING_EXECUTION_CONSUMED_NOTICE.retryable, false);
+  assert.equal(CATERING_EXECUTION_CONSUMED_NOTICE.message, CATERING_EXECUTION_CREATE_CONSUMED_MESSAGE);
+  assert.equal(/removed/.test(CATERING_EXECUTION_CONSUMED_NOTICE.message), true, "it says the record is gone");
+  assert.equal(/nothing was added again/i.test(CATERING_EXECUTION_CONSUMED_NOTICE.message), true, "and that nothing was created");
+});
+
+test("P2: the spent token is retired, so a genuinely new attempt is not answered from the ledger", () => {
+  // The draft that produced the consumed retry, still holding the token it was submitted with.
+  const submitted = prepareCateringCreate(timelineA, cateringTimelineCreatePayload, () => "token-1");
+  assert.equal(submitted.draft.requestId, "token-1");
+  // The response settles it exactly as any accepted create does: the attempt is accounted for, so the form empties.
+  const settled = settleCateringCreateDraft(submitted.draft, submitted.draft, EMPTY_CATERING_TIMELINE_DRAFT);
+  assert.equal(settled.requestId, null, "the spent token is not carried forward");
+  assert.equal(settled.requestFingerprint, null);
+  // Retyping the SAME record now mints a fresh token, so the server sees a new create rather than the spent one.
+  const again = prepareCateringCreate({ ...settled, title: "Record A" }, cateringTimelineCreatePayload, () => "token-2");
+  assert.equal(again.draft.requestId, "token-2");
+  assert.equal(again.body.clientRequestId, "token-2");
+});
+
+test("P2: a consumed response still does not clear a draft the provider has moved on to", () => {
+  const submitted = prepareCateringCreate(timelineA, cateringTimelineCreatePayload, () => "token-1");
+  // They kept typing while the retry was in flight. That newer record is not something this response accounts for.
+  const live = { ...submitted.draft, title: "Record B" };
+  const settled = settleCateringCreateDraft(live, submitted.draft, EMPTY_CATERING_TIMELINE_DRAFT);
+  assert.deepEqual(settled, live, "the newer draft survives");
+  // And because the payload changed materially, its next submit mints a fresh token anyway.
+  const next = prepareCateringCreate(settled, cateringTimelineCreatePayload, () => "token-2");
+  assert.equal(next.draft.requestId, "token-2");
+});
+
+test("P2: the component raises the consumed notice, and only for that response", () => {
+  // The success path sets the notice from the response itself, so an ordinary create still clears it.
+  assert.equal(component.includes("setNotice(cateringCreateWasConsumed(value) ? { ...CATERING_EXECUTION_CONSUMED_NOTICE } : null);"), true);
+  // It is inside the origin guard, so a response for another booking cannot raise it here.
+  const success = component.slice(component.indexOf("onSuccess: (value: Record<string, unknown>, variables)"), component.indexOf("onError:"));
+  assert.equal(success.indexOf("if (!settlesHere(started)) return;") < success.indexOf("cateringCreateWasConsumed"), true);
+  // Nothing anywhere inserts a record from a create response into local state, so a missing one cannot become a
+  // phantom row: the created record is read back from the authoritative query like everything else.
+  assert.equal(/set(Timeline|Staff|Equipment)[A-Za-z]*\(\[/.test(component), false);
+  assert.equal(/value\.(item|assignment|equipment) as [A-Za-z]+View/.test(component), false);
 });

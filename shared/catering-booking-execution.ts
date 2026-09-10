@@ -452,6 +452,18 @@ export const CATERING_EXECUTION_SET_CHANGED_MESSAGE = "Reorder must contain the 
 /** A record the actor may mutate but that no longer exists. Never reported as a fabricated version conflict. */
 export const CATERING_EXECUTION_NOT_FOUND_CODE = "catering_execution_not_found";
 export const CATERING_EXECUTION_NOT_FOUND_MESSAGE = "Execution record not found";
+/**
+ * A create retry whose token was already spent, on a record that has since been deliberately deleted.
+ *
+ * It is NOT an error: the request it retries succeeded once. It is the truthful, deterministic answer to "create
+ * this" when the create already happened and its result was then removed -- so the server creates nothing, and the
+ * client is told exactly that rather than being handed a resurrected record or a failure it would retry forever.
+ */
+export const CATERING_EXECUTION_CREATE_CONSUMED_CODE = "catering_execution_create_already_consumed";
+export const CATERING_EXECUTION_CREATE_CONSUMED_MESSAGE = "This was already added by an earlier attempt and has since been removed, so nothing was added again.";
+/** The three collections whose creates carry a retry token, and the namespace the durable ledger records them under. */
+export const CATERING_EXECUTION_CREATE_TYPES = ["timeline", "staff", "equipment"] as const;
+export type CateringExecutionCreateType = typeof CATERING_EXECUTION_CREATE_TYPES[number];
 /** Re-exported so the execution client classifies a terminal booking by the same code every other section uses. */
 export { CATERING_WORKSPACE_READ_ONLY_CODE };
 export const CATERING_EXECUTION_READ_ONLY_MESSAGE = "Cancelled and completed bookings are read-only";

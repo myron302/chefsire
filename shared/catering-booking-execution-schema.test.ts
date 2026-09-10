@@ -31,6 +31,9 @@ const TABLES = [
   "catering_booking_equipment",
   "catering_booking_access_details",
   "catering_booking_execution_milestones",
+  // The durable create-idempotency ledger. It is the one table here that holds no operational data: it records
+  // that a create retry token has been spent, and it has to outlive the row that token produced.
+  "catering_booking_execution_create_requests",
 ];
 
 /** The values inside the first `IN ( ... )` clause after `from`. */
@@ -40,7 +43,7 @@ function valuesInClause(source: string, from: number): string[] {
   return source.slice(open + 1, close).split(",").map((value) => value.trim().replace(/^'|'$/g, "")).filter((value) => value !== "");
 }
 
-test("Phase 2J creates exactly the five execution tables, in both layers", () => {
+test("Phase 2J creates exactly the six execution tables, in both layers", () => {
   for (const table of TABLES) {
     assert.equal(migration.includes(`CREATE TABLE IF NOT EXISTS ${table} (`), true, `migration: ${table}`);
     assert.equal(schema.includes(`pgTable("${table}"`), true, `schema: ${table}`);

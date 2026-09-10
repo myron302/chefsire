@@ -41,6 +41,7 @@ import {
   EMPTY_CATERING_EQUIPMENT_DRAFT,
   EMPTY_CATERING_STAFF_DRAFT,
   EMPTY_CATERING_TIMELINE_DRAFT,
+  CATERING_EXECUTION_CONSUMED_NOTICE,
   activeCateringTimelineEditor,
   cateringAccessDraftFrom,
   cateringAccessSavePayload,
@@ -52,6 +53,7 @@ import {
   cateringStaffCreatePayload,
   cateringStaffRoleLabel,
   cateringAccessReconcileKey,
+  cateringCreateWasConsumed,
   cateringProviderTimeline,
   cateringProviderTimelineItem,
   cateringTimelineCompletionPayload,
@@ -294,7 +296,11 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
       // Everything below writes booking-local component state, which only exists for the booking on screen. A
       // response for one the participant has navigated away from has nothing here to settle and must touch nothing.
       if (!settlesHere(started)) return;
-      setNotice(null);
+      // Almost always nothing to say. The exception is a create retry whose token the server has durably consumed
+      // and whose record the provider has since deleted: nothing was created, nothing came back, and pretending
+      // otherwise would either show a phantom record or leave them expecting one. It is not an error -- the request
+      // this retries succeeded once -- so it is stated here rather than raised as a failure.
+      setNotice(cateringCreateWasConsumed(value) ? { ...CATERING_EXECUTION_CONSUMED_NOTICE } : null);
       // Each create clears the form only when the live draft is still the attempt that just succeeded. If newer
       // edits are there, they are kept: the created record shows up in the list above either way, which is the real
       // confirmation, and a half-typed second record is not something a completion may throw away.

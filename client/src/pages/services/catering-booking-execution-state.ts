@@ -1,6 +1,7 @@
 import {
   CATERING_EXECUTION_NOT_FOUND_CODE,
   CATERING_EXECUTION_SET_CHANGED_CODE,
+  CATERING_EXECUTION_CREATE_CONSUMED_MESSAGE,
   CATERING_EXECUTION_VERSION_CONFLICT_CODE,
   CATERING_WORKSPACE_READ_ONLY_CODE,
   cateringEquipmentIsBlocking,
@@ -164,6 +165,24 @@ export function prepareCateringCreate<T extends CateringDraftToken>(
   const next = reusable ? draft : { ...draft, requestId: mint(), requestFingerprint: fingerprint };
   return { draft: next, body: build(next) };
 }
+
+/**
+ * Whether a create response says the retry token was already spent AND its record has since been deleted.
+ *
+ * The server answers this when a create that succeeded is retried after the provider deliberately removed what it
+ * created: the token is durably consumed, so nothing is created again and no record comes back. It arrives on the
+ * SUCCESS path because the request it retries did succeed -- there is nothing to retry and nothing failed -- but it
+ * carries no record, so nothing may be rendered from it.
+ */
+export function cateringCreateWasConsumed(value: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(value && value.consumed === true && value.duplicate === true);
+}
+/**
+ * What the participant is told in that case. `retryable: false` because retrying is exactly what must not happen:
+ * the same token can only ever produce this same answer, and a genuinely new record needs a new attempt, which
+ * `prepareCateringCreate` mints a fresh token for once the draft is emptied or materially changed.
+ */
+export const CATERING_EXECUTION_CONSUMED_NOTICE = { message: CATERING_EXECUTION_CREATE_CONSUMED_MESSAGE, retryable: false } as const;
 
 /** After an accepted submit the token is spent, so the reset draft carries neither it nor its fingerprint. */
 export function resetCateringDraft<T extends CateringDraftToken>(empty: T): T {
