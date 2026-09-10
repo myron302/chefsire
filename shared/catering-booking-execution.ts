@@ -650,8 +650,31 @@ export function deriveCateringReadiness(facts: CateringReadinessFacts, role: "pr
 export type CateringExecutionTimelineItemView = {
   id: string; title: string; description: string | null; category: CateringTimelineCategory;
   scheduledTime: string | null; endTime: string | null; visibility: CateringExecutionVisibility;
-  isBlocker: boolean; completed: boolean; completedAt: string | null;
-  createdAt: string;
+  isBlocker: boolean; completed: boolean;
+  /**
+   * When the item was completed -- but only ever an instant the reader was entitled to witness.
+   *
+   * A provider receives the authoritative value. A CUSTOMER receives it only when the completion happened at or
+   * after `visibleSince`; a completion made while the item was provider-private is reported as `completed: true`
+   * with a null instant, because the state is theirs to see and the moment is not. No instant is invented in its
+   * place -- sharing a completed item does not make it newly complete.
+   */
+  completedAt: string | null;
+  /**
+   * The authoritative row creation instant -- PROVIDER ONLY.
+   *
+   * An item created privately at 09:00 and shared at 11:00 spent two hours in a place the customer may not see, and
+   * handing them 09:00 published exactly that. Customers get `visibleSince` instead.
+   */
+  createdAt?: string;
+  /**
+   * When this item entered THIS customer's view -- CUSTOMER ONLY, and it means precisely that.
+   *
+   * For an item created shared it is its creation instant, because creation happened in plain view. For one shared
+   * later it is the moment it was shared. It is not a renamed `createdAt`: it never describes a private era, and it
+   * moves if an item leaves the shared plan and returns.
+   */
+  visibleSince?: string | null;
   /**
    * The concurrency version -- PROVIDER ONLY, for the same reason `sortOrder` is.
    *
@@ -678,18 +701,30 @@ export type CateringExecutionTimelineItemView = {
  * Every run-of-show mutation needs a version precondition, and only a provider may make one, so the helpers that
  * build those requests take THIS type. A customer's item cannot be passed to them by mistake.
  */
-export type CateringProviderTimelineItemView = CateringExecutionTimelineItemView & { sortOrder: number; updatedAt: string };
+export type CateringProviderTimelineItemView = CateringExecutionTimelineItemView & { sortOrder: number; updatedAt: string; createdAt: string };
 /** Provider-only in every channel. A customer's execution payload has no `staff` key at all. */
 export type CateringExecutionStaffView = {
   id: string; workerName: string; role: CateringStaffRole; customRole: string | null;
   contactNote: string | null; arrivalTime: string | null; departureTime: string | null;
   responsibilityNote: string | null; createdAt: string; updatedAt: string;
 };
+/**
+ * Equipment carries the same two era-aware fields as a run-of-show item, for the same reason: a chafer added
+ * privately last week and shared this morning must not tell the customer it existed last week.
+ *
+ * `updatedAt` stays customer-visible here, unlike on the run-of-show. Every column this record serializes is
+ * customer-visible, so no private-only write can move its version -- and the visibility transition itself is a
+ * write, so a shared row's version is never older than the moment it became shared.
+ */
 export type CateringExecutionEquipmentView = {
   id: string; name: string; quantity: number; sourceType: CateringEquipmentSource; sourceName: string | null;
   pickupDate: string | null; pickupTime: string | null; returnDate: string | null; returnTime: string | null;
   status: CateringEquipmentStatus; isBlocker: boolean; notes: string | null;
-  visibility: CateringExecutionVisibility; createdAt: string; updatedAt: string;
+  visibility: CateringExecutionVisibility; updatedAt: string;
+  /** The authoritative row creation instant -- PROVIDER ONLY, because it may describe a provider-private era. */
+  createdAt?: string;
+  /** When this item entered THIS customer's view -- CUSTOMER ONLY. */
+  visibleSince?: string | null;
 };
 /**
  * `providerPrivateNotes` is present only in a provider's view; a customer's object does not carry the key.

@@ -47,8 +47,14 @@ import {
  * `updatedAt` is PROVIDER ONLY for the same reason. A reorder rewrites every item's position and bumps every
  * version with it -- moving a provider-private item shifts the shared ones below it -- so a customer holding the
  * version would watch it change while nothing they can read changed, which reports that hidden records were
- * rearranged and when. `createdAt` stays: it belongs to the record the customer is being shown and no private-only
- * write can move it.
+ * rearranged and when.
+ *
+ * `createdAt` and `completedAt` are the PRIVATE-ERA case, and the reason `sharedAt` exists. An item created
+ * privately at 09:00, completed privately at 09:30 and shared at 11:00 used to reach the customer carrying both of
+ * those instants -- two hours of activity they were never entitled to see, and obviously so, because the shared
+ * activity row announcing the item arrived at 11:00. A customer now receives `visibleSince` in place of `createdAt`,
+ * and a completion instant only when the completion happened at or after it. Nothing is invented: the stamps are
+ * persisted facts, and where there is no customer-era fact to report the field is null rather than filled in.
  */
 export function serializeExecutionTimelineItem(row: CateringBookingExecutionTimelineItem, role: "provider" | "customer"): CateringExecutionTimelineItemView {
   return {
@@ -59,14 +65,30 @@ export function serializeExecutionTimelineItem(row: CateringBookingExecutionTime
     scheduledTime: row.scheduledTime,
     endTime: row.endTime,
     visibility: row.visibility as CateringExecutionVisibility,
-    ...(role === "provider" ? { sortOrder: row.sortOrder, updatedAt: row.updatedAt.toISOString() } : {}),
+    ...(role === "provider"
+      ? { sortOrder: row.sortOrder, updatedAt: row.updatedAt.toISOString(), createdAt: row.createdAt.toISOString() }
+      : { visibleSince: row.sharedAt?.toISOString() ?? null }),
     isBlocker: row.isBlocker,
     // Completion is exposed as the fact plus its instant. Who ticked it is persisted and never serialized: only the
     // provider can complete an item, so the id would tell no participant anything they do not already know.
+    //
+    // The FACT is the customer's either way -- it describes the item they are looking at now. The INSTANT is only
+    // theirs when it fell inside the era they could see it in.
     completed: row.completedAt !== null,
-    completedAt: row.completedAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
+    completedAt: role === "provider" ? row.completedAt?.toISOString() ?? null : cateringSharedEraInstant(row.completedAt, row.sharedAt),
   };
+}
+
+/**
+ * An instant a customer may be told, or null.
+ *
+ * Anything that happened before the current shared era began happened somewhere the customer could not see, so it
+ * is withheld rather than approximated. A record with no shared era at all yields null, which is the safe answer
+ * for a row that should not have reached a customer in the first place.
+ */
+export function cateringSharedEraInstant(instant: Date | null, sharedAt: Date | null): string | null {
+  if (!instant || !sharedAt) return null;
+  return instant.getTime() >= sharedAt.getTime() ? instant.toISOString() : null;
 }
 
 /**
@@ -91,7 +113,15 @@ export function serializeExecutionStaffAssignment(row: CateringBookingStaffAssig
   };
 }
 
-export function serializeExecutionEquipment(row: CateringBookingEquipmentItem): CateringExecutionEquipmentView {
+/**
+ * One equipment record, with the same era rules as the run-of-show and for the same reason.
+ *
+ * `createdAt` is provider-only: a chafer added privately last week and shared this morning would otherwise tell the
+ * customer it existed last week. `updatedAt` stays customer-visible, because every column emitted here is
+ * customer-visible -- there is no private-only write that could move it -- and because the visibility transition is
+ * itself a write, so a shared row's version is never older than the moment it became shared.
+ */
+export function serializeExecutionEquipment(row: CateringBookingEquipmentItem, role: "provider" | "customer"): CateringExecutionEquipmentView {
   return {
     id: row.id,
     name: row.name,
@@ -106,7 +136,7 @@ export function serializeExecutionEquipment(row: CateringBookingEquipmentItem): 
     isBlocker: row.isBlocker,
     notes: row.notes,
     visibility: row.visibility as CateringExecutionVisibility,
-    createdAt: row.createdAt.toISOString(),
+    ...(role === "provider" ? { createdAt: row.createdAt.toISOString() } : { visibleSince: row.sharedAt?.toISOString() ?? null }),
     updatedAt: row.updatedAt.toISOString(),
   };
 }

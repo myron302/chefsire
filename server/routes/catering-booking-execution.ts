@@ -59,6 +59,7 @@ import {
   cateringReadinessFacts,
   deriveCateringReadiness,
   nextCateringExecutionSortOrder,
+  nextCateringSharedAt,
   resolveCateringAccessSave,
   resolveCateringEquipmentCreate,
   resolveCateringEquipmentDelete,
@@ -254,9 +255,12 @@ r.get("/bookings/:id/execution", requireAuth, async (req, res, next) => { try {
     db.select().from(cateringBookingExecutionTimeline)
       .where(and(eq(cateringBookingExecutionTimeline.bookingId, id), timelineVisibility(role)))
       .orderBy(asc(cateringBookingExecutionTimeline.sortOrder), asc(cateringBookingExecutionTimeline.id)),
+    // Ordered by the era the reader can see. A customer's visibility-filtered list ordered by `created_at` would
+    // let the RELATIVE private ages of two shared items be read off the order: an item shared this morning sorting
+    // above one created this morning says the first existed earlier, while hidden.
     db.select().from(cateringBookingEquipment)
       .where(and(eq(cateringBookingEquipment.bookingId, id), equipmentVisibility(role)))
-      .orderBy(asc(cateringBookingEquipment.createdAt), asc(cateringBookingEquipment.id)),
+      .orderBy(role === "provider" ? asc(cateringBookingEquipment.createdAt) : asc(cateringBookingEquipment.sharedAt), asc(cateringBookingEquipment.id)),
     db.select().from(cateringBookingAccessDetails).where(eq(cateringBookingAccessDetails.bookingId, id)).limit(1),
     // Crew and milestones are not merely filtered for a customer -- they are not QUERIED for one. Nothing about
     // them, including how many rows exist, is read on a customer's request.
@@ -282,7 +286,7 @@ r.get("/bookings/:id/execution", requireAuth, async (req, res, next) => { try {
     role,
     editable: booking.status === "pending_confirmation" || booking.status === "confirmed",
     timeline: (timelineRows as CateringBookingExecutionTimelineItem[]).map((item) => serializeExecutionTimelineItem(item, role)),
-    equipment: (equipmentRows as CateringBookingEquipmentItem[]).map(serializeExecutionEquipment),
+    equipment: (equipmentRows as CateringBookingEquipmentItem[]).map((item) => serializeExecutionEquipment(item, role)),
     access: serializeExecutionAccess(access, role),
     readiness: provider ? { ...readiness, milestones: milestoneCounts(milestoneRows as { completedAt: Date | null }[]) } : readiness,
     // Absent keys rather than empty arrays: a customer's payload has no provider-only field at all.
@@ -327,11 +331,17 @@ r.post("/bookings/:id/execution/timeline", requireAuth, async (req, res, next) =
     }
     const outcome = resolveCateringTimelineCreate(await timelineCounts(tx, id), input);
     if (outcome.kind !== "create") return outcome;
+    // One instant for the whole row, so an item created SHARED has a customer-visible era that begins exactly when
+    // it was created -- creation happened in plain view, and the customer's `visibleSince` says so precisely.
+    const now = new Date();
     const [row] = await tx.insert(cateringBookingExecutionTimeline).values({
       bookingId: id, createdBy: userId, sortOrder: outcome.sortOrder,
       title: input.title, description: input.description ?? null, category: input.category,
       scheduledTime: input.scheduledTime ?? null, endTime: input.endTime ?? null,
       visibility: input.visibility, isBlocker: input.isBlocker, clientRequestId: input.clientRequestId ?? null,
+      // Null for a private create: there is no customer era yet, and the database CHECK requires exactly that.
+      sharedAt: nextCateringSharedAt({ visibility: "provider_private", sharedAt: null }, input.visibility, now),
+      createdAt: now, updatedAt: now,
     }).returning();
     // Same transaction as the insert, so the token is consumed if and only if the row was created.
     if (input.clientRequestId) await consumeCreateRequest(tx, id, userId, "timeline", input.clientRequestId, (row as CateringBookingExecutionTimelineItem).id);
@@ -381,6 +391,9 @@ r.patch("/bookings/:id/execution/timeline/:itemId", requireAuth, async (req, res
       title: outcome.next.title, description: outcome.next.description, category: outcome.next.category,
       scheduledTime: outcome.next.scheduledTime, endTime: outcome.next.endTime,
       visibility: outcome.next.visibility, isBlocker: outcome.next.isBlocker,
+      // The customer-visible era moves in the SAME statement as the visibility it describes, so no commit can leave
+      // a shared row without a stamp or a private row carrying one -- which is also the database's CHECK.
+      sharedAt: nextCateringSharedAt(row, outcome.next.visibility, outcome.updatedAt),
       completedAt: outcome.completedAt,
       // Persisted for audit and never serialized. A completion that is being undone clears it, so the pairing
       // constraint holds and no stale completer survives on an incomplete item.
@@ -601,6 +614,7 @@ r.post("/bookings/:id/execution/equipment", requireAuth, async (req, res, next) 
     }
     const outcome = resolveCateringEquipmentCreate(await collectionCount(tx, id, cateringBookingEquipment), input);
     if (outcome.kind !== "create") return outcome;
+    const now = new Date();
     const [row] = await tx.insert(cateringBookingEquipment).values({
       bookingId: id, createdBy: userId, name: input.name, quantity: input.quantity,
       sourceType: input.sourceType, sourceName: input.sourceName ?? null,
@@ -608,6 +622,8 @@ r.post("/bookings/:id/execution/equipment", requireAuth, async (req, res, next) 
       returnDate: input.returnDate ?? null, returnTime: input.returnTime ?? null,
       status: input.status, isBlocker: input.isBlocker, notes: input.notes ?? null,
       visibility: input.visibility, clientRequestId: input.clientRequestId ?? null,
+      sharedAt: nextCateringSharedAt({ visibility: "provider_private", sharedAt: null }, input.visibility, now),
+      createdAt: now, updatedAt: now,
     }).returning();
     if (input.clientRequestId) await consumeCreateRequest(tx, id, userId, "equipment", input.clientRequestId, (row as CateringBookingEquipmentItem).id);
     if (outcome.activity) await tx.insert(cateringBookingActivity).values({
@@ -619,10 +635,10 @@ r.post("/bookings/:id/execution/equipment", requireAuth, async (req, res, next) 
   if (result.kind === "read_only") return readOnlyRace(res, "equipment record");
   if (result.kind === "limit") return res.status(409).json({ message: CATERING_EXECUTION_LIMIT_MESSAGES.equipment });
   if (result.kind === "consumed") return consumedCreate(res);
-  if (result.kind === "duplicate") return res.status(200).json({ equipment: serializeExecutionEquipment(result.equipment), duplicate: true });
+  if (result.kind === "duplicate") return res.status(200).json({ equipment: serializeExecutionEquipment(result.equipment, "provider"), duplicate: true });
   // Equipment never notifies. It writes shared history where the record is shared, which the customer reads in the
   // workspace, but a chafer moving from planned to confirmed is not worth a push.
-  res.status(201).json({ equipment: serializeExecutionEquipment(result.equipment) });
+  res.status(201).json({ equipment: serializeExecutionEquipment(result.equipment, "provider") });
 } catch (error) { invalid(error, res, next); } });
 
 r.patch("/bookings/:id/execution/equipment/:equipmentId", requireAuth, async (req, res, next) => { try {
@@ -646,7 +662,8 @@ r.patch("/bookings/:id/execution/equipment/:equipmentId", requireAuth, async (re
     }, input, new Date());
     if (outcome.kind === "conflict") return { kind: "conflict" } as const;
     if (outcome.kind === "unchanged") return { kind: "updated", equipment: row } as const;
-    const [updated] = await tx.update(cateringBookingEquipment).set({ ...outcome.next, updatedAt: outcome.updatedAt })
+    const [updated] = await tx.update(cateringBookingEquipment)
+      .set({ ...outcome.next, sharedAt: nextCateringSharedAt(row, outcome.next.visibility, outcome.updatedAt), updatedAt: outcome.updatedAt })
       .where(and(eq(cateringBookingEquipment.id, equipmentId), eq(cateringBookingEquipment.bookingId, id))).returning();
     if (!updated) return { kind: "not_found" } as const;
     if (outcome.activity) await tx.insert(cateringBookingActivity).values({
@@ -657,7 +674,7 @@ r.patch("/bookings/:id/execution/equipment/:equipmentId", requireAuth, async (re
   if (result.kind === "not_found") return refuse(res, CATERING_EXECUTION_NOT_FOUND_REFUSAL);
   if (result.kind === "conflict") return refuse(res, CATERING_EXECUTION_CONFLICT_REFUSAL);
   if (result.kind === "read_only") return readOnlyRace(res, "equipment record");
-  res.json({ equipment: serializeExecutionEquipment(result.equipment) });
+  res.json({ equipment: serializeExecutionEquipment(result.equipment, "provider") });
 } catch (error) { invalid(error, res, next); } });
 
 r.delete("/bookings/:id/execution/equipment/:equipmentId", requireAuth, async (req, res, next) => { try {

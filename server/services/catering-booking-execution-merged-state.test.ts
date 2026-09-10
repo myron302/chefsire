@@ -411,6 +411,11 @@ const MULTI_COLUMN_INVARIANTS: Record<string, string> = {
   // field addresses either of them directly -- a request only ever asserts `completed`.
   catering_execution_timeline_completed_by_check: "written atomically from one resolution",
   catering_execution_milestone_completed_by_check: "written atomically from one resolution",
+  // Stronger than merged-state validation: the second column is DERIVED from the first. `shared_at` is computed by
+  // nextCateringSharedAt from the merged `visibility` and written in the same statement, so no partial update can
+  // produce a pair that disagrees -- there is no request field addressing `shared_at` at all.
+  catering_execution_timeline_shared_era_check: "derived from the merged visibility in the same statement",
+  catering_execution_equipment_shared_era_check: "derived from the merged visibility in the same statement",
 };
 
 test("every multi-column CHECK in this phase is accounted for by the audit", () => {
@@ -421,8 +426,8 @@ test("every multi-column CHECK in this phase is accounted for by the audit", () 
     // The columns this table declares, so an identifier in a CHECK can be told from a SQL keyword.
     const columns = Array.from(body.matchAll(/^ {2}([a-z_]+) (?:varchar|text|integer|boolean|timestamptz|date|uuid|bigint)/gm)).map((match) => match[1]);
     // The terminator is a lookahead including end-of-input, because the LAST constraint in a table carries no
-    // trailing comma -- and four of the six multi-column invariants are exactly that, so a parser that missed them
-    // would have reported an audit that was clean only because it could not see them.
+    // trailing comma -- and several of these invariants are exactly that, so a parser that missed them would have
+    // reported an audit that was clean only because it could not see them.
     for (const check of body.matchAll(/CONSTRAINT ([a-z_]+) CHECK \(([\s\S]*?)\)(?=,|\n|$)/g)) {
       const [, name, clause] = check;
       const referenced = new Set(columns.filter((column) => new RegExp(`\\b${column}\\b`).test(clause)));
@@ -443,6 +448,9 @@ test("equipment has no cross-field invariant, so its partial updates cannot viol
   // not invent a policy about it. So an equipment PATCH has no merged invariant to validate -- and if one is ever
   // added, the audit test above fails until the merge validation is added with it.
   assert.equal(/pickup_(date|time)[^\n]*return_|return_[^\n]*pickup_/.test(body), false);
+  // The one cross-column rule it does carry pairs `visibility` with `shared_at`, and that pair is derived rather
+  // than submitted: no equipment request field names `shared_at`, so a partial update cannot break it.
+  assert.equal(body.includes("catering_execution_equipment_shared_era_check"), true);
   assert.equal(body.includes("catering_execution_equipment_pickup_time_check"), true);
   assert.equal(body.includes("catering_execution_equipment_return_time_check"), true);
 });

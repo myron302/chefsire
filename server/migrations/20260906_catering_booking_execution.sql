@@ -27,6 +27,18 @@ CREATE TABLE IF NOT EXISTS catering_booking_execution_timeline (
   -- Creation retry token. Nullable, so a create that carries none is unconstrained; the partial unique index below
   -- scopes it to (booking, creator), which is what makes a retried create resolve to the item it already made.
   client_request_id uuid,
+  -- When the CURRENT customer-visible era began, and NULL while the record is provider-private.
+  --
+  -- A customer must learn nothing about the time a record spent hidden. Without this, an item created privately at
+  -- 09:00, completed privately at 09:30 and shared at 11:00 handed the customer a created_at of 09:00 and a
+  -- completed_at of 09:30 -- two hours of activity they were never entitled to see, made obvious by the shared
+  -- activity row arriving at 11:00. The customer projection reads THIS instead of created_at, and suppresses a
+  -- completion that predates it.
+  --
+  -- RESET on every private -> shared transition rather than latched on the first one, so a record that goes shared,
+  -- private, then shared again cannot be used to read the hidden interval: anything done during that interval
+  -- predates the new stamp and is therefore not exposed.
+  shared_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT catering_execution_timeline_booking_id_uidx UNIQUE (booking_id, id),
@@ -37,7 +49,10 @@ CREATE TABLE IF NOT EXISTS catering_booking_execution_timeline (
   CONSTRAINT catering_execution_timeline_end_time_check CHECK (end_time IS NULL OR end_time ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'),
   CONSTRAINT catering_execution_timeline_time_range_check CHECK (scheduled_time IS NULL OR end_time IS NULL OR end_time >= scheduled_time),
   -- A completed item always records who completed it; an incomplete one never carries a completer.
-  CONSTRAINT catering_execution_timeline_completed_by_check CHECK ((completed_at IS NULL AND completed_by IS NULL) OR (completed_at IS NOT NULL AND completed_by IS NOT NULL))
+  CONSTRAINT catering_execution_timeline_completed_by_check CHECK ((completed_at IS NULL AND completed_by IS NULL) OR (completed_at IS NOT NULL AND completed_by IS NOT NULL)),
+  -- The invariant the customer projection depends on: a shared record always carries the start of its shared era,
+  -- and a private one never does. Enforced here so no write path can leave a row the projection cannot redact.
+  CONSTRAINT catering_execution_timeline_shared_era_check CHECK ((visibility = 'shared' AND shared_at IS NOT NULL) OR (visibility <> 'shared' AND shared_at IS NULL))
 );
 CREATE INDEX IF NOT EXISTS catering_execution_timeline_booking_sort_idx ON catering_booking_execution_timeline(booking_id, sort_order, id);
 CREATE UNIQUE INDEX IF NOT EXISTS catering_execution_timeline_request_uidx ON catering_booking_execution_timeline(booking_id, created_by, client_request_id) WHERE client_request_id IS NOT NULL;
@@ -92,6 +107,8 @@ CREATE TABLE IF NOT EXISTS catering_booking_equipment (
   visibility varchar(20) NOT NULL DEFAULT 'provider_private',
   created_by varchar NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   client_request_id uuid,
+  -- The same customer-visible-era stamp the run-of-show carries, for the same reason and with the same rules.
+  shared_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT catering_execution_equipment_booking_id_uidx UNIQUE (booking_id, id),
@@ -101,10 +118,13 @@ CREATE TABLE IF NOT EXISTS catering_booking_equipment (
   -- Quantity is bounded by the database, not only by a TypeScript type.
   CONSTRAINT catering_execution_equipment_quantity_check CHECK (quantity >= 1 AND quantity <= 9999),
   CONSTRAINT catering_execution_equipment_pickup_time_check CHECK (pickup_time IS NULL OR pickup_time ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'),
-  CONSTRAINT catering_execution_equipment_return_time_check CHECK (return_time IS NULL OR return_time ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$')
+  CONSTRAINT catering_execution_equipment_return_time_check CHECK (return_time IS NULL OR return_time ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'),
+  CONSTRAINT catering_execution_equipment_shared_era_check CHECK ((visibility = 'shared' AND shared_at IS NOT NULL) OR (visibility <> 'shared' AND shared_at IS NULL))
 );
 CREATE INDEX IF NOT EXISTS catering_execution_equipment_booking_idx ON catering_booking_equipment(booking_id, created_at, id);
-CREATE INDEX IF NOT EXISTS catering_execution_equipment_visible_idx ON catering_booking_equipment(booking_id, visibility, created_at, id);
+-- A customer's list is ordered by when each item entered THEIR view, so this index carries shared_at: ordering a
+-- visibility-filtered list by created_at would let two shared items' relative PRIVATE ages be read off the order.
+CREATE INDEX IF NOT EXISTS catering_execution_equipment_visible_idx ON catering_booking_equipment(booking_id, visibility, shared_at, id);
 CREATE UNIQUE INDEX IF NOT EXISTS catering_execution_equipment_request_uidx ON catering_booking_equipment(booking_id, created_by, client_request_id) WHERE client_request_id IS NOT NULL;
 
 -- Operational access instructions for the event location Phase 2H already records. No address, city, state, postal

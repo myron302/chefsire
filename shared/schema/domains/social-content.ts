@@ -560,6 +560,20 @@ export const cateringBookingExecutionTimeline = pgTable("catering_booking_execut
   createdBy: varchar("created_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
   /** Creation retry token, unique per (booking, creator) when present, so a retried create adds no second item. */
   clientRequestId: uuid("client_request_id"),
+  /**
+   * When the CURRENT customer-visible era began, and null while the record is provider-private.
+   *
+   * A customer must learn nothing about the time a record spent hidden. Without this, an item created privately at
+   * 09:00, completed privately at 09:30 and shared at 11:00 handed the customer a `created_at` of 09:00 and a
+   * `completed_at` of 09:30 -- two hours of activity they were never entitled to see, made obvious by the shared
+   * activity row arriving at 11:00. The customer projection reads THIS instead of `created_at`, and suppresses a
+   * completion that predates it.
+   *
+   * It is reset on every private -> shared transition rather than latched on the first one, so a record that goes
+   * shared, private, then shared again cannot be used to read the hidden interval: any completion or change made
+   * during that interval predates the new stamp and is therefore not exposed.
+   */
+  sharedAt: timestamp("shared_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
@@ -573,6 +587,7 @@ export const cateringBookingExecutionTimeline = pgTable("catering_booking_execut
   endTimeCheck: check("catering_execution_timeline_end_time_check", sql`${t.endTime} IS NULL OR ${t.endTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
   timeRangeCheck: check("catering_execution_timeline_time_range_check", sql`${t.scheduledTime} IS NULL OR ${t.endTime} IS NULL OR ${t.endTime} >= ${t.scheduledTime}`),
   completedByCheck: check("catering_execution_timeline_completed_by_check", sql`(${t.completedAt} IS NULL AND ${t.completedBy} IS NULL) OR (${t.completedAt} IS NOT NULL AND ${t.completedBy} IS NOT NULL)`),
+  sharedEraCheck: check("catering_execution_timeline_shared_era_check", sql`(${t.visibility} = 'shared' AND ${t.sharedAt} IS NOT NULL) OR (${t.visibility} <> 'shared' AND ${t.sharedAt} IS NULL)`),
 }));
 
 /**
@@ -634,19 +649,24 @@ export const cateringBookingEquipment = pgTable("catering_booking_equipment", {
   visibility: varchar("visibility", { length: 20 }).default("provider_private").notNull(),
   createdBy: varchar("created_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
   clientRequestId: uuid("client_request_id"),
+  /** The same customer-visible-era stamp the run-of-show carries, for the same reason and with the same rules. */
+  sharedAt: timestamp("shared_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   bookingIdx: index("catering_execution_equipment_booking_idx").on(t.bookingId, t.createdAt, t.id),
   bookingEquipmentUnique: uniqueIndex("catering_execution_equipment_booking_id_uidx").on(t.bookingId, t.id),
   requestUnique: uniqueIndex("catering_execution_equipment_request_uidx").on(t.bookingId, t.createdBy, t.clientRequestId).where(sql`${t.clientRequestId} IS NOT NULL`),
-  visibleIdx: index("catering_execution_equipment_visible_idx").on(t.bookingId, t.visibility, t.createdAt, t.id),
+  // A customer's list is ordered by when each item entered THEIR view, so this index carries `sharedAt`: ordering a
+  // filtered list by `created_at` would let two shared items' relative private ages be read off the order.
+  visibleIdx: index("catering_execution_equipment_visible_idx").on(t.bookingId, t.visibility, t.sharedAt, t.id),
   statusCheck: check("catering_execution_equipment_status_check", sql`${t.status} IN ('planned', 'confirmed', 'received', 'in_use', 'returned', 'cancelled')`),
   sourceCheck: check("catering_execution_equipment_source_check", sql`${t.sourceType} IN ('provider_owned', 'rental', 'venue_supplied', 'customer_supplied')`),
   visibilityCheck: check("catering_execution_equipment_visibility_check", sql`${t.visibility} IN ('shared', 'provider_private')`),
   quantityCheck: check("catering_execution_equipment_quantity_check", sql`${t.quantity} >= 1 AND ${t.quantity} <= 9999`),
   pickupTimeCheck: check("catering_execution_equipment_pickup_time_check", sql`${t.pickupTime} IS NULL OR ${t.pickupTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
   returnTimeCheck: check("catering_execution_equipment_return_time_check", sql`${t.returnTime} IS NULL OR ${t.returnTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  sharedEraCheck: check("catering_execution_equipment_shared_era_check", sql`(${t.visibility} = 'shared' AND ${t.sharedAt} IS NOT NULL) OR (${t.visibility} <> 'shared' AND ${t.sharedAt} IS NULL)`),
 }));
 
 /**

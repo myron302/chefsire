@@ -266,6 +266,30 @@ export type CateringLockedTimelineVersion = { id: string; updatedAt: Date; sortO
  * The submitted collection is the provider's OWN complete set. There is no customer reorder, so this never has to
  * reason about a partial view of the timeline.
  */
+/**
+ * The customer-visible-era stamp a record must carry after a write.
+ *
+ * The rule in one place, because both the run-of-show and equipment need exactly the same one:
+ *
+ *  - not shared afterwards  -> no stamp at all, so a private record carries no era to read;
+ *  - already shared, still shared -> the existing stamp is KEPT, so editing a shared record does not move the
+ *    moment the customer has been seeing it since;
+ *  - becoming shared (from private, or from a shared row that somehow has no stamp) -> stamped NOW.
+ *
+ * Resetting on every private -> shared transition rather than latching the first one is what closes the
+ * shared/private/shared case: anything the provider did during the hidden interval predates the new stamp, so the
+ * customer projection suppresses it. The alternative -- keeping the first stamp forever -- would leave a completion
+ * made while hidden looking like a completion made in plain view.
+ */
+export function nextCateringSharedAt(
+  current: { visibility: string; sharedAt: Date | null },
+  nextVisibility: string,
+  now: Date,
+): Date | null {
+  if (nextVisibility !== "shared") return null;
+  return current.visibility === "shared" && current.sharedAt !== null ? current.sharedAt : now;
+}
+
 export function resolveCateringTimelineReorder(locked: readonly CateringLockedTimelineVersion[] | null, submitted: readonly CateringTimelineReorderEntry[]) {
   if (!locked) return { kind: "read_only" } as const;
   const submittedIds = new Set(submitted.map((entry) => entry.id));

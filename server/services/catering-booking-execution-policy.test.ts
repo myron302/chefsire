@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   CATERING_EXECUTION_CONFLICT_REFUSAL,
   CATERING_EXECUTION_LIMIT_MESSAGES,
@@ -16,6 +19,7 @@ import {
   cateringTimelineActivityFor,
   cateringTimelinePersistedChanges,
   deriveCateringReadiness,
+  nextCateringSharedAt,
   nextCateringExecutionSortOrder,
   nextCateringTimelineState,
   resolveCateringAccessSave,
@@ -590,4 +594,107 @@ test("P2 audit: no other readiness fact treats metadata or a private field as co
   //  - `outstandingSharedRequirementCount` is a count of Phase 2H rows supplied by the caller and is not derived
   //    from any execution field, so there is no metadata here to mistake for content.
   assert.equal(cateringReadinessFacts({ ...ROWS, outstandingSharedRequirementCount: 2 }, "customer").outstandingSharedRequirementCount, 2);
+});
+
+
+/* ================================================================================================================ *
+ * P2 -- the customer-visible era, maintained atomically with visibility
+ * ================================================================================================================ */
+
+/**
+ * `nextCateringSharedAt` is the whole transition rule, in one pure function, for both records that have one.
+ *
+ * It exists because a customer must learn nothing about the time a record spent private -- neither when it came
+ * into existence, nor when it was completed or changed while hidden, nor how long it was hidden for.
+ */
+const T1 = new Date("2026-09-08T09:00:00.000Z");
+const T3 = new Date("2026-09-08T09:30:00.000Z");
+const T4 = new Date("2026-09-08T11:00:00.000Z");
+
+test("P2: creating SHARED begins the era at the creation instant", () => {
+  assert.deepEqual(nextCateringSharedAt({ visibility: "provider_private", sharedAt: null }, "shared", T1), T1);
+});
+
+test("P2: creating PRIVATE begins no era at all", () => {
+  assert.equal(nextCateringSharedAt({ visibility: "provider_private", sharedAt: null }, "provider_private", T1), null);
+});
+
+test("P2: private -> shared stamps the moment it becomes visible, not the moment it was made", () => {
+  assert.deepEqual(nextCateringSharedAt({ visibility: "provider_private", sharedAt: null }, "shared", T4), T4);
+});
+
+test("P2: shared -> shared keeps the era, so editing a shared record does not move `visibleSince`", () => {
+  assert.deepEqual(nextCateringSharedAt({ visibility: "shared", sharedAt: T1 }, "shared", T4), T1);
+  // Any number of edits, at any later instant, leave it exactly where it was.
+  for (const now of [T3, T4, new Date("2026-09-09T00:00:00.000Z")]) {
+    assert.deepEqual(nextCateringSharedAt({ visibility: "shared", sharedAt: T1 }, "shared", now), T1);
+  }
+});
+
+test("P2: shared -> private clears the era, which is the invariant the database CHECK enforces", () => {
+  assert.equal(nextCateringSharedAt({ visibility: "shared", sharedAt: T1 }, "provider_private", T3), null);
+  // The pair can never disagree: a non-shared result is always null, whatever the record was before.
+  for (const before of [{ visibility: "shared", sharedAt: T1 }, { visibility: "provider_private", sharedAt: null }]) {
+    assert.equal(nextCateringSharedAt(before, "provider_private", T4), null);
+  }
+});
+
+test("P2: shared -> private -> shared RESETS the era, which is what hides the interval", () => {
+  // Shared at T1, hidden, completed at T3 while hidden, shared again at T4. The row arriving at the second share
+  // carries no era (it was private), so the stamp becomes T4 -- and T3 now predates it.
+  const hidden = nextCateringSharedAt({ visibility: "shared", sharedAt: T1 }, "provider_private", new Date("2026-09-08T09:15:00.000Z"));
+  assert.equal(hidden, null);
+  const reshared = nextCateringSharedAt({ visibility: "provider_private", sharedAt: hidden }, "shared", T4);
+  assert.deepEqual(reshared, T4);
+  assert.equal(T3 < reshared!, true, "so the hidden completion is outside the era the customer can see");
+});
+
+test("P2: a shared row that somehow carries no era is stamped rather than left unreadable", () => {
+  // Not reachable through these routes -- the CHECK forbids it -- but the rule is total, and its answer is the safe
+  // one: begin the era now rather than leave a customer-visible row with nothing to redact against.
+  assert.deepEqual(nextCateringSharedAt({ visibility: "shared", sharedAt: null }, "shared", T4), T4);
+});
+
+test("P2: the era is written in the same statement as the visibility it describes", () => {
+  const route = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "routes", "catering-booking-execution.ts"), "utf8");
+  // Both creates derive it from the input visibility against a record that does not exist yet.
+  assert.equal((route.match(/sharedAt: nextCateringSharedAt\(\{ visibility: "provider_private", sharedAt: null \}, input\.visibility, now\)/g) ?? []).length, 2);
+  // Both PATCHes derive it from the LOCKED row and the merged visibility, stamped with the same instant the write
+  // uses -- so a rolled-back or refused transaction moves nothing, and no commit can leave the pair disagreeing.
+  assert.equal((route.match(/nextCateringSharedAt\(row, outcome\.next\.visibility, outcome\.updatedAt\)/g) ?? []).length, 2);
+  // Nothing else writes the column, and no request schema names it.
+  assert.equal((route.match(/sharedAt: nextCateringSharedAt\(/g) ?? []).length, 4, "four writes, and the rule is the only thing that produces a value");
+  const contract = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "shared", "catering-booking-execution.ts"), "utf8");
+  const schemas = contract.slice(contract.indexOf("cateringTimelineCreateSchema"), contract.indexOf("Refusal codes"));
+  assert.equal(/sharedAt|shared_at|visibleSince/.test(schemas), false, "no client may assert an era");
+});
+
+test("P2: an unchanged PATCH writes nothing, so a no-op cannot move the era either", () => {
+  const route = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "routes", "catering-booking-execution.ts"), "utf8");
+  for (const marker of ['r.patch("/bookings/:id/execution/timeline/:itemId"', 'r.patch("/bookings/:id/execution/equipment/:equipmentId"']) {
+    const source = route.slice(route.indexOf(marker), route.indexOf(marker) + 2600);
+    const unchangedAt = source.indexOf('if (outcome.kind === "unchanged")');
+    const updateAt = source.indexOf("tx.update(");
+    assert.notEqual(unchangedAt, -1, marker);
+    assert.equal(unchangedAt < updateAt, true, `${marker}: an unchanged outcome returns before any write`);
+  }
+  // And a conflict refuses before either, so a stale visibility update changes no era.
+  assert.equal(route.includes('if (outcome.kind === "conflict") return { kind: "conflict" } as const;'), true);
+});
+
+test("P2 audit: the customer's list ORDER is not a private-era side channel either", () => {
+  const route = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "routes", "catering-booking-execution.ts"), "utf8");
+  // Equipment had no meaningful order of its own, so it was read by `created_at` -- which meant a customer's
+  // visibility-filtered list was sorted by PRIVATE creation times. An item shared this morning sorting above one
+  // created this morning says the first existed earlier, while hidden. A customer now reads it by their own era.
+  assert.equal(route.includes('role === "provider" ? asc(cateringBookingEquipment.createdAt) : asc(cateringBookingEquipment.sharedAt)'), true);
+  const schema = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "shared", "schema", "domains", "social-content.ts"), "utf8");
+  assert.equal(schema.includes("index(\"catering_execution_equipment_visible_idx\").on(t.bookingId, t.visibility, t.sharedAt, t.id)"), true, "and the index that serves it");
+
+  // The run-of-show is deliberately NOT changed, and the difference is the point. `sort_order` is the provider's
+  // chosen order for how the event runs, not a proxy for when a row was made: they reorder it freely, it is what
+  // both actors are meant to read the plan in, and re-sorting a customer's copy by share time would turn a run of
+  // show into a list of when things were published. The position itself is already withheld; only the order the
+  // provider deliberately publishes survives, and that is the feature.
+  assert.equal(route.includes("orderBy(asc(cateringBookingExecutionTimeline.sortOrder), asc(cateringBookingExecutionTimeline.id))"), true);
 });

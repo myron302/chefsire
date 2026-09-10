@@ -306,7 +306,8 @@ export type CateringTimelineEditorState = OpenCateringTimelineEditor | null;
  * and a customer reaches none of these controls in the first place.
  */
 export function cateringProviderTimelineItem(item: CateringExecutionTimelineItemView): CateringProviderTimelineItemView | null {
-  return typeof item.updatedAt === "string" && typeof item.sortOrder === "number" ? (item as CateringProviderTimelineItemView) : null;
+  const provider = typeof item.updatedAt === "string" && typeof item.sortOrder === "number" && typeof item.createdAt === "string";
+  return provider ? (item as CateringProviderTimelineItemView) : null;
 }
 /** The same narrowing across a collection, for the whole-collection operations (reorder, editor staleness). */
 export function cateringProviderTimeline(items: readonly CateringExecutionTimelineItemView[]): CateringProviderTimelineItemView[] {
