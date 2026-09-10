@@ -9,6 +9,7 @@ import {
   EMPTY_CATERING_STAFF_DRAFT,
   EMPTY_CATERING_TIMELINE_DRAFT,
   cateringAccessDraftFrom,
+  cateringAccessReconcileKey,
   cateringAccessSavePayload,
   cateringDraftIsUnchanged,
   cateringEquipmentCreatePayload,
@@ -757,9 +758,11 @@ test("AUDIT: the access form is the only full-record payload, and it is now base
   const stateSource = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "catering-booking-execution-state.ts"), "utf8");
   // The rebase can no longer advance a version without merging: both are in one expression.
   assert.equal(stateSource.includes("const merged = mergeCateringAccessDraft(current.baseline, current.value, theirs);"), true);
-  assert.equal(/expectedUpdatedAt: authoritative\.updatedAt \},\n\s+baseline: theirs/.test(stateSource), true, "version and baseline advance together");
+  // `version` is the authoritative version read through `cateringAccessVersion`, which is where it now comes from:
+  // a customer's payload carries none, so the accessor is the one place the absence is turned into "no version".
+  assert.equal(/expectedUpdatedAt: version \},\n\s+baseline: theirs/.test(stateSource), true, "version and baseline advance together");
   // And a contested merge returns before either moves.
-  assert.equal(stateSource.indexOf("if (merged.conflicts.length > 0)") < stateSource.indexOf("expectedUpdatedAt: authoritative.updatedAt"), true);
+  assert.equal(stateSource.indexOf("if (merged.conflicts.length > 0)") < stateSource.indexOf("expectedUpdatedAt: version }"), true);
 });
 
 
@@ -898,4 +901,129 @@ test("P3: the metadata covers every editable access field and nothing else", () 
   for (const field of fields) assert.equal(field in payload, true, `${field} is not in the save payload`);
   // The private field is present for the provider's form and remains provider-only elsewhere.
   assert.equal(fields.includes("providerPrivateNotes"), true);
+});
+
+
+/* ================================================================================================================ *
+ * P2 -- reconciliation must be driven by the NEED to reconcile, not only by a newer authoritative version
+ * ================================================================================================================ */
+
+/**
+ * The stuck form.
+ *
+ * Polling and saving are independent, so the refetch that carries tab B's write can land BEFORE tab A's stale save
+ * is refused. When it does, the authoritative version reaches its final value while the form is still dirty -- and
+ * a dirty form is deliberately left alone. By the time the conflict marks the form as needing a rebase, the version
+ * has already stopped changing and will not change again on its own. An effect keyed on the version alone therefore
+ * never re-runs: the form keeps a version the server refuses, every Save conflicts, and the only escape is throwing
+ * the draft away.
+ *
+ * `cateringAccessReconcileKey` folds the form's own rebase state into the trigger, so the conflict itself re-runs
+ * the reconciliation against whatever is already cached.
+ */
+
+/** React, reduced to the rule that matters: the effect re-runs when its key changes, and only then. */
+function driveAccessReconciliation(initial: CateringAccessFormState, authoritative: CateringExecutionAccessView, renderLimit = 25) {
+  let form = initial;
+  let lastKey: string | null = null;
+  let effectRuns = 0;
+  for (let render = 0; render < renderLimit; render += 1) {
+    const key = cateringAccessReconcileKey(authoritative, form);
+    // Unchanged key: React does not re-run the effect, so the sequence has settled.
+    if (key === lastKey) return { form, effectRuns };
+    lastKey = key;
+    effectRuns += 1;
+    const next = reconcileCateringAccessForm(form, "me:b1", authoritative);
+    // The identical object: `setState` bails out, nothing re-renders, and nothing can re-trigger.
+    if (next === form) return { form, effectRuns };
+    form = next;
+  }
+  throw new Error("the access reconciliation effect never settled");
+}
+
+test("P2: a conflict reconciles even when the authoritative payload is ALREADY fresh", () => {
+  // Tab B's write is already in the cache, and it landed while this form was dirty, so the form still holds V1.
+  const cached = access({ updatedAt: V2, venueContactName: "Sam from the venue" });
+  const dirty = dirtyForm();
+  assert.equal(dirty.value?.expectedUpdatedAt, V1);
+  // The save is refused as stale. The authoritative payload does not change -- there is nothing newer to fetch.
+  const conflicted = markCateringAccessConflict(dirty);
+  const { form } = driveAccessReconciliation(conflicted, cached);
+  // Reconciled anyway: the version advances to the one actually observed, so the next Save can succeed.
+  assert.equal(form.value?.expectedUpdatedAt, V2);
+  assert.equal(form.rebase, false);
+  // The provider's own edit survives, and tab B's untouched field is adopted rather than reverted.
+  assert.equal(form.value?.parkingInstructions, "Three bays");
+  assert.equal(form.value?.venueContactName, "Sam from the venue");
+  assert.equal(cateringAccessSavePayload(form.value!).expectedUpdatedAt, V2);
+});
+
+test("P2: the version-only trigger genuinely would not have fired -- it never changes in that sequence", () => {
+  const cached = access({ updatedAt: V2 });
+  const dirty = dirtyForm();
+  const conflicted = markCateringAccessConflict(dirty);
+  // Every payload in the sequence carries V2: the old dependency was constant throughout.
+  assert.equal(cached.updatedAt, V2);
+  // But the KEY changes, because the need to reconcile is part of it.
+  assert.notEqual(cateringAccessReconcileKey(cached, conflicted), cateringAccessReconcileKey(cached, dirty));
+  assert.equal(cateringAccessReconcileKey(cached, dirty), "settled:2026-09-08T12:00:00.000Z");
+  assert.equal(cateringAccessReconcileKey(cached, conflicted), "rebase:2026-09-08T12:00:00.000Z");
+  // And it still changes on a genuinely newer record, so the original trigger is not lost.
+  assert.notEqual(cateringAccessReconcileKey(access({ updatedAt: V1 }), dirty), cateringAccessReconcileKey(cached, dirty));
+  // No payload at all is its own key, so nothing reconciles before the first load.
+  assert.equal(cateringAccessReconcileKey(undefined, conflicted), "");
+});
+
+test("P2: reconciliation cannot loop -- every starting state settles in at most two effect runs", () => {
+  const fresh = access({ updatedAt: V2, venueContactName: "Sam from the venue" });
+  const contested = access({ updatedAt: V2, parkingInstructions: "Somebody else's bays" });
+  const cases: [string, CateringAccessFormState, CateringExecutionAccessView][] = [
+    ["a clean form hydrating", cleanForm(), fresh],
+    ["a merely dirty form", dirtyForm(), fresh],
+    ["a conflicted form against an already-fresh payload", markCateringAccessConflict(dirtyForm()), fresh],
+    ["a conflicted form whose refetch has not landed", markCateringAccessConflict(dirtyForm()), access({ updatedAt: V1 })],
+    ["a conflicted form with a contested field", markCateringAccessConflict(dirtyForm()), contested],
+    ["a form for another booking", markCateringAccessConflict({ ...dirtyForm(), identity: "other:b2" }), fresh],
+  ];
+  for (const [label, initial, authoritative] of cases) {
+    // The driver throws if it never settles, so reaching the assertion at all is the no-loop guarantee.
+    const { effectRuns } = driveAccessReconciliation(initial, authoritative);
+    assert.equal(effectRuns <= 2, true, `${label}: settled in ${effectRuns} effect runs`);
+  }
+});
+
+test("P2: the flag is one-way, so a settled form does not re-enter reconciliation", () => {
+  const fresh = access({ updatedAt: V2, venueContactName: "Sam from the venue" });
+  const { form } = driveAccessReconciliation(markCateringAccessConflict(dirtyForm()), fresh);
+  const settledKey = cateringAccessReconcileKey(fresh, form);
+  // Running the effect again against the same payload is a no-op that returns the identical object...
+  assert.equal(reconcileCateringAccessForm(form, "me:b1", fresh), form);
+  // ...and the key it would be keyed on has not moved, so it is not run again in the first place.
+  assert.equal(cateringAccessReconcileKey(fresh, reconcileCateringAccessForm(form, "me:b1", fresh)), settledKey);
+  // Only another refused save can set the flag again.
+  assert.equal(cateringAccessReconcileKey(fresh, markCateringAccessConflict(form)), `rebase:${V2}`);
+});
+
+test("P2: reconciling against an already-fresh payload still refuses to overwrite silently", () => {
+  // Both sides changed parking, differently. The three-way merge is untouched by the new trigger: the disagreement
+  // is surfaced for a person, the user's own text stays on screen, and the version does NOT move.
+  const contested = access({ updatedAt: V2, parkingInstructions: "Somebody else's bays" });
+  const { form } = driveAccessReconciliation(markCateringAccessConflict(dirtyForm()), contested);
+  assert.equal(cateringAccessReviewIsOpen(form), true);
+  assert.deepEqual(form.review?.fields, ["parkingInstructions"]);
+  assert.equal(form.value?.parkingInstructions, "Three bays", "the user's words are still there");
+  assert.equal(form.review?.theirs.parkingInstructions, "Somebody else's bays");
+  assert.equal(form.value?.expectedUpdatedAt, V1, "and an unreviewed form cannot be saved into an overwrite");
+  assert.equal(maySaveCateringAccess(form, true, false), false);
+  // Resolving is what advances it, by explicit choice -- and that resolution is not undone by another effect run.
+  const resolved = resolveCateringAccessReviewField(form, "parkingInstructions", "mine");
+  assert.equal(resolved.value?.expectedUpdatedAt, V2);
+  assert.equal(driveAccessReconciliation(resolved, contested).form.value?.parkingInstructions, "Three bays");
+});
+
+test("P2: the component's access effect is keyed on the reconcile key, not on the version alone", () => {
+  const component = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "components", "catering", "BookingExecution.tsx"), "utf8");
+  assert.equal(component.includes("}, [identity, cateringAccessReconcileKey(execution?.access, accessForm)]);"), true);
+  // The dependency it replaced must not survive anywhere as the access trigger.
+  assert.equal(component.includes("execution?.access.updatedAt"), false);
 });

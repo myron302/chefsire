@@ -12,6 +12,7 @@ import {
   type CateringExecutionStaffView,
   type CateringExecutionTimelineItemView,
   type CateringExecutionVisibility,
+  type CateringProviderTimelineItemView,
   type CateringReadinessState,
   type CateringStaffRole,
   type CateringTimelineCategory,
@@ -277,7 +278,23 @@ export type OpenCateringTimelineEditor = {
 };
 export type CateringTimelineEditorState = OpenCateringTimelineEditor | null;
 
-export function cateringTimelineEditorFor(item: CateringExecutionTimelineItemView, identity: string): OpenCateringTimelineEditor {
+/**
+ * The provider projection of ONE item, when the payload carries it.
+ *
+ * Every run-of-show mutation sends a version precondition, and a customer's item does not carry a version: their
+ * projection omits it so that a reorder of provider-private records cannot be read off a changing timestamp. So
+ * this returns null for a customer's item rather than inventing a version their request would be refused for --
+ * and a customer reaches none of these controls in the first place.
+ */
+export function cateringProviderTimelineItem(item: CateringExecutionTimelineItemView): CateringProviderTimelineItemView | null {
+  return typeof item.updatedAt === "string" && typeof item.sortOrder === "number" ? (item as CateringProviderTimelineItemView) : null;
+}
+/** The same narrowing across a collection, for the whole-collection operations (reorder, editor staleness). */
+export function cateringProviderTimeline(items: readonly CateringExecutionTimelineItemView[]): CateringProviderTimelineItemView[] {
+  return items.filter((item): item is CateringProviderTimelineItemView => cateringProviderTimelineItem(item) !== null);
+}
+
+export function cateringTimelineEditorFor(item: CateringProviderTimelineItemView, identity: string): OpenCateringTimelineEditor {
   return {
     identity, itemId: item.id, expectedUpdatedAt: item.updatedAt, conflict: false,
     draft: {
@@ -316,10 +333,10 @@ export function cateringTimelineEditPayload(editor: OpenCateringTimelineEditor) 
   };
 }
 /** Completing or reopening an item is a narrow field-level write, and still carries the version precondition. */
-export function cateringTimelineCompletionPayload(item: CateringExecutionTimelineItemView) {
+export function cateringTimelineCompletionPayload(item: CateringProviderTimelineItemView) {
   return { completed: !item.completed, expectedUpdatedAt: item.updatedAt };
 }
-export function cateringTimelineDeletePayload(item: CateringExecutionTimelineItemView) {
+export function cateringTimelineDeletePayload(item: CateringProviderTimelineItemView) {
   return { expectedUpdatedAt: item.updatedAt };
 }
 export function cateringExecutionDeletePayload(record: { updatedAt: string }) {
@@ -357,7 +374,7 @@ export function markCateringTimelineEditorConflict(editor: CateringTimelineEdito
  * version other than the one that was refused. Reloading from the same version would reopen the editor on the very
  * state the server just rejected.
  */
-export function mayReloadCateringTimelineEditor(editor: CateringTimelineEditorState, identity: string, items: readonly CateringExecutionTimelineItemView[]): boolean {
+export function mayReloadCateringTimelineEditor(editor: CateringTimelineEditorState, identity: string, items: readonly CateringProviderTimelineItemView[]): boolean {
   if (!editor || editor.identity !== identity || !editor.conflict) return false;
   const fresh = items.find((item) => item.id === editor.itemId);
   return Boolean(fresh && fresh.updatedAt !== editor.expectedUpdatedAt);
@@ -384,7 +401,7 @@ export type CateringTimelineMoveDirection = "up" | "down";
  * drag composed against a stale collection is refused rather than silently reinstating an order somebody else
  * already replaced. Returns null when the move is not possible, so no request is sent for a no-op.
  */
-export function moveCateringTimelineItem(items: readonly CateringExecutionTimelineItemView[], itemId: string, direction: CateringTimelineMoveDirection): CateringExecutionTimelineItemView[] | null {
+export function moveCateringTimelineItem(items: readonly CateringProviderTimelineItemView[], itemId: string, direction: CateringTimelineMoveDirection): CateringProviderTimelineItemView[] | null {
   const index = items.findIndex((item) => item.id === itemId);
   if (index === -1) return null;
   const target = direction === "up" ? index - 1 : index + 1;
@@ -393,7 +410,7 @@ export function moveCateringTimelineItem(items: readonly CateringExecutionTimeli
   [next[index], next[target]] = [next[target], next[index]];
   return next;
 }
-export function cateringTimelineReorderPayload(items: readonly CateringExecutionTimelineItemView[]) {
+export function cateringTimelineReorderPayload(items: readonly CateringProviderTimelineItemView[]) {
   return { items: items.map((item) => ({ id: item.id, expectedUpdatedAt: item.updatedAt })) };
 }
 export type CateringTimelineReorderControls = { up: boolean; down: boolean } | null;
@@ -431,13 +448,25 @@ export type CateringAccessDraft = Record<CateringAccessTextField, string> & {
   expectedUpdatedAt: string | null;
 };
 
+/**
+ * The concurrency version of an access payload, as a value the form can hold.
+ *
+ * Only a provider's payload carries one: the customer projection omits `updatedAt` so that a provider editing only
+ * their private notes cannot be observed through a moving version. Reading it through this one accessor keeps that
+ * omission from turning into `undefined` leaking into a draft, and `null` already means exactly the right thing
+ * here -- "no version to assert" -- which is the precondition a first save sends.
+ */
+export function cateringAccessVersion(access: CateringExecutionAccessView): string | null {
+  return access.updatedAt ?? null;
+}
+
 export function cateringAccessDraftFrom(access: CateringExecutionAccessView): CateringAccessDraft {
   const draft = {} as Record<CateringAccessTextField, string>;
   for (const field of CATERING_ACCESS_TEXT_FIELDS) {
     const value = field === "providerPrivateNotes" ? access.providerPrivateNotes : (access as Record<string, unknown>)[field];
     draft[field] = typeof value === "string" ? value : "";
   }
-  return { ...draft, venueContactSource: access.venueContactSource ?? "", accessConfirmed: access.accessConfirmed, expectedUpdatedAt: access.updatedAt };
+  return { ...draft, venueContactSource: access.venueContactSource ?? "", accessConfirmed: access.accessConfirmed, expectedUpdatedAt: cateringAccessVersion(access) };
 }
 export function cateringAccessSavePayload(draft: CateringAccessDraft) {
   const body: Record<string, unknown> = {};
@@ -570,18 +599,19 @@ export function markCateringAccessConflict(current: CateringAccessFormState): Ca
  */
 export function rebaseCateringAccessForm(current: CateringAccessFormState, identity: string, authoritative: CateringExecutionAccessView): CateringAccessFormState {
   if (!current.value || current.identity !== identity || !current.rebase) return current;
-  if (authoritative.updatedAt === current.value.expectedUpdatedAt) return current;
+  const version = cateringAccessVersion(authoritative);
+  if (version === current.value.expectedUpdatedAt) return current;
   const theirs = cateringAccessDraftFrom(authoritative);
   const merged = mergeCateringAccessDraft(current.baseline, current.value, theirs);
   if (merged.conflicts.length > 0) {
     // Not resolvable without a person. The version deliberately does NOT move.
-    return { ...current, value: merged.value, dirty: true, rebase: false, review: { version: authoritative.updatedAt, theirs, fields: merged.conflicts } };
+    return { ...current, value: merged.value, dirty: true, rebase: false, review: { version, theirs, fields: merged.conflicts } };
   }
   // Safe: every field is either the user's deliberate edit or the current authoritative value, so the record this
   // form would submit is a true successor of the authoritative one rather than a stale snapshot of it.
   return {
     ...current,
-    value: { ...merged.value, expectedUpdatedAt: authoritative.updatedAt },
+    value: { ...merged.value, expectedUpdatedAt: version },
     baseline: theirs,
     dirty: cateringAccessEditedFields(theirs, merged.value).length > 0,
     rebase: false,
@@ -634,6 +664,25 @@ export function reconcileCateringAccessForm(current: CateringAccessFormState, id
   if (current.identity !== identity || !current.dirty) return hydrateCateringAccessForm(current, identity, cateringAccessDraftFrom(authoritative));
   return rebaseCateringAccessForm(current, identity, authoritative);
 }
+
+/**
+ * The one value the component's access-reconciliation effect watches.
+ *
+ * Watching the authoritative version alone stranded the very case the rebase exists for. A poll can land the newer
+ * record BEFORE the stale save is refused: by the time the conflict sets `rebase`, the cached payload has already
+ * been at its final version for some time and will not change again on its own. The version never moves, so the
+ * effect never re-runs, so the form keeps a version the server will refuse forever -- a permanently unsavable form
+ * whose only escape was discarding the draft. Reconciliation must therefore be triggered by the NEED to reconcile
+ * as well as by a newer authoritative record, and this key carries both.
+ *
+ * It cannot loop. The flag is one-way within a conflict: the pass that merges clears it, and a pass that cannot
+ * merge yet (`rebaseCateringAccessForm` finding the payload still at the refused version) returns the very same
+ * form object, so no state is written and nothing re-triggers. Setting it again takes another refused save.
+ */
+export function cateringAccessReconcileKey(access: CateringExecutionAccessView | undefined, form: CateringAccessFormState): string {
+  if (!access) return "";
+  return `${form.rebase ? "rebase" : "settled"}:${cateringAccessVersion(access) ?? ""}`;
+}
 /**
  * An accepted save re-bases the form on the authoritative response -- but only when the form still holds what was
  * actually sent.
@@ -659,7 +708,7 @@ export function settleCateringAccessForm(
   // Newer edits survive, and the record the server just wrote becomes the baseline they are edits ON TOP OF. That
   // is safe without a merge because this save SUCCEEDED: the authoritative record is exactly what was submitted, so
   // no third party's change can be sitting underneath it -- a concurrent write would have made this a conflict.
-  return { identity, value: { ...live!, expectedUpdatedAt: saved.updatedAt }, baseline: theirs, dirty: true, rebase: false, review: null };
+  return { identity, value: { ...live!, expectedUpdatedAt: cateringAccessVersion(saved) }, baseline: theirs, dirty: true, rebase: false, review: null };
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *

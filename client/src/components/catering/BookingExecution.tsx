@@ -21,6 +21,7 @@ import {
   type CateringExecutionMilestoneView,
   type CateringExecutionStaffView,
   type CateringExecutionTimelineItemView,
+  type CateringProviderTimelineItemView,
   type CateringExecutionVisibility,
   type CateringStaffRole,
   type CateringTimelineCategory,
@@ -50,6 +51,9 @@ import {
   cateringReadinessVariant,
   cateringStaffCreatePayload,
   cateringStaffRoleLabel,
+  cateringAccessReconcileKey,
+  cateringProviderTimeline,
+  cateringProviderTimelineItem,
   cateringTimelineCompletionPayload,
   cateringTimelineCreatePayload,
   cateringTimelineDeletePayload,
@@ -153,6 +157,10 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
   // failed save revealed otherwise.
   const canMutate = effectiveCateringEditable(editable, execution?.editable);
   const timeline = execution?.timeline ?? [];
+  // The items that carry a concurrency version and a persisted position -- a provider's. Every run-of-show mutation
+  // needs both, and a customer's projection carries neither, so a customer's payload narrows to nothing here rather
+  // than to requests the server would refuse.
+  const providerTimeline = cateringProviderTimeline(timeline);
 
   // Reconcile the access form with the authoritative payload.
   //
@@ -161,10 +169,16 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
   // dirty form that is merely dirty is left completely alone. Before the rebase existed, a conflict was terminal --
   // the form stayed dirty, so hydration was blocked, so the stale version stayed in the draft, so every later Save
   // conflicted again until the provider hard-refreshed and lost the draft entirely.
+  //
+  // The trigger is `cateringAccessReconcileKey`, not the authoritative version on its own. A poll can land the newer
+  // record BEFORE a stale save is refused, in which case the version stops changing and a version-only trigger never
+  // fires again -- leaving the form stuck on a version the server refuses every time. The key folds the form's own
+  // "needs rebasing" state in, so the conflict itself re-runs this, and it cannot loop: the merge clears the flag,
+  // and a pass with nothing newer to merge onto returns the identical form object.
   useEffect(() => {
     if (!execution) return;
     setAccessForm((current) => reconcileCateringAccessForm(current, identity, execution.access));
-  }, [identity, execution?.access.updatedAt, Boolean(execution)]);
+  }, [identity, cateringAccessReconcileKey(execution?.access, accessForm)]);
   // An editor open on an item another tab deleted, or on a booking that just became terminal, closes once the
   // authoritative payload says so.
   const timelineIds = timeline.map((item) => item.id);
@@ -332,7 +346,7 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     mutation.mutate({ origin: origin(), path: `/execution/timeline/${open.itemId}`, method: "PATCH", body: cateringTimelineEditPayload(open), settle: "editor", itemId: open.itemId, submittedEditor: { itemId: open.itemId, draft: { ...open.draft } } });
   };
   const moveItem = (itemId: string, direction: CateringTimelineMoveDirection) => {
-    const next = moveCateringTimelineItem(timeline, itemId, direction);
+    const next = moveCateringTimelineItem(providerTimeline, itemId, direction);
     if (next) mutation.mutate({ origin: origin(), path: "/execution/timeline/reorder", method: "POST", body: cateringTimelineReorderPayload(next) });
   };
   const reorderControlsFor = (itemId: string) => cateringTimelineReorderControls(timeline, itemId, { role, editable: canMutate, editorOpen: editor !== null, pending });
@@ -376,19 +390,22 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
         ? <p className="text-muted-foreground">{provider ? CATERING_EXECUTION_PROVIDER_EMPTY : CATERING_EXECUTION_CUSTOMER_EMPTY}</p>
         : <ul className="space-y-2">{timeline.map((item) => {
             const open = activeCateringTimelineEditor(editor, identity, item.id, canMutate);
+            // The version-bearing projection of this row, present only for a provider. Every control below sends a
+            // precondition, so none of them can be built from a customer's item.
+            const target = cateringProviderTimelineItem(item);
             return <li key={item.id} className="rounded-lg border p-3">
               {open
-                ? <TimelineEditor open={open} pending={pending} identity={identity} items={timeline} editor={editor}
+                ? <TimelineEditor open={open} pending={pending} identity={identity} items={providerTimeline} editor={editor}
                     onField={(field, value) => setEditor((current) => editCateringTimelineEditorField(current, identity, item.id, field, value))}
                     onCancel={() => setEditor(null)}
-                    onReload={() => setEditor(cateringTimelineEditorFor(item, identity))}
+                    onReload={() => { if (target) setEditor(cateringTimelineEditorFor(target, identity)); }}
                     onSubmit={() => submitEditor(open)} choices={visibilityChoices} />
                 : <TimelineRow item={item} provider={provider} editable={canMutate} pending={pending}
                     reorder={reorderControlsFor(item.id)}
                     onMove={(direction) => moveItem(item.id, direction)}
-                    onToggle={() => mutation.mutate({ origin: origin(), path: `/execution/timeline/${item.id}`, method: "PATCH", body: cateringTimelineCompletionPayload(item) })}
-                    onEdit={() => setEditor(cateringTimelineEditorFor(item, identity))}
-                    onDelete={() => { if (window.confirm(`Remove “${item.title}” from the run of show?`)) mutation.mutate({ origin: origin(), path: `/execution/timeline/${item.id}`, method: "DELETE", body: cateringTimelineDeletePayload(item) }); }} />}
+                    onToggle={() => { if (target) mutation.mutate({ origin: origin(), path: `/execution/timeline/${item.id}`, method: "PATCH", body: cateringTimelineCompletionPayload(target) }); }}
+                    onEdit={() => { if (target) setEditor(cateringTimelineEditorFor(target, identity)); }}
+                    onDelete={() => { if (target && window.confirm(`Remove “${item.title}” from the run of show?`)) mutation.mutate({ origin: origin(), path: `/execution/timeline/${item.id}`, method: "DELETE", body: cateringTimelineDeletePayload(target) }); }} />}
             </li>;
           })}</ul>}
 
@@ -658,7 +675,7 @@ function TimelineRow({ item, provider, editable, pending, reorder, onMove, onTog
 
 function TimelineEditor({ open, pending, identity, items, editor, onField, onCancel, onReload, onSubmit, choices }: {
   open: OpenCateringTimelineEditor; pending: boolean; identity: string;
-  items: readonly CateringExecutionTimelineItemView[]; editor: CateringTimelineEditorState;
+  items: readonly CateringProviderTimelineItemView[]; editor: CateringTimelineEditorState;
   onField: <K extends keyof OpenCateringTimelineEditor["draft"]>(field: K, value: OpenCateringTimelineEditor["draft"][K]) => void;
   onCancel: () => void; onReload: () => void; onSubmit: () => void;
   choices: { value: CateringExecutionVisibility; label: string }[];

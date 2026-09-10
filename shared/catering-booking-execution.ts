@@ -602,7 +602,17 @@ export type CateringExecutionTimelineItemView = {
   id: string; title: string; description: string | null; category: CateringTimelineCategory;
   scheduledTime: string | null; endTime: string | null; visibility: CateringExecutionVisibility;
   isBlocker: boolean; completed: boolean; completedAt: string | null;
-  createdAt: string; updatedAt: string;
+  createdAt: string;
+  /**
+   * The concurrency version -- PROVIDER ONLY, for the same reason `sortOrder` is.
+   *
+   * A reorder rewrites the position of EVERY item in the collection and bumps every version with it, including
+   * shared items whose place among the customer-visible ones did not move -- dragging a provider-private item to
+   * the top shifts the rest by one. A customer holding this field would watch it change while nothing they can see
+   * changed, which is a readable signal that hidden records were rearranged and roughly when. Customers mutate no
+   * run-of-show item, so they need no precondition to send back and are given none.
+   */
+  updatedAt?: string;
   /**
    * The authoritative persisted position -- PROVIDER ONLY, and absent from a customer's items entirely.
    *
@@ -613,6 +623,13 @@ export type CateringExecutionTimelineItemView = {
    */
   sortOrder?: number;
 };
+/**
+ * The provider's projection of a run-of-show item: the only one carrying the position and the concurrency version.
+ *
+ * Every run-of-show mutation needs a version precondition, and only a provider may make one, so the helpers that
+ * build those requests take THIS type. A customer's item cannot be passed to them by mistake.
+ */
+export type CateringProviderTimelineItemView = CateringExecutionTimelineItemView & { sortOrder: number; updatedAt: string };
 /** Provider-only in every channel. A customer's execution payload has no `staff` key at all. */
 export type CateringExecutionStaffView = {
   id: string; workerName: string; role: CateringStaffRole; customRole: string | null;
@@ -625,14 +642,24 @@ export type CateringExecutionEquipmentView = {
   status: CateringEquipmentStatus; isBlocker: boolean; notes: string | null;
   visibility: CateringExecutionVisibility; createdAt: string; updatedAt: string;
 };
-/** `providerPrivateNotes` is present only in a provider's view; a customer's object does not carry the key. */
+/**
+ * `providerPrivateNotes` is present only in a provider's view; a customer's object does not carry the key.
+ *
+ * Neither does a customer's object carry `updatedAt`. The access record holds one provider-private column, so a
+ * provider who edits ONLY their private notes changes this row's version while every field the customer can read
+ * stays byte-for-byte identical. A customer holding the version would see it move -- learning that hidden activity
+ * happened, roughly when, and on a first save that a private-only record had come into existence at all. Customers
+ * never write this object, so the version is of no use to them and no substitute is derived: the key is absent.
+ */
 export type CateringExecutionAccessView = {
   loadInEntrance: string | null; loadingDockNotes: string | null; elevatorNotes: string | null;
   kitchenAccessNotes: string | null; parkingInstructions: string | null; securityCheckInNotes: string | null;
   accessWindowStart: string | null; accessWindowEnd: string | null;
   venueContactName: string | null; venueContactPhone: string | null; venueContactSource: CateringAccessContactSource | null;
   powerWaterNotes: string | null; trashRemovalNotes: string | null; specialRestrictions: string | null;
-  accessConfirmed: boolean; updatedAt: string | null;
+  accessConfirmed: boolean;
+  /** PROVIDER ONLY. `null` means "no access record exists yet", which is the precondition a first save sends. */
+  updatedAt?: string | null;
   providerPrivateNotes?: string | null;
 };
 export type CateringExecutionMilestoneView = { key: CateringExecutionMilestoneKey; completed: boolean; completedAt: string | null; updatedAt: string | null };

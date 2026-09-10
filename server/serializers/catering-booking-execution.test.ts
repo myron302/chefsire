@@ -241,3 +241,137 @@ test("P1 audit: no other customer-visible field is derived from the mixed collec
   const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "catering-booking-execution.ts"), "utf8");
   assert.equal(/\.length\b/.test(source.replace(/CATERING_EXECUTION_MILESTONE_KEYS/g, "")), false, "no length of a collection is serialized");
 });
+
+
+/* ================================================================================================================ *
+ * P2 -- a customer must not be able to watch a provider's private edits through a version
+ * ================================================================================================================ */
+
+/**
+ * The leak this section closes is a TIMESTAMP, not a value.
+ *
+ * The access record carries one provider-private column. A provider who edits only `providerPrivateNotes` changes
+ * nothing a customer can read -- but the row's version moves, and a customer holding that version could compare it
+ * across polls and learn that hidden activity happened, roughly when, and on a first private-only save that a
+ * record had come into existence at all. So a customer's access object carries no version.
+ *
+ * The run-of-show has the same shape for a different reason: a reorder rewrites EVERY item's position and bumps
+ * every version with it, so moving a provider-private item to the top bumps the shared items below it while the
+ * customer's rendered order does not change at all.
+ */
+
+/** The same booking's access row after a provider edited ONLY their private note: one column, and the version. */
+const LATER = new Date("2026-09-08T13:00:00.000Z");
+const accessRowAfterPrivateEdit = { ...accessRow, providerPrivateNotes: "Escalated to the venue owner", updatedAt: LATER };
+/** And a row where a private note is the ONLY thing ever written, which is a record's whole existence. */
+const accessRowPrivateOnly = {
+  bookingId: "booking-1", loadInEntrance: null, loadingDockNotes: null, elevatorNotes: null,
+  kitchenAccessNotes: null, parkingInstructions: null, securityCheckInNotes: null,
+  accessWindowStart: null, accessWindowEnd: null, venueContactName: null, venueContactPhone: null,
+  venueContactSource: null, powerWaterNotes: null, trashRemovalNotes: null, specialRestrictions: null,
+  providerPrivateNotes: "Do not let the client near the fryer", accessConfirmed: false,
+  updatedBy: "provider-1", updatedAt: LATER,
+};
+
+test("P2: a customer's access object carries no version at all", () => {
+  const customer = serializeExecutionAccess(accessRow as never, "customer");
+  // Absent, not null. A null is still a key, and a key is still somewhere for a future serializer to put a value.
+  assert.equal("updatedAt" in customer, false);
+  assert.equal(customer.updatedAt, undefined);
+  assert.equal(JSON.stringify(customer).includes("updatedAt"), false);
+  assert.equal(JSON.stringify(customer).includes(NOW.toISOString()), false);
+});
+
+test("P2: a private-only edit changes NOTHING in the customer's access object", () => {
+  const before = serializeExecutionAccess(accessRow as never, "customer");
+  const after = serializeExecutionAccess(accessRowAfterPrivateEdit as never, "customer");
+  // Byte for byte. Two polls either side of the private edit are indistinguishable, which is the whole point.
+  assert.equal(JSON.stringify(after), JSON.stringify(before));
+  assert.deepEqual(after, before);
+  // The provider, meanwhile, sees exactly what changed -- including the version their next save must assert.
+  const provider = serializeExecutionAccess(accessRowAfterPrivateEdit as never, "provider");
+  assert.equal(provider.providerPrivateNotes, "Escalated to the venue owner");
+  assert.equal(provider.updatedAt, LATER.toISOString());
+});
+
+test("P2: a record that exists ONLY because of a private note is invisible to the customer", () => {
+  const none = serializeExecutionAccess(undefined, "customer");
+  const privateOnly = serializeExecutionAccess(accessRowPrivateOnly as never, "customer");
+  // Indistinguishable from "no access record has ever been written", so the first private save does not announce
+  // itself through a version appearing where there was none.
+  assert.deepEqual(privateOnly, none);
+  assert.equal(JSON.stringify(privateOnly), JSON.stringify(none));
+  // The provider's two cases stay distinguishable, because the version IS the precondition their next save sends.
+  assert.equal(serializeExecutionAccess(undefined, "provider").updatedAt, null);
+  assert.equal(serializeExecutionAccess(accessRowPrivateOnly as never, "provider").updatedAt, LATER.toISOString());
+});
+
+test("P2: a customer-visible edit still reaches the customer, version or no version", () => {
+  const changed = serializeExecutionAccess({ ...accessRow, parkingInstructions: "Bay 4 only", updatedAt: LATER } as never, "customer");
+  const before = serializeExecutionAccess(accessRow as never, "customer");
+  assert.equal(changed.parkingInstructions, "Bay 4 only");
+  assert.notDeepEqual(changed, before);
+  // Removing the version removed a signal, not information: every field the customer is entitled to still travels.
+  assert.equal("updatedAt" in changed, false);
+});
+
+test("P2: the customer's access values are otherwise exactly the provider's", () => {
+  const provider = serializeExecutionAccess(accessRow as never, "provider") as Record<string, unknown>;
+  const customer = serializeExecutionAccess(accessRow as never, "customer") as Record<string, unknown>;
+  // Only two keys separate them, and both are the provider's alone.
+  assert.deepEqual(Object.keys(provider).filter((key) => !(key in customer)).sort(), ["providerPrivateNotes", "updatedAt"]);
+  assert.deepEqual(Object.keys(customer).filter((key) => !(key in provider)), []);
+  for (const key of Object.keys(customer)) assert.deepEqual(customer[key], provider[key], key);
+});
+
+test("P2 audit: a customer's run-of-show item carries no version either", () => {
+  for (const item of asCustomer()) {
+    assert.equal("updatedAt" in item, false, `${item.title} leaked a version`);
+    assert.equal(item.updatedAt, undefined);
+  }
+  // `createdAt` stays. It belongs to the record the customer is being shown, and no provider-private write can move
+  // it -- a reorder rewrites positions and versions, never creation instants.
+  for (const item of asCustomer()) assert.equal(item.createdAt, EARLIER.toISOString());
+  // The provider keeps it, because every run-of-show mutation asserts it.
+  for (const item of asProvider()) assert.equal(item.updatedAt, NOW.toISOString());
+});
+
+test("P2 audit: reordering around a private item leaves the customer's payload identical", () => {
+  // The provider drags the private "Sub swap" to the top. Positions are rewritten across the WHOLE collection and
+  // every version is bumped with them, so both shared rows are rewritten -- while the customer's two items stay in
+  // the same relative order and every field they can read is unchanged.
+  const reordered = [
+    { ...timelineRow, id: "private-2", visibility: "provider_private", sortOrder: 0, title: "Sub swap", updatedAt: LATER },
+    { ...timelineRow, id: "shared-1", visibility: "shared", sortOrder: 1, title: "Guests arrive", updatedAt: LATER },
+    { ...timelineRow, id: "private-1", visibility: "provider_private", sortOrder: 2, title: "Crew briefing", updatedAt: LATER },
+    { ...timelineRow, id: "shared-2", visibility: "shared", sortOrder: 3, title: "Service begins", updatedAt: LATER },
+  ];
+  const after = reordered.filter((row) => row.visibility === "shared").map((row) => serializeExecutionTimelineItem(row as never, "customer"));
+  assert.equal(JSON.stringify(after), JSON.stringify(asCustomer()), "a private drag is not customer-visible news");
+  // And the provider does see the move, on both the position and the version their next request asserts.
+  const provider = reordered.map((row) => serializeExecutionTimelineItem(row as never, "provider"));
+  assert.deepEqual(provider.map((item) => item.sortOrder), [0, 1, 2, 3]);
+  for (const item of provider) assert.equal(item.updatedAt, LATER.toISOString());
+});
+
+test("P2 audit: no other customer-visible record can be moved by a provider-private-only write", () => {
+  // Equipment: every column this serializer emits is customer-visible, so there is no private-only write that could
+  // move an equipment row's version without also moving something the customer can read. Its version stays.
+  const equipment = serializeExecutionEquipment({ ...equipmentRow, visibility: "shared" } as never);
+  assert.equal(equipment.updatedAt, NOW.toISOString());
+  const equipmentKeys = Object.keys(equipment);
+  assert.equal(equipmentKeys.includes("providerPrivateNotes"), false);
+  assert.equal(equipmentKeys.some((key) => key.toLowerCase().includes("private")), false);
+  // Crew and milestones are provider-only COLLECTIONS: a customer's payload has no such key, so there is no row of
+  // theirs whose version a customer could hold in the first place.
+  assert.equal(serializeExecutionStaffAssignment.length, 1);
+  assert.equal(serializeExecutionMilestones.length, 1);
+  // Which leaves the two records that mix visibilities in one row or one collection, and both are handled above.
+  const customerAccess = serializeExecutionAccess(accessRow as never, "customer") as Record<string, unknown>;
+  const customerItem = asCustomer()[0] as unknown as Record<string, unknown>;
+  for (const view of [customerAccess, customerItem]) {
+    for (const key of Object.keys(view)) {
+      assert.equal(/^(updatedAt|version|revision|etag|lastModified)$/i.test(key), false, `${key} is a version a private write could move`);
+    }
+  }
+});

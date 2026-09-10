@@ -43,6 +43,12 @@ import {
  *
  * It is omitted rather than renumbered. A dense customer-side position would also be safe, but it would be one more
  * derived value that has to be trusted to stay safe as the code changes; absence needs no such trust.
+ *
+ * `updatedAt` is PROVIDER ONLY for the same reason. A reorder rewrites every item's position and bumps every
+ * version with it -- moving a provider-private item shifts the shared ones below it -- so a customer holding the
+ * version would watch it change while nothing they can read changed, which reports that hidden records were
+ * rearranged and when. `createdAt` stays: it belongs to the record the customer is being shown and no private-only
+ * write can move it.
  */
 export function serializeExecutionTimelineItem(row: CateringBookingExecutionTimelineItem, role: "provider" | "customer"): CateringExecutionTimelineItemView {
   return {
@@ -53,14 +59,13 @@ export function serializeExecutionTimelineItem(row: CateringBookingExecutionTime
     scheduledTime: row.scheduledTime,
     endTime: row.endTime,
     visibility: row.visibility as CateringExecutionVisibility,
-    ...(role === "provider" ? { sortOrder: row.sortOrder } : {}),
+    ...(role === "provider" ? { sortOrder: row.sortOrder, updatedAt: row.updatedAt.toISOString() } : {}),
     isBlocker: row.isBlocker,
     // Completion is exposed as the fact plus its instant. Who ticked it is persisted and never serialized: only the
     // provider can complete an item, so the id would tell no participant anything they do not already know.
     completed: row.completedAt !== null,
     completedAt: row.completedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -112,7 +117,7 @@ const EMPTY_ACCESS: CateringExecutionAccessView = {
   parkingInstructions: null, securityCheckInNotes: null, accessWindowStart: null, accessWindowEnd: null,
   venueContactName: null, venueContactPhone: null, venueContactSource: null,
   powerWaterNotes: null, trashRemovalNotes: null, specialRestrictions: null,
-  accessConfirmed: false, updatedAt: null,
+  accessConfirmed: false,
 };
 
 /**
@@ -124,9 +129,16 @@ const EMPTY_ACCESS: CateringExecutionAccessView = {
  *
  * No address, city, postal code or event date appears here for either actor: those stay on the booking and on the
  * Phase 2H details, and this record deliberately cannot restate them.
+ *
+ * `updatedAt` is decided in the same place and for the same reason. This row carries a provider-private column, so
+ * a provider who edits only `providerPrivateNotes` moves the version while every customer-readable field stays
+ * identical -- and a customer who could compare versions would read that hidden activity happened and when, and on
+ * a private-only first save that a record now exists at all. The provider keeps it because their optimistic
+ * concurrency is built on it; the customer, who never writes this object, is given no key rather than a derived
+ * stand-in that would have to be trusted not to track the private edits it was invented to hide.
  */
 export function serializeExecutionAccess(row: CateringBookingAccessDetail | undefined, role: "provider" | "customer"): CateringExecutionAccessView {
-  if (!row) return role === "provider" ? { ...EMPTY_ACCESS, providerPrivateNotes: null } : { ...EMPTY_ACCESS };
+  if (!row) return role === "provider" ? { ...EMPTY_ACCESS, updatedAt: null, providerPrivateNotes: null } : { ...EMPTY_ACCESS };
   const shared: CateringExecutionAccessView = {
     loadInEntrance: row.loadInEntrance,
     loadingDockNotes: row.loadingDockNotes,
@@ -144,9 +156,8 @@ export function serializeExecutionAccess(row: CateringBookingAccessDetail | unde
     trashRemovalNotes: row.trashRemovalNotes,
     specialRestrictions: row.specialRestrictions,
     accessConfirmed: row.accessConfirmed,
-    updatedAt: row.updatedAt.toISOString(),
   };
-  return role === "provider" ? { ...shared, providerPrivateNotes: row.providerPrivateNotes } : shared;
+  return role === "provider" ? { ...shared, updatedAt: row.updatedAt.toISOString(), providerPrivateNotes: row.providerPrivateNotes } : shared;
 }
 
 /**
