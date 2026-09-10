@@ -2,6 +2,7 @@ import type { CateringBookingStatus } from "@shared/catering-bookings";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
 import {
   CATERING_ACCESS_SHARED_FIELDS,
+  cateringAccessInstructionsRecorded,
   CATERING_EXECUTION_EQUIPMENT_LIMIT,
   CATERING_EXECUTION_NOT_FOUND_CODE,
   CATERING_EXECUTION_NOT_FOUND_MESSAGE,
@@ -593,12 +594,11 @@ export function cateringReadinessFacts(rows: CateringReadinessSourceRows, role: 
     timelineItemCount: timeline.length,
     staffAssignmentCount: role === "provider" ? rows.staffCount : 0,
     venueAccessConfirmed: rows.access?.accessConfirmed === true,
-    // "Present" means a shared instruction has actually been written down. A provider-private note is never one of
-    // them, so it can neither satisfy this for a customer nor hint at its own existence through the signal.
-    hasSharedAccessInstructions: Boolean(rows.access) && CATERING_ACCESS_SHARED_FIELDS.some((field) => {
-      const value = (rows.access as Record<string, unknown> | undefined)?.[field];
-      return typeof value === "string" ? value.trim() !== "" : value != null;
-    }),
+    // "Present" means an instruction or a real contact detail has actually been written down, judged by the
+    // dedicated instruction list rather than by every customer-visible field. Provenance is not an instruction --
+    // `venueContactSource` says whose a contact is, and says nothing at all when there is no contact -- and a
+    // provider-private note is never one either, so neither can satisfy this or hint at itself through the signal.
+    hasSharedAccessInstructions: cateringAccessInstructionsRecorded(rows.access as Record<string, unknown> | undefined),
     unconfirmedEquipmentCount: equipment.filter((item) => cateringEquipmentIsUnconfirmed(item.status as CateringEquipmentStatus)).length,
     // Both counts go through the canonical blocking predicates rather than restating them, so the readiness summary
     // and the interface's Blocking badge are the same judgement about the same row and cannot disagree.

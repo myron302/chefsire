@@ -190,12 +190,32 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     if (!execution) return;
     setEditor((current) => reconcileCateringTimelineEditor(current, identity, canMutate, timelineIds));
   }, [identity, timelineFingerprint, canMutate]);
+  /**
+   * The booking on screen, synchronized during RENDER.
+   *
+   * This ref is the guard every async completion is measured against, so it has to be current the instant the new
+   * booking is committed. Updating it from a passive effect was a real race: effects flush AFTER the commit, so
+   * between "booking B is on screen" and "B's reset effect ran" the ref still held booking A -- and a response for
+   * A that landed in that window matched `identityRef.current`, was accepted as belonging to the workspace on
+   * screen, and could settle A's success or A's conflict into B's access form, item editor, drafts or notice.
+   *
+   * The assignment is idempotent (it writes the identity this render is FOR), so repeating it is harmless. A render
+   * that is discarded before commit can only leave the ref on a booking that is not displayed, which makes
+   * `settlesHere` refuse -- the safe direction, because refusing costs nothing: the originating booking's queries
+   * are invalidated by ORIGIN regardless, and only local form state is left alone.
+   */
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
   // Drafts belong to the booking on screen. Moving to another booking starts fresh rather than carrying one
   // booking's half-typed crew assignment -- and its spent idempotency token -- into another.
-  const identityRef = useRef(identity);
+  //
+  // This SETS STATE, so it stays in an effect, and it keeps its own record of which booking's drafts are in state.
+  // It can no longer share the ref above: that one is already current by the time any effect runs, so reading it
+  // here would report "no change" on every navigation and the reset would never happen.
+  const settledIdentityRef = useRef(identity);
   useEffect(() => {
-    if (identityRef.current === identity) return;
-    identityRef.current = identity;
+    if (settledIdentityRef.current === identity) return;
+    settledIdentityRef.current = identity;
     setTimelineDraft(EMPTY_CATERING_TIMELINE_DRAFT);
     setStaffDraft(EMPTY_CATERING_STAFF_DRAFT);
     setEquipmentDraft(EMPTY_CATERING_EQUIPMENT_DRAFT);
@@ -237,7 +257,12 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     submittedAccess?: CateringAccessDraft;
   };
   const origin = (): ExecutionOrigin => ({ identity, bookingId, userId });
-  /** Whether a completion belongs to the booking currently on screen. Read from a ref, so it is true NOW. */
+  /**
+   * Whether a completion belongs to the booking currently on screen.
+   *
+   * Read from the render-synchronized ref, so it is true as of the last COMMITTED render rather than as of the last
+   * flushed effect. As soon as another booking renders, every completion belonging to this one fails here.
+   */
   const settlesHere = (started: ExecutionOrigin) => started.identity === identityRef.current;
   const mutation = useMutation({
     // The URL is built from the ORIGIN's booking id, not from render scope, so a request that outlives a navigation

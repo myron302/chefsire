@@ -384,6 +384,43 @@ export const CATERING_ACCESS_SHARED_FIELDS = [
 ] as const;
 export type CateringAccessSharedField = typeof CATERING_ACCESS_SHARED_FIELDS[number];
 
+/**
+ * The access fields that count as an INSTRUCTION, or as a real contact detail, when readiness is derived.
+ *
+ * Deliberately NOT `CATERING_ACCESS_SHARED_FIELDS`. Those two lists answer different questions: that one is "what
+ * may a customer ever see", this one is "what actually tells somebody how to get in". Reusing the visibility list
+ * for readiness let `venueContactSource` stand in for the thing it describes -- it is pure provenance, a label
+ * saying WHOSE a contact detail is -- so choosing "supplied by the customer" and ticking confirmed reported
+ * `venue_access: ready` with no entrance, no access window, no parking, no notes and nobody to call.
+ *
+ * Provenance is not encoded as "counts only when paired with a contact", because that would add nothing:
+ * `venueContactName` and `venueContactPhone` are already here, so a source accompanying a real contact is already
+ * covered by that contact, and a source with no contact is precisely the state this list excludes.
+ *
+ * `providerPrivateNotes` is absent for the same reason it is absent from the shared list -- a private note is not
+ * an instruction to anybody but its author. `accessConfirmed` is absent because it is a SEPARATE fact: the
+ * provider's own assertion, which gates the signal rather than satisfying it.
+ */
+export const CATERING_ACCESS_INSTRUCTION_FIELDS = [
+  "loadInEntrance", "loadingDockNotes", "elevatorNotes", "kitchenAccessNotes", "parkingInstructions",
+  "securityCheckInNotes", "accessWindowStart", "accessWindowEnd", "venueContactName", "venueContactPhone",
+  "powerWaterNotes", "trashRemovalNotes", "specialRestrictions",
+] as const;
+export type CateringAccessInstructionField = typeof CATERING_ACCESS_INSTRUCTION_FIELDS[number];
+/**
+ * Whether an access record carries any instruction at all.
+ *
+ * Every field above holds free text or a time, so substance is "a non-blank string": whitespace in the parking box
+ * has told the crew nothing, and a non-string in one of these columns is not an instruction either.
+ */
+export function cateringAccessInstructionsRecorded(access: Record<string, unknown> | null | undefined): boolean {
+  if (!access) return false;
+  return CATERING_ACCESS_INSTRUCTION_FIELDS.some((field) => {
+    const value = access[field];
+    return typeof value === "string" && value.trim() !== "";
+  });
+}
+
 /* ------------------------------------------------------------------------------------------------------------- *
  * Milestones
  * ------------------------------------------------------------------------------------------------------------- */

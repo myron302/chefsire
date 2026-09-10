@@ -79,8 +79,13 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // The booking currently on screen, readable from a callback that closed over an older render. The one piece of
   // state that is NOT keyed by booking -- the file input's own DOM value -- may only be touched when the completion
   // belongs to this booking; everything else settles its own booking's entry and needs no such guard.
+  // Synchronized during RENDER, not in a passive effect. It guards an async completion (clearing the file input at
+  // line ~284 only when the upload's origin is still the booking on screen), and effects flush after the commit --
+  // so an effect-synchronized ref still held the previous booking while the next one was already displayed, and an
+  // upload that resolved in that window was accepted as belonging to a workspace it had nothing to do with. Writing
+  // the identity this render is for is idempotent, and the failure direction is refusal, which is the safe one.
   const identityRef = useRef(identity);
-  useEffect(() => { identityRef.current = identity; }, [identity]);
+  identityRef.current = identity;
   // History this participant has already loaded. A poll refetches every loaded page and re-derives each cursor from
   // the page before it, so one new file shifts every boundary down and the oldest loaded file falls out of the last
   // page -- it was never removed, and without this it would vanish on a timer and have to be loaded again.

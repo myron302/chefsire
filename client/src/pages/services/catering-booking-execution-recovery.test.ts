@@ -838,7 +838,10 @@ test("P2 audit: every callback that writes booking-local state is behind the ori
     assert.equal(settleLine!.includes(kind), true, kind);
   }
   // And the drafts are additionally reset when the booking changes, so nothing survives a navigation either way.
-  assert.equal(component.includes("if (identityRef.current === identity) return;"), true);
+  // That reset sets state, so it stays in an effect and keeps its own record of which booking's drafts are loaded;
+  // the guard the callbacks read is a separate ref, synchronized during render so it is current at the commit.
+  assert.equal(component.includes("if (settledIdentityRef.current === identity) return;"), true);
+  assert.equal(component.includes("  const identityRef = useRef(identity);\n  identityRef.current = identity;"), true);
 });
 
 /* ================================================================================================================ *

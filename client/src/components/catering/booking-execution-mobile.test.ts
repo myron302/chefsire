@@ -207,10 +207,10 @@ test("a mutation refreshes the workspace activity the shared change wrote, for t
 });
 
 test("drafts belong to the booking on screen and do not follow the participant to another", () => {
-  assert.equal(component.includes("if (identityRef.current === identity) return;"), true);
+  assert.equal(component.includes("if (settledIdentityRef.current === identity) return;"), true);
   // Every draft, the editor and the notice are reset together, so no spent token or half-typed crew assignment
   // crosses into a different booking.
-  const reset = component.slice(component.indexOf("identityRef.current = identity;"), component.indexOf("}, [identity]);"));
+  const reset = component.slice(component.indexOf("settledIdentityRef.current = identity;"), component.indexOf("}, [identity]);"));
   for (const setter of ["setTimelineDraft(EMPTY_CATERING_TIMELINE_DRAFT)", "setStaffDraft(EMPTY_CATERING_STAFF_DRAFT)", "setEquipmentDraft(EMPTY_CATERING_EQUIPMENT_DRAFT)", "setEditor(null)"]) {
     assert.equal(reset.includes(setter), true, setter);
   }

@@ -33,7 +33,7 @@ import {
   shouldNotifyCateringTimelineChange,
   type CateringTimelinePersistedState,
 } from "./catering-booking-execution-policy";
-import { CATERING_EXECUTION_EQUIPMENT_LIMIT, CATERING_EXECUTION_STAFF_LIMIT, CATERING_EXECUTION_TIMELINE_LIMIT, CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-execution";
+import { CATERING_ACCESS_INSTRUCTION_FIELDS, CATERING_ACCESS_SHARED_FIELDS, CATERING_EXECUTION_EQUIPMENT_LIMIT, CATERING_EXECUTION_STAFF_LIMIT, CATERING_EXECUTION_TIMELINE_LIMIT, CATERING_WORKSPACE_READ_ONLY_CODE, cateringStaffCreateSchema, cateringTimelineCreateSchema } from "@shared/catering-booking-execution";
 
 /**
  * The Phase 2J resolution layer.
@@ -476,4 +476,118 @@ test("outstanding shared Phase 2H requirements reach both actors' readiness iden
     const readiness = deriveCateringReadiness(cateringReadinessFacts(rows, role), role);
     assert.equal(readiness.signals.find((signal) => signal.signal === "shared_requirements")?.state, "needs_attention", role);
   }
+});
+
+
+/* ================================================================================================================ *
+ * P2 -- provenance is not an instruction
+ * ================================================================================================================ */
+
+/**
+ * `venueContactSource` says WHOSE a contact detail is. It is not a contact detail, and it is not an instruction.
+ *
+ * Readiness used to read every customer-visible access field, which is a different question -- "what may a customer
+ * see" rather than "what actually tells somebody how to get in". Because provenance is customer-visible, a provider
+ * who only picked "supplied by the customer" in the dropdown and ticked confirmed produced `venue_access: ready`
+ * with no entrance, no window, no parking, no notes and nobody to call. The presence check now runs off a dedicated
+ * instruction list.
+ */
+const accessOnly = (access: Record<string, unknown> | undefined) => ({ ...ROWS, access: access as never });
+const venueAccessState = (access: Record<string, unknown> | undefined, role: "provider" | "customer" = "customer") =>
+  deriveCateringReadiness(cateringReadinessFacts(accessOnly(access), role), role).signals.find((signal) => signal.signal === "venue_access")!.state;
+
+test("P2: confirmed with ONLY a contact source is not ready", () => {
+  const sourceOnly = { accessConfirmed: true, venueContactSource: "customer" };
+  assert.equal(cateringReadinessFacts(accessOnly(sourceOnly), "customer").hasSharedAccessInstructions, false);
+  assert.equal(cateringReadinessFacts(accessOnly(sourceOnly), "provider").hasSharedAccessInstructions, false);
+  // Confirmed, so not blocked -- but there is nothing written down, so it needs attention rather than being ready.
+  assert.equal(venueAccessState(sourceOnly), "needs_attention");
+  assert.equal(venueAccessState(sourceOnly, "provider"), "needs_attention");
+  // The provider's own choice is the counterfactual: it USED to be enough on its own.
+  assert.equal((CATERING_ACCESS_SHARED_FIELDS as readonly string[]).includes("venueContactSource"), true, "still customer-visible");
+  assert.equal((CATERING_ACCESS_INSTRUCTION_FIELDS as readonly string[]).includes("venueContactSource"), false, "but no longer evidence");
+});
+
+test("P2: a source paired with a real contact name is present", () => {
+  const named = { accessConfirmed: true, venueContactSource: "customer", venueContactName: "Sam" };
+  assert.equal(cateringReadinessFacts(accessOnly(named), "customer").hasSharedAccessInstructions, true);
+  assert.equal(venueAccessState(named), "ready");
+  // It is the NAME that satisfies it, not the pairing: the same record without a source is equally present.
+  assert.equal(cateringReadinessFacts(accessOnly({ accessConfirmed: true, venueContactName: "Sam" }), "customer").hasSharedAccessInstructions, true);
+});
+
+test("P2: a source paired with a real contact phone is present", () => {
+  const phoned = { accessConfirmed: true, venueContactSource: "provider", venueContactPhone: "555-0100" };
+  assert.equal(cateringReadinessFacts(accessOnly(phoned), "customer").hasSharedAccessInstructions, true);
+  assert.equal(venueAccessState(phoned), "ready");
+  assert.equal(cateringReadinessFacts(accessOnly({ accessConfirmed: true, venueContactPhone: "555-0100" }), "customer").hasSharedAccessInstructions, true);
+});
+
+test("P2: any genuine shared instruction is present, and every instruction field counts", () => {
+  assert.equal(venueAccessState({ accessConfirmed: true, loadInEntrance: "Rear dock" }), "ready");
+  // Every field on the list satisfies it on its own, so none of them is silently inert.
+  for (const field of CATERING_ACCESS_INSTRUCTION_FIELDS) {
+    const only = { accessConfirmed: true, [field]: field.startsWith("accessWindow") ? "08:00" : "Something the crew needs" };
+    assert.equal(cateringReadinessFacts(accessOnly(only), "customer").hasSharedAccessInstructions, true, field);
+    assert.equal(venueAccessState(only), "ready", field);
+  }
+});
+
+test("P2: a private note alone still cannot make shared access ready, for either actor", () => {
+  const privateOnly = { accessConfirmed: true, providerPrivateNotes: "The site manager is unreliable" };
+  assert.equal(cateringReadinessFacts(accessOnly(privateOnly), "customer").hasSharedAccessInstructions, false);
+  assert.equal(cateringReadinessFacts(accessOnly(privateOnly), "provider").hasSharedAccessInstructions, false);
+  assert.equal(venueAccessState(privateOnly), "needs_attention");
+  assert.equal(venueAccessState(privateOnly, "provider"), "needs_attention");
+  // Nor combined with provenance, which is the two non-instructions added together.
+  assert.equal(venueAccessState({ ...privateOnly, venueContactSource: "provider" }), "needs_attention");
+});
+
+test("P2: unconfirmed keeps its blocked semantics however much is written down", () => {
+  assert.equal(venueAccessState({ accessConfirmed: false, loadInEntrance: "Rear dock", venueContactName: "Sam" }), "blocked");
+  assert.equal(venueAccessState({ accessConfirmed: false, venueContactSource: "customer" }), "blocked");
+  assert.equal(venueAccessState(undefined), "blocked", "and no record at all is blocked, not quietly ready");
+});
+
+test("P2: confirmed with no meaningful shared content needs attention", () => {
+  assert.equal(venueAccessState({ accessConfirmed: true }), "needs_attention");
+  // Whitespace is not content, in any of the fields.
+  assert.equal(venueAccessState({ accessConfirmed: true, parkingInstructions: "   ", loadInEntrance: "" }), "needs_attention");
+  // Nor is a non-string that somehow reached one of these columns.
+  assert.equal(venueAccessState({ accessConfirmed: true, loadInEntrance: 7 }), "needs_attention");
+});
+
+test("P2 audit: no other readiness fact treats metadata or a private field as content", () => {
+  // The instruction list is the shared list minus provenance, and nothing else -- so no customer-visible field of
+  // substance was dropped along with it.
+  assert.deepEqual(
+    [...CATERING_ACCESS_INSTRUCTION_FIELDS].sort(),
+    (CATERING_ACCESS_SHARED_FIELDS as readonly string[]).filter((field) => field !== "venueContactSource").sort(),
+  );
+  // And it names no provenance, status, flag or private field of any kind.
+  for (const field of CATERING_ACCESS_INSTRUCTION_FIELDS) {
+    assert.equal(/source|confirmed|private|status|type|visibility|count|order/i.test(field), false, field);
+  }
+
+  // The remaining facts, each checked for the same mistake -- something that is not the required information
+  // making a section look complete.
+  //
+  //  - `timelineItemCount` and `staffAssignmentCount` count ROWS, and a row cannot exist without its substance: the
+  //    schema requires a non-empty title and a non-empty worker name respectively. There is no empty record to
+  //    count. Asserted here so a relaxed schema would break this test rather than readiness.
+  assert.throws(() => cateringTimelineCreateSchema.parse({ title: "   ", category: "load_in", visibility: "shared", isBlocker: false }));
+  assert.throws(() => cateringStaffCreateSchema.parse({ workerName: "   ", role: "chef" }));
+  //  - `venueAccessConfirmed` IS a boolean flag, and it is deliberately never sufficient: it gates the signal and
+  //    the instruction check has to pass as well. Proven directly above.
+  assert.equal(venueAccessState({ accessConfirmed: true }), "needs_attention");
+  //  - the equipment counts read `status` and `isBlocker`, which are the substance of an equipment row rather than
+  //    metadata about it, and they only ever make a signal WORSE. An empty collection is ready because there is
+  //    genuinely nothing to confirm, which is a stated rule rather than an accident.
+  assert.equal(cateringReadinessFacts({ ...ROWS, equipment: [] }, "customer").unconfirmedEquipmentCount, 0);
+  assert.equal(cateringReadinessFacts({ ...ROWS, equipment: [] }, "customer").blockingEquipmentCount, 0);
+  //  - `guestCountRecorded` already refuses a null and a zero rather than accepting "a number is present".
+  for (const guestCount of [null, 0]) assert.equal(cateringReadinessFacts({ ...ROWS, guestCount }, "customer").guestCountRecorded, false);
+  //  - `outstandingSharedRequirementCount` is a count of Phase 2H rows supplied by the caller and is not derived
+  //    from any execution field, so there is no metadata here to mistake for content.
+  assert.equal(cateringReadinessFacts({ ...ROWS, outstandingSharedRequirementCount: 2 }, "customer").outstandingSharedRequirementCount, 2);
 });
