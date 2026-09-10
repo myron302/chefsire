@@ -454,19 +454,84 @@ export function cateringAccessSavePayload(draft: CateringAccessDraft) {
  * typing; the version they are editing against is likewise kept, so the save they eventually make is judged against
  * the state they actually saw.
  */
+/** Every field the access form can edit. `expectedUpdatedAt` is the version, not a field, so it is not one of them. */
+export const CATERING_ACCESS_MERGE_FIELDS = [...CATERING_ACCESS_TEXT_FIELDS, "venueContactSource", "accessConfirmed"] as const;
+export type CateringAccessMergeField = typeof CATERING_ACCESS_MERGE_FIELDS[number];
+
 /**
  * The access form's local state.
  *
- * `rebase` is set when the server refused a save because the form's `expectedUpdatedAt` was stale. Without it, a
- * conflict was terminal: the form stays dirty so the refetch cannot hydrate it, the stale version therefore stays
- * in the draft, and every subsequent Save conflicts again -- forever, until the provider hard-refreshes and loses
- * everything they had typed. The flag is what lets the next authoritative payload hand the form a fresh version
- * WITHOUT touching a single edited field.
+ * `baseline` is the load-bearing addition. This is a FULL-RECORD save: every field travels on every request, so a
+ * form is only safe to submit if every field in it is either something the user deliberately set or the current
+ * authoritative value. Without a merge base there is no way to tell those apart from stale values the user never
+ * looked at -- and advancing the version on such a form converts it into an authorised overwrite of whatever
+ * another writer changed in the meantime. That is a lost update, and it is exactly what the previous rebase did.
+ *
+ * `rebase` marks a form whose save was refused as stale and which therefore needs merging against fresh data.
+ * `review` holds the fields where the user and another writer both changed the same thing DIFFERENTLY; those are
+ * never resolved automatically, and while any remain the version does not advance and the form cannot be saved.
  */
-export type CateringAccessFormState = { identity: string; value: CateringAccessDraft | null; dirty: boolean; rebase?: boolean };
+export type CateringAccessReview = {
+  /** The authoritative version being merged toward. Adopted only once every diverged field has been resolved. */
+  version: string | null;
+  /** The authoritative record at that version, so the interface can show what the other writer actually put there. */
+  theirs: CateringAccessDraft;
+  /** Still-unresolved fields. Empty is impossible: a review with nothing to review is never created. */
+  fields: CateringAccessMergeField[];
+};
+export type CateringAccessFormState = {
+  identity: string;
+  value: CateringAccessDraft | null;
+  /** The authoritative record this draft was derived from -- the merge base for telling edits from stale values. */
+  baseline: CateringAccessDraft | null;
+  dirty: boolean;
+  rebase?: boolean;
+  review?: CateringAccessReview | null;
+};
 export function hydrateCateringAccessForm(current: CateringAccessFormState, identity: string, next: CateringAccessDraft): CateringAccessFormState {
   if (current.identity === identity && current.dirty) return current;
-  return { identity, value: next, dirty: false };
+  // A freshly hydrated form is its own baseline: nothing in it is a user edit yet.
+  return { identity, value: next, baseline: next, dirty: false, rebase: false, review: null };
+}
+
+/** Whether the user changed this field away from the record the draft was derived from. */
+export function cateringAccessFieldIsEdited(baseline: CateringAccessDraft | null, live: CateringAccessDraft, field: CateringAccessMergeField): boolean {
+  return baseline === null || live[field] !== baseline[field];
+}
+/** The fields the user has actually touched, which are the only ones their save is entitled to change. */
+export function cateringAccessEditedFields(baseline: CateringAccessDraft | null, live: CateringAccessDraft): CateringAccessMergeField[] {
+  return CATERING_ACCESS_MERGE_FIELDS.filter((field) => cateringAccessFieldIsEdited(baseline, live, field));
+}
+
+/**
+ * The three-way merge, field by field, against the baseline the draft was derived from.
+ *
+ * For each field there are exactly four cases, and only the last one is ambiguous:
+ *
+ *  - the user did not touch it            -> adopt the authoritative value, whatever it now is;
+ *  - the user changed it, nobody else did -> keep the user's value;
+ *  - both changed it to the SAME value    -> no disagreement, keep it (this is the lost-response case, where the
+ *                                            "other writer" was the user's own request that committed unseen);
+ *  - both changed it DIFFERENTLY          -> a genuine conflict, reported rather than decided.
+ *
+ * Nothing here picks a winner for that last case. The caller keeps the user's value on screen so it is not lost,
+ * and the version is NOT advanced until a person has said which one they want.
+ */
+export function mergeCateringAccessDraft(baseline: CateringAccessDraft | null, live: CateringAccessDraft, theirs: CateringAccessDraft): { value: CateringAccessDraft; conflicts: CateringAccessMergeField[] } {
+  const merged = { ...live };
+  const conflicts: CateringAccessMergeField[] = [];
+  for (const field of CATERING_ACCESS_MERGE_FIELDS) {
+    const edited = cateringAccessFieldIsEdited(baseline, live, field);
+    const remoteChanged = baseline === null || theirs[field] !== baseline[field];
+    if (!edited) {
+      // Untouched by the user, so the authoritative value wins -- this is what stops a stale snapshot from being
+      // written back over somebody else's change.
+      (merged as Record<string, unknown>)[field] = theirs[field];
+      continue;
+    }
+    if (remoteChanged && theirs[field] !== live[field]) conflicts.push(field);
+  }
+  return { value: merged, conflicts };
 }
 export function editCateringAccessField<K extends keyof CateringAccessDraft>(current: CateringAccessFormState, field: K, value: CateringAccessDraft[K]): CateringAccessFormState {
   if (!current.value) return current;
@@ -488,23 +553,75 @@ export function markCateringAccessConflict(current: CateringAccessFormState): Ca
 }
 
 /**
- * REBASES a dirty access form onto the authoritative version, keeping every edited field exactly as it is.
+ * MERGES a stale access form onto the authoritative record, and advances the version only when that merge is safe.
  *
- * This is the whole of the fix. Only `expectedUpdatedAt` moves; every instruction the provider typed stays. The
- * next Save is then judged against the version the server actually holds, so it can succeed -- no hard refresh, no
- * lost draft, and optimistic concurrency fully intact, because the form is still stating a real version it has now
- * genuinely observed.
+ * The version is never advanced on its own. Advancing it alone is what turned a refused save into an authorised
+ * overwrite: the form is a full record, so re-submitting it with a newer version writes every stale field back over
+ * whatever another tab changed. Tab B edits the venue contact, tab A edits parking, tab A is refused, tab A takes
+ * the new version -- and tab A's next save silently reverts the venue contact. The version now moves only together
+ * with a merge that has adopted the authoritative value for every field the user did not touch.
  *
- * It applies only to a form that asked to be rebased and only when the authoritative record actually carries a
- * DIFFERENT version, so a refetch that has not landed yet leaves the flag set and tries again on the next one. The
- * lost-response case resolves through here too: if the save really did commit before the response was lost, the
- * refetch shows those values, the rebase supplies the new version, and re-saving an unchanged record is a harmless
- * no-op server-side (no activity, no notification).
+ * Where both sides changed the same field differently, nothing is decided here: those fields go into `review`, the
+ * user's own values stay on screen so they are not lost, and the version stays where it was, so the form cannot be
+ * saved into an overwrite before a person has chosen. `cateringAccessReviewIsOpen` is what disables Save.
+ *
+ * It applies only to a form that asked to be merged, and only when the authoritative record actually carries a
+ * different version, so a refetch that has not landed yet leaves the flag set and tries again on the next payload.
  */
 export function rebaseCateringAccessForm(current: CateringAccessFormState, identity: string, authoritative: CateringExecutionAccessView): CateringAccessFormState {
   if (!current.value || current.identity !== identity || !current.rebase) return current;
   if (authoritative.updatedAt === current.value.expectedUpdatedAt) return current;
-  return { ...current, value: { ...current.value, expectedUpdatedAt: authoritative.updatedAt }, dirty: true, rebase: false };
+  const theirs = cateringAccessDraftFrom(authoritative);
+  const merged = mergeCateringAccessDraft(current.baseline, current.value, theirs);
+  if (merged.conflicts.length > 0) {
+    // Not resolvable without a person. The version deliberately does NOT move.
+    return { ...current, value: merged.value, dirty: true, rebase: false, review: { version: authoritative.updatedAt, theirs, fields: merged.conflicts } };
+  }
+  // Safe: every field is either the user's deliberate edit or the current authoritative value, so the record this
+  // form would submit is a true successor of the authoritative one rather than a stale snapshot of it.
+  return {
+    ...current,
+    value: { ...merged.value, expectedUpdatedAt: authoritative.updatedAt },
+    baseline: theirs,
+    dirty: cateringAccessEditedFields(theirs, merged.value).length > 0,
+    rebase: false,
+    review: null,
+  };
+}
+
+/** While any field is under review the form is not submittable: an unreviewed choice must never reach the server. */
+export function cateringAccessReviewIsOpen(current: CateringAccessFormState): boolean {
+  return Boolean(current.review && current.review.fields.length > 0);
+}
+export function maySaveCateringAccess(current: CateringAccessFormState, editable: boolean, pending: boolean): boolean {
+  return Boolean(current.value) && editable && !pending && !cateringAccessReviewIsOpen(current);
+}
+
+/**
+ * Resolves ONE reviewed field, by explicit user choice, and advances the version once none are left.
+ *
+ * "mine" keeps what the user typed; "theirs" takes the other writer's value. Either way it is a person deciding,
+ * which is the whole point -- and the version only moves after the last one, so a partially reviewed form still
+ * cannot be saved into an overwrite.
+ */
+export function resolveCateringAccessReviewField(current: CateringAccessFormState, field: CateringAccessMergeField, choice: "mine" | "theirs"): CateringAccessFormState {
+  const review = current.review;
+  if (!current.value || !review || !review.fields.includes(field)) return current;
+  const value = choice === "theirs" ? { ...current.value, [field]: review.theirs[field] } : current.value;
+  const fields = review.fields.filter((remaining) => remaining !== field);
+  if (fields.length > 0) return { ...current, value, review: { ...review, fields } };
+  return {
+    ...current,
+    value: { ...value, expectedUpdatedAt: review.version },
+    baseline: review.theirs,
+    dirty: cateringAccessEditedFields(review.theirs, value).length > 0,
+    review: null,
+  };
+}
+/** Abandoning the merge takes the authoritative record wholesale -- an explicit, deliberate discard of the draft. */
+export function discardCateringAccessDraft(current: CateringAccessFormState, identity: string, authoritative: CateringExecutionAccessView): CateringAccessFormState {
+  const theirs = cateringAccessDraftFrom(authoritative);
+  return { identity, value: theirs, baseline: theirs, dirty: false, rebase: false, review: null };
 }
 
 /**
@@ -534,11 +651,15 @@ export function settleCateringAccessForm(
 ): CateringAccessFormState {
   if (current.identity !== identity) return current;
   const live = current.value;
+  const theirs = cateringAccessDraftFrom(saved);
   const untouched = !submitted || !live
     || (Object.keys(live) as (keyof CateringAccessDraft)[]).every((field) => live[field] === submitted[field]);
   // Clean, and rebased onto the version just written -- so there is nothing left to reconcile.
-  if (untouched) return { identity, value: cateringAccessDraftFrom(saved), dirty: false, rebase: false };
-  return { identity, value: { ...live!, expectedUpdatedAt: saved.updatedAt }, dirty: true, rebase: false };
+  if (untouched) return { identity, value: theirs, baseline: theirs, dirty: false, rebase: false, review: null };
+  // Newer edits survive, and the record the server just wrote becomes the baseline they are edits ON TOP OF. That
+  // is safe without a merge because this save SUCCEEDED: the authoritative record is exactly what was submitted, so
+  // no third party's change can be sitting underneath it -- a concurrent write would have made this a conflict.
+  return { identity, value: { ...live!, expectedUpdatedAt: saved.updatedAt }, baseline: theirs, dirty: true, rebase: false, review: null };
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *

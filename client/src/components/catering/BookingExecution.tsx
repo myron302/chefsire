@@ -70,10 +70,15 @@ import {
   maySubmitCateringTimelineEditor,
   cateringEquipmentQuantityIsValid,
   markCateringAccessConflict,
+  maySaveCateringAccess,
   preserveCateringAccessForm,
   prepareCateringCreate,
   reconcileCateringAccessForm,
   reconcileCateringTimelineEditor,
+  resolveCateringAccessReviewField,
+  discardCateringAccessDraft,
+  cateringAccessReviewIsOpen,
+  CATERING_ACCESS_MERGE_FIELDS,
   settleCateringAccessForm,
   settleCateringCreateDraft,
   settleCateringTimelineEditor,
@@ -121,7 +126,7 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
   const [timelineDraft, setTimelineDraft] = useState<CateringTimelineDraft>(EMPTY_CATERING_TIMELINE_DRAFT);
   const [staffDraft, setStaffDraft] = useState<CateringStaffDraft>(EMPTY_CATERING_STAFF_DRAFT);
   const [equipmentDraft, setEquipmentDraft] = useState<CateringEquipmentDraft>(EMPTY_CATERING_EQUIPMENT_DRAFT);
-  const [accessForm, setAccessForm] = useState<CateringAccessFormState>({ identity: "", value: null, dirty: false });
+  const [accessForm, setAccessForm] = useState<CateringAccessFormState>({ identity: "", value: null, baseline: null, dirty: false });
   const [editor, setEditor] = useState<CateringTimelineEditorState>(null);
   const [notice, setNotice] = useState<{ message: string; retryable: boolean } | null>(null);
 
@@ -163,7 +168,10 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
   // An editor open on an item another tab deleted, or on a booking that just became terminal, closes once the
   // authoritative payload says so.
   const timelineIds = timeline.map((item) => item.id);
-  const timelineFingerprint = timelineIds.join(" ");
+  // The delimiter is an ESCAPED NUL, not a literal one. A raw NUL byte in the source makes text tools -- rg, and
+  // anything else that sniffs for binary -- treat this whole file as binary and skip its contents. The runtime
+  // fingerprint is unchanged: NUL is still the separator, because no id can contain it.
+  const timelineFingerprint = timelineIds.join("\u0000");
   useEffect(() => {
     if (!execution) return;
     setEditor((current) => reconcileCateringTimelineEditor(current, identity, canMutate, timelineIds));
@@ -284,8 +292,11 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
   };
   const submitAccess = (event: FormEvent) => {
     event.preventDefault();
-    if (!accessForm.value || !canMutate || pending) return;
-    mutation.mutate({ path: "/execution/access", method: "PUT", body: cateringAccessSavePayload(accessForm.value), settle: "access", submittedAccess: { ...accessForm.value } });
+    // A form with an unreviewed field disagreement is not submittable at all: saving it would write one side of a
+    // disagreement nobody has adjudicated over the other.
+    const draft = accessForm.value;
+    if (!draft || !maySaveCateringAccess(accessForm, canMutate, pending)) return;
+    mutation.mutate({ path: "/execution/access", method: "PUT", body: cateringAccessSavePayload(draft), settle: "access", submittedAccess: { ...draft } });
   };
   const submitEditor = (open: OpenCateringTimelineEditor) => {
     if (!maySubmitCateringTimelineEditor(open, canMutate, pending)) return;
@@ -481,8 +492,28 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
               <input type="checkbox" className="h-5 w-5" checked={accessForm.value.accessConfirmed} onChange={(event) => setAccessForm((current) => editCateringAccessField(current, "accessConfirmed", event.target.checked))} />
               <span className="text-sm">Venue access is confirmed</span>
             </label>
-            <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={pending}>Save access instructions</Button>
-            {accessForm.dirty && <p className="text-sm text-muted-foreground sm:col-span-2" role="status">You have unsaved access instructions.</p>}
+            {/* Field-level disagreements, decided by a person and nobody else.
+                Reaching here means the provider's save was refused as stale, the authoritative record came back, and
+                the merge adopted the fresh value for every field they had NOT touched -- but for these, both sides
+                changed the same field to different things. The version deliberately has not advanced, so the form
+                cannot be saved until each one is resolved: that is what stops a refused save from turning into a
+                silent overwrite of the other writer's work. */}
+            {accessForm.review && accessForm.review.fields.length > 0 && <div className="space-y-3 rounded-md border border-destructive p-3 sm:col-span-2" role="alert">
+              <p className="font-medium">Someone else changed these fields while you were editing.</p>
+              <p className="text-sm">Your other edits are already merged with theirs. Choose which value to keep for each field below — saving is disabled until you do, so nothing of theirs is overwritten by accident.</p>
+              {accessForm.review.fields.map((field) => <div key={field} className="space-y-2 border-t pt-2">
+                <p className="font-medium">{ACCESS_LABELS[field] ?? field}</p>
+                <p className="break-words text-sm"><span className="text-muted-foreground">Theirs: </span>{formatAccessValue(accessForm.review!.theirs[field])}</p>
+                <p className="break-words text-sm"><span className="text-muted-foreground">Yours: </span>{formatAccessValue(accessForm.value![field])}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" className="min-h-11" onClick={() => setAccessForm((current) => resolveCateringAccessReviewField(current, field, "mine"))}>Keep mine</Button>
+                  <Button type="button" variant="outline" className="min-h-11" onClick={() => setAccessForm((current) => resolveCateringAccessReviewField(current, field, "theirs"))}>Use theirs</Button>
+                </div>
+              </div>)}
+              <Button type="button" variant="ghost" className="min-h-11" onClick={() => { if (execution && window.confirm("Discard your unsaved access edits and start from the current saved version?")) setAccessForm(discardCateringAccessDraft(accessForm, identity, execution.access)); }}>Discard my edits and reload</Button>
+            </div>}
+            <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySaveCateringAccess(accessForm, canMutate, pending)}>Save access instructions</Button>
+            {accessForm.dirty && !cateringAccessReviewIsOpen(accessForm) && <p className="text-sm text-muted-foreground sm:col-span-2" role="status">You have unsaved access instructions.</p>}
           </form>
         : <AccessReadOnly access={execution.access} role={role} />}
     </section>
@@ -518,6 +549,11 @@ const ACCESS_LABELS: Record<string, string> = {
   powerWaterNotes: "Power and water", trashRemovalNotes: "Trash and removal",
   specialRestrictions: "Special restrictions", providerPrivateNotes: "Private provider notes",
 };
+/** One compared value, rendered readably: a boolean reads as yes/no and an empty field says so rather than showing nothing. */
+function formatAccessValue(value: string | boolean): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return value.trim() === "" ? "(empty)" : value;
+}
 const ACCESS_WIDE = ["loadingDockNotes", "elevatorNotes", "kitchenAccessNotes", "parkingInstructions", "securityCheckInNotes", "powerWaterNotes", "trashRemovalNotes", "specialRestrictions", "providerPrivateNotes"];
 
 /**
