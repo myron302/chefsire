@@ -301,27 +301,71 @@ export const cateringEquipmentDeleteSchema = z.object({ expectedUpdatedAt: cater
  */
 export const CATERING_ACCESS_CONTACT_SOURCES = ["provider", "customer"] as const;
 export type CateringAccessContactSource = typeof CATERING_ACCESS_CONTACT_SOURCES[number];
+
+/**
+ * The ONE definition of every editable access field: what it is called, what control edits it, and how long it may
+ * be. The Zod schema below is BUILT from this, and the interface renders from it, so a browser constraint and the
+ * validation it is supposed to anticipate cannot drift apart.
+ *
+ * They had drifted: every textarea allowed 4000 characters and the text inputs allowed unlimited, while the schema
+ * capped most notes at 2000, the load-in entrance at 240, a contact name at 120 and a phone at 40. A provider could
+ * type something the browser accepted happily and the server could only ever answer with a 400.
+ *
+ * `time` fields carry no length at all -- they are `HH:mm` wall clocks validated by a regex, and a character count
+ * would be a meaningless constraint on a time picker.
+ */
+export const CATERING_ACCESS_FIELDS = [
+  { field: "loadInEntrance", label: "Load-in entrance", control: "text", maxLength: 240 },
+  { field: "loadingDockNotes", label: "Loading dock", control: "textarea", maxLength: 2000 },
+  { field: "elevatorNotes", label: "Elevator", control: "textarea", maxLength: 2000 },
+  { field: "kitchenAccessNotes", label: "Kitchen access", control: "textarea", maxLength: 2000 },
+  { field: "parkingInstructions", label: "Parking", control: "textarea", maxLength: 2000 },
+  { field: "securityCheckInNotes", label: "Security / check-in", control: "textarea", maxLength: 2000 },
+  { field: "accessWindowStart", label: "Access from (event local)", control: "time" },
+  { field: "accessWindowEnd", label: "Access until (event local)", control: "time" },
+  { field: "venueContactName", label: "Venue contact", control: "text", maxLength: 120 },
+  { field: "venueContactPhone", label: "Venue contact phone", control: "text", maxLength: 40 },
+  { field: "powerWaterNotes", label: "Power and water", control: "textarea", maxLength: 2000 },
+  { field: "trashRemovalNotes", label: "Trash and removal", control: "textarea", maxLength: 2000 },
+  { field: "specialRestrictions", label: "Special restrictions", control: "textarea", maxLength: 2000 },
+  { field: "providerPrivateNotes", label: "Private provider notes", control: "textarea", maxLength: 4000 },
+] as const;
+export type CateringAccessFieldMeta = typeof CATERING_ACCESS_FIELDS[number];
+export type CateringAccessFieldName = CateringAccessFieldMeta["field"];
+export type CateringAccessControl = CateringAccessFieldMeta["control"];
+/** The length limit for one field, or undefined for the time controls, which have none. */
+export function cateringAccessFieldLimit(field: CateringAccessFieldName): number | undefined {
+  const meta = CATERING_ACCESS_FIELDS.find((entry) => entry.field === field);
+  return meta && "maxLength" in meta ? meta.maxLength : undefined;
+}
+/** Reads a limit that must exist, so the schema below cannot silently be built from a missing entry. */
+const accessLimit = (field: CateringAccessFieldName): number => {
+  const limit = cateringAccessFieldLimit(field);
+  if (limit === undefined) throw new Error(`catering access field ${field} has no length limit`);
+  return limit;
+};
+
 export const cateringAccessSaveSchema = z.object({
-  loadInEntrance: optionalText(240),
-  loadingDockNotes: optionalText(2000),
-  elevatorNotes: optionalText(2000),
-  kitchenAccessNotes: optionalText(2000),
-  parkingInstructions: optionalText(2000),
-  securityCheckInNotes: optionalText(2000),
+  loadInEntrance: optionalText(accessLimit("loadInEntrance")),
+  loadingDockNotes: optionalText(accessLimit("loadingDockNotes")),
+  elevatorNotes: optionalText(accessLimit("elevatorNotes")),
+  kitchenAccessNotes: optionalText(accessLimit("kitchenAccessNotes")),
+  parkingInstructions: optionalText(accessLimit("parkingInstructions")),
+  securityCheckInNotes: optionalText(accessLimit("securityCheckInNotes")),
   accessWindowStart: wallClock.optional(),
   accessWindowEnd: wallClock.optional(),
-  venueContactName: optionalText(120),
-  venueContactPhone: optionalText(40),
+  venueContactName: optionalText(accessLimit("venueContactName")),
+  venueContactPhone: optionalText(accessLimit("venueContactPhone")),
   /**
    * Who the venue contact came from. Customer-supplied contact details keep that provenance visible to both
    * participants rather than being silently re-attributed to the provider who transcribed them.
    */
   venueContactSource: z.enum(CATERING_ACCESS_CONTACT_SOURCES).nullable().optional(),
-  powerWaterNotes: optionalText(2000),
-  trashRemovalNotes: optionalText(2000),
-  specialRestrictions: optionalText(2000),
+  powerWaterNotes: optionalText(accessLimit("powerWaterNotes")),
+  trashRemovalNotes: optionalText(accessLimit("trashRemovalNotes")),
+  specialRestrictions: optionalText(accessLimit("specialRestrictions")),
   /** Never serialized to the customer. The one provider-private field on an otherwise shared record. */
-  providerPrivateNotes: optionalText(4000),
+  providerPrivateNotes: optionalText(accessLimit("providerPrivateNotes")),
   accessConfirmed: z.boolean().optional(),
   /**
    * Absent means "I am creating this record and expect none to exist". A present value is the version the edit was
@@ -557,8 +601,17 @@ export function deriveCateringReadiness(facts: CateringReadinessFacts, role: "pr
 export type CateringExecutionTimelineItemView = {
   id: string; title: string; description: string | null; category: CateringTimelineCategory;
   scheduledTime: string | null; endTime: string | null; visibility: CateringExecutionVisibility;
-  sortOrder: number; isBlocker: boolean; completed: boolean; completedAt: string | null;
+  isBlocker: boolean; completed: boolean; completedAt: string | null;
   createdAt: string; updatedAt: string;
+  /**
+   * The authoritative persisted position -- PROVIDER ONLY, and absent from a customer's items entirely.
+   *
+   * It is numbered across the whole run-of-show, private items included, so a customer receiving it could read the
+   * gaps: shared items at 0 and 3 say plainly that two records they may not see sit between them. The order of the
+   * array is what any client actually renders from, and it survives filtering, so a customer needs no position at
+   * all -- and is given none, rather than a renumbered one that would still have to be trusted not to leak.
+   */
+  sortOrder?: number;
 };
 /** Provider-only in every channel. A customer's execution payload has no `staff` key at all. */
 export type CateringExecutionStaffView = {

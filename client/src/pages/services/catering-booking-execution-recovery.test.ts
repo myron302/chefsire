@@ -48,6 +48,9 @@ import {
   type CateringTimelineDraft,
 } from "./catering-booking-execution-state";
 import {
+  CATERING_ACCESS_FIELDS,
+  cateringAccessFieldLimit,
+  cateringAccessSaveSchema,
   CATERING_EQUIPMENT_STATUSES,
   type CateringEquipmentStatus,
   type CateringExecutionAccessView,
@@ -243,7 +246,7 @@ test("F3: all four confirmed/notes combinations reach the confirmation branch", 
 test("F3: a customer's private notes are filtered here as well as absent from their payload", () => {
   const component = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "components", "catering", "BookingExecution.tsx"), "utf8");
   const block = component.slice(component.indexOf("function AccessReadOnly"), component.indexOf("function TimelineRow"));
-  assert.equal(block.includes('.filter((field) => field !== "providerPrivateNotes" || role === "provider")'), true);
+  assert.equal(block.includes('.filter((meta) => meta.field !== "providerPrivateNotes" || role === "provider")'), true);
   // And the hydration path tolerates a customer object with no such key at all.
   const { providerPrivateNotes: _absent, ...customerView } = access({ accessConfirmed: true });
   assert.equal(cateringAccessDraftFrom(customerView as CateringExecutionAccessView).providerPrivateNotes, "");
@@ -757,4 +760,142 @@ test("AUDIT: the access form is the only full-record payload, and it is now base
   assert.equal(/expectedUpdatedAt: authoritative\.updatedAt \},\n\s+baseline: theirs/.test(stateSource), true, "version and baseline advance together");
   // And a contested merge returns before either moves.
   assert.equal(stateSource.indexOf("if (merged.conflicts.length > 0)") < stateSource.indexOf("expectedUpdatedAt: authoritative.updatedAt"), true);
+});
+
+
+/* ================================================================================================================ *
+ * P2 -- a mutation response may affect only the booking that started it
+ * ================================================================================================================ */
+
+/**
+ * This component stays mounted across a booking change, so a callback that read the booking from render scope
+ * described whichever booking was on screen when the response landed. Save on A, navigate to B, and A's record was
+ * installed into B's form -- and two similar-looking forms make that impossible to notice.
+ *
+ * The fix is structural: every mutation carries the identity that issued it, invalidation is keyed by THAT booking,
+ * and local form state is settled only when the origin is still what is rendered. These assertions are structural
+ * because the guard lives in the component's callbacks, which have no harness in this suite.
+ */
+
+test("P2: every mutation carries the identity that started it", () => {
+  // One origin helper, captured at submission time from the render that actually issued the request.
+  assert.equal(component.includes("const origin = (): ExecutionOrigin => ({ identity, bookingId, userId });"), true);
+  // Every call site passes it -- twelve of them, which is every mutate in the file.
+  const mutates = component.match(/mutation\.mutate\(\{/g) ?? [];
+  const withOrigin = component.match(/mutation\.mutate\(\{[\s\n]*origin: origin\(\),/g) ?? [];
+  assert.equal(mutates.length > 0, true);
+  assert.equal(withOrigin.length, mutates.length, `${withOrigin.length} of ${mutates.length} mutations carry an origin`);
+});
+
+test("P2: the request URL is built from the origin, not from render scope", () => {
+  // A request that outlives a navigation still addresses the booking it was issued for.
+  assert.equal(component.includes("await fetch(`/api/catering/bookings/${started.bookingId}${path}`"), true);
+  assert.equal(component.includes("await fetch(`/api/catering/bookings/${bookingId}${path}`"), false);
+});
+
+test("P2: booking A's response cannot modify booking B's local state", () => {
+  // Both callbacks return early unless the origin is the booking currently on screen, BEFORE any setState.
+  const success = component.slice(component.indexOf("onSuccess: (value"), component.indexOf("onError: (error"));
+  const failure = component.slice(component.indexOf("onError: (error"), component.indexOf("const pending = mutation.isPending"));
+  for (const [label, block] of [["onSuccess", success], ["onError", failure]] as const) {
+    assert.equal(block.includes("if (!settlesHere(started)) return;"), true, `${label} has no origin guard`);
+    // Every state setter sits AFTER that guard, so none of them can run for a foreign booking.
+    const guardAt = block.indexOf("if (!settlesHere(started)) return;");
+    for (const setter of block.match(/set(?:AccessForm|TimelineDraft|StaffDraft|EquipmentDraft|Editor|Notice)\(/g) ?? []) {
+      assert.equal(block.indexOf(setter) > guardAt, true, `${label}: ${setter} runs before the origin guard`);
+    }
+  }
+});
+
+test("P2: the guard reads a ref, so it reflects the booking on screen NOW", () => {
+  // Comparing against a render-captured `identity` would reintroduce the bug in the callback itself.
+  assert.equal(component.includes("const settlesHere = (started: ExecutionOrigin) => started.identity === identityRef.current;"), true);
+  assert.equal(component.includes("identityRef.current = identity;"), true);
+});
+
+test("P2: invalidation is keyed by the originating booking in both callbacks", () => {
+  // The data a response changed belongs to the booking that issued it, so its cache is what is refreshed -- and
+  // that happens BEFORE the origin guard, because it is correct regardless of what is on screen.
+  const success = component.slice(component.indexOf("onSuccess: (value"), component.indexOf("onError: (error"));
+  const failure = component.slice(component.indexOf("onError: (error"), component.indexOf("const pending = mutation.isPending"));
+  assert.equal(success.indexOf("cateringBookingExecutionKey(started.userId, started.bookingId)") < success.indexOf("if (!settlesHere(started)) return;"), true);
+  assert.equal(failure.indexOf("cateringBookingExecutionKey(started.userId, started.bookingId)") < failure.indexOf("if (!settlesHere(started)) return;"), true);
+  // No render-scoped query key is invalidated anywhere.
+  assert.equal(/invalidateQueries\(\{ queryKey: key \}\)/.test(component), false);
+  assert.equal(/queryKey: \["catering", "booking-workspace", userId, bookingId\]/.test(component), false);
+});
+
+test("P2 audit: every callback that writes booking-local state is behind the origin guard", () => {
+  // The audited set: access save, timeline/staff/equipment creates, the item editor, reorder, milestones, status
+  // changes and deletes. They share ONE pair of callbacks, so one guard covers all of them -- which is why the
+  // assertion above enumerates the setters rather than the routes.
+  const settleLine = component.split("\n").find((line) => line.trim().startsWith("settle?:"));
+  assert.notEqual(settleLine, undefined);
+  for (const kind of ["timeline-draft", "staff-draft", "equipment-draft", "access", "editor"]) {
+    assert.equal(settleLine!.includes(kind), true, kind);
+  }
+  // And the drafts are additionally reset when the booking changes, so nothing survives a navigation either way.
+  assert.equal(component.includes("if (identityRef.current === identity) return;"), true);
+});
+
+/* ================================================================================================================ *
+ * P3 -- browser limits must be the schema's limits
+ * ================================================================================================================ */
+
+test("P3: every access control's maxLength comes from the shared field metadata", () => {
+  // The form renders FROM the metadata, so a limit cannot be typed independently into the markup.
+  assert.equal(component.includes("{CATERING_ACCESS_FIELDS.map((meta) =>"), true);
+  assert.equal(component.includes("maxLength={meta.maxLength}"), true);
+  // The old blanket 4000 on every textarea is gone, and no magic number is hard-coded in the access form.
+  const form = component.slice(component.indexOf("{CATERING_ACCESS_FIELDS.map((meta) =>"), component.indexOf("access-contact-source"));
+  assert.equal(/maxLength=\{\d+\}/.test(form), false, "no literal limit in the access form");
+});
+
+test("P3: the exact limits Codex named are what the metadata carries", () => {
+  assert.equal(cateringAccessFieldLimit("loadInEntrance"), 240);
+  assert.equal(cateringAccessFieldLimit("venueContactName"), 120);
+  assert.equal(cateringAccessFieldLimit("venueContactPhone"), 40);
+  assert.equal(cateringAccessFieldLimit("parkingInstructions"), 2000);
+  // 4000 survives on exactly one field, and only because the schema really does permit it there.
+  assert.equal(cateringAccessFieldLimit("providerPrivateNotes"), 4000);
+  assert.deepEqual(CATERING_ACCESS_FIELDS.filter((meta) => "maxLength" in meta && meta.maxLength === 4000).map((meta) => meta.field), ["providerPrivateNotes"]);
+});
+
+test("P3: every field's declared limit is exactly what the schema accepts and rejects", () => {
+  // Iterating the metadata rather than a hand-written list, so a field added later is covered automatically.
+  for (const meta of CATERING_ACCESS_FIELDS) {
+    if (meta.control === "time") {
+      // A time control has no length at all; the schema validates the HH:mm shape instead.
+      assert.equal("maxLength" in meta, false, `${meta.field} should carry no length`);
+      assert.equal(cateringAccessSaveSchema.safeParse({ [meta.field]: "08:30" }).success, true, meta.field);
+      assert.equal(cateringAccessSaveSchema.safeParse({ [meta.field]: "8:30" }).success, false, meta.field);
+      continue;
+    }
+    const limit = meta.maxLength;
+    // Exactly at the limit is accepted...
+    assert.equal(cateringAccessSaveSchema.safeParse({ [meta.field]: "x".repeat(limit) }).success, true, `${meta.field} rejected ${limit}`);
+    // ...and one character past it is refused, which is precisely what the browser now prevents.
+    assert.equal(cateringAccessSaveSchema.safeParse({ [meta.field]: "x".repeat(limit + 1) }).success, false, `${meta.field} accepted ${limit + 1}`);
+    // Optional fields stay optional, and clearing stays possible.
+    assert.equal(cateringAccessSaveSchema.safeParse({}).success, true);
+    assert.equal(cateringAccessSaveSchema.safeParse({ [meta.field]: null }).success, true, `${meta.field} may be cleared`);
+  }
+});
+
+test("P3: the schema is BUILT from the metadata, so the two cannot drift apart", () => {
+  const contract = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "shared", "catering-booking-execution.ts"), "utf8");
+  const schema = contract.slice(contract.indexOf("export const cateringAccessSaveSchema"), contract.indexOf("/** The access fields a customer may ever observe"));
+  // Every text field's limit is read from the metadata rather than restated as a number.
+  assert.equal(/optionalText\(\d+\)/.test(schema), false, "a literal limit is back in the access schema");
+  assert.equal((schema.match(/optionalText\(accessLimit\("/g) ?? []).length, CATERING_ACCESS_FIELDS.filter((meta) => meta.control !== "time").length);
+});
+
+test("P3: the metadata covers every editable access field and nothing else", () => {
+  const fields = CATERING_ACCESS_FIELDS.map((meta) => meta.field);
+  assert.equal(new Set(fields).size, fields.length, "no duplicates");
+  // Exactly the fields the save payload builds, so the form can render no control the request cannot carry.
+  const payload = cateringAccessSavePayload(cateringAccessDraftFrom(access()));
+  for (const field of fields) assert.equal(field in payload, true, `${field} is not in the save payload`);
+  // The private field is present for the provider's form and remains provider-only elsewhere.
+  assert.equal(fields.includes("providerPrivateNotes"), true);
 });

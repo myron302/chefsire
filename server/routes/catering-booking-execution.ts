@@ -249,7 +249,7 @@ r.get("/bookings/:id/execution", requireAuth, async (req, res, next) => { try {
   const view: CateringBookingExecutionView = {
     role,
     editable: booking.status === "pending_confirmation" || booking.status === "confirmed",
-    timeline: (timelineRows as CateringBookingExecutionTimelineItem[]).map(serializeExecutionTimelineItem),
+    timeline: (timelineRows as CateringBookingExecutionTimelineItem[]).map((item) => serializeExecutionTimelineItem(item, role)),
     equipment: (equipmentRows as CateringBookingEquipmentItem[]).map(serializeExecutionEquipment),
     access: serializeExecutionAccess(access, role),
     readiness: provider ? { ...readiness, milestones: milestoneCounts(milestoneRows as { completedAt: Date | null }[]) } : readiness,
@@ -278,7 +278,7 @@ r.post("/bookings/:id/execution/timeline", requireAuth, async (req, res, next) =
   // the concurrency backstop for two simultaneous first attempts, and the unique index behind that.
   if (input.clientRequestId) {
     const accepted = await duplicateTimelineItem(id, userId, input.clientRequestId);
-    if (accepted) return res.status(200).json({ item: serializeExecutionTimelineItem(accepted), duplicate: true });
+    if (accepted) return res.status(200).json({ item: serializeExecutionTimelineItem(accepted, "provider"), duplicate: true });
   }
   const result = await db.transaction(async (tx: typeof db) => {
     const active = await lockActiveCateringBooking(tx, id);
@@ -302,9 +302,9 @@ r.post("/bookings/:id/execution/timeline", requireAuth, async (req, res, next) =
   if (result.kind === "limit") return res.status(409).json({ message: CATERING_EXECUTION_LIMIT_MESSAGES.timeline });
   // A retry that resolved inside the lock is answered with the record the first attempt made, and notifies nobody:
   // the notification for that record was already sent when it was actually created.
-  if (result.kind === "duplicate") return res.status(200).json({ item: serializeExecutionTimelineItem(result.item), duplicate: true });
+  if (result.kind === "duplicate") return res.status(200).json({ item: serializeExecutionTimelineItem(result.item, "provider"), duplicate: true });
   if (result.notify) await notifyCounterpart(booking, userId, id, CATERING_EXECUTION_TIMELINE_NOTIFICATION);
-  res.status(201).json({ item: serializeExecutionTimelineItem(result.item) });
+  res.status(201).json({ item: serializeExecutionTimelineItem(result.item, "provider") });
 } catch (error) { invalid(error, res, next); } });
 
 r.patch("/bookings/:id/execution/timeline/:itemId", requireAuth, async (req, res, next) => { try {
@@ -357,7 +357,7 @@ r.patch("/bookings/:id/execution/timeline/:itemId", requireAuth, async (req, res
   if (result.kind === "invalid_time_range") return res.status(400).json({ message: CATERING_TIMELINE_PATCH_REFUSALS.invalid_time_range });
   if (result.kind === "read_only") return readOnlyRace(res, "run-of-show item");
   if (result.notify) await notifyCounterpart(booking, userId, id, CATERING_EXECUTION_TIMELINE_NOTIFICATION);
-  res.json({ item: serializeExecutionTimelineItem(result.item) });
+  res.json({ item: serializeExecutionTimelineItem(result.item, "provider") });
 } catch (error) { invalid(error, res, next); } });
 
 r.delete("/bookings/:id/execution/timeline/:itemId", requireAuth, async (req, res, next) => { try {
@@ -427,7 +427,8 @@ r.post("/bookings/:id/execution/timeline/reorder", requireAuth, async (req, res,
   if (result.kind === "conflict") return refuse(res, CATERING_EXECUTION_CONFLICT_REFUSAL);
   if (result.kind === "membership") return refuse(res, CATERING_EXECUTION_SET_CHANGED_REFUSAL);
   if (result.kind === "read_only") return readOnlyRace(res, "run-of-show");
-  res.json({ timeline: result.items.map(serializeExecutionTimelineItem) });
+  // Provider-only route, so the authoritative persisted order travels back with the reordered collection.
+  res.json({ timeline: result.items.map((item: CateringBookingExecutionTimelineItem) => serializeExecutionTimelineItem(item, "provider")) });
 } catch (error) { invalid(error, res, next); } });
 
 /* ------------------------------------------------------------------------------------------------------------- *

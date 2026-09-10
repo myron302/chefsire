@@ -33,7 +33,18 @@ import {
  * (the caller's own retry token, which nothing else has a use for).
  */
 
-export function serializeExecutionTimelineItem(row: CateringBookingExecutionTimelineItem): CateringExecutionTimelineItemView {
+/**
+ * One run-of-show item.
+ *
+ * `sortOrder` is PROVIDER ONLY. It is numbered across the whole collection -- provider-private items included -- so
+ * handing it to a customer whose list has been visibility-filtered publishes the gaps: shared items arriving as 0
+ * and 3 say plainly that two records they may not see sit between them, and how many. The array order is what any
+ * client renders from and it survives filtering intact, so a customer needs no position at all.
+ *
+ * It is omitted rather than renumbered. A dense customer-side position would also be safe, but it would be one more
+ * derived value that has to be trusted to stay safe as the code changes; absence needs no such trust.
+ */
+export function serializeExecutionTimelineItem(row: CateringBookingExecutionTimelineItem, role: "provider" | "customer"): CateringExecutionTimelineItemView {
   return {
     id: row.id,
     title: row.title,
@@ -42,7 +53,7 @@ export function serializeExecutionTimelineItem(row: CateringBookingExecutionTime
     scheduledTime: row.scheduledTime,
     endTime: row.endTime,
     visibility: row.visibility as CateringExecutionVisibility,
-    sortOrder: row.sortOrder,
+    ...(role === "provider" ? { sortOrder: row.sortOrder } : {}),
     isBlocker: row.isBlocker,
     // Completion is exposed as the fact plus its instant. Who ticked it is persisted and never serialized: only the
     // provider can complete an item, so the id would tell no participant anything they do not already know.

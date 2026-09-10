@@ -26,6 +26,7 @@ import {
   type CateringTimelineCategory,
 } from "@shared/catering-booking-execution";
 import { cateringWorkspacePollInterval, effectiveCateringEditable } from "@shared/catering-booking-operations";
+import { CATERING_ACCESS_FIELDS } from "@shared/catering-booking-execution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,7 +34,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  CATERING_ACCESS_TEXT_FIELDS,
   CATERING_EXECUTION_CUSTOMER_EMPTY,
   CATERING_EXECUTION_PROVIDER_EMPTY,
   CATERING_EXECUTION_READ_ONLY_BANNER,
@@ -189,7 +189,21 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     setNotice(null);
   }, [identity]);
 
+  /**
+   * The booking that STARTED a request, captured at submission time.
+   *
+   * This component stays mounted across a booking change -- only the route parameter moves -- so a callback that
+   * read `identity`, `key` or `userId` from render scope described whichever booking was on screen when the response
+   * landed, not the one that issued it. Save access details on booking A, navigate to B before it answers, and A's
+   * record was installed into B's form or produced a conflict in it. Two forms that happen to look alike make that
+   * invisible.
+   *
+   * So every mutation carries its own origin, every completion invalidates the ORIGINATING booking's queries, and
+   * local form state is settled only when the origin is still what is on screen.
+   */
+  type ExecutionOrigin = { identity: string; bookingId: string; userId: string };
   type ExecutionMutation = {
+    origin: ExecutionOrigin;
     path: string; method: string; body?: unknown;
     /** What to settle locally once the server has accepted this particular write. */
     settle?: "timeline-draft" | "staff-draft" | "equipment-draft" | "access" | "editor";
@@ -208,11 +222,16 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     submittedEditor?: { itemId: string; draft: OpenCateringTimelineEditor["draft"] };
     submittedAccess?: CateringAccessDraft;
   };
+  const origin = (): ExecutionOrigin => ({ identity, bookingId, userId });
+  /** Whether a completion belongs to the booking currently on screen. Read from a ref, so it is true NOW. */
+  const settlesHere = (started: ExecutionOrigin) => started.identity === identityRef.current;
   const mutation = useMutation({
-    mutationFn: async ({ path, method, body }: ExecutionMutation) => {
+    // The URL is built from the ORIGIN's booking id, not from render scope, so a request that outlives a navigation
+    // still addresses the booking it was issued for.
+    mutationFn: async ({ origin: started, path, method, body }: ExecutionMutation) => {
       let response: Response;
       try {
-        response = await fetch(`/api/catering/bookings/${bookingId}${path}`, {
+        response = await fetch(`/api/catering/bookings/${started.bookingId}${path}`, {
           method, credentials: "include",
           headers: body === undefined ? undefined : { "Content-Type": "application/json" },
           body: body === undefined ? undefined : JSON.stringify(body),
@@ -228,6 +247,14 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
       return value;
     },
     onSuccess: (value: Record<string, unknown>, variables) => {
+      const started = variables.origin;
+      // Always refresh the ORIGINATING booking, whichever booking is rendered now: that is the data this response
+      // actually changed, and its cache is keyed by that booking.
+      cache.invalidateQueries({ queryKey: cateringBookingExecutionKey(started.userId, started.bookingId) });
+      cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", started.userId, started.bookingId] });
+      // Everything below writes booking-local component state, which only exists for the booking on screen. A
+      // response for one the participant has navigated away from has nothing here to settle and must touch nothing.
+      if (!settlesHere(started)) return;
       setNotice(null);
       // Each create clears the form only when the live draft is still the attempt that just succeeded. If newer
       // edits are there, they are kept: the created record shows up in the list above either way, which is the real
@@ -241,12 +268,15 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
         const saved = (value.item as { updatedAt?: string } | undefined)?.updatedAt;
         if (saved) setEditor((live) => settleCateringTimelineEditor(live, variables.submittedEditor!, saved));
       }
-      if (variables.settle === "access" && value.access) setAccessForm((current) => settleCateringAccessForm(current, identity, value.access as never, variables.submittedAccess));
-      cache.invalidateQueries({ queryKey: key });
-      // Shared execution changes write booking activity, which the parent workspace renders and does not poll for.
-      cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] });
+      if (variables.settle === "access" && value.access) setAccessForm((current) => settleCateringAccessForm(current, started.identity, value.access as never, variables.submittedAccess));
     },
     onError: (error: CateringExecutionError, variables) => {
+      const started = variables.origin;
+      // A refusal is about the originating booking too, so its cache is the one that may need re-reading...
+      if (shouldRefetchExecutionAfterError(error)) cache.invalidateQueries({ queryKey: cateringBookingExecutionKey(started.userId, started.bookingId) });
+      // ...and its message, its conflicted editor and its preserved form all belong to that booking's screen. On a
+      // different booking there is nothing to mark and nothing to say.
+      if (!settlesHere(started)) return;
       const outcome = cateringExecutionFailureNotice(error);
       setNotice({ message: outcome.message, retryable: outcome.retryable });
       // A conflicted editor is MARKED, not closed: the participant's words stay on screen, and saving is disabled
@@ -258,7 +288,6 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
       // A save refused as STALE additionally asks to be rebased: the refetch below brings the authoritative record,
       // and the reconcile effect then hands the form its fresh version while leaving the edits alone.
       if (variables.settle === "access") setAccessForm(isCateringExecutionConflict(error) ? markCateringAccessConflict : preserveCateringAccessForm);
-      if (shouldRefetchExecutionAfterError(error)) cache.invalidateQueries({ queryKey: key });
     },
   });
   const pending = mutation.isPending;
@@ -274,21 +303,21 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     if (!maySubmitCateringTimelineDraft(timelineDraft, canMutate, pending)) return;
     const attempt = prepareCateringCreate(timelineDraft, cateringTimelineCreatePayload, () => crypto.randomUUID());
     setTimelineDraft(attempt.draft);
-    mutation.mutate({ path: "/execution/timeline", method: "POST", body: attempt.body, settle: "timeline-draft", submittedTimeline: attempt.draft });
+    mutation.mutate({ origin: origin(), path: "/execution/timeline", method: "POST", body: attempt.body, settle: "timeline-draft", submittedTimeline: attempt.draft });
   };
   const submitStaff = (event: FormEvent) => {
     event.preventDefault();
     if (!maySubmitCateringStaffDraft(staffDraft, canMutate, pending)) return;
     const attempt = prepareCateringCreate(staffDraft, cateringStaffCreatePayload, () => crypto.randomUUID());
     setStaffDraft(attempt.draft);
-    mutation.mutate({ path: "/execution/staff", method: "POST", body: attempt.body, settle: "staff-draft", submittedStaff: attempt.draft });
+    mutation.mutate({ origin: origin(), path: "/execution/staff", method: "POST", body: attempt.body, settle: "staff-draft", submittedStaff: attempt.draft });
   };
   const submitEquipment = (event: FormEvent) => {
     event.preventDefault();
     if (!maySubmitCateringEquipmentDraft(equipmentDraft, canMutate, pending)) return;
     const attempt = prepareCateringCreate(equipmentDraft, cateringEquipmentCreatePayload, () => crypto.randomUUID());
     setEquipmentDraft(attempt.draft);
-    mutation.mutate({ path: "/execution/equipment", method: "POST", body: attempt.body, settle: "equipment-draft", submittedEquipment: attempt.draft });
+    mutation.mutate({ origin: origin(), path: "/execution/equipment", method: "POST", body: attempt.body, settle: "equipment-draft", submittedEquipment: attempt.draft });
   };
   const submitAccess = (event: FormEvent) => {
     event.preventDefault();
@@ -296,15 +325,15 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     // disagreement nobody has adjudicated over the other.
     const draft = accessForm.value;
     if (!draft || !maySaveCateringAccess(accessForm, canMutate, pending)) return;
-    mutation.mutate({ path: "/execution/access", method: "PUT", body: cateringAccessSavePayload(draft), settle: "access", submittedAccess: { ...draft } });
+    mutation.mutate({ origin: origin(), path: "/execution/access", method: "PUT", body: cateringAccessSavePayload(draft), settle: "access", submittedAccess: { ...draft } });
   };
   const submitEditor = (open: OpenCateringTimelineEditor) => {
     if (!maySubmitCateringTimelineEditor(open, canMutate, pending)) return;
-    mutation.mutate({ path: `/execution/timeline/${open.itemId}`, method: "PATCH", body: cateringTimelineEditPayload(open), settle: "editor", itemId: open.itemId, submittedEditor: { itemId: open.itemId, draft: { ...open.draft } } });
+    mutation.mutate({ origin: origin(), path: `/execution/timeline/${open.itemId}`, method: "PATCH", body: cateringTimelineEditPayload(open), settle: "editor", itemId: open.itemId, submittedEditor: { itemId: open.itemId, draft: { ...open.draft } } });
   };
   const moveItem = (itemId: string, direction: CateringTimelineMoveDirection) => {
     const next = moveCateringTimelineItem(timeline, itemId, direction);
-    if (next) mutation.mutate({ path: "/execution/timeline/reorder", method: "POST", body: cateringTimelineReorderPayload(next) });
+    if (next) mutation.mutate({ origin: origin(), path: "/execution/timeline/reorder", method: "POST", body: cateringTimelineReorderPayload(next) });
   };
   const reorderControlsFor = (itemId: string) => cateringTimelineReorderControls(timeline, itemId, { role, editable: canMutate, editorOpen: editor !== null, pending });
 
@@ -357,9 +386,9 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
                 : <TimelineRow item={item} provider={provider} editable={canMutate} pending={pending}
                     reorder={reorderControlsFor(item.id)}
                     onMove={(direction) => moveItem(item.id, direction)}
-                    onToggle={() => mutation.mutate({ path: `/execution/timeline/${item.id}`, method: "PATCH", body: cateringTimelineCompletionPayload(item) })}
+                    onToggle={() => mutation.mutate({ origin: origin(), path: `/execution/timeline/${item.id}`, method: "PATCH", body: cateringTimelineCompletionPayload(item) })}
                     onEdit={() => setEditor(cateringTimelineEditorFor(item, identity))}
-                    onDelete={() => { if (window.confirm(`Remove “${item.title}” from the run of show?`)) mutation.mutate({ path: `/execution/timeline/${item.id}`, method: "DELETE", body: cateringTimelineDeletePayload(item) }); }} />}
+                    onDelete={() => { if (window.confirm(`Remove “${item.title}” from the run of show?`)) mutation.mutate({ origin: origin(), path: `/execution/timeline/${item.id}`, method: "DELETE", body: cateringTimelineDeletePayload(item) }); }} />}
             </li>;
           })}</ul>}
 
@@ -398,7 +427,7 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
       {execution.staff.length === 0
         ? <p className="text-muted-foreground">No crew has been assigned yet.</p>
         : <ul className="space-y-2">{execution.staff.map((assignment) => <StaffRow key={assignment.id} assignment={assignment} editable={canMutate} pending={pending}
-            onDelete={() => { if (window.confirm(`Remove ${assignment.workerName} from this event's crew?`)) mutation.mutate({ path: `/execution/staff/${assignment.id}`, method: "DELETE", body: cateringExecutionDeletePayload(assignment) }); }} />)}</ul>}
+            onDelete={() => { if (window.confirm(`Remove ${assignment.workerName} from this event's crew?`)) mutation.mutate({ origin: origin(), path: `/execution/staff/${assignment.id}`, method: "DELETE", body: cateringExecutionDeletePayload(assignment) }); }} />)}</ul>}
       {canMutate && <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitStaff}>
         <div><Label htmlFor="crew-name">Crew member</Label>
           <Input className="min-h-11" id="crew-name" maxLength={120} value={staffDraft.workerName} onChange={(event) => setStaffDraft((current) => ({ ...current, workerName: event.target.value }))} /></div>
@@ -427,8 +456,8 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
       {execution.equipment.length === 0
         ? <p className="text-muted-foreground">{provider ? "No equipment has been recorded yet." : "Your caterer has not shared any equipment details."}</p>
         : <ul className="space-y-2">{execution.equipment.map((item) => <EquipmentRow key={item.id} item={item} provider={provider} editable={canMutate} pending={pending}
-            onStatus={(status) => mutation.mutate({ path: `/execution/equipment/${item.id}`, method: "PATCH", body: { status, expectedUpdatedAt: item.updatedAt } })}
-            onDelete={() => { if (window.confirm(`Remove “${item.name}” from this event's equipment?`)) mutation.mutate({ path: `/execution/equipment/${item.id}`, method: "DELETE", body: cateringExecutionDeletePayload(item) }); }} />)}</ul>}
+            onStatus={(status) => mutation.mutate({ origin: origin(), path: `/execution/equipment/${item.id}`, method: "PATCH", body: { status, expectedUpdatedAt: item.updatedAt } })}
+            onDelete={() => { if (window.confirm(`Remove “${item.name}” from this event's equipment?`)) mutation.mutate({ origin: origin(), path: `/execution/equipment/${item.id}`, method: "DELETE", body: cateringExecutionDeletePayload(item) }); }} />)}</ul>}
       {provider && <p className="text-sm text-muted-foreground">{equipment.providerPrivate.length} provider-only, {equipment.shared.length} shared with the customer.</p>}
       {provider && canMutate && <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitEquipment}>
         <div><Label htmlFor="equipment-name">Equipment</Label>
@@ -477,11 +506,20 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
       <p className="text-sm text-muted-foreground">These are instructions for reaching and working at the event location recorded on this booking. The address and date live on the booking itself.</p>
       {provider && canMutate && accessForm.value
         ? <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitAccess}>
-            {CATERING_ACCESS_TEXT_FIELDS.map((field) => <div key={field} className={ACCESS_WIDE.includes(field) ? "sm:col-span-2" : undefined}>
-              <Label htmlFor={`access-${field}`}>{ACCESS_LABELS[field]}</Label>
-              {ACCESS_WIDE.includes(field)
-                ? <Textarea id={`access-${field}`} maxLength={4000} value={accessForm.value![field]} onChange={(event) => setAccessForm((current) => editCateringAccessField(current, field, event.target.value))} />
-                : <Input className="min-h-11" id={`access-${field}`} type={field === "accessWindowStart" || field === "accessWindowEnd" ? "time" : "text"} value={accessForm.value![field]} onChange={(event) => setAccessForm((current) => editCateringAccessField(current, field, event.target.value))} />}
+            {/* Rendered FROM the shared field metadata: label, control kind and length limit all come from the same
+                definition the request schema is built from, so a browser constraint cannot disagree with the
+                validation it is meant to anticipate. Every textarea used to allow 4000 and every text input allowed
+                unlimited, while the schema caps most notes at 2000, the entrance at 240, a contact at 120 and a
+                phone at 40 -- so the browser accepted input the server could only ever answer with a 400. */}
+            {CATERING_ACCESS_FIELDS.map((meta) => <div key={meta.field} className={meta.control === "textarea" ? "sm:col-span-2" : undefined}>
+              <Label htmlFor={`access-${meta.field}`}>{meta.label}</Label>
+              {meta.control === "textarea"
+                ? <Textarea id={`access-${meta.field}`} maxLength={meta.maxLength} value={accessForm.value![meta.field]} onChange={(event) => setAccessForm((current) => editCateringAccessField(current, meta.field, event.target.value))} />
+                /* A time control carries no maxLength at all: it holds an HH:mm wall clock validated by a regex,
+                   and a character count would be a meaningless constraint on a time picker. */
+                : <Input className="min-h-11" id={`access-${meta.field}`} type={meta.control === "time" ? "time" : "text"}
+                    maxLength={meta.control === "time" ? undefined : meta.maxLength}
+                    value={accessForm.value![meta.field]} onChange={(event) => setAccessForm((current) => editCateringAccessField(current, meta.field, event.target.value))} />}
             </div>)}
             <div><Label htmlFor="access-contact-source">Venue contact supplied by</Label>
               <select id="access-contact-source" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={accessForm.value.venueContactSource}
@@ -502,7 +540,7 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
               <p className="font-medium">Someone else changed these fields while you were editing.</p>
               <p className="text-sm">Your other edits are already merged with theirs. Choose which value to keep for each field below — saving is disabled until you do, so nothing of theirs is overwritten by accident.</p>
               {accessForm.review.fields.map((field) => <div key={field} className="space-y-2 border-t pt-2">
-                <p className="font-medium">{ACCESS_LABELS[field] ?? field}</p>
+                <p className="font-medium">{cateringAccessFieldLabel(field)}</p>
                 <p className="break-words text-sm"><span className="text-muted-foreground">Theirs: </span>{formatAccessValue(accessForm.review!.theirs[field])}</p>
                 <p className="break-words text-sm"><span className="text-muted-foreground">Yours: </span>{formatAccessValue(accessForm.value![field])}</p>
                 <div className="flex flex-wrap gap-2">
@@ -524,6 +562,7 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
       <p className="text-sm text-muted-foreground">Operational progress only. Marking these does not change the booking status — completing the booking stays a separate action.</p>
       <ul className="space-y-2">{execution.milestones.map((milestone) => <MilestoneRow key={milestone.key} milestone={milestone} editable={canMutate} pending={pending}
         onToggle={() => mutation.mutate({
+          origin: origin(),
           path: `/execution/milestones/${milestone.key}`, method: "PUT",
           body: { completed: !milestone.completed, ...(milestone.updatedAt ? { expectedUpdatedAt: milestone.updatedAt } : {}) },
         })} />)}</ul>
@@ -541,20 +580,15 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
   </CardContent></Card>;
 }
 
-const ACCESS_LABELS: Record<string, string> = {
-  loadInEntrance: "Load-in entrance", loadingDockNotes: "Loading dock", elevatorNotes: "Elevator",
-  kitchenAccessNotes: "Kitchen access", parkingInstructions: "Parking", securityCheckInNotes: "Security / check-in",
-  accessWindowStart: "Access from (event local)", accessWindowEnd: "Access until (event local)",
-  venueContactName: "Venue contact", venueContactPhone: "Venue contact phone",
-  powerWaterNotes: "Power and water", trashRemovalNotes: "Trash and removal",
-  specialRestrictions: "Special restrictions", providerPrivateNotes: "Private provider notes",
-};
 /** One compared value, rendered readably: a boolean reads as yes/no and an empty field says so rather than showing nothing. */
 function formatAccessValue(value: string | boolean): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return value.trim() === "" ? "(empty)" : value;
 }
-const ACCESS_WIDE = ["loadingDockNotes", "elevatorNotes", "kitchenAccessNotes", "parkingInstructions", "securityCheckInNotes", "powerWaterNotes", "trashRemovalNotes", "specialRestrictions", "providerPrivateNotes"];
+/** The one label lookup, reading the shared metadata so the form, the review and the read-only list agree. */
+function cateringAccessFieldLabel(field: string): string {
+  return CATERING_ACCESS_FIELDS.find((meta) => meta.field === field)?.label ?? field;
+}
 
 /**
  * Read-only access instructions.
@@ -569,9 +603,9 @@ const ACCESS_WIDE = ["loadingDockNotes", "elevatorNotes", "kitchenAccessNotes", 
  * independent barriers stay independent.
  */
 function AccessReadOnly({ access, role }: { access: CateringBookingExecutionView["access"]; role: "provider" | "customer" }) {
-  const entries = CATERING_ACCESS_TEXT_FIELDS
-    .filter((field) => field !== "providerPrivateNotes" || role === "provider")
-    .map((field) => [ACCESS_LABELS[field], field === "providerPrivateNotes" ? access.providerPrivateNotes : (access as Record<string, unknown>)[field]] as const)
+  const entries = CATERING_ACCESS_FIELDS
+    .filter((meta) => meta.field !== "providerPrivateNotes" || role === "provider")
+    .map((meta) => [meta.label as string, (meta.field === "providerPrivateNotes" ? access.providerPrivateNotes : (access as Record<string, unknown>)[meta.field]) as unknown] as const)
     .filter((entry): entry is readonly [string, string] => typeof entry[1] === "string" && entry[1].trim() !== "");
   return <div className="space-y-3">
     <dl className="grid gap-3 sm:grid-cols-2">

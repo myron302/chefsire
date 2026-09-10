@@ -197,9 +197,13 @@ test("the whole event-day milestone board is rendered, and marking one does not 
   assert.equal(component.includes("aria-pressed={milestone.completed}"), true);
 });
 
-test("a mutation refreshes the workspace activity the shared change wrote", () => {
-  assert.equal(component.includes('cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] })'), true);
-  assert.equal(component.includes("cache.invalidateQueries({ queryKey: key })"), true);
+test("a mutation refreshes the workspace activity the shared change wrote, for the ORIGINATING booking", () => {
+  // Keyed by the booking that issued the request, not by whatever is rendered when the response lands -- so a
+  // response that outlives a navigation still refreshes the data it actually changed.
+  assert.equal(component.includes('cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", started.userId, started.bookingId] })'), true);
+  assert.equal(component.includes("cache.invalidateQueries({ queryKey: cateringBookingExecutionKey(started.userId, started.bookingId) })"), true);
+  // Nothing invalidates a render-scoped key any more.
+  assert.equal(component.includes("cache.invalidateQueries({ queryKey: key })"), false);
 });
 
 test("drafts belong to the booking on screen and do not follow the participant to another", () => {

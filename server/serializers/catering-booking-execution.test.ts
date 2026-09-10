@@ -55,8 +55,11 @@ const accessRow = {
 const NEVER_SERIALIZED = ["bookingId", "createdBy", "completedBy", "updatedBy", "clientRequestId"];
 
 test("a timeline item never carries ownership metadata or the caller's retry token, for either actor", () => {
-  const view = serializeExecutionTimelineItem(timelineRow as never);
-  for (const field of NEVER_SERIALIZED) assert.equal(field in view, false, field);
+  for (const role of ["provider", "customer"] as const) {
+    const view = serializeExecutionTimelineItem(timelineRow as never, role);
+    for (const field of NEVER_SERIALIZED) assert.equal(field in view, false, `${role}: ${field}`);
+  }
+  const view = serializeExecutionTimelineItem(timelineRow as never, "provider");
   assert.deepEqual(Object.keys(view).sort(), [
     "category", "completed", "completedAt", "createdAt", "description", "endTime", "id", "isBlocker",
     "scheduledTime", "sortOrder", "title", "updatedAt", "visibility",
@@ -64,8 +67,8 @@ test("a timeline item never carries ownership metadata or the caller's retry tok
   // Completion is exposed as the fact plus its instant, derived from the timestamp rather than trusted separately.
   assert.equal(view.completed, true);
   assert.equal(view.completedAt, NOW.toISOString());
-  assert.equal(serializeExecutionTimelineItem({ ...timelineRow, completedAt: null } as never).completed, false);
-  assert.equal(serializeExecutionTimelineItem({ ...timelineRow, completedAt: null } as never).completedAt, null);
+  assert.equal(serializeExecutionTimelineItem({ ...timelineRow, completedAt: null } as never, "provider").completed, false);
+  assert.equal(serializeExecutionTimelineItem({ ...timelineRow, completedAt: null } as never, "provider").completedAt, null);
   // The version the client sends back as its optimistic-concurrency precondition.
   assert.equal(view.updatedAt, NOW.toISOString());
 });
@@ -160,4 +163,81 @@ test("every serializer is an explicit projection rather than a spread of the row
   for (const field of ["storageKey", "createdBy:", "completedBy:", "updatedBy:", "clientRequestId:"]) {
     assert.equal(source.includes(field), false, `serializers must not emit ${field}`);
   }
+});
+
+
+/* ================================================================================================================ *
+ * P1 -- a customer must not learn where the provider-private items sit
+ * ================================================================================================================ */
+
+/** A run-of-show whose private items sit BETWEEN the shared ones, which is what makes the gaps informative. */
+const mixedTimeline = [
+  { ...timelineRow, id: "shared-1", visibility: "shared", sortOrder: 0, title: "Guests arrive" },
+  { ...timelineRow, id: "private-1", visibility: "provider_private", sortOrder: 1, title: "Crew briefing" },
+  { ...timelineRow, id: "private-2", visibility: "provider_private", sortOrder: 2, title: "Sub swap" },
+  { ...timelineRow, id: "shared-2", visibility: "shared", sortOrder: 3, title: "Service begins" },
+];
+/** What the route hands each actor: a customer's list is visibility-filtered in SQL before it reaches here. */
+const asCustomer = () => mixedTimeline.filter((row) => row.visibility === "shared").map((row) => serializeExecutionTimelineItem(row as never, "customer"));
+const asProvider = () => mixedTimeline.map((row) => serializeExecutionTimelineItem(row as never, "provider"));
+
+test("P1: a customer's timeline item carries no persisted sort position at all", () => {
+  for (const item of asCustomer()) {
+    assert.equal("sortOrder" in item, false, `${item.title} leaked a position`);
+    assert.equal(item.sortOrder, undefined);
+  }
+});
+
+test("P1: the customer payload contains nothing from which two hidden records could be inferred", () => {
+  const customer = asCustomer();
+  // Only the shared records are present.
+  assert.deepEqual(customer.map((item) => item.title), ["Guests arrive", "Service begins"]);
+  // And nothing anywhere in the serialized payload carries the persisted positions 0 and 3, or the count between.
+  const serialized = JSON.stringify(customer);
+  assert.equal(serialized.includes("sortOrder"), false);
+  assert.equal(serialized.includes("Crew briefing"), false);
+  assert.equal(serialized.includes("Sub swap"), false);
+  // Every remaining numeric field is either absent or intrinsic to the row itself -- there is no index, sequence or
+  // count derived from the mixed collection.
+  for (const item of customer) {
+    for (const [field, value] of Object.entries(item)) {
+      assert.equal(typeof value === "number", false, `${field} is a number a position could hide in`);
+    }
+  }
+});
+
+test("P1: the gap is genuinely what would have leaked -- the provider still sees 0 and 3", () => {
+  const provider = asProvider();
+  assert.deepEqual(provider.map((item) => item.sortOrder), [0, 1, 2, 3]);
+  // The two shared items the customer receives sit at 0 and 3 for the provider, so serializing that to a customer
+  // whose list holds only those two would have said "two records you cannot see are between them".
+  const sharedPositions = provider.filter((item) => item.visibility === "shared").map((item) => item.sortOrder);
+  assert.deepEqual(sharedPositions, [0, 3]);
+});
+
+test("P1: provider ordering is unchanged and still authoritative", () => {
+  const provider = asProvider();
+  // The persisted order is preserved exactly, private items included, so reordering still has real positions to
+  // work from and the reorder response still carries them.
+  assert.deepEqual(provider.map((item) => item.id), ["shared-1", "private-1", "private-2", "shared-2"]);
+  assert.deepEqual(provider.map((item) => item.sortOrder), [0, 1, 2, 3]);
+});
+
+test("P1: the customer's shared items keep their relative order, which is what the client renders from", () => {
+  // Array order survives the filter, so nothing about rendering depends on the position that was removed.
+  assert.deepEqual(asCustomer().map((item) => item.id), ["shared-1", "shared-2"]);
+  const reversedSource = [...mixedTimeline].reverse().filter((row) => row.visibility === "shared");
+  assert.deepEqual(reversedSource.map((row) => serializeExecutionTimelineItem(row as never, "customer")).map((item) => item.id), ["shared-2", "shared-1"]);
+});
+
+test("P1 audit: no other customer-visible field is derived from the mixed collection", () => {
+  // Equipment is filtered the same way and carries no position, index or sequence of any kind.
+  const equipment = serializeExecutionEquipment({ ...equipmentRow, visibility: "shared" } as never);
+  for (const field of ["sortOrder", "position", "index", "sequence", "rank"]) assert.equal(field in equipment, false, field);
+  // Access is a single row per booking, so it has no collection to leak from.
+  const access = serializeExecutionAccess(accessRow as never, "customer") as Record<string, unknown>;
+  for (const field of ["sortOrder", "position", "index", "count"]) assert.equal(field in access, false, field);
+  // And the serializer source names no count or index anywhere.
+  const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "catering-booking-execution.ts"), "utf8");
+  assert.equal(/\.length\b/.test(source.replace(/CATERING_EXECUTION_MILESTONE_KEYS/g, "")), false, "no length of a collection is serialized");
 });
