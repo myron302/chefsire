@@ -226,10 +226,21 @@ r.get("/bookings/:id/closeout", requireAuth, async (req, res, next) => { try {
     // The EXISTING Phase 2E review row for this booking's exact (customer, provider) pair, read and never written.
     db.select({ id: cateringReviews.id }).from(cateringReviews)
       .where(and(eq(cateringReviews.reviewerId, booking.customerId), eq(cateringReviews.providerId, booking.providerId))).limit(1),
-    // Only a customer needs the provider's listing state, because only a customer's payload reports eligibility.
+    // Only a customer needs the provider's listing state, because only a customer's payload reports eligibility and
+    // offers a way back to the provider's page. A provider's own payload has neither.
     provider ? Promise.resolve([]) : db.select({ enabled: users.cateringEnabled }).from(users).where(eq(users.id, booking.providerId)).limit(1),
   ]);
   const customerReviewExists = reviewRows.length > 0;
+  /**
+   * Whether this provider still has a catering listing, read from the authoritative user row.
+   *
+   * The same fact the existing Phase 2E eligibility rule already consults, used here for the second thing that
+   * depends on it: whether there is anywhere for a customer to go. A provider who has since switched their listing
+   * off answers 410 PROVIDER_UNAVAILABLE on their public page, so a rebooking link would be a control that cannot
+   * work. Always false on a provider's own request, where the listing state is not queried and no rebooking key
+   * exists to gate.
+   */
+  const providerListed = !provider && Boolean(providerRows[0]?.enabled);
   const facts = cateringCloseoutFacts({
     booking: booking as never,
     record,
@@ -264,7 +275,14 @@ r.get("/bookings/:id/closeout", requireAuth, async (req, res, next) => { try {
         }),
         // The existing public provider page and nothing else. No date, guest count, price, menu, package,
         // acceptance, booking status or payment state travels with it, because nothing travels with it at all.
-        rebookPath: cateringProviderProfilePath(booking.providerId),
+        //
+        // OFFERED ONLY WHILE THAT PAGE EXISTS. A provider who has switched their catering listing off answers 410
+        // there, so advertising the path would render a control that lands on an error -- and the truthful place
+        // to decide that is here, against the listing state already in hand, rather than in an interface guessing
+        // at it. The key is OMITTED rather than nulled, exactly as every other unavailable Phase 2K key is, so the
+        // customer payload contract is unchanged and the client's existing guard hides the action with no
+        // knowledge of why. Nothing about the completed booking is cloned, reopened or carried either way.
+        ...(providerListed ? { rebookPath: cateringProviderProfilePath(booking.providerId) } : {}),
       }),
   };
   res.json(view);

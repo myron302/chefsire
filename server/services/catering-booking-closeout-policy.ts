@@ -101,14 +101,30 @@ export function resolveCateringCloseoutItemSave(
   input: CateringCloseoutItemSaveInput,
   now: Date,
 ) {
-  if (!cateringCloseoutVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
+  // The requested RESULTING state, derived against the authoritative row before anything is judged. An absent
+  // `providerNote` means "leave it alone"; an explicit null means "clear it". Presence, not truthiness.
   const nextState = input.state;
-  // An absent `providerNote` means "leave it alone"; an explicit null means "clear it". Presence, not truthiness.
   const nextNote = "providerNote" in input ? (input.providerNote ?? null) : current?.providerNote ?? null;
   const currentState = (current?.state ?? "pending") as CateringCloseoutItemState;
+  // ALREADY SATISFIED IS DECIDED BEFORE THE PRECONDITION, and that ordering is the whole point.
+  //
+  // A state assertion that asks for what is already persisted changes nothing, so there is nothing for a stale
+  // version to be stale ABOUT. Judging the precondition first broke the exact lost-response retry this phase claims
+  // to support: the provider submits an item on version A, the server commits and advances to B, the response is
+  // lost, and the retry -- carrying the same payload and the same version A it was built with -- was refused as a
+  // conflict even though the server already held precisely the state being asked for. The same hole existed on a
+  // FIRST touch, where the retry carries no version at all and the row it created now has one.
+  //
+  // This does not weaken optimistic concurrency, because it is reached only when the request would write nothing.
+  // A request whose material values differ from the authoritative row falls through to the precondition below and
+  // still conflicts, so a materially different stale edit is never mistaken for a retry. Nothing is written, no
+  // version moves, and no activity or notification can be duplicated on this path -- the route's `unchanged`
+  // branch performs no write at all.
   if (current && currentState === nextState && (current.providerNote ?? null) === nextNote) {
     return { kind: "unchanged", item: current } as const;
   }
+  // Only now, with a request that would genuinely alter authoritative state, is the precondition enforced.
+  if (!cateringCloseoutVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
   const resolved = cateringCloseoutItemIsResolved(nextState);
   return {
     kind: "save",
@@ -130,8 +146,12 @@ export function resolveCateringCloseoutNotesSave(
   input: CateringCloseoutNotesSaveInput,
   now: Date,
 ) {
-  if (!cateringCloseoutVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
+  // Same ordering, and for the same reason: notes are a state assertion too. A retry of a save whose response was
+  // lost carries the version it was built with, which the committed first attempt has by definition already moved
+  // past -- and asking for text the server already holds writes nothing, so a stale version has nothing to be
+  // stale about. A request whose text genuinely differs falls through and still conflicts.
   if (current && (current.providerNotes ?? null) === input.providerNotes) return { kind: "unchanged" } as const;
+  if (!cateringCloseoutVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
   return { kind: "save", providerNotes: input.providerNotes, updatedAt: now } as const;
 }
 

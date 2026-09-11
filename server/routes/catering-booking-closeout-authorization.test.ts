@@ -144,7 +144,9 @@ test("a customer's payload carries no provider-only key and a provider's carries
   assert.ok(read.includes("...(provider"));
   assert.ok(read.includes("checklist: serializeCloseoutChecklist(itemRows), providerReview:"));
   assert.ok(read.includes("customerReview: serializeCustomerCloseoutReview"));
-  assert.ok(read.includes("rebookPath: cateringProviderProfilePath(booking.providerId)"));
+  // Gated on the authoritative listing state, so an unlisted provider is not advertised as rebookable. Pinned in
+  // its conditional form: the bare key would satisfy a substring check even if the guard were removed.
+  assert.ok(read.includes("...(providerListed ? { rebookPath: cateringProviderProfilePath(booking.providerId) } : {})"));
 });
 
 test("the document list filters to shared visibility in SQL for BOTH actors", () => {
