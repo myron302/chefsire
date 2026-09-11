@@ -760,6 +760,77 @@ export const cateringBookingExecutionCreateRequests = pgTable("catering_booking_
   resourceTypeCheck: check("catering_execution_create_request_type_check", sql`${t.resourceType} IN ('timeline', 'staff', 'equipment')`),
 }));
 
+/**
+ * Phase 2K: the post-event closeout record for one booking.
+ *
+ * One row per booking, keyed by the booking itself, holding the operational wrap-up that happens AFTER the Phase 2G
+ * completion action. Nothing here is a booking status and nothing here can move one: `closed_out_at` records that
+ * the provider finished the operational work, while the booking stays `completed` exactly as it was.
+ *
+ * `provider_notes` is the provider's private post-event record, and is deliberately NOT an overload of the Phase 2J
+ * access record's `provider_private_notes`. That column is about getting into and working in a venue before an
+ * event; this one is about what happened at an event that is over. Sharing one column would give two unrelated
+ * pieces of writing one concurrency version and one audit trail.
+ *
+ * Reopening is audited rather than merely toggled: the count, the instant and the actor are all persisted, so a
+ * booking that was closed out, reopened and closed out again says so.
+ */
+export const cateringBookingCloseout = pgTable("catering_booking_closeout", {
+  bookingId: varchar("booking_id").primaryKey().references(() => cateringBookings.id, { onDelete: "restrict" }),
+  providerNotes: text("provider_notes"),
+  closedOutAt: timestamp("closed_out_at", { withTimezone: true }),
+  /** Persisted for audit and never serialized to any actor: internal attribution stays internal. */
+  closedOutBy: varchar("closed_out_by").references(() => users.id, { onDelete: "restrict" }),
+  reopenCount: integer("reopen_count").default(0).notNull(),
+  lastReopenedAt: timestamp("last_reopened_at", { withTimezone: true }),
+  lastReopenedBy: varchar("last_reopened_by").references(() => users.id, { onDelete: "restrict" }),
+  updatedBy: varchar("updated_by").references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  // A closed-out booking always records who closed it, and an open one never carries a closer.
+  closedByCheck: check("catering_closeout_closed_by_check", sql`(${t.closedOutAt} IS NULL AND ${t.closedOutBy} IS NULL) OR (${t.closedOutAt} IS NOT NULL AND ${t.closedOutBy} IS NOT NULL)`),
+  reopenCountCheck: check("catering_closeout_reopen_count_check", sql`${t.reopenCount} >= 0`),
+  // The reopen audit is all-or-nothing, and a non-zero count must carry it: a booking cannot claim to have been
+  // reopened without recording when and by whom.
+  reopenAuditCheck: check("catering_closeout_reopen_audit_check", sql`(${t.reopenCount} = 0 AND ${t.lastReopenedAt} IS NULL AND ${t.lastReopenedBy} IS NULL) OR (${t.reopenCount} > 0 AND ${t.lastReopenedAt} IS NOT NULL AND ${t.lastReopenedBy} IS NOT NULL)`),
+}));
+
+/**
+ * Phase 2K: the post-event closeout checklist, provider-private in its entirety.
+ *
+ * The primary key is (booking, item key), so an item is STATE rather than an event stream: asking for the same
+ * state twice leaves one row in one state, which is what makes a retry from a phone on a venue car park harmless
+ * with no idempotency token at all -- exactly as the Phase 2J milestone table works, and for the same reason.
+ *
+ * There is deliberately NO visibility column. These rows are never customer-visible under any value, so a column
+ * would imply a setting that could disclose them; a customer's closeout payload carries no `checklist` key at all.
+ *
+ * `incident_follow_up_resolved` is one of these keys rather than a model of its own: `not_applicable` means nothing
+ * happened, `pending` means something did and is unresolved, `completed` means it was dealt with. It is operational
+ * tracking only -- no liability determination, insurance claim, customer debt, damage charge, fee or refund, none
+ * of which ChefSire has an authoritative system for.
+ */
+export const cateringBookingCloseoutItems = pgTable("catering_booking_closeout_items", {
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  itemKey: varchar("item_key", { length: 40 }).notNull(),
+  state: varchar("state", { length: 16 }).default("pending").notNull(),
+  /** Provider-private in every channel: never serialized to a customer, never in activity or a notification. */
+  providerNote: text("provider_note"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  /** Persisted for audit and never serialized: internal attribution is not exposed, to either participant. */
+  resolvedBy: varchar("resolved_by").references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  pk: primaryKey({ name: "catering_booking_closeout_items_pkey", columns: [t.bookingId, t.itemKey] }),
+  keyCheck: check("catering_closeout_item_key_check", sql`${t.itemKey} IN ('equipment_return_confirmed', 'final_documents_delivered', 'customer_follow_up_completed', 'internal_event_notes_completed', 'review_request_handled', 'incident_follow_up_resolved', 'final_admin_review_completed')`),
+  stateCheck: check("catering_closeout_item_state_check", sql`${t.state} IN ('pending', 'completed', 'not_applicable')`),
+  // A resolved item always records when and by whom; a pending one never carries either. This is the invariant the
+  // serializer's `resolvedAt` depends on, so no write path can leave a row it would misreport.
+  resolvedCheck: check("catering_closeout_item_resolved_check", sql`(${t.state} = 'pending' AND ${t.resolvedAt} IS NULL AND ${t.resolvedBy} IS NULL) OR (${t.state} <> 'pending' AND ${t.resolvedAt} IS NOT NULL AND ${t.resolvedBy} IS NOT NULL)`),
+}));
+
 export const cateringReviews = pgTable("catering_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),

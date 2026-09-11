@@ -41,6 +41,14 @@ export const CATERING_BOOKING_ACTIVITY_EVENT_TYPES = [
   "shared_equipment_status_changed",
   "execution_access_updated",
   "provider_execution_milestone_completed",
+  // Phase 2K closeout events. Both are written with 'shared' visibility, because both are genuinely customer-visible
+  // history: a customer who was told their caterer had finished wrapping up must also be told if that was undone,
+  // or their own closeout view would silently contradict the feed above it. Nothing else in Phase 2K writes
+  // activity at all -- checklist churn, provider-private notes and incident follow-up are internal operational work
+  // and would flood a shared feed with movement a customer cannot interpret, while a final document arriving is
+  // already recorded by the Phase 2I 'shared_file_uploaded' event and must not be recorded a second time.
+  "booking_closed_out",
+  "booking_closeout_reopened",
 ] as const;
 
 export type CateringBookingActivityEventType = typeof CATERING_BOOKING_ACTIVITY_EVENT_TYPES[number];
