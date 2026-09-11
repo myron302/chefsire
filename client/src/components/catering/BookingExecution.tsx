@@ -27,7 +27,7 @@ import {
   type CateringTimelineCategory,
 } from "@shared/catering-booking-execution";
 import { cateringWorkspacePollInterval, effectiveCateringEditable } from "@shared/catering-booking-operations";
-import { CATERING_ACCESS_FIELDS } from "@shared/catering-booking-execution";
+import { CATERING_ACCESS_FIELDS, CATERING_EQUIPMENT_SCHEDULE_MESSAGE } from "@shared/catering-booking-execution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,6 +46,7 @@ import {
   cateringAccessDraftFrom,
   cateringAccessSavePayload,
   cateringEquipmentCreatePayload,
+  cateringEquipmentScheduleIsValid,
   cateringExecutionDeletePayload,
   cateringExecutionFailureNotice,
   cateringExecutionVisibilityChoices,
@@ -544,6 +545,9 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
           <span className="text-sm">This equipment is blocking the event</span>
         </label>
         {!cateringEquipmentQuantityIsValid(equipmentDraft.quantity) && <p className="text-sm text-destructive sm:col-span-2" role="alert">Quantity must be a whole number between 1 and 9999.</p>}
+        {/* The same wording the server answers with, from the same constant, so the two can never disagree. The
+            draft is untouched either way: the provider corrects the dates in place rather than retyping the row. */}
+        {!cateringEquipmentScheduleIsValid(equipmentDraft) && <p className="text-sm text-destructive sm:col-span-2" role="alert">{CATERING_EQUIPMENT_SCHEDULE_MESSAGE}</p>}
         <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySubmitCateringEquipmentDraft(equipmentDraft, canMutate, pending)}>Add equipment</Button>
       </form>}
     </section>

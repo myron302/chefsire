@@ -119,7 +119,13 @@ CREATE TABLE IF NOT EXISTS catering_booking_equipment (
   CONSTRAINT catering_execution_equipment_quantity_check CHECK (quantity >= 1 AND quantity <= 9999),
   CONSTRAINT catering_execution_equipment_pickup_time_check CHECK (pickup_time IS NULL OR pickup_time ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'),
   CONSTRAINT catering_execution_equipment_return_time_check CHECK (return_time IS NULL OR return_time ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'),
-  CONSTRAINT catering_execution_equipment_shared_era_check CHECK ((visibility = 'shared' AND shared_at IS NOT NULL) OR (visibility <> 'shared' AND shared_at IS NULL))
+  CONSTRAINT catering_execution_equipment_shared_era_check CHECK ((visibility = 'shared' AND shared_at IS NOT NULL) OR (visibility <> 'shared' AND shared_at IS NULL)),
+  -- A rental's two endpoints are a calendar date PLUS an event-local clock, so its chronology spans both columns on
+  -- each side and the per-column format checks above cannot see it. The same rule the contract's
+  -- cateringEquipmentScheduleIsOrdered states and every write path validates against the merged row: an incomplete
+  -- schedule is allowed, equality is allowed at both levels, and only a return that genuinely precedes its pickup is
+  -- refused. Dates are ISO and clocks are 24-hour, so comparing them as text IS comparing them chronologically.
+  CONSTRAINT catering_execution_equipment_schedule_check CHECK (pickup_date IS NULL OR return_date IS NULL OR return_date > pickup_date OR (return_date = pickup_date AND (pickup_time IS NULL OR return_time IS NULL OR return_time >= pickup_time)))
 );
 CREATE INDEX IF NOT EXISTS catering_execution_equipment_booking_idx ON catering_booking_equipment(booking_id, created_at, id);
 -- A customer's list is ordered by when each item entered THEIR view, so this index carries shared_at: ordering a

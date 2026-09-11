@@ -404,6 +404,10 @@ const MULTI_COLUMN_INVARIANTS: Record<string, string> = {
   catering_execution_timeline_time_range_check: "merged-state validation",
   // Finding 3: validated on the merged state by resolveCateringAccessSave.
   catering_execution_access_window_range_check: "merged-state validation",
+  // The rental schedule. Validated on the merged state by resolveCateringEquipmentPatch, and by the create schema
+  // for a payload that carries both endpoints at once. It is the one range in this phase that spans FOUR columns --
+  // a date and a clock on each side -- which is why the simple two-clock comparison could not see it.
+  catering_execution_equipment_schedule_check: "merged-state validation",
   // Already validated on the merged state before this change, by resolveCateringStaffPatch.
   catering_execution_staff_time_range_check: "merged-state validation",
   catering_execution_staff_custom_role_check: "merged-state validation",
@@ -439,20 +443,20 @@ test("every multi-column CHECK in this phase is accounted for by the audit", () 
   assert.deepEqual(found.sort(), Object.keys(MULTI_COLUMN_INVARIANTS).sort());
 });
 
-test("equipment has no cross-field invariant, so its partial updates cannot violate one", () => {
+test("equipment's cross-field invariants are the rental schedule and the shared era, and nothing else", () => {
   const migration = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "migrations", "20260906_catering_booking_execution.sql"), "utf8");
   const block = migration.slice(migration.indexOf("CREATE TABLE IF NOT EXISTS catering_booking_equipment ("));
   const body = block.slice(0, block.indexOf("\n);"));
-  // The pickup and return columns are each format-checked ALONE; there is deliberately no ordering rule between
-  // them, because a rental collected the day before and returned the day after is a real shape and this phase does
-  // not invent a policy about it. So an equipment PATCH has no merged invariant to validate -- and if one is ever
-  // added, the audit test above fails until the merge validation is added with it.
-  assert.equal(/pickup_(date|time)[^\n]*return_|return_[^\n]*pickup_/.test(body), false);
-  // The one cross-column rule it does carry pairs `visibility` with `shared_at`, and that pair is derived rather
-  // than submitted: no equipment request field names `shared_at`, so a partial update cannot break it.
+  // The per-column format checks are still exactly that -- each clock validated ALONE -- which is precisely why
+  // they could not see a return that precedes its pickup, and why the schedule check has to exist beside them.
+  assert.equal(body.includes("catering_execution_equipment_pickup_time_check CHECK (pickup_time IS NULL OR pickup_time ~"), true);
+  assert.equal(body.includes("catering_execution_equipment_return_time_check CHECK (return_time IS NULL OR return_time ~"), true);
+  // The chronology invariant, spanning a date AND a clock on each side -- which is why it needed its own rule
+  // rather than the simple two-clock comparison the other three ranges in this phase use.
+  assert.equal(body.includes("catering_execution_equipment_schedule_check"), true);
+  // And the shared era, whose pair is DERIVED rather than submitted: no equipment request field names `shared_at`,
+  // so a partial update cannot break it.
   assert.equal(body.includes("catering_execution_equipment_shared_era_check"), true);
-  assert.equal(body.includes("catering_execution_equipment_pickup_time_check"), true);
-  assert.equal(body.includes("catering_execution_equipment_return_time_check"), true);
 });
 
 /* ================================================================================================================ *

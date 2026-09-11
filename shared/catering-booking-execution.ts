@@ -137,6 +137,50 @@ export function cateringTimeRangeIsOrdered(start: string | null | undefined, end
 export const CATERING_TIMELINE_TIME_RANGE_MESSAGE = "Timeline end time must not precede its start time";
 export const CATERING_STAFF_TIME_RANGE_MESSAGE = "Crew departure time must not precede arrival time";
 export const CATERING_ACCESS_WINDOW_MESSAGE = "The access window end must not precede its start";
+export const CATERING_EQUIPMENT_SCHEDULE_MESSAGE = "Equipment return must not precede its pickup";
+
+/** The two endpoints of a rental, as a whole. A partial update is judged on this shape after it has been merged. */
+export type CateringEquipmentSchedule = {
+  pickupDate?: string | null; pickupTime?: string | null;
+  returnDate?: string | null; returnTime?: string | null;
+};
+/**
+ * Whether a rental's two endpoints are in a possible order.
+ *
+ * The other three ranges in this phase compare two clocks on one day, so `cateringTimeRangeIsOrdered` is enough for
+ * them. A rental does not work that way: it can be collected the day before the event and returned the day after,
+ * so each endpoint is a calendar date PLUS an event-local clock, and the comparison has to span both. Checking each
+ * component alone -- which is all the field schemas can do -- accepted a pickup on the 10th returning on the 9th,
+ * and a same-day pickup at 18:00 returning at 10:00.
+ *
+ * It lives here, in the contract, for the same reason the simple range does: the create schema, the merged-state
+ * validation each PATCH runs against the authoritative row, the client form and the database CHECK all have to
+ * agree, and restating the comparison in each of them is how they come to disagree.
+ *
+ * INCOMPLETE SCHEDULES ARE VALID, and nothing is inferred to make them otherwise:
+ *
+ *  - either date absent  -> no comparison at all, even when both clocks are present. A clock without a date names
+ *    no instant, and assuming the two share a day would be inventing the very fact that is missing.
+ *  - dates present and different -> the dates decide, and the clocks are irrelevant.
+ *  - same date, either clock absent -> ordered. A pickup time with no return time says nothing about the return.
+ *
+ * EQUALITY IS VALID at both levels -- a return on the pickup date, and a return at the pickup time -- exactly as
+ * every other range in this phase treats it. Nothing in the product requires a rental to last a measurable length
+ * of time, and a same-instant collection and return is a real, if unusual, correction to record.
+ *
+ * Dates are ISO `YYYY-MM-DD` and clocks are 24-hour `HH:mm`, so lexical comparison IS chronological comparison for
+ * both -- which is also why the database CHECK can express the identical rule without parsing anything.
+ */
+export function cateringEquipmentScheduleIsOrdered(schedule: CateringEquipmentSchedule): boolean {
+  const { pickupDate, pickupTime, returnDate, returnTime } = schedule;
+  if (pickupDate == null || returnDate == null) return true;
+  if (returnDate !== pickupDate) return returnDate > pickupDate;
+  return pickupTime == null || returnTime == null || returnTime >= pickupTime;
+}
+/** Which endpoint a rejection names: the clock when the dates agree, the date otherwise. */
+export function cateringEquipmentScheduleField(schedule: CateringEquipmentSchedule): "returnDate" | "returnTime" {
+  return schedule.pickupDate != null && schedule.pickupDate === schedule.returnDate ? "returnTime" : "returnDate";
+}
 
 const optionalText = (maximum: number) => z.string().trim().max(maximum).nullable().optional();
 /** Event-local 24-hour wall clock, exactly as Phase 2H stores arrival and service times. Never a device timezone. */
@@ -262,15 +306,26 @@ const equipmentShape = {
   visibility: z.enum(CATERING_EXECUTION_VISIBILITIES),
   isBlocker: z.boolean(),
 };
-export const cateringEquipmentCreateSchema = z.object({
+/**
+ * The whole submitted schedule, checked before anything is persisted.
+ *
+ * A create carries both endpoints, so the refusal happens here -- during parsing, before the transaction opens. No
+ * row is written, no activity, no notification, and the create retry token is not consumed, because nothing
+ * succeeded for it to be a retry OF. Correcting the payload and sending it again creates exactly once.
+ */
+const refineEquipmentSchedule = <T extends z.ZodTypeAny>(schema: T) => schema.superRefine((value: CateringEquipmentSchedule, ctx: z.RefinementCtx) => {
+  if (cateringEquipmentScheduleIsOrdered(value)) return;
+  ctx.addIssue({ code: z.ZodIssueCode.custom, message: CATERING_EQUIPMENT_SCHEDULE_MESSAGE, path: [cateringEquipmentScheduleField(value)] });
+});
+export const cateringEquipmentCreateSchema = refineEquipmentSchedule(z.object({
   ...equipmentShape,
   quantity: equipmentShape.quantity.default(1),
   status: z.enum(CATERING_EQUIPMENT_STATUSES).default("planned"),
   visibility: equipmentShape.visibility.default("provider_private"),
   isBlocker: equipmentShape.isBlocker.default(false),
   clientRequestId,
-}).strict();
-export const cateringEquipmentUpdateSchema = z.object({
+}).strict());
+const cateringEquipmentUpdateBodySchema = z.object({
   name: equipmentShape.name.optional(),
   quantity: equipmentShape.quantity.optional(),
   sourceType: equipmentShape.sourceType.optional(),
@@ -285,6 +340,12 @@ export const cateringEquipmentUpdateSchema = z.object({
   status: z.enum(CATERING_EQUIPMENT_STATUSES).optional(),
   expectedUpdatedAt: cateringExecutionVersionSchema,
 }).strict().refine((value) => Object.keys(value).some((key) => key !== "expectedUpdatedAt"), "At least one equipment field is required");
+/**
+ * A PATCH carrying BOTH endpoints is refused here too -- but this is only ever a shortcut, never the guarantee.
+ * A body naming one endpoint is individually valid and can still merge into an impossible schedule, so the
+ * authoritative check is the merged-state one the resolver runs against the locked row.
+ */
+export const cateringEquipmentUpdateSchema = refineEquipmentSchedule(cateringEquipmentUpdateBodySchema);
 export const cateringEquipmentDeleteSchema = z.object({ expectedUpdatedAt: cateringExecutionVersionSchema }).strict();
 
 /* ------------------------------------------------------------------------------------------------------------- *

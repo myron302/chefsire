@@ -52,6 +52,7 @@ import {
   CATERING_EXECUTION_READ_ONLY_REFUSAL,
   CATERING_EXECUTION_SET_CHANGED_REFUSAL,
   CATERING_ACCESS_SAVE_REFUSALS,
+  CATERING_EQUIPMENT_PATCH_REFUSALS,
   CATERING_STAFF_PATCH_REFUSALS,
   CATERING_TIMELINE_PATCH_REFUSALS,
   cateringExecutionActivityVisibility,
@@ -661,6 +662,9 @@ r.patch("/bookings/:id/execution/equipment/:equipmentId", requireAuth, async (re
       updatedAt: row.updatedAt,
     }, input, new Date());
     if (outcome.kind === "conflict") return { kind: "conflict" } as const;
+    // Refused against the authoritative locked row, so the impossible merged schedule never reaches the UPDATE and
+    // the database CHECK never has to be the one to say no.
+    if (outcome.kind === "invalid_schedule") return { kind: "invalid_schedule" } as const;
     if (outcome.kind === "unchanged") return { kind: "updated", equipment: row } as const;
     const [updated] = await tx.update(cateringBookingEquipment)
       .set({ ...outcome.next, sharedAt: nextCateringSharedAt(row, outcome.next.visibility, outcome.updatedAt), updatedAt: outcome.updatedAt })
@@ -673,6 +677,7 @@ r.patch("/bookings/:id/execution/equipment/:equipmentId", requireAuth, async (re
   });
   if (result.kind === "not_found") return refuse(res, CATERING_EXECUTION_NOT_FOUND_REFUSAL);
   if (result.kind === "conflict") return refuse(res, CATERING_EXECUTION_CONFLICT_REFUSAL);
+  if (result.kind === "invalid_schedule") return res.status(400).json({ message: CATERING_EQUIPMENT_PATCH_REFUSALS.invalid_schedule });
   if (result.kind === "read_only") return readOnlyRace(res, "equipment record");
   res.json({ equipment: serializeExecutionEquipment(result.equipment, "provider") });
 } catch (error) { invalid(error, res, next); } });

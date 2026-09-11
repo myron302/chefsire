@@ -16,6 +16,8 @@ import {
   cateringDraftIsUnchanged,
   cateringEquipmentCreatePayload,
   cateringEquipmentIsBlocking,
+  cateringEquipmentScheduleIsValid,
+  maySubmitCateringEquipmentDraft,
   cateringMaterialFingerprint,
   cateringMaterialPayload,
   cateringStaffCreatePayload,
@@ -1106,4 +1108,69 @@ test("P2: the component raises the consumed notice, and only for that response",
   // phantom row: the created record is read back from the authoritative query like everything else.
   assert.equal(/set(Timeline|Staff|Equipment)[A-Za-z]*\(\[/.test(component), false);
   assert.equal(/value\.(item|assignment|equipment) as [A-Za-z]+View/.test(component), false);
+});
+
+
+/* ================================================================================================================ *
+ * P2 -- an impossible rental schedule is caught before the request is sent, and the draft survives
+ * ================================================================================================================ */
+
+/**
+ * The server is authoritative; this only spares the provider a round trip and a refusal they can see coming. It
+ * reads the SAME contract rule the schema, the resolver and the database CHECK read, so the form cannot come to
+ * disagree with what the server would say.
+ */
+const rental = (over: Partial<CateringEquipmentDraft> = {}): CateringEquipmentDraft => ({
+  ...EMPTY_CATERING_EQUIPMENT_DRAFT, name: "Chafer", ...over,
+});
+
+test("P2: the form recognises an impossible schedule, and an incomplete one as fine", () => {
+  assert.equal(cateringEquipmentScheduleIsValid(rental({ pickupDate: "2026-09-10", returnDate: "2026-09-09" })), false);
+  assert.equal(cateringEquipmentScheduleIsValid(rental({ pickupDate: "2026-09-10", pickupTime: "18:00", returnDate: "2026-09-10", returnTime: "10:00" })), false);
+  assert.equal(cateringEquipmentScheduleIsValid(rental({ pickupDate: "2026-09-10", returnDate: "2026-09-12" })), true);
+  assert.equal(cateringEquipmentScheduleIsValid(rental({ pickupDate: "2026-09-10", pickupTime: "18:00", returnDate: "2026-09-10", returnTime: "18:00" })), true, "equality");
+  // Empty inputs are "not set", exactly as the payload builder treats them -- not an empty string to compare.
+  assert.equal(cateringEquipmentScheduleIsValid(rental()), true);
+  assert.equal(cateringEquipmentScheduleIsValid(rental({ pickupDate: "2026-09-10" })), true);
+  assert.equal(cateringEquipmentScheduleIsValid(rental({ returnDate: "2026-09-09" })), true);
+  assert.equal(cateringEquipmentScheduleIsValid(rental({ pickupDate: "2026-09-10", pickupTime: "18:00", returnDate: "2026-09-10" })), true, "one clock missing");
+  assert.equal(cateringEquipmentScheduleIsValid(rental({ pickupTime: "18:00", returnTime: "10:00" })), true, "clocks with no dates");
+});
+
+test("P2: an impossible schedule blocks submission without touching what was typed", () => {
+  const impossible = rental({ pickupDate: "2026-09-10", returnDate: "2026-09-09", notes: "From the depot" });
+  assert.equal(maySubmitCateringEquipmentDraft(impossible, true, false), false);
+  // Nothing clears, resets or rewrites the draft: the provider corrects the date in place. The guard is a pure
+  // predicate over the draft, so it cannot be the thing that loses their input.
+  assert.equal(maySubmitCateringEquipmentDraft(rental({ pickupDate: "2026-09-10", returnDate: "2026-09-12" }), true, false), true);
+  // The other submission rules are untouched, so this neither loosened nor duplicated them.
+  assert.equal(maySubmitCateringEquipmentDraft(rental({ name: "  " }), true, false), false, "still needs a name");
+  assert.equal(maySubmitCateringEquipmentDraft(rental({ quantity: "0" }), true, false), false, "still bounds quantity");
+  assert.equal(maySubmitCateringEquipmentDraft(rental(), false, false), false, "still closed on a terminal booking");
+  assert.equal(maySubmitCateringEquipmentDraft(rental(), true, true), false, "still blocked while a request is in flight");
+});
+
+test("P2: the form's message is the server's message, from the same constant", () => {
+  assert.equal(component.includes("{!cateringEquipmentScheduleIsValid(equipmentDraft) && <p className=\"text-sm text-destructive sm:col-span-2\" role=\"alert\">{CATERING_EQUIPMENT_SCHEDULE_MESSAGE}</p>}"), true);
+  // No second wording is typed into the markup, so the form and the refusal can never disagree.
+  assert.equal(component.includes("must not precede"), false, "the wording is imported, not written here");
+  // And the guard reads the shared rule rather than restating a comparison of its own.
+  const state = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "catering-booking-execution-state.ts"), "utf8");
+  const guard = state.slice(state.indexOf("export function cateringEquipmentScheduleIsValid"), state.indexOf("export function maySubmitCateringEquipmentDraft"));
+  assert.equal(guard.includes("cateringEquipmentScheduleIsOrdered({"), true);
+  assert.equal(/[<>]=?/.test(guard.replace(/=>/g, "")), false, "no comparison is restated here");
+});
+
+test("P2: a server refusal still preserves the draft, so client validation is a convenience and not the guarantee", () => {
+  // The form stays editable and the draft is preserved on any failure -- the existing behaviour, re-checked against
+  // the new refusal. A schedule the client somehow let through comes back as a 400 and the values are still there.
+  const submitted = prepareCateringCreate(rental({ pickupDate: "2026-09-10", returnDate: "2026-09-09" }), cateringEquipmentCreatePayload, () => "token-1");
+  assert.equal(submitted.body.returnDate, "2026-09-09", "the payload is what was typed");
+  // A failed create settles nothing: the draft, and its still-unspent token, are exactly as they were.
+  assert.deepEqual(submitted.draft.requestId, "token-1");
+  assert.equal(cateringDraftIsUnchanged(submitted.draft, submitted.draft), true);
+  // Correcting the date keeps the same token, because the material payload binding only mints a new one on a
+  // material change -- and this IS a material change, so it mints one.
+  const corrected = prepareCateringCreate({ ...submitted.draft, returnDate: "2026-09-12" }, cateringEquipmentCreatePayload, () => "token-2");
+  assert.equal(corrected.draft.requestId, "token-2");
 });

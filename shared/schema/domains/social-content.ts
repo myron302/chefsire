@@ -667,6 +667,10 @@ export const cateringBookingEquipment = pgTable("catering_booking_equipment", {
   pickupTimeCheck: check("catering_execution_equipment_pickup_time_check", sql`${t.pickupTime} IS NULL OR ${t.pickupTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
   returnTimeCheck: check("catering_execution_equipment_return_time_check", sql`${t.returnTime} IS NULL OR ${t.returnTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
   sharedEraCheck: check("catering_execution_equipment_shared_era_check", sql`(${t.visibility} = 'shared' AND ${t.sharedAt} IS NOT NULL) OR (${t.visibility} <> 'shared' AND ${t.sharedAt} IS NULL)`),
+  // A rental's two endpoints are a date PLUS a clock, so the chronology spans both columns on each side. The same
+  // rule as `cateringEquipmentScheduleIsOrdered`: an incomplete schedule is allowed, equality is allowed, and only
+  // a return that genuinely precedes its pickup is refused.
+  scheduleCheck: check("catering_execution_equipment_schedule_check", sql`${t.pickupDate} IS NULL OR ${t.returnDate} IS NULL OR ${t.returnDate} > ${t.pickupDate} OR (${t.returnDate} = ${t.pickupDate} AND (${t.pickupTime} IS NULL OR ${t.returnTime} IS NULL OR ${t.returnTime} >= ${t.pickupTime}))`),
 }));
 
 /**

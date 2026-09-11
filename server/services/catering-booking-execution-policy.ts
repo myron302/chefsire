@@ -2,7 +2,7 @@ import type { CateringBookingStatus } from "@shared/catering-bookings";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
 import {
   CATERING_ACCESS_SHARED_FIELDS,
-  cateringAccessInstructionsRecorded,
+  CATERING_EQUIPMENT_SCHEDULE_MESSAGE,
   CATERING_EXECUTION_EQUIPMENT_LIMIT,
   CATERING_EXECUTION_NOT_FOUND_CODE,
   CATERING_EXECUTION_NOT_FOUND_MESSAGE,
@@ -16,8 +16,10 @@ import {
   CATERING_ACCESS_WINDOW_MESSAGE,
   CATERING_STAFF_TIME_RANGE_MESSAGE,
   CATERING_TIMELINE_TIME_RANGE_MESSAGE,
+  cateringAccessInstructionsRecorded,
   cateringEquipmentIsBlocking,
   cateringEquipmentIsUnconfirmed,
+  cateringEquipmentScheduleIsOrdered,
   cateringTimelineItemIsBlocking,
   cateringExecutionActivityVisibility,
   cateringExecutionVisibleTo,
@@ -375,6 +377,9 @@ export const CATERING_TIMELINE_PATCH_REFUSALS: Record<"invalid_time_range", stri
 export const CATERING_ACCESS_SAVE_REFUSALS: Record<"invalid_time_range", string> = {
   invalid_time_range: CATERING_ACCESS_WINDOW_MESSAGE,
 };
+export const CATERING_EQUIPMENT_PATCH_REFUSALS: Record<"invalid_schedule", string> = {
+  invalid_schedule: CATERING_EQUIPMENT_SCHEDULE_MESSAGE,
+};
 
 /* ------------------------------------------------------------------------------------------------------------- *
  * Equipment
@@ -423,9 +428,23 @@ export function cateringEquipmentActivityFor(current: CateringEquipmentPersisted
   if (!wasShared) return { eventType: "shared_equipment_added", name: next.name };
   return changed.includes("status") ? { eventType: "shared_equipment_status_changed", name: next.name } : null;
 }
-/** Same ordering rule again: a status tap that already landed is a no-op retry, not a conflict. */
+/**
+ * Same ordering as every other Phase 2J patch: merge, validate the MERGED state, decide whether anything would
+ * actually change, and only then consult the version precondition.
+ *
+ * The merged-state check is the one that matters here. Each field a PATCH carries is individually valid -- the
+ * schema only ever sees the side of the schedule the request names -- so moving the return of a 10th-to-12th rental
+ * to the 9th, or the pickup of a same-day 18:00-20:00 rental to 21:00, passed validation and merged into an
+ * impossible schedule. It is a client validation failure and is answered as one, decided against the authoritative
+ * locked row before anything is written, with the database CHECK left as the final backstop.
+ *
+ * Validation precedes the version check for the same reason it does on the run-of-show: an impossible schedule can
+ * never be made possible by reloading, so telling the participant to reload would be a lie, while an exact retry
+ * that changes nothing must resolve as unchanged rather than conflicting on the version its own success moved.
+ */
 export function resolveCateringEquipmentPatch(current: CateringEquipmentPersistedState & { updatedAt: Date }, input: Partial<CateringEquipmentPersistedState> & { expectedUpdatedAt: string }, now: Date) {
   const next = nextCateringEquipmentState(current, input);
+  if (!cateringEquipmentScheduleIsOrdered(next)) return { kind: "invalid_schedule" } as const;
   const changed = cateringEquipmentPersistedChanges(current, next);
   if (changed.length === 0) return { kind: "unchanged" } as const;
   if (!cateringExecutionVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;

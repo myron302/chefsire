@@ -5,6 +5,7 @@ import {
   CATERING_EXECUTION_VERSION_CONFLICT_CODE,
   CATERING_WORKSPACE_READ_ONLY_CODE,
   cateringEquipmentIsBlocking,
+  cateringEquipmentScheduleIsOrdered,
   cateringTimelineItemIsBlocking,
   type CateringEquipmentSource,
   type CateringEquipmentStatus,
@@ -276,8 +277,23 @@ export function cateringEquipmentQuantityIsValid(quantity: string): boolean {
   const parsed = Number(quantity);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 9999;
 }
+/**
+ * Whether the draft's rental schedule is possible, judged by the SHARED contract rule rather than by a second
+ * comparison written here.
+ *
+ * Empty inputs are "not set", which is what the payload builder turns them into, so an incomplete schedule reads as
+ * incomplete rather than as a comparison against an empty string. The server remains authoritative -- this only
+ * spares the provider a round trip and a refusal they can see coming.
+ */
+export function cateringEquipmentScheduleIsValid(draft: CateringEquipmentDraft): boolean {
+  return cateringEquipmentScheduleIsOrdered({
+    pickupDate: optionalText(draft.pickupDate), pickupTime: optionalText(draft.pickupTime),
+    returnDate: optionalText(draft.returnDate), returnTime: optionalText(draft.returnTime),
+  });
+}
 export function maySubmitCateringEquipmentDraft(draft: CateringEquipmentDraft, editable: boolean, pending: boolean): boolean {
-  return editable && !pending && draft.name.trim().length > 0 && cateringEquipmentQuantityIsValid(draft.quantity);
+  return editable && !pending && draft.name.trim().length > 0
+    && cateringEquipmentQuantityIsValid(draft.quantity) && cateringEquipmentScheduleIsValid(draft);
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
