@@ -27,6 +27,20 @@ export const CATERING_BOOKING_ACTIVITY_EVENT_TYPES = [
   "shared_file_removed",
   "provider_file_uploaded",
   "provider_file_removed",
+  // Phase 2J execution events. Every "execution_*" and "shared_equipment_*" event below is written ONLY for a
+  // shared-visibility execution record, so it is customer-visible history by construction; a provider-private
+  // timeline item, staffing assignment or private equipment record writes no activity row at all, which is why
+  // there is no private counterpart for most of them. The single private event is the milestone one: milestone
+  // state is provider-only operational progress, it is bounded by the eleven-key allowlist, and it is recorded
+  // with `provider` visibility so a customer's activity feed never contains it.
+  "execution_timeline_added",
+  "execution_timeline_updated",
+  "execution_timeline_completed",
+  "execution_timeline_removed",
+  "shared_equipment_added",
+  "shared_equipment_status_changed",
+  "execution_access_updated",
+  "provider_execution_milestone_completed",
 ] as const;
 
 export type CateringBookingActivityEventType = typeof CATERING_BOOKING_ACTIVITY_EVENT_TYPES[number];

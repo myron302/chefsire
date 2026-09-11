@@ -87,6 +87,7 @@ import cateringBookingsRouter from "./catering-bookings";
 import cateringBookingWorkspaceRouter from "./catering-booking-workspace";
 import cateringBookingCommunicationRouter from "./catering-booking-communication";
 import cateringBookingFilesRouter from "./catering-booking-files";
+import cateringBookingExecutionRouter from "./catering-booking-execution";
 
 // Recipe imports (Paprika / AnyList / Plan to Eat / URL import)
 import importPaprikaRouter from "./import-paprika";
@@ -213,6 +214,7 @@ r.use("/catering", cateringBookingsRouter);
 r.use("/catering", cateringBookingWorkspaceRouter);
 r.use("/catering", cateringBookingCommunicationRouter);
 r.use("/catering", cateringBookingFilesRouter);
+r.use("/catering", cateringBookingExecutionRouter);
 r.use("/catering", cateringRouter);
 
 // Wedding Planning — subscription management (must come before other /wedding mounts so routes resolve)

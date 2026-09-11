@@ -17,7 +17,13 @@ import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES as CONTRACT_EVENTS } from "./cate
  * suite, which is why that comparison is against the migration's text rather than against a real database.
  */
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const migration = fs.readFileSync(path.join(repoRoot, "server", "migrations", "20260902_catering_booking_communication_files.sql"), "utf8");
+/**
+ * The Phase 2I migration, which introduced the four file events, and the Phase 2J one, which is now the LAST
+ * migration to redefine the constraint and therefore the one whose clause a fresh database ends up with. Both are
+ * checked: 2I must still carry its own events, and 2J must carry the complete allowlist.
+ */
+const communicationMigration = fs.readFileSync(path.join(repoRoot, "server", "migrations", "20260902_catering_booking_communication_files.sql"), "utf8");
+const migration = fs.readFileSync(path.join(repoRoot, "server", "migrations", "20260906_catering_booking_execution.sql"), "utf8");
 const schema = fs.readFileSync(path.join(repoRoot, "shared", "schema", "domains", "social-content.ts"), "utf8");
 
 /** The event values inside a `... IN ('a', 'b') ...` clause, in order. */
@@ -27,13 +33,37 @@ function eventsInClause(source: string, from: number): string[] {
   return source.slice(open + 1, close).split(",").map((value) => value.trim().replace(/^'|'$/g, "")).filter((value) => value !== "");
 }
 
-test("the canonical allowlist is exactly the thirteen Phase 2I events, in order and with no extras", () => {
+test("the canonical allowlist is exactly the twenty-one events through Phase 2J, in order and with no extras", () => {
   assert.deepEqual([...CATERING_BOOKING_ACTIVITY_EVENT_TYPES], [
     "booking_offered", "customer_confirmed", "booking_cancelled", "booking_completed", "details_updated",
     "shared_requirement_added", "shared_requirement_updated", "shared_requirement_completed", "shared_requirement_deleted",
     "shared_file_uploaded", "shared_file_removed", "provider_file_uploaded", "provider_file_removed",
+    "execution_timeline_added", "execution_timeline_updated", "execution_timeline_completed", "execution_timeline_removed",
+    "shared_equipment_added", "shared_equipment_status_changed", "execution_access_updated", "provider_execution_milestone_completed",
   ]);
   assert.equal(new Set(CATERING_BOOKING_ACTIVITY_EVENT_TYPES).size, CATERING_BOOKING_ACTIVITY_EVENT_TYPES.length);
+});
+
+test("Phase 2J widened the allowlist without removing a single earlier event", () => {
+  for (const event of [
+    "booking_offered", "customer_confirmed", "booking_cancelled", "booking_completed", "details_updated",
+    "shared_requirement_added", "shared_requirement_updated", "shared_requirement_completed", "shared_requirement_deleted",
+    "shared_file_uploaded", "shared_file_removed", "provider_file_uploaded", "provider_file_removed",
+  ]) {
+    assert.equal((CATERING_BOOKING_ACTIVITY_EVENT_TYPES as readonly string[]).includes(event), true, `contract: ${event}`);
+    assert.equal(migration.includes(`'${event}'`), true, `2J migration: ${event}`);
+  }
+});
+
+test("each Phase 2J execution event is accepted by every layer", () => {
+  for (const event of [
+    "execution_timeline_added", "execution_timeline_updated", "execution_timeline_completed", "execution_timeline_removed",
+    "shared_equipment_added", "shared_equipment_status_changed", "execution_access_updated", "provider_execution_milestone_completed",
+  ] as const) {
+    assert.equal((CATERING_BOOKING_ACTIVITY_EVENT_TYPES as readonly string[]).includes(event), true, `contract: ${event}`);
+    assert.equal(CATERING_BOOKING_ACTIVITY_EVENT_SQL_LIST.includes(`'${event}'`), true, `schema: ${event}`);
+    assert.equal(migration.includes(`'${event}'`), true, `migration: ${event}`);
+  }
 });
 
 test("the shared contract exposes the same allowlist rather than its own copy", () => {
@@ -60,7 +90,8 @@ test("each Phase 2I file event is accepted by every layer", () => {
   for (const event of ["shared_file_uploaded", "shared_file_removed", "provider_file_uploaded", "provider_file_removed"] as const) {
     assert.equal((CATERING_BOOKING_ACTIVITY_EVENT_TYPES as readonly string[]).includes(event), true, `contract: ${event}`);
     assert.equal(CATERING_BOOKING_ACTIVITY_EVENT_SQL_LIST.includes(`'${event}'`), true, `schema: ${event}`);
-    assert.equal(migration.includes(`'${event}'`), true, `migration: ${event}`);
+    assert.equal(communicationMigration.includes(`'${event}'`), true, `2I migration: ${event}`);
+    assert.equal(migration.includes(`'${event}'`), true, `2J migration: ${event}`);
   }
 });
 
@@ -72,7 +103,7 @@ test("unknown activity types remain rejected by every layer", () => {
 });
 
 test("messages write no activity, so no message event exists in any layer", () => {
-  for (const layer of [CATERING_BOOKING_ACTIVITY_EVENT_SQL_LIST, migration, schema]) {
+  for (const layer of [CATERING_BOOKING_ACTIVITY_EVENT_SQL_LIST, migration, communicationMigration, schema]) {
     assert.equal(/'[a-z_]*message[a-z_]*'/.test(layer.replace(/dm_messages/g, "")), false);
   }
 });
