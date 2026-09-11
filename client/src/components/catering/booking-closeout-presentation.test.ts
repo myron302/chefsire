@@ -104,8 +104,10 @@ test("the checklist and the private notes render only under the provider branch"
 test("the component renders what it was given and does not filter secrets out of a fuller response", () => {
   // A customer's payload carries no checklist key at all, so there is nothing here to hide -- and no place where a
   // field could be rendered by mistake if a serializer ever changed.
-  assert.ok(component.includes("const checklist = closeout.checklist ?? [];"));
-  assert.equal(/closeout\.checklist\.filter/.test(component), false);
+  // Built from the payload wholesale. The rebase it passes through only advances each item's concurrency version
+  // to the freshest one an accepted save returned; it drops no item and reads no field a customer could have.
+  assert.ok(component.includes("cateringCloseoutRebasedChecklist(closeout.checklist ?? [], versions, identity)"));
+  assert.equal(/closeout\.checklist[?.\s]*\.filter/.test(component), false);
   assert.equal(component.includes("providerNote") && component.includes("role === \"customer\""), false);
 });
 

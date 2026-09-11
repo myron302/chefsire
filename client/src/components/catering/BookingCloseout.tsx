@@ -31,6 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   activeCateringCloseoutEditor,
+  adoptCateringCloseoutVersions,
   cateringCloseoutCompletePayload,
   cateringCloseoutEditorFor,
   cateringCloseoutFailureNotice,
@@ -38,7 +39,10 @@ import {
   cateringCloseoutItemPayload,
   cateringCloseoutNotesPayload,
   cateringCloseoutProgress,
+  cateringCloseoutRebasedChecklist,
+  cateringCloseoutRebasedRecord,
   cateringCloseoutReopenPayload,
+  cateringCloseoutVersionsFromResponse,
   cateringCloseoutSignalVariant,
   cateringCloseoutStateVariant,
   editCateringCloseoutEditor,
@@ -56,9 +60,11 @@ import {
   settleCateringCloseoutEditor,
   settleCateringCloseoutForm,
   shouldRefetchCloseoutAfterError,
+  EMPTY_CATERING_CLOSEOUT_VERSIONS,
   type CateringCloseoutError,
   type CateringCloseoutFormState,
   type CateringCloseoutItemEditorState,
+  type CateringCloseoutVersions,
   type OpenCateringCloseoutItemEditor,
 } from "@/pages/services/catering-booking-closeout-state";
 
@@ -93,6 +99,14 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
   const [notesForm, setNotesForm] = useState<CateringCloseoutFormState<string>>(emptyCateringCloseoutForm(""));
   const [editor, setEditor] = useState<CateringCloseoutItemEditorState>(null);
   const [notice, setNotice] = useState<{ message: string; retryable: boolean } | null>(null);
+  /**
+   * The freshest authoritative versions an accepted mutation has returned.
+   *
+   * Booking-local like every other piece of state here, and reset on navigation with the rest. It exists so that a
+   * version the server minted for one of OUR OWN accepted writes is used by the next write immediately, rather than
+   * only once the invalidated query has refetched -- see `CateringCloseoutVersions` for the race that opens.
+   */
+  const [versions, setVersions] = useState<CateringCloseoutVersions>(EMPTY_CATERING_CLOSEOUT_VERSIONS);
 
   const query = useQuery({
     queryKey: key,
@@ -154,6 +168,7 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     setNotesForm(emptyCateringCloseoutForm(""));
     setEditor(null);
     setNotice(null);
+    setVersions(EMPTY_CATERING_CLOSEOUT_VERSIONS);
   }, [identity, localIdentity]);
   const localStateIsCurrent = localIdentity === identity;
 
@@ -223,6 +238,17 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       // Everything below writes booking-local component state, which only exists for the booking on screen. A
       // response for one the participant has navigated away from has nothing here to settle and must touch nothing.
       if (!settlesHere(started)) return;
+      // ADOPT THE RETURNED VERSIONS FIRST, before anything below settles and before `isPending` goes false.
+      //
+      // This is the whole fix: the next mutation the provider fires -- another notes save, a checklist edit,
+      // completing closeout, reopening it -- states its precondition against the version the server just minted
+      // for this accepted write, instead of against the one the query still holds until its refetch lands. The
+      // invalidation above still runs, and still reconciles everything else; it is simply no longer the only thing
+      // that moves the concurrency token.
+      //
+      // It is installed under the ORIGINATING booking's identity, so a response that arrives for a booking the
+      // participant has navigated away from cannot advance another booking's versions.
+      setVersions((current) => adoptCateringCloseoutVersions(current, started.identity, cateringCloseoutVersionsFromResponse(value)));
       setNotice(null);
       if (variables.submittedItem) {
         const checklist = (value.checklist as CateringCloseoutItemView[] | undefined) ?? [];
@@ -252,6 +278,15 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
   });
   const pending = mutation.isPending;
 
+  /**
+   * The closeout record every record mutation states its precondition against.
+   *
+   * The query's record, with `updatedAt` advanced to the freshest version this client has been told about. One
+   * accessor rather than three, so notes, complete and reopen cannot drift apart -- a version any one of them
+   * adopts is immediately the version the other two send.
+   */
+  const rebasedRecord = closeout ? cateringCloseoutRebasedRecord(closeout.closeout, versions, identity) : null;
+
   const submitItem = (open: OpenCateringCloseoutItemEditor) => {
     // The editor has to belong to the booking this submit is addressed to. `activeCateringCloseoutEditor` already
     // refuses a foreign one on the render path, but a submit is the one place where being wrong writes another
@@ -268,20 +303,27 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     if (!localStateIsCurrent || !mayEditCateringCloseoutNotes(notesForm, identity, actionable, pending)) return;
     mutation.mutate({
       origin: origin(), path: "/closeout/notes", method: "PUT",
-      body: cateringCloseoutNotesPayload(notesForm.value, closeout?.closeout.updatedAt ?? null),
+      // The REBASED version, so an immediate second save after a successful one is not refused against a version
+      // its own predecessor already advanced past.
+      body: cateringCloseoutNotesPayload(notesForm.value, rebasedRecord?.updatedAt ?? null),
       settle: "notes", submittedNotes: notesForm.value,
     });
   };
   const completeCloseout = () => {
-    if (!closeout || !actionable || pending || !closeout.readiness.mayCloseOut) return;
-    mutation.mutate({ origin: origin(), path: "/closeout/complete", method: "POST", body: cateringCloseoutCompletePayload(closeout.closeout) });
+    if (!closeout || !rebasedRecord || !actionable || pending || !closeout.readiness.mayCloseOut) return;
+    // Rebased for the same reason: a notes save that landed a moment ago has already advanced this record's
+    // version, and completing against the pre-save one would be refused with a conflict nobody caused.
+    mutation.mutate({ origin: origin(), path: "/closeout/complete", method: "POST", body: cateringCloseoutCompletePayload(rebasedRecord) });
   };
   const reopenCloseout = () => {
-    if (!closeout || !actionable || pending || !closeout.closeout.closedOut) return;
+    if (!closeout || !rebasedRecord || !actionable || pending || !closeout.closeout.closedOut) return;
     // Deliberate rather than an accidental toggle: reopening is confirmed, is its own route, and is audited on the
     // server with a persisted count, instant and actor.
     if (!window.confirm("Reopen this booking's closeout? Your customer will see that it was reopened.")) return;
-    mutation.mutate({ origin: origin(), path: "/closeout/reopen", method: "POST", body: cateringCloseoutReopenPayload(closeout.closeout) });
+    // And rebased here too: reopening immediately after completing is the most likely sequence of all -- the
+    // provider closes out, notices something, and undoes it -- and it is exactly the sequence the completion's own
+    // returned version would otherwise have made conflict.
+    mutation.mutate({ origin: origin(), path: "/closeout/reopen", method: "POST", body: cateringCloseoutReopenPayload(rebasedRecord) });
   };
 
   if (query.isLoading) return <Card id={CATERING_CLOSEOUT_SECTION}><CardHeader><CardTitle>Post-event closeout</CardTitle></CardHeader><CardContent><p role="status">Loading closeout…</p></CardContent></Card>;
@@ -303,7 +345,9 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     </CardHeader></Card>;
   }
 
-  const checklist = closeout.checklist ?? [];
+  // Rebased, so an item's editor reopened straight after a successful save on that item carries the version that
+  // save produced rather than the one the query still holds.
+  const checklist = cateringCloseoutRebasedChecklist(closeout.checklist ?? [], versions, identity);
   const progress = cateringCloseoutProgress(checklist);
   const notesAreCurrent = localStateIsCurrent && cateringCloseoutFormIsCurrent(notesForm, identity);
 
