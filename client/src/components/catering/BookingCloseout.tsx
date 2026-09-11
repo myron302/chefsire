@@ -4,6 +4,8 @@ import { Link } from "wouter";
 import { Download, Star } from "lucide-react";
 import {
   CATERING_CLOSEOUT_CANCELLED_NOTICE,
+  CATERING_CLOSEOUT_CONVERSATION_ACTION,
+  CATERING_CLOSEOUT_CONVERSATION_NOTE,
   CATERING_CLOSEOUT_ITEM_STATES,
   CATERING_CLOSEOUT_ITEM_STATE_LABELS,
   CATERING_CLOSEOUT_NOTES_MAXIMUM,
@@ -11,8 +13,11 @@ import {
   CATERING_CLOSEOUT_PENDING_NOTICE,
   CATERING_CLOSEOUT_PROVIDER_PENDING_NOTICE,
   CATERING_CLOSEOUT_SECTION,
+  CATERING_CLOSEOUT_PROVIDER_REVIEW_ABSENT,
+  CATERING_CLOSEOUT_PROVIDER_REVIEW_PRESENT,
   CATERING_CLOSEOUT_STATE_LABELS,
   cateringBookingCloseoutKey,
+  cateringCloseoutCanStillChange,
   cateringBookingCloseoutPath,
   type CateringBookingCloseoutView,
   type CateringCloseoutItemKey,
@@ -112,11 +117,19 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     queryKey: key,
     staleTime: 15_000,
     refetchOnWindowFocus: true,
-    // The same cadence constant every other workspace section uses. It stops once closeout is recorded complete,
-    // because a closed-out booking's closeout is settled and re-asking forever would be pure traffic. Reading never
-    // closes -- the query still loads and still refetches on focus.
+    // The same cadence constant and the same helper every other workspace section uses, asked a different
+    // question: keep polling while this booking can still produce a Phase 2K state change.
+    //
+    // Gating on "served AND not yet closed out" was backwards in both directions, and left two windows a
+    // participant could sit in indefinitely with the tab focused. A customer watching a confirmed booking had
+    // polling switched off precisely BECAUSE service had not happened, so the provider's completion never
+    // arrived; and a customer shown `closed_out` had it switched off again, so a reopen -- which deliberately
+    // notifies nobody and invalidates no other user's cache -- never arrived either.
+    //
+    // `refetchOnWindowFocus` above is a complement, not the mechanism: a participant who never leaves the tab
+    // never produces a focus transition, which is exactly the case both failures needed.
     refetchInterval: (polled: { state: { data?: CateringBookingCloseoutView } }) =>
-      cateringWorkspacePollInterval(Boolean(polled.state.data?.eventServiceOccurred) && !polled.state.data?.closeout.closedOut),
+      cateringWorkspacePollInterval(cateringCloseoutCanStillChange(polled.state.data?.bookingStatus)),
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<CateringBookingCloseoutView> => {
       const response = await fetch(cateringBookingCloseoutPath(bookingId), { credentials: "include" });
@@ -407,14 +420,15 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         : <p className="mt-2 text-sm text-muted-foreground">No documents have been shared on this booking.</p>}
     </section>
 
-    {/* Follow-up. Both CTAs open EXISTING surfaces: the booking conversation Phase 2I already owns, and the public
-        provider page where the existing inquiry and review flows already live. Nothing is auto-sent, and a
-        completed booking does not create marketing consent of any kind. */}
+    {/* Follow-up. Every link here points at an EXISTING surface: the booking conversation Phase 2I already owns --
+        read-only on a completed booking, and described as such -- and the public provider page where the existing
+        inquiry and review flows live. Nothing is auto-sent, no new channel is invented, and a completed booking
+        does not create marketing consent of any kind. */}
     <section aria-labelledby="closeout-follow-up" className="space-y-2">
       <h3 id="closeout-follow-up" className="font-medium">Follow up</h3>
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" className="min-h-11">
-          <a href={closeout.communicationPath}>Open the booking conversation</a>
+          <a href={closeout.communicationPath}>{CATERING_CLOSEOUT_CONVERSATION_ACTION}</a>
         </Button>
         {closeout.customerReview && closeout.customerReview.mayReview && <Button asChild className="min-h-11">
           <Link href={closeout.customerReview.reviewPath}>
@@ -426,10 +440,15 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
           <Link href={closeout.rebookPath}>Work with this caterer again</Link>
         </Button>}
       </div>
+      {/* Stated once, for both participants: this section only ever renders on a completed booking, and Phase 2I
+          closes its composer with the Phase 2H edit window, so the thread is read-only for everyone here. */}
+      <p className="text-sm text-muted-foreground">{CATERING_CLOSEOUT_CONVERSATION_NOTE}</p>
       {closeout.customerReview && !closeout.customerReview.mayReview && <p className="text-sm text-muted-foreground">Reviews are not available for this provider right now.</p>}
+      {/* A fact, naming no channel. Telling a provider to ask in the booking conversation described an action the
+          read-only thread cannot perform -- and Phase 2K does not widen Phase 2I to make its own copy true. */}
       {closeout.providerReview && <p className="text-sm text-muted-foreground">{closeout.providerReview.customerReviewExists
-        ? "This customer has left a review on your profile."
-        : "This customer has not left a review yet. You can ask them in the booking conversation."}</p>}
+        ? CATERING_CLOSEOUT_PROVIDER_REVIEW_PRESENT
+        : CATERING_CLOSEOUT_PROVIDER_REVIEW_ABSENT}</p>}
     </section>
 
     {/* The provider-private checklist. A customer's payload carries no `checklist` key at all, so this whole

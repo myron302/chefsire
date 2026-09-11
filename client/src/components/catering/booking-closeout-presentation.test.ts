@@ -172,7 +172,11 @@ test("nothing is auto-sent, and no consent is implied by the booking existing", 
   assert.equal(component.includes("/messages"), false);
 });
 
-test("the section polls on the shared workspace cadence and stops once closeout is settled", () => {
-  assert.ok(component.includes("cateringWorkspacePollInterval("));
-  assert.ok(component.includes("!polled.state.data?.closeout.closedOut"));
+test("the section polls on the shared workspace cadence while state can still transition", () => {
+  assert.ok(component.includes("cateringWorkspacePollInterval("), "the established helper, not a custom timer");
+  assert.ok(component.includes("cateringCloseoutCanStillChange(polled.state.data?.bookingStatus)"));
+  // Polling must NOT be gated on either of the two flags that switched it off inside a window the participant
+  // could sit in indefinitely.
+  assert.equal(component.includes("!polled.state.data?.closeout.closedOut"), false);
+  assert.equal(component.includes("Boolean(polled.state.data?.eventServiceOccurred) &&"), false);
 });

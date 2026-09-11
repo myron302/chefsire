@@ -243,6 +243,36 @@ export const CATERING_CLOSEOUT_NOT_FOUND_MESSAGE = "Closeout record not found";
 export function cateringEventServiceOccurred(booking: { status: CateringBookingStatus; completedAt: unknown }): boolean {
   return qualifiesAsVerifiedCateringEvent(booking as { status?: string | null; completedAt?: unknown });
 }
+/**
+ * Whether this booking can still produce a Phase 2K state change, and therefore whether the closeout view must
+ * keep asking.
+ *
+ * Reading it the other way round -- polling only while the event is served and closeout is open -- left two stale
+ * windows, both of which a participant could sit in indefinitely with the tab focused and no focus transition to
+ * rescue them:
+ *
+ *   BEFORE SERVICE. A customer who opens the workspace while the booking is still confirmed sees a
+ *   non-actionable closeout. The provider then completes the event -- and nothing tells them, because the query
+ *   that would have noticed had switched itself off precisely because service had not happened yet.
+ *
+ *   AFTER A REOPEN. A customer who has been told their caterer finished wrapping up sees `closed_out`. The
+ *   provider then reopens it, which deliberately notifies nobody, and no cache of another user's is invalidated
+ *   by it. Their view could contradict the shared activity row above it forever.
+ *
+ * Only a CANCELLED booking is genuinely terminal here. Phase 2G cancellation is irreversible, a cancelled booking
+ * can never become completed, so `cateringEventServiceOccurred` is false for it permanently and its closeout state
+ * is fixed at `not_applicable`. Every other status can still move: pending and confirmed can reach completion, and
+ * a completed booking's closeout can start, progress, close and reopen any number of times.
+ *
+ * An UNKNOWN status keeps polling. Nothing has been read yet, so nothing is known to be terminal, and the safe
+ * direction is to ask.
+ */
+export const CATERING_CLOSEOUT_TERMINAL_BOOKING_STATUSES: readonly CateringBookingStatus[] = ["cancelled"];
+export function cateringCloseoutCanStillChange(status: CateringBookingStatus | undefined): boolean {
+  if (status === undefined) return true;
+  return !CATERING_CLOSEOUT_TERMINAL_BOOKING_STATUSES.includes(status);
+}
+
 /** Every Phase 2K mutation is provider-only, and only on a booking whose event was actually served. */
 export function mayMutateCateringCloseout(booking: { status: CateringBookingStatus; completedAt: unknown }, role: "provider" | "customer"): boolean {
   return role === "provider" && cateringEventServiceOccurred(booking);
@@ -624,7 +654,14 @@ export const cateringBookingCloseoutKey = (userId: string, bookingId: string) =>
 export function cateringCloseoutSectionPath(role: "provider" | "customer", bookingId: string): string {
   return `${cateringBookingWorkspacePath(role, bookingId)}#${CATERING_CLOSEOUT_SECTION}`;
 }
-/** The EXISTING Phase 2I communication section of the same workspace. No second messaging surface is introduced. */
+/**
+ * The EXISTING Phase 2I communication section of the same workspace. No second messaging surface is introduced.
+ *
+ * It is a link to READ the thread, not a channel to write in. Phase 2I's `mayPostCateringBookingMessage` closes
+ * with the Phase 2H edit window, so on a completed booking -- the only kind this section is ever rendered for --
+ * the composer is unavailable to both participants. The wording below says so rather than implying otherwise, and
+ * Phase 2K does not widen that boundary to make its own copy true.
+ */
 export function cateringCloseoutCommunicationPath(role: "provider" | "customer", bookingId: string): string {
   return `${cateringBookingWorkspacePath(role, bookingId)}#communication`;
 }
@@ -653,6 +690,24 @@ export const CATERING_CLOSEOUT_NOTIFICATION = {
   title: "Catering event closed out",
   message: "Your caterer has finished wrapping up this event.",
 } as const;
+
+/**
+ * What a participant is told about the booking conversation.
+ *
+ * "View", not "message". The conversation is read-only for BOTH participants once an event is complete, so telling
+ * a provider they could ask their customer for a review there described an action neither of them can take -- the
+ * composer is not rendered and the send would be refused. The link stays, because reading the history is genuinely
+ * useful; only the claim about what can be done with it is corrected.
+ */
+export const CATERING_CLOSEOUT_CONVERSATION_ACTION = "View the booking conversation";
+export const CATERING_CLOSEOUT_CONVERSATION_NOTE = "The booking conversation is read-only once an event is complete. You can read the full history, but no new messages can be sent on this booking.";
+
+/**
+ * The provider's review-status line. It reports a fact and names no channel: a provider who wants to ask for a
+ * review reaches their customer however they already do, and records that on the closeout checklist.
+ */
+export const CATERING_CLOSEOUT_PROVIDER_REVIEW_PRESENT = "This customer has left a review on your profile.";
+export const CATERING_CLOSEOUT_PROVIDER_REVIEW_ABSENT = "This customer has not left a review yet.";
 
 /** Wording the interface shares with the contract, so the two cannot describe the lifecycle differently. */
 export const CATERING_CLOSEOUT_CANCELLED_NOTICE = "This booking was cancelled, so no event service took place and there is no post-event closeout.";
