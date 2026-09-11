@@ -44,6 +44,7 @@ import {
   CATERING_EXECUTION_CONSUMED_NOTICE,
   activeCateringTimelineEditor,
   cateringAccessDraftFrom,
+  cateringAccessFormIsCurrent,
   cateringAccessSavePayload,
   cateringEquipmentCreatePayload,
   cateringEquipmentScheduleIsValid,
@@ -209,22 +210,48 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
    */
   const identityRef = useRef(identity);
   identityRef.current = identity;
+  /**
+   * The booking the drafts, the open editor and the notice currently belong to.
+   *
+   * STATE rather than a ref, because render has to be able to ask the question. The reset below is a passive effect
+   * -- it sets state, so it cannot move into render -- and passive effects flush after the commit, which leaves one
+   * committed render of booking B in which this state still holds booking A's half-typed records. Read from a ref,
+   * a render could not react to that changing; read from state, the guard below is an ordinary reactive value and
+   * the stale window is simply inert.
+   *
+   * It cannot loop: the effect returns immediately once the two agree, and the only thing that makes them disagree
+   * is a genuine navigation.
+   */
+  const [localIdentity, setLocalIdentity] = useState(identity);
   // Drafts belong to the booking on screen. Moving to another booking starts fresh rather than carrying one
   // booking's half-typed crew assignment -- and its spent idempotency token -- into another.
-  //
-  // This SETS STATE, so it stays in an effect, and it keeps its own record of which booking's drafts are in state.
-  // It can no longer share the ref above: that one is already current by the time any effect runs, so reading it
-  // here would report "no change" on every navigation and the reset would never happen.
-  const settledIdentityRef = useRef(identity);
   useEffect(() => {
-    if (settledIdentityRef.current === identity) return;
-    settledIdentityRef.current = identity;
+    if (localIdentity === identity) return;
+    setLocalIdentity(identity);
     setTimelineDraft(EMPTY_CATERING_TIMELINE_DRAFT);
     setStaffDraft(EMPTY_CATERING_STAFF_DRAFT);
     setEquipmentDraft(EMPTY_CATERING_EQUIPMENT_DRAFT);
     setEditor(null);
     setNotice(null);
-  }, [identity]);
+  }, [identity, localIdentity]);
+  /**
+   * Whether the booking-local state above has been reconciled to the booking on screen.
+   *
+   * Until it has, every one of those values still describes the PREVIOUS booking, so none of them may be rendered
+   * or submitted. Nothing is cleared to achieve that -- the reset effect is still the only thing that clears
+   * anything -- the values are simply not used while they belong to somebody else.
+   */
+  const localStateIsCurrent = localIdentity === identity;
+  /**
+   * What the create forms render from, and what their submits are judged on.
+   *
+   * An empty draft during the stale window rather than a hidden form: it shows the state the reset is one tick away
+   * from producing, so nothing of the previous booking appears and nothing jumps. Every `maySubmit` predicate
+   * refuses an empty draft, and each handler checks the identity directly as well.
+   */
+  const liveTimelineDraft = localStateIsCurrent ? timelineDraft : EMPTY_CATERING_TIMELINE_DRAFT;
+  const liveStaffDraft = localStateIsCurrent ? staffDraft : EMPTY_CATERING_STAFF_DRAFT;
+  const liveEquipmentDraft = localStateIsCurrent ? equipmentDraft : EMPTY_CATERING_EQUIPMENT_DRAFT;
 
   /**
    * The booking that STARTED a request, captured at submission time.
@@ -346,21 +373,30 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
   // also the snapshot the completion settles against.
   const submitTimeline = (event: FormEvent) => {
     event.preventDefault();
-    if (!maySubmitCateringTimelineDraft(timelineDraft, canMutate, pending)) return;
+    // The draft has to belong to the booking this submit is addressed to. An empty draft already fails the
+    // predicate below, so this is belt and braces -- but a submit is the one place where being wrong writes
+    // another booking's record, so it says so explicitly rather than relying on emptiness.
+    if (!localStateIsCurrent || !maySubmitCateringTimelineDraft(liveTimelineDraft, canMutate, pending)) return;
     const attempt = prepareCateringCreate(timelineDraft, cateringTimelineCreatePayload, () => crypto.randomUUID());
     setTimelineDraft(attempt.draft);
     mutation.mutate({ origin: origin(), path: "/execution/timeline", method: "POST", body: attempt.body, settle: "timeline-draft", submittedTimeline: attempt.draft });
   };
   const submitStaff = (event: FormEvent) => {
     event.preventDefault();
-    if (!maySubmitCateringStaffDraft(staffDraft, canMutate, pending)) return;
+    // The draft has to belong to the booking this submit is addressed to. An empty draft already fails the
+    // predicate below, so this is belt and braces -- but a submit is the one place where being wrong writes
+    // another booking's record, so it says so explicitly rather than relying on emptiness.
+    if (!localStateIsCurrent || !maySubmitCateringStaffDraft(liveStaffDraft, canMutate, pending)) return;
     const attempt = prepareCateringCreate(staffDraft, cateringStaffCreatePayload, () => crypto.randomUUID());
     setStaffDraft(attempt.draft);
     mutation.mutate({ origin: origin(), path: "/execution/staff", method: "POST", body: attempt.body, settle: "staff-draft", submittedStaff: attempt.draft });
   };
   const submitEquipment = (event: FormEvent) => {
     event.preventDefault();
-    if (!maySubmitCateringEquipmentDraft(equipmentDraft, canMutate, pending)) return;
+    // The draft has to belong to the booking this submit is addressed to. An empty draft already fails the
+    // predicate below, so this is belt and braces -- but a submit is the one place where being wrong writes
+    // another booking's record, so it says so explicitly rather than relying on emptiness.
+    if (!localStateIsCurrent || !maySubmitCateringEquipmentDraft(liveEquipmentDraft, canMutate, pending)) return;
     const attempt = prepareCateringCreate(equipmentDraft, cateringEquipmentCreatePayload, () => crypto.randomUUID());
     setEquipmentDraft(attempt.draft);
     mutation.mutate({ origin: origin(), path: "/execution/equipment", method: "POST", body: attempt.body, settle: "equipment-draft", submittedEquipment: attempt.draft });
@@ -369,8 +405,10 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     event.preventDefault();
     // A form with an unreviewed field disagreement is not submittable at all: saving it would write one side of a
     // disagreement nobody has adjudicated over the other.
+    // `maySaveCateringAccess` carries the identity check, so the handler and the Save button ask exactly the same
+    // question: a form still holding the previous booking's values cannot be rendered, and cannot be sent either.
     const draft = accessForm.value;
-    if (!draft || !maySaveCateringAccess(accessForm, canMutate, pending)) return;
+    if (!draft || !maySaveCateringAccess(accessForm, identity, canMutate, pending)) return;
     mutation.mutate({ origin: origin(), path: "/execution/access", method: "PUT", body: cateringAccessSavePayload(draft), settle: "access", submittedAccess: { ...draft } });
   };
   const submitEditor = (open: OpenCateringTimelineEditor) => {
@@ -381,7 +419,9 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     const next = moveCateringTimelineItem(providerTimeline, itemId, direction);
     if (next) mutation.mutate({ origin: origin(), path: "/execution/timeline/reorder", method: "POST", body: cateringTimelineReorderPayload(next) });
   };
-  const reorderControlsFor = (itemId: string) => cateringTimelineReorderControls(timeline, itemId, { role, editable: canMutate, editorOpen: editor !== null, pending });
+  // An editor left open on the PREVIOUS booking is not an open editor here. It disabled these controls either way,
+  // so this fails closed in both directions -- but the reason it reports is now the true one.
+  const reorderControlsFor = (itemId: string) => cateringTimelineReorderControls(timeline, itemId, { role, editable: canMutate, editorOpen: editor?.identity === identity, pending });
 
   if (query.isLoading) return <Card id="execution"><CardHeader><CardTitle>Event execution</CardTitle></CardHeader><CardContent><p role="status">Loading the event execution plan…</p></CardContent></Card>;
   if (query.isError || !execution) {
@@ -443,28 +483,28 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
 
       {provider && canMutate && <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitTimeline}>
         <div className="sm:col-span-2"><Label htmlFor="execution-title">Add a run-of-show item</Label>
-          <Input className="min-h-11" id="execution-title" maxLength={160} value={timelineDraft.title} onChange={(event) => setTimelineDraft((current) => ({ ...current, title: event.target.value }))} /></div>
+          <Input className="min-h-11" id="execution-title" maxLength={160} value={liveTimelineDraft.title} onChange={(event) => setTimelineDraft((current) => ({ ...current, title: event.target.value }))} /></div>
         <div><Label htmlFor="execution-category">Stage</Label>
-          <select id="execution-category" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={timelineDraft.category}
+          <select id="execution-category" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={liveTimelineDraft.category}
             onChange={(event) => setTimelineDraft((current) => ({ ...current, category: event.target.value as CateringTimelineCategory }))}>
             {CATERING_TIMELINE_CATEGORIES.map((category) => <option key={category} value={category}>{CATERING_TIMELINE_CATEGORY_LABELS[category]}</option>)}
           </select></div>
         <div><Label htmlFor="execution-visibility">Visibility</Label>
-          <select id="execution-visibility" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={timelineDraft.visibility}
+          <select id="execution-visibility" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={liveTimelineDraft.visibility}
             onChange={(event) => setTimelineDraft((current) => ({ ...current, visibility: event.target.value as CateringExecutionVisibility }))}>
             {visibilityChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
           </select></div>
         <div><Label htmlFor="execution-start">Starts (event local)</Label>
-          <Input className="min-h-11" id="execution-start" type="time" value={timelineDraft.scheduledTime} onChange={(event) => setTimelineDraft((current) => ({ ...current, scheduledTime: event.target.value }))} /></div>
+          <Input className="min-h-11" id="execution-start" type="time" value={liveTimelineDraft.scheduledTime} onChange={(event) => setTimelineDraft((current) => ({ ...current, scheduledTime: event.target.value }))} /></div>
         <div><Label htmlFor="execution-end">Ends (event local)</Label>
-          <Input className="min-h-11" id="execution-end" type="time" value={timelineDraft.endTime} onChange={(event) => setTimelineDraft((current) => ({ ...current, endTime: event.target.value }))} /></div>
+          <Input className="min-h-11" id="execution-end" type="time" value={liveTimelineDraft.endTime} onChange={(event) => setTimelineDraft((current) => ({ ...current, endTime: event.target.value }))} /></div>
         <div className="sm:col-span-2"><Label htmlFor="execution-description">Notes</Label>
-          <Textarea id="execution-description" maxLength={2000} value={timelineDraft.description} onChange={(event) => setTimelineDraft((current) => ({ ...current, description: event.target.value }))} /></div>
+          <Textarea id="execution-description" maxLength={2000} value={liveTimelineDraft.description} onChange={(event) => setTimelineDraft((current) => ({ ...current, description: event.target.value }))} /></div>
         <label className="flex min-h-11 items-center gap-2 sm:col-span-2">
-          <input type="checkbox" className="h-5 w-5" checked={timelineDraft.isBlocker} onChange={(event) => setTimelineDraft((current) => ({ ...current, isBlocker: event.target.checked }))} />
+          <input type="checkbox" className="h-5 w-5" checked={liveTimelineDraft.isBlocker} onChange={(event) => setTimelineDraft((current) => ({ ...current, isBlocker: event.target.checked }))} />
           <span className="text-sm">This item is blocking the event</span>
         </label>
-        <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySubmitCateringTimelineDraft(timelineDraft, canMutate, pending)}>Add to run of show</Button>
+        <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySubmitCateringTimelineDraft(liveTimelineDraft, canMutate, pending)}>Add to run of show</Button>
       </form>}
     </section>
 
@@ -479,23 +519,23 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
             onDelete={() => { if (window.confirm(`Remove ${assignment.workerName} from this event's crew?`)) mutation.mutate({ origin: origin(), path: `/execution/staff/${assignment.id}`, method: "DELETE", body: cateringExecutionDeletePayload(assignment) }); }} />)}</ul>}
       {canMutate && <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitStaff}>
         <div><Label htmlFor="crew-name">Crew member</Label>
-          <Input className="min-h-11" id="crew-name" maxLength={120} value={staffDraft.workerName} onChange={(event) => setStaffDraft((current) => ({ ...current, workerName: event.target.value }))} /></div>
+          <Input className="min-h-11" id="crew-name" maxLength={120} value={liveStaffDraft.workerName} onChange={(event) => setStaffDraft((current) => ({ ...current, workerName: event.target.value }))} /></div>
         <div><Label htmlFor="crew-role">Role</Label>
-          <select id="crew-role" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={staffDraft.role}
+          <select id="crew-role" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={liveStaffDraft.role}
             onChange={(event) => setStaffDraft((current) => ({ ...current, role: event.target.value as CateringStaffRole }))}>
             {CATERING_STAFF_ROLES.map((staffRole) => <option key={staffRole} value={staffRole}>{CATERING_STAFF_ROLE_LABELS[staffRole]}</option>)}
           </select></div>
-        {staffDraft.role === "custom" && <div className="sm:col-span-2"><Label htmlFor="crew-custom-role">Name the custom role</Label>
-          <Input className="min-h-11" id="crew-custom-role" maxLength={60} value={staffDraft.customRole} onChange={(event) => setStaffDraft((current) => ({ ...current, customRole: event.target.value }))} /></div>}
+        {liveStaffDraft.role === "custom" && <div className="sm:col-span-2"><Label htmlFor="crew-custom-role">Name the custom role</Label>
+          <Input className="min-h-11" id="crew-custom-role" maxLength={60} value={liveStaffDraft.customRole} onChange={(event) => setStaffDraft((current) => ({ ...current, customRole: event.target.value }))} /></div>}
         <div><Label htmlFor="crew-arrival">Arrives (event local)</Label>
-          <Input className="min-h-11" id="crew-arrival" type="time" value={staffDraft.arrivalTime} onChange={(event) => setStaffDraft((current) => ({ ...current, arrivalTime: event.target.value }))} /></div>
+          <Input className="min-h-11" id="crew-arrival" type="time" value={liveStaffDraft.arrivalTime} onChange={(event) => setStaffDraft((current) => ({ ...current, arrivalTime: event.target.value }))} /></div>
         <div><Label htmlFor="crew-departure">Leaves (event local)</Label>
-          <Input className="min-h-11" id="crew-departure" type="time" value={staffDraft.departureTime} onChange={(event) => setStaffDraft((current) => ({ ...current, departureTime: event.target.value }))} /></div>
+          <Input className="min-h-11" id="crew-departure" type="time" value={liveStaffDraft.departureTime} onChange={(event) => setStaffDraft((current) => ({ ...current, departureTime: event.target.value }))} /></div>
         <div className="sm:col-span-2"><Label htmlFor="crew-contact">Contact note</Label>
-          <Input className="min-h-11" id="crew-contact" maxLength={200} value={staffDraft.contactNote} onChange={(event) => setStaffDraft((current) => ({ ...current, contactNote: event.target.value }))} /></div>
+          <Input className="min-h-11" id="crew-contact" maxLength={200} value={liveStaffDraft.contactNote} onChange={(event) => setStaffDraft((current) => ({ ...current, contactNote: event.target.value }))} /></div>
         <div className="sm:col-span-2"><Label htmlFor="crew-responsibility">Responsibilities</Label>
-          <Textarea id="crew-responsibility" maxLength={2000} value={staffDraft.responsibilityNote} onChange={(event) => setStaffDraft((current) => ({ ...current, responsibilityNote: event.target.value }))} /></div>
-        <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySubmitCateringStaffDraft(staffDraft, canMutate, pending)}>Assign crew member</Button>
+          <Textarea id="crew-responsibility" maxLength={2000} value={liveStaffDraft.responsibilityNote} onChange={(event) => setStaffDraft((current) => ({ ...current, responsibilityNote: event.target.value }))} /></div>
+        <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySubmitCateringStaffDraft(liveStaffDraft, canMutate, pending)}>Assign crew member</Button>
       </form>}
     </section>}
 
@@ -510,45 +550,45 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
       {provider && <p className="text-sm text-muted-foreground">{equipment.providerPrivate.length} provider-only, {equipment.shared.length} shared with the customer.</p>}
       {provider && canMutate && <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitEquipment}>
         <div><Label htmlFor="equipment-name">Equipment</Label>
-          <Input className="min-h-11" id="equipment-name" maxLength={160} value={equipmentDraft.name} onChange={(event) => setEquipmentDraft((current) => ({ ...current, name: event.target.value }))} /></div>
+          <Input className="min-h-11" id="equipment-name" maxLength={160} value={liveEquipmentDraft.name} onChange={(event) => setEquipmentDraft((current) => ({ ...current, name: event.target.value }))} /></div>
         <div><Label htmlFor="equipment-quantity">Quantity</Label>
-          <Input className="min-h-11" id="equipment-quantity" type="number" min={1} max={9999} value={equipmentDraft.quantity} onChange={(event) => setEquipmentDraft((current) => ({ ...current, quantity: event.target.value }))} /></div>
+          <Input className="min-h-11" id="equipment-quantity" type="number" min={1} max={9999} value={liveEquipmentDraft.quantity} onChange={(event) => setEquipmentDraft((current) => ({ ...current, quantity: event.target.value }))} /></div>
         <div><Label htmlFor="equipment-source">Source</Label>
-          <select id="equipment-source" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={equipmentDraft.sourceType}
+          <select id="equipment-source" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={liveEquipmentDraft.sourceType}
             onChange={(event) => setEquipmentDraft((current) => ({ ...current, sourceType: event.target.value as CateringEquipmentSource }))}>
             {CATERING_EQUIPMENT_SOURCES.map((source) => <option key={source} value={source}>{CATERING_EQUIPMENT_SOURCE_LABELS[source]}</option>)}
           </select></div>
         <div><Label htmlFor="equipment-source-name">Vendor or supplier</Label>
-          <Input className="min-h-11" id="equipment-source-name" maxLength={160} value={equipmentDraft.sourceName} onChange={(event) => setEquipmentDraft((current) => ({ ...current, sourceName: event.target.value }))} /></div>
+          <Input className="min-h-11" id="equipment-source-name" maxLength={160} value={liveEquipmentDraft.sourceName} onChange={(event) => setEquipmentDraft((current) => ({ ...current, sourceName: event.target.value }))} /></div>
         <div><Label htmlFor="equipment-pickup-date">Pickup or delivery date</Label>
-          <Input className="min-h-11" id="equipment-pickup-date" type="date" value={equipmentDraft.pickupDate} onChange={(event) => setEquipmentDraft((current) => ({ ...current, pickupDate: event.target.value }))} /></div>
+          <Input className="min-h-11" id="equipment-pickup-date" type="date" value={liveEquipmentDraft.pickupDate} onChange={(event) => setEquipmentDraft((current) => ({ ...current, pickupDate: event.target.value }))} /></div>
         <div><Label htmlFor="equipment-pickup-time">Pickup or delivery time</Label>
-          <Input className="min-h-11" id="equipment-pickup-time" type="time" value={equipmentDraft.pickupTime} onChange={(event) => setEquipmentDraft((current) => ({ ...current, pickupTime: event.target.value }))} /></div>
+          <Input className="min-h-11" id="equipment-pickup-time" type="time" value={liveEquipmentDraft.pickupTime} onChange={(event) => setEquipmentDraft((current) => ({ ...current, pickupTime: event.target.value }))} /></div>
         <div><Label htmlFor="equipment-return-date">Return date</Label>
-          <Input className="min-h-11" id="equipment-return-date" type="date" value={equipmentDraft.returnDate} onChange={(event) => setEquipmentDraft((current) => ({ ...current, returnDate: event.target.value }))} /></div>
+          <Input className="min-h-11" id="equipment-return-date" type="date" value={liveEquipmentDraft.returnDate} onChange={(event) => setEquipmentDraft((current) => ({ ...current, returnDate: event.target.value }))} /></div>
         <div><Label htmlFor="equipment-return-time">Return time</Label>
-          <Input className="min-h-11" id="equipment-return-time" type="time" value={equipmentDraft.returnTime} onChange={(event) => setEquipmentDraft((current) => ({ ...current, returnTime: event.target.value }))} /></div>
+          <Input className="min-h-11" id="equipment-return-time" type="time" value={liveEquipmentDraft.returnTime} onChange={(event) => setEquipmentDraft((current) => ({ ...current, returnTime: event.target.value }))} /></div>
         <div><Label htmlFor="equipment-status">Status</Label>
-          <select id="equipment-status" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={equipmentDraft.status}
+          <select id="equipment-status" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={liveEquipmentDraft.status}
             onChange={(event) => setEquipmentDraft((current) => ({ ...current, status: event.target.value as CateringEquipmentStatus }))}>
             {CATERING_EQUIPMENT_STATUSES.map((status) => <option key={status} value={status}>{CATERING_EQUIPMENT_STATUS_LABELS[status]}</option>)}
           </select></div>
         <div><Label htmlFor="equipment-visibility">Visibility</Label>
-          <select id="equipment-visibility" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={equipmentDraft.visibility}
+          <select id="equipment-visibility" className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2" value={liveEquipmentDraft.visibility}
             onChange={(event) => setEquipmentDraft((current) => ({ ...current, visibility: event.target.value as CateringExecutionVisibility }))}>
             {visibilityChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
           </select></div>
         <div className="sm:col-span-2"><Label htmlFor="equipment-notes">Notes</Label>
-          <Textarea id="equipment-notes" maxLength={2000} value={equipmentDraft.notes} onChange={(event) => setEquipmentDraft((current) => ({ ...current, notes: event.target.value }))} /></div>
+          <Textarea id="equipment-notes" maxLength={2000} value={liveEquipmentDraft.notes} onChange={(event) => setEquipmentDraft((current) => ({ ...current, notes: event.target.value }))} /></div>
         <label className="flex min-h-11 items-center gap-2 sm:col-span-2">
-          <input type="checkbox" className="h-5 w-5" checked={equipmentDraft.isBlocker} onChange={(event) => setEquipmentDraft((current) => ({ ...current, isBlocker: event.target.checked }))} />
+          <input type="checkbox" className="h-5 w-5" checked={liveEquipmentDraft.isBlocker} onChange={(event) => setEquipmentDraft((current) => ({ ...current, isBlocker: event.target.checked }))} />
           <span className="text-sm">This equipment is blocking the event</span>
         </label>
-        {!cateringEquipmentQuantityIsValid(equipmentDraft.quantity) && <p className="text-sm text-destructive sm:col-span-2" role="alert">Quantity must be a whole number between 1 and 9999.</p>}
+        {!cateringEquipmentQuantityIsValid(liveEquipmentDraft.quantity) && <p className="text-sm text-destructive sm:col-span-2" role="alert">Quantity must be a whole number between 1 and 9999.</p>}
         {/* The same wording the server answers with, from the same constant, so the two can never disagree. The
             draft is untouched either way: the provider corrects the dates in place rather than retyping the row. */}
-        {!cateringEquipmentScheduleIsValid(equipmentDraft) && <p className="text-sm text-destructive sm:col-span-2" role="alert">{CATERING_EQUIPMENT_SCHEDULE_MESSAGE}</p>}
-        <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySubmitCateringEquipmentDraft(equipmentDraft, canMutate, pending)}>Add equipment</Button>
+        {!cateringEquipmentScheduleIsValid(liveEquipmentDraft) && <p className="text-sm text-destructive sm:col-span-2" role="alert">{CATERING_EQUIPMENT_SCHEDULE_MESSAGE}</p>}
+        <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySubmitCateringEquipmentDraft(liveEquipmentDraft, canMutate, pending)}>Add equipment</Button>
       </form>}
     </section>
 
@@ -556,7 +596,16 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
     <section aria-labelledby="execution-access" className="space-y-3 border-t pt-4">
       <h3 id="execution-access" className="font-medium">Venue and access instructions</h3>
       <p className="text-sm text-muted-foreground">These are instructions for reaching and working at the event location recorded on this booking. The address and date live on the booking itself.</p>
-      {provider && canMutate && accessForm.value
+      {/* The form is offered only when its contents belong to THIS booking.
+          Asking only "is there a value?" was a cross-booking leak. The form is reconciled to a booking by a passive
+          effect, and passive effects flush after the commit -- so with booking B's payload already cached, B renders
+          and commits while this state still holds booking A's load-in instructions, A's venue contact and A's
+          provider-private notes, and the old condition put every one of them on B's screen. The submit path was by
+          then addressed to B, so saving would have written A's record onto B's booking.
+          Until reconciliation lands, the read-only view below takes its place -- and it renders from `execution`,
+          which is B's authoritative payload, so the transition shows B's own access details rather than a skeleton
+          or a flash of A's. A's draft is not cleared to achieve this; it is simply not rendered. */}
+      {provider && canMutate && cateringAccessFormIsCurrent(accessForm, identity)
         ? <form className="grid gap-3 sm:grid-cols-2" onSubmit={submitAccess}>
             {/* Rendered FROM the shared field metadata: label, control kind and length limit all come from the same
                 definition the request schema is built from, so a browser constraint cannot disagree with the
@@ -602,7 +651,7 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
               </div>)}
               <Button type="button" variant="ghost" className="min-h-11" onClick={() => { if (execution && window.confirm("Discard your unsaved access edits and start from the current saved version?")) setAccessForm(discardCateringAccessDraft(accessForm, identity, execution.access)); }}>Discard my edits and reload</Button>
             </div>}
-            <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySaveCateringAccess(accessForm, canMutate, pending)}>Save access instructions</Button>
+            <Button className="min-h-11 sm:col-span-2 sm:justify-self-start" disabled={!maySaveCateringAccess(accessForm, identity, canMutate, pending)}>Save access instructions</Button>
             {accessForm.dirty && !cateringAccessReviewIsOpen(accessForm) && <p className="text-sm text-muted-foreground sm:col-span-2" role="status">You have unsaved access instructions.</p>}
           </form>
         : <AccessReadOnly access={execution.access} role={role} />}
@@ -620,7 +669,10 @@ export default function BookingExecution({ bookingId, userId, role, editable }: 
         })} />)}</ul>
     </section>}
 
-    {notice && <div role="alert" className="space-y-2">
+    {/* A notice belongs to the booking that produced it. It is cleared by the same reset effect as the drafts, so
+        the same guard keeps booking A's failure -- or A's access conflict -- from appearing under booking B in the
+        commit before that effect runs. */}
+    {localStateIsCurrent && notice && <div role="alert" className="space-y-2">
       <p className="text-destructive">{notice.message}</p>
       {/* A retryable failure leaves the form exactly as it was, still holding this attempt's idempotency token, so
           submitting again is the retry -- and a request that did reach the server resolves to the record it already

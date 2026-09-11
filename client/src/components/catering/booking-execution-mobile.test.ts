@@ -99,7 +99,7 @@ test("every form field has a label, and every section a heading it is described 
 
 test("every control that can start a request is disabled while one is in flight", () => {
   // The submit rules take `pending` and are the only thing that enables a submit.
-  for (const rule of ["maySubmitCateringTimelineDraft(timelineDraft, canMutate, pending)", "maySubmitCateringStaffDraft(staffDraft, canMutate, pending)", "maySubmitCateringEquipmentDraft(equipmentDraft, canMutate, pending)"]) {
+  for (const rule of ["maySubmitCateringTimelineDraft(liveTimelineDraft, canMutate, pending)", "maySubmitCateringStaffDraft(liveStaffDraft, canMutate, pending)", "maySubmitCateringEquipmentDraft(liveEquipmentDraft, canMutate, pending)"]) {
     assert.equal(component.includes(`disabled={!${rule}}`), true, rule);
   }
   // And every remaining button, toggle and status select is disabled on `pending` too, so a double tap cannot fire
@@ -107,8 +107,9 @@ test("every control that can start a request is disabled while one is in flight"
   const disabled = component.match(/disabled=\{[^}]*\}/g) ?? [];
   const pendingAware = disabled.filter((clause) => /pending|reorder\.|query\./.test(clause));
   assert.equal(pendingAware.length, disabled.length, `${disabled.filter((clause) => !/pending|reorder\.|query\./.test(clause)).join(" | ")}`);
-  // The reorder controls close over `pending` in their own rule rather than in the markup.
-  assert.equal(component.includes("editorOpen: editor !== null, pending }"), true);
+  // The reorder controls close over `pending` in their own rule rather than in the markup, and the editor they
+  // report as open is the one belonging to the booking on screen.
+  assert.equal(component.includes("editorOpen: editor?.identity === identity, pending }"), true);
   assert.equal(component.includes('<p role="status" aria-live="polite"'), true, "and progress is announced");
 });
 
@@ -128,7 +129,9 @@ test("a customer is never rendered a provider-only control or section", () => {
   assert.equal(component.includes("{provider && execution.milestones && <section"), true);
   // Every create form is provider-gated as well as editability-gated.
   assert.equal((component.match(/\{provider && canMutate &&/g) ?? []).length >= 2, true);
-  assert.equal(component.includes("provider && canMutate && accessForm.value"), true, "the access form is provider-gated too");
+  // The access form is provider-gated, editability-gated AND identity-gated: its contents must belong to the
+  // booking on screen before they may be rendered at all.
+  assert.equal(component.includes("provider && canMutate && cateringAccessFormIsCurrent(accessForm, identity)"), true, "the access form is provider-gated too");
   // The visibility control is offered from the role-aware helper, which hands a customer an empty list.
   assert.equal(component.includes("cateringExecutionVisibilityChoices(role)"), true);
   // A visibility badge is shown to the provider only: on a customer's list every row would say the same thing and
@@ -207,10 +210,10 @@ test("a mutation refreshes the workspace activity the shared change wrote, for t
 });
 
 test("drafts belong to the booking on screen and do not follow the participant to another", () => {
-  assert.equal(component.includes("if (settledIdentityRef.current === identity) return;"), true);
+  assert.equal(component.includes("if (localIdentity === identity) return;"), true);
   // Every draft, the editor and the notice are reset together, so no spent token or half-typed crew assignment
   // crosses into a different booking.
-  const reset = component.slice(component.indexOf("settledIdentityRef.current = identity;"), component.indexOf("}, [identity]);"));
+  const reset = component.slice(component.indexOf("setLocalIdentity(identity);"), component.indexOf("}, [identity, localIdentity]);"));
   for (const setter of ["setTimelineDraft(EMPTY_CATERING_TIMELINE_DRAFT)", "setStaffDraft(EMPTY_CATERING_STAFF_DRAFT)", "setEquipmentDraft(EMPTY_CATERING_EQUIPMENT_DRAFT)", "setEditor(null)"]) {
     assert.equal(reset.includes(setter), true, setter);
   }

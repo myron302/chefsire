@@ -659,8 +659,31 @@ export function rebaseCateringAccessForm(current: CateringAccessFormState, ident
 export function cateringAccessReviewIsOpen(current: CateringAccessFormState): boolean {
   return Boolean(current.review && current.review.fields.length > 0);
 }
-export function maySaveCateringAccess(current: CateringAccessFormState, editable: boolean, pending: boolean): boolean {
-  return Boolean(current.value) && editable && !pending && !cateringAccessReviewIsOpen(current);
+/**
+ * Whether this form's contents belong to the booking on screen -- the ONLY condition under which they may be
+ * rendered or submitted.
+ *
+ * The form is reconciled to a booking by a passive effect, and passive effects flush AFTER the commit. React Query
+ * can hand back a cached payload for booking B the instant the route changes, so B renders and commits while this
+ * state still holds booking A's values -- A's load-in instructions, A's venue contact, A's PROVIDER-PRIVATE notes --
+ * and a render condition that asked only "is there a value?" put all of them on B's screen. Worse, the submit path
+ * was by then addressed to B, so saving would have written A's record onto B's booking.
+ *
+ * The identity tag is what makes stale state inert rather than dangerous: it is already carried, and comparing it
+ * costs nothing. Nothing is cleared to achieve this -- A's draft stays exactly where it is, unrendered, until the
+ * participant navigates back to it or the reconciliation replaces it.
+ */
+export function cateringAccessFormIsCurrent(current: CateringAccessFormState, identity: string): current is CateringAccessFormState & { value: CateringAccessDraft } {
+  return current.identity === identity && current.value !== null;
+}
+/**
+ * Whether Save may be offered, and -- because `submitAccess` asks the same question -- whether a save may be made.
+ *
+ * The identity check is INSIDE this, not beside it, so the button and the handler cannot come to disagree and a
+ * future caller cannot forget it.
+ */
+export function maySaveCateringAccess(current: CateringAccessFormState, identity: string, editable: boolean, pending: boolean): boolean {
+  return cateringAccessFormIsCurrent(current, identity) && editable && !pending && !cateringAccessReviewIsOpen(current);
 }
 
 /**

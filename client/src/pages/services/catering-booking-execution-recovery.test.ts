@@ -565,7 +565,7 @@ test("P1 (3): both changed the SAME field differently -- no silent overwrite", (
   assert.equal(merged.review?.theirs.parkingInstructions, "Theirs");
   // CRITICALLY: the version does NOT advance, so this form cannot be saved into an overwrite.
   assert.equal(merged.value?.expectedUpdatedAt, V1);
-  assert.equal(maySaveCateringAccess(merged, true, false), false);
+  assert.equal(maySaveCateringAccess(merged, "me:b1", true, false), false);
 });
 
 test("P1 (4): fields the user never touched adopt the authoritative values", () => {
@@ -601,7 +601,7 @@ test("P1 (5): expectedUpdatedAt advances only as part of a safe merge or a compl
   const kept = resolveCateringAccessReviewField(contested, "parkingInstructions", "mine");
   assert.equal(kept.value?.parkingInstructions, "Mine");
   assert.equal(kept.value?.expectedUpdatedAt, V2);
-  assert.equal(maySaveCateringAccess(kept, true, false), true);
+  assert.equal(maySaveCateringAccess(kept, "me:b1", true, false), true);
   const taken = resolveCateringAccessReviewField(contested, "parkingInstructions", "theirs");
   assert.equal(taken.value?.parkingInstructions, "Theirs");
   assert.equal(taken.value?.expectedUpdatedAt, V2);
@@ -618,7 +618,7 @@ test("P1 (5b): a partially reviewed form still cannot be saved", () => {
   const halfway = resolveCateringAccessReviewField(contested, "parkingInstructions", "mine");
   assert.deepEqual(halfway.review?.fields, ["loadInEntrance"]);
   assert.equal(halfway.value?.expectedUpdatedAt, V1, "the version waits for the LAST resolution");
-  assert.equal(maySaveCateringAccess(halfway, true, false), false);
+  assert.equal(maySaveCateringAccess(halfway, "me:b1", true, false), false);
   const done = resolveCateringAccessReviewField(halfway, "loadInEntrance", "theirs");
   assert.equal(done.review, null);
   assert.equal(done.value?.expectedUpdatedAt, V2);
@@ -678,9 +678,9 @@ test("P1 (8b): terminal/read-only and privacy behaviour are unchanged by the mer
   // Save is gated on `editable` exactly as before, so a terminal booking still cannot save -- with or without a
   // review open.
   const clean = cleanForm();
-  assert.equal(maySaveCateringAccess(clean, false, false), false, "terminal booking");
-  assert.equal(maySaveCateringAccess(clean, true, true), false, "request in flight");
-  assert.equal(maySaveCateringAccess(clean, true, false), true);
+  assert.equal(maySaveCateringAccess(clean, "me:b1", false, false), false, "terminal booking");
+  assert.equal(maySaveCateringAccess(clean, "me:b1", true, true), false, "request in flight");
+  assert.equal(maySaveCateringAccess(clean, "me:b1", true, false), true);
   // A customer's record carries no private key, and merging one never invents it.
   const { providerPrivateNotes: _absent, ...customerView } = access({ updatedAt: V2 });
   const merged = reconcileCateringAccessForm(
@@ -845,7 +845,7 @@ test("P2 audit: every callback that writes booking-local state is behind the ori
   // And the drafts are additionally reset when the booking changes, so nothing survives a navigation either way.
   // That reset sets state, so it stays in an effect and keeps its own record of which booking's drafts are loaded;
   // the guard the callbacks read is a separate ref, synchronized during render so it is current at the commit.
-  assert.equal(component.includes("if (settledIdentityRef.current === identity) return;"), true);
+  assert.equal(component.includes("if (localIdentity === identity) return;"), true);
   assert.equal(component.includes("  const identityRef = useRef(identity);\n  identityRef.current = identity;"), true);
 });
 
@@ -1022,7 +1022,7 @@ test("P2: reconciling against an already-fresh payload still refuses to overwrit
   assert.equal(form.value?.parkingInstructions, "Three bays", "the user's words are still there");
   assert.equal(form.review?.theirs.parkingInstructions, "Somebody else's bays");
   assert.equal(form.value?.expectedUpdatedAt, V1, "and an unreviewed form cannot be saved into an overwrite");
-  assert.equal(maySaveCateringAccess(form, true, false), false);
+  assert.equal(maySaveCateringAccess(form, "me:b1", true, false), false);
   // Resolving is what advances it, by explicit choice -- and that resolution is not undone by another effect run.
   const resolved = resolveCateringAccessReviewField(form, "parkingInstructions", "mine");
   assert.equal(resolved.value?.expectedUpdatedAt, V2);
@@ -1151,7 +1151,7 @@ test("P2: an impossible schedule blocks submission without touching what was typ
 });
 
 test("P2: the form's message is the server's message, from the same constant", () => {
-  assert.equal(component.includes("{!cateringEquipmentScheduleIsValid(equipmentDraft) && <p className=\"text-sm text-destructive sm:col-span-2\" role=\"alert\">{CATERING_EQUIPMENT_SCHEDULE_MESSAGE}</p>}"), true);
+  assert.equal(component.includes("{!cateringEquipmentScheduleIsValid(liveEquipmentDraft) && <p className=\"text-sm text-destructive sm:col-span-2\" role=\"alert\">{CATERING_EQUIPMENT_SCHEDULE_MESSAGE}</p>}"), true);
   // No second wording is typed into the markup, so the form and the refusal can never disagree.
   assert.equal(component.includes("must not precede"), false, "the wording is imported, not written here");
   // And the guard reads the shared rule rather than restating a comparison of its own.
