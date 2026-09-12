@@ -141,9 +141,25 @@ export function hydrateCateringCloseoutForm<T>(
   return { ...current, value: next, baseVersion: nextVersion };
 }
 
-/** An edit marks the form dirty and clears any conflict flag: the participant is composing a fresh attempt. */
+/**
+ * An ordinary local edit to the draft.
+ *
+ * It marks the form dirty and does NOT clear a conflict, exactly as the checklist editor's own edit helper does
+ * not. Typing is not a resolution: an edit leaves `baseVersion` exactly where it was, so clearing the flag
+ * re-enabled Save against the very version the server had just refused and hid the reload control that was the way
+ * out. The provider could then loop on 409 forever by doing nothing but typing -- every attempt restating the
+ * stale precondition, every refusal cleared again by the next keystroke.
+ *
+ * Editing while conflicted stays allowed on purpose: the provider may want to adjust their words before deciding
+ * what to do. The draft is simply, and honestly, still written against state the server has already rejected, and
+ * it stays unsavable until they explicitly adopt the authoritative record.
+ *
+ * The conflict clears ONLY where a matching authoritative text and version are installed together: the explicit
+ * discard-and-reload, this form's own accepted save, or a booking identity reset. Never as a side effect of
+ * editing, hydrating, polling, or completing.
+ */
 export function editCateringCloseoutForm<T>(current: CateringCloseoutFormState<T>, value: T): CateringCloseoutFormState<T> {
-  return { ...current, value, dirty: true, conflicted: false };
+  return { ...current, value, dirty: true };
 }
 /** A refused save keeps the text AND the version it was based on, and only records that saving is blocked. */
 export function markCateringCloseoutFormConflict<T>(current: CateringCloseoutFormState<T>): CateringCloseoutFormState<T> {
@@ -376,28 +392,45 @@ export function cateringCloseoutRebasedRecord(
 export type CateringCloseoutTransitionRecord = { identity: string; closedOut: boolean } | null;
 
 /**
- * Whether an observation is a genuine transition, and what to remember.
+ * Whether an observation is a genuine transition, whether the workspace must be reconciled, and what to remember.
  *
- * Deliberately conservative in three directions, because the cost of a false positive is a refetch loop:
+ * `transitioned` answers the narrow question -- did `closedOut` actually change on this booking -- and stays
+ * exactly as conservative as it was: a first observation is not a transition, a different booking is not a
+ * transition, and an identical poll is not a transition.
  *
- *  - a FIRST observation of a booking is never a transition, so an initial load that already reads `closedOut:
- *    true` triggers nothing -- the workspace query is loading alongside it and needs no nudge;
- *  - a different booking is never a transition either, so navigating A -> B records B and refreshes nothing, and
- *    the record from A cannot make B look like it moved;
- *  - an unchanged observation returns the PREVIOUS record by reference, so repeated polls reporting the same state
- *    are inert however many of them arrive.
+ * `reconcile` answers the question the caller actually has, which is whether the independently cached workspace
+ * may be behind. IT IS TRUE ON A FIRST OBSERVATION TOO, and that is the correction: treating "no previous record"
+ * as "nothing to do" assumed the two queries were synchronized, and they are not. The workspace query fetches
+ * once; the closeout query fetches separately and later. So a customer whose workspace resolved at T1, before the
+ * provider closed out at T2, gets their first closeout payload at T3 already reading `closedOut: true` -- the
+ * tracker has nothing to compare it against, reports no transition, and the `booking_closed_out` row written
+ * transactionally with that state stays missing from their Activity panel indefinitely, because every later poll
+ * reports the same state and is inert. Reopening has the same shape against a workspace cached while closed.
  *
- * Only an actual change of `closedOut`, on the same booking, after a previous observation, reports `true` -- and
- * the new state is recorded at the same time, so the very next poll is inert again.
+ * There is no shared revision between the two queries to compare, and inventing one would be inventing a fact, so
+ * the minimal safe rule is used instead: reconcile ONCE per booking on the first authoritative observation,
+ * whatever it says, and once per genuine transition after that.
+ *
+ * It still cannot loop, in either direction:
+ *
+ *  - the record is returned by the caller and stored BEFORE the refresh is issued, so the first observation is
+ *    only ever first once;
+ *  - an unchanged observation returns the PREVIOUS record by reference and reconciles nothing, so any number of
+ *    identical polls cost nothing;
+ *  - the refresh targets the WORKSPACE query, which is not what this observation is read from, so refreshing it
+ *    cannot produce another observation to react to.
+ *
+ * A different booking is a first observation OF THAT BOOKING: B reconciles B's own workspace once, and nothing
+ * about A's state reaches it -- the caller addresses the refresh by the identity that was just observed.
  */
 export function observeCateringCloseoutTransition(
   previous: CateringCloseoutTransitionRecord,
   identity: string,
   closedOut: boolean,
-): { record: CateringCloseoutTransitionRecord; transitioned: boolean } {
-  if (!previous || previous.identity !== identity) return { record: { identity, closedOut }, transitioned: false };
-  if (previous.closedOut === closedOut) return { record: previous, transitioned: false };
-  return { record: { identity, closedOut }, transitioned: true };
+): { record: CateringCloseoutTransitionRecord; transitioned: boolean; reconcile: boolean } {
+  if (!previous || previous.identity !== identity) return { record: { identity, closedOut }, transitioned: false, reconcile: true };
+  if (previous.closedOut === closedOut) return { record: previous, transitioned: false, reconcile: false };
+  return { record: { identity, closedOut }, transitioned: true, reconcile: true };
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *

@@ -199,12 +199,12 @@ test("the detector runs from a ref, so observing costs no render and cannot feed
   assert.ok(component.includes("transitionRef.current = observed.record;"));
   // Recorded BEFORE the invalidation, so the next poll reporting the same state is inert.
   const effect = component.slice(component.indexOf("const observedClosedOut = closeout?.closeout.closedOut;"), component.indexOf("}, [identity, observedClosedOut]);"));
-  assert.ok(effect.indexOf("transitionRef.current = observed.record;") < effect.indexOf("if (observed.transitioned)"));
+  assert.ok(effect.indexOf("transitionRef.current = observed.record;") < effect.indexOf("if (observed.reconcile)"));
 });
 
 test("only the workspace query is invalidated, and only for the booking just observed", () => {
   const effect = component.slice(component.indexOf("const observedClosedOut = closeout?.closeout.closedOut;"), component.indexOf("}, [identity, observedClosedOut]);"));
-  assert.ok(effect.includes('if (observed.transitioned) cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] });'));
+  assert.ok(effect.includes('if (observed.reconcile) cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] });'));
   // It must not invalidate the closeout query itself, which would be the loop.
   assert.equal(effect.includes("cateringBookingCloseoutKey"), false);
 });

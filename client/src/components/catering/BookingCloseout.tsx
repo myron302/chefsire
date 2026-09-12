@@ -238,24 +238,33 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     setNotesForm((current) => hydrateCateringCloseoutForm(current, identity, persistedNotes, notesAuthoritativeVersion));
   }, [identity, provider, persistedNotes, notesAuthoritativeVersion, Boolean(closeout)]);
   /**
-   * Refresh the workspace once when the poll reveals somebody ELSE closed this booking out, or reopened it.
+   * Refresh the workspace once when this booking's closeout state is FIRST observed, and once more whenever it
+   * actually changes afterwards.
    *
-   * Both transitions write a shared activity row in the same transaction as the state change, but the Activity
-   * panel lives in the parent workspace query, which does not poll -- and the provider's invalidation cannot reach
-   * the customer's browser. Without this the closeout card and the feed above it would disagree indefinitely.
+   * Closing out and reopening each write a shared activity row in the same transaction as the state change, but the
+   * Activity panel lives in the parent workspace query, which does not poll -- and the provider's invalidation
+   * cannot reach the customer's browser. Watching only for a CHANGE assumed the two queries were synchronized at
+   * the point this one started watching, and they are not: the workspace resolves once, on its own schedule, and
+   * the closeout query resolves separately and later. A customer whose workspace was fetched before the provider
+   * closed out, and whose first closeout payload arrives after, has nothing to compare against, sees no change on
+   * any later poll, and is left with a feed permanently missing the event it describes.
+   *
+   * So the first authoritative observation of a booking reconciles once, whatever it says, and genuine transitions
+   * reconcile once each after that.
    *
    * It cannot loop: invalidating the WORKSPACE query changes nothing this effect reads, and the observation is
-   * recorded before the invalidation, so the next poll reporting the same state is inert. A local completion or
-   * reopening records the state from its own response, so it never produces a second invalidation on top of the
-   * one it already issued.
+   * recorded before the invalidation, so every later poll reporting the same state is inert -- the bound is one
+   * refresh per booking plus one per real transition. A local completion or reopening records the state from its
+   * own response, having already invalidated the workspace itself, so it never produces a second refresh on top of
+   * the one it issued.
    */
   const observedClosedOut = closeout?.closeout.closedOut;
   useEffect(() => {
     if (typeof observedClosedOut !== "boolean") return;
     const observed = observeCateringCloseoutTransition(transitionRef.current, identity, observedClosedOut);
     transitionRef.current = observed.record;
-    // Addressed by the identity that was just observed, so a transition on one booking never refreshes another.
-    if (observed.transitioned) cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] });
+    // Addressed by the identity that was just observed, so one booking's observation never refreshes another's.
+    if (observed.reconcile) cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] });
   }, [identity, observedClosedOut]);
 
   // An editor open on a booking whose checklist is no longer editable, or that belongs to another booking, closes.
@@ -361,7 +370,11 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       setNotice(null);
       // Record the state this response reports, so the refetch it triggers is not then read as an external
       // transition and answered with a SECOND workspace invalidation. A local completion or reopening already
-      // invalidated the workspace above; this stops that work being duplicated.
+      // invalidated the workspace above; this stops that work being duplicated -- including on the first-observation
+      // path, because a tracker initialized here makes the payload that follows an identical, inert observation.
+      //
+      // It runs only past the `settlesHere` guard above, so a response for a booking the participant has navigated
+      // away from can neither overwrite the tracker of the booking on screen nor pre-fill one on its behalf.
       const settledClosedOut = (value.closeout as { closedOut?: boolean } | undefined)?.closedOut;
       if (typeof settledClosedOut === "boolean") {
         transitionRef.current = observeCateringCloseoutTransition(transitionRef.current, started.identity, settledClosedOut).record;

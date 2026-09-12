@@ -86,7 +86,11 @@ test("that conflict still survives polling and still needs an explicit reload", 
   assert.equal(form.conflicted, true, "a poll is still not a resolution");
   assert.equal(form.baseVersion, V1);
   form = editCateringCloseoutForm(form, "rewritten");
-  assert.equal(form.conflicted, false, "editing clears it for notes, as it always has");
+  assert.equal(form.conflicted, true, "and neither is typing: only an explicit adoption resolves it");
+  assert.equal(form.value, "rewritten", "though the provider may still adjust their words");
+  assert.equal(form.baseVersion, V1, "against the version that was refused, which is why Save stays blocked");
+  assert.equal(mayEditCateringCloseoutNotes(form, IDENTITY, true, false), false, "Save still blocked");
+  assert.equal(mayDiscardCateringCloseoutNotes(form, IDENTITY), true, "the reload is still offered");
   // The reload remains the way to adopt the authoritative record.
   const reloaded = discardCateringCloseoutForm(IDENTITY, "theirs", V2);
   assert.equal(reloaded.conflicted, false);
