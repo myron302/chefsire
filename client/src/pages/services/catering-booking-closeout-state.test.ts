@@ -96,11 +96,11 @@ test("a dirty form is left alone by a poll, so unsaved writing is never quietly 
   assert.equal(hydrateCateringCloseoutForm(dirty, A, "theirs").value, "mine");
 });
 
-test("a form refused as stale keeps its text and takes the fresh version to submit against", () => {
+test("a form refused as stale keeps its text and stays conflicted until the provider resolves it", () => {
   const conflicted = markCateringCloseoutFormConflict(editCateringCloseoutForm({ ...emptyCateringCloseoutForm(""), identity: A }, "mine"));
-  const rebased = hydrateCateringCloseoutForm(conflicted, A, "theirs");
-  assert.equal(rebased.value, "mine", "the participant's words survive the conflict");
-  assert.equal(rebased.conflicted, false, "and the next save is judged against the newer record");
+  const polled = hydrateCateringCloseoutForm(conflicted, A, "theirs", "2026-09-05T11:00:00.000Z");
+  assert.equal(polled.value, "mine", "the participant's words survive the conflict");
+  assert.equal(polled.conflicted, true, "and a poll does not resolve it -- only the explicit reload does");
 });
 
 test("a form cannot be submitted while it belongs to another booking", () => {

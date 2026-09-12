@@ -121,10 +121,12 @@ export function emptyCateringCloseoutForm<T>(value: T): CateringCloseoutFormStat
  * A DIRTY form keeps BOTH. Keeping the text while letting the version advance was the defect: it is precisely the
  * combination that claims "I edited the newest record" about a draft written against an older one.
  *
- * A form whose last save was REFUSED AS STALE also keeps both, and only clears the flag that disables saving. It is
- * deliberately not rebased onto the version that refused it: silently adopting the conflicting record would turn a
- * conflict the provider is meant to resolve into an overwrite they never chose. The explicit discard-and-reload
- * control is how they take the newer record, and it is their action rather than a poll's.
+ * A form whose last save was REFUSED AS STALE is returned COMPLETELY untouched -- text, version and the conflict
+ * flag alike. Keeping the text and version while clearing the flag was strictly the worst of both: saving
+ * re-enabled, the discard control vanished, and the next save still stated the version that had just been refused,
+ * so the provider could loop on 409 forever with no way out. The conflict is theirs to resolve, and a poll is not
+ * a resolution -- only the explicit discard-and-reload is, and it reads the CURRENT authoritative record at the
+ * moment they choose it.
  */
 export function hydrateCateringCloseoutForm<T>(
   current: CateringCloseoutFormState<T>,
@@ -133,7 +135,8 @@ export function hydrateCateringCloseoutForm<T>(
   nextVersion: string | null,
 ): CateringCloseoutFormState<T> {
   if (current.identity !== identity) return { identity, value: next, baseVersion: nextVersion, dirty: false, conflicted: false };
-  if (current.conflicted) return { ...current, conflicted: false };
+  // Conflicted first, and untouched: hydration is not a resolution, however many times it runs.
+  if (current.conflicted) return current;
   if (current.dirty) return current;
   return { ...current, value: next, baseVersion: nextVersion };
 }
@@ -333,6 +336,50 @@ export function cateringCloseoutRebasedChecklist(
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
+ * Externally-caused closeout transitions
+ * ------------------------------------------------------------------------------------------------------------- */
+
+/**
+ * The last closeout state this client observed for one booking.
+ *
+ * It exists because two queries describe the same event and only one of them polls. When a PROVIDER closes out,
+ * the server writes the closed state and the `booking_closed_out` shared activity row in one transaction -- but a
+ * CUSTOMER sitting in their workspace has two separate caches, and the provider's invalidation cannot reach
+ * another person's browser. Their closeout card learns of it on the next poll; their Activity panel, which does
+ * not poll, would keep omitting the event indefinitely. Reopening has exactly the same shape.
+ *
+ * So the closeout poll -- the only thing here that does learn of external change -- reports the transition, and
+ * the workspace query is refreshed once for it. Nothing new is written, no event is fabricated, no second activity
+ * system exists, and no transport is added: the server already recorded the truth, this only re-reads it.
+ */
+export type CateringCloseoutTransitionRecord = { identity: string; closedOut: boolean } | null;
+
+/**
+ * Whether an observation is a genuine transition, and what to remember.
+ *
+ * Deliberately conservative in three directions, because the cost of a false positive is a refetch loop:
+ *
+ *  - a FIRST observation of a booking is never a transition, so an initial load that already reads `closedOut:
+ *    true` triggers nothing -- the workspace query is loading alongside it and needs no nudge;
+ *  - a different booking is never a transition either, so navigating A -> B records B and refreshes nothing, and
+ *    the record from A cannot make B look like it moved;
+ *  - an unchanged observation returns the PREVIOUS record by reference, so repeated polls reporting the same state
+ *    are inert however many of them arrive.
+ *
+ * Only an actual change of `closedOut`, on the same booking, after a previous observation, reports `true` -- and
+ * the new state is recorded at the same time, so the very next poll is inert again.
+ */
+export function observeCateringCloseoutTransition(
+  previous: CateringCloseoutTransitionRecord,
+  identity: string,
+  closedOut: boolean,
+): { record: CateringCloseoutTransitionRecord; transitioned: boolean } {
+  if (!previous || previous.identity !== identity) return { record: { identity, closedOut }, transitioned: false };
+  if (previous.closedOut === closedOut) return { record: previous, transitioned: false };
+  return { record: { identity, closedOut }, transitioned: true };
+}
+
+/* ------------------------------------------------------------------------------------------------------------- *
  * Transient notices
  * ------------------------------------------------------------------------------------------------------------- */
 
@@ -381,6 +428,16 @@ export type CateringCloseoutItemEditorState = OpenCateringCloseoutItemEditor | n
 export function cateringCloseoutEditorFor(item: CateringCloseoutItemView, identity: string): OpenCateringCloseoutItemEditor {
   return { identity, key: item.key, state: item.state, note: item.providerNote ?? "", expectedUpdatedAt: item.updatedAt, conflicted: false };
 }
+/**
+ * An ordinary local edit to an open editor.
+ *
+ * It does NOT clear a conflict. Typing is not a resolution: `expectedUpdatedAt` is untouched by an edit, so
+ * clearing the flag re-enabled Save against the very version that had just been refused and hid the Reload control
+ * that was the way out -- the provider could then loop on 409 indefinitely by doing nothing but editing.
+ *
+ * Editing while conflicted is still allowed, deliberately: the provider may want to adjust their words before
+ * deciding. It simply stays unsavable until they explicitly reload onto the authoritative row.
+ */
 export function editCateringCloseoutEditor(
   editor: CateringCloseoutItemEditorState,
   identity: string,
@@ -388,7 +445,7 @@ export function editCateringCloseoutEditor(
   patch: Partial<Pick<OpenCateringCloseoutItemEditor, "state" | "note">>,
 ): CateringCloseoutItemEditorState {
   if (!editor || editor.identity !== identity || editor.key !== key) return editor;
-  return { ...editor, ...patch, conflicted: false };
+  return { ...editor, ...patch };
 }
 /**
  * The editor for one item, or null.

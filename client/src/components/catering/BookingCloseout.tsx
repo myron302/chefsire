@@ -64,6 +64,7 @@ import {
   markCateringCloseoutFormConflict,
   mayDiscardCateringCloseoutNotes,
   mayEditCateringCloseoutNotes,
+  observeCateringCloseoutTransition,
   mayReloadCateringCloseoutEditor,
   maySubmitCateringCloseoutEditor,
   reconcileCateringCloseoutEditor,
@@ -75,6 +76,7 @@ import {
   type CateringCloseoutFormState,
   type CateringCloseoutItemEditorState,
   type CateringCloseoutNotice,
+  type CateringCloseoutTransitionRecord,
   type CateringCloseoutVersions,
   type OpenCateringCloseoutItemEditor,
 } from "@/pages/services/catering-booking-closeout-state";
@@ -193,6 +195,14 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
    */
   const identityRef = useRef(identity);
   identityRef.current = identity;
+  /**
+   * The last closeout state observed for the booking on screen.
+   *
+   * A ref, because this is bookkeeping rather than anything rendered: writing it must not cause a render, and
+   * reading it must not make the effect below depend on its own output. It is identity-scoped like every other
+   * piece of booking-local state here, so booking A's record can never make booking B look like it moved.
+   */
+  const transitionRef = useRef<CateringCloseoutTransitionRecord>(null);
 
   /**
    * The booking the notes form, the open editor and the notice currently belong to.
@@ -226,6 +236,27 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     // draft written against V1 from claiming it was based on the V2 another tab just wrote.
     setNotesForm((current) => hydrateCateringCloseoutForm(current, identity, persistedNotes, notesAuthoritativeVersion));
   }, [identity, provider, persistedNotes, notesAuthoritativeVersion, Boolean(closeout)]);
+  /**
+   * Refresh the workspace once when the poll reveals somebody ELSE closed this booking out, or reopened it.
+   *
+   * Both transitions write a shared activity row in the same transaction as the state change, but the Activity
+   * panel lives in the parent workspace query, which does not poll -- and the provider's invalidation cannot reach
+   * the customer's browser. Without this the closeout card and the feed above it would disagree indefinitely.
+   *
+   * It cannot loop: invalidating the WORKSPACE query changes nothing this effect reads, and the observation is
+   * recorded before the invalidation, so the next poll reporting the same state is inert. A local completion or
+   * reopening records the state from its own response, so it never produces a second invalidation on top of the
+   * one it already issued.
+   */
+  const observedClosedOut = closeout?.closeout.closedOut;
+  useEffect(() => {
+    if (typeof observedClosedOut !== "boolean") return;
+    const observed = observeCateringCloseoutTransition(transitionRef.current, identity, observedClosedOut);
+    transitionRef.current = observed.record;
+    // Addressed by the identity that was just observed, so a transition on one booking never refreshes another.
+    if (observed.transitioned) cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] });
+  }, [identity, observedClosedOut]);
+
   // An editor open on a booking whose checklist is no longer editable, or that belongs to another booking, closes.
   // That now includes a booking another tab closed out: the poll brings `closedOut`, and the editor drops with it.
   useEffect(() => {
@@ -312,6 +343,13 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       // participant has navigated away from cannot advance another booking's versions.
       setVersions((current) => adoptCateringCloseoutVersions(current, started.identity, cateringCloseoutVersionsFromResponse(value)));
       setNotice(null);
+      // Record the state this response reports, so the refetch it triggers is not then read as an external
+      // transition and answered with a SECOND workspace invalidation. A local completion or reopening already
+      // invalidated the workspace above; this stops that work being duplicated.
+      const settledClosedOut = (value.closeout as { closedOut?: boolean } | undefined)?.closedOut;
+      if (typeof settledClosedOut === "boolean") {
+        transitionRef.current = observeCateringCloseoutTransition(transitionRef.current, started.identity, settledClosedOut).record;
+      }
       if (variables.submittedItem) {
         const checklist = (value.checklist as CateringCloseoutItemView[] | undefined) ?? [];
         setEditor((current) => settleCateringCloseoutEditor(current, variables.submittedItem!, checklist.find((item) => item.key === variables.submittedItem!.key)));

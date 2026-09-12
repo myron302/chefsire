@@ -124,15 +124,58 @@ test("a first save on a booking with no record yet states no precondition at all
  * Conflict handling
  * ----------------------------------------------------------------------------------------------------------- */
 
-test("a refused save keeps both the text and the version it was based on", () => {
+test("a refused save keeps its text, its version AND its conflict through hydration", () => {
   let form = editCateringCloseoutForm(hydrated("stored", V1), "mine");
   form = markCateringCloseoutFormConflict(form);
-  // A later poll clears only the flag that blocks saving; it does not rebase the draft onto the record that
-  // refused it, because which text survives is the provider's decision rather than a poll's.
+  // A poll is not a resolution. Clearing the flag while keeping the stale version was the worst of both: saving
+  // re-enabled, the discard control vanished, and the next save stated the very version that had just been
+  // refused -- an unbreakable 409 loop.
   form = hydrateCateringCloseoutForm(form, IDENTITY, "theirs", V2);
   assert.equal(form.value, "mine");
   assert.equal(form.baseVersion, V1);
+  assert.equal(form.conflicted, true, "still conflicted, so Save stays blocked and Reload stays offered");
+  assert.equal(mayEditCateringCloseoutNotes(form, IDENTITY, true, false), false);
+  assert.equal(mayDiscardCateringCloseoutNotes(form, IDENTITY), true);
+});
+
+test("repeated polling while conflicted never clears it, however many arrive", () => {
+  let form = markCateringCloseoutFormConflict(editCateringCloseoutForm(hydrated("stored", V1), "mine"));
+  for (const [text, version] of [["theirs", V2], ["theirs again", V3], ["and again", V3]] as const) {
+    form = hydrateCateringCloseoutForm(form, IDENTITY, text, version);
+    assert.equal(form.conflicted, true);
+    assert.equal(form.value, "mine");
+    assert.equal(form.baseVersion, V1);
+  }
+});
+
+test("the full reported loop is broken end to end", () => {
+  // 1-2. Hydrated at V1, edited locally.
+  let form = editCateringCloseoutForm(hydrated("stored", V1), "mine");
+  // 3-5. An external writer advances to V2 and this save is refused.
+  form = markCateringCloseoutFormConflict(form);
+  // 6-9. The refetch arrives carrying V2; nothing about the form moves, and Save stays blocked.
+  form = hydrateCateringCloseoutForm(form, IDENTITY, "theirs", V2);
+  assert.equal(form.conflicted, true);
+  assert.equal(form.baseVersion, V1);
+  assert.equal(mayEditCateringCloseoutNotes(form, IDENTITY, true, false), false);
+  // 10-12. The provider explicitly reloads, adopting the CURRENT authoritative text and version.
+  form = discardCateringCloseoutForm(IDENTITY, "theirs", V2);
   assert.equal(form.conflicted, false);
+  assert.equal(form.dirty, false);
+  assert.equal(form.value, "theirs");
+  // 13. And the next edit and save state V2, so they succeed.
+  form = editCateringCloseoutForm(form, "mine, rewritten");
+  assert.equal(mayEditCateringCloseoutNotes(form, IDENTITY, true, false), true);
+  assert.equal(submitted(form).expectedUpdatedAt, V2);
+});
+
+test("an explicit reload uses whatever is authoritative at the moment it is chosen", () => {
+  const conflicted = markCateringCloseoutFormConflict(editCateringCloseoutForm(hydrated("stored", V1), "mine"));
+  assert.equal(conflicted.baseVersion, V1);
+  // The record moved on again while they were deciding; the reload takes the newest, not the one that refused.
+  const reloaded = discardCateringCloseoutForm(IDENTITY, "newest", V3);
+  assert.equal(reloaded.baseVersion, V3);
+  assert.equal(reloaded.value, "newest");
 });
 
 test("the explicit discard is the escape, and it is the only thing that takes the newer record", () => {
