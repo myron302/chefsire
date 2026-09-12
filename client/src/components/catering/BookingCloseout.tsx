@@ -38,6 +38,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   activeCateringCloseoutEditor,
+  activeCateringCloseoutNotice,
   adoptCateringCloseoutVersions,
   cateringCloseoutCompletePayload,
   cateringCloseoutEditorFor,
@@ -50,6 +51,7 @@ import {
   cateringCloseoutRebasedRecord,
   cateringCloseoutReopenPayload,
   cateringCloseoutVersionsFromResponse,
+  discardCateringCloseoutForm,
   cateringCloseoutSignalVariant,
   cateringCloseoutStateVariant,
   editCateringCloseoutEditor,
@@ -60,6 +62,7 @@ import {
   isCateringCloseoutConflict,
   markCateringCloseoutEditorConflict,
   markCateringCloseoutFormConflict,
+  mayDiscardCateringCloseoutNotes,
   mayEditCateringCloseoutNotes,
   mayReloadCateringCloseoutEditor,
   maySubmitCateringCloseoutEditor,
@@ -71,6 +74,7 @@ import {
   type CateringCloseoutError,
   type CateringCloseoutFormState,
   type CateringCloseoutItemEditorState,
+  type CateringCloseoutNotice,
   type CateringCloseoutVersions,
   type OpenCateringCloseoutItemEditor,
 } from "@/pages/services/catering-booking-closeout-state";
@@ -105,7 +109,7 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
 
   const [notesForm, setNotesForm] = useState<CateringCloseoutFormState<string>>(emptyCateringCloseoutForm(""));
   const [editor, setEditor] = useState<CateringCloseoutItemEditorState>(null);
-  const [notice, setNotice] = useState<{ message: string; retryable: boolean } | null>(null);
+  const [notice, setNotice] = useState<CateringCloseoutNotice | null>(null);
   /**
    * The freshest authoritative versions an accepted mutation has returned.
    *
@@ -154,6 +158,23 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
    * another tab closed out takes the controls away here on the very next poll.
    */
   const checklistEditable = cateringCloseoutChecklistIsEditable(actionable, Boolean(closeout?.closeout.closedOut));
+  /**
+   * The closeout record the record mutations state their precondition against.
+   *
+   * The query's record, with `updatedAt` advanced to the freshest version this client has been told about. One
+   * accessor rather than several, so completion and reopening cannot drift apart -- a version either of them
+   * adopts is immediately the version the other sends.
+   */
+  const rebasedRecord = closeout ? cateringCloseoutRebasedRecord(closeout.closeout, versions, identity) : null;
+  /**
+   * The version a CLEAN notes form hydrates to.
+   *
+   * Read from the rebased record so this client's own accepted writes are reflected, but it reaches a DIRTY form
+   * nowhere: `hydrateCateringCloseoutForm` keeps a dirty form's own `baseVersion` untouched. That split is the
+   * whole correction -- a clean form has nothing to lose by moving with the record, and a dirty one must not claim
+   * to have been written against a record its author never saw.
+   */
+  const notesAuthoritativeVersion = rebasedRecord?.updatedAt ?? null;
 
   /**
    * The booking on screen, synchronized during RENDER.
@@ -201,8 +222,10 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
   const persistedNotes = closeout?.closeout.providerNotes ?? "";
   useEffect(() => {
     if (!closeout || !provider) return;
-    setNotesForm((current) => hydrateCateringCloseoutForm(current, identity, persistedNotes));
-  }, [identity, provider, persistedNotes, Boolean(closeout)]);
+    // The version travels WITH the text. A clean form takes both; a dirty one keeps both, which is what stops a
+    // draft written against V1 from claiming it was based on the V2 another tab just wrote.
+    setNotesForm((current) => hydrateCateringCloseoutForm(current, identity, persistedNotes, notesAuthoritativeVersion));
+  }, [identity, provider, persistedNotes, notesAuthoritativeVersion, Boolean(closeout)]);
   // An editor open on a booking whose checklist is no longer editable, or that belongs to another booking, closes.
   // That now includes a booking another tab closed out: the poll brings `closedOut`, and the editor drops with it.
   useEffect(() => {
@@ -294,8 +317,12 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         setEditor((current) => settleCateringCloseoutEditor(current, variables.submittedItem!, checklist.find((item) => item.key === variables.submittedItem!.key)));
       }
       if (variables.submittedNotes !== undefined) {
-        const saved = (value.closeout as { providerNotes?: string | null } | undefined)?.providerNotes ?? "";
-        setNotesForm((current) => settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, saved));
+        const savedRecord = value.closeout as { providerNotes?: string | null; updatedAt?: string | null } | undefined;
+        const saved = savedRecord?.providerNotes ?? "";
+        // THIS form's own accepted save is the one thing allowed to advance a dirty form's version, which is what
+        // lets an immediate second save -- of newer words typed while this one was in flight -- actually succeed.
+        const savedVersion = typeof savedRecord?.updatedAt === "string" ? savedRecord.updatedAt : null;
+        setNotesForm((current) => settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, saved, savedVersion));
       }
       // LAST, and only once every synchronous settlement above has run: hold the mutation pending until the
       // authoritative payload has actually landed.
@@ -318,7 +345,8 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       // different booking there is nothing to mark and nothing to say.
       if (!settlesHere(started)) { await reconciled; return; }
       const outcome = cateringCloseoutFailureNotice(error);
-      setNotice({ message: outcome.message, retryable: outcome.retryable });
+      // Tagged with the booking that produced it, so it can never be rendered -- or announced -- under another.
+      setNotice({ identity: started.identity, message: outcome.message, retryable: outcome.retryable });
       // A conflicted editor is MARKED, not closed: the provider's words stay on screen, and saving is disabled
       // until they reload the newer version to start from.
       if (variables.settle === "item" && variables.itemKey && isCateringCloseoutConflict(error)) {
@@ -333,15 +361,6 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     },
   });
   const pending = mutation.isPending;
-
-  /**
-   * The closeout record every record mutation states its precondition against.
-   *
-   * The query's record, with `updatedAt` advanced to the freshest version this client has been told about. One
-   * accessor rather than three, so notes, complete and reopen cannot drift apart -- a version any one of them
-   * adopts is immediately the version the other two send.
-   */
-  const rebasedRecord = closeout ? cateringCloseoutRebasedRecord(closeout.closeout, versions, identity) : null;
 
   const submitItem = (open: OpenCateringCloseoutItemEditor) => {
     // The editor has to belong to the booking this submit is addressed to. `activeCateringCloseoutEditor` already
@@ -363,7 +382,10 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       origin: origin(), path: "/closeout/notes", method: "PUT",
       // The REBASED version, so an immediate second save after a successful one is not refused against a version
       // its own predecessor already advanced past.
-      body: cateringCloseoutNotesPayload(notesForm.value, rebasedRecord?.updatedAt ?? null),
+      // The FORM's own base version, not the latest polled record's. A dirty draft must state the version its
+      // text was hydrated from, so another writer's intervening save is refused as a conflict rather than silently
+      // overwritten.
+      body: cateringCloseoutNotesPayload(notesForm.value, notesForm.baseVersion),
       settle: "notes", submittedNotes: notesForm.value,
     });
   };
@@ -408,6 +430,8 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
   const checklist = cateringCloseoutRebasedChecklist(closeout.checklist ?? [], versions, identity);
   const progress = cateringCloseoutProgress(checklist);
   const notesAreCurrent = localStateIsCurrent && cateringCloseoutFormIsCurrent(notesForm, identity);
+  // The notice belongs to the booking that produced it, exactly as the drafts and the editor do.
+  const shownNotice = localStateIsCurrent ? activeCateringCloseoutNotice(notice, identity) : null;
 
   return <Card id={CATERING_CLOSEOUT_SECTION}><CardHeader>
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -421,8 +445,10 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     </div>
   </CardHeader><CardContent className="space-y-6">
 
-    {notice && <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">
-      <p className="break-words">{notice.message}</p>
+    {/* Read on the RENDER path, so booking A's refusal is already suppressed in the first committed render of
+        booking B -- it is never displayed there, and never announced there by `role="alert"`. */}
+    {shownNotice && <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm" role="alert">
+      <p className="break-words">{shownNotice.message}</p>
     </div>}
 
     {closeout.closeout.closedOut && <p className="rounded-md bg-muted p-3 text-sm">
@@ -556,7 +582,16 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
               disabled={!notesAreCurrent}
               onChange={(event) => setNotesForm((current) => editCateringCloseoutForm(current, event.target.value))}
             />
-            <Button className="min-h-11" disabled={!mayEditCateringCloseoutNotes(notesForm, identity, actionable, pending)}>Save my notes</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button className="min-h-11" disabled={!mayEditCateringCloseoutNotes(notesForm, identity, actionable, pending)}>Save my notes</Button>
+              {/* A refused save is not rebased by a poll: which text survives when two people wrote the same
+                  record is the provider's decision, so taking the newer one is their explicit action. */}
+              {mayDiscardCateringCloseoutNotes(notesForm, identity) && <Button
+                type="button" variant="ghost" className="min-h-11"
+                onClick={() => { if (window.confirm("Discard your unsaved notes and start from the saved version?")) setNotesForm(discardCateringCloseoutForm(identity, persistedNotes, notesAuthoritativeVersion)); }}
+              >Discard my edits and reload</Button>}
+            </div>
+            {notesForm.conflicted && notesAreCurrent && <p className="text-sm text-amber-700" role="status">These notes changed elsewhere since you started editing. Discard your edits to start from the saved version.</p>}
           </form>
         : persistedNotes
           ? <p className="whitespace-pre-wrap break-words text-sm">{persistedNotes}</p>

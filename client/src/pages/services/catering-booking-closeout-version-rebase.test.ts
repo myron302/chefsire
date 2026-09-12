@@ -261,14 +261,24 @@ test("the returned versions are adopted before anything else settles", () => {
   assert.ok(success.includes("adoptCateringCloseoutVersions(current, started.identity,"));
 });
 
-test("every record mutation states its precondition against the rebased record", () => {
+test("completion and reopening state their precondition against the rebased record", () => {
   assert.ok(component.includes("const rebasedRecord = closeout ? cateringCloseoutRebasedRecord(closeout.closeout, versions, identity) : null;"));
-  assert.ok(component.includes("cateringCloseoutNotesPayload(notesForm.value, rebasedRecord?.updatedAt ?? null)"));
   assert.ok(component.includes("cateringCloseoutCompletePayload(rebasedRecord)"));
   assert.ok(component.includes("cateringCloseoutReopenPayload(rebasedRecord)"));
-  // No mutation may read the query record's version directly any more.
+  // Neither reads the query record's version directly, so a version this client's own write produced is used
+  // immediately rather than only once the refetch lands.
   assert.equal(component.includes("closeout.closeout.updatedAt"), false);
   assert.equal(component.includes("closeout?.closeout.updatedAt"), false);
+});
+
+test("the notes form states ITS OWN base version, not the latest polled record's", () => {
+  // Deliberately NOT the rebased record. A dirty draft must state the version its text was hydrated from, so
+  // another tab's intervening save is refused as a conflict rather than silently overwritten. The rebased record
+  // still feeds the CLEAN form's hydration, which is where this client's own writes reach it.
+  assert.ok(component.includes("cateringCloseoutNotesPayload(notesForm.value, notesForm.baseVersion)"));
+  assert.equal(component.includes("cateringCloseoutNotesPayload(notesForm.value, rebasedRecord"), false);
+  assert.ok(component.includes("const notesAuthoritativeVersion = rebasedRecord?.updatedAt ?? null;"));
+  assert.ok(component.includes("hydrateCateringCloseoutForm(current, identity, persistedNotes, notesAuthoritativeVersion)"));
 });
 
 test("the checklist editors are opened from the rebased list", () => {

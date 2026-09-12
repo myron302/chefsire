@@ -48,10 +48,19 @@ test("the checklist state is a row of plain buttons, not a picker inside a dialo
   assert.equal(component.includes("<Select"), false);
 });
 
-test("only the destructive-ish reopen asks for confirmation", () => {
+test("confirmation is asked exactly where something would otherwise be lost, and nowhere else", () => {
   const confirms = component.match(/window\.confirm\(/g) ?? [];
-  assert.equal(confirms.length, 1);
+  assert.equal(confirms.length, 2, "two, and both genuinely destructive");
+  // Reopening undoes a closeout the customer was told about.
   assert.ok(component.includes("Reopen this booking's closeout?"));
+  // Discarding a conflicted notes draft throws away words the provider typed and never saved.
+  assert.ok(component.includes("Discard your unsaved notes and start from the saved version?"));
+  // Nothing routine is behind a prompt: answering a checklist item, saving notes and completing closeout are not.
+  for (const routine of ["Answer this item", "Save my notes", "Mark closeout complete"]) {
+    const at = component.indexOf(routine);
+    assert.notEqual(at, -1, routine);
+    assert.equal(component.slice(Math.max(0, at - 300), at).includes("window.confirm"), false, routine);
+  }
 });
 
 /* ----------------------------------------------------------------------------------------------------------- *

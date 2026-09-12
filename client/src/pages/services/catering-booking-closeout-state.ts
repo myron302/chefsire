@@ -82,36 +82,78 @@ export function cateringCloseoutFailureNotice(error: CateringCloseoutError): { m
  * the value can ask the question. `dirty` records that the participant has typed something the server has not
  * accepted, which is what stops a poll from replacing their words.
  */
-export type CateringCloseoutFormState<T> = { identity: string; value: T; dirty: boolean; conflicted: boolean };
+/**
+ * One booking-local form, and the authoritative version its editable text was hydrated FROM.
+ *
+ * `baseVersion` is the whole point of this shape. The form deliberately keeps the participant's unsaved text when
+ * a fifteen-second poll brings in a newer record -- but the version it submits against has to be kept with it.
+ * Taking `expectedUpdatedAt` from the freshly polled payload instead let a dirty draft claim it was based on a
+ * record the provider had never seen: another tab saves at V1 -> V2, this tab polls V2, keeps its own text, and
+ * then submits that text stating V2. The server accepts it, and the other tab's words are silently gone.
+ *
+ * So the version travels WITH the text. It advances only when this form's own save is accepted, or when a clean
+ * form hydrates; never merely because somebody else wrote.
+ */
+export type CateringCloseoutFormState<T> = {
+  identity: string;
+  value: T;
+  /** The authoritative `updatedAt` this form's text was hydrated from, or null before any record existed. */
+  baseVersion: string | null;
+  dirty: boolean;
+  conflicted: boolean;
+};
 
 export function emptyCateringCloseoutForm<T>(value: T): CateringCloseoutFormState<T> {
-  return { identity: "", value, dirty: false, conflicted: false };
+  return { identity: "", value, baseVersion: null, dirty: false, conflicted: false };
 }
 
 /**
  * Hydrates a form from the authoritative payload, unless the participant has unsaved edits.
  *
- * Three cases, decided in one place. A form belonging to another booking is REPLACED wholesale -- never merged --
- * because nothing about booking A's draft is relevant to booking B. A clean form takes the authoritative value. A
- * dirty form is left alone, so a fifteen-second poll cannot quietly overwrite a half-written note.
+ * Four cases, decided in one place.
  *
- * The exception is a form whose last save was refused as stale: it keeps the participant's text and clears the
- * conflict, because the version it will now submit against comes from the payload this hydration is carrying.
+ * A form belonging to another booking is REPLACED wholesale -- never merged -- because nothing about booking A's
+ * draft is relevant to booking B, including its version.
+ *
+ * A CLEAN form takes both the authoritative text and the authoritative version. There is nothing to lose, so
+ * moving with the record is always safe.
+ *
+ * A DIRTY form keeps BOTH. Keeping the text while letting the version advance was the defect: it is precisely the
+ * combination that claims "I edited the newest record" about a draft written against an older one.
+ *
+ * A form whose last save was REFUSED AS STALE also keeps both, and only clears the flag that disables saving. It is
+ * deliberately not rebased onto the version that refused it: silently adopting the conflicting record would turn a
+ * conflict the provider is meant to resolve into an overwrite they never chose. The explicit discard-and-reload
+ * control is how they take the newer record, and it is their action rather than a poll's.
  */
-export function hydrateCateringCloseoutForm<T>(current: CateringCloseoutFormState<T>, identity: string, next: T): CateringCloseoutFormState<T> {
-  if (current.identity !== identity) return { identity, value: next, dirty: false, conflicted: false };
+export function hydrateCateringCloseoutForm<T>(
+  current: CateringCloseoutFormState<T>,
+  identity: string,
+  next: T,
+  nextVersion: string | null,
+): CateringCloseoutFormState<T> {
+  if (current.identity !== identity) return { identity, value: next, baseVersion: nextVersion, dirty: false, conflicted: false };
   if (current.conflicted) return { ...current, conflicted: false };
   if (current.dirty) return current;
-  return { ...current, value: next };
+  return { ...current, value: next, baseVersion: nextVersion };
 }
 
 /** An edit marks the form dirty and clears any conflict flag: the participant is composing a fresh attempt. */
 export function editCateringCloseoutForm<T>(current: CateringCloseoutFormState<T>, value: T): CateringCloseoutFormState<T> {
   return { ...current, value, dirty: true, conflicted: false };
 }
-/** A refused save keeps the text and records that the next hydration must rebase it onto the newer version. */
+/** A refused save keeps the text AND the version it was based on, and only records that saving is blocked. */
 export function markCateringCloseoutFormConflict<T>(current: CateringCloseoutFormState<T>): CateringCloseoutFormState<T> {
   return { ...current, dirty: true, conflicted: true };
+}
+/**
+ * The explicit escape from a conflict: take the authoritative record, discarding this draft.
+ *
+ * Deliberately a separate, user-invoked function rather than something a hydration does on its own. A conflict
+ * means two people wrote the same record, and which text survives is the provider's decision, not a poll's.
+ */
+export function discardCateringCloseoutForm<T>(identity: string, authoritative: T, authoritativeVersion: string | null): CateringCloseoutFormState<T> {
+  return { identity, value: authoritative, baseVersion: authoritativeVersion, dirty: false, conflicted: false };
 }
 
 /**
@@ -128,10 +170,14 @@ export function settleCateringCloseoutForm<T>(
   identity: string,
   submitted: T,
   authoritative: T,
+  savedVersion: string | null,
 ): CateringCloseoutFormState<T> {
   if (current.identity !== identity) return current;
-  if (current.value !== submitted) return current;
-  return { identity, value: authoritative, dirty: false, conflicted: false };
+  // Newer words typed while the request was in flight are kept -- but the version DOES advance, because this
+  // form's own save was accepted and produced it. That is the one thing allowed to move a dirty form's version,
+  // and it is what lets the very next save of those newer words succeed instead of conflicting with itself.
+  if (current.value !== submitted) return { ...current, baseVersion: savedVersion };
+  return { identity, value: authoritative, baseVersion: savedVersion, dirty: false, conflicted: false };
 }
 
 /**
@@ -287,6 +333,30 @@ export function cateringCloseoutRebasedChecklist(
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
+ * Transient notices
+ * ------------------------------------------------------------------------------------------------------------- */
+
+/**
+ * One transient message, tagged with the booking that produced it.
+ *
+ * Every other piece of booking-local state here carries its identity; the notice did not, and it is the one
+ * rendered inside `role="alert"`. So on a navigation to an already-cached booking B -- where B renders immediately
+ * and the passive reset effect has not flushed -- booking A's refusal was not merely displayed under B, it was
+ * ANNOUNCED to assistive technology as if it belonged to the booking the participant is now looking at.
+ */
+export type CateringCloseoutNotice = { identity: string; message: string; retryable: boolean };
+
+/**
+ * The notice that may be rendered right now, or null.
+ *
+ * Read on the RENDER path, exactly like `activeCateringCloseoutEditor`, so the first committed render of another
+ * booking already suppresses it rather than waiting for an effect to clear it a tick later.
+ */
+export function activeCateringCloseoutNotice(notice: CateringCloseoutNotice | null, identity: string): CateringCloseoutNotice | null {
+  return notice && notice.identity === identity ? notice : null;
+}
+
+/* ------------------------------------------------------------------------------------------------------------- *
  * Checklist drafts
  * ------------------------------------------------------------------------------------------------------------- */
 
@@ -428,7 +498,14 @@ export function cateringCloseoutReopenPayload(record: CateringCloseoutRecordView
   return record.updatedAt ? { expectedUpdatedAt: record.updatedAt } : {};
 }
 export function mayEditCateringCloseoutNotes(form: CateringCloseoutFormState<string>, identity: string, actionable: boolean, pending: boolean): boolean {
-  return actionable && !pending && cateringCloseoutFormIsCurrent(form, identity) && form.value.length <= CATERING_CLOSEOUT_NOTES_MAXIMUM;
+  return actionable && !pending && !form.conflicted && cateringCloseoutFormIsCurrent(form, identity) && form.value.length <= CATERING_CLOSEOUT_NOTES_MAXIMUM;
+}
+/**
+ * Whether the explicit discard-and-reload escape should be offered: only for a form this booking owns whose save
+ * was actually refused as stale.
+ */
+export function mayDiscardCateringCloseoutNotes(form: CateringCloseoutFormState<string>, identity: string): boolean {
+  return form.conflicted && cateringCloseoutFormIsCurrent(form, identity);
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
