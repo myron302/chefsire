@@ -58,8 +58,8 @@ const hydrated = (text: string, version: string | null): CateringCloseoutFormSta
 test("completing closeout while notes are dirty advances only the version, never the text", () => {
   // 1-2. Hydrated at V1, with an unsaved draft.
   const dirty = editCateringCloseoutForm(hydrated("stored", V1), "my unsaved words");
-  // 3-4. THIS TAB completes closeout; the response carries the parent record at V2.
-  const after = rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V2);
+  // 3-4. THIS TAB completes closeout, STATING V1 -- the version the draft is based on -- and gets back V2.
+  const after = rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V1, V2);
   // 5-7. Text untouched, still dirty, still unconflicted -- and the version has moved.
   assert.equal(after.value, "my unsaved words");
   assert.equal(after.dirty, true);
@@ -71,7 +71,7 @@ test("completing closeout while notes are dirty advances only the version, never
 
 test("reopening closeout while notes are dirty behaves identically", () => {
   const dirty = editCateringCloseoutForm(hydrated("stored", V1), "still unsaved");
-  const after = rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V2);
+  const after = rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V1, V2);
   assert.equal(after.value, "still unsaved");
   assert.equal(after.baseVersion, V2);
   assert.equal(after.dirty, true);
@@ -92,7 +92,7 @@ test("an external poll still does NOT rebase a dirty form", () => {
 
 test("a CONFLICTED notes form is not cured by completing or reopening", () => {
   const conflicted = markCateringCloseoutFormConflict(editCateringCloseoutForm(hydrated("stored", V1), "mine"));
-  const after = rebaseCateringCloseoutFormVersion(conflicted, IDENTITY, V2);
+  const after = rebaseCateringCloseoutFormVersion(conflicted, IDENTITY, V1, V2);
   assert.equal(after, conflicted, "untouched, by reference");
   assert.equal(after.conflicted, true, "closing out resolves nothing about a competing notes edit");
   assert.equal(after.baseVersion, V1);
@@ -101,9 +101,9 @@ test("a CONFLICTED notes form is not cured by completing or reopening", () => {
 
 test("a rebase for another booking, or with no version, changes nothing", () => {
   const dirty = editCateringCloseoutForm(hydrated("stored", V1), "mine");
-  assert.equal(rebaseCateringCloseoutFormVersion(dirty, OTHER, V2), dirty);
-  assert.equal(rebaseCateringCloseoutFormVersion(dirty, IDENTITY, null), dirty);
-  assert.equal(rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V1), dirty, "and an identical version is a no-op");
+  assert.equal(rebaseCateringCloseoutFormVersion(dirty, OTHER, V1, V2), dirty);
+  assert.equal(rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V1, null), dirty);
+  assert.equal(rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V1, V1), dirty, "and an identical version is a no-op");
 });
 
 /* ----------------------------------------------------------------------------------------------------------- *
@@ -199,8 +199,8 @@ test("the rows are read straight from the installed payload", () => {
 });
 
 test("a non-notes record mutation rebases the notes form's version and nothing else", () => {
-  assert.ok(success.includes("} else if (savedVersion) {"));
-  assert.ok(success.includes("setNotesForm((current) => rebaseCateringCloseoutFormVersion(current, started.identity, savedVersion));"));
+  assert.ok(success.includes("} else if (variables.submittedRecordVersion !== undefined && savedVersion) {"));
+  assert.ok(success.includes("setNotesForm((current) => rebaseCateringCloseoutFormVersion(current, started.identity, variables.submittedRecordVersion!, savedVersion));"));
   // The notes save itself still settles text and version together, on the other branch.
   assert.ok(success.includes('settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, savedRecord?.providerNotes ?? "", savedVersion)'));
 });

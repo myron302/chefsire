@@ -47,6 +47,7 @@ import {
   cateringCloseoutItemPayload,
   cateringCloseoutNotesPayload,
   cateringCloseoutProgress,
+  cateringCloseoutResponseCarries,
   cateringCloseoutChecklistFromResponse,
   cateringCloseoutRebasedRecord,
   cateringCloseoutReopenPayload,
@@ -142,9 +143,21 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<CateringBookingCloseoutView> => {
       const response = await fetch(cateringBookingCloseoutPath(bookingId), { credentials: "include" });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw Object.assign(new Error(body.message || "The closeout view could not be loaded"), { code: typeof body.code === "string" ? body.code : undefined });
-      return body;
+      // The same rule the writes are held to: a 2xx whose body cannot be read is not an answer. Returning `{}`
+      // here would install an empty object as the authoritative view -- over a good cached one -- and every reader
+      // below it reaches into `closeout.closeout`. It fails as a query error instead, which this section already
+      // renders as a retryable "could not be loaded" card.
+      let parsed: unknown;
+      let unreadable = false;
+      try {
+        parsed = await response.json();
+      } catch {
+        unreadable = true;
+      }
+      const body = (unreadable || parsed === null || typeof parsed !== "object" ? {} : parsed) as Record<string, unknown>;
+      if (!response.ok) throw Object.assign(new Error(typeof body.message === "string" && body.message ? body.message : "The closeout view could not be loaded"), { code: typeof body.code === "string" ? body.code : undefined });
+      if (unreadable || !cateringCloseoutResponseCarries(body, "closeout")) throw new Error("The closeout view could not be loaded");
+      return body as unknown as CateringBookingCloseoutView;
     },
   });
   const closeout = query.data;
@@ -291,6 +304,21 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     /** The EXACT values this request was built from, so a completion settles what it accounts for and nothing else. */
     submittedItem?: { identity: string; key: CateringCloseoutItemKey; state: CateringCloseoutItemState; note: string };
     submittedNotes?: string;
+    /**
+     * The parent-record precondition this request actually stated, captured HERE rather than read back later.
+     *
+     * A record-only write -- complete or reopen -- may advance a dirty notes draft's version only if the draft was
+     * hydrated from the very version that write started from. Recovering that afterwards from the query or the
+     * ledger would recover whatever they hold when the response lands, which is exactly the value that may have
+     * moved underneath in the first place. Present on record-only writes; absent on everything else, which is how
+     * the settlement knows a rebase is even a question.
+     */
+    submittedRecordVersion?: string | null;
+    /**
+     * The object this write's response is defined to carry. A 2xx whose body does not carry it is not a success
+     * this client may settle from -- see the parse handling in `mutationFn`.
+     */
+    expects: "closeout" | "checklist";
   };
   const origin = (): CloseoutOrigin => ({ identity, bookingId, userId });
   /** Whether a completion belongs to the booking currently on screen, read from the render-synchronized ref. */
@@ -299,7 +327,7 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
   const mutation = useMutation({
     // The URL is built from the ORIGIN's booking id, not from render scope, so a request that outlives a navigation
     // still addresses the booking it was issued for.
-    mutationFn: async ({ origin: started, path, method, body }: CloseoutMutation) => {
+    mutationFn: async ({ origin: started, path, method, body, expects }: CloseoutMutation) => {
       let response: Response;
       try {
         response = await fetch(`/api/catering/bookings/${started.bookingId}${path}`, {
@@ -313,9 +341,44 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         // defined to be safe to retry.
         throw Object.assign(new Error(String((transportError as Error)?.message ?? transportError)), { offline: true });
       }
-      const value = await response.json().catch(() => ({}));
-      if (!response.ok) throw Object.assign(new Error(value.message || "This closeout change could not be saved"), { code: typeof value.code === "string" ? value.code : undefined });
-      return value as Record<string, unknown>;
+      // Parsed ONCE, with the failure REMEMBERED rather than flattened into a value. `.catch(() => ({}))` turned an
+      // unreadable body into an empty object, which is survivable on the error path and fabricates an authoritative
+      // response out of nothing on the success path.
+      let parsed: unknown;
+      let unreadable = false;
+      try {
+        parsed = await response.json();
+      } catch {
+        unreadable = true;
+      }
+      const answer = (unreadable || parsed === null || typeof parsed !== "object" ? {} : parsed) as Record<string, unknown>;
+      // A refusal still reads whatever it can. An unreadable error body simply loses its wording and its code,
+      // which leaves an ordinary retryable failure -- no conflict is ever inferred from an ABSENT code.
+      if (!response.ok) {
+        throw Object.assign(
+          new Error(typeof answer.message === "string" && answer.message ? answer.message : "This closeout change could not be saved"),
+          { code: typeof answer.code === "string" ? answer.code : undefined },
+        );
+      }
+      /**
+       * A 2xx IS NOT ENOUGH TO SETTLE FROM.
+       *
+       * The server writes inside a transaction and answers with the authoritative record or checklist it produced.
+       * If that body cannot be read -- truncated, corrupted, an intermediary's page under a 200 -- the write may
+       * well have committed, but this client has been told nothing about it. Settling anyway was the worst of both:
+       * `{}` carries no `closeout`, so the notes settlement read the provider's draft as saved against an
+       * authoritative EMPTY string and cleared their words, while the reconciliation refetch that would have
+       * corrected it is failing for the same reason the body did.
+       *
+       * So it is thrown as the lost response it is, and takes the existing transport path: the draft is kept, the
+       * editor is kept, no version is adopted, nothing is settled, no success notice is shown. The retry is safe
+       * because every Phase 2K write is idempotent -- an identical checklist state is reported `unchanged`, and
+       * completion and reopening resolve a settled record before judging the precondition.
+       */
+      if (unreadable || !cateringCloseoutResponseCarries(answer, expects)) {
+        throw Object.assign(new Error("ChefSire's answer could not be read"), { offline: true, unreadable: true });
+      }
+      return answer;
     },
     onSuccess: async (value, variables) => {
       const started = variables.origin;
@@ -389,12 +452,19 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         // This form's own accepted save settles text and version together, keeping any newer words typed while it
         // was in flight.
         setNotesForm((current) => settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, savedRecord?.providerNotes ?? "", savedVersion));
-      } else if (savedVersion) {
+      } else if (variables.submittedRecordVersion !== undefined && savedVersion) {
         // THIS TAB's own complete or reopen. Both advance `catering_booking_closeout.updatedAt` and neither
         // touches `providerNotes`, so a dirty draft keeps every word and only its base version moves -- otherwise
-        // the provider conflicts with themselves: type a note, close out, save the note, refused. A conflicted
-        // form is left alone, because closing out resolves nothing about somebody else's competing notes edit.
-        setNotesForm((current) => rebaseCateringCloseoutFormVersion(current, started.identity, savedVersion));
+        // the provider conflicts with themselves: type a note, close out, save the note, refused.
+        //
+        // But ONLY if the draft was hydrated from the version this write itself stated. If another writer's notes
+        // landed in between -- so the draft sits on V1 while this completion stated the polled V2 -- then the
+        // version this write produced describes notes the provider has never seen, and handing it to the draft
+        // would let their next save overwrite those words with no conflict reported anywhere. The exact
+        // precondition travels on the request for that comparison; nothing is inferred from what a cache holds now.
+        //
+        // A conflicted form is left alone too, because closing out resolves nothing about a competing notes edit.
+        setNotesForm((current) => rebaseCateringCloseoutFormVersion(current, started.identity, variables.submittedRecordVersion!, savedVersion));
       }
       // LAST, and only once every synchronous settlement above has run: hold the mutation pending until the
       // authoritative payload has actually landed.
@@ -454,6 +524,7 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     mutation.mutate({
       origin: origin(), path: `/closeout/items/${open.key}`, method: "PUT", body: cateringCloseoutItemPayload(open),
       settle: "item", itemKey: open.key, submittedItem: { identity, key: open.key, state: open.state, note: open.note },
+      expects: "checklist",
     });
   };
   const submitNotes = (event: FormEvent) => {
@@ -467,14 +538,19 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       // text was hydrated from, so another writer's intervening save is refused as a conflict rather than silently
       // overwritten.
       body: cateringCloseoutNotesPayload(notesForm.value, notesForm.baseVersion),
-      settle: "notes", submittedNotes: notesForm.value,
+      settle: "notes", submittedNotes: notesForm.value, expects: "closeout",
     });
   };
   const completeCloseout = () => {
     if (!closeout || !rebasedRecord || !actionable || pending || !closeout.readiness.mayCloseOut) return;
     // Rebased for the same reason: a notes save that landed a moment ago has already advanced this record's
     // version, and completing against the pre-save one would be refused with a conflict nobody caused.
-    mutation.mutate({ origin: origin(), path: "/closeout/complete", method: "POST", body: cateringCloseoutCompletePayload(rebasedRecord) });
+    mutation.mutate({
+      origin: origin(), path: "/closeout/complete", method: "POST", body: cateringCloseoutCompletePayload(rebasedRecord),
+      // The precondition this request states, recorded as it is built. A dirty notes draft may follow this write's
+      // new version only if it was hydrated from exactly this one, with nothing written in between.
+      submittedRecordVersion: rebasedRecord.updatedAt ?? null, expects: "closeout",
+    });
   };
   const reopenCloseout = () => {
     if (!closeout || !rebasedRecord || !actionable || pending || !closeout.closeout.closedOut) return;
@@ -484,7 +560,10 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     // And rebased here too: reopening immediately after completing is the most likely sequence of all -- the
     // provider closes out, notices something, and undoes it -- and it is exactly the sequence the completion's own
     // returned version would otherwise have made conflict.
-    mutation.mutate({ origin: origin(), path: "/closeout/reopen", method: "POST", body: cateringCloseoutReopenPayload(rebasedRecord) });
+    mutation.mutate({
+      origin: origin(), path: "/closeout/reopen", method: "POST", body: cateringCloseoutReopenPayload(rebasedRecord),
+      submittedRecordVersion: rebasedRecord.updatedAt ?? null, expects: "closeout",
+    });
   };
 
   if (query.isLoading) return <Card id={CATERING_CLOSEOUT_SECTION}><CardHeader><CardTitle>Post-event closeout</CardTitle></CardHeader><CardContent><p role="status">Loading closeout…</p></CardContent></Card>;

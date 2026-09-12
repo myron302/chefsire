@@ -29,7 +29,18 @@ import {
  * cannot be stopped from rendering under another one.
  */
 
-export type CateringCloseoutError = { message: string; code?: string; offline?: boolean };
+export type CateringCloseoutError = {
+  message: string;
+  code?: string;
+  /** The write got no usable answer. It may or may not have been applied, so the draft is kept and a retry is right. */
+  offline?: boolean;
+  /**
+   * The narrower case: the server answered 2xx, but its body could not be read as the response this write is
+   * defined to return. Handled exactly like a lost response, because that is what it is -- the write may well have
+   * committed -- and kept distinct only so the participant is told something true about what happened.
+   */
+  unreadable?: boolean;
+};
 
 /** A refused optimistic-concurrency precondition: the client must reload the newer record, not retry blindly. */
 export function isCateringCloseoutConflict(error: CateringCloseoutError | null | undefined): boolean {
@@ -66,9 +77,38 @@ export function shouldRefetchCloseoutAfterError(error: CateringCloseoutError | n
  * not something a lost response may throw away.
  */
 export function cateringCloseoutFailureNotice(error: CateringCloseoutError): { message: string; retryable: boolean; keepsEdit: boolean } {
+  if (error.unreadable) return { message: "ChefSire's answer could not be read, so this may not have saved. Your changes are still here -- trying again is safe.", retryable: true, keepsEdit: true };
   if (error.offline) return { message: "We could not reach ChefSire. Your changes are still here -- try again.", retryable: true, keepsEdit: true };
   if (isCateringCloseoutConflict(error)) return { message: CATERING_CLOSEOUT_VERSION_CONFLICT_MESSAGE, retryable: false, keepsEdit: true };
   return { message: error.message || "This closeout change could not be saved", retryable: !error.code, keepsEdit: true };
+}
+
+/**
+ * The object each closeout write's response is defined to carry.
+ *
+ * `PUT /closeout/items/:key` answers with `checklist`; `PUT /closeout/notes`, `POST /closeout/complete` and
+ * `POST /closeout/reopen` answer with `closeout`. Nothing else is asserted about the payload -- the serializers
+ * already decide its shape, and a second description of it here would be one more thing to keep in step.
+ */
+export type CateringCloseoutResponseShape = "closeout" | "checklist";
+
+/**
+ * Whether a parsed 2xx body actually carries what the write it answers is defined to return.
+ *
+ * The smallest validation that makes a success settleable, and it exists because a 2xx alone does not. A body that
+ * could not be parsed was being flattened to `{}` and settled from: `{}` carries no `closeout`, so a notes save
+ * read the provider's own draft as having been saved against an authoritative EMPTY string and cleared their
+ * words, while the refetch that would have corrected it was failing for the same reason the body did.
+ *
+ * An unreadable or structurally wrong success is therefore an INDETERMINATE write, not a successful one -- the
+ * server may well have committed it -- so it takes the lost-response path: keep the draft, adopt nothing, settle
+ * nothing, and retry, which every Phase 2K write is defined to be safe under.
+ */
+export function cateringCloseoutResponseCarries(parsed: unknown, expects: CateringCloseoutResponseShape): boolean {
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  const carried = (parsed as Record<string, unknown>)[expects];
+  if (expects === "checklist") return Array.isArray(carried);
+  return carried !== null && typeof carried === "object" && !Array.isArray(carried);
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -201,15 +241,33 @@ export function settleCateringCloseoutForm<T>(
 
 /**
  * Advance a form's base version after THIS TAB's own accepted mutation on the same parent record, without touching
- * its text.
+ * its text -- and ONLY when that mutation started from the very version the form is holding.
  *
  * The third case the notes model needed. A dirty draft must ignore a version another writer produced -- that is
  * what stops a silent overwrite -- but the provider's OWN complete or reopen also advances
  * `catering_booking_closeout.updatedAt`, and neither of them modifies `providerNotes`. Treating that like a
  * stranger's write made the provider conflict with themselves: type a note, close out, save the note, refused.
  *
- * So the text stays exactly as it is, `dirty` stays true, and only the version moves -- to one this tab watched
- * the server mint, for a write that provably left this field alone.
+ * THE CHAIN IS WHAT MAKES THAT SAFE, AND THE CHAIN HAS TO BE CHECKED. `submittedVersion` is the precondition the
+ * accepted mutation actually stated, captured when the request was built rather than read back afterwards from a
+ * cache that has since moved. Only if the form was hydrated from exactly that version does the accepted write sit
+ * directly on top of the form's own text, with nothing in between -- and only then does the version it produced
+ * describe a record whose notes are still the ones this draft was written against.
+ *
+ * Advancing without that check reopened the overwrite from the other side, with no conflict ever reported:
+ *
+ *   V1  the form hydrates, and the provider starts typing
+ *   V2  another tab saves DIFFERENT notes; this tab polls it, keeps its draft, and correctly keeps V1
+ *   V3  this tab completes -- stating V2, because that is what the record now is -- and the server accepts
+ *
+ * An unconditional rebase would then hand the draft V3, and the provider's next save would state a version newer
+ * than the notes they have never seen. The server accepts it, and V2's words are gone. Requiring the form's base
+ * to equal the version the mutation submitted leaves the draft on V1, so that save is refused as the genuine
+ * conflict it is.
+ *
+ * Versions compare as INSTANTS, exactly as the server's own precondition check does, so a value round-tripped
+ * through an equivalent ISO spelling still matches. Two absent versions match each other: a record that did not
+ * exist is the only thing either side can have been based on.
  *
  * A CONFLICTED form is returned untouched. Completing or reopening is not a resolution of a notes conflict, and
  * curing one here would hand back a savable form whose text was still written against a record somebody else has
@@ -219,12 +277,32 @@ export function settleCateringCloseoutForm<T>(
 export function rebaseCateringCloseoutFormVersion<T>(
   current: CateringCloseoutFormState<T>,
   identity: string,
+  submittedVersion: string | null,
   version: string | null,
 ): CateringCloseoutFormState<T> {
   if (current.identity !== identity) return current;
   if (current.conflicted) return current;
-  if (version === null || current.baseVersion === version) return current;
+  if (version === null) return current;
+  // The whole safety condition: this write began where the draft began.
+  if (!sameCateringVersion(current.baseVersion, submittedVersion)) return current;
+  if (current.baseVersion === version) return current;
   return { ...current, baseVersion: version };
+}
+
+/**
+ * Whether two serialized versions describe the same instant.
+ *
+ * Instants rather than spellings, for the same reason `laterCateringVersion` compares them that way: the server
+ * parses what it is given, so two equivalent ISO forms of one moment are one version. Two absent versions are
+ * equal -- both mean "no record existed". An absent one never equals a present one, and an UNPARSEABLE value
+ * equals nothing at all, including itself, so a malformed version can never be used to authorize a rebase.
+ */
+export function sameCateringVersion(left: string | null | undefined, right: string | null | undefined): boolean {
+  if (left == null && right == null) return true;
+  if (left == null || right == null) return false;
+  const leftAt = Date.parse(left);
+  const rightAt = Date.parse(right);
+  return Number.isFinite(leftAt) && Number.isFinite(rightAt) && leftAt === rightAt;
 }
 
 /**

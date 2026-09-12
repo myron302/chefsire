@@ -143,7 +143,7 @@ test("this form's own accepted save clears it, because that installs matching te
 
 test("a dirty, unconflicted draft still rebases on this tab's own complete or reopen, keeping every word", () => {
   const dirty = editCateringCloseoutForm(hydrated("stored", V1), "notes I am still writing");
-  const rebased = rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V2);
+  const rebased = rebaseCateringCloseoutFormVersion(dirty, IDENTITY, V1, V2);
   assert.equal(rebased.baseVersion, V2, "the parent record moved and this write provably left providerNotes alone");
   assert.equal(rebased.value, "notes I am still writing", "not a word is lost");
   assert.equal(rebased.dirty, true);
@@ -153,7 +153,7 @@ test("a dirty, unconflicted draft still rebases on this tab's own complete or re
 
 test("a CONFLICTED draft is not rebased by a complete or reopen -- that would launder a real conflict", () => {
   const conflicted = conflictedDraft();
-  const after = rebaseCateringCloseoutFormVersion(conflicted, IDENTITY, V2);
+  const after = rebaseCateringCloseoutFormVersion(conflicted, IDENTITY, V1, V2);
   assert.equal(after, conflicted, "returned untouched, by reference");
   assert.equal(after.conflicted, true);
   assert.equal(after.baseVersion, V1, "so Save cannot be re-armed against somebody else's newer record");
@@ -162,7 +162,7 @@ test("a CONFLICTED draft is not rebased by a complete or reopen -- that would la
 });
 
 test("editing after that refused rebase still does not clear it", () => {
-  let form = rebaseCateringCloseoutFormVersion(conflictedDraft(), IDENTITY, V2);
+  let form = rebaseCateringCloseoutFormVersion(conflictedDraft(), IDENTITY, V1, V2);
   form = editCateringCloseoutForm(form, "typed after completing");
   assert.equal(form.conflicted, true);
   assert.equal(form.baseVersion, V1);
