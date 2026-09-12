@@ -259,7 +259,7 @@ test("the submit reads the FORM's version, and the hydration feeds only a clean 
 });
 
 test("the accepted save hands its returned version to the settlement", () => {
-  assert.ok(component.includes("settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, saved, savedVersion)"));
+  assert.ok(component.includes('settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, savedRecord?.providerNotes ?? "", savedVersion)'));
   assert.ok(component.includes('const savedVersion = typeof savedRecord?.updatedAt === "string" ? savedRecord.updatedAt : null;'));
 });
 

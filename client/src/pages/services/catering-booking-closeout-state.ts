@@ -184,6 +184,34 @@ export function settleCateringCloseoutForm<T>(
 }
 
 /**
+ * Advance a form's base version after THIS TAB's own accepted mutation on the same parent record, without touching
+ * its text.
+ *
+ * The third case the notes model needed. A dirty draft must ignore a version another writer produced -- that is
+ * what stops a silent overwrite -- but the provider's OWN complete or reopen also advances
+ * `catering_booking_closeout.updatedAt`, and neither of them modifies `providerNotes`. Treating that like a
+ * stranger's write made the provider conflict with themselves: type a note, close out, save the note, refused.
+ *
+ * So the text stays exactly as it is, `dirty` stays true, and only the version moves -- to one this tab watched
+ * the server mint, for a write that provably left this field alone.
+ *
+ * A CONFLICTED form is returned untouched. Completing or reopening is not a resolution of a notes conflict, and
+ * curing one here would hand back a savable form whose text was still written against a record somebody else has
+ * since changed -- precisely the overwrite the conflict exists to prevent. The explicit reload remains the only
+ * way out.
+ */
+export function rebaseCateringCloseoutFormVersion<T>(
+  current: CateringCloseoutFormState<T>,
+  identity: string,
+  version: string | null,
+): CateringCloseoutFormState<T> {
+  if (current.identity !== identity) return current;
+  if (current.conflicted) return current;
+  if (version === null || current.baseVersion === version) return current;
+  return { ...current, baseVersion: version };
+}
+
+/**
  * Whether a form may be read or submitted right now.
  *
  * It is the identity check and nothing else, stated once so the render path and every handler ask exactly the same
@@ -218,15 +246,33 @@ export function cateringCloseoutFormIsCurrent<T>(current: CateringCloseoutFormSt
  * requirement is untouched -- every write still carries a precondition and is still refused if it is stale.
  */
 export type CateringCloseoutVersions = {
-  /** The booking these versions describe. A ledger from another booking is never read. */
+  /** The booking this version describes. A ledger from another booking is never read. */
   identity: string;
   /** The closeout record version the newest accepted record mutation returned, or null. */
   record: string | null;
-  /** Per-item versions the newest accepted checklist saves returned, keyed by item key. */
-  items: Readonly<Record<string, string>>;
 };
 
-export const EMPTY_CATERING_CLOSEOUT_VERSIONS: CateringCloseoutVersions = { identity: "", record: null, items: {} };
+export const EMPTY_CATERING_CLOSEOUT_VERSIONS: CateringCloseoutVersions = { identity: "", record: null };
+
+/**
+ * WHY THE CHECKLIST IS NOT IN HERE.
+ *
+ * A concurrency version and the value it describes are one atomic pair. Carrying checklist versions in a ledger
+ * separate from the rendered rows let them come apart: a save of item A returns the whole authoritative checklist,
+ * so the ledger adopted item B's NEWER version while the rendered B kept its OLDER value. If the reconciliation
+ * refetch then failed, the client sat holding B1 paired with BV2 -- and the next save of B would state BV2, which
+ * the server accepts, silently overwriting the B2 another tab had written. Optimistic concurrency defeated by its
+ * own bookkeeping.
+ *
+ * So the checklist response is INSTALLED into the query cache instead, values and versions together, and the rows
+ * are read straight from it. There is no longer any mechanism by which a checklist version can arrive without the
+ * value it belongs to.
+ *
+ * The record version legitimately stays here because it has no such pair to break. The two fields it protects are
+ * read raw from the query (`closedOut`, `reopenCount`) or owned by a form that deliberately keeps its own text
+ * (`providerNotes`), and the only writes that state it -- complete and reopen -- are idempotent state assertions
+ * carrying no client value that could clobber anything.
+ */
 
 /**
  * The later of two serialized instants, comparing the INSTANT rather than its spelling -- exactly as the server's
@@ -254,17 +300,24 @@ export function laterCateringVersion(left: string | null | undefined, right: str
  * a record, and `PUT /closeout/items/:key` returns the checklist; none of them returns the other, and none of them
  * has to be special-cased here.
  */
-export function cateringCloseoutVersionsFromResponse(value: Record<string, unknown> | null | undefined): { record?: string | null; items?: Record<string, string> } {
-  const result: { record?: string | null; items?: Record<string, string> } = {};
+export function cateringCloseoutVersionsFromResponse(value: Record<string, unknown> | null | undefined): { record?: string | null } {
+  const result: { record?: string | null } = {};
   const record = (value?.closeout as { updatedAt?: string | null } | undefined)?.updatedAt;
   if (typeof record === "string") result.record = record;
-  const checklist = value?.checklist as readonly CateringCloseoutItemView[] | undefined;
-  if (Array.isArray(checklist)) {
-    const items: Record<string, string> = {};
-    for (const item of checklist) if (typeof item?.updatedAt === "string") items[item.key] = item.updatedAt;
-    result.items = items;
-  }
   return result;
+}
+
+/**
+ * The authoritative checklist a response carries, or null.
+ *
+ * Returned by the item save, captured inside its transaction while the closeout advisory lock was still held, and
+ * complete for every key -- state, note, resolution instant and version. It is installed WHOLE, so every row's
+ * value and version move together and neither can be adopted without the other.
+ */
+export function cateringCloseoutChecklistFromResponse(value: Record<string, unknown> | null | undefined): CateringCloseoutItemView[] | null {
+  const checklist = value?.checklist;
+  if (!Array.isArray(checklist)) return null;
+  return checklist.every((item) => item && typeof item.key === "string") ? checklist as CateringCloseoutItemView[] : null;
 }
 
 /**
@@ -277,20 +330,11 @@ export function cateringCloseoutVersionsFromResponse(value: Record<string, unkno
 export function adoptCateringCloseoutVersions(
   current: CateringCloseoutVersions,
   identity: string,
-  returned: { record?: string | null; items?: Record<string, string> },
+  returned: { record?: string | null },
 ): CateringCloseoutVersions {
-  const base = current.identity === identity ? current : { identity, record: null, items: {} };
+  const base = current.identity === identity ? current : { identity, record: null };
   const record = returned.record === undefined ? base.record : laterCateringVersion(base.record, returned.record);
-  let items = base.items;
-  if (returned.items) {
-    const next: Record<string, string> = { ...base.items };
-    for (const [key, version] of Object.entries(returned.items)) {
-      const merged = laterCateringVersion(next[key] ?? null, version);
-      if (merged) next[key] = merged;
-    }
-    items = next;
-  }
-  return { identity, record, items };
+  return { identity, record };
 }
 
 /**
@@ -310,29 +354,6 @@ export function cateringCloseoutRebasedRecord(
   if (versions.identity !== identity || versions.record === null) return record;
   const updatedAt = laterCateringVersion(record.updatedAt ?? null, versions.record);
   return updatedAt === (record.updatedAt ?? null) ? record : { ...record, updatedAt };
-}
-
-/**
- * The checklist an editor should be opened from, with each item's version advanced to the freshest known.
- *
- * Rebasing the LIST rather than the editor means every downstream reader -- opening an editor, deciding whether a
- * conflicted one may reload, rendering -- sees the same versions with no signature of its own to change. It is what
- * fixes the checklist's own instance of this race: answer an item, watch its editor close, immediately reopen it,
- * and the editor used to be built from the stale query row and conflict on the very next save.
- *
- * A conflicted editor's reload offer is unaffected: a refused save adopts nothing, so the ledger holds no newer
- * version for that item and this is a no-op in exactly that case.
- */
-export function cateringCloseoutRebasedChecklist(
-  items: readonly CateringCloseoutItemView[],
-  versions: CateringCloseoutVersions,
-  identity: string,
-): CateringCloseoutItemView[] {
-  if (versions.identity !== identity) return [...items];
-  return items.map((item) => {
-    const updatedAt = laterCateringVersion(item.updatedAt, versions.items[item.key] ?? null);
-    return updatedAt === item.updatedAt ? item : { ...item, updatedAt };
-  });
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *

@@ -47,7 +47,7 @@ import {
   cateringCloseoutItemPayload,
   cateringCloseoutNotesPayload,
   cateringCloseoutProgress,
-  cateringCloseoutRebasedChecklist,
+  cateringCloseoutChecklistFromResponse,
   cateringCloseoutRebasedRecord,
   cateringCloseoutReopenPayload,
   cateringCloseoutVersionsFromResponse,
@@ -65,6 +65,7 @@ import {
   mayDiscardCateringCloseoutNotes,
   mayEditCateringCloseoutNotes,
   observeCateringCloseoutTransition,
+  rebaseCateringCloseoutFormVersion,
   mayReloadCateringCloseoutEditor,
   maySubmitCateringCloseoutEditor,
   reconcileCateringCloseoutEditor,
@@ -327,6 +328,21 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         // stays stale until the poll or a focus refetch replaces it, which is exactly where it stood before.
         .catch(() => undefined);
       cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", started.userId, started.bookingId] });
+      // INSTALL the authoritative checklist this response carried, values and versions TOGETHER.
+      //
+      // The item save returns the whole checklist, captured inside its transaction while the closeout advisory
+      // lock was still held. Adopting versions from it while leaving the rendered values behind was how a row's
+      // value and its version came apart: another tab's newer item arrived as a version this client adopted and a
+      // value it discarded, and if the refetch below then failed, the next save of that row would state the newer
+      // version against the older text -- accepted by the server, and the other tab's change silently gone.
+      //
+      // Installing the snapshot closes that by construction, and it does not depend on the refetch succeeding.
+      // Nothing is fabricated: if this client holds no payload yet there is nothing to merge into, and it waits.
+      const returnedChecklist = cateringCloseoutChecklistFromResponse(value);
+      if (returnedChecklist) {
+        cache.setQueryData(cateringBookingCloseoutKey(started.userId, started.bookingId), (previous: CateringBookingCloseoutView | undefined) =>
+          previous ? { ...previous, checklist: returnedChecklist } : previous);
+      }
       // Everything below writes booking-local component state, which only exists for the booking on screen. A
       // response for one the participant has navigated away from has nothing here to settle and must touch nothing
       // -- and must not hold this booking's controls pending on that booking's refetch either.
@@ -354,13 +370,18 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         const checklist = (value.checklist as CateringCloseoutItemView[] | undefined) ?? [];
         setEditor((current) => settleCateringCloseoutEditor(current, variables.submittedItem!, checklist.find((item) => item.key === variables.submittedItem!.key)));
       }
+      const savedRecord = value.closeout as { providerNotes?: string | null; updatedAt?: string | null } | undefined;
+      const savedVersion = typeof savedRecord?.updatedAt === "string" ? savedRecord.updatedAt : null;
       if (variables.submittedNotes !== undefined) {
-        const savedRecord = value.closeout as { providerNotes?: string | null; updatedAt?: string | null } | undefined;
-        const saved = savedRecord?.providerNotes ?? "";
-        // THIS form's own accepted save is the one thing allowed to advance a dirty form's version, which is what
-        // lets an immediate second save -- of newer words typed while this one was in flight -- actually succeed.
-        const savedVersion = typeof savedRecord?.updatedAt === "string" ? savedRecord.updatedAt : null;
-        setNotesForm((current) => settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, saved, savedVersion));
+        // This form's own accepted save settles text and version together, keeping any newer words typed while it
+        // was in flight.
+        setNotesForm((current) => settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, savedRecord?.providerNotes ?? "", savedVersion));
+      } else if (savedVersion) {
+        // THIS TAB's own complete or reopen. Both advance `catering_booking_closeout.updatedAt` and neither
+        // touches `providerNotes`, so a dirty draft keeps every word and only its base version moves -- otherwise
+        // the provider conflicts with themselves: type a note, close out, save the note, refused. A conflicted
+        // form is left alone, because closing out resolves nothing about somebody else's competing notes edit.
+        setNotesForm((current) => rebaseCateringCloseoutFormVersion(current, started.identity, savedVersion));
       }
       // LAST, and only once every synchronous settlement above has run: hold the mutation pending until the
       // authoritative payload has actually landed.
@@ -472,9 +493,10 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     </CardHeader></Card>;
   }
 
-  // Rebased, so an item's editor reopened straight after a successful save on that item carries the version that
-  // save produced rather than the one the query still holds.
-  const checklist = cateringCloseoutRebasedChecklist(closeout.checklist ?? [], versions, identity);
+  // Read straight from the payload. The item save installs its authoritative snapshot into this very cache entry,
+  // so an editor reopened right after a save already carries that row's new value AND its new version -- as one
+  // pair, never a version without the value it belongs to.
+  const checklist = closeout.checklist ?? [];
   const progress = cateringCloseoutProgress(checklist);
   const notesAreCurrent = localStateIsCurrent && cateringCloseoutFormIsCurrent(notesForm, identity);
   // The notice belongs to the booking that produced it, exactly as the drafts and the editor do.

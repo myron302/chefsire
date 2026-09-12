@@ -85,7 +85,7 @@ test("the two coded refusals are told apart", () => {
 
 test("a form belonging to another booking is replaced wholesale, never merged", () => {
   const dirtyA = editCateringCloseoutForm({ ...emptyCateringCloseoutForm("stored"), identity: A }, "half-typed on A");
-  const onB = hydrateCateringCloseoutForm(dirtyA, B, "B's stored notes");
+  const onB = hydrateCateringCloseoutForm(dirtyA, B, "B's stored notes", "2026-09-05T11:00:00.000Z");
   assert.equal(onB.identity, B);
   assert.equal(onB.value, "B's stored notes", "nothing of A's draft survives into B");
   assert.equal(onB.dirty, false);
@@ -93,7 +93,7 @@ test("a form belonging to another booking is replaced wholesale, never merged", 
 
 test("a dirty form is left alone by a poll, so unsaved writing is never quietly replaced", () => {
   const dirty = editCateringCloseoutForm({ ...emptyCateringCloseoutForm("old"), identity: A }, "mine");
-  assert.equal(hydrateCateringCloseoutForm(dirty, A, "theirs").value, "mine");
+  assert.equal(hydrateCateringCloseoutForm(dirty, A, "theirs", "2026-09-05T11:00:00.000Z").value, "mine");
 });
 
 test("a form refused as stale keeps its text and stays conflicted until the provider resolves it", () => {
@@ -181,16 +181,16 @@ test("a completion for booking A cannot settle booking B's editor", () => {
 
 test("a notes save settles only the exact value that was submitted", () => {
   const live = editCateringCloseoutForm({ ...emptyCateringCloseoutForm(""), identity: A }, "newer");
-  const untouched = settleCateringCloseoutForm(live, A, "submitted", "saved");
+  const untouched = settleCateringCloseoutForm(live, A, "submitted", "saved", "2026-09-05T11:00:00.000Z");
   assert.equal(untouched.value, "newer", "a lost race must not destroy words typed since");
-  const settled = settleCateringCloseoutForm({ ...live, value: "submitted" }, A, "submitted", "saved");
+  const settled = settleCateringCloseoutForm({ ...live, value: "submitted" }, A, "submitted", "saved", "2026-09-05T11:00:00.000Z");
   assert.equal(settled.value, "saved");
   assert.equal(settled.dirty, false);
 });
 
 test("a notes completion for booking A cannot settle booking B's form", () => {
   const formB = editCateringCloseoutForm({ ...emptyCateringCloseoutForm(""), identity: B }, "B's notes");
-  assert.equal(settleCateringCloseoutForm(formB, A, "B's notes", "A's saved notes").value, "B's notes");
+  assert.equal(settleCateringCloseoutForm(formB, A, "B's notes", "A's saved notes", "2026-09-05T11:00:00.000Z").value, "B's notes");
 });
 
 /* ----------------------------------------------------------------------------------------------------------- *

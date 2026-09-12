@@ -10,7 +10,7 @@ import {
   cateringCloseoutEditorFor,
   cateringCloseoutItemPayload,
   cateringCloseoutNotesPayload,
-  cateringCloseoutRebasedChecklist,
+  cateringCloseoutChecklistFromResponse,
   cateringCloseoutRebasedRecord,
   cateringCloseoutReopenPayload,
   cateringCloseoutVersionsFromResponse,
@@ -94,12 +94,12 @@ test("newer notes typed while a save is pending survive it, and the next save of
   form = editCateringCloseoutForm(form, "text B");
   // 3. The response for the FIRST text arrives and is settled against the exact snapshot that was sent.
   let versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { closeout: { ...record(B), providerNotes: submitted } });
-  form = settleCateringCloseoutForm(form, IDENTITY, submitted, submitted);
+  form = settleCateringCloseoutForm(form, IDENTITY, submitted, submitted, B);
   // 4. The newer text is untouched, and the form stays dirty so no poll may replace it.
   assert.equal(form.value, "text B", "a lost race must not destroy words typed since");
   assert.equal(form.dirty, true);
   // A hydration from the not-yet-refetched query still leaves the dirty form alone.
-  assert.equal(hydrateCateringCloseoutForm(form, IDENTITY, submitted).value, "text B");
+  assert.equal(hydrateCateringCloseoutForm(form, IDENTITY, submitted, B).value, "text B");
   // 5. And saving the newer text states the version the first save produced.
   assert.equal(cateringCloseoutNotesPayload(form.value, rebased(A, versions).updatedAt ?? null).expectedUpdatedAt, B);
 });
@@ -108,7 +108,7 @@ test("a settled clean form still adopts the returned version for its next save",
   const submitted = "only text";
   let form = editCateringCloseoutForm({ ...emptyCateringCloseoutForm(""), identity: IDENTITY }, submitted);
   const versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { closeout: { ...record(B), providerNotes: submitted } });
-  form = settleCateringCloseoutForm(form, IDENTITY, submitted, submitted);
+  form = settleCateringCloseoutForm(form, IDENTITY, submitted, submitted, B);
   assert.equal(form.dirty, false, "the form settled clean, as it should");
   assert.equal(cateringCloseoutNotesPayload("edited again", rebased(A, versions).updatedAt ?? null).expectedUpdatedAt, B);
 });
@@ -149,33 +149,30 @@ test("an idempotent retry's returned version is adopted too, so the retry does n
 
 test("an item editor reopened straight after that item's save uses the version the save returned", () => {
   // The audit's second same-class case. A successful item save closes the editor; reopening it used to rebuild it
-  // from the stale query row and conflict on the very next save.
-  const versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { checklist: [item({ state: "completed", updatedAt: B })] });
-  const [rebasedItem] = cateringCloseoutRebasedChecklist([item({ updatedAt: A })], versions, IDENTITY);
-  assert.equal(rebasedItem.updatedAt, B);
-  assert.equal(cateringCloseoutItemPayload(cateringCloseoutEditorFor(rebasedItem, IDENTITY)).expectedUpdatedAt, B);
+  // from the stale query row and conflict on the very next save. It is now the INSTALLED snapshot that carries the
+  // fresh row -- value and version together -- so the reopened editor takes both.
+  const installed = cateringCloseoutChecklistFromResponse({ checklist: [item({ state: "completed", updatedAt: B })] })!;
+  assert.equal(installed[0].updatedAt, B);
+  assert.equal(installed[0].state, "completed", "and the value it belongs to arrives with it");
+  assert.equal(cateringCloseoutItemPayload(cateringCloseoutEditorFor(installed[0], IDENTITY)).expectedUpdatedAt, B);
 });
 
-test("an item save advances only its own item's version, and no other item's", () => {
-  const versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { checklist: [item({ updatedAt: B }), item({ key: "final_documents_delivered", updatedAt: null })] });
-  const list = cateringCloseoutRebasedChecklist(
-    [item({ updatedAt: A }), item({ key: "final_documents_delivered", updatedAt: null })],
-    versions, IDENTITY,
-  );
-  assert.equal(list[0].updatedAt, B);
+test("the installed snapshot carries every key, including ones with no row yet", () => {
+  const installed = cateringCloseoutChecklistFromResponse({
+    checklist: [item({ updatedAt: B }), item({ key: "final_documents_delivered", updatedAt: null })],
+  })!;
+  assert.equal(installed[0].updatedAt, B);
   // A key with no row yet still reports null, which is exactly the precondition a first touch sends.
-  assert.equal(list[1].updatedAt, null);
-  assert.equal("expectedUpdatedAt" in cateringCloseoutItemPayload(cateringCloseoutEditorFor(list[1], IDENTITY)), false);
+  assert.equal(installed[1].updatedAt, null);
+  assert.equal("expectedUpdatedAt" in cateringCloseoutItemPayload(cateringCloseoutEditorFor(installed[1], IDENTITY)), false);
 });
 
-test("a checklist response does not touch the record version, and a record response does not touch item versions", () => {
-  // Each route returns exactly one of the two and changes exactly that one, so the ledger must not invent the other.
+test("a checklist response does not touch the record version, and a record response carries no checklist", () => {
+  // Each route returns exactly one of the two and changes exactly that one, so neither may invent the other.
   const fromItems = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { checklist: [item({ updatedAt: B })] });
-  assert.equal(fromItems.record, null);
+  assert.equal(fromItems.record, null, "a checklist save does not advance the record version");
   assert.equal(rebased(A, fromItems).updatedAt, A);
-  const fromRecord = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { closeout: record(B) });
-  assert.deepEqual(fromRecord.items, {});
-  assert.equal(cateringCloseoutRebasedChecklist([item({ updatedAt: A })], fromRecord, IDENTITY)[0].updatedAt, A);
+  assert.equal(cateringCloseoutChecklistFromResponse({ closeout: record(B) }), null, "a record response installs no checklist");
 });
 
 /* ----------------------------------------------------------------------------------------------------------- *
@@ -212,10 +209,17 @@ test("versions are compared as instants, not spellings", () => {
 });
 
 test("a malformed response advances nothing rather than poisoning the ledger", () => {
-  const versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { closeout: { updatedAt: null }, checklist: "nonsense" });
+  const versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { closeout: { updatedAt: null } });
   assert.equal(versions.record, null);
-  assert.deepEqual(versions.items, {});
   assert.equal(rebased(A, versions).updatedAt, A);
+});
+
+test("a malformed checklist installs nothing rather than replacing the rows with rubbish", () => {
+  for (const malformed of ["nonsense", 42, null, undefined, [{ noKey: true }], [null]]) {
+    assert.equal(cateringCloseoutChecklistFromResponse({ checklist: malformed }), null, String(malformed));
+  }
+  // A well-formed one installs.
+  assert.equal(cateringCloseoutChecklistFromResponse({ checklist: [item({ updatedAt: B })] })?.length, 1);
 });
 
 /* ----------------------------------------------------------------------------------------------------------- *
@@ -225,15 +229,13 @@ test("a malformed response advances nothing rather than poisoning the ledger", (
 test("a version returned for booking A never rebases booking B", () => {
   const versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { closeout: record(C) }, IDENTITY);
   assert.equal(cateringCloseoutRebasedRecord(record(A), versions, OTHER).updatedAt, A);
-  assert.equal(cateringCloseoutRebasedChecklist([item({ updatedAt: A })], versions, OTHER)[0].updatedAt, A);
 });
 
 test("adopting under another booking replaces the ledger rather than merging into it", () => {
-  let versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { closeout: record(C), checklist: [item({ updatedAt: C })] }, IDENTITY);
+  let versions = accept(EMPTY_CATERING_CLOSEOUT_VERSIONS, { closeout: record(C) }, IDENTITY);
   versions = accept(versions, { closeout: record(B) }, OTHER);
   assert.equal(versions.identity, OTHER);
   assert.equal(versions.record, B, "booking A's newer version did not survive into booking B");
-  assert.deepEqual(versions.items, {}, "and neither did its item versions");
 });
 
 test("the rebase is a no-op that preserves object identity when nothing is fresher", () => {
@@ -281,8 +283,8 @@ test("the notes form states ITS OWN base version, not the latest polled record's
   assert.ok(component.includes("hydrateCateringCloseoutForm(current, identity, persistedNotes, notesAuthoritativeVersion)"));
 });
 
-test("the checklist editors are opened from the rebased list", () => {
-  assert.ok(component.includes("const checklist = cateringCloseoutRebasedChecklist(closeout.checklist ?? [], versions, identity);"));
+test("the checklist editors are opened from the installed snapshot", () => {
+  assert.ok(component.includes("const checklist = closeout.checklist ?? [];"), "read straight from the installed snapshot");
 });
 
 test("the version ledger is booking-local and is reset on navigation with the rest of the state", () => {
