@@ -390,7 +390,16 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       if (variables.settle === "item" && variables.itemKey && isCateringCloseoutConflict(error)) {
         setEditor((current) => markCateringCloseoutEditorConflict(current, variables.itemKey!));
       }
-      if (variables.settle === "notes") setNotesForm(markCateringCloseoutFormConflict);
+      // The SAME classifier the checklist path uses, and for the same reason. Marking the notes form conflicted on
+      // any failure was survivable while the flag was advisory, but it stopped being so once a conflict became
+      // sticky and Save-blocking: a dropped connection or a 500 then disabled Save, hid every route back except
+      // "discard my edits", and made the "try again" notice beside it a lie -- with, in the offline case, no newer
+      // authoritative record to discard onto in the first place.
+      //
+      // Only a genuine optimistic-concurrency refusal is a conflict. Every other failure leaves the form exactly as
+      // it was -- same text, same dirty state, same base version, not conflicted -- so the provider retries the
+      // very same draft once the transient problem clears.
+      if (variables.settle === "notes" && isCateringCloseoutConflict(error)) setNotesForm(markCateringCloseoutFormConflict);
       // Same rule on the refusal path. A conflict, a lifecycle refusal or a blocked completion all mean the payload
       // on screen no longer describes the server, so re-enabling the controls before the corrected one arrives
       // invites exactly the retry that was just refused. The error itself is untouched: awaiting here only delays
