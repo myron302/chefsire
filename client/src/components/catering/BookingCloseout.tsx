@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { Download, Star } from "lucide-react";
 import {
   CATERING_CLOSEOUT_CANCELLED_NOTICE,
+  CATERING_CLOSEOUT_CHECKLIST_LOCKED_NOTICE,
   CATERING_CLOSEOUT_CONVERSATION_ACTION,
   CATERING_CLOSEOUT_CONVERSATION_NOTE,
   CATERING_CLOSEOUT_ITEM_STATES,
@@ -18,6 +19,7 @@ import {
   CATERING_CLOSEOUT_STATE_LABELS,
   cateringBookingCloseoutKey,
   cateringCloseoutCanStillChange,
+  cateringCloseoutChecklistIsEditable,
   cateringBookingCloseoutPath,
   type CateringBookingCloseoutView,
   type CateringCloseoutItemKey,
@@ -143,6 +145,15 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
   // the persisted booking on every request. The parent workspace summary is fetched once and does not poll, so
   // trusting it alone would present a booking as actionable until a failed save revealed otherwise.
   const actionable = Boolean(closeout?.actionable);
+  /**
+   * Whether the CHECKLIST may be edited, which is narrower than whether closeout is actionable at all.
+   *
+   * `actionable` stays true after closing out -- reopening and private notes are both still legitimate -- so
+   * gating checklist controls on it offered edits the server would only ever refuse under its closed-out
+   * boundary. This is the same boundary, stated on the client: read from the authoritative payload, so a booking
+   * another tab closed out takes the controls away here on the very next poll.
+   */
+  const checklistEditable = cateringCloseoutChecklistIsEditable(actionable, Boolean(closeout?.closeout.closedOut));
 
   /**
    * The booking on screen, synchronized during RENDER.
@@ -192,10 +203,11 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     if (!closeout || !provider) return;
     setNotesForm((current) => hydrateCateringCloseoutForm(current, identity, persistedNotes));
   }, [identity, provider, persistedNotes, Boolean(closeout)]);
-  // An editor open on a booking that is no longer actionable, or that belongs to another booking, closes.
+  // An editor open on a booking whose checklist is no longer editable, or that belongs to another booking, closes.
+  // That now includes a booking another tab closed out: the poll brings `closedOut`, and the editor drops with it.
   useEffect(() => {
-    setEditor((current) => reconcileCateringCloseoutEditor(current, identity, actionable));
-  }, [identity, actionable]);
+    setEditor((current) => reconcileCateringCloseoutEditor(current, identity, checklistEditable));
+  }, [identity, checklistEditable]);
 
   /**
    * The booking that STARTED a request, captured at submission time.
@@ -336,7 +348,9 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     // refuses a foreign one on the render path, but a submit is the one place where being wrong writes another
     // booking's record, so it says so explicitly rather than relying on that.
     if (!localStateIsCurrent || open.identity !== identity) return;
-    if (!maySubmitCateringCloseoutEditor(open, actionable, pending)) return;
+    // Defence in depth, not merely a hidden button: a stale editor that survives one render after the payload says
+    // closed must not be able to issue the request at all.
+    if (!maySubmitCateringCloseoutEditor(open, checklistEditable, pending)) return;
     mutation.mutate({
       origin: origin(), path: `/closeout/items/${open.key}`, method: "PUT", body: cateringCloseoutItemPayload(open),
       settle: "item", itemKey: open.key, submittedItem: { identity, key: open.key, state: open.state, note: open.note },
@@ -490,8 +504,13 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         <span className="text-sm text-muted-foreground">{progress.resolved} of {progress.total} answered</span>
       </div>
       <p className="text-sm text-muted-foreground">Only you can see this checklist and its notes. Items marked required must be answered -- as done or as not applicable -- before you can close this booking out.</p>
+      {/* Read-only while closeout stands. The remedy is named rather than performed: the explicit Reopen action
+          below is the only way back, and it stays exactly where it was. */}
+      {actionable && !checklistEditable && <p className="text-sm text-muted-foreground" role="status">{CATERING_CLOSEOUT_CHECKLIST_LOCKED_NOTICE}</p>}
       <ul className="space-y-2">{checklist.map((item) => {
-        const open = activeCateringCloseoutEditor(editor, identity, item.key, actionable);
+        // Read on the RENDER path, so the one committed render between the payload arriving and the reset effect
+        // flushing is already inert -- the same standard every other piece of local state here is held to.
+        const open = activeCateringCloseoutEditor(editor, identity, item.key, checklistEditable);
         return <li key={item.key} className="rounded-lg border p-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
@@ -507,7 +526,7 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
           {item.resolvedAt && !open && <p className="mt-1 text-xs text-muted-foreground">Answered {formatCateringCloseoutInstant(item.resolvedAt)}</p>}
           {open
             ? <ChecklistEditor
-                open={open} pending={pending} actionable={actionable}
+                open={open} pending={pending} editable={checklistEditable}
                 mayReload={mayReloadCateringCloseoutEditor(editor, identity, checklist)}
                 onState={(state) => setEditor((current) => editCateringCloseoutEditor(current, identity, item.key, { state }))}
                 onNote={(note) => setEditor((current) => editCateringCloseoutEditor(current, identity, item.key, { note }))}
@@ -515,7 +534,7 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
                 onCancel={() => setEditor(null)}
                 onSubmit={() => submitItem(open)}
               />
-            : actionable && <Button variant="outline" className="mt-2 min-h-11" onClick={() => setEditor(cateringCloseoutEditorFor(item, identity))}>
+            : checklistEditable && <Button variant="outline" className="mt-2 min-h-11" onClick={() => setEditor(cateringCloseoutEditorFor(item, identity))}>
                 {item.state === "pending" ? "Answer this item" : "Update this item"}
               </Button>}
         </li>;
@@ -570,8 +589,8 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
  * State is a row of full-height buttons rather than a select, because three fixed choices on a phone should be one
  * tap and not a picker.
  */
-function ChecklistEditor({ open, pending, actionable, mayReload, onState, onNote, onReload, onCancel, onSubmit }: {
-  open: OpenCateringCloseoutItemEditor; pending: boolean; actionable: boolean;
+function ChecklistEditor({ open, pending, editable, mayReload, onState, onNote, onReload, onCancel, onSubmit }: {
+  open: OpenCateringCloseoutItemEditor; pending: boolean; editable: boolean;
   mayReload: boolean;
   onState: (state: CateringCloseoutItemState) => void;
   onNote: (note: string) => void;
@@ -600,7 +619,7 @@ function ChecklistEditor({ open, pending, actionable, mayReload, onState, onNote
       This item changed elsewhere since you opened it. {mayReload ? "Reload the latest version to carry on." : "Waiting for the latest version…"}
     </p>}
     <div className="flex flex-wrap gap-2">
-      <Button className="min-h-11" disabled={!maySubmitCateringCloseoutEditor(open, actionable, pending)}>Save</Button>
+      <Button className="min-h-11" disabled={!maySubmitCateringCloseoutEditor(open, editable, pending)}>Save</Button>
       {open.conflicted && <Button type="button" variant="outline" className="min-h-11" disabled={!mayReload} onClick={onReload}>Reload the latest version</Button>}
       <Button type="button" variant="ghost" className="min-h-11" onClick={onCancel}>Cancel</Button>
     </div>

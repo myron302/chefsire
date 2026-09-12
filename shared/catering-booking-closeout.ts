@@ -292,6 +292,27 @@ export function cateringCloseoutCanStillChange(status: CateringBookingStatus | u
 export function mayMutateCateringCloseout(booking: { status: CateringBookingStatus; completedAt: unknown }, role: "provider" | "customer"): boolean {
   return role === "provider" && cateringEventServiceOccurred(booking);
 }
+/**
+ * Whether the CHECKLIST may be edited right now, as opposed to whether closeout is actionable at all.
+ *
+ * The two are not the same, and conflating them is what let the interface offer edit controls that the server
+ * would only ever refuse. `actionable` answers "is this the provider, on a booking whose event was served" --
+ * which stays true after closing out, because reopening and private notes are both still legitimate. Editing the
+ * checklist is narrower: once operational closeout is recorded closed, the checklist that decided it is frozen
+ * until the provider explicitly reopens.
+ *
+ * This is the client-side statement of exactly the boundary the route enforces under its advisory lock. It is not
+ * a substitute for that boundary -- the server remains the backstop -- but normal use should never be steered into
+ * a refusal, and an editor opened a moment before another tab closed the booking out must stop being usable the
+ * instant this client learns of it.
+ *
+ * Provider-private notes are deliberately NOT behind this: they are editable after closeout by design, because
+ * they provably cannot move the derived state, a blocker, `mayCloseOut`, or any value a customer receives.
+ */
+export function cateringCloseoutChecklistIsEditable(actionable: boolean, closedOut: boolean): boolean {
+  return actionable && !closedOut;
+}
+
 /** Reading never closes. Both participants may read a closeout view of any booking, under their own projection. */
 export function mayReadCateringCloseout(): boolean { return true; }
 
@@ -725,6 +746,9 @@ export const CATERING_CLOSEOUT_PROVIDER_REVIEW_PRESENT = "This customer has left
 export const CATERING_CLOSEOUT_PROVIDER_REVIEW_ABSENT = "This customer has not left a review yet.";
 
 /** Wording the interface shares with the contract, so the two cannot describe the lifecycle differently. */
+/** What a provider is told in place of the edit controls while closeout stands, and where to go to change it. */
+export const CATERING_CLOSEOUT_CHECKLIST_LOCKED_NOTICE = "This booking is closed out, so the checklist is read-only. Reopen closeout below if you need to change it.";
+
 export const CATERING_CLOSEOUT_CANCELLED_NOTICE = "This booking was cancelled, so no event service took place and there is no post-event closeout.";
 export const CATERING_CLOSEOUT_PENDING_NOTICE = "Post-event closeout opens once your provider marks the event complete.";
 export const CATERING_CLOSEOUT_PROVIDER_PENDING_NOTICE = "Post-event closeout opens once you mark this event complete.";

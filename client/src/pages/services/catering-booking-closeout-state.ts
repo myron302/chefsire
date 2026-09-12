@@ -330,13 +330,18 @@ export function activeCateringCloseoutEditor(
   editor: CateringCloseoutItemEditorState,
   identity: string,
   key: CateringCloseoutItemKey,
-  actionable: boolean,
+  editable: boolean,
 ): OpenCateringCloseoutItemEditor | null {
-  if (!actionable || !editor || editor.identity !== identity || editor.key !== key) return null;
+  if (!editable || !editor || editor.identity !== identity || editor.key !== key) return null;
   return editor;
 }
-export function maySubmitCateringCloseoutEditor(editor: OpenCateringCloseoutItemEditor, actionable: boolean, pending: boolean): boolean {
-  return actionable && !pending && !editor.conflicted && editor.note.length <= CATERING_CLOSEOUT_ITEM_NOTE_MAXIMUM;
+/**
+ * `editable` is the CHECKLIST's own editability, not merely whether closeout is actionable. Callers pass
+ * `cateringCloseoutChecklistIsEditable(actionable, closedOut)`, so an editor stops being submittable the moment
+ * this client learns closeout was closed -- including by another tab, through an ordinary poll.
+ */
+export function maySubmitCateringCloseoutEditor(editor: OpenCateringCloseoutItemEditor, editable: boolean, pending: boolean): boolean {
+  return editable && !pending && !editor.conflicted && editor.note.length <= CATERING_CLOSEOUT_ITEM_NOTE_MAXIMUM;
 }
 export function markCateringCloseoutEditorConflict(editor: CateringCloseoutItemEditorState, key: CateringCloseoutItemKey): CateringCloseoutItemEditorState {
   if (!editor || editor.key !== key) return editor;
@@ -358,15 +363,19 @@ export function mayReloadCateringCloseoutEditor(
   const fresh = items.find((item) => item.key === editor.key);
   return Boolean(fresh && fresh.updatedAt !== editor.expectedUpdatedAt);
 }
-/** An editor open on a booking that is no longer actionable closes; one on a live item keeps the provider's text. */
+/**
+ * An editor open on a booking whose checklist is no longer editable closes; one on a live item keeps the
+ * provider's text. `editable` is the checklist's own editability, so closing out through a poll drops the editor
+ * rather than leaving it on screen to be refused.
+ */
 export function reconcileCateringCloseoutEditor(
   editor: CateringCloseoutItemEditorState,
   identity: string,
-  actionable: boolean,
+  editable: boolean,
 ): CateringCloseoutItemEditorState {
   if (!editor) return null;
   if (editor.identity !== identity) return null;
-  return actionable ? editor : null;
+  return editable ? editor : null;
 }
 /** After an accepted save the editor closes, unless the provider has kept typing into the very same item. */
 export function settleCateringCloseoutEditor(
