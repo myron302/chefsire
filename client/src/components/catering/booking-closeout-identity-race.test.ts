@@ -189,7 +189,12 @@ test("every mutation carries its own origin and addresses the originating bookin
 test("both completions invalidate by origin and settle only when the origin is on screen", () => {
   assert.ok(component.includes("cache.invalidateQueries({ queryKey: cateringBookingCloseoutKey(started.userId, started.bookingId) })"));
   assert.ok(component.includes("const settlesHere = (started: CloseoutOrigin) => started.identity === identityRef.current;"));
-  assert.equal((component.match(/if \(!settlesHere\(started\)\) return;/g) ?? []).length, 2, "onSuccess and onError both guard");
+  // Both callbacks still refuse a foreign origin. The two spellings differ only in that the refusal path now
+  // drains its own reconciliation first, so the guard is asserted per callback rather than by counting one literal.
+  const success = component.slice(component.indexOf("onSuccess: async (value, variables) => {"), component.indexOf("onError: async"));
+  const failure = component.slice(component.indexOf("onError: async (error: CateringCloseoutError, variables) => {"), component.indexOf("const pending = mutation.isPending;"));
+  assert.ok(success.includes("if (!settlesHere(started)) return;"), "onSuccess guards");
+  assert.ok(failure.includes("if (!settlesHere(started)) { await reconciled; return; }"), "onError guards");
 });
 
 test("every submit handler re-checks the identity before writing", () => {

@@ -252,7 +252,7 @@ const component = fs.readFileSync(
 );
 
 test("the returned versions are adopted before anything else settles", () => {
-  const success = component.slice(component.indexOf("onSuccess: (value, variables) => {"), component.indexOf("onError:"));
+  const success = component.slice(component.indexOf("onSuccess: async (value, variables) => {"), component.indexOf("onError: async"));
   const adoptAt = success.indexOf("setVersions((current) => adoptCateringCloseoutVersions");
   assert.notEqual(adoptAt, -1, "the adoption happens on every accepted response");
   assert.ok(adoptAt < success.indexOf("setEditor("), "before the editor settles");

@@ -241,15 +241,29 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       if (!response.ok) throw Object.assign(new Error(value.message || "This closeout change could not be saved"), { code: typeof value.code === "string" ? value.code : undefined });
       return value as Record<string, unknown>;
     },
-    onSuccess: (value, variables) => {
+    onSuccess: async (value, variables) => {
       const started = variables.origin;
       // Always refresh the ORIGINATING booking, whichever booking is rendered now: that is the data this response
-      // actually changed, and its cache is keyed by that booking. The workspace is refreshed too, because a
-      // completion writes a shared activity row the Activity panel renders.
-      cache.invalidateQueries({ queryKey: cateringBookingCloseoutKey(started.userId, started.bookingId) });
+      // actually changed, and its cache is keyed by that booking.
+      //
+      // The CLOSEOUT refetch is held onto, because every dependent control on this card reads its payload:
+      // `readiness.mayCloseOut` gates "Mark closeout complete", `closeout.closedOut` chooses between that and
+      // "Reopen closeout", and the checklist rows render from `checklist`. Starting the refetch and letting the
+      // mutation settle anyway left a window in which `isPending` was false while the query still held the
+      // PRE-mutation payload -- so a provider who moved a required item back to pending could immediately click a
+      // "Mark closeout complete" button that was still enabled by the old `mayCloseOut`, and be answered with a
+      // blocked 409 describing a state the screen was no longer showing.
+      //
+      // The WORKSPACE refetch is deliberately NOT awaited. It refreshes the Activity panel above this card, which
+      // governs no control here, so holding the provider's buttons for it would serialize an unrelated read.
+      const reconciled = cache.invalidateQueries({ queryKey: cateringBookingCloseoutKey(started.userId, started.bookingId) })
+        // A refetch that fails must not turn a write the server ACCEPTED into a reported failure. The payload then
+        // stays stale until the poll or a focus refetch replaces it, which is exactly where it stood before.
+        .catch(() => undefined);
       cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", started.userId, started.bookingId] });
       // Everything below writes booking-local component state, which only exists for the booking on screen. A
-      // response for one the participant has navigated away from has nothing here to settle and must touch nothing.
+      // response for one the participant has navigated away from has nothing here to settle and must touch nothing
+      // -- and must not hold this booking's controls pending on that booking's refetch either.
       if (!settlesHere(started)) return;
       // ADOPT THE RETURNED VERSIONS FIRST, before anything below settles and before `isPending` goes false.
       //
@@ -271,14 +285,26 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         const saved = (value.closeout as { providerNotes?: string | null } | undefined)?.providerNotes ?? "";
         setNotesForm((current) => settleCateringCloseoutForm(current, started.identity, variables.submittedNotes!, saved));
       }
+      // LAST, and only once every synchronous settlement above has run: hold the mutation pending until the
+      // authoritative payload has actually landed.
+      //
+      // The ordering matters in both directions. The version adoption and the draft settlements stay FIRST, so an
+      // immediate consecutive write still states the precondition this write just produced rather than waiting on
+      // a refetch -- the earlier correction is untouched. And the await is LAST, so no dependent control is
+      // re-enabled against a payload that predates the change the provider just made.
+      //
+      // `query-core` awaits this callback before it dispatches success, so this genuinely keeps `isPending` true.
+      await reconciled;
     },
-    onError: (error: CateringCloseoutError, variables) => {
+    onError: async (error: CateringCloseoutError, variables) => {
       const started = variables.origin;
       // A refusal is about the originating booking too, so its cache is the one that may need re-reading...
-      if (shouldRefetchCloseoutAfterError(error)) cache.invalidateQueries({ queryKey: cateringBookingCloseoutKey(started.userId, started.bookingId) });
+      const reconciled = shouldRefetchCloseoutAfterError(error)
+        ? cache.invalidateQueries({ queryKey: cateringBookingCloseoutKey(started.userId, started.bookingId) }).catch(() => undefined)
+        : undefined;
       // ...and its message, its conflicted editor and its preserved form all belong to that booking's screen. On a
       // different booking there is nothing to mark and nothing to say.
-      if (!settlesHere(started)) return;
+      if (!settlesHere(started)) { await reconciled; return; }
       const outcome = cateringCloseoutFailureNotice(error);
       setNotice({ message: outcome.message, retryable: outcome.retryable });
       // A conflicted editor is MARKED, not closed: the provider's words stay on screen, and saving is disabled
@@ -287,6 +313,11 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
         setEditor((current) => markCateringCloseoutEditorConflict(current, variables.itemKey!));
       }
       if (variables.settle === "notes") setNotesForm(markCateringCloseoutFormConflict);
+      // Same rule on the refusal path. A conflict, a lifecycle refusal or a blocked completion all mean the payload
+      // on screen no longer describes the server, so re-enabling the controls before the corrected one arrives
+      // invites exactly the retry that was just refused. The error itself is untouched: awaiting here only delays
+      // the failure being dispatched, and a failed refetch is swallowed so it cannot mask the real refusal.
+      await reconciled;
     },
   });
   const pending = mutation.isPending;
