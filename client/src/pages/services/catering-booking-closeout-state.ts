@@ -1,5 +1,6 @@
 import {
   CATERING_CLOSEOUT_BLOCKED_CODE,
+  CATERING_CLOSEOUT_CLOSED_CODE,
   CATERING_CLOSEOUT_ITEM_NOTE_MAXIMUM,
   CATERING_CLOSEOUT_NOTES_MAXIMUM,
   CATERING_CLOSEOUT_NOT_AVAILABLE_CODE,
@@ -51,7 +52,9 @@ export function shouldRefetchCloseoutAfterError(error: CateringCloseoutError | n
   if (!error || error.offline) return false;
   return error.code === CATERING_CLOSEOUT_VERSION_CONFLICT_CODE
     || error.code === CATERING_CLOSEOUT_NOT_AVAILABLE_CODE
-    || error.code === CATERING_CLOSEOUT_BLOCKED_CODE;
+    || error.code === CATERING_CLOSEOUT_BLOCKED_CODE
+    // A checklist edit refused because closeout is already closed means this client's payload still shows it open.
+    || error.code === CATERING_CLOSEOUT_CLOSED_CODE;
 }
 
 /**

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CATERING_CLOSEOUT_BLOCKED_REFUSAL,
+  CATERING_CLOSEOUT_CLOSED_REFUSAL,
   CATERING_CLOSEOUT_CONFLICT_REFUSAL,
   CATERING_CLOSEOUT_NOT_AVAILABLE_REFUSAL,
   cateringCloseoutFacts,
@@ -45,9 +46,16 @@ test("only the provider of a served booking is allowed through the guard", () =>
   assert.equal(cateringCloseoutGuard({ status: "pending_confirmation", completedAt: null }, "provider"), "not_available");
 });
 
-test("the three refusals carry distinct codes, so a client can tell refetch from reload from blocked", () => {
-  const codes = [CATERING_CLOSEOUT_NOT_AVAILABLE_REFUSAL.code, CATERING_CLOSEOUT_CONFLICT_REFUSAL.code, CATERING_CLOSEOUT_BLOCKED_REFUSAL.code];
-  assert.equal(new Set(codes).size, 3);
+test("every refusal carries a distinct code, so a client can tell each remedy apart", () => {
+  // Refetch, reload the newer version, resolve the outstanding items, or reopen closeout first -- four different
+  // things the provider has to do, so four codes rather than one overloaded conflict.
+  const codes = [
+    CATERING_CLOSEOUT_NOT_AVAILABLE_REFUSAL.code,
+    CATERING_CLOSEOUT_CONFLICT_REFUSAL.code,
+    CATERING_CLOSEOUT_BLOCKED_REFUSAL.code,
+    CATERING_CLOSEOUT_CLOSED_REFUSAL.code,
+  ];
+  assert.equal(new Set(codes).size, 4);
 });
 
 /* ----------------------------------------------------------------------------------------------------------- *

@@ -37,12 +37,14 @@ import { cateringCounterpart } from "../services/catering-booking-communication-
 import { reviewEligibility } from "../services/catering-review-policy";
 import {
   CATERING_CLOSEOUT_BLOCKED_REFUSAL,
+  CATERING_CLOSEOUT_CLOSED_REFUSAL,
   CATERING_CLOSEOUT_CONFLICT_REFUSAL,
   CATERING_CLOSEOUT_FORBIDDEN_MESSAGE,
   CATERING_CLOSEOUT_NOT_AVAILABLE_REFUSAL,
   CATERING_CLOSEOUT_NOT_FOUND_REFUSAL,
   cateringCloseoutFacts,
   cateringCloseoutGuard,
+  cateringCloseoutIsClosed,
   cateringEventServiceOccurred,
   deriveCateringCloseout,
   resolveCateringCloseoutComplete,
@@ -308,8 +310,21 @@ r.put("/bookings/:id/closeout/items/:itemKey", requireAuth, async (req, res, nex
     // `expectedUpdatedAt` conflicts, a first touch that carries one conflicts, and an identical resubmission is
     // reported unchanged rather than rewriting a version another tab is holding.
     const outcome = resolveCateringCloseoutItemSave(row, input, new Date());
+    // A request that asks for the state already stored writes NOTHING, so it is answered before any boundary it
+    // could not violate. That keeps a lost-response retry idempotent even when it arrives after the provider has
+    // since closed out -- refusing it would turn a request that already succeeded into an error.
+    if (outcome.kind === "unchanged") return { kind: "saved", item: row!, checklist: await closeoutItems(tx, id), changed: false } as const;
+    // THE CLOSED-OUT BOUNDARY, read from the authoritative record under this same advisory lock.
+    //
+    // Everything below here would change the checklist that decided the closeout, so it is refused while that
+    // closeout stands. Without this, a required item could slide back to `pending` behind a record still marked
+    // closed: `closed_out` dominates the derived state, so both participants kept seeing a finished wrap-up while
+    // required work was outstanding, a repeated completion answered `already_closed`, and no reopen was recorded.
+    //
+    // The refusal names the remedy rather than performing it. Reopening as a side effect of a checklist save would
+    // have silently discarded the audited, customer-visible boundary the explicit reopen action exists to be.
+    if (cateringCloseoutIsClosed(await closeoutRecord(tx, id))) return { kind: "closed" } as const;
     if (outcome.kind === "conflict") return { kind: "conflict" } as const;
-    if (outcome.kind === "unchanged") return { kind: "saved", item: row!, changed: false } as const;
     const values = {
       state: outcome.state,
       providerNote: outcome.providerNote,
@@ -326,11 +341,18 @@ r.put("/bookings/:id/closeout/items/:itemKey", requireAuth, async (req, res, nex
     // No activity row and no notification. A checklist item is provider-private internal progress: writing shared
     // history for it would disclose the checklist, and writing provider-visibility history for it would flood the
     // feed with movement nobody reads. Phase 2J made the same call about milestone churn.
-    return { kind: "saved", item: saved as CateringBookingCloseoutItem, changed: true } as const;
+    //
+    // The response snapshot is taken HERE, inside the transaction and while the collection lock is still held, so
+    // it is the state this request produced and observed. Re-reading it after the commit let another tab's write
+    // land in between and be returned as if it were this request's own result -- and because the client adopts the
+    // versions a mutation returns, this tab would then hold a row version it never saw, and its next save on that
+    // row would overwrite the other tab's change instead of being refused as stale.
+    return { kind: "saved", item: saved as CateringBookingCloseoutItem, checklist: await closeoutItems(tx, id), changed: true } as const;
   });
   if (result.kind === "not_available") return refuse(res, CATERING_CLOSEOUT_NOT_AVAILABLE_REFUSAL);
+  if (result.kind === "closed") return refuse(res, CATERING_CLOSEOUT_CLOSED_REFUSAL);
   if (result.kind === "conflict") return refuse(res, CATERING_CLOSEOUT_CONFLICT_REFUSAL);
-  res.json({ checklist: serializeCloseoutChecklist(await closeoutItems(db, id)) });
+  res.json({ checklist: serializeCloseoutChecklist(result.checklist) });
 } catch (error) { invalid(error, res, next); } });
 
 /* ------------------------------------------------------------------------------------------------------------- *

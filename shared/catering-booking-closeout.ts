@@ -219,6 +219,21 @@ export const CATERING_CLOSEOUT_NOT_AVAILABLE_MESSAGE = "Post-event closeout is a
 /** Required closeout work is still outstanding, so the booking may not be recorded as operationally closed out. */
 export const CATERING_CLOSEOUT_BLOCKED_CODE = "catering_closeout_blocked";
 export const CATERING_CLOSEOUT_BLOCKED_MESSAGE = "Resolve the outstanding required closeout items before closing this booking out";
+/**
+ * The checklist is being changed behind a closeout that is already recorded as closed.
+ *
+ * Closing out is an assertion that the operational work is finished. Letting a required item slide back to
+ * `pending` afterwards produced a record that contradicted itself: `closed_out` dominates the derived state, so
+ * both participants kept seeing a finished wrap-up while required work was outstanding, a repeated completion
+ * answered `already_closed`, and no reopen was ever recorded -- no count, no instant, no actor, no activity row.
+ *
+ * The explicit reopen action is the ONLY way back. It is deliberate, audited and customer-visible, which is
+ * exactly what changing a closed record should be, and re-opening as a side effect of a checklist save would have
+ * thrown all of that away silently.
+ */
+export const CATERING_CLOSEOUT_CLOSED_CODE = "catering_closeout_closed";
+export const CATERING_CLOSEOUT_CLOSED_MESSAGE = "This booking is closed out. Reopen closeout before changing the checklist.";
+
 /** A closeout record a provider may act on that does not exist yet, where the action needs one. */
 export const CATERING_CLOSEOUT_NOT_FOUND_CODE = "catering_closeout_not_found";
 export const CATERING_CLOSEOUT_NOT_FOUND_MESSAGE = "Closeout record not found";

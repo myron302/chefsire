@@ -2,6 +2,8 @@ import type { CateringBookingStatus } from "@shared/catering-bookings";
 import {
   CATERING_CLOSEOUT_BLOCKED_CODE,
   CATERING_CLOSEOUT_BLOCKED_MESSAGE,
+  CATERING_CLOSEOUT_CLOSED_CODE,
+  CATERING_CLOSEOUT_CLOSED_MESSAGE,
   CATERING_CLOSEOUT_ITEM_KEYS,
   CATERING_CLOSEOUT_NOT_AVAILABLE_CODE,
   CATERING_CLOSEOUT_NOT_AVAILABLE_MESSAGE,
@@ -51,6 +53,26 @@ export const CATERING_CLOSEOUT_NOT_AVAILABLE_REFUSAL = { status: 409, message: C
 export const CATERING_CLOSEOUT_CONFLICT_REFUSAL = { status: 409, message: CATERING_CLOSEOUT_VERSION_CONFLICT_MESSAGE, code: CATERING_CLOSEOUT_VERSION_CONFLICT_CODE } as const;
 export const CATERING_CLOSEOUT_BLOCKED_REFUSAL = { status: 409, message: CATERING_CLOSEOUT_BLOCKED_MESSAGE, code: CATERING_CLOSEOUT_BLOCKED_CODE } as const;
 export const CATERING_CLOSEOUT_NOT_FOUND_REFUSAL = { status: 404, message: CATERING_CLOSEOUT_NOT_FOUND_MESSAGE, code: CATERING_CLOSEOUT_NOT_FOUND_CODE } as const;
+/**
+ * The closed-out mutation boundary.
+ *
+ * Once operational closeout is recorded closed, the checklist that decided it may not move until the provider
+ * explicitly reopens. Read from the authoritative record under the closeout advisory lock, never from a request
+ * and never from anything fetched before the transaction, so a completion that landed between a client's read and
+ * its write is seen.
+ *
+ * PROVIDER-PRIVATE NOTES ARE DELIBERATELY NOT BEHIND THIS BOUNDARY, and that is a product decision backed by the
+ * derivation rather than a convenience. `providerNotes` reaches exactly one fact, `hasProviderNotes`, which
+ * `deriveCateringCloseoutState` reads only on a branch it can never reach while `closedOut` is true -- the closed
+ * check returns first. It feeds no signal, it is absent from `cateringCloseoutMayComplete`, and a customer
+ * receives neither the text nor this record's version. So a provider writing down what they remember about a
+ * finished event cannot move the derived state, a blocker, `mayCloseOut`, or one value any customer can observe.
+ * Blocking it would restrict a harmless private record with no integrity benefit at all.
+ */
+export function cateringCloseoutIsClosed(record: { closedOutAt: Date | null } | undefined): boolean {
+  return Boolean(record?.closedOutAt);
+}
+export const CATERING_CLOSEOUT_CLOSED_REFUSAL = { status: 409, message: CATERING_CLOSEOUT_CLOSED_MESSAGE, code: CATERING_CLOSEOUT_CLOSED_CODE } as const;
 export const CATERING_CLOSEOUT_FORBIDDEN_MESSAGE = "Only the booking provider may change post-event closeout";
 
 /**
