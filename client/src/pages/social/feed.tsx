@@ -301,7 +301,8 @@ export default function Feed() {
     queryKey: ["/api/posts/feed", currentUserId],
     queryFn: () =>
       fetchJSON<PostWithUser[]>(
-        `/api/posts/feed?offset=0&limit=10${currentUserId ? `&userId=${encodeURIComponent(currentUserId)}` : ""}`
+        // No userId: the feed belongs to the authenticated session.
+        `/api/posts/feed?offset=0&limit=10`
       ),
     retry: false,
   });

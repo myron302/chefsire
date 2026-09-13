@@ -461,8 +461,8 @@ export default function CreatePost() {
             })
           : formData.caption;
 
+      // No userId: the server always makes the authenticated session the post's author.
       const postData = {
-        userId: user.id,
         caption: captionToSend,
         imageUrl: formData.imageUrl,
         additionalImages: formData.additionalImages,

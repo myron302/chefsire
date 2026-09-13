@@ -148,7 +148,8 @@ export default function Profile() {
   const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
     queryKey: ["/api/posts/user", profileUserId],
     queryFn: async () => {
-      const response = await fetch(`/api/posts/user/${profileUserId}?currentUserId=${currentUser?.id || ''}`, {
+      // No currentUserId: the server decides what a private profile shows from the authenticated session.
+      const response = await fetch(`/api/posts/user/${profileUserId}`, {
         credentials: "include",
       });
       if (!response.ok) {

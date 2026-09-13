@@ -2,14 +2,11 @@
 import { Router } from "express";
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "../db";
-import { follows, followRequests, users } from "../../shared/schema";
+import { followRequests, users } from "../../shared/schema";
 import { requireAuth } from "../middleware";
 import { storage } from "../storage";
-import {
-  sendFollowRequestNotification,
-  sendFollowAcceptedNotification,
-  sendNewFollowerNotification,
-} from "../services/notification-service";
+import { followOrRequest } from "../lib/social-follow";
+import { sendFollowAcceptedNotification } from "../services/notification-service";
 
 const r = Router();
 
@@ -65,86 +62,13 @@ r.post("/:targetId", requireAuth, async (req, res) => {
   if (!targetId) return res.status(400).json({ message: "targetId is required" });
   if (targetId === followerId) return res.status(400).json({ message: "You cannot follow yourself" });
 
-  const target = await db
-    .select({ id: users.id, isPrivate: users.isPrivate })
-    .from(users)
-    .where(eq(users.id, targetId))
-    .limit(1);
-
-  if (!target[0]) return res.status(404).json({ message: "User not found" });
-
-  // If already following, just return status
-  const alreadyFollowing = await storage.isFollowing(followerId, targetId);
-  if (alreadyFollowing) {
-    return res.json({ status: "following" });
-  }
-
-  if (target[0].isPrivate) {
-    // Create a pending request (ignore duplicates)
-    try {
-      await db.insert(followRequests).values({
-        requesterId: followerId,
-        targetId,
-        status: "pending",
-      });
-    } catch {
-      // ignore (likely unique constraint on pending)
-    }
-
-    const pending = await db
-      .select({ id: followRequests.id })
-      .from(followRequests)
-      .where(
-        and(
-          eq(followRequests.requesterId, followerId),
-          eq(followRequests.targetId, targetId),
-          eq(followRequests.status, "pending")
-        )
-      )
-      .limit(1);
-
-    // Send notification to target user
-    const requester = await db
-      .select({ username: users.username, avatar: users.avatar })
-      .from(users)
-      .where(eq(users.id, followerId))
-      .limit(1);
-
-    if (requester[0]) {
-      sendFollowRequestNotification(
-        targetId,
-        followerId,
-        requester[0].username,
-        requester[0].avatar
-      );
-    }
-
-    return res.json({ status: "requested", requestId: pending[0]?.id || null });
-  }
-
-  // Public account → follow immediately
   try {
-    await storage.followUser(followerId, targetId);
-
-    // Send notification to target user
-    const follower = await db
-      .select({ username: users.username, avatar: users.avatar })
-      .from(users)
-      .where(eq(users.id, followerId))
-      .limit(1);
-
-    if (follower[0]) {
-      sendNewFollowerNotification(
-        targetId,
-        followerId,
-        follower[0].username,
-        follower[0].avatar
-      );
-    }
-  } catch {
-    // ignore duplicate follows
+    // Shared with every other follow entry point: a private target only ever gets a pending request.
+    return res.json(await followOrRequest(followerId, targetId));
+  } catch (err: any) {
+    if (err?.status === 404) return res.status(404).json({ message: "User not found" });
+    throw err;
   }
-  return res.json({ status: "following" });
 });
 
 /**

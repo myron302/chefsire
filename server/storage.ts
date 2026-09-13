@@ -13,6 +13,7 @@ import {
   comments,
   commentLikes,
   follows,
+  followRequests,
   cateringInquiries,
   cateringAvailabilitySettings,
   products,
@@ -69,6 +70,7 @@ import {
   type InsertCommentLike,
 } from "@shared/schema";
 import { isProviderInRange, milesBetween, type Coordinates } from "./services/catering-geo";
+import { visiblePostsCondition } from "./lib/post-visibility";
 
 // Reuse the shared pool so there's only one connection pool in the process
 const _db = sharedPool ? drizzle(sharedPool) : null;
@@ -106,10 +108,14 @@ export interface IStorage {
   getPostWithUser(id: string): Promise<PostWithUser | undefined>;
   createPost(post: InsertPost): Promise<Post>;
   updatePost(id: string, updates: Partial<Post>): Promise<Post | undefined>;
-  deletePost(id: string): Promise<boolean>;
-  getFeedPosts(userId: string, offset?: number, limit?: number): Promise<PostWithUser[]>;
-  getUserPosts(userId: string, offset?: number, limit?: number): Promise<PostWithUser[]>;
-  getExplorePosts(offset?: number, limit?: number): Promise<PostWithUser[]>;
+  /** Update scoped to the owner: the WHERE clause carries the authorization, so there is no check/act gap. */
+  updatePostAsOwner(id: string, ownerId: string, updates: Partial<Post>): Promise<Post | undefined>;
+  /** Deleting scoped to `ownerId` when given; the post row is removed only if it still belongs to that user. */
+  deletePost(id: string, ownerId?: string): Promise<boolean>;
+  /** Post lists are filtered to what `viewerId` (the authenticated viewer, or undefined for anonymous) may see. */
+  getFeedPosts(viewerId?: string, offset?: number, limit?: number): Promise<PostWithUser[]>;
+  getUserPosts(userId: string, offset?: number, limit?: number, viewerId?: string): Promise<PostWithUser[]>;
+  getExplorePosts(offset?: number, limit?: number, viewerId?: string): Promise<PostWithUser[]>;
 
   // Recipes
   getRecipe(id: string): Promise<Recipe | undefined>;
@@ -138,6 +144,8 @@ export interface IStorage {
   getComment(id: string): Promise<Comment | undefined>;
   createComment(comment: InsertComment): Promise<Comment>;
   deleteComment(id: string): Promise<boolean>;
+  /** Delete scoped to the comment's author, so authorization lives in the DELETE predicate itself. */
+  deleteCommentAsAuthor(id: string, authorId: string): Promise<boolean>;
   getPostComments(postId: string): Promise<CommentWithUser[]>;
   /** Like a comment */
   likeComment(userId: string, commentId: string): Promise<CommentLike>;
@@ -148,6 +156,8 @@ export interface IStorage {
   /** Retrieve all likes for a specific comment */
   getCommentLikes(commentId: string): Promise<CommentLike[]>;
   followUser(followerId: string, followingId: string): Promise<Follow>;
+  /** Open (or reuse) a pending follow request for a private account. Returns the pending request's id. */
+  createFollowRequestIfAbsent(requesterId: string, targetId: string): Promise<string | null>;
   unfollowUser(followerId: string, followingId: string): Promise<boolean>;
   isFollowing(followerId: string, followingId: string): Promise<boolean>;
   getFollowers(userId: string): Promise<User[]>;
@@ -464,12 +474,32 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async deletePost(id: string): Promise<boolean> {
+  /**
+   * Owner-scoped update. Ownership is part of the UPDATE predicate rather than an earlier read, so a post
+   * that is not the actor's simply matches no row -- there is no window between the check and the write.
+   */
+  async updatePostAsOwner(id: string, ownerId: string, updates: Partial<Post>): Promise<Post | undefined> {
     const db = getDb();
+    const result = await db
+      .update(posts)
+      .set(updates)
+      .where(and(eq(posts.id, id), eq(posts.userId, ownerId)))
+      .returning();
+    return result[0];
+  }
+
+  /**
+   * Delete a post. When `ownerId` is supplied the delete is scoped to that owner: both the initial lookup and
+   * the DELETE that actually removes the row carry `user_id = ownerId`, so the authorization is enforced by
+   * the mutation itself and cannot be raced against a stale ownership read.
+   */
+  async deletePost(id: string, ownerId?: string): Promise<boolean> {
+    const db = getDb();
+    const scope = ownerId ? and(eq(posts.id, id), eq(posts.userId, ownerId)) : eq(posts.id, id);
 
     try {
-      // First, get the post to know the userId
-      const [post] = await db.select().from(posts).where(eq(posts.id, id)).limit(1);
+      // First, get the post to know the userId (scoped to the owner when one was given)
+      const [post] = await db.select().from(posts).where(scope).limit(1);
       if (!post) {
         return false;
       }
@@ -494,8 +524,8 @@ export class DrizzleStorage implements IStorage {
       // Delete recipe if this is a recipe post
       const deletedRecipes = await db.delete(recipes).where(eq(recipes.postId, id));
 
-      // Now delete the post itself
-      const result = await db.delete(posts).where(eq(posts.id, id)).returning();
+      // Now delete the post itself -- still scoped to the owner, so the write is the authorization
+      const result = await db.delete(posts).where(scope).returning();
 
       if (result[0]) {
         // Decrement user's post count
@@ -516,14 +546,19 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
-  async getFeedPosts(_userId: string, offset = 0, limit = 10): Promise<PostWithUser[]> {
+  /**
+   * `viewerId` is the AUTHENTICATED viewer (undefined for an anonymous caller). It drives both the per-row
+   * `isLiked` flag and, through `visiblePostsCondition`, which posts may appear at all: a private account's
+   * posts reach only the account itself and its approved followers.
+   */
+  async getFeedPosts(viewerId?: string, offset = 0, limit = 10): Promise<PostWithUser[]> {
     const db = getDb();
     const base = db
       .select({
         post: posts,
         user: users,
         recipe: recipes,
-        isLiked: _userId
+        isLiked: viewerId
           ? sql<boolean>`CASE WHEN ${likes.userId} IS NOT NULL THEN true ELSE false END`.as('isLiked')
           : sql<boolean>`false`.as('isLiked'),
       })
@@ -531,10 +566,11 @@ export class DrizzleStorage implements IStorage {
       .innerJoin(users, eq(posts.userId, users.id))
       .leftJoin(recipes, eq(recipes.postId, posts.id));
 
-    const result = await (_userId
-      ? base.leftJoin(likes, and(eq(likes.postId, posts.id), eq(likes.userId, _userId)))
+    const result = await (viewerId
+      ? base.leftJoin(likes, and(eq(likes.postId, posts.id), eq(likes.userId, viewerId)))
       : base
     )
+      .where(visiblePostsCondition(viewerId))
       .orderBy(desc(posts.createdAt))
       .offset(offset)
       .limit(limit);
@@ -547,25 +583,26 @@ export class DrizzleStorage implements IStorage {
     }));
   }
 
-  async getUserPosts(userId: string, offset = 0, limit = 10, currentUserId?: string): Promise<PostWithUser[]> {
+  /** `viewerId` is the authenticated viewer; the privacy predicate is applied here too, not only at the route. */
+  async getUserPosts(userId: string, offset = 0, limit = 10, viewerId?: string): Promise<PostWithUser[]> {
     const db = getDb();
     const result = await db
       .select({
         post: posts,
         user: users,
         recipe: recipes,
-        isLiked: currentUserId
+        isLiked: viewerId
           ? sql<boolean>`CASE WHEN ${likes.userId} IS NOT NULL THEN true ELSE false END`.as('isLiked')
           : sql<boolean>`false`.as('isLiked')
       })
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
       .leftJoin(recipes, eq(recipes.postId, posts.id))
-      .leftJoin(likes, currentUserId ? and(
+      .leftJoin(likes, viewerId ? and(
         eq(likes.postId, posts.id),
-        eq(likes.userId, currentUserId)
+        eq(likes.userId, viewerId)
       ) : undefined)
-      .where(eq(posts.userId, userId))
+      .where(and(eq(posts.userId, userId), visiblePostsCondition(viewerId)))
       .orderBy(desc(posts.createdAt))
       .offset(offset)
       .limit(limit);
@@ -578,14 +615,15 @@ export class DrizzleStorage implements IStorage {
     }));
   }
 
-  async getExplorePosts(offset = 0, limit = 10, currentUserId?: string): Promise<PostWithUser[]> {
+  /** `viewerId` is the authenticated viewer; Explore never surfaces a private account's posts to outsiders. */
+  async getExplorePosts(offset = 0, limit = 10, viewerId?: string): Promise<PostWithUser[]> {
     const db = getDb();
     const base = db
       .select({
         post: posts,
         user: users,
         recipe: recipes,
-        isLiked: currentUserId
+        isLiked: viewerId
           ? sql<boolean>`CASE WHEN ${likes.userId} IS NOT NULL THEN true ELSE false END`.as('isLiked')
           : sql<boolean>`false`.as('isLiked'),
       })
@@ -593,10 +631,11 @@ export class DrizzleStorage implements IStorage {
       .innerJoin(users, eq(posts.userId, users.id))
       .leftJoin(recipes, eq(recipes.postId, posts.id));
 
-    const result = await (currentUserId
-      ? base.leftJoin(likes, and(eq(likes.postId, posts.id), eq(likes.userId, currentUserId)))
+    const result = await (viewerId
+      ? base.leftJoin(likes, and(eq(likes.postId, posts.id), eq(likes.userId, viewerId)))
       : base
     )
+      .where(visiblePostsCondition(viewerId))
       .orderBy(desc(posts.createdAt))
       .offset(offset)
       .limit(limit);
@@ -749,14 +788,32 @@ export class DrizzleStorage implements IStorage {
   }
 
   // ---------- Likes ----------
+  /**
+   * Like a post. The (user_id, post_id) unique index makes this idempotent: a repeat like inserts nothing,
+   * leaves `likesCount` alone and returns the existing row, instead of failing on the constraint.
+   */
   async likePost(userId: string, postId: string): Promise<Like> {
     const db = getDb();
-    const result = await db.insert(likes).values({ userId, postId }).returning();
+    const [inserted] = await db
+      .insert(likes)
+      .values({ userId, postId })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!inserted) {
+      const [existing] = await db
+        .select()
+        .from(likes)
+        .where(and(eq(likes.userId, userId), eq(likes.postId, postId)))
+        .limit(1);
+      return existing;
+    }
+
     await db
       .update(posts)
       .set({ likesCount: sql`${posts.likesCount} + 1` })
       .where(eq(posts.id, postId));
-    return result[0];
+    return inserted;
   }
 
   async unlikePost(userId: string, postId: string): Promise<boolean> {
@@ -882,9 +939,21 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
+  /**
+   * Author-scoped delete: the comment is removed only if it still belongs to `authorId`, so the authorization
+   * is the DELETE predicate rather than a separate read that could go stale.
+   */
+  async deleteCommentAsAuthor(id: string, authorId: string): Promise<boolean> {
+    return this.deleteCommentWhere(and(eq(comments.id, id), eq(comments.userId, authorId)));
+  }
+
   async deleteComment(id: string): Promise<boolean> {
+    return this.deleteCommentWhere(eq(comments.id, id));
+  }
+
+  private async deleteCommentWhere(scope: any): Promise<boolean> {
     const db = getDb();
-    const result = await db.delete(comments).where(eq(comments.id, id)).returning();
+    const result = await db.delete(comments).where(scope).returning();
     if (result[0]) {
       await db
         .update(posts)
@@ -908,8 +977,19 @@ export class DrizzleStorage implements IStorage {
   }
 
   // ---------- Follows ----------
+  /**
+   * Follow a user. The insert only fires when the relationship does not already exist, so a duplicate follow
+   * is a no-op instead of a second row that would double-count followers/following.
+   */
   async followUser(followerId: string, followingId: string): Promise<Follow> {
     const db = getDb();
+    const existing = await db
+      .select()
+      .from(follows)
+      .where(and(eq(follows.followerId, followerId), eq(follows.followingId, followingId)))
+      .limit(1);
+    if (existing[0]) return existing[0];
+
     const result = await db
       .insert(follows)
       .values({ followerId, followingId })
@@ -925,6 +1005,33 @@ export class DrizzleStorage implements IStorage {
       .where(eq(users.id, followingId));
 
     return result[0];
+  }
+
+  /**
+   * A private account is never followed directly -- a pending request is opened instead, and only accepting it
+   * creates the follow. Repeating the call reuses the request that is already pending.
+   */
+  async createFollowRequestIfAbsent(requesterId: string, targetId: string): Promise<string | null> {
+    const db = getDb();
+    const pendingScope = and(
+      eq(followRequests.requesterId, requesterId),
+      eq(followRequests.targetId, targetId),
+      eq(followRequests.status, "pending")
+    );
+
+    const existing = await db
+      .select({ id: followRequests.id })
+      .from(followRequests)
+      .where(pendingScope)
+      .limit(1);
+    if (existing[0]) return existing[0].id;
+
+    const inserted = await db
+      .insert(followRequests)
+      .values({ requesterId, targetId, status: "pending" })
+      .returning({ id: followRequests.id });
+
+    return inserted[0]?.id ?? null;
   }
 
   async unfollowUser(followerId: string, followingId: string): Promise<boolean> {

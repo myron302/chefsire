@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
 import { db } from "../db";
+import { followOrRequest } from "../lib/social-follow";
 import { getCanonicalDrinkBySlug } from "../services/canonical-drinks-index";
 import { 
   creatorMembershipCheckoutSessions,
@@ -23447,11 +23448,9 @@ r.post("/creators/:userId/follow", requireAuth, async (req, res) => {
     const creator = await db.select({ id: users.id }).from(users).where(eq(users.id, creatorId)).limit(1);
     if (!creator[0]) return res.status(404).json({ ok: false, error: "Creator not found" });
 
-    try {
-      await storage.followUser(viewerId, creatorId);
-    } catch {
-      // ignore duplicate follows
-    }
+    // Same rule as every other follow entry point: a private creator only gets a pending follow request,
+    // because an approved follow is what unlocks that account's private posts.
+    await followOrRequest(viewerId, creatorId);
 
     const isFollowing = await storage.isFollowing(viewerId, creatorId);
     const creatorProfile = await db
