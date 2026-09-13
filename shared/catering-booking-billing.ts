@@ -178,7 +178,7 @@ export type CateringPaymentStatus = typeof CATERING_PAYMENT_STATUSES[number];
  * are two independent facts about the same event and collapsing them would make one domain unable to describe a
  * state the other permits.
  */
-export const CATERING_FINANCIAL_STATUSES = ["not_configured", "not_invoiced", "deposit_due", "balance_not_requested", "balance_due", "settled"] as const;
+export const CATERING_FINANCIAL_STATUSES = ["not_configured", "not_invoiced", "no_active_invoice", "deposit_due", "balance_not_requested", "balance_due", "settled"] as const;
 export type CateringFinancialStatus = typeof CATERING_FINANCIAL_STATUSES[number];
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -394,13 +394,20 @@ function deriveCateringFinancialStatus(
   derived: { live: readonly CateringInvoiceFact[]; paidTotalCents: number; next: CateringInvoiceFact | undefined },
 ): CateringFinancialStatus {
   if (facts.agreedTotalCents === null) return "not_configured";
-  // Nothing has been asked for at all. Distinct from `balance_not_requested`, which is the state after a deposit
-  // has been asked for and covered: one is "we have not started", the other is "one half is done".
-  if (derived.live.length === 0) return "not_invoiced";
+  // Settled first, so a fully credited agreement reads as finished whatever became of the invoices that got it
+  // there. It is the only status that can be true with nothing live.
+  if (derived.paidTotalCents >= facts.agreedTotalCents) return "settled";
+  if (derived.live.length === 0) {
+    // NOTHING LIVE, AND THE HISTORY DECIDES WHICH KIND OF NOTHING IT IS. "Nothing has been requested yet" was
+    // printed above a list reading "Payment request withdrawn", which is a contradiction both parties could see at
+    // once. A booking that has never been invoiced and one whose every request was taken back are different facts
+    // and are now different states.
+    return facts.invoices.length === 0 ? "not_invoiced" : "no_active_invoice";
+  }
   // `next` is the oldest live invoice that is not fully covered, so both of these describe a real, payable ask.
   if (derived.next) return derived.next.kind === "deposit" ? "deposit_due" : "balance_due";
-  // Every live invoice is covered. Either that is the whole agreed total, or the rest has never been requested.
-  return derived.paidTotalCents >= facts.agreedTotalCents ? "settled" : "balance_not_requested";
+  // Every live invoice is covered and the agreed total is not reached: the rest has not been requested.
+  return "balance_not_requested";
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -672,9 +679,17 @@ export const CATERING_FINANCIAL_STATUS_COPY: Record<CateringFinancialStatus, { l
     customer: "No price has been agreed for this booking yet.",
   },
   not_invoiced: {
+    // TRULY nothing: not one invoice has ever been issued on this booking, so "yet" is accurate.
     label: "Nothing requested yet",
     provider: "Nothing has been requested from your customer yet.",
     customer: "Your caterer has not asked you for anything yet.",
+  },
+  no_active_invoice: {
+    // Requests WERE made and have been withdrawn. Saying "nothing yet" here contradicted the history rendered
+    // directly below the summary, so the wording is temporal and points at what is actually on screen.
+    label: "No active request",
+    provider: "There is no active payment request right now. Your earlier requests are in the history below.",
+    customer: "There is no active payment request right now. Earlier requests are in the history below.",
   },
   deposit_due: {
     label: "Deposit due",

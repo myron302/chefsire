@@ -103,9 +103,31 @@ const MATRIX: Row[] = [
     status: "deposit_due", liveDepositPayable: true, liveBalancePayable: false,
   },
   {
+    // Requests WERE made. "Nothing requested yet" would contradict the withdrawal rows rendered below the summary.
     name: "every invoice withdrawn, nothing credited",
     state: facts({ invoices: [deposit({ status: "void" }), balance({ status: "void" })] }),
-    status: "not_invoiced", liveDepositPayable: false, liveBalancePayable: false,
+    status: "no_active_invoice", liveDepositPayable: false, liveBalancePayable: false,
+  },
+  {
+    name: "a single deposit issued and then withdrawn",
+    state: facts({ invoices: [deposit({ status: "void" })] }),
+    status: "no_active_invoice", liveDepositPayable: false, liveBalancePayable: false,
+  },
+  {
+    // Its payments had to be taken back before it could be withdrawn, so nothing is credited and money remains.
+    name: "a paid deposit whose payment and invoice were both taken back",
+    state: facts({ invoices: [deposit({ status: "void" })], payments: [payment({ status: "voided" })] }),
+    status: "no_active_invoice", liveDepositPayable: false, liveBalancePayable: false,
+  },
+  {
+    // Everything owed is credited, so the agreement is finished however its invoices ended up.
+    name: "the agreed total fully credited, with no live invoice left",
+    state: facts({
+      agreedTotalCents: 50_000,
+      invoices: [deposit()],
+      payments: [payment()],
+    }),
+    status: "settled", liveDepositPayable: false, liveBalancePayable: false,
   },
   {
     name: "no deposit configured: one balance for the whole total, unpaid",
@@ -252,4 +274,60 @@ test("the invoice states the statuses are built on are still derived too", () =>
   assert.equal(cateringInvoiceState(deposit(), []), "issued");
   assert.equal(cateringInvoiceState(deposit(), [payment()]), "paid");
   assert.equal(cateringInvoiceState(deposit({ status: "void" }), [payment()]), "void");
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Temporal accuracy: what the summary says about time must match what the history shows
+ * ------------------------------------------------------------------------------------------------------------- */
+
+test("'yet' is only ever used where nothing of that kind has EVER happened", () => {
+  for (const row of MATRIX) {
+    const summary = deriveCateringBillingSummary(row.state);
+    const copy = CATERING_FINANCIAL_STATUS_COPY[summary.status];
+    const everInvoiced = row.state.invoices.length > 0;
+    for (const line of [copy.customer, copy.provider]) {
+      // "Nothing has been requested yet" above a list of withdrawn requests is the contradiction this pins.
+      if (everInvoiced) assert.equal(/not asked you for anything yet|Nothing has been requested from your customer yet/.test(line), false, `${row.name}: ${line}`);
+    }
+    // And the converse: a booking that really has never been invoiced is allowed to say so.
+    if (!everInvoiced && summary.status === "not_invoiced") assert.ok(copy.customer.includes("yet"), row.name);
+  }
+});
+
+test("no_active_invoice says what is true now and points at the history below it", () => {
+  const copy = CATERING_FINANCIAL_STATUS_COPY.no_active_invoice;
+  assert.equal(copy.label, "No active request");
+  assert.match(copy.provider, /no active payment request right now/);
+  assert.match(copy.customer, /no active payment request right now/);
+  for (const line of [copy.provider, copy.customer]) {
+    assert.match(line, /history below/, "so the withdrawn rows are explained rather than contradicted");
+    assert.equal(line.includes("yet"), false, "nothing is pending; requests were made and taken back");
+  }
+});
+
+test("not_invoiced and no_active_invoice are never confused for each other", () => {
+  const never = facts();
+  const withdrawn = facts({ invoices: [deposit({ status: "void" })] });
+  assert.equal(deriveCateringBillingSummary(never).status, "not_invoiced");
+  assert.equal(deriveCateringBillingSummary(withdrawn).status, "no_active_invoice");
+  // Both have nothing live and nothing credited; only the history tells them apart.
+  for (const state of [never, withdrawn]) {
+    const summary = deriveCateringBillingSummary(state);
+    assert.equal(summary.invoicedTotalCents, 0);
+    assert.equal(summary.paidTotalCents, 0);
+    assert.equal(summary.outstandingInvoicedCents, 0);
+  }
+});
+
+test("withdrawing the only live invoice moves the status from due to no_active_invoice, not back to never", () => {
+  assert.equal(deriveCateringBillingSummary(facts({ invoices: [deposit()] })).status, "deposit_due");
+  assert.equal(deriveCateringBillingSummary(facts({ invoices: [deposit({ status: "void" })] })).status, "no_active_invoice");
+  // And reissuing brings it back, because the slot the unique index guards is free again.
+  assert.deepEqual(cateringIssuableInvoiceKinds(facts({ invoices: [deposit({ status: "void" })] })), ["deposit", "balance"]);
+});
+
+test("settled outranks having nothing live, so a fully credited agreement is not called inactive", () => {
+  const paidInFull = facts({ agreedTotalCents: 50_000, invoices: [deposit()], payments: [payment()] });
+  assert.equal(deriveCateringBillingSummary(paidInFull).status, "settled");
+  assert.equal(deriveCateringBillingSummary(paidInFull).remainingOfAgreedCents, 0);
 });

@@ -205,6 +205,74 @@ export function editCateringPaymentForm(form: CateringPaymentForm, identity: Cat
 }
 
 /**
+ * The EXACT entry a request was built from, captured at submit time.
+ *
+ * Everything that decides what the payment is, plus the key that identifies the attempt. It travels on the mutation
+ * so the completion can be settled against what was actually sent rather than against whatever is on screen when
+ * the response lands -- which, on a form that deliberately stays editable, need not be the same thing at all.
+ */
+export type CateringPaymentSnapshot = {
+  invoiceId: string;
+  amount: string;
+  method: CateringPaymentMethod;
+  receivedOn: string;
+  reference: string;
+  idempotencyKey: string;
+};
+
+export function cateringPaymentSnapshot(form: NonNullable<CateringPaymentForm>): CateringPaymentSnapshot {
+  return {
+    invoiceId: form.invoiceId, amount: form.amount, method: form.method,
+    receivedOn: form.receivedOn, reference: form.reference, idempotencyKey: form.idempotencyKey,
+  };
+}
+
+/** Whether the form on screen is still, field for field, the entry that was submitted. */
+export function cateringPaymentFormMatches(form: NonNullable<CateringPaymentForm>, submitted: CateringPaymentSnapshot): boolean {
+  // Compared as TYPED, not as parsed money: "100" and "100.00" are the same amount but not the same entry, and the
+  // only cost of treating them as different is that the form stays open -- which is the safe direction.
+  return form.invoiceId === submitted.invoiceId
+    && form.amount === submitted.amount
+    && form.method === submitted.method
+    && form.receivedOn === submitted.receivedOn
+    && form.reference === submitted.reference;
+}
+
+/**
+ * Settles the payment form against the EXACT entry the accepted response was for.
+ *
+ * The form stays editable while a save is in flight, deliberately: a provider on a venue car park should not be
+ * frozen out of correcting a figure. But closing it unconditionally on success threw away whatever they had typed
+ * since, and did it in the one way that reads as confirmation -- the form vanishes, the history refreshes, and a
+ * correction that was never sent looks like the thing that was recorded.
+ *
+ * So a success may close only the entry it actually settled:
+ *
+ *  - ANOTHER BOOKING's form is returned untouched. A response for booking A must never close, rotate or disturb
+ *    booking B's entry, and this is the render-path guard applied to the settlement path.
+ *  - A DIFFERENT ATTEMPT -- a form the provider has already closed and reopened, carrying its own key -- is
+ *    returned untouched too. That entry was never submitted, so this response has nothing to say about it.
+ *  - THE SAME ENTRY, unchanged: closed. This is the ordinary case.
+ *  - THE SAME ENTRY, edited since: KEPT, with every edit intact, and given a FRESH KEY.
+ *
+ * The key rotation is what keeps the previous correction honest. The old key now belongs to a payment the server
+ * has recorded, so submitting the edited values under it would be a replay with a changed payload -- refused as a
+ * conflict, correctly but uselessly, because this is not a retry of that payment at all. It is a new entry the
+ * provider has yet to ask for. A fresh key says so, and nothing is resubmitted on their behalf.
+ */
+export function settleCateringPaymentForm(
+  form: CateringPaymentForm,
+  identity: CateringBillingIdentity,
+  submitted: CateringPaymentSnapshot,
+  freshKey: string,
+): CateringPaymentForm {
+  if (!form || form.identity !== identity) return form;
+  if (form.idempotencyKey !== submitted.idempotencyKey) return form;
+  if (cateringPaymentFormMatches(form, submitted)) return null;
+  return { ...form, idempotencyKey: freshKey };
+}
+
+/**
  * The open form, or null. Refuses on identity FIRST, which is what stops booking A's half-filled payment form
  * rendering under booking B for the one committed render before a passive reset effect has flushed.
  */

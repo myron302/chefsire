@@ -29,6 +29,7 @@ import {
   cateringBillingIdentity,
   cateringMajorUnits,
   cateringPaymentProvenance,
+  cateringPaymentSnapshot,
   cateringTermsFormIsCurrent,
   editCateringPaymentForm,
   editCateringTermsForm,
@@ -41,10 +42,12 @@ import {
   mayReloadCateringTerms,
   openCateringPaymentForm,
   reloadCateringTermsForm,
+  settleCateringPaymentForm,
   settleCateringTermsForm,
   shouldRefetchBillingAfterError,
   type CateringBillingError,
   type CateringPaymentForm,
+  type CateringPaymentSnapshot,
   type CateringTermsForm,
 } from "@/pages/services/catering-booking-billing-state";
 
@@ -164,8 +167,15 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
     body: unknown;
     /** The exact terms this request was built from, so a completion settles what it accounts for and nothing else. */
     submittedTerms?: { mode: CateringDepositMode; amount: string; percent: string; dueOn: string };
-    /** Set on the payment write, so an accepted one closes the form it came from and a refused one keeps it. */
-    closesPaymentForm?: boolean;
+    /**
+     * The EXACT entry the payment write was built from.
+     *
+     * Present only on the payment write, and carried so the completion can be settled against what was sent rather
+     * than against whatever is on screen when it lands. The form stays editable while the request is in flight, so
+     * those need not be the same thing -- and closing it unconditionally threw away edits made since, in the one
+     * way that reads as confirmation.
+     */
+    submittedPayment?: CateringPaymentSnapshot;
   };
   const origin = (): BillingOrigin => ({ identity, bookingId, userId });
   const settlesHere = (started: BillingOrigin) => started.identity === identityRef.current;
@@ -218,7 +228,11 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
         const saved = value.terms as { updatedAt?: string | null } | undefined;
         setTermsForm((current) => settleCateringTermsForm(current, started.identity, variables.submittedTerms!, typeof saved?.updatedAt === "string" ? saved.updatedAt : null));
       }
-      if (variables.closesPaymentForm) setPaymentForm(null);
+      if (variables.submittedPayment) {
+        // Closes ONLY if the form is still the entry this response settled. Newer edits are kept, with a fresh key,
+        // because they are a new entry the provider has yet to ask for -- not a retry of the payment just recorded.
+        setPaymentForm((current) => settleCateringPaymentForm(current, started.identity, variables.submittedPayment!, cateringIdempotencyKey()));
+      }
       // Held pending until the authoritative payload has landed, so no control is re-enabled against a view that
       // predates the change the provider just made.
       await reconciled;
@@ -294,7 +308,8 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
         // lost response are all one attempt and credit the money exactly once.
         idempotencyKey: open.idempotencyKey,
       },
-      closesPaymentForm: true,
+      // The entry as it stood when Record was pressed. Everything below settles against this, not against the form.
+      submittedPayment: cateringPaymentSnapshot(open),
     });
   };
   const voidPayment = (paymentId: string) => {
