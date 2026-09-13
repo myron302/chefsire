@@ -85,7 +85,7 @@ test("the Phase 2E review verification rule is untouched", () => {
   assert.equal(qualifiesAsVerifiedCateringEvent(null), false);
 });
 
-test("the activity allowlist is widened by exactly two events and loses none", () => {
+test("Phase 2K's two events are still in the allowlist, in place, with everything it inherited", () => {
   const inherited = [
     "booking_offered", "customer_confirmed", "booking_cancelled", "booking_completed", "details_updated",
     "shared_requirement_added", "shared_requirement_updated", "shared_requirement_completed", "shared_requirement_deleted",
@@ -94,7 +94,11 @@ test("the activity allowlist is widened by exactly two events and loses none", (
     "shared_equipment_added", "shared_equipment_status_changed", "execution_access_updated",
     "provider_execution_milestone_completed",
   ];
-  assert.deepEqual([...CATERING_BOOKING_ACTIVITY_EVENT_TYPES], [...inherited, "booking_closed_out", "booking_closeout_reopened"]);
+  // Everything Phase 2K inherited, then Phase 2K's own two, as a PREFIX. Later phases append their events after
+  // these, so this asserts what Phase 2K is responsible for -- that it added exactly two and removed none -- rather
+  // than freezing the end of a list it does not own.
+  const throughCloseout = [...inherited, "booking_closed_out", "booking_closeout_reopened"];
+  assert.deepEqual([...CATERING_BOOKING_ACTIVITY_EVENT_TYPES].slice(0, throughCloseout.length), throughCloseout);
 });
 
 /* ----------------------------------------------------------------------------------------------------------- *
