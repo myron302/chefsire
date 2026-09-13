@@ -136,6 +136,16 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
   type BillingOrigin = { identity: string; bookingId: string; userId: string };
   type BillingMutation = {
     origin: BillingOrigin;
+    /**
+     * The route this request is for, stated as the server registers it.
+     *
+     * The method used to be hardcoded to POST inside `mutationFn`, which silently 404'd the ONE route that is a
+     * PUT -- the deposit-terms save -- so a provider could fill the form in, press Save, and be told the change
+     * could not be saved by a server that never saw a request it recognised. Carrying the method with the path
+     * makes each call site state the contract it is calling, and makes a mismatch a visible difference between two
+     * lines rather than an invisible default.
+     */
+    method: "PUT" | "POST";
     path: string;
     body: unknown;
     /** The exact terms this request was built from, so a completion settles what it accounts for and nothing else. */
@@ -147,11 +157,11 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
   const settlesHere = (started: BillingOrigin) => started.identity === identityRef.current;
 
   const mutation = useMutation({
-    mutationFn: async ({ origin: started, path, body }: BillingMutation) => {
+    mutationFn: async ({ origin: started, method, path, body }: BillingMutation) => {
       let response: Response;
       try {
         response = await fetch(`/api/catering/bookings/${started.bookingId}${path}`, {
-          method: "POST", credentials: "include",
+          method, credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
@@ -220,7 +230,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
     if (!localStateIsCurrent || !maySubmitCateringTerms(termsForm, identity, actionable, pending)) return;
     const submitted = { mode: termsForm.mode, amount: termsForm.amount, percent: termsForm.percent, dueOn: termsForm.dueOn };
     mutation.mutate({
-      origin: origin(), path: "/billing/deposit-terms",
+      origin: origin(), method: "PUT", path: "/billing/deposit-terms",
       body: {
         mode: termsForm.mode,
         ...(termsForm.mode === "fixed" ? { amount: termsForm.amount } : {}),
@@ -236,13 +246,13 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
   // client-computed total for the server to have to distrust.
   const issueInvoice = (kind: CateringInvoiceKind) => {
     if (!localStateIsCurrent || !actionable || pending) return;
-    mutation.mutate({ origin: origin(), path: "/billing/invoices", body: { kind } });
+    mutation.mutate({ origin: origin(), method: "POST", path: "/billing/invoices", body: { kind } });
   };
   const voidInvoice = (invoice: CateringInvoiceView) => {
     if (!localStateIsCurrent || !actionable || pending) return;
     if (!window.confirm("Withdraw this request? Your customer will see that it was withdrawn.")) return;
     mutation.mutate({
-      origin: origin(), path: `/billing/invoices/${invoice.id}/void`,
+      origin: origin(), method: "POST", path: `/billing/invoices/${invoice.id}/void`,
       body: invoice.updatedAt ? { expectedUpdatedAt: invoice.updatedAt } : {},
     });
   };
@@ -252,7 +262,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
     const invoice = open ? billing?.invoices.find((row) => row.id === open.invoiceId) : undefined;
     if (!open || !localStateIsCurrent || !maySubmitCateringPayment(open, invoice, pending)) return;
     mutation.mutate({
-      origin: origin(), path: "/billing/payments",
+      origin: origin(), method: "POST", path: "/billing/payments",
       body: {
         invoiceId: open.invoiceId, amount: open.amount, method: open.method, receivedOn: open.receivedOn,
         ...(open.reference ? { reference: open.reference } : {}),
@@ -266,7 +276,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
   const voidPayment = (paymentId: string) => {
     if (!localStateIsCurrent || !actionable || pending) return;
     if (!window.confirm("Take back this recorded payment? Your customer will see that it was withdrawn.")) return;
-    mutation.mutate({ origin: origin(), path: `/billing/payments/${paymentId}/void`, body: {} });
+    mutation.mutate({ origin: origin(), method: "POST", path: `/billing/payments/${paymentId}/void`, body: {} });
   };
 
   if (query.isLoading) return <Card id={CATERING_BILLING_SECTION}><CardHeader><CardTitle>Payments</CardTitle></CardHeader><CardContent><p role="status">Loading payment details…</p></CardContent></Card>;

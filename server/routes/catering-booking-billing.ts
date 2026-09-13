@@ -16,19 +16,19 @@ import { cateringBookingIdSchema } from "@shared/catering-bookings";
 import { cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import {
   CATERING_BILLING_NOTIFICATIONS,
-  cateringBalanceAmount,
   cateringBillingSectionPath,
-  cateringDepositRequirement,
   cateringDepositTermsSaveSchema,
   cateringInvoiceAmountFor,
   cateringInvoiceIssueSchema,
   cateringInvoiceVoidSchema,
   cateringIssuableInvoiceKinds,
+  cateringIssuanceKeepsPartition,
   cateringMoneyToCents,
   cateringPaymentRecordSchema,
   cateringPaymentVoidSchema,
   cateringPercentToBasisPoints,
   deriveCateringBillingSummary,
+  type CateringBillingFacts,
   type CateringBookingBillingView,
   type CateringInvoiceKind,
 } from "@shared/catering-booking-billing";
@@ -294,7 +294,24 @@ r.post("/bookings/:id/billing/invoices", requireAuth, async (req, res, next) => 
 
     const amountCents = cateringInvoiceAmountFor(body.kind as CateringInvoiceKind, facts);
     if (amountCents === null || amountCents <= 0) {
-      return { kind: "refused", message: unissuableMessage(body.kind as CateringInvoiceKind, facts.agreedTotalCents !== null) } as const;
+      return { kind: "refused", message: unissuableMessage(body.kind as CateringInvoiceKind, facts) } as const;
+    }
+    /**
+     * THE PARTITION INVARIANT, asserted one last time against the rows about to be written beside.
+     *
+     * `cateringInvoiceAmountFor` already refuses anything that would breach it, and this recomputes the same
+     * question from the same locked rows -- so it is deliberately redundant. It is here because the cost of the
+     * two disagreeing is a booking that asks a customer for more money than was ever agreed, and because eligibility
+     * and amount are derived by separate functions that a later change could move apart. Client eligibility is not
+     * an input to either: the request carries a kind and nothing else.
+     *
+     * It is enforced HERE, in the application, under the advisory lock, rather than by a database constraint. The
+     * rule spans several rows of one table and a column of a different one, which no CHECK can express; the
+     * alternatives would be a trigger or a stored running total, and a stored total is exactly the duplicated
+     * financial truth this phase refuses to keep. The lock is what makes the read-then-write safe.
+     */
+    if (!cateringIssuanceKeepsPartition(facts, amountCents)) {
+      return { kind: "refused", message: "That would ask your customer for more than the agreed price. Withdraw an existing request first." } as const;
     }
     // The next number in this booking's own sequence, allocated under the lock so two tabs cannot take the same
     // one. The unique index on (booking_id, invoice_kind) WHERE status <> 'void' is the second line of defence: a
@@ -326,11 +343,20 @@ r.post("/bookings/:id/billing/invoices", requireAuth, async (req, res, next) => 
   res.json(await freshView(resolved));
 } catch (error) { invalid(error, res, next); } });
 
-function unissuableMessage(kind: CateringInvoiceKind, hasAgreedPrice: boolean): string {
-  if (!hasAgreedPrice) return "This booking has no agreed price, so there is nothing to request yet.";
-  return kind === "deposit"
-    ? "There is no deposit to request. Set your deposit terms first, or one has already been sent."
-    : "There is no balance left to request.";
+/** Why a kind could not be issued, told truthfully rather than as one message for every cause. */
+function unissuableMessage(kind: CateringInvoiceKind, facts: CateringBillingFacts): string {
+  if (facts.agreedTotalCents === null) return "This booking has no agreed price, so there is nothing to request yet.";
+  const live = facts.invoices.filter((invoice) => invoice.status === "issued");
+  if (live.some((invoice) => invoice.kind === kind)) {
+    return kind === "deposit" ? "A deposit has already been requested." : "The balance has already been requested.";
+  }
+  if (kind === "deposit" && live.some((invoice) => invoice.kind === "balance")) {
+    // The honest reason, and the way out: the balance is the rest of the money, so a deposit beside it would be an
+    // addition to the agreed price rather than a division of it.
+    return "The remaining balance has already been requested, so a deposit cannot be added beside it. Withdraw the balance first if you need to ask for a deposit.";
+  }
+  if (kind === "deposit") return "There is no deposit to request. Set your deposit terms first.";
+  return "There is no balance left to request.";
 }
 
 /**

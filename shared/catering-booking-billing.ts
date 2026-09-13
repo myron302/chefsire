@@ -399,29 +399,78 @@ export function cateringBillingIsActionable(status: CateringBookingStatus): bool
   return status !== "cancelled";
 }
 
-/** Which kinds may be issued right now: never twice, never a balance before a deposit that was configured. */
+/**
+ * THE PARTITION INVARIANT, stated once and enforced everywhere from here.
+ *
+ * At every moment, the live invoices on a booking must sum to NO MORE than its agreed total, and together they
+ * must read as a coherent division of that one number -- a deposit, then the balance that completes it.
+ *
+ * `cateringLiveInvoicedCents` is the left-hand side of that, and `cateringInvoiceHeadroomCents` is what is left of
+ * the agreed total after it. Every issuance decision below is expressed in terms of the headroom rather than in
+ * terms of the deposit alone, which is what closes the hole: reasoning only about "is there already a deposit"
+ * missed the case where a live BALANCE had already claimed the whole total.
+ */
+export function cateringLiveInvoicedCents(facts: CateringBillingFacts): number {
+  return facts.invoices.filter(cateringInvoiceCounts).reduce((total, invoice) => total + invoice.amountCents, 0);
+}
+/** What the agreed total has left to be invoiced. Null when there is no agreed total to divide. */
+export function cateringInvoiceHeadroomCents(facts: CateringBillingFacts): number | null {
+  return facts.agreedTotalCents === null ? null : Math.max(0, facts.agreedTotalCents - cateringLiveInvoicedCents(facts));
+}
+
+/**
+ * Which kinds may be issued right now.
+ *
+ * THREE conditions, and the second is the one the first version of this function was missing:
+ *
+ *  - never a second live invoice of the same kind (the database's own unique index says the same thing);
+ *  - never a deposit once a BALANCE is live. A balance is by definition "the rest of the money", so asking for a
+ *    deposit after it is not a division of the total but an addition to it. Reasoning only about whether a deposit
+ *    already existed let a provider issue a full balance, then configure deposit terms, then issue a deposit --
+ *    and the booking would be asking for more than was ever agreed. Voiding the deposit and reissuing a larger one
+ *    beside a live balance is the same hole from the other side, and is closed by the same rule;
+ *  - never more than the headroom. A deposit whose terms now exceed what is left cannot be issued, and a balance
+ *    is issuable only while something remains.
+ *
+ * The order is deliberate: a deposit precedes a balance, so the way back from a live balance is to withdraw it --
+ * explicitly, leaving its own history intact -- and issue the pair afresh. Nothing here mutates an issued invoice.
+ */
 export function cateringIssuableInvoiceKinds(facts: CateringBillingFacts): CateringInvoiceKind[] {
   if (facts.agreedTotalCents === null || !cateringBillingIsActionable(facts.bookingStatus)) return [];
   const live = facts.invoices.filter(cateringInvoiceCounts);
+  const headroom = cateringInvoiceHeadroomCents(facts) ?? 0;
   const kinds: CateringInvoiceKind[] = [];
-  const deposit = live.find((invoice) => invoice.kind === "deposit");
+  const hasDeposit = live.some((invoice) => invoice.kind === "deposit");
+  const hasBalance = live.some((invoice) => invoice.kind === "balance");
   const required = cateringDepositRequirement(facts.terms, facts.agreedTotalCents);
-  if (!deposit && required !== null && required > 0) kinds.push("deposit");
-  // The balance is whatever the agreed price has left after the deposit, so there has to be something left.
-  if (!live.some((invoice) => invoice.kind === "balance") && cateringBalanceAmount(facts) > 0) kinds.push("balance");
+  if (!hasDeposit && !hasBalance && required !== null && required > 0 && required <= headroom) kinds.push("deposit");
+  if (!hasBalance && headroom > 0) kinds.push("balance");
   return kinds;
 }
 
 /**
- * The amount a balance invoice would be for: the agreed total less whatever the deposit invoice already asks for.
+ * The amount a balance invoice would be for: exactly the headroom.
  *
- * Derived from the agreed price and the issued deposit, so the two invoices can never sum to more than was agreed,
- * and never to less either. A client cannot influence it: no amount is accepted on the issue request at all.
+ * With a live deposit that is `agreedTotal - deposit`, which is what it always was; with none it is the whole
+ * agreed total. Expressing it as the headroom rather than as "total minus the deposit" is what makes it correct
+ * for any live invoice set rather than only for the one the original code imagined.
+ *
+ * A client cannot influence it: no amount is accepted on the issue request at all.
  */
 export function cateringBalanceAmount(facts: CateringBillingFacts): number {
-  if (facts.agreedTotalCents === null) return 0;
-  const deposit = facts.invoices.filter(cateringInvoiceCounts).find((invoice) => invoice.kind === "deposit");
-  return Math.max(0, facts.agreedTotalCents - (deposit?.amountCents ?? 0));
+  return cateringInvoiceHeadroomCents(facts) ?? 0;
+}
+
+/**
+ * Whether issuing this kind for this amount would keep the partition invariant.
+ *
+ * The last word, checked by the server inside the issuing transaction after it has derived the amount, so the
+ * invariant is asserted against the rows that are actually about to be written beside -- not against whatever a
+ * client believed when it pressed the button.
+ */
+export function cateringIssuanceKeepsPartition(facts: CateringBillingFacts, amountCents: number): boolean {
+  if (facts.agreedTotalCents === null) return false;
+  return amountCents > 0 && cateringLiveInvoicedCents(facts) + amountCents <= facts.agreedTotalCents;
 }
 
 /** The amount an invoice of this kind would be issued for, or null when it may not be issued. */

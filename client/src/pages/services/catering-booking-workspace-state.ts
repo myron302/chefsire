@@ -1,3 +1,4 @@
+import { CATERING_BILLING_SECTION, formatCateringMoney } from "@shared/catering-booking-billing";
 import { CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_SET_CHANGED_CODE, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, type CateringBookingActivityView, type CateringBookingDetailsView } from "@shared/catering-booking-operations";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 
@@ -308,6 +309,31 @@ const CATERING_TASK_ACTIVITY_EVENT_TYPES: readonly string[] = ["shared_requireme
  * renamed task keeps the name it had. Metadata is persisted JSON, so anything that is not a non-blank string — a
  * missing key, an object, an array, a number, null — yields no title and the generic label stands alone.
  */
+/**
+ * The shared money fact a Phase 2L activity row carries, rendered, or null.
+ *
+ * Built exactly like `cateringActivityTaskTitle` below: an event-type allowlist first, then a narrowly typed read
+ * of two named keys, and null for anything that is not the expected shape. It reads ONLY `amountCents`, `currency`
+ * and, for an invoice event, `kind` -- all three of which the customer already sees on the invoice itself.
+ *
+ * It deliberately reads nothing else that a billing event's metadata could ever come to hold. The caterer's private
+ * reference, the idempotency key, a void reason, a processor identity and an actor id are all absent from what the
+ * server writes today, and a whitelist of named keys is what keeps that true if one of them is ever added.
+ */
+export function cateringActivityBillingAmount(activity: { eventType: string; metadata?: unknown }): string | null {
+  if (!CATERING_BILLING_ACTIVITY_EVENT_TYPES.includes(activity.eventType)) return null;
+  const metadata = activity.metadata;
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return null;
+  const { amountCents, currency, kind } = metadata as Record<string, unknown>;
+  if (typeof amountCents !== "number" || !Number.isFinite(amountCents) || amountCents < 0) return null;
+  if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return null;
+  const money = formatCateringMoney(amountCents, currency);
+  return kind === "deposit" ? `Deposit · ${money}` : kind === "balance" ? `Remaining balance · ${money}` : money;
+}
+const CATERING_BILLING_ACTIVITY_EVENT_TYPES: readonly string[] = [
+  "billing_invoice_issued", "billing_invoice_voided", "billing_payment_recorded", "billing_payment_voided",
+];
+
 export function cateringActivityTaskTitle(activity: { eventType: string; metadata?: unknown }): string | null {
   if (!CATERING_TASK_ACTIVITY_EVENT_TYPES.includes(activity.eventType)) return null;
   const metadata = activity.metadata;
@@ -335,7 +361,17 @@ export function cateringActivityTaskTitle(activity: { eventType: string; metadat
 // null and scrolls nowhere.
 // Phase 2K adds "closeout" for the same reason: the closeout-completed notification deep-links there, and a
 // fragment this allowlist refuses drops the participant at the top of the page.
-export const CATERING_WORKSPACE_SECTION_IDS = ["communication", "files", "activity", "execution", "closeout"] as const;
+/**
+ * Every section a workspace fragment may name, including Phase 2L's.
+ *
+ * `CATERING_BILLING_SECTION` is imported rather than spelled again: the billing notifications link to
+ * `cateringBillingSectionPath`, which builds its fragment from that same constant, so the link and the allowlist
+ * cannot drift. Phase 2L shipped without this entry, and the consequence was exactly what the mechanism exists to
+ * prevent -- an invoice notification opening the workspace, the fragment being resolved while the page was still
+ * loading, and the recovery pass rejecting `#billing` as unknown, leaving the customer at the top of the page
+ * looking for the payment they were told about.
+ */
+export const CATERING_WORKSPACE_SECTION_IDS = ["communication", "files", "activity", "execution", "closeout", CATERING_BILLING_SECTION] as const;
 
 /** The section a location fragment names, or null for an absent, empty or unrecognised one. */
 export function cateringWorkspaceSectionFromHash(hash: string): string | null {
