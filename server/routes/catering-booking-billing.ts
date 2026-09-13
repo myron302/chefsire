@@ -45,7 +45,7 @@ import {
   cateringBillingFacts,
   cateringBillingGuard,
   cateringBillingStateRefusal,
-  cateringBillingToday,
+  cateringBillingDay,
   cateringBillingVersionMatches,
   cateringInvoiceFactOf,
   resolveCateringDepositTerms,
@@ -183,7 +183,16 @@ async function resolveRequest(req: { params: { id: string }; user?: { id: string
     if (guard === "forbidden") { res.status(403).json({ message: CATERING_BILLING_FORBIDDEN_MESSAGE }); return null; }
     if (guard === "not_available") { refuse(res, CATERING_BILLING_NOT_AVAILABLE_REFUSAL); return null; }
   }
-  return { id, userId, booking, role: cateringWorkspaceRole(booking, userId) as "provider" | "customer" };
+  /**
+   * ONE DAY PER REQUEST, resolved here and threaded everywhere below.
+   *
+   * The provider's calendar day, read from the booking's own provider. Every date-only rule this request applies --
+   * whether an invoice is overdue, whether a payment is dated in the future, what `asOfDate` the payload reports --
+   * uses this one value, so a request that crosses midnight cannot judge one rule against the 13th and the next
+   * against the 14th. Deriving it per helper is exactly how that would happen.
+   */
+  const asOfDate = await cateringBillingDay(db, booking.providerId);
+  return { id, userId, booking, asOfDate, role: cateringWorkspaceRole(booking, userId) as "provider" | "customer" };
 }
 
 /** The customer is the counterpart of every Phase 2L action, because every Phase 2L action is the provider's. */
@@ -211,7 +220,7 @@ r.get("/bookings/:id/billing", requireAuth, async (req, res, next) => { try {
     role: resolved.role,
     booking: resolved.booking,
     terms, invoices, payments,
-    asOfDate: cateringBillingToday(),
+    asOfDate: resolved.asOfDate,
   }));
 } catch (error) { invalid(error, res, next); } });
 
@@ -291,7 +300,7 @@ r.post("/bookings/:id/billing/invoices", requireAuth, async (req, res, next) => 
     const locked = await lockedBooking(tx, id);
     if (!locked || locked.status === "cancelled") return { kind: "not_available" } as const;
     const rows = await billingRows(tx, id);
-    const facts = cateringBillingFacts({ booking: locked, ...rows, asOfDate: cateringBillingToday() });
+    const facts = cateringBillingFacts({ booking: locked, ...rows, asOfDate: resolved.asOfDate });
 
     const amountCents = cateringInvoiceAmountFor(body.kind as CateringInvoiceKind, facts);
     if (amountCents === null || amountCents <= 0) {
@@ -459,7 +468,7 @@ r.post("/bookings/:id/billing/payments", requireAuth, async (req, res, next) => 
       return { kind: "duplicate" } as const;
     }
 
-    const facts = cateringBillingFacts({ booking: locked, ...rows, asOfDate: cateringBillingToday() });
+    const facts = cateringBillingFacts({ booking: locked, ...rows, asOfDate: resolved.asOfDate });
     const invoiceRow = rows.invoices.find((row) => row.id === body.invoiceId);
     const resolution = resolveCateringPayment({
       amountCents: cateringMoneyToCents(body.amount),
@@ -551,7 +560,7 @@ r.post("/bookings/:id/billing/payments/:paymentId/void", requireAuth, async (req
  * response carrying only the new row would leave the client to recompute the rest, which is exactly the
  * client-side arithmetic this phase refuses to have anywhere.
  */
-async function freshView(resolved: { id: string; userId: string; role: "provider" | "customer" }) {
+async function freshView(resolved: { id: string; userId: string; role: "provider" | "customer"; asOfDate: string }) {
   // The booking is re-read as well as the rows. The one this request resolved was read before the transaction, and
   // answering with it would report a booking cancelled in the meantime as still actionable for one render.
   const booking = await ownedCateringBooking(resolved.id, resolved.userId);
@@ -560,7 +569,9 @@ async function freshView(resolved: { id: string; userId: string; role: "provider
     role: resolved.role,
     booking: booking ?? { status: "cancelled", agreedPrice: null, currency: "USD" },
     ...rows,
-    asOfDate: cateringBillingToday(),
+    // The SAME day the request resolved, not a fresh one: the response a mutation answers with must describe the
+    // day its own rules were judged against.
+    asOfDate: resolved.asOfDate,
   });
 }
 

@@ -142,7 +142,7 @@ export type CateringInvoiceKind = typeof CATERING_INVOICE_KINDS[number];
 export const CATERING_INVOICE_STATUSES = ["draft", "issued", "void"] as const;
 export type CateringInvoiceStatus = typeof CATERING_INVOICE_STATUSES[number];
 
-/** What an invoice IS right now, derived from its status, its payments and the server's date. */
+/** What an invoice IS right now, derived from its status, its payments and the billing day it is judged on. */
 export const CATERING_INVOICE_STATES = ["draft", "issued", "partially_paid", "paid", "void"] as const;
 export type CateringInvoiceState = typeof CATERING_INVOICE_STATES[number];
 
@@ -178,7 +178,7 @@ export type CateringPaymentStatus = typeof CATERING_PAYMENT_STATUSES[number];
  * are two independent facts about the same event and collapsing them would make one domain unable to describe a
  * state the other permits.
  */
-export const CATERING_FINANCIAL_STATUSES = ["not_configured", "not_invoiced", "deposit_due", "balance_due", "settled"] as const;
+export const CATERING_FINANCIAL_STATUSES = ["not_configured", "not_invoiced", "deposit_due", "balance_not_requested", "balance_due", "settled"] as const;
 export type CateringFinancialStatus = typeof CATERING_FINANCIAL_STATUSES[number];
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -228,7 +228,13 @@ export type CateringBillingFacts = {
   terms: CateringDepositTerms;
   invoices: readonly CateringInvoiceFact[];
   payments: readonly CateringPaymentFact[];
-  /** The SERVER's current date, date-only. Never the browser's -- see `cateringInvoiceIsOverdue`. */
+  /**
+   * The billing day, date-only, resolved by the SERVER from the provider's own calendar and passed in.
+   *
+   * A plain `YYYY-MM-DD`, which is what keeps everything in this file timezone-agnostic: it compares two date
+   * strings and knows nothing about zones, offsets or clocks. Where that string comes from is the server's
+   * business -- see `cateringBillingDay` -- and it is never the browser's.
+   */
   asOfDate: string;
 };
 
@@ -265,12 +271,12 @@ export function cateringInvoiceState(invoice: CateringInvoiceFact, payments: rea
 }
 
 /**
- * Whether an invoice is past its due date, compared DATE-ONLY against the server's own date.
+ * Whether an invoice is past its due date, compared DATE-ONLY against the billing day it is given.
  *
- * Due dates are dates, not instants: a caterer who says "deposit due on the 14th" means the day, and a customer in
- * another timezone must not see it as overdue while it is still the 13th where the event is. Both sides of this
- * comparison are `YYYY-MM-DD` strings from the server -- the browser's clock is never consulted, so the answer is
- * the same on every device.
+ * Due dates are dates, not instants: a caterer who says "deposit due on the 14th" means the day where THEY are,
+ * and it must not turn red while it is still the 14th for them. Both sides of this comparison are `YYYY-MM-DD`
+ * strings resolved by the server from the provider's own calendar, so the answer is the same on every device and
+ * the same for both participants.
  */
 export function cateringInvoiceIsOverdue(invoice: CateringInvoiceFact, payments: readonly CateringPaymentFact[], asOfDate: string): boolean {
   if (!invoice.dueOn) return false;
@@ -366,18 +372,35 @@ export function deriveCateringBillingSummary(facts: CateringBillingFacts): Cater
 /**
  * Where the booking stands, in order, with the first matching rule winning.
  *
- * `settled` deliberately requires BOTH that nothing issued is outstanding AND that the payments reach the agreed
- * total, so a booking whose balance has not been invoiced yet cannot read as finished merely because its deposit
- * is covered. A booking with no agreed price can never be settled either -- there is no total to have reached.
+ * MONEY REMAINING IS NOT THE SAME AS MONEY REQUESTED, and this used to conflate them. A provider who took a
+ * deposit and had it paid, with the balance not yet invoiced, was reported as `balance_due` -- whose copy tells
+ * both parties the remaining balance "has been requested". Nobody had requested anything: the provider was still
+ * being offered the button to do it, and the customer was being told to pay something they had never been asked
+ * for. The arithmetic was right and the sentence was false.
+ *
+ * A balance is DUE because a live balance invoice exists and is not covered. It is not due because
+ * `agreedTotal - paidTotal > 0`. Where money remains and nothing is asking for it, that is its own state, and it
+ * is named for what it is.
+ *
+ * `settled` still requires BOTH that nothing live is outstanding AND that the payments reach the agreed total, so
+ * a booking whose balance was never invoiced cannot read as finished merely because its deposit is covered. A
+ * booking with no agreed price can never be settled -- there is no total to have reached.
+ *
+ * Nothing here is persisted. Every one of these is a function of the invoice rows, the payment rows and the
+ * provider's calendar day, so no stored copy can drift from the ledger it claims to describe.
  */
 function deriveCateringFinancialStatus(
   facts: CateringBillingFacts,
   derived: { live: readonly CateringInvoiceFact[]; paidTotalCents: number; next: CateringInvoiceFact | undefined },
 ): CateringFinancialStatus {
   if (facts.agreedTotalCents === null) return "not_configured";
+  // Nothing has been asked for at all. Distinct from `balance_not_requested`, which is the state after a deposit
+  // has been asked for and covered: one is "we have not started", the other is "one half is done".
   if (derived.live.length === 0) return "not_invoiced";
+  // `next` is the oldest live invoice that is not fully covered, so both of these describe a real, payable ask.
   if (derived.next) return derived.next.kind === "deposit" ? "deposit_due" : "balance_due";
-  return derived.paidTotalCents >= facts.agreedTotalCents ? "settled" : "balance_due";
+  // Every live invoice is covered. Either that is the whole agreed total, or the rest has never been requested.
+  return derived.paidTotalCents >= facts.agreedTotalCents ? "settled" : "balance_not_requested";
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -588,7 +611,12 @@ export type CateringBookingBillingView = {
   bookingStatus: CateringBookingStatus;
   /** Whether Phase 2L writes are open. Derived from the authoritative booking, never from a client. */
   actionable: boolean;
-  /** The server's own date, which every due-date comparison on the client is made against. */
+  /**
+   * The billing day both participants' due dates are judged against: the PROVIDER's calendar date.
+   *
+   * The customer receives the resulting date and nothing about where their caterer is -- no timezone identifier
+   * reaches either payload.
+   */
   asOfDate: string;
   summary: CateringBillingSummary;
   invoices: CateringInvoiceView[];
@@ -652,6 +680,13 @@ export const CATERING_FINANCIAL_STATUS_COPY: Record<CateringFinancialStatus, { l
     label: "Deposit due",
     provider: "A deposit has been requested and is not fully covered yet.",
     customer: "Your caterer has asked you for a deposit.",
+  },
+  balance_not_requested: {
+    label: "Balance not requested yet",
+    // Truthful in both directions: money remains under the agreement, and nobody has asked for it. The provider's
+    // "Request balance" button is offered in exactly this state, so the sentence and the control agree.
+    provider: "A remaining balance is still available to request.",
+    customer: "A remaining balance remains, but your caterer has not requested it yet.",
   },
   balance_due: {
     label: "Balance due",

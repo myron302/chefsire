@@ -6,6 +6,7 @@ import { cateringBookingCancelSchema, cateringBookingIdSchema, cateringBookingOf
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { calendarDateInTimezone } from "../services/catering-availability";
+import { providerCalendarDate } from "../services/catering-provider-calendar";
 import { evaluateBookingDateForConfirmation, evaluateBookingDateForOffer } from "../services/catering-booking-availability";
 import { bookingActor, mayCancel, mayComplete, mayConfirm, mayInquiryProduceBooking, nextConfirmationStatus } from "../services/catering-booking-policy";
 import { serializeCateringBooking } from "../serializers/catering-booking";
@@ -16,10 +17,6 @@ const r = Router();
 async function bookingDateExceptions(executor: typeof db, providerId: string, targetDate: string) {
   const exceptions = await executor.select().from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, providerId), lte(cateringAvailabilityExceptions.startDate, targetDate), gte(cateringAvailabilityExceptions.endDate, targetDate)));
   return exceptions;
-}
-async function providerCalendarDate(executor: typeof db, providerId: string, now: Date) {
-  const [settings] = await executor.select({ timezone: cateringAvailabilitySettings.timezone }).from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1);
-  return calendarDateInTimezone(now, settings?.timezone ?? "UTC");
 }
 
 r.get("/bookings", requireAuth, async (req, res, next) => { try {

@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   cateringBillingGuard,
-  cateringBillingToday,
   cateringBillingVersionMatches,
   cateringDepositTermsOf,
   resolveCateringDepositTerms,
   resolveCateringPayment,
 } from "./catering-booking-billing-policy";
+import { calendarDateInProviderTimezone } from "./catering-provider-calendar";
 import { cateringMoneyToCents, cateringPaymentReplayMatches, type CateringBillingFacts, type CateringInvoiceFact, type CateringPaymentFact } from "@shared/catering-booking-billing";
 import type { CateringBookingBillingRecord } from "@shared/schema";
 
@@ -90,9 +90,39 @@ test("versions compare as instants, so an equivalent spelling still matches", ()
   assert.equal(cateringBillingVersionMatches("not-a-date", at), false, "and an unparseable one never does");
 });
 
-test("the server's date is date-only, so every overdue comparison uses one day boundary", () => {
-  assert.equal(cateringBillingToday(new Date("2026-09-13T23:59:59.000Z")), "2026-09-13");
-  assert.match(cateringBillingToday(), /^\d{4}-\d{2}-\d{2}$/);
+test("the billing day is the PROVIDER's calendar day, not the host's or UTC's", () => {
+  // 03:30 UTC on the 14th is still the evening of the 13th in New York and Los Angeles, and already the afternoon
+  // of the 14th in Tokyo. One instant, three business days -- which is the whole point.
+  const instant = new Date("2026-09-14T03:30:00.000Z");
+  assert.equal(calendarDateInProviderTimezone(instant, "UTC"), "2026-09-14");
+  assert.equal(calendarDateInProviderTimezone(instant, "America/New_York"), "2026-09-13");
+  assert.equal(calendarDateInProviderTimezone(instant, "America/Los_Angeles"), "2026-09-13");
+  assert.equal(calendarDateInProviderTimezone(instant, "Asia/Tokyo"), "2026-09-14");
+  assert.equal(calendarDateInProviderTimezone(instant, "Europe/London"), "2026-09-14");
+});
+
+test("a provider east of UTC can already be on the next day", () => {
+  const instant = new Date("2026-09-13T22:00:00.000Z");
+  assert.equal(calendarDateInProviderTimezone(instant, "UTC"), "2026-09-13");
+  assert.equal(calendarDateInProviderTimezone(instant, "Asia/Tokyo"), "2026-09-14", "07:00 on the 14th in Tokyo");
+  assert.equal(calendarDateInProviderTimezone(instant, "America/Los_Angeles"), "2026-09-13", "15:00 on the 13th");
+});
+
+test("the fallback is the one Catering already uses: no timezone means UTC", () => {
+  const instant = new Date("2026-09-14T03:30:00.000Z");
+  for (const missing of [null, undefined, ""]) {
+    assert.equal(calendarDateInProviderTimezone(instant, missing as never), "2026-09-14", JSON.stringify(missing));
+  }
+  // A persisted identifier `Intl` cannot parse falls back to the same value rather than throwing out of a
+  // formatter -- the column is free text, and a provider must not be locked out of their own billing by it.
+  assert.equal(calendarDateInProviderTimezone(instant, "Not/AZone"), "2026-09-14");
+  assert.doesNotThrow(() => calendarDateInProviderTimezone(instant, "🙂"));
+});
+
+test("every billing day is a plain calendar date, whatever the zone", () => {
+  for (const timezone of ["UTC", "America/New_York", "Asia/Tokyo", "Australia/Eucla", "Pacific/Kiritimati"]) {
+    assert.match(calendarDateInProviderTimezone(new Date(), timezone), /^\d{4}-\d{2}-\d{2}$/, timezone);
+  }
 });
 
 /* ------------------------------------------------------------------------------------------------------------- *

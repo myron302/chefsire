@@ -19,6 +19,8 @@ import {
   type CateringInvoiceStatus,
 } from "@shared/catering-booking-billing";
 import type { CateringBookingStatus } from "@shared/catering-bookings";
+import type { db } from "../db";
+import { providerCalendarDate } from "./catering-provider-calendar";
 
 /**
  * The Phase 2L policy layer: everything the routes decide, decided here instead, as pure functions over rows.
@@ -126,15 +128,25 @@ export function cateringBillingFacts(input: {
 }
 
 /**
- * The server's own date, date-only, in UTC.
+ * THE BILLING DAY IS THE PROVIDER'S CALENDAR DAY.
  *
- * One place, so every overdue comparison in the system uses the same day boundary and no request can be answered
- * with a due date judged against the caller's clock. A caterer's own timezone would be a better boundary still,
- * but nothing in the catering schema persists one -- `event_date` is a bare date with no zone beside it -- so
- * inventing a locale here would be inventing a fact. This is stated in the PR rather than papered over.
+ * Not UTC, not the server host's zone, not the caller's browser. A caterer in Los Angeles asked for a deposit by
+ * the 20th means the 20th where they are; judged in UTC their invoice turns red at 4pm on the 19th, and a payment
+ * they take in hand on the evening of the 19th is refused as "dated in the future" because UTC has already rolled
+ * over. A caterer in Tokyo gets the mirror image.
+ *
+ * Catering already answers "what day is it for this provider" -- `catering_availability_settings.timezone` through
+ * `calendarDateInTimezone` -- and Phase 2L reads exactly that, through the same `providerCalendarDate` the booking
+ * offer and confirmation rules use. No second timezone model is introduced, and the customer is told nothing about
+ * where their caterer is: they receive the resulting `asOfDate`, never the identifier it came from.
+ *
+ * The date is resolved ONCE at the route boundary, from the booking this request is about, and the resulting
+ * `YYYY-MM-DD` is passed into every pure helper below. That keeps the shared contract timezone-agnostic -- it
+ * compares two date strings and knows nothing about zones -- and it means a request that crosses midnight uses one
+ * day throughout instead of deciding twice and disagreeing with itself.
  */
-export function cateringBillingToday(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
+export async function cateringBillingDay(executor: typeof db, providerId: string, now: Date = new Date()): Promise<string> {
+  return providerCalendarDate(executor, providerId, now);
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *

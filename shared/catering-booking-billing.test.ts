@@ -303,11 +303,12 @@ test("settled needs BOTH nothing outstanding and the agreed total reached", () =
   assert.equal(summary.uninvoicedCents, 0);
 
   // A deposit paid in full while the balance has never been asked for is NOT settled: the money is not all in.
+  // Nor is it `balance_due` -- nobody has asked for the balance, and saying so would be false to the customer.
   const depositOnly = facts({
     invoices: [invoice({ id: "inv-d", kind: "deposit", amountCents: 50_000 })],
     payments: [payment({ invoiceId: "inv-d", amountCents: 50_000 })],
   });
-  assert.equal(deriveCateringBillingSummary(depositOnly).status, "balance_due");
+  assert.equal(deriveCateringBillingSummary(depositOnly).status, "balance_not_requested");
   assert.equal(deriveCateringBillingSummary(depositOnly).uninvoicedCents, 150_000);
 });
 
