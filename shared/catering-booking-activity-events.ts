@@ -49,6 +49,18 @@ export const CATERING_BOOKING_ACTIVITY_EVENT_TYPES = [
   // already recorded by the Phase 2I 'shared_file_uploaded' event and must not be recorded a second time.
   "booking_closed_out",
   "booking_closeout_reopened",
+  // Phase 2L billing events. All four are written with 'shared' visibility because all four are things the customer
+  // is entitled to know about their own money: what they have been asked for, what was taken back, what has been
+  // credited to them, and what was un-credited. Configuring deposit terms writes nothing at all -- terms that have
+  // not been issued are the provider's planning, not an ask, and a feed full of a caterer adjusting a percentage
+  // would be movement the customer cannot act on. Neither does a draft invoice, for the same reason.
+  //
+  // No wording or metadata on any of them carries a processor identity, an internal reference or an actor id: the
+  // events say what changed about a shared amount, and the serializers are what say the rest.
+  "billing_invoice_issued",
+  "billing_invoice_voided",
+  "billing_payment_recorded",
+  "billing_payment_voided",
 ] as const;
 
 export type CateringBookingActivityEventType = typeof CATERING_BOOKING_ACTIVITY_EVENT_TYPES[number];

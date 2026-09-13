@@ -70,7 +70,11 @@ test("the item state allowlist matches the contract in both the migration and th
 
 test("the activity allowlist in the migration is exactly the shared contract, widened and never narrowed", () => {
   const at = migration.lastIndexOf("catering_booking_activity_event_type_check");
-  assert.deepEqual(valuesInClause(migration, at), [...CATERING_BOOKING_ACTIVITY_EVENT_TYPES]);
+  // The Phase 2K migration's clause is what the allowlist looked like when it was written, so it is a PREFIX of the
+  // contract today: later phases append their own events and this migration is not rewritten to mention them.
+  const throughCloseout = valuesInClause(migration, at);
+  assert.deepEqual([...CATERING_BOOKING_ACTIVITY_EVENT_TYPES].slice(0, throughCloseout.length), throughCloseout);
+  assert.equal(throughCloseout[throughCloseout.length - 1], "booking_closeout_reopened");
   // Phase 2K adds exactly two events and removes none of the twenty-one it inherited.
   assert.ok(CATERING_BOOKING_ACTIVITY_EVENT_TYPES.includes("booking_closed_out"));
   assert.ok(CATERING_BOOKING_ACTIVITY_EVENT_TYPES.includes("booking_closeout_reopened"));

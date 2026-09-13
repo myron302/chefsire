@@ -831,6 +831,125 @@ export const cateringBookingCloseoutItems = pgTable("catering_booking_closeout_i
   resolvedCheck: check("catering_closeout_item_resolved_check", sql`(${t.state} = 'pending' AND ${t.resolvedAt} IS NULL AND ${t.resolvedBy} IS NULL) OR (${t.state} <> 'pending' AND ${t.resolvedAt} IS NOT NULL AND ${t.resolvedBy} IS NOT NULL)`),
 }));
 
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Phase 2L -- billing, deposits and payments
+ * ------------------------------------------------------------------------------------------------------------- */
+
+/**
+ * The provider's deposit terms for one booking. One row, created lazily when they first configure any.
+ *
+ * Terms are PLANNING, not an ask: nothing here is customer-visible and nothing here writes activity. What the
+ * customer sees is the invoice that gets issued from them, at an amount this row and the booking's own agreed
+ * price decide between them on the server.
+ */
+export const cateringBookingBilling = pgTable("catering_booking_billing", {
+  bookingId: varchar("booking_id").primaryKey().references(() => cateringBookings.id, { onDelete: "restrict" }),
+  depositMode: varchar("deposit_mode", { length: 16 }).default("none").notNull(),
+  /** Cents. Integer minor units everywhere in Phase 2L -- see `shared/catering-booking-billing.ts`. */
+  depositAmountCents: bigint("deposit_amount_cents", { mode: "number" }),
+  /** Basis points, so half a percent is exact and no fraction is ever persisted. */
+  depositPercentBp: integer("deposit_percent_bp"),
+  /** Date-only, in the booking's own calendar, exactly as `event_date` is. A due date is a day, not an instant. */
+  depositDueOn: date("deposit_due_on", { mode: "string" }),
+  /** Persisted for audit and never serialized to either actor. */
+  termsUpdatedBy: varchar("terms_updated_by").references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  /** The optimistic-concurrency version a terms write states its precondition against. */
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  modeCheck: check("catering_billing_mode_check", sql`${t.depositMode} IN ('none', 'fixed', 'percentage')`),
+  // A mode and its figure travel together, so no combination of columns can express a contradictory deposit.
+  pairingCheck: check("catering_billing_terms_pairing_check", sql`(${t.depositMode} = 'none' AND ${t.depositAmountCents} IS NULL AND ${t.depositPercentBp} IS NULL) OR (${t.depositMode} = 'fixed' AND ${t.depositAmountCents} IS NOT NULL AND ${t.depositPercentBp} IS NULL) OR (${t.depositMode} = 'percentage' AND ${t.depositPercentBp} IS NOT NULL AND ${t.depositAmountCents} IS NULL)`),
+  amountCheck: check("catering_billing_amount_check", sql`${t.depositAmountCents} IS NULL OR (${t.depositAmountCents} >= 0 AND ${t.depositAmountCents} <= 9999999999)`),
+  percentCheck: check("catering_billing_percent_check", sql`${t.depositPercentBp} IS NULL OR (${t.depositPercentBp} > 0 AND ${t.depositPercentBp} <= 10000)`),
+}));
+
+/**
+ * What the customer has actually been asked for.
+ *
+ * `status` is PERSISTED state only -- draft, issued, void. Paid, part-paid and overdue are deliberately absent:
+ * each is a function of the payment ledger and the current date, and a stored copy of any of them could end up
+ * disagreeing with the payments themselves. They are derived in `shared/catering-booking-billing.ts`.
+ */
+export const cateringBookingInvoices = pgTable("catering_booking_invoices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  /** A per-booking sequence allocated under the booking's advisory lock. Stable reference, deterministic order. */
+  invoiceNumber: integer("invoice_number").notNull(),
+  invoiceKind: varchar("invoice_kind", { length: 16 }).notNull(),
+  amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  status: varchar("status", { length: 16 }).default("draft").notNull(),
+  dueOn: date("due_on", { mode: "string" }),
+  issuedAt: timestamp("issued_at", { withTimezone: true }),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  voidReason: varchar("void_reason", { length: 200 }),
+  /** Persisted for audit and never serialized to either actor. */
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "restrict" }),
+  voidedBy: varchar("voided_by").references(() => users.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  numberUnique: uniqueIndex("catering_invoices_number_uidx").on(t.bookingId, t.invoiceNumber),
+  // At most ONE live invoice of each kind per booking. This is what makes a double-issue impossible under a
+  // double-click, a retry or two tabs: the second insert violates the index inside the transaction.
+  liveKindUnique: uniqueIndex("catering_invoices_live_kind_uidx").on(t.bookingId, t.invoiceKind).where(sql`${t.status} <> 'void'`),
+  dueIdx: index("catering_invoices_due_idx").on(t.bookingId, t.status, t.dueOn),
+  kindCheck: check("catering_invoice_kind_check", sql`${t.invoiceKind} IN ('deposit', 'balance')`),
+  statusCheck: check("catering_invoice_status_check", sql`${t.status} IN ('draft', 'issued', 'void')`),
+  amountCheck: check("catering_invoice_amount_check", sql`${t.amountCents} > 0 AND ${t.amountCents} <= 9999999999`),
+  currencyCheck: check("catering_invoice_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
+  numberCheck: check("catering_invoice_number_check", sql`${t.invoiceNumber} > 0`),
+  issuedCheck: check("catering_invoice_issued_check", sql`(${t.status} = 'draft' AND ${t.issuedAt} IS NULL) OR (${t.status} <> 'draft' AND ${t.issuedAt} IS NOT NULL)`),
+  voidCheck: check("catering_invoice_void_check", sql`(${t.status} = 'void' AND ${t.voidedAt} IS NOT NULL AND ${t.voidedBy} IS NOT NULL) OR (${t.status} <> 'void' AND ${t.voidedAt} IS NULL AND ${t.voidedBy} IS NULL)`),
+}));
+
+/**
+ * The payment ledger: every credit against every invoice, including the ones that were taken back.
+ *
+ * A row here is a caterer's RECORD of money they received directly -- ChefSire processes no catering payment and
+ * this phase moves none. `processor` and `processorPaymentId` are the seam for a later phase and are null in every
+ * row this one writes; the unique index on them is what will stop a verified webhook crediting a charge twice.
+ */
+export const cateringBookingPayments = pgTable("catering_booking_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  invoiceId: varchar("invoice_id").references(() => cateringBookingInvoices.id, { onDelete: "restrict" }).notNull(),
+  amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  paymentMethod: varchar("payment_method", { length: 24 }).notNull(),
+  paymentSource: varchar("payment_source", { length: 24 }).default("provider_recorded").notNull(),
+  status: varchar("status", { length: 16 }).default("recorded").notNull(),
+  receivedOn: date("received_on", { mode: "string" }).notNull(),
+  /** The caterer's own bookkeeping note. PROVIDER ONLY -- never serialized to a customer. */
+  reference: varchar("reference", { length: 64 }),
+  recordedBy: varchar("recorded_by").references(() => users.id, { onDelete: "restrict" }),
+  voidedAt: timestamp("voided_at", { withTimezone: true }),
+  voidedBy: varchar("voided_by").references(() => users.id, { onDelete: "restrict" }),
+  voidReason: varchar("void_reason", { length: 200 }),
+  /** The client's key for ONE attempt, unique per booking: a replay resolves to the first attempt's payment. */
+  idempotencyKey: varchar("idempotency_key", { length: 64 }),
+  processor: varchar("processor", { length: 24 }),
+  processorPaymentId: varchar("processor_payment_id", { length: 128 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  idempotencyUnique: uniqueIndex("catering_payments_idempotency_uidx").on(t.bookingId, t.idempotencyKey).where(sql`${t.idempotencyKey} IS NOT NULL`),
+  // One processor charge is credited exactly once, however many times its webhook is delivered.
+  processorUnique: uniqueIndex("catering_payments_processor_uidx").on(t.processor, t.processorPaymentId).where(sql`${t.processorPaymentId} IS NOT NULL`),
+  invoiceIdx: index("catering_payments_invoice_idx").on(t.invoiceId, t.status),
+  bookingIdx: index("catering_payments_booking_idx").on(t.bookingId, t.receivedOn, t.id),
+  methodCheck: check("catering_payment_method_check", sql`${t.paymentMethod} IN ('cash', 'bank_transfer', 'card_in_person', 'cheque', 'other')`),
+  sourceCheck: check("catering_payment_source_check", sql`${t.paymentSource} IN ('provider_recorded', 'processor')`),
+  statusCheck: check("catering_payment_status_check", sql`${t.status} IN ('recorded', 'voided')`),
+  amountCheck: check("catering_payment_amount_check", sql`${t.amountCents} > 0 AND ${t.amountCents} <= 9999999999`),
+  currencyCheck: check("catering_payment_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
+  voidCheck: check("catering_payment_void_check", sql`(${t.status} = 'voided' AND ${t.voidedAt} IS NOT NULL AND ${t.voidedBy} IS NOT NULL) OR (${t.status} <> 'voided' AND ${t.voidedAt} IS NULL AND ${t.voidedBy} IS NULL)`),
+  // A provider-recorded payment always names who recorded it and carries no processor identity; a processor
+  // payment is the exact opposite. Neither can be forged into the other's shape.
+  provenanceCheck: check("catering_payment_provenance_check", sql`(${t.paymentSource} = 'provider_recorded' AND ${t.recordedBy} IS NOT NULL AND ${t.processor} IS NULL AND ${t.processorPaymentId} IS NULL) OR (${t.paymentSource} = 'processor' AND ${t.processor} IS NOT NULL AND ${t.processorPaymentId} IS NOT NULL)`),
+}));
+
 export const cateringReviews = pgTable("catering_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
