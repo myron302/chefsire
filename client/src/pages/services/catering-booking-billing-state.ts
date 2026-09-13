@@ -1,3 +1,4 @@
+import { calendarDateSchema } from "@shared/catering-availability";
 import {
   CATERING_BILLING_STATE_CODE,
   CATERING_BILLING_NOT_AVAILABLE_CODE,
@@ -297,7 +298,10 @@ export function maySubmitCateringPayment(
   if (invoice.state !== "issued" && invoice.state !== "partially_paid") return false;
   const cents = cateringMoneyToCents(form.amount);
   if (cents === null || cents <= 0 || cents > invoice.remainingCents) return false;
-  return /^\d{4}-\d{2}-\d{2}$/.test(form.receivedOn);
+  // The CANONICAL calendar check, not a shape regex: the same `calendarDateSchema` the server validates the request
+  // with, so an impossible day is refused by the form rather than after a round trip. The server applies it again
+  // regardless -- this is the provider being told sooner, never the client being trusted.
+  return calendarDateSchema.safeParse(form.receivedOn).success;
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *

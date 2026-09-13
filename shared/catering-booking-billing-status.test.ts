@@ -6,14 +6,19 @@ import { fileURLToPath } from "node:url";
 import {
   CATERING_FINANCIAL_STATUSES,
   CATERING_FINANCIAL_STATUS_COPY,
+  cateringDepositRequirement,
+  cateringInvoiceAmountFor,
+  cateringInvoiceHeadroomCents,
   cateringInvoiceState,
   cateringIssuableInvoiceKinds,
+  cateringIssuanceKeepsPartition,
   deriveCateringBillingSummary,
   type CateringBillingFacts,
   type CateringFinancialStatus,
   type CateringInvoiceFact,
   type CateringPaymentFact,
 } from "./catering-booking-billing";
+import { resolveCateringPayment } from "../server/services/catering-booking-billing-policy";
 
 /**
  * THE STATUS MATRIX: every combination of invoices and payments, and the one sentence each produces.
@@ -56,6 +61,20 @@ const MATRIX: Row[] = [
     name: "no agreed price at all",
     state: facts({ agreedTotalCents: null }),
     status: "not_configured", liveDepositPayable: false, liveBalancePayable: false,
+  },
+  {
+    // Zero is a real agreed price, and a booking at it owes nothing. Checked before any `paid >= total` arithmetic,
+    // which would otherwise report it as settled with nothing invoiced and nothing recorded.
+    name: "a complimentary booking: the agreed price is zero",
+    state: facts({ agreedTotalCents: 0 }),
+    status: "no_payment_required", liveDepositPayable: false, liveBalancePayable: false,
+  },
+  {
+    // Counterfactual rows on a zero-dollar booking cannot arise through any Phase 2L write path -- an invoice and a
+    // payment both need a positive amount -- but the derivation must not crash or change its answer if they exist.
+    name: "a complimentary booking with counterfactual history",
+    state: facts({ agreedTotalCents: 0, invoices: [deposit({ status: "void" })] }),
+    status: "no_payment_required", liveDepositPayable: false, liveBalancePayable: false,
   },
   {
     name: "agreed price, nothing asked for",
@@ -330,4 +349,91 @@ test("settled outranks having nothing live, so a fully credited agreement is not
   const paidInFull = facts({ agreedTotalCents: 50_000, invoices: [deposit()], payments: [payment()] });
   assert.equal(deriveCateringBillingSummary(paidInFull).status, "settled");
   assert.equal(deriveCateringBillingSummary(paidInFull).remainingOfAgreedCents, 0);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Zero-dollar bookings
+ * ------------------------------------------------------------------------------------------------------------- */
+
+const complimentary = facts({ agreedTotalCents: 0 });
+
+test("a zero-dollar booking is no_payment_required, and never settled", () => {
+  const summary = deriveCateringBillingSummary(complimentary);
+  assert.equal(summary.status, "no_payment_required");
+  assert.notEqual(summary.status, "settled", "nothing was paid, because nothing was owed");
+  assert.equal(summary.agreedTotalCents, 0);
+  assert.equal(summary.paidTotalCents, 0);
+  assert.equal(summary.remainingOfAgreedCents, 0);
+  assert.equal(summary.nextAmountDueCents, null);
+});
+
+test("neither party is told they paid, credited or settled anything", () => {
+  const copy = CATERING_FINANCIAL_STATUS_COPY.no_payment_required;
+  assert.equal(copy.label, "No payment required");
+  assert.equal(copy.provider, "No payment is required for this booking.");
+  assert.equal(copy.customer, "No payment is required for this booking.");
+  for (const line of [copy.provider, copy.customer]) {
+    for (const forbidden of ["paid", "settled", "credited", "balance due", "in full", "requested"]) {
+      assert.equal(line.toLowerCase().includes(forbidden), false, `${forbidden} in "${line}"`);
+    }
+  }
+  // And specifically not the sentence the old behaviour produced.
+  assert.notEqual(copy.customer, CATERING_FINANCIAL_STATUS_COPY.settled.customer);
+  assert.match(CATERING_FINANCIAL_STATUS_COPY.settled.customer, /in full/, "which really does claim payment");
+});
+
+test("nothing is issuable and nothing is payable on a zero-dollar booking", () => {
+  // Both were already closed by the amount rules; this pins that they stay closed.
+  assert.deepEqual(cateringIssuableInvoiceKinds(complimentary), []);
+  assert.equal(cateringInvoiceAmountFor("deposit", complimentary), null);
+  assert.equal(cateringInvoiceAmountFor("balance", complimentary), null);
+  assert.equal(cateringInvoiceHeadroomCents(complimentary), 0);
+  // Even with deposit terms configured, because a percentage or a capped fixed amount of zero is zero.
+  for (const terms of [
+    { mode: "percentage" as const, amountCents: null, percentBasisPoints: 5_000, dueOn: null },
+    { mode: "fixed" as const, amountCents: 100_000, percentBasisPoints: null, dueOn: null },
+  ]) {
+    assert.deepEqual(cateringIssuableInvoiceKinds(facts({ agreedTotalCents: 0, terms })), [], JSON.stringify(terms));
+    assert.equal(cateringDepositRequirement(terms, 0), 0, "the requirement itself is zero, so there is nothing to ask for");
+  }
+});
+
+test("an invoice or a payment of nothing is refused, so a 'paid' state cannot be manufactured", () => {
+  // The partition guard refuses a zero amount outright...
+  assert.equal(cateringIssuanceKeepsPartition(complimentary, 0), false);
+  assert.equal(cateringIssuanceKeepsPartition(facts(), 0), false, "on any booking, not just this one");
+  // ...and a zero payment is refused by the resolver, whatever invoice it names.
+  const live = invoice({ id: "inv-d", kind: "deposit", amountCents: 50_000 });
+  const refused = resolveCateringPayment({
+    amountCents: 0, currency: "USD", invoice: live, facts: facts({ invoices: [live] }), receivedOn: "2026-09-12",
+  });
+  assert.equal(refused.ok, false);
+  // The database says the same thing independently.
+  const ddl = migration.replace(/^\s*--.*$/gm, "");
+  assert.ok(ddl.includes("CHECK (amount_cents > 0 AND amount_cents <= 9999999999)"));
+  assert.equal((ddl.match(/CHECK \(amount_cents > 0/g) ?? []).length, 2, "the invoice and the payment");
+});
+
+test("a positive booking paid in full is still settled, so the zero case did not break the general one", () => {
+  const paid = facts({
+    agreedTotalCents: 50_000,
+    invoices: [deposit({ amountCents: 50_000 })],
+    payments: [payment({ amountCents: 50_000 })],
+  });
+  assert.equal(deriveCateringBillingSummary(paid).status, "settled");
+  // And one cent short is not.
+  const nearly = facts({
+    agreedTotalCents: 50_000,
+    invoices: [deposit({ amountCents: 50_000 })],
+    payments: [payment({ amountCents: 49_999 })],
+  });
+  assert.equal(deriveCateringBillingSummary(nearly).status, "deposit_due");
+});
+
+test("the zero case is decided before the arithmetic that used to swallow it", () => {
+  const contract = fs.readFileSync(path.join(repoRoot, "shared", "catering-booking-billing.ts"), "utf8");
+  const derivation = contract.slice(contract.indexOf("function deriveCateringFinancialStatus("));
+  const zero = derivation.indexOf('if (facts.agreedTotalCents === 0) return "no_payment_required";');
+  const generic = derivation.indexOf("if (derived.paidTotalCents >= facts.agreedTotalCents) return \"settled\";");
+  assert.ok(zero !== -1 && generic !== -1 && zero < generic);
 });

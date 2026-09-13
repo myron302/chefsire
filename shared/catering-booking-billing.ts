@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { calendarDateSchema } from "./catering-availability";
 import { cateringBookingWorkspacePath } from "./catering-booking-operations";
 import type { CateringBookingStatus } from "./catering-bookings";
 
@@ -178,7 +179,7 @@ export type CateringPaymentStatus = typeof CATERING_PAYMENT_STATUSES[number];
  * are two independent facts about the same event and collapsing them would make one domain unable to describe a
  * state the other permits.
  */
-export const CATERING_FINANCIAL_STATUSES = ["not_configured", "not_invoiced", "no_active_invoice", "deposit_due", "balance_not_requested", "balance_due", "settled"] as const;
+export const CATERING_FINANCIAL_STATUSES = ["not_configured", "no_payment_required", "not_invoiced", "no_active_invoice", "deposit_due", "balance_not_requested", "balance_due", "settled"] as const;
 export type CateringFinancialStatus = typeof CATERING_FINANCIAL_STATUSES[number];
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -394,8 +395,13 @@ function deriveCateringFinancialStatus(
   derived: { live: readonly CateringInvoiceFact[]; paidTotalCents: number; next: CateringInvoiceFact | undefined },
 ): CateringFinancialStatus {
   if (facts.agreedTotalCents === null) return "not_configured";
-  // Settled first, so a fully credited agreement reads as finished whatever became of the invoices that got it
-  // there. It is the only status that can be true with nothing live.
+  // A ZERO-DOLLAR AGREEMENT IS ITS OWN FACT, and it is checked before any arithmetic can swallow it. `agreed_price`
+  // permits 0.00, and for such a booking `paid >= total` is trivially true with nothing invoiced, nothing recorded
+  // and nothing having changed hands -- so the generic rule below reported `settled`, whose copy tells the customer
+  // they paid the agreed total in full. They paid nothing, because nothing was owed. That is a different sentence.
+  if (facts.agreedTotalCents === 0) return "no_payment_required";
+  // Settled next, so a fully credited agreement reads as finished whatever became of the invoices that got it
+  // there. It is now reachable only where there was a positive total to have reached.
   if (derived.paidTotalCents >= facts.agreedTotalCents) return "settled";
   if (derived.live.length === 0) {
     // NOTHING LIVE, AND THE HISTORY DECIDES WHICH KIND OF NOTHING IT IS. "Nothing has been requested yet" was
@@ -678,6 +684,13 @@ export const CATERING_FINANCIAL_STATUS_COPY: Record<CateringFinancialStatus, { l
     provider: "This booking has no agreed price, so there is nothing to invoice yet.",
     customer: "No price has been agreed for this booking yet.",
   },
+  no_payment_required: {
+    // Nothing is owed, so nothing about this may read as having been paid, credited or settled BY a payment. The
+    // agreed total is rendered beside this line, so the figure speaks for itself.
+    label: "No payment required",
+    provider: "No payment is required for this booking.",
+    customer: "No payment is required for this booking.",
+  },
   not_invoiced: {
     // TRULY nothing: not one invoice has ever been issued on this booking, so "yet" is accurate.
     label: "Nothing requested yet",
@@ -770,8 +783,19 @@ export function cateringBillingSectionPath(role: "provider" | "customer", bookin
  * `status`, `paid` -- is a 400 rather than something silently ignored.
  */
 export const cateringBillingVersionSchema = z.string().datetime();
-/** Date-only, in the same `YYYY-MM-DD` shape `catering_bookings.event_date` uses. */
-export const cateringBillingDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date as YYYY-MM-DD");
+/**
+ * Date-only, and a date that actually EXISTS.
+ *
+ * The canonical `calendarDateSchema` -- the same one the availability, operations and execution phases use --
+ * rather than a second implementation. A shape-only regex accepted `2026-02-30`, `2026-13-01` and `2026-00-15`,
+ * which passed request validation and then failed in Postgres writing a `date` column: a malformed client input
+ * turned into a 500 instead of the ordinary 400 the rest of this phase answers with.
+ *
+ * Calendar VALIDITY and calendar-day COMPARISON stay separate concerns. This asks only whether the string names a
+ * real Gregorian day; whether that day is past, future or today is decided later, against the provider's own
+ * calendar date (see `cateringBillingDay`), and no UTC reasoning is reintroduced here.
+ */
+export const cateringBillingDateSchema = calendarDateSchema;
 
 export const cateringDepositTermsSaveSchema = z.object({
   mode: z.enum(CATERING_DEPOSIT_MODES),
