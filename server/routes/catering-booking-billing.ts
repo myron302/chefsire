@@ -25,6 +25,7 @@ import {
   cateringIssuanceKeepsPartition,
   cateringMoneyToCents,
   cateringPaymentRecordSchema,
+  cateringPaymentReplayMatches,
   cateringPaymentVoidSchema,
   cateringPercentToBasisPoints,
   deriveCateringBillingSummary,
@@ -324,7 +325,10 @@ r.post("/bookings/:id/billing/invoices", requireAuth, async (req, res, next) => 
       amountCents,
       currency: locked.currency,
       status: "issued",
-      dueOn: body.dueOn ?? (body.kind === "deposit" ? facts.terms.dueOn : null),
+      // Present means honoured, ABSENT means fall back. `??` here swallowed an explicit null, so a provider who
+      // cleared the deposit's date at the moment of asking had the terms date silently put back on the invoice --
+      // the one thing they had just said they did not want. A balance has no terms to fall back to.
+      dueOn: body.dueOn !== undefined ? body.dueOn : (body.kind === "deposit" ? facts.terms.dueOn : null),
       issuedAt: new Date(),
       createdBy: userId,
     }).returning();
@@ -438,8 +442,22 @@ r.post("/bookings/:id/billing/payments", requireAuth, async (req, res, next) => 
     const rows = await billingRows(tx, id);
     // The duplicate check comes FIRST, before any validation that could refuse a retry of something already
     // recorded: a replay must resolve to what happened, not to a fresh judgement of whether it still could.
+    //
+    // But it must be the SAME payment. The form stays editable while a save is in flight and keeps its key, so a
+    // provider who corrects the amount before retrying sends the same key with different money. Reporting that as
+    // "already done" would close their form over an edit the ledger never received, leaving them believing they
+    // had recorded a figure that was never written. A changed replay is a conflict, told plainly.
     const existing = rows.payments.find((payment) => payment.idempotencyKey === body.idempotencyKey);
-    if (existing) return { kind: "duplicate" } as const;
+    if (existing) {
+      const same = cateringPaymentReplayMatches(
+        { invoiceId: existing.invoiceId, amountCents: existing.amountCents, method: existing.paymentMethod, receivedOn: existing.receivedOn, reference: existing.reference ?? null },
+        { invoiceId: body.invoiceId, amountCents: cateringMoneyToCents(body.amount), method: body.method, receivedOn: body.receivedOn, reference: body.reference ?? null },
+      );
+      if (!same) {
+        return { kind: "refused", message: "This payment was already recorded with different details. Reload to see what was saved, then record any further payment separately." } as const;
+      }
+      return { kind: "duplicate" } as const;
+    }
 
     const facts = cateringBillingFacts({ booking: locked, ...rows, asOfDate: cateringBillingToday() });
     const invoiceRow = rows.invoices.find((row) => row.id === body.invoiceId);

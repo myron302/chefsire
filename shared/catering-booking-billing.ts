@@ -480,6 +480,32 @@ export function cateringInvoiceAmountFor(kind: CateringInvoiceKind, facts: Cater
 }
 
 /**
+ * Whether a replayed payment request describes the SAME payment the first attempt recorded.
+ *
+ * An idempotency key makes a retry safe; it does not make a retry mean whatever the second request says. The
+ * payment form stays editable while a save is in flight -- deliberately, so a lost response does not throw away
+ * what the provider typed -- and it keeps its key, so the retry is recognisably the same attempt. But if they
+ * corrected the amount, the invoice, the method, the date or their reference before retrying, the two requests are
+ * no longer the same attempt at all, and answering the second with "already done" would close the form over an
+ * edit the ledger never received.
+ *
+ * So every field that decides what the payment IS is compared. The currency is not among them because a client
+ * never sends one, and the status is not because it is not an input. `undefined` and `null` are one absence: a
+ * reference that was omitted and one that was cleared are the same thing to the row.
+ */
+export function cateringPaymentReplayMatches(
+  recorded: { invoiceId: string; amountCents: number; method: string; receivedOn: string; reference: string | null },
+  attempt: { invoiceId: string; amountCents: number | null; method: string; receivedOn: string; reference?: string | null },
+): boolean {
+  return attempt.amountCents !== null
+    && recorded.invoiceId === attempt.invoiceId
+    && recorded.amountCents === attempt.amountCents
+    && recorded.method === attempt.method
+    && recorded.receivedOn === attempt.receivedOn
+    && (recorded.reference ?? null) === (attempt.reference ?? null);
+}
+
+/**
  * The most a payment against this invoice may be: exactly what is left on it.
  *
  * Overpayment is refused rather than absorbed. A caterer who was handed more than the invoice asks for has either

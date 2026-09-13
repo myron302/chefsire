@@ -108,11 +108,25 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
   const [termsForm, setTermsForm] = useState<CateringTermsForm>(emptyCateringTermsForm);
   const [paymentForm, setPaymentForm] = useState<CateringPaymentForm>(null);
   const [notice, setNotice] = useState<{ identity: string; message: string; retryable: boolean } | null>(null);
+  /**
+   * The due date being offered with each kind, before it is asked for.
+   *
+   * A deposit's date comes from the terms, which the provider has already set; a BALANCE has no terms, so without
+   * a field here the only client path to issuing one sent no date at all and the server persisted null. Every
+   * balance invoice created through this UI was therefore permanently undatable and could never become overdue,
+   * while the summary and the invoice list both render exactly that. One input per issuable kind fixes it and
+   * removes the asymmetry: the deposit's own date is now visible, and overridable, at the moment of asking.
+   *
+   * Identity-scoped like everything else here, and cleared by the same reset, so booking A's date cannot be
+   * attached to booking B's invoice.
+   */
+  const [issueDueOn, setIssueDueOn] = useState<Record<string, string>>({});
   useEffect(() => {
     if (localIdentity === identity) return;
     setLocalIdentity(identity);
     setTermsForm(emptyCateringTermsForm());
     setPaymentForm(null);
+    setIssueDueOn({});
     setNotice(null);
   }, [identity, localIdentity]);
   const localStateIsCurrent = localIdentity === identity;
@@ -246,7 +260,17 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
   // client-computed total for the server to have to distrust.
   const issueInvoice = (kind: CateringInvoiceKind) => {
     if (!localStateIsCurrent || !actionable || pending) return;
-    mutation.mutate({ origin: origin(), method: "POST", path: "/billing/invoices", body: { kind } });
+    // Absent when the provider has not touched the field, so a deposit still inherits its terms date. Present --
+    // as a date or as an explicit null -- the moment they have, so clearing it means cleared rather than
+    // reinstated from the terms they just chose not to use.
+    const touched = issueDueOn[kind] !== undefined;
+    const dueOn = issueDueOn[kind]?.trim() ?? "";
+    mutation.mutate({
+      origin: origin(), method: "POST", path: "/billing/invoices",
+      // The kind, and the date to ask by. Still no amount: that is derived on the server from the booking's own
+      // agreed price, under its lock.
+      body: { kind, ...(touched ? { dueOn: dueOn === "" ? null : dueOn } : {}) },
+    });
   };
   const voidInvoice = (invoice: CateringInvoiceView) => {
     if (!localStateIsCurrent || !actionable || pending) return;
@@ -362,13 +386,20 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
             </div>}
           </li>)}</ul>}
 
-        {provider && actionable && (billing.issuablePreview ?? []).length > 0 && <div className="flex flex-wrap gap-2">
-          {(billing.issuablePreview ?? []).map(({ kind, amountCents }) => <Button key={kind} className="min-h-11" disabled={pending} onClick={() => issueInvoice(kind)}>
+        {provider && actionable && (billing.issuablePreview ?? []).map(({ kind, amountCents }) => <div key={kind} className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed p-3">
+          <div className="min-w-0 flex-1 space-y-1">
+            <Label htmlFor={`catering-issue-due-${kind}`}>Due by (optional)</Label>
+            <Input id={`catering-issue-due-${kind}`} className="min-h-11" type="date"
+              value={issueDueOn[kind] ?? (kind === "deposit" ? terms?.dueOn ?? "" : "")}
+              onChange={(event) => setIssueDueOn((current) => ({ ...current, [kind]: event.target.value }))} />
+          </div>
+          <Button className="min-h-11" disabled={pending} onClick={() => issueInvoice(kind)}>
             {/* The amount is the server's own preview, shown so nothing is requested unseen -- and it is NOT sent
-                back: the request carries the kind alone and the server re-derives the figure under its lock. */}
+                back: the request carries the kind and a due date, and the server re-derives the figure under its
+                lock. */}
             {kind === "deposit" ? "Request deposit" : "Request balance"} · <span className="tabular-nums">{money(amountCents)}</span>
-          </Button>)}
-        </div>}
+          </Button>
+        </div>)}
       </section>
 
       {/* The payment form. Inline rather than a dialog, so it works the same at 320px as it does on a desktop. */}

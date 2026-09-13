@@ -132,9 +132,13 @@ test("the currency is the booking's own on every write, never the client's", () 
 
 test("a payment's amount is bounded server-side before anything is credited", () => {
   assert.ok(route.includes("const resolution = resolveCateringPayment({"));
-  // The RESOLVED amount is what is written. The sent one appears exactly once, as an input to the resolver.
+  // The RESOLVED amount is what is written. The client's own figure is parsed in exactly two places, and neither
+  // of them is a write: once as an input to the resolver that bounds it, and once to compare a replayed request
+  // against the payment it claims to be repeating.
   assert.ok(route.includes("amountCents: resolution.amountCents"));
-  assert.equal((route.match(/amountCents: cateringMoneyToCents\(body\.amount\)/g) ?? []).length, 1);
+  assert.equal((route.match(/amountCents: cateringMoneyToCents\(body\.amount\)/g) ?? []).length, 2);
+  assert.ok(route.includes("const resolution = resolveCateringPayment({"));
+  assert.ok(route.includes("cateringPaymentReplayMatches("));
   const insert = route.slice(route.indexOf("await tx.insert(cateringBookingPayments).values({"));
   const values = insert.slice(0, insert.indexOf("});"));
   assert.equal(values.includes("body.amount"), false, "the client's figure never reaches the ledger");

@@ -8,7 +8,7 @@ import {
   resolveCateringDepositTerms,
   resolveCateringPayment,
 } from "./catering-booking-billing-policy";
-import { cateringMoneyToCents, type CateringBillingFacts, type CateringInvoiceFact, type CateringPaymentFact } from "@shared/catering-booking-billing";
+import { cateringMoneyToCents, cateringPaymentReplayMatches, type CateringBillingFacts, type CateringInvoiceFact, type CateringPaymentFact } from "@shared/catering-booking-billing";
 import type { CateringBookingBillingRecord } from "@shared/schema";
 
 /**
@@ -210,4 +210,54 @@ test("a payment cannot be dated in the future, judged against the SERVER's date"
   assert.match((refused as { message: string }).message, /dated in the future/);
   assert.equal(record("100.00", { receivedOn: "2026-09-13" }).ok, true, "today is fine");
   assert.equal(record("100.00", { receivedOn: "2020-01-01" }).ok, true, "and so is any past day");
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * A replayed payment must be the SAME payment
+ * ------------------------------------------------------------------------------------------------------------- */
+
+/**
+ * An idempotency key makes a retry safe; it does not make a retry mean whatever the second request says.
+ *
+ * The payment form stays editable while a save is in flight -- deliberately, so a lost response does not throw
+ * away what the provider typed -- and it keeps its key, so the retry is recognisably the same attempt. If they
+ * corrected the amount before retrying, answering "already done" would close their form over an edit the ledger
+ * never received, leaving them believing they had recorded a figure that was never written.
+ */
+const recorded = { invoiceId: "inv-1", amountCents: 20_000, method: "cash", receivedOn: "2026-09-12", reference: "REF-1" };
+const attempt = (patch: Partial<{ invoiceId: string; amountCents: number | null; method: string; receivedOn: string; reference: string | null }> = {}) =>
+  ({ invoiceId: "inv-1", amountCents: 20_000, method: "cash", receivedOn: "2026-09-12", reference: "REF-1", ...patch });
+
+test("an identical replay is the same payment", () => {
+  assert.equal(cateringPaymentReplayMatches(recorded, attempt()), true);
+});
+
+test("a replay that changed ANY semantic field is not", () => {
+  for (const patch of [
+    { amountCents: 20_001 },
+    { amountCents: 10_000 },
+    { invoiceId: "inv-2" },
+    { method: "bank_transfer" },
+    { receivedOn: "2026-09-11" },
+    { reference: "REF-2" },
+    { reference: null },
+  ]) {
+    assert.equal(cateringPaymentReplayMatches(recorded, attempt(patch)), false, JSON.stringify(patch));
+  }
+});
+
+test("an unparseable amount is never a match, so a malformed replay cannot pass as one", () => {
+  assert.equal(cateringPaymentReplayMatches(recorded, attempt({ amountCents: null })), false);
+});
+
+test("an omitted and a cleared reference are one absence", () => {
+  const withoutReference = { ...recorded, reference: null };
+  assert.equal(cateringPaymentReplayMatches(withoutReference, { invoiceId: "inv-1", amountCents: 20_000, method: "cash", receivedOn: "2026-09-12" }), true);
+  assert.equal(cateringPaymentReplayMatches(withoutReference, attempt({ reference: null })), true);
+  assert.equal(cateringPaymentReplayMatches(withoutReference, attempt({ reference: "REF-1" })), false);
+});
+
+test("the currency is not compared, because a client never sends one", () => {
+  // It is the booking's, taken from the locked row on both the original write and any replay.
+  assert.equal(cateringPaymentReplayMatches(recorded, attempt()), true);
 });

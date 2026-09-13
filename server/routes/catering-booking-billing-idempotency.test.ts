@@ -77,6 +77,35 @@ test("a duplicate writes nothing: no second credit, no second activity row, no s
   assert.ok(handler.includes('duplicate: result.kind === "duplicate"'), "and the caller is told it was a replay");
 });
 
+test("a replay is only a duplicate if it describes the SAME payment", () => {
+  const handler = route.slice(route.indexOf('r.post("/bookings/:id/billing/payments"'), route.indexOf('r.post("/bookings/:id/billing/payments/:paymentId/void"'));
+  // The key finds the row; the COMPARISON decides what the answer is. Without it a provider who corrected the
+  // amount before retrying would have their form closed over an edit the ledger never received.
+  assert.ok(handler.includes("const same = cateringPaymentReplayMatches("));
+  const found = handler.indexOf("const existing = rows.payments.find(");
+  const compared = handler.indexOf("cateringPaymentReplayMatches(");
+  const duplicate = handler.indexOf('return { kind: "duplicate" } as const;');
+  assert.ok(found < compared && compared < duplicate, "the comparison sits between finding the row and reporting it");
+  // Every semantic field is compared, and each is read from the stored ROW rather than from the request.
+  const call = handler.slice(compared, handler.indexOf("if (!same)", compared));
+  for (const field of ["existing.invoiceId", "existing.amountCents", "existing.paymentMethod", "existing.receivedOn", "existing.reference"]) {
+    assert.ok(call.includes(field), field);
+  }
+  for (const field of ["body.invoiceId", "body.method", "body.receivedOn", "body.reference"]) {
+    assert.ok(call.includes(field), field);
+  }
+  assert.ok(handler.includes('return { kind: "refused", message: "This payment was already recorded with different details.'));
+});
+
+test("a changed replay writes nothing either -- it is refused, not recorded a second time", () => {
+  const handler = route.slice(route.indexOf('r.post("/bookings/:id/billing/payments"'), route.indexOf('r.post("/bookings/:id/billing/payments/:paymentId/void"'));
+  const refused = handler.indexOf('if (!same) {');
+  assert.ok(refused < handler.indexOf("await tx.insert(cateringBookingPayments)"), "it returns before the insert");
+  assert.ok(refused < handler.indexOf('eventType: "billing_payment_recorded"'));
+  // And a refusal is not a "recorded" result, so no notification is sent for it.
+  assert.ok(handler.includes('if (result.kind === "recorded") await notifyCustomer('));
+});
+
 test("voiding is idempotent by STATE, judged before the precondition", () => {
   const invoiceVoid = route.indexOf('r.post("/bookings/:id/billing/invoices/:invoiceId/void"');
   const paymentVoid = route.indexOf('r.post("/bookings/:id/billing/payments/:paymentId/void"');
