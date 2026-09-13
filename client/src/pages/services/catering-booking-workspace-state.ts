@@ -333,7 +333,9 @@ export function cateringActivityTaskTitle(activity: { eventType: string; metadat
 // lands on the execution card rather than being refused by this allowlist and dropping the participant at the
 // top of the page. The allowlist itself is unchanged in kind: a fragment naming anything else still resolves to
 // null and scrolls nowhere.
-export const CATERING_WORKSPACE_SECTION_IDS = ["communication", "files", "activity", "execution"] as const;
+// Phase 2K adds "closeout" for the same reason: the closeout-completed notification deep-links there, and a
+// fragment this allowlist refuses drops the participant at the top of the page.
+export const CATERING_WORKSPACE_SECTION_IDS = ["communication", "files", "activity", "execution", "closeout"] as const;
 
 /** The section a location fragment names, or null for an absent, empty or unrecognised one. */
 export function cateringWorkspaceSectionFromHash(hash: string): string | null {

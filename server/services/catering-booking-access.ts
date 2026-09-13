@@ -29,3 +29,23 @@ export async function lockActiveCateringBooking(tx: Tx, bookingId: string): Prom
   const [booking] = await tx.select({ status: cateringBookings.status }).from(cateringBookings).where(eq(cateringBookings.id, bookingId)).limit(1);
   return booking?.status === "pending_confirmation" || booking?.status === "confirmed";
 }
+
+/**
+ * Takes the row lock on the booking inside a Phase 2K mutation transaction and reports whether its event was
+ * actually SERVED.
+ *
+ * The post-event counterpart of `lockActiveCateringBooking`, and deliberately a separate function rather than a
+ * parameter on it: the two ask opposite questions. That one asks whether a booking is still being worked ON, and
+ * is true for exactly `pending_confirmation` and `confirmed`; this one asks whether an event happened, and is true
+ * only once the provider's Phase 2G completion action has recorded it. Nothing about either changes the booking.
+ *
+ * This is the authoritative lifecycle check for closeout, not the early guard. A booking is completed under a
+ * transaction that also updates review verification, so reading it under the same row lock is what stops an
+ * in-flight closeout write from settling against a booking whose completion it never actually saw.
+ */
+export async function lockServedCateringBooking(tx: Tx, bookingId: string): Promise<boolean> {
+  await tx.execute(sql`SELECT id FROM catering_bookings WHERE id = ${bookingId} FOR UPDATE`);
+  const [booking] = await tx.select({ status: cateringBookings.status, completedAt: cateringBookings.completedAt })
+    .from(cateringBookings).where(eq(cateringBookings.id, bookingId)).limit(1);
+  return booking?.status === "completed" && booking.completedAt !== null;
+}
