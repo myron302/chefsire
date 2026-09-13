@@ -5,7 +5,7 @@ import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest } from "../middleware/validation";
 import { optionalAuth, requireAuth } from "../middleware/auth";
 import { persistDataUri } from "../lib/data-uri";
-import { followOrRequest } from "../lib/social-follow";
+import { followOrRequest, followRelationship, unfollowOrCancelRequest } from "../lib/social-follow";
 import { serializePublicUser } from "../serializers/public-user";
 import {
   canViewUserContent,
@@ -511,24 +511,30 @@ r.post("/follows", requireAuth, async (req, res) => {
   }
 });
 
+// Drops an established follow or withdraws a pending request -- whichever the caller has. Handling only the
+// former would leave a request against a private account with no way out.
 r.delete("/follows/:followerId/:followingId", requireAuth, async (req, res) => {
   try {
-    const ok = await storage.unfollowUser(req.user!.id, req.params.followingId);
-    if (!ok) return res.status(404).json({ message: "Follow relationship not found" });
-    res.json({ message: "User unfollowed" });
+    const outcome = await unfollowOrCancelRequest(req.user!.id, req.params.followingId);
+    if (outcome.status === "none") {
+      return res.status(404).json({ message: "Follow relationship not found" });
+    }
+    res.json({ message: outcome.status === "canceled" ? "Follow request canceled" : "User unfollowed", ...outcome });
   } catch (err) {
     console.error("follows/delete error", err);
     res.status(500).json({ message: "Failed to unfollow user" });
   }
 });
 
-// "Am I following this user?" -- the follower side is the authenticated caller, so this cannot be used to
-// enumerate other people's relationships.
+// "Where do I stand with this user?" -- the follower side is the authenticated caller, so this cannot be used
+// to enumerate other people's relationships, and a pending request is reported as pending rather than
+// flattened into `isFollowing: false`.
 r.get("/follows/:followerId/:followingId", requireAuth, async (req, res) => {
   try {
-    const isFollowing = await storage.isFollowing(req.user!.id, req.params.followingId);
-    res.json({ isFollowing });
-  } catch (err) {
+    const relationship = await followRelationship(req.user!.id, req.params.followingId);
+    res.json({ isFollowing: relationship.isFollowing, isRequested: relationship.isRequested });
+  } catch (err: any) {
+    if (err?.status === 404) return res.status(404).json({ message: "User not found" });
     console.error("follows/check error", err);
     res.status(500).json({ message: "Failed to check follow status" });
   }

@@ -5,8 +5,9 @@ import { db } from "../db";
 import { followRequests, users } from "../../shared/schema";
 import { requireAuth } from "../middleware";
 import { storage } from "../storage";
-import { followOrRequest } from "../lib/social-follow";
+import { followOrRequest, followRelationship, unfollowOrCancelRequest } from "../lib/social-follow";
 import { sendFollowAcceptedNotification } from "../services/notification-service";
+import { serializePublicUser } from "../serializers/public-user";
 
 const r = Router();
 
@@ -20,34 +21,14 @@ r.get("/status/:targetId", requireAuth, async (req, res) => {
 
   if (!targetId) return res.status(400).json({ message: "targetId is required" });
 
-  const target = await db
-    .select({ id: users.id, isPrivate: users.isPrivate })
-    .from(users)
-    .where(eq(users.id, targetId))
-    .limit(1);
-
-  if (!target[0]) return res.status(404).json({ message: "User not found" });
-
-  const isFollowing = viewerId === targetId ? false : await storage.isFollowing(viewerId, targetId);
-
-  const pending = await db
-    .select({ id: followRequests.id })
-    .from(followRequests)
-    .where(
-      and(
-        eq(followRequests.requesterId, viewerId),
-        eq(followRequests.targetId, targetId),
-        eq(followRequests.status, "pending")
-      )
-    )
-    .limit(1);
-
-  return res.json({
-    isPrivate: !!target[0].isPrivate,
-    isFollowing,
-    isRequested: !!pending[0],
-    requestId: pending[0]?.id || null,
-  });
+  try {
+    // One authoritative derivation, shared with every other follow surface: a pending request is reported as
+    // a pending request, never flattened into "not following".
+    return res.json(await followRelationship(viewerId, targetId));
+  } catch (err: any) {
+    if (err?.status === 404) return res.status(404).json({ message: "User not found" });
+    throw err;
+  }
 });
 
 /**
@@ -83,25 +64,8 @@ r.delete("/:targetId", requireAuth, async (req, res) => {
   if (!targetId) return res.status(400).json({ message: "targetId is required" });
   if (targetId === followerId) return res.status(400).json({ message: "Invalid target" });
 
-  const isFollowing = await storage.isFollowing(followerId, targetId);
-  if (isFollowing) {
-    await storage.unfollowUser(followerId, targetId);
-    return res.json({ status: "unfollowed" });
-  }
-
-  // cancel pending request
-  await db
-    .update(followRequests)
-    .set({ status: "canceled", respondedAt: new Date() })
-    .where(
-      and(
-        eq(followRequests.requesterId, followerId),
-        eq(followRequests.targetId, targetId),
-        eq(followRequests.status, "pending")
-      )
-    );
-
-  return res.json({ status: "canceled" });
+  // Drops an established follow or withdraws a pending request, whichever exists -- always the caller's own.
+  return res.json(await unfollowOrCancelRequest(followerId, targetId));
 });
 
 /**
@@ -127,10 +91,12 @@ r.get("/requests/incoming", requireAuth, async (req, res) => {
     .offset(offset);
 
   return res.json({
+    // The joined row is the whole `users` record -- password hash, email and provider ids included -- so the
+    // requester goes out through the repository's public projection, same as every other social response.
     requests: rows.map((r) => ({
       id: r.requestId,
       createdAt: r.createdAt,
-      requester: r.requester,
+      requester: serializePublicUser(r.requester),
     })),
   });
 });
@@ -154,16 +120,24 @@ r.post("/requests/:requestId/accept", requireAuth, async (req, res) => {
   if (fr.targetId !== targetUserId) return res.status(403).json({ message: "Not allowed" });
   if (fr.status !== "pending") return res.status(400).json({ message: "Request is not pending" });
 
-  await db
+  // The UPDATE carries the responder and the pending status, so it is the authorization AND the guard against
+  // two responses racing: exactly one of them resolves the request and goes on to create the follow.
+  const accepted = await db
     .update(followRequests)
     .set({ status: "accepted", respondedAt: new Date() })
-    .where(eq(followRequests.id, requestId));
+    .where(
+      and(
+        eq(followRequests.id, requestId),
+        eq(followRequests.targetId, targetUserId),
+        eq(followRequests.status, "pending")
+      )
+    )
+    .returning({ id: followRequests.id });
 
-  try {
-    await storage.followUser(fr.requesterId, fr.targetId);
-  } catch {
-    // ignore if already following
-  }
+  if (!accepted[0]) return res.status(400).json({ message: "Request is not pending" });
+
+  // Idempotent: a follow that somehow already exists is left alone rather than duplicated.
+  await storage.followUser(fr.requesterId, fr.targetId);
 
   // Send notification to requester that their request was accepted
   const accepter = await db
@@ -202,10 +176,20 @@ r.post("/requests/:requestId/decline", requireAuth, async (req, res) => {
   if (fr.targetId !== targetUserId) return res.status(403).json({ message: "Not allowed" });
   if (fr.status !== "pending") return res.status(400).json({ message: "Request is not pending" });
 
-  await db
+  // Scoped the same way as accept: only the target can decline, and only while it is still pending.
+  const declined = await db
     .update(followRequests)
     .set({ status: "declined", respondedAt: new Date() })
-    .where(eq(followRequests.id, requestId));
+    .where(
+      and(
+        eq(followRequests.id, requestId),
+        eq(followRequests.targetId, targetUserId),
+        eq(followRequests.status, "pending")
+      )
+    )
+    .returning({ id: followRequests.id });
+
+  if (!declined[0]) return res.status(400).json({ message: "Request is not pending" });
 
   return res.json({ status: "declined" });
 });

@@ -156,8 +156,18 @@ export interface IStorage {
   /** Retrieve all likes for a specific comment */
   getCommentLikes(commentId: string): Promise<CommentLike[]>;
   followUser(followerId: string, followingId: string): Promise<Follow>;
-  /** Open (or reuse) a pending follow request for a private account. Returns the pending request's id. */
-  createFollowRequestIfAbsent(requesterId: string, targetId: string): Promise<string | null>;
+  /**
+   * Open (or reuse) a pending follow request for a private account. `created` is true only for the call that
+   * actually inserted the row, so a caller can act once (notify, log) even when requests race.
+   */
+  createFollowRequestIfAbsent(
+    requesterId: string,
+    targetId: string
+  ): Promise<{ id: string | null; created: boolean }>;
+  /** The pending follow request this requester has open against this target, if any. */
+  getPendingFollowRequest(requesterId: string, targetId: string): Promise<{ id: string } | undefined>;
+  /** Cancel the requester's OWN pending request. Scoped to the requester, so it cannot cancel anyone else's. */
+  cancelFollowRequest(requesterId: string, targetId: string): Promise<boolean>;
   unfollowUser(followerId: string, followingId: string): Promise<boolean>;
   isFollowing(followerId: string, followingId: string): Promise<boolean>;
   getFollowers(userId: string): Promise<User[]>;
@@ -1009,29 +1019,62 @@ export class DrizzleStorage implements IStorage {
 
   /**
    * A private account is never followed directly -- a pending request is opened instead, and only accepting it
-   * creates the follow. Repeating the call reuses the request that is already pending.
+   * creates the follow.
+   *
+   * The partial unique index `follow_requests_pending_unique_idx` (requester, target) WHERE status = 'pending'
+   * is the concurrency authority, not a preceding SELECT: two simultaneous requests both insert, the loser is
+   * absorbed by ON CONFLICT DO NOTHING rather than surfacing as a 500, and then reads back the winning row.
+   * `created` tells the caller which of the two it was, so side effects like notifications fire once.
    */
-  async createFollowRequestIfAbsent(requesterId: string, targetId: string): Promise<string | null> {
+  async createFollowRequestIfAbsent(
+    requesterId: string,
+    targetId: string
+  ): Promise<{ id: string | null; created: boolean }> {
     const db = getDb();
-    const pendingScope = and(
-      eq(followRequests.requesterId, requesterId),
-      eq(followRequests.targetId, targetId),
-      eq(followRequests.status, "pending")
-    );
-
-    const existing = await db
-      .select({ id: followRequests.id })
-      .from(followRequests)
-      .where(pendingScope)
-      .limit(1);
-    if (existing[0]) return existing[0].id;
 
     const inserted = await db
       .insert(followRequests)
       .values({ requesterId, targetId, status: "pending" })
+      .onConflictDoNothing()
       .returning({ id: followRequests.id });
 
-    return inserted[0]?.id ?? null;
+    if (inserted[0]) return { id: inserted[0].id, created: true };
+
+    // Conflict: someone already holds the pending request for this pair -- reuse it.
+    const existing = await this.getPendingFollowRequest(requesterId, targetId);
+    return { id: existing?.id ?? null, created: false };
+  }
+
+  async getPendingFollowRequest(requesterId: string, targetId: string): Promise<{ id: string } | undefined> {
+    const db = getDb();
+    const rows = await db
+      .select({ id: followRequests.id })
+      .from(followRequests)
+      .where(this.pendingRequestScope(requesterId, targetId))
+      .limit(1);
+    return rows[0];
+  }
+
+  /**
+   * Cancel a pending request. The UPDATE carries the requester, so the authorization is the mutation itself
+   * and one user can never cancel another user's request.
+   */
+  async cancelFollowRequest(requesterId: string, targetId: string): Promise<boolean> {
+    const db = getDb();
+    const canceled = await db
+      .update(followRequests)
+      .set({ status: "canceled", respondedAt: new Date() })
+      .where(this.pendingRequestScope(requesterId, targetId))
+      .returning({ id: followRequests.id });
+    return canceled.length > 0;
+  }
+
+  private pendingRequestScope(requesterId: string, targetId: string) {
+    return and(
+      eq(followRequests.requesterId, requesterId),
+      eq(followRequests.targetId, targetId),
+      eq(followRequests.status, "pending")
+    );
   }
 
   async unfollowUser(followerId: string, followingId: string): Promise<boolean> {

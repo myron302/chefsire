@@ -154,8 +154,17 @@ Object.assign(storage as any, {
   },
   createFollowRequestIfAbsent: async (requesterId: string, targetId: string) => {
     record("createFollowRequestIfAbsent", requesterId, targetId);
+    const created = !world.followRequests.has(`${requesterId}>${targetId}`);
     world.followRequests.add(`${requesterId}>${targetId}`);
-    return "request-1";
+    return { id: "request-1", created };
+  },
+  getPendingFollowRequest: async (requesterId: string, targetId: string) => {
+    record("getPendingFollowRequest", requesterId, targetId);
+    return world.followRequests.has(`${requesterId}>${targetId}`) ? { id: "request-1" } : undefined;
+  },
+  cancelFollowRequest: async (requesterId: string, targetId: string) => {
+    record("cancelFollowRequest", requesterId, targetId);
+    return world.followRequests.delete(`${requesterId}>${targetId}`);
   },
 });
 
@@ -477,12 +486,27 @@ test("unfollowing requires authentication", async () => {
   assert.ok(world.follows.has("B>A"));
 });
 
-test("a user cannot tear down someone else's follow relationship", async () => {
-  world.follows.add("B>A");
-  const res = await call("DELETE", "/api/posts/follows/B/A", { as: "A" });
+test("a user cannot tear down someone else's follow relationship or withdraw their request", async () => {
+  world.follows.add("B>P");
+  world.followRequests.add("B>P");
+
+  const res = await call("DELETE", "/api/posts/follows/B/P", { as: "A" });
   assert.equal(res.status, 404);
-  assert.ok(world.follows.has("B>A"));
-  assert.deepEqual(callsTo("unfollowUser")[0].args, ["A", "A"]);
+  assert.ok(world.follows.has("B>P"), "B still follows P");
+  assert.ok(world.followRequests.has("B>P"), "B's request is untouched");
+
+  // Both the unfollow and the request cancellation were issued as A, never as the id in the URL.
+  assert.deepEqual(callsTo("unfollowUser")[0].args, ["A", "P"]);
+  assert.deepEqual(callsTo("cancelFollowRequest")[0].args, ["A", "P"]);
+});
+
+test("a user can withdraw their OWN pending request through the same endpoint", async () => {
+  world.followRequests.add("A>P");
+
+  const res = await call("DELETE", "/api/posts/follows/A/P", { as: "A" });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "canceled");
+  assert.ok(!world.followRequests.has("A>P"));
 });
 
 test("a user can unfollow their own follow", async () => {
@@ -494,8 +518,17 @@ test("a user can unfollow their own follow", async () => {
 
 test("follow status is only ever asked about the session's own relationships", async () => {
   world.follows.add("B>P");
+  world.followRequests.add("B>P");
+
   const res = await call("GET", "/api/posts/follows/B/P", { as: "A" });
-  assert.deepEqual(res.body, { isFollowing: false });
+  assert.deepEqual(res.body, { isFollowing: false, isRequested: false });
+
   const anonymous = await call("GET", "/api/posts/follows/B/P");
   assert.equal(anonymous.status, 401);
+});
+
+test("follow status reports a pending request as pending, not as 'not following'", async () => {
+  world.followRequests.add("A>P");
+  const res = await call("GET", "/api/posts/follows/A/P", { as: "A" });
+  assert.deepEqual(res.body, { isFollowing: false, isRequested: true });
 });

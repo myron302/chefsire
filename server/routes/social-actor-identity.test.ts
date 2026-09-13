@@ -131,6 +131,68 @@ test("the other route that surfaces post content applies the same visibility pol
   assert.ok(search.includes("visiblePostsCondition(viewerIdFrom(req))"));
 });
 
+test("no follow surface flattens a pending request into 'not following'", () => {
+  // Every surface that reports a follow relationship derives it from `followRelationship`, which knows all
+  // three states. A surface that answered from `storage.isFollowing` alone would tell a viewer with a pending
+  // request that they are simply not following -- so they re-request, and can never withdraw.
+  const surfaces = {
+    "routes/posts.ts": postsRoute,
+    "routes/follows.ts": followsRoute,
+    "routes/drinks.ts": read("drinks.ts"),
+  };
+
+  for (const [name, source] of Object.entries(surfaces)) {
+    for (const match of source.matchAll(/isFollowing[,:]?\s*=?\s*await storage\.isFollowing\(/g)) {
+      assert.fail(`${name} derives follow state from storage.isFollowing directly: ${match[0]}`);
+    }
+  }
+
+  // And the one derivation reports all three.
+  assert.match(followHelper, /isRequested: !!pending/);
+  assert.match(followHelper, /export async function followRelationship/);
+});
+
+test("every exit from a follow relationship handles the pending request too", () => {
+  // Unfollowing an established follow and withdrawing a pending request are the same user intent, so they go
+  // through one helper; a route that called `storage.unfollowUser` alone would strand the request.
+  for (const [name, source] of Object.entries({
+    "routes/posts.ts": postsRoute,
+    "routes/follows.ts": followsRoute,
+    "routes/drinks.ts": read("drinks.ts"),
+  })) {
+    assert.ok(!source.includes("storage.unfollowUser("), `${name} unfollows without considering the request`);
+  }
+
+  assert.match(followHelper, /export async function unfollowOrCancelRequest/);
+  // Both halves are scoped to the acting follower, never to an id from the request.
+  assert.match(followHelper, /storage\.unfollowUser\(followerId, targetId\)/);
+  assert.match(followHelper, /storage\.cancelFollowRequest\(followerId, targetId\)/);
+});
+
+test("pending follow requests are written through the conflict-tolerant path only", () => {
+  const storageSource = read("..", "storage.ts");
+
+  // The only INSERT into follow_requests is the idempotent one.
+  const inserts = [...storageSource.matchAll(/\.insert\(followRequests\)/g)];
+  assert.equal(inserts.length, 1, "one place inserts a follow request");
+  assert.match(storageSource, /\.insert\(followRequests\)[\s\S]{0,200}?\.onConflictDoNothing\(\)/);
+
+  // No route reaches around storage to write one itself.
+  for (const [name, source] of Object.entries({
+    "routes/posts.ts": postsRoute,
+    "routes/follows.ts": followsRoute,
+    "routes/drinks.ts": read("drinks.ts"),
+  })) {
+    assert.ok(!source.includes("insert(followRequests)"), `${name} writes a follow request directly`);
+  }
+
+  // Responding to a request is scoped to the responder AND to it still being pending, in the UPDATE itself.
+  for (const match of followsRoute.matchAll(/\.update\(followRequests\)[\s\S]{0,400}?\.returning\(/g)) {
+    assert.match(match[0], /eq\(followRequests\.targetId, targetUserId\)/);
+    assert.match(match[0], /eq\(followRequests\.status, "pending"\)/);
+  }
+});
+
 test("the unmounted duplicate comment/like routers are gone", () => {
   // They carried the same defects (no auth, body-supplied actor) and were never mounted; leaving them around
   // is a loaded gun for whoever wires them up next.

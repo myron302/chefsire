@@ -5,7 +5,7 @@ import crypto from "node:crypto";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
 import { db } from "../db";
-import { followOrRequest } from "../lib/social-follow";
+import { followOrRequest, followRelationship, unfollowOrCancelRequest } from "../lib/social-follow";
 import { getCanonicalDrinkBySlug } from "../services/canonical-drinks-index";
 import { 
   creatorMembershipCheckoutSessions,
@@ -23435,89 +23435,82 @@ r.get("/creator/:userId/activity", requireAuth, async (req, res) => {
 
 r.post("/creators/:userId/follow", requireAuth, async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({ ok: false, error: "Database unavailable" });
-    }
-
     const creatorId = String(req.params?.userId ?? "").trim();
     const viewerId = req.user.id;
 
     if (!creatorId) return res.status(400).json({ ok: false, error: "userId is required" });
     if (creatorId === viewerId) return res.status(400).json({ ok: false, error: "You cannot follow yourself" });
 
-    const creator = await db.select({ id: users.id }).from(users).where(eq(users.id, creatorId)).limit(1);
-    if (!creator[0]) return res.status(404).json({ ok: false, error: "Creator not found" });
-
     // Same rule as every other follow entry point: a private creator only gets a pending follow request,
-    // because an approved follow is what unlocks that account's private posts.
+    // because an approved follow is what unlocks that account's private posts. The outcome is then reported as
+    // it happened -- a pending request must not come back looking like "not following", or the caller
+    // re-requests forever with no way to withdraw. Repeat clicks reuse the one pending request.
     await followOrRequest(viewerId, creatorId);
 
-    const isFollowing = await storage.isFollowing(viewerId, creatorId);
-    const creatorProfile = await db
-      .select({ followersCount: users.followersCount })
-      .from(users)
-      .where(eq(users.id, creatorId))
-      .limit(1);
-
-    return res.json({ ok: true, isFollowing, followerCount: Number(creatorProfile[0]?.followersCount ?? 0) });
-  } catch (error) {
-    console.error("Error following drink creator:", error);
-    return res.status(500).json({ ok: false, error: "Failed to follow creator" });
+    return res.json(await creatorFollowState(viewerId, creatorId));
+  } catch (error: any) {
+    return respondToFollowError(res, error, "Failed to follow creator", "Error following drink creator:");
   }
 });
 
 r.delete("/creators/:userId/follow", requireAuth, async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({ ok: false, error: "Database unavailable" });
-    }
-
     const creatorId = String(req.params?.userId ?? "").trim();
     const viewerId = req.user.id;
 
     if (!creatorId) return res.status(400).json({ ok: false, error: "userId is required" });
     if (creatorId === viewerId) return res.status(400).json({ ok: false, error: "Invalid creator" });
 
-    await storage.unfollowUser(viewerId, creatorId);
+    // Drops an established follow OR withdraws a pending request, whichever exists -- both scoped to the
+    // authenticated caller, so this can only ever undo the caller's own relationship with the creator.
+    await unfollowOrCancelRequest(viewerId, creatorId);
 
-    const isFollowing = await storage.isFollowing(viewerId, creatorId);
-    const creatorProfile = await db
-      .select({ followersCount: users.followersCount })
-      .from(users)
-      .where(eq(users.id, creatorId))
-      .limit(1);
-
-    return res.json({ ok: true, isFollowing, followerCount: Number(creatorProfile[0]?.followersCount ?? 0) });
-  } catch (error) {
-    console.error("Error unfollowing drink creator:", error);
-    return res.status(500).json({ ok: false, error: "Failed to unfollow creator" });
+    return res.json(await creatorFollowState(viewerId, creatorId));
+  } catch (error: any) {
+    return respondToFollowError(res, error, "Failed to unfollow creator", "Error unfollowing drink creator:");
   }
 });
 
 r.get("/creators/:userId/follow-status", requireAuth, async (req, res) => {
   try {
-    if (!db) {
-      return res.status(503).json({ ok: false, error: "Database unavailable" });
-    }
-
     const creatorId = String(req.params?.userId ?? "").trim();
     const viewerId = req.user.id;
 
     if (!creatorId) return res.status(400).json({ ok: false, error: "userId is required" });
 
-    const isFollowing = creatorId === viewerId ? false : await storage.isFollowing(viewerId, creatorId);
-    const creatorProfile = await db
-      .select({ followersCount: users.followersCount })
-      .from(users)
-      .where(eq(users.id, creatorId))
-      .limit(1);
-
-    return res.json({ ok: true, isFollowing, followerCount: Number(creatorProfile[0]?.followersCount ?? 0) });
-  } catch (error) {
-    console.error("Error checking drink creator follow status:", error);
-    return res.status(500).json({ ok: false, error: "Failed to fetch follow status" });
+    // Read back through the same derivation the mutations answer with, so a pending request survives a reload
+    // rather than living only in client state.
+    return res.json(await creatorFollowState(viewerId, creatorId));
+  } catch (error: any) {
+    return respondToFollowError(res, error, "Failed to fetch follow status", "Error checking drink creator follow status:");
   }
 });
+
+/**
+ * The drinks creator surface's follow payload: the shared three-state relationship (none / requested /
+ * following) plus the follower count the creator cards render. `isRequested` is what keeps a pending request
+ * on a private creator visible and cancellable instead of looking like "not following".
+ */
+async function creatorFollowState(viewerId: string, creatorId: string) {
+  const relationship = await followRelationship(viewerId, creatorId);
+  const creator = await storage.getUser(creatorId);
+
+  return {
+    ok: true,
+    isPrivate: relationship.isPrivate,
+    isFollowing: relationship.isFollowing,
+    isRequested: relationship.isRequested,
+    requestId: relationship.requestId,
+    followerCount: Number(creator?.followersCount ?? 0),
+  };
+}
+
+function respondToFollowError(res: Response, error: any, message: string, logPrefix: string) {
+  if (error?.status === 404) return res.status(404).json({ ok: false, error: "Creator not found" });
+  if (error?.status === 503) return res.status(503).json({ ok: false, error: "Database unavailable" });
+  console.error(logPrefix, error);
+  return res.status(500).json({ ok: false, error: message });
+}
 
 
 r.get("/creators/:userId", async (req, res) => {
