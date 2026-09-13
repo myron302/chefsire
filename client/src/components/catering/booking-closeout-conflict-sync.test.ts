@@ -11,6 +11,7 @@ import {
   markCateringCloseoutEditorConflict,
   mayReloadCateringCloseoutEditor,
   maySubmitCateringCloseoutEditor,
+  cateringCloseoutRevision,
   observeCateringCloseoutTransition,
   settleCateringCloseoutEditor,
   type CateringCloseoutTransitionRecord,
@@ -108,12 +109,18 @@ test("a conflicted editor on a closed-out or foreign booking is still inert", ()
  * Closeout -> activity synchronization
  * ----------------------------------------------------------------------------------------------------------- */
 
+const CLOSED_AT = "2026-09-06T18:00:00.000Z";
+/** The shared lifecycle revision of a record in one of the two plain states these sequences describe. */
+const revisionOf = (closedOut: boolean): string => cateringCloseoutRevision({
+  closedOut, closedOutAt: closedOut ? CLOSED_AT : null, reopenCount: 0, lastReopenedAt: null,
+});
+
 /** Runs a sequence of observations, returning how many transitions were reported. */
 function observe(sequence: readonly { identity: string; closedOut: boolean }[]): { transitions: number; record: CateringCloseoutTransitionRecord } {
   let record: CateringCloseoutTransitionRecord = null;
   let transitions = 0;
   for (const step of sequence) {
-    const observed = observeCateringCloseoutTransition(record, step.identity, step.closedOut);
+    const observed = observeCateringCloseoutTransition(record, step.identity, revisionOf(step.closedOut));
     record = observed.record;
     if (observed.transitioned) transitions += 1;
   }
@@ -155,18 +162,18 @@ test("a first observation is never a transition, even when it already reads clos
 });
 
 test("an unchanged observation returns the previous record by reference, so nothing churns", () => {
-  const first = observeCateringCloseoutTransition(null, IDENTITY, true);
-  const second = observeCateringCloseoutTransition(first.record, IDENTITY, true);
+  const first = observeCateringCloseoutTransition(null, IDENTITY, revisionOf(true));
+  const second = observeCateringCloseoutTransition(first.record, IDENTITY, revisionOf(true));
   assert.equal(second.record, first.record);
   assert.equal(second.transitioned, false);
 });
 
 test("booking A's state cannot trigger an invalidation for booking B", () => {
   // Navigating A -> B records B and reports nothing, even though the flag differs between them.
-  const afterA = observeCateringCloseoutTransition(null, IDENTITY, false);
-  const onB = observeCateringCloseoutTransition(afterA.record, OTHER, true);
+  const afterA = observeCateringCloseoutTransition(null, IDENTITY, revisionOf(false));
+  const onB = observeCateringCloseoutTransition(afterA.record, OTHER, revisionOf(true));
   assert.equal(onB.transitioned, false, "a different booking is never a transition");
-  assert.deepEqual(onB.record, { identity: OTHER, closedOut: true });
+  assert.deepEqual(onB.record, { identity: OTHER, revision: revisionOf(true) });
 });
 
 test("navigating back to A starts its tracking fresh rather than replaying an old transition", () => {
@@ -195,26 +202,26 @@ const component = fs.readFileSync(path.join(here, "BookingCloseout.tsx"), "utf8"
 
 test("the detector runs from a ref, so observing costs no render and cannot feed itself", () => {
   assert.ok(component.includes("const transitionRef = useRef<CateringCloseoutTransitionRecord>(null);"));
-  assert.ok(component.includes("const observed = observeCateringCloseoutTransition(transitionRef.current, identity, observedClosedOut);"));
+  assert.ok(component.includes("const observed = observeCateringCloseoutTransition(transitionRef.current, identity, observedRevision);"));
   assert.ok(component.includes("transitionRef.current = observed.record;"));
   // Recorded BEFORE the invalidation, so the next poll reporting the same state is inert.
-  const effect = component.slice(component.indexOf("const observedClosedOut = closeout?.closeout.closedOut;"), component.indexOf("}, [identity, observedClosedOut]);"));
+  const effect = component.slice(component.indexOf("const observedRevision = closeout ?"), component.indexOf("}, [identity, observedRevision]);"));
   assert.ok(effect.indexOf("transitionRef.current = observed.record;") < effect.indexOf("if (observed.reconcile)"));
 });
 
 test("only the workspace query is invalidated, and only for the booking just observed", () => {
-  const effect = component.slice(component.indexOf("const observedClosedOut = closeout?.closeout.closedOut;"), component.indexOf("}, [identity, observedClosedOut]);"));
+  const effect = component.slice(component.indexOf("const observedRevision = closeout ?"), component.indexOf("}, [identity, observedRevision]);"));
   assert.ok(effect.includes('if (observed.reconcile) cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] });'));
   // It must not invalidate the closeout query itself, which would be the loop.
   assert.equal(effect.includes("cateringBookingCloseoutKey"), false);
 });
 
 test("a local completion or reopening records its own result, so it does not double-invalidate", () => {
-  assert.ok(component.includes('const settledClosedOut = (value.closeout as { closedOut?: boolean } | undefined)?.closedOut;'));
-  assert.ok(component.includes("transitionRef.current = observeCateringCloseoutTransition(transitionRef.current, started.identity, settledClosedOut).record;"));
+  assert.ok(component.includes("const savedRecord = value.closeout as CateringCloseoutRecordView | undefined;"));
+  assert.ok(component.includes("transitionRef.current = observeCateringCloseoutTransition(transitionRef.current, started.identity, cateringCloseoutRevision(savedRecord)).record;"));
   // Recorded under the ORIGINATING booking, and only once the response is known to belong to the screen.
   const success = component.slice(component.indexOf("onSuccess: async (value, variables) => {"), component.indexOf("onError: async"));
-  assert.ok(success.indexOf("if (!settlesHere(started)) return;") < success.indexOf("settledClosedOut"));
+  assert.ok(success.indexOf("if (!settlesHere(started)) return;") < success.indexOf("cateringCloseoutRevision(savedRecord)"));
 });
 
 test("no transport, no second activity system, and no fabricated events were added", () => {

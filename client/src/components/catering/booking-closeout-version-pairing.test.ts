@@ -209,7 +209,7 @@ test("the previous corrections on this head are untouched", () => {
   assert.ok(component.includes("cateringCloseoutNotesPayload(notesForm.value, notesForm.baseVersion)"), "notes base version");
   assert.ok(component.includes('if (variables.settle === "notes" && isCateringCloseoutConflict(error))'), "error classification");
   assert.ok(component.includes("activeCateringCloseoutNotice(notice, identity)"), "notice identity");
-  assert.ok(component.includes("observeCateringCloseoutTransition(transitionRef.current, identity, observedClosedOut)"), "activity sync");
+  assert.ok(component.includes("observeCateringCloseoutTransition(transitionRef.current, identity, observedRevision)"), "activity sync");
   assert.ok(component.includes("cateringCloseoutChecklistIsEditable(actionable,"), "checklist lock");
   assert.ok(component.includes("await reconciled;"), "awaited reconciliation");
   assert.ok(component.includes("cateringCloseoutCanStillChange(polled.state.data?.bookingStatus)"), "polling predicate");

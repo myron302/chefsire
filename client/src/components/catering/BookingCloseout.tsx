@@ -25,6 +25,7 @@ import {
   type CateringCloseoutItemKey,
   type CateringCloseoutItemState,
   type CateringCloseoutItemView,
+  type CateringCloseoutRecordView,
 } from "@shared/catering-booking-closeout";
 import { cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
 import { formatCateringFileSize } from "@shared/catering-booking-files";
@@ -48,6 +49,7 @@ import {
   cateringCloseoutNotesPayload,
   cateringCloseoutProgress,
   cateringCloseoutResponseCarries,
+  cateringCloseoutRevision,
   cateringCloseoutChecklistFromResponse,
   cateringCloseoutRebasedRecord,
   cateringCloseoutReopenPayload,
@@ -251,8 +253,8 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
     setNotesForm((current) => hydrateCateringCloseoutForm(current, identity, persistedNotes, notesAuthoritativeVersion));
   }, [identity, provider, persistedNotes, notesAuthoritativeVersion, Boolean(closeout)]);
   /**
-   * Refresh the workspace once when this booking's closeout state is FIRST observed, and once more whenever it
-   * actually changes afterwards.
+   * Refresh the workspace once when this booking's closeout state is FIRST observed, and once more whenever its
+   * shared lifecycle revision actually changes afterwards.
    *
    * Closing out and reopening each write a shared activity row in the same transaction as the state change, but the
    * Activity panel lives in the parent workspace query, which does not poll -- and the provider's invalidation
@@ -265,20 +267,30 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
    * So the first authoritative observation of a booking reconciles once, whatever it says, and genuine transitions
    * reconcile once each after that.
    *
+   * And a TRANSITION is a change of revision, not of one boolean. A provider who reopens and closes again between
+   * two fifteen-second polls leaves `closedOut` exactly as the customer last saw it while writing two shared
+   * activity rows, so comparing the boolean reported nothing and the feed stayed short of them indefinitely.
+   * `cateringCloseoutRevision` carries `reopenCount` and both lifecycle instants alongside it, which no such
+   * sequence can leave unchanged. Several cycles between polls still cost ONE refresh: the workspace refetch
+   * returns every new row at once, so there is nothing to gain from synthesizing an invalidation per missed event.
+   *
    * It cannot loop: invalidating the WORKSPACE query changes nothing this effect reads, and the observation is
    * recorded before the invalidation, so every later poll reporting the same state is inert -- the bound is one
    * refresh per booking plus one per real transition. A local completion or reopening records the state from its
    * own response, having already invalidated the workspace itself, so it never produces a second refresh on top of
    * the one it issued.
    */
-  const observedClosedOut = closeout?.closeout.closedOut;
+  // A STRING, so it is a stable effect dependency AND the whole comparison in one value: the four shared lifecycle
+  // fields, normalized. A provider notes save moves `updatedAt`, which is deliberately not part of it, so a private
+  // edit neither refreshes a customer's feed nor becomes inferable from one that did.
+  const observedRevision = closeout ? cateringCloseoutRevision(closeout.closeout) : null;
   useEffect(() => {
-    if (typeof observedClosedOut !== "boolean") return;
-    const observed = observeCateringCloseoutTransition(transitionRef.current, identity, observedClosedOut);
+    if (observedRevision === null) return;
+    const observed = observeCateringCloseoutTransition(transitionRef.current, identity, observedRevision);
     transitionRef.current = observed.record;
     // Addressed by the identity that was just observed, so one booking's observation never refreshes another's.
     if (observed.reconcile) cache.invalidateQueries({ queryKey: ["catering", "booking-workspace", userId, bookingId] });
-  }, [identity, observedClosedOut]);
+  }, [identity, observedRevision]);
 
   // An editor open on a booking whose checklist is no longer editable, or that belongs to another booking, closes.
   // That now includes a booking another tab closed out: the poll brings `closedOut`, and the editor drops with it.
@@ -431,6 +443,10 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       // participant has navigated away from cannot advance another booking's versions.
       setVersions((current) => adoptCateringCloseoutVersions(current, started.identity, cateringCloseoutVersionsFromResponse(value)));
       setNotice(null);
+      // The authoritative record this response returned, read once and used by everything below it: the tracker,
+      // the notes settlement and the version rebase all describe the same object.
+      const savedRecord = value.closeout as CateringCloseoutRecordView | undefined;
+      const savedVersion = typeof savedRecord?.updatedAt === "string" ? savedRecord.updatedAt : null;
       // Record the state this response reports, so the refetch it triggers is not then read as an external
       // transition and answered with a SECOND workspace invalidation. A local completion or reopening already
       // invalidated the workspace above; this stops that work being duplicated -- including on the first-observation
@@ -438,16 +454,15 @@ export default function BookingCloseout({ bookingId, userId, role }: { bookingId
       //
       // It runs only past the `settlesHere` guard above, so a response for a booking the participant has navigated
       // away from can neither overwrite the tracker of the booking on screen nor pre-fill one on its behalf.
-      const settledClosedOut = (value.closeout as { closedOut?: boolean } | undefined)?.closedOut;
-      if (typeof settledClosedOut === "boolean") {
-        transitionRef.current = observeCateringCloseoutTransition(transitionRef.current, started.identity, settledClosedOut).record;
+      // The revision this response reports, read from the record it returned -- the same four shared fields, so the
+      // tracker adopts exactly what the next poll will observe.
+      if (savedRecord) {
+        transitionRef.current = observeCateringCloseoutTransition(transitionRef.current, started.identity, cateringCloseoutRevision(savedRecord)).record;
       }
       if (variables.submittedItem) {
         const checklist = (value.checklist as CateringCloseoutItemView[] | undefined) ?? [];
         setEditor((current) => settleCateringCloseoutEditor(current, variables.submittedItem!, checklist.find((item) => item.key === variables.submittedItem!.key)));
       }
-      const savedRecord = value.closeout as { providerNotes?: string | null; updatedAt?: string | null } | undefined;
-      const savedVersion = typeof savedRecord?.updatedAt === "string" ? savedRecord.updatedAt : null;
       if (variables.submittedNotes !== undefined) {
         // This form's own accepted save settles text and version together, keeping any newer words typed while it
         // was in flight.

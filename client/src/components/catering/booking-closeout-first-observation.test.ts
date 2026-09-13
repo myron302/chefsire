@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  cateringCloseoutRevision,
   observeCateringCloseoutTransition,
   type CateringCloseoutTransitionRecord,
 } from "@/pages/services/catering-booking-closeout-state";
@@ -35,13 +36,19 @@ import {
 const A = "user-1:booking-a";
 const B = "user-1:booking-b";
 
+const CLOSED_AT = "2026-09-06T18:00:00.000Z";
+/** The shared lifecycle revision of a record in one of the two plain states these sequences describe. */
+const revisionOf = (closedOut: boolean): string => cateringCloseoutRevision({
+  closedOut, closedOutAt: closedOut ? CLOSED_AT : null, reopenCount: 0, lastReopenedAt: null,
+});
+
 /** The component's effect, exactly: observe, store the record, then refresh the workspace if asked to. */
 function run(observations: ReadonlyArray<{ identity: string; closedOut: boolean }>) {
   let record: CateringCloseoutTransitionRecord = null;
   const refreshed: string[] = [];
   const transitions: string[] = [];
   for (const { identity, closedOut } of observations) {
-    const observed = observeCateringCloseoutTransition(record, identity, closedOut);
+    const observed = observeCateringCloseoutTransition(record, identity, revisionOf(closedOut));
     record = observed.record;
     if (observed.transitioned) transitions.push(identity);
     // Addressed by the identity just observed -- the component keys the invalidation the same way.
@@ -97,7 +104,7 @@ test("the stale-workspace-before-first-closeout race is now closed", () => {
 
   // T3: this customer's closeout query resolves for the first time, already closed.
   let record: CateringCloseoutTransitionRecord = null;
-  const observed = observeCateringCloseoutTransition(record, A, true);
+  const observed = observeCateringCloseoutTransition(record, A, revisionOf(true));
   record = observed.record;
   if (observed.reconcile) refetchWorkspace();
 
@@ -105,7 +112,7 @@ test("the stale-workspace-before-first-closeout race is now closed", () => {
   assert.equal(observed.transitioned, false, "no transition is fabricated to achieve that");
 
   // And the next poll is inert: the refresh happened once, not every fifteen seconds.
-  const again = observeCateringCloseoutTransition(record, A, true);
+  const again = observeCateringCloseoutTransition(record, A, revisionOf(true));
   assert.equal(again.reconcile, false);
   assert.equal(again.record, record, "the previous record is returned by reference");
 });
@@ -115,7 +122,7 @@ test("the counterfactual: treating a first observation as nothing to do left the
   const serverActivity = ["booking_closed_out"];
   let record: CateringCloseoutTransitionRecord = null;
   for (let poll = 0; poll < 10; poll += 1) {
-    const observed = observeCateringCloseoutTransition(record, A, true);
+    const observed = observeCateringCloseoutTransition(record, A, revisionOf(true));
     record = observed.record;
     // The OLD rule, reconciling only on a reported transition.
     if (observed.transitioned) { workspaceActivity.length = 0; workspaceActivity.push(...serverActivity); }
@@ -199,7 +206,7 @@ test("navigating back to A reconciles A once more, which is correct rather than 
 });
 
 test("the record always describes the booking last observed", () => {
-  assert.deepEqual(run([{ identity: A, closedOut: true }, { identity: B, closedOut: false }]).record, { identity: B, closedOut: false });
+  assert.deepEqual(run([{ identity: A, closedOut: true }, { identity: B, closedOut: false }]).record, { identity: B, revision: revisionOf(false) });
 });
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -209,8 +216,8 @@ test("the record always describes the booking last observed", () => {
 const here = path.dirname(fileURLToPath(import.meta.url));
 const component = fs.readFileSync(path.join(here, "BookingCloseout.tsx"), "utf8");
 const effect = component.slice(
-  component.indexOf("const observedClosedOut = closeout?.closeout.closedOut;"),
-  component.indexOf("}, [identity, observedClosedOut]);"),
+  component.indexOf("const observedRevision = closeout ?"),
+  component.indexOf("}, [identity, observedRevision]);"),
 );
 
 test("the refresh targets the workspace query only -- never the query this observation is read from", () => {
@@ -222,8 +229,8 @@ test("the record is stored before the refresh is issued, so a first observation 
   assert.ok(effect.indexOf("transitionRef.current = observed.record;") < effect.indexOf("if (observed.reconcile)"));
 });
 
-test("the effect depends only on the identity and the observed state, so it cannot re-run on its own output", () => {
-  assert.ok(component.includes("}, [identity, observedClosedOut]);"));
+test("the effect depends only on the identity and the observed revision, so it cannot re-run on its own output", () => {
+  assert.ok(component.includes("}, [identity, observedRevision]);"));
   assert.equal(effect.includes("useState"), false, "it writes a ref, which renders nothing");
 });
 
@@ -233,17 +240,17 @@ test("the effect depends only on the identity and the observed state, so it cann
 
 test("a locally accepted complete or reopen records its own result, so the refetch it triggers is inert", () => {
   // The mutation has already invalidated the workspace itself; this is what stops that being duplicated.
-  let record: CateringCloseoutTransitionRecord = observeCateringCloseoutTransition(null, A, false).record;
-  record = observeCateringCloseoutTransition(record, A, true).record;   // the mutation response
-  const afterRefetch = observeCateringCloseoutTransition(record, A, true);
+  let record: CateringCloseoutTransitionRecord = observeCateringCloseoutTransition(null, A, revisionOf(false)).record;
+  record = observeCateringCloseoutTransition(record, A, revisionOf(true)).record;   // the mutation response
+  const afterRefetch = observeCateringCloseoutTransition(record, A, revisionOf(true));
   assert.equal(afterRefetch.reconcile, false, "the payload that follows is an identical, inert observation");
   assert.equal(afterRefetch.transitioned, false);
 });
 
 test("that bookkeeping runs only past the settles-here guard, so it cannot touch another booking's tracker", () => {
   const success = component.slice(component.indexOf("onSuccess: async (value, variables) => {"), component.indexOf("onError: async"));
-  assert.ok(success.indexOf("if (!settlesHere(started)) return;") < success.indexOf("settledClosedOut"));
-  assert.ok(success.includes("transitionRef.current = observeCateringCloseoutTransition(transitionRef.current, started.identity, settledClosedOut).record;"));
+  assert.ok(success.indexOf("if (!settlesHere(started)) return;") < success.indexOf("cateringCloseoutRevision(savedRecord)"));
+  assert.ok(success.includes("transitionRef.current = observeCateringCloseoutTransition(transitionRef.current, started.identity, cateringCloseoutRevision(savedRecord)).record;"));
 });
 
 test("no transport, no second activity system and no fabricated events were added for any of this", () => {

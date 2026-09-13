@@ -467,14 +467,62 @@ export function cateringCloseoutRebasedRecord(
  * the workspace query is refreshed once for it. Nothing new is written, no event is fabricated, no second activity
  * system exists, and no transport is added: the server already recorded the truth, this only re-reads it.
  */
-export type CateringCloseoutTransitionRecord = { identity: string; closedOut: boolean } | null;
+export type CateringCloseoutTransitionRecord = { identity: string; revision: string } | null;
+
+/**
+ * The closeout record's SHARED LIFECYCLE REVISION, as one comparable string.
+ *
+ * A boolean was not the lifecycle. Tracking only `closedOut` meant two observations either side of a complete
+ * cycle looked identical, and the customer was left permanently short of the events in between:
+ *
+ *   poll  closedOut: true, reopenCount: 0 -- the feed has the original `booking_closed_out`
+ *   ...   the provider reopens (a shared `booking_closeout_reopened` is written) and closes again
+ *         (another shared `booking_closed_out` is written), both between two fifteen-second polls
+ *   poll  closedOut: true, reopenCount: 1 -- the same boolean, so nothing was reported and nothing refreshed
+ *
+ * The workspace query does not poll, so those two rows were missing until a focus refetch or a reload.
+ *
+ * FOUR FIELDS, AND EXACTLY THE FOUR THE SERVER ALREADY SHARES. `closedOut`, `closedOutAt`, `reopenCount` and
+ * `lastReopenedAt` are the whole of what `serializeCloseoutRecord` gives a CUSTOMER; `updatedAt` and
+ * `providerNotes` are added only for a provider and are deliberately not read here. That single choice settles
+ * three requirements at once:
+ *
+ *  - SUFFICIENCY. Every shared Phase 2K activity row is written by exactly one of two mutations, in the same
+ *    transaction as the state it describes. Reopening increments `reopenCount`, which only ever rises; completing
+ *    stamps a new `closedOutAt`. So no sequence containing at least one event can leave this tuple unchanged, and
+ *    two events cannot cancel each other out.
+ *  - PRIVACY. A customer's detector reads only fields a customer is already authorized to see. Nothing private is
+ *    consulted, so nothing private becomes inferable from a refresh -- and the same code runs for both roles,
+ *    rather than one rule per role that could drift.
+ *  - NO NEEDLESS REFETCHES. `updatedAt` moves on a provider notes save, which writes no shared activity at all.
+ *    Reading it here would have refreshed a customer's feed for a private edit -- both a leak of the fact one
+ *    happened and a poll of an unrelated query. Checklist edits do not touch this record in the first place.
+ *
+ * Instants are NORMALIZED rather than compared as text, exactly as every other version comparison here does, so an
+ * equivalent spelling of one moment is one revision. An unparseable value is kept verbatim, which is stable and
+ * conservative: it compares equal to itself and to nothing else.
+ */
+export function cateringCloseoutRevision(record: CateringCloseoutRecordView): string {
+  const instant = (value: string | null | undefined) => {
+    if (value == null) return "-";
+    const at = Date.parse(value);
+    return Number.isFinite(at) ? String(at) : value;
+  };
+  return [
+    record.closedOut ? "closed" : "open",
+    instant(record.closedOutAt),
+    Number.isFinite(record.reopenCount) ? String(record.reopenCount) : "?",
+    instant(record.lastReopenedAt),
+  ].join("|");
+}
 
 /**
  * Whether an observation is a genuine transition, whether the workspace must be reconciled, and what to remember.
  *
- * `transitioned` answers the narrow question -- did `closedOut` actually change on this booking -- and stays
- * exactly as conservative as it was: a first observation is not a transition, a different booking is not a
- * transition, and an identical poll is not a transition.
+ * `transitioned` answers the narrow question -- did this booking's shared lifecycle revision actually change -- and
+ * stays exactly as conservative as it was: a first observation is not a transition, a different booking is not a
+ * transition, and an identical poll is not a transition. What counts as a change is now the whole revision rather
+ * than one boolean, so a reopen and a reclose that both happen between two polls are seen, once.
  *
  * `reconcile` answers the question the caller actually has, which is whether the independently cached workspace
  * may be behind. IT IS TRUE ON A FIRST OBSERVATION TOO, and that is the correction: treating "no previous record"
@@ -504,11 +552,11 @@ export type CateringCloseoutTransitionRecord = { identity: string; closedOut: bo
 export function observeCateringCloseoutTransition(
   previous: CateringCloseoutTransitionRecord,
   identity: string,
-  closedOut: boolean,
+  revision: string,
 ): { record: CateringCloseoutTransitionRecord; transitioned: boolean; reconcile: boolean } {
-  if (!previous || previous.identity !== identity) return { record: { identity, closedOut }, transitioned: false, reconcile: true };
-  if (previous.closedOut === closedOut) return { record: previous, transitioned: false, reconcile: false };
-  return { record: { identity, closedOut }, transitioned: true, reconcile: true };
+  if (!previous || previous.identity !== identity) return { record: { identity, revision }, transitioned: false, reconcile: true };
+  if (previous.revision === revision) return { record: previous, transitioned: false, reconcile: false };
+  return { record: { identity, revision }, transitioned: true, reconcile: true };
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *
