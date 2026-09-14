@@ -1,5 +1,5 @@
 // server/app.ts
-import "dotenv/config";
+import "./lib/load-env";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import compression from "compression";

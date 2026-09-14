@@ -8,6 +8,7 @@
  * As in the authorization suite these are real HTTP requests with only `storage` replaced, so anything that
  * reaches the fake database is something the router decided to allow.
  */
+import { TEST_JWT_SECRET } from "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -20,8 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SECRET =
-  (process.env.JWT_SECRET || process.env.SESSION_SECRET || "").trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
+const SECRET = TEST_JWT_SECRET;
 const auth = (userId: string) => ({ authorization: `Bearer ${jwt.sign({ id: userId }, SECRET)}` });
 
 /* ------------------------------------------------------------------ the world */

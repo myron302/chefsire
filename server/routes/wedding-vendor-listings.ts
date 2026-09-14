@@ -11,6 +11,7 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
+import { hasCurrentAdminAuthority } from "../lib/admin-authority";
 
 const router = Router();
 
@@ -80,9 +81,17 @@ const VendorListingSchema = z.object({
   agree: z.boolean(),
 });
 
-function requireAdmin(req: any, res: any, next: any) {
-  const isAdmin = !!req.user?.isAdmin;
-  if (!isAdmin) return res.status(403).json({ ok: false, error: "Admin only" });
+/**
+ * Admin gate for vendor-listing moderation.
+ *
+ * This used to read `req.user.isAdmin` — a field ChefSire never populates from an authoritative
+ * source, so the check was both unreachable and, had the claim ever been attached to the token,
+ * forgeable. It now uses the same current-account check as every other admin route.
+ */
+async function requireAdmin(req: any, res: any, next: any) {
+  if (!(await hasCurrentAdminAuthority(req.user?.id))) {
+    return res.status(403).json({ ok: false, error: "Admin only" });
+  }
   next();
 }
 

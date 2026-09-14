@@ -19,10 +19,7 @@ import {
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
 import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
-
-const RAW_SECRET =
-  process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
-const JWT_SECRET = RAW_SECRET.trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
+import { signAuthToken, verifyAuthToken } from "../lib/jwt-config";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -220,15 +217,11 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
     }
 
     // Create JWT token
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-      },
-      JWT_SECRET,
-      { expiresIn: "7d" } // Token expires in 7 days
-    );
+    const token = signAuthToken({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+    });
 
     // Set token as HTTP-only cookie
     res.cookie("auth_token", token, {
@@ -344,7 +337,7 @@ router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => 
     }
 
     // Verify token
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+    const decoded = verifyAuthToken(token) as { id: string };
     const userId = decoded.id;
 
     const { currentPassword, newPassword } = req.body;
@@ -402,7 +395,7 @@ router.get("/auth/me", async (req, res) => {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; email: string; username: string };
+    const decoded = verifyAuthToken(token) as { id: string; email: string; username: string };
     const user = await storage.getUser(decoded.id);
 
     if (!user) {
@@ -472,15 +465,11 @@ router.get("/auth/google/callback", (req, res, next) => {
       }
 
       // Create JWT token for the user
-      const token = jwt.sign(
-        {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-        },
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
+      const token = signAuthToken({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+      });
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {
@@ -525,15 +514,11 @@ router.get("/auth/facebook/callback",
       }
 
       // Create JWT token for the user
-      const token = jwt.sign(
-        {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-        },
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
+      const token = signAuthToken({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+      });
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {
@@ -576,15 +561,11 @@ router.get("/auth/tiktok/callback",
       }
 
       // Create JWT token for the user
-      const token = jwt.sign(
-        {
-          id: user.id,
-          email: user.email,
-          username: user.username,
-        },
-        JWT_SECRET,
-        { expiresIn: "7d" }
-      );
+      const token = signAuthToken({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+      });
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {

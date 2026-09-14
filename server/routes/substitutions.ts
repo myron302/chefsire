@@ -1,5 +1,5 @@
 // server/routes/substitutions.ts
-import "dotenv/config";
+import "../lib/load-env";
 import { Router, Request, Response } from "express";
 
 import { Pool } from "@neondatabase/serverless";

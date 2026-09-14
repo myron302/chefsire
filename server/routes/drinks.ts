@@ -118,6 +118,7 @@ import {
   sendWishlistPriceDropAlerts,
   sendWishlistPromoAlerts,
 } from "../services/notification-service";
+import { hasCurrentAdminAuthority } from "../lib/admin-authority";
 import { registerCampaignRoutes } from "./drinks/campaign-routes";
 import { registerDashboardRoutes } from "./drinks/dashboard-routes";
 import { registerPlaybookRoutes } from "./drinks/playbook-routes";
@@ -125,14 +126,16 @@ import { registerRolloutRoutes } from "./drinks/rollout-routes";
 
 const r = Router();
 
-function requireAdmin(req: any, res: any, next: any) {
-  const adminEmails = (process.env.INTERNAL_ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-  const requesterEmail = typeof req.user?.email === "string" ? req.user.email.trim().toLowerCase() : "";
-  const isAdmin = requesterEmail.length > 0 && adminEmails.includes(requesterEmail);
-  if (!isAdmin) return res.status(403).json({ ok: false, error: "Admin only" });
+/**
+ * Admin gate for the drinks admin endpoints.
+ *
+ * This used to compare INTERNAL_ADMIN_EMAILS against `req.user.email`, which is a JWT claim.
+ * It now defers to the canonical gate, which resolves authority from the current stored account.
+ */
+async function requireAdmin(req: any, res: any, next: any) {
+  if (!(await hasCurrentAdminAuthority(req.user?.id))) {
+    return res.status(403).json({ ok: false, error: "Admin only" });
+  }
   next();
 }
 
