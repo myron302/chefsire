@@ -9,6 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,13 +22,38 @@ const repoRoot = path.resolve(here, "..", "..");
 const REAL_SECRET = "s0zT1Qv7rKpN4bX9wLmE2hJdY6uAcF8gRtVnZqWs";
 
 /**
+ * An empty working directory for the child processes, created inside the repository (under the
+ * gitignored `.cache/`) so Node still resolves `tsx` and `node_modules` by walking up, while
+ * `<cwd>/.env` — one of the loader's supported sources — is guaranteed absent. Without this a
+ * developer's repository-root `.env` would decide the outcome of these cases.
+ */
+function makeEmptyCwd(prefix: string): string {
+  const cacheDir = path.join(repoRoot, ".cache");
+  fs.mkdirSync(cacheDir, { recursive: true });
+  return fs.mkdtempSync(path.join(cacheDir, prefix));
+}
+
+const emptyCwd = makeEmptyCwd("auth-boot-");
+test.after(() => fs.rmSync(emptyCwd, { recursive: true, force: true }));
+
+/**
  * Boot the gate in a child process with exactly the environment given (plus PATH, so node runs).
  * The parent's JWT_SECRET/SESSION_SECRET/NODE_ENV never leak in, so the cases stay hermetic.
+ *
+ * `DATABASE_URL` is supplied deliberately: it closes the loader's `server/.env` gate, so these
+ * cases cannot be coloured by a developer's real `server/.env`, nor by the temporary one that
+ * `env-load-order.test.ts` writes while the suite runs in parallel. The file sources have their
+ * own tests over there; here the process environment is the whole subject.
  */
 function boot(env: Record<string, string>) {
   const result = spawnSync(process.execPath, ["--import", "tsx", bootModule], {
-    cwd: repoRoot,
-    env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", ...env },
+    cwd: emptyCwd,
+    env: {
+      PATH: process.env.PATH ?? "",
+      HOME: process.env.HOME ?? "",
+      DATABASE_URL: "postgres://chefsire.invalid/db",
+      ...env,
+    },
     encoding: "utf8",
   });
   return {

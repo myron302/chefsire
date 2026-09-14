@@ -11,14 +11,22 @@
  * The secret is resolved through the same helper the server uses, so tests can never drift onto a
  * different value than the middleware they are exercising.
  */
-import { resolveJwtConfig, signAuthToken, type AuthTokenClaims } from "../lib/jwt-config";
+// Load the environment the same way the server boots, before anything resolves configuration:
+// a developer with a JWT_SECRET in `server/.env` must see tests sign with that same secret rather
+// than with a fallback captured before the file was read.
+import "../lib/load-env";
+import { getJwtConfig, signAuthToken, type AuthTokenClaims } from "../lib/jwt-config";
 
 // Every consumer of the JWT configuration resolves it lazily, on first use, so setting this as
 // the first statement of this module's body is enough to classify the whole test run.
 process.env.NODE_ENV = "test";
 
-/** The secret the server will actually sign and verify with during this test run. */
-export const TEST_JWT_SECRET = resolveJwtConfig(process.env).secret;
+/**
+ * The secret the server will actually sign and verify with during this test run. Resolved through
+ * the process-wide `getJwtConfig()` — the very instance the middleware uses — so the test seam
+ * cannot drift onto a different value than the code it exercises.
+ */
+export const TEST_JWT_SECRET = getJwtConfig().secret;
 
 /** Mint a token the way the application does. */
 export function signTestAuthToken(claims: AuthTokenClaims): string {

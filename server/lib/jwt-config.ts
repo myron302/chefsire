@@ -199,9 +199,13 @@ let cachedConfig: JwtConfig | null = null;
 let warnedAboutDevelopmentFallback = false;
 
 /**
- * The process-wide configuration, resolved once. Throws in production when configuration is
- * missing or unsafe; `assertJwtConfigured()` calls this at startup so the failure lands at boot
- * rather than on the first authenticated request.
+ * The process-wide configuration, resolved once — lazily, on first use, and deliberately never at
+ * import time. ChefSire supports supplying `JWT_SECRET` through `server/.env`, which
+ * `server/lib/load-env.ts` reads during boot; a module-load-time read here would capture the
+ * environment before that file had been loaded and could cache a development fallback in place of
+ * a perfectly valid configured secret. The first caller is `assertJwtConfigured()`, which runs
+ * from `server/boot/verify-auth-config.ts` after the loader — so the failure lands at boot rather
+ * than on the first authenticated request, and lands on the real configuration.
  */
 export function getJwtConfig(): JwtConfig {
   if (!cachedConfig) {

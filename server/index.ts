@@ -1,7 +1,11 @@
 // server/index.ts
-import "dotenv/config";
-// Must stay above every other import: validates the JWT signing configuration and exits the
-// process when production is missing a safe secret, before any route or socket is constructed.
+//
+// Startup order below is load-bearing; ES module imports are evaluated top to bottom, so these
+// three lines are the boot sequence:
+//   1. load every supported environment source (process env, <cwd>/.env, server/.env)
+//   2. validate the JWT/auth configuration against what was loaded, exiting if production is unsafe
+//   3. only then construct the app, routes, database runtime and sockets
+import "./lib/load-env";
 import "./boot/verify-auth-config";
 import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
