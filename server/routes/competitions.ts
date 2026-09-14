@@ -1,7 +1,9 @@
 // server/routes/competitions.ts
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 import { db } from "../db";
+import { requireAuth } from "../middleware/index";
+import { ApiError } from "../middleware/error-handler";
 import {
   competitions,
   competitionParticipants,
@@ -15,15 +17,23 @@ const nowUtc = () => new Date();
 const isMissingTable = (e: any) =>
   e && (e.code === "42P01" || /relation .* does not exist/i.test(e?.message || ""));
 
-function requireUserId(req: any): string {
-  const uid =
-    (req.user && req.user.id) || (req.headers["x-user-id"] as string) || "";
-  if (!uid) {
-    const err: any = new Error("Unauthorized: missing user id");
-    err.status = 401;
-    throw err;
+/**
+ * The acting user, and the ONLY source of one in this router.
+ *
+ * Every mutation here runs behind `requireAuth`, so `req.user` carries a verified token claim
+ * rather than anything the caller typed. `x-user-id`, `req.body.userId` and `/:userId` path
+ * segments name a target at most; they are never an identity.
+ *
+ * The guard is belt-and-braces: unreachable behind the middleware, but a route added later that
+ * forgets it fails closed here instead of acting as whoever the request said it was.
+ */
+function actorId(req: Request): string {
+  const id = (req.user as { id?: string } | undefined)?.id;
+  if (typeof id !== "string" || id.length === 0) {
+    // `ApiError` is what the global handler reads a status off; a bare Error would surface as a 500.
+    throw new ApiError(401, "Unauthorized");
   }
-  return uid;
+  return id;
 }
 function clamp1to10(n: any) {
   const x = Number(n);
@@ -61,7 +71,7 @@ async function getCompetitionDetail(competitionId: string) {
       voteTallies: tallies,
       media: [],
     };
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return null;
     }
@@ -75,9 +85,9 @@ router.get("/health", (_req, res) => {
 });
 
 // --- create ---
-router.post("/", async (req, res, next) => {
+router.post("/", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const {
       title = null,
       themeName = null,
@@ -113,7 +123,7 @@ router.post("/", async (req, res, next) => {
       .onConflictDoNothing();
 
     res.json({ id: created.id });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -130,7 +140,7 @@ router.get("/:id", async (req, res, next) => {
     const detail = await getCompetitionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: "Not found" });
     res.json(detail);
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res
         .status(404)
@@ -141,9 +151,9 @@ router.get("/:id", async (req, res, next) => {
 });
 
 // --- start (upcoming -> live) ---
-router.post("/:id/start", async (req, res, next) => {
+router.post("/:id/start", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const compId = req.params.id;
 
     const [comp] = await db
@@ -173,7 +183,7 @@ router.post("/:id/start", async (req, res, next) => {
       .where(eq(competitions.id, compId));
 
     res.json({ ok: true });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -185,9 +195,9 @@ router.post("/:id/start", async (req, res, next) => {
 });
 
 // --- end (live -> judging for 24h) ---
-router.post("/:id/end", async (req, res, next) => {
+router.post("/:id/end", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const compId = req.params.id;
 
     const [comp] = await db
@@ -216,7 +226,7 @@ router.post("/:id/end", async (req, res, next) => {
       .where(eq(competitions.id, compId));
 
     res.json({ ok: true, judgingClosesAt: closeAt.toISOString() });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -228,9 +238,9 @@ router.post("/:id/end", async (req, res, next) => {
 });
 
 // --- competitor submission ---
-router.post("/:id/submit", async (req, res, next) => {
+router.post("/:id/submit", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const compId = req.params.id;
     const { dishTitle, dishDescription, finalDishPhotoUrl } = req.body || {};
 
@@ -271,7 +281,7 @@ router.post("/:id/submit", async (req, res, next) => {
       });
 
     res.json({ ok: true });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -283,9 +293,9 @@ router.post("/:id/submit", async (req, res, next) => {
 });
 
 // --- spectator vote (participants cannot vote) ---
-router.post("/:id/votes", async (req, res, next) => {
+router.post("/:id/votes", requireAuth, async (req, res, next) => {
   try {
-    const voterId = requireUserId(req);
+    const voterId = actorId(req);
     const compId = req.params.id;
     const { participantId, presentation, creativity, technique } = req.body || {};
 
@@ -313,6 +323,25 @@ router.post("/:id/votes", async (req, res, next) => {
       .limit(1);
     if (maybeParticipant) return res.status(403).json({ error: "Participants cannot vote." });
 
+    // `participantId` is a caller-supplied row id, and it is the id `/complete` later writes
+    // placements back onto. Unchecked, a vote cast here could name a participant row belonging to
+    // some other competition and have that competition's scoring overwritten when this one closes.
+    // A vote is only ever for an entrant in the competition being voted on.
+    const [target] = await db
+      .select({ id: competitionParticipants.id })
+      .from(competitionParticipants)
+      .where(
+        and(
+          eq(competitionParticipants.id, String(participantId ?? "")),
+          eq(competitionParticipants.competitionId, compId)
+        )
+      )
+      .limit(1);
+    if (!target)
+      return res
+        .status(400)
+        .json({ error: "participantId is not an entrant in this competition." });
+
     const pv = clamp1to10(presentation);
     const cv = clamp1to10(creativity);
     const tv = clamp1to10(technique);
@@ -337,7 +366,7 @@ router.post("/:id/votes", async (req, res, next) => {
       });
 
     res.json({ ok: true });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -349,9 +378,9 @@ router.post("/:id/votes", async (req, res, next) => {
 });
 
 // --- finalize results (judging -> completed) ---
-router.post("/:id/complete", async (req, res, next) => {
+router.post("/:id/complete", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const compId = req.params.id;
 
     const [comp] = await db
@@ -410,7 +439,7 @@ router.post("/:id/complete", async (req, res, next) => {
 
     const detail = await getCompetitionDetail(compId);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -460,7 +489,7 @@ router.get("/library", async (req, res, next) => {
       .offset(off);
 
     res.json({ items, total, limit: lim, offset: off });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.json({
         items: [],
