@@ -4,17 +4,12 @@ import { Server } from "socket.io";
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "../db";
 import { notifications, users } from "../../shared/schema";
+import { authenticateSocket, socketUserId } from "./socket-auth";
 
 type SocketNotificationInput = Pick<
   typeof notifications.$inferInsert,
   "type" | "title" | "message" | "imageUrl" | "linkUrl" | "metadata" | "priority"
 >;
-
-function userIdFromSocket(socket: any): string | null {
-  return (socket.handshake.auth?.userId ||
-    socket.handshake.headers["x-user-id"] ||
-    null) as string | null;
-}
 
 export function attachNotificationRealtime(httpServer: HttpServer) {
   const io = new Server(httpServer, {
@@ -25,18 +20,17 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
   // Namespace for notifications
   const ns = io.of("/notifications");
 
-  // Simple auth gate
-  ns.use((socket, next) => {
-    const uid = userIdFromSocket(socket);
-    if (!uid) return next(new Error("unauthorized"));
-    (socket as any).userId = uid;
-    next();
-  });
+  // Identity comes from a verified token, never from anything the client asserts about itself.
+  // A connection that fails this never reaches `connection`, so it never joins a room and never
+  // receives an event.
+  ns.use(authenticateSocket);
 
   ns.on("connection", (socket) => {
-    const userId: string = (socket as any).userId;
+    const userId = socketUserId(socket);
 
-    // Join user's personal notification room
+    // Join the authenticated user's OWN notification room, and only that one. There is no event
+    // for choosing a room: the room is a function of who you proved you are. A handshake carrying
+    // someone else's id changes nothing, because no handler reads one.
     socket.join(`user-${userId}`);
 
 
@@ -113,6 +107,10 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
 
   // Helper function to send notification to user (called from other parts of the app)
   return {
+    // Exposed so the security tests can observe live room membership -- the only trustworthy view
+    // of which user's stream a connection actually reached.
+    namespace: ns,
+
     notifyUser: async (userId: string, notification: SocketNotificationInput) => {
       try {
         // Save to database

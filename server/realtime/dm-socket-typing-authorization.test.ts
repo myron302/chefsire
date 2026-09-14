@@ -96,7 +96,7 @@ test("6. EVERY handler that classifies a thread authorizes first -- typing inclu
     const classifyAt = handler.body.indexOf("refuseBookingLinkedThread(socket, threadId)");
     if (classifyAt === -1) continue;
     classifying += 1;
-    const membershipAt = handler.body.indexOf("if (member.length === 0) {");
+    const membershipAt = handler.body.indexOf("await isThreadParticipant(threadId, userId)");
     assert.notEqual(membershipAt, -1, `socket "${handler.event}" classifies without any membership check`);
     assert.equal(membershipAt < classifyAt, true, `socket "${handler.event}" classifies before authorizing`);
   }
@@ -109,7 +109,8 @@ test("6. EVERY handler that classifies a thread authorizes first -- typing inclu
 
 test("the typing handler now looks up membership exactly as the other handlers do", () => {
   const typing = socketHandlers().find((handler) => handler.event === "typing")!;
-  assert.equal(typing.body.includes("eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)"), true);
+  // All four handlers ask the one shared membership check, about the connection's authenticated user.
+  assert.equal(typing.body.includes("await isThreadParticipant(threadId, userId)"), true);
   assert.equal(typing.body.includes(`socket.emit("error", { error: "forbidden" });`), true);
   // The refusal an outsider receives is the same string the other handlers use, not a typing-specific one.
   for (const event of ["join", "send", "read"]) {
@@ -122,15 +123,17 @@ test("the typing handler now looks up membership exactly as the other handlers d
 
 test("the identity a handler authorizes against is the connection's, never the event payload", () => {
   const typing = socketHandlers().find((handler) => handler.event === "typing")!;
-  // `userId` is resolved once per connection; the payload carries only threadId and the typing flag.
-  assert.equal(typing.body.includes("eq(dmParticipants.userId, userId)"), true);
+  // `userId` is resolved once per connection -- now from a VERIFIED token, via `socketUserId(socket)` --
+  // and the payload carries only threadId and the typing flag.
+  assert.equal(typing.body.includes("await isThreadParticipant(threadId, userId)"), true);
+  assert.equal(socketSource.includes("const userId = socketUserId(socket);"), true);
   assert.equal(/\{\s*threadId,\s*typing\s*\}/.test(typing.body), true);
   assert.equal(typing.body.includes("payload.userId"), false);
 });
 
 test("the async error boundary and its bounded error shape are unchanged", () => {
   assert.equal(socketSource.includes(`onAsyncSocketEvent<{ threadId: string; typing: boolean }>(socket, "typing", "typing failed"`), true);
-  const boundary = socketSource.slice(socketSource.indexOf("function onAsyncSocketEvent"), socketSource.indexOf("function userIdFromSocket"));
+  const boundary = socketSource.slice(socketSource.indexOf("function onAsyncSocketEvent"), socketSource.indexOf("export type DmThreadMembershipCheck"));
   assert.equal(boundary.includes(".catch(() =>"), true);
   assert.equal(boundary.includes("error.message"), false);
   // The added database lookup is inside that boundary, so its failure cannot become an unhandled rejection.
