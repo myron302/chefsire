@@ -1,4 +1,5 @@
 import { io, Socket } from "socket.io-client";
+import { isTerminalSocketAuthError } from "@shared/realtime-auth";
 
 /**
  * Socket.IO connections for ChefSire's realtime transports.
@@ -19,67 +20,136 @@ import { io, Socket } from "socket.io-client";
  * `optionalToken` exists for non-browser callers (tests, a native client) that hold a token
  * directly and cannot rely on a cookie jar. Browser code should leave it unset.
  *
- * A socket also does not outlive the token that opened it: the server disconnects it at that
- * token's expiry. Socket.IO's client does NOT auto-reconnect from a server-initiated disconnect,
- * which is exactly the behaviour we want — an expired credential must not drive a reconnect loop.
- * The cached instance is dropped when that happens, so the next `getDmSocket()` /
- * `getNotificationSocket()` call opens a fresh connection and performs a fresh handshake against
- * whatever credential is valid at that moment. Re-establishing one is a deliberate act by the app,
- * never a silent extension of an expired session.
+ * ## Why sockets are cached, and when the cache must let go
+ *
+ * A socket that cannot authenticate is dead for good: Socket.IO will not retry a handshake the
+ * server denied, and it does not become usable later just because the browser has since obtained a
+ * valid cookie. Caching one is caching a corpse — every later caller would be handed the same
+ * permanently disconnected instance instead of a connection that actually authenticates. So the
+ * cache evicts an entry whenever that socket's credential is refused:
+ *
+ *   - at the handshake, as `connect_error` (no token, expired cookie, helper called before login);
+ *   - after connecting, as the server's expiry disconnect.
+ *
+ * Everything else is left alone. An ordinary network or transport failure is Socket.IO's business,
+ * and it will reconnect on its own; treating that as a credential problem would throw away a
+ * perfectly good socket mid-blip.
+ *
+ * Eviction never retries. The failed attempt stays failed, and the NEXT helper call builds a fresh
+ * instance with whatever credential is valid at that moment — so logging in after a rejected
+ * connection works without a page refresh, and a rejected credential is never replayed at the
+ * server in a loop.
  */
 
-let dmSocket: Socket | null = null;
-let notificationSocket: Socket | null = null;
+type SocketOptions = Parameters<typeof io>[1];
 
-function connect(namespace: string, forget: () => void, optionalToken?: string): Socket {
-  const socket = io(namespace, {
-    path: "/socket.io",
-    transports: ["websocket", "polling"],
-    // Sends the httpOnly auth cookie on the handshake — and on every reconnect handshake, so a
-    // reconnection re-authenticates against the credential that is valid *now* rather than
-    // resuming on a previously granted identity.
-    withCredentials: true,
-    ...(optionalToken ? { auth: { token: optionalToken } } : {}),
-  });
+/** How a cache builds its sockets. Injected so the lifecycle can be driven against a real server. */
+export type SocketConnector = (namespace: string, options: SocketOptions) => Socket;
 
-  socket.on("disconnect", (reason: string) => {
-    // "io server disconnect" is what the server sends when the socket's token expires (it also
-    // emits `auth_expired` first). The client will not reconnect on its own after this, so forget
-    // the instance: a later call gets a brand-new socket and a brand-new handshake rather than a
-    // dead one, and nothing here retries with the credential that just expired.
-    if (reason === "io server disconnect") {
+export type SocketCache = {
+  get(namespace: string, optionalToken?: string): Socket;
+  close(namespace: string): void;
+  closeAll(): void;
+  /** The cached instance for a namespace, or null. Lets callers observe eviction. */
+  peek(namespace: string): Socket | null;
+};
+
+/**
+ * A namespace-keyed cache of authenticated sockets.
+ *
+ * This is the whole lifecycle in one place, and it is the real implementation the module-level
+ * helpers below use — not a parallel one written for tests.
+ */
+export function createSocketCache(connector: SocketConnector): SocketCache {
+  const sockets = new Map<string, Socket>();
+
+  /**
+   * Drop `socket` from the cache — but only if it is still the cached one.
+   *
+   * A dying socket's events can arrive after the app has already replaced it. Without this
+   * identity check, a late `connect_error` from a socket nobody holds any more would evict the
+   * live replacement, and the next caller would needlessly reconnect. Compare the instance, not
+   * the namespace.
+   */
+  const evict = (namespace: string, socket: Socket) => {
+    if (sockets.get(namespace) !== socket) return;
+    sockets.delete(namespace);
+  };
+
+  const open = (namespace: string, optionalToken?: string): Socket => {
+    const socket = connector(namespace, {
+      path: "/socket.io",
+      transports: ["websocket", "polling"],
+      // Sends the httpOnly auth cookie on the handshake — and on every reconnect handshake, so a
+      // reconnection re-authenticates against the credential that is valid *now* rather than
+      // resuming on a previously granted identity.
+      withCredentials: true,
+      ...(optionalToken ? { auth: { token: optionalToken } } : {}),
+    });
+
+    socket.on("connect_error", (error: Error) => {
+      // Only a refused credential is terminal. `isTerminalSocketAuthError` reads the server's
+      // shared auth code and Socket.IO's own `active` flag; a transport failure satisfies neither,
+      // keeps its place in the cache, and reconnects by itself.
+      if (!isTerminalSocketAuthError(socket.active, error)) return;
       socket.close();
-      forget();
-    }
-  });
+      evict(namespace, socket);
+    });
 
-  return socket;
+    socket.on("disconnect", (reason: string) => {
+      // "io server disconnect" is what the server sends when the socket's token expires (it emits
+      // `auth_expired` first). Socket.IO will not reconnect on its own after this, so the instance
+      // is forgotten rather than left cached and dead.
+      if (reason !== "io server disconnect") return;
+      socket.close();
+      evict(namespace, socket);
+    });
+
+    return socket;
+  };
+
+  return {
+    get(namespace, optionalToken) {
+      const cached = sockets.get(namespace);
+      if (cached) return cached;
+      const socket = open(namespace, optionalToken);
+      sockets.set(namespace, socket);
+      return socket;
+    },
+    close(namespace) {
+      const socket = sockets.get(namespace);
+      if (!socket) return;
+      sockets.delete(namespace);
+      socket.close();
+    },
+    closeAll() {
+      for (const namespace of Array.from(sockets.keys())) this.close(namespace);
+    },
+    peek(namespace) {
+      return sockets.get(namespace) ?? null;
+    },
+  };
 }
 
+export const DM_NAMESPACE = "/dm";
+export const NOTIFICATION_NAMESPACE = "/notifications";
+
+const cache = createSocketCache((namespace, options) => io(namespace, options));
+
 export function getDmSocket(optionalToken?: string): Socket {
-  if (dmSocket) return dmSocket;
-  dmSocket = connect("/dm", () => { dmSocket = null; }, optionalToken);
-  return dmSocket;
+  return cache.get(DM_NAMESPACE, optionalToken);
 }
 
 export function closeDmSocket() {
-  if (dmSocket) {
-    dmSocket.close();
-    dmSocket = null;
-  }
+  cache.close(DM_NAMESPACE);
 }
 
 export function getNotificationSocket(optionalToken?: string): Socket {
-  if (notificationSocket) return notificationSocket;
-  notificationSocket = connect("/notifications", () => { notificationSocket = null; }, optionalToken);
-  return notificationSocket;
+  return cache.get(NOTIFICATION_NAMESPACE, optionalToken);
 }
 
 export function closeNotificationSocket() {
-  if (notificationSocket) {
-    notificationSocket.close();
-    notificationSocket = null;
-  }
+  cache.close(NOTIFICATION_NAMESPACE);
 }
 
 // Helper to connect all sockets for the signed-in user.
@@ -98,6 +168,5 @@ export function connectAllSockets(optionalToken?: string) {
  * rather than merely disconnects.
  */
 export function closeAllSockets() {
-  closeDmSocket();
-  closeNotificationSocket();
+  cache.closeAll();
 }

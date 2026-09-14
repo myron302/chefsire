@@ -26,6 +26,12 @@
  * namespace added later — inherit the same rule rather than each scheduling their own.
  */
 import type { Socket } from "socket.io";
+import {
+  SOCKET_AUTH_ERROR_CODE,
+  SOCKET_AUTH_ERROR_MESSAGE,
+  SOCKET_AUTH_EXPIRED_CODE,
+  SOCKET_AUTH_EXPIRED_EVENT,
+} from "../../shared/realtime-auth";
 import { verifyAuthToken } from "../lib/jwt-config";
 
 /** The cookie ChefSire's login route sets. It is httpOnly, so the browser sends it, not the app. */
@@ -44,7 +50,7 @@ export interface AuthenticatedSocketData {
 }
 
 /** Emitted once, immediately before an expiry disconnect, so a client can tell why it was closed. */
-export const AUTH_EXPIRED_EVENT = "auth_expired";
+export const AUTH_EXPIRED_EVENT = SOCKET_AUTH_EXPIRED_EVENT;
 
 /** Parse a raw `Cookie:` header. Values are percent-decoded; a malformed value is skipped. */
 export function parseCookieHeader(header: string | undefined): Record<string, string> {
@@ -97,10 +103,15 @@ export function tokenFromHandshake(socket: Socket): string | null {
  * The refusal handed to Socket.IO. Deliberately uniform and contentless: a client learns that it
  * is not authenticated, never whether the token was missing, malformed, expired or signed with the
  * wrong key, and never anything about the token's contents or the signing configuration.
+ *
+ * Socket.IO forwards `error.data` to the client, so the single shared code below reaches
+ * `connect_error` as `err.data.code`. That is how a client tells "my credential was refused" —
+ * terminal for that socket — apart from an ordinary transport hiccup it should keep retrying. One
+ * category for every kind of bad credential: any finer grain would be an oracle.
  */
 function unauthorized(): Error {
-  const error = new Error("unauthorized");
-  (error as Error & { data?: unknown }).data = { code: "unauthorized" };
+  const error = new Error(SOCKET_AUTH_ERROR_MESSAGE);
+  (error as Error & { data?: unknown }).data = { code: SOCKET_AUTH_ERROR_CODE };
   return error;
 }
 
@@ -154,7 +165,7 @@ export function verifiedExpiryMs(claims: { exp?: unknown }): number | null {
 function terminateExpiredSocket(socket: Socket): void {
   clearAuthExpiryTimer(socket);
   try {
-    socket.emit(AUTH_EXPIRED_EVENT, { code: "auth_expired" });
+    socket.emit(AUTH_EXPIRED_EVENT, { code: SOCKET_AUTH_EXPIRED_CODE });
   } catch {
     // A transport already going away is not a problem worth reporting.
   }
