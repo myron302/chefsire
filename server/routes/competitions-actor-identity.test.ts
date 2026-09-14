@@ -88,9 +88,73 @@ test("a ballot may only name an entrant in the competition being voted on", () =
   // `participantId` is caller-supplied and is the id `/complete` later writes placements back onto,
   // so an unchecked one would let a vote steer another competition's scoring.
   const votes = route.slice(route.indexOf('router.post("/:id/votes"'), route.indexOf('router.post("/:id/complete"'));
-  assert.ok(votes.includes("eq(competitionParticipants.id, String(participantId ?? \"\"))"), votes);
-  assert.ok(votes.includes("eq(competitionParticipants.competitionId, compId)"), votes);
+  assert.ok(votes.includes("eq(competitionParticipants.id, body.participantId)"), votes);
+  assert.ok(votes.includes("eq(competitionParticipants.competitionId, comp.id)"), votes);
   assert.ok(votes.includes("is not an entrant in this competition."), votes);
+});
+
+test("the vote route persists the canonical participant row id, never the request value", () => {
+  // The defect this closes: the lookup was done on `String(participantId ?? "")` -- which resolves
+  // `["id"]` and `[["id"]]` to the same real participant -- while the insert stored the ORIGINAL
+  // value, which the driver serialises as `{"id"}` / `{{"id"}}`. Checked value and stored value
+  // have to be the same value, and the only way to guarantee that is to store what came back.
+  const votes = code.slice(code.indexOf('router.post("/:id/votes"'), code.indexOf('router.post("/:id/complete"'));
+  assert.ok(votes.includes("participantId: target.id,"), votes);
+  assert.ok(!votes.includes("String(participantId"), "String() coercion is back");
+  // `body.participantId` appears exactly once -- inside the lookup -- and never again once the
+  // participant has been resolved.
+  assert.equal((votes.match(/body\.participantId/g) ?? []).length, 1);
+  const afterLookup = votes.slice(votes.indexOf("const pv = clamp1to10"));
+  // Downstream of the lookup, `participantId` only ever appears as the column being written or the
+  // canonical value being written into it -- never as anything derived from the request.
+  for (const line of afterLookup.split("\n").filter((l) => l.includes("participantId"))) {
+    assert.ok(
+      line.trim() === "participantId: target.id," || line.trim() === "competitionVotes.participantId,",
+      `request value reused after validation: ${line.trim()}`
+    );
+  }
+});
+
+test("every client-supplied body and query is parsed by a schema before use", () => {
+  // Each mutation that takes a body, and the one read that takes a query, goes through `parsed(...)`
+  // -- so no handler holds an un-narrowed copy of the request to reach for by mistake.
+  for (const call of [
+    "parsed(createCompetitionBody, req.body ?? {}, res)",
+    "parsed(submitCompetitionEntryBody, req.body ?? {}, res)",
+    "parsed(castCompetitionVoteBody, req.body ?? {}, res)",
+    "parsed(competitionLibraryQuery, req.query ?? {}, res)",
+  ]) {
+    assert.ok(route.includes(call), call);
+  }
+  // The old destructure-then-use shapes are gone, including the bounds check that coerced for the
+  // comparison and then stored the raw field.
+  for (const forbidden of [
+    "} = req.body || {}",
+    "req.query as Record<string, string>",
+    "if (timeLimitMinutes < 15",
+    "isPrivate: !!isPrivate",
+    "dishTitle ?? null",
+  ]) {
+    assert.ok(!route.includes(forbidden), forbidden);
+  }
+});
+
+test("a mutation addresses its competition by the row it loaded, not the path segment", () => {
+  // `req.params.id` is what FINDS the competition; everything downstream of that lookup -- updates,
+  // inserts, the vote scoping, the detail re-read -- uses `comp.id` from the row itself.
+  const uses = code.split("\n").filter((line) => line.includes("compId"));
+  for (const line of uses) {
+    assert.ok(
+      /const compId = req\.params\.id;$/.test(line.trim()) ||
+        /^\.where\(eq\(competitions\.id, compId\)\)$/.test(line.trim()),
+      `compId used somewhere other than the lookup it feeds: ${line.trim()}`
+    );
+  }
+  // Five mutations load a competition by path segment; each then works from `comp.id`.
+  assert.equal(uses.filter((l) => l.includes("req.params.id")).length, 5);
+  assert.equal(uses.filter((l) => l.includes("eq(competitions.id, compId)")).length, 5);
+  assert.ok(code.includes("eq(competitionVotes.competitionId, comp.id)"), code);
+  assert.ok(code.includes("getCompetitionDetail(comp.id)"), code);
 });
 
 test("every handler binds the error it reports on", () => {
