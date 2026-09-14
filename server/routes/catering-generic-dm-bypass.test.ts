@@ -164,7 +164,9 @@ test("a socket join cannot put a caller inside a booking thread room", () => {
 });
 
 test("each socket guard runs after its own membership check, so a stranger learns nothing", () => {
-  const membership = `if (member.length === 0) {`;
+  // The membership check is now the one shared `isThreadParticipant` call, asked about the socket's
+  // AUTHENTICATED user rather than a client-supplied id -- same rule, same position, proven identity.
+  const membership = `await isThreadParticipant(threadId, userId)`;
   // `typing` is in this list now. It used to classify before authorizing, which handed an outsider a
   // booking-specific refusal for a booking thread and silence for an ordinary one -- an oracle for exactly the
   // classification the uniform refusal exists to hide.

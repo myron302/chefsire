@@ -105,7 +105,7 @@ test("the guard catches its own lookup failure rather than relying on each calle
 
 test("the typing listener is registered behind an async error boundary", () => {
   assert.equal(socketSource.includes(`onAsyncSocketEvent<{ threadId: string; typing: boolean }>(socket, "typing", "typing failed"`), true);
-  const boundary = socketSource.slice(socketSource.indexOf("function onAsyncSocketEvent"), socketSource.indexOf("function userIdFromSocket"));
+  const boundary = socketSource.slice(socketSource.indexOf("function onAsyncSocketEvent"), socketSource.indexOf("export type DmThreadMembershipCheck"));
   // The returned promise is consumed and its rejection converted into the same bounded error event shape.
   assert.equal(boundary.includes(".catch(() =>"), true);
   assert.equal(boundary.includes(`socket.emit("error", { error: failure })`), true);

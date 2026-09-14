@@ -10,6 +10,7 @@ import {
 import { users, notifications } from "../../shared/schema";
 import { CATERING_BOOKING_THREAD_CODE, CATERING_BOOKING_THREAD_MESSAGE } from "../../shared/catering-booking-communication";
 import { bookingLinkedThread } from "../services/catering-booking-conversation";
+import { authenticateSocket, socketUserId } from "./socket-auth";
 
 /**
  * A DM thread that belongs to a catering booking is owned by the Phase 2I booking API and is closed to the generic
@@ -59,13 +60,32 @@ function onAsyncSocketEvent<T>(socket: any, event: string, failure: string, hand
   });
 }
 
-function userIdFromSocket(socket: any): string | null {
-  return (socket.handshake.auth?.userId ||
-    socket.handshake.headers["x-user-id"] ||
-    null) as string | null;
-}
+/**
+ * Is this user currently a participant of this thread, according to the database?
+ *
+ * Every handler below asks this before doing anything, and always about the AUTHENTICATED user --
+ * never about a user named in the event payload. It is a named dependency so the authorization
+ * rule can be exercised directly in tests rather than only through a live database.
+ */
+export type DmThreadMembershipCheck = (threadId: string, userId: string) => Promise<boolean>;
 
-export function attachDmRealtime(httpServer: HttpServer) {
+const isThreadParticipantInDatabase: DmThreadMembershipCheck = async (threadId, userId) => {
+  const member = await db
+    .select()
+    .from(dmParticipants)
+    .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
+    .limit(1);
+  return member.length > 0;
+};
+
+export type DmRealtimeOptions = {
+  /** Overridden only by tests; production always uses the `dm_participants` query above. */
+  isThreadParticipant?: DmThreadMembershipCheck;
+};
+
+export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOptions = {}) {
+  const isThreadParticipant = options.isThreadParticipant ?? isThreadParticipantInDatabase;
+
   const io = new Server(httpServer, {
     path: "/socket.io",
     cors: { origin: true, credentials: true },
@@ -74,27 +94,20 @@ export function attachDmRealtime(httpServer: HttpServer) {
   // Namespace for DMs
   const ns = io.of("/dm");
 
-  // Simple auth gate
-  ns.use((socket, next) => {
-    const uid = userIdFromSocket(socket);
-    if (!uid) return next(new Error("unauthorized"));
-    (socket as any).userId = uid;
-    next();
-  });
+  // Identity comes from a verified token, never from anything the client asserts about itself.
+  // An unauthenticated connection is refused here, so it never joins a thread room and never
+  // receives a message, a typing indicator or a read receipt.
+  ns.use(authenticateSocket);
 
   ns.on("connection", (socket) => {
-    const userId: string = (socket as any).userId;
+    // The one identity every handler below acts on. It is read once, from server-side socket
+    // state, so no handler can be tricked into taking an actor from a payload or a handshake.
+    const userId = socketUserId(socket);
 
     // Join a thread room (only if member)
     socket.on("join", async ({ threadId }: { threadId: string }) => {
       try {
-        const member = await db
-          .select()
-          .from(dmParticipants)
-          .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
-          .limit(1);
-
-        if (member.length === 0) {
+        if (!(await isThreadParticipant(threadId, userId))) {
           socket.emit("error", { error: "forbidden" });
           return;
         }
@@ -127,13 +140,7 @@ export function attachDmRealtime(httpServer: HttpServer) {
       // response told them which threads belong to catering bookings. Authorizing first collapses both cases to the
       // same uniform "forbidden", and it also stops a non-participant broadcasting a typing indicator into a room
       // they were never in.
-      const member = await db
-        .select()
-        .from(dmParticipants)
-        .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
-        .limit(1);
-
-      if (member.length === 0) {
+      if (!(await isThreadParticipant(threadId, userId))) {
         socket.emit("error", { error: "forbidden" });
         return;
       }
@@ -158,14 +165,9 @@ export function attachDmRealtime(httpServer: HttpServer) {
         attachments?: Array<{ name: string; url: string; type?: string }>;
       }) => {
         try {
-          // Auth: must be participant
-          const member = await db
-            .select()
-            .from(dmParticipants)
-            .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
-            .limit(1);
-
-          if (member.length === 0) {
+          // Auth: the AUTHENTICATED user must be a participant. The payload carries the thread
+          // and the text; it does not get to say who is sending.
+          if (!(await isThreadParticipant(threadId, userId))) {
             socket.emit("error", { error: "forbidden" });
             return;
           }
@@ -231,13 +233,7 @@ export function attachDmRealtime(httpServer: HttpServer) {
       "read",
       async ({ threadId, lastReadMessageId }: { threadId: string; lastReadMessageId?: string }) => {
         try {
-          const member = await db
-            .select()
-            .from(dmParticipants)
-            .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
-            .limit(1);
-
-          if (member.length === 0) {
+          if (!(await isThreadParticipant(threadId, userId))) {
             socket.emit("error", { error: "forbidden" });
             return;
           }
@@ -263,4 +259,9 @@ export function attachDmRealtime(httpServer: HttpServer) {
       // no-op; hook available for presence if you add it later
     });
   });
+
+  // Returned so callers (and the security tests) can observe the live namespace -- room
+  // membership above all, which is the only trustworthy view of what a connection was allowed to
+  // join. Nothing here grants authority; the namespace is already fully guarded.
+  return { namespace: ns };
 }
