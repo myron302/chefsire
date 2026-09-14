@@ -2,99 +2,122 @@ import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
-import { validateRequest, CommonSchemas } from "../middleware/validation";
-import { requireAuth } from "../middleware/auth";
+import { validateRequest } from "../middleware/validation";
+import { optionalAuth, requireAuth } from "../middleware/auth";
 import { persistDataUri } from "../lib/data-uri";
+import { followOrRequest, followRelationship, unfollowOrCancelRequest } from "../lib/social-follow";
+import { serializePublicUser } from "../serializers/public-user";
+import {
+  canViewUserContent,
+  getVisibleCommentContext,
+  getVisiblePost,
+  getVisiblePostWithUser,
+  viewerIdFrom,
+} from "../lib/post-visibility";
 
 const r = Router();
 
 /**
  * Posts - NOTE: All routes are prefixed with /posts by index.ts
  * So /feed here becomes /api/posts/feed
+ *
+ * IDENTITY RULES FOR THIS ROUTER
+ *
+ * - Every mutation runs behind `requireAuth`, and the actor is ALWAYS `req.user!.id`.
+ * - Every read that depends on who is looking runs behind `optionalAuth`, and the viewer is
+ *   ALWAYS `viewerIdFrom(req)` (the authenticated identity, or null).
+ * - Client-supplied ids (`body.userId`, `query.currentUserId`, `/:userId`, `body.followerId`, ...) may name a
+ *   TARGET, never the actor or the viewer. Several legacy endpoints still carry such a segment in their URL so
+ *   existing clients keep working; those segments are ignored for authorization and for what gets persisted.
+ * - Whether a post may be seen at all is decided in one place, `lib/post-visibility.ts`, and applied to the
+ *   lists AND to every direct read of a post, its comments and its likes.
  */
 
-// Feed: userId is OPTIONAL; if missing, fall back to Explore
+/** Legacy actor/viewer fields that clients used to send. Accepted so old clients don't 400; never trusted. */
+const legacyViewerField = z.string().optional();
+
+/**
+ * Posts and comments carry their author. The joined row is the whole `users` record -- password hash, email,
+ * OAuth provider ids and all -- so every one of these responses goes through the repository's existing public
+ * projection first (the same one routes/users.ts serves profiles with).
+ */
+function withPublicAuthor<T extends { user?: any }>(row: T): T {
+  return row?.user ? { ...row, user: serializePublicUser(row.user) } : row;
+}
+
+// Feed: the viewer is the authenticated user; anonymous callers fall back to Explore.
 r.get(
   "/feed",
+  optionalAuth,
   validateRequest(
     z.object({
-      userId: z.string().min(1, "userId is required").optional(),
+      // Ignored: the feed's owner is the authenticated caller, never a query parameter.
+      userId: legacyViewerField,
       offset: z.coerce.number().int().min(0).default(0),
       limit: z.coerce.number().int().min(1).max(100).default(10),
     }),
     "query"
   ),
   asyncHandler(async (req, res) => {
-    const { userId, offset, limit } = req.query as {
-      userId?: string;
-      offset: number;
-      limit: number;
-    };
+    const { offset, limit } = req.query as unknown as { offset: number; limit: number };
+    const viewerId = viewerIdFrom(req);
 
-    if (!userId) {
+    if (!viewerId) {
       const posts = await storage.getExplorePosts(offset, limit, undefined);
-      return res.json(posts);
+      return res.json(posts.map(withPublicAuthor));
     }
 
-    const posts = await storage.getFeedPosts(userId, offset, limit);
-    res.json(posts);
+    const posts = await storage.getFeedPosts(viewerId, offset, limit);
+    res.json(posts.map(withPublicAuthor));
   })
 );
 
 r.get(
   "/explore",
+  optionalAuth,
   validateRequest(
     z.object({
-      userId: z.string().optional(),
+      // Ignored: see /feed.
+      userId: legacyViewerField,
       offset: z.coerce.number().int().min(0).default(0),
       limit: z.coerce.number().int().min(1).max(100).default(10),
     }),
     "query"
   ),
   asyncHandler(async (req, res) => {
-    const { userId, offset, limit } = req.query as {
-      userId?: string;
-      offset: number;
-      limit: number;
-    };
-    const posts = await storage.getExplorePosts(offset, limit, userId);
-    res.json(posts);
+    const { offset, limit } = req.query as unknown as { offset: number; limit: number };
+    const posts = await storage.getExplorePosts(offset, limit, viewerIdFrom(req) ?? undefined);
+    res.json(posts.map(withPublicAuthor));
   })
 );
 
 r.get(
   "/user/:userId",
+  optionalAuth,
   validateRequest(
     z.object({
-      currentUserId: z.string().optional(),
+      // Ignored: a caller cannot nominate itself as the viewer of a private account.
+      currentUserId: legacyViewerField,
       offset: z.coerce.number().int().min(0).default(0),
       limit: z.coerce.number().int().min(1).max(100).default(10),
     }),
     "query"
   ),
   asyncHandler(async (req, res) => {
-    const { currentUserId, offset, limit } = req.query as {
-      currentUserId?: string;
-      offset: number;
-      limit: number;
-    };
+    const { offset, limit } = req.query as unknown as { offset: number; limit: number };
+    const viewerId = viewerIdFrom(req);
+
     // If the profile is private, only the owner or approved followers can view posts
-    const target = await storage.getUser(req.params.userId);
-    if (target?.isPrivate) {
-      const viewerId = currentUserId;
-      const isOwner = viewerId && viewerId === req.params.userId;
-      const canView = isOwner || (viewerId ? await storage.isFollowing(viewerId, req.params.userId) : false);
-      if (!canView) {
-        return res.status(403).json({ message: "This account is private" });
-      }
+    if (!(await canViewUserContent(viewerId, req.params.userId))) {
+      return res.status(403).json({ message: "This account is private" });
     }
 
-    const posts = await storage.getUserPosts(req.params.userId, offset, limit, currentUserId);
-    res.json(posts);
+    const posts = await storage.getUserPosts(req.params.userId, offset, limit, viewerId ?? undefined);
+    res.json(posts.map(withPublicAuthor));
   })
 );
 
-r.post("/", async (req, res) => {
+r.post("/", requireAuth, async (req, res) => {
   try {
     const recipeSchema = z.object({
       title: z.string().min(1, "Recipe title is required"),
@@ -107,7 +130,8 @@ r.post("/", async (req, res) => {
     });
 
     const schema = z.object({
-      userId: z.string(),
+      // Accepted for compatibility with older clients and ignored: the author is the authenticated user.
+      userId: z.string().optional(),
       caption: z.string().optional(),
       imageUrl: z.string().min(1, "Image URL is required"), // Required, allows data URIs
       additionalImages: z.array(z.string().min(1, "Additional image URL is required")).default([]),
@@ -117,6 +141,7 @@ r.post("/", async (req, res) => {
     });
 
     const body = schema.parse(req.body);
+    const authorId = req.user!.id;
 
     // If it's a recipe post, enforce recipe payload
     if (body.isRecipe && !body.recipe) {
@@ -131,7 +156,7 @@ r.post("/", async (req, res) => {
     }
 
     const created = await storage.createPost({
-      userId: body.userId,
+      userId: authorId,
       caption: body.caption,
       imageUrl: body.imageUrl,
       additionalImages: body.additionalImages,
@@ -169,13 +194,16 @@ r.post("/", async (req, res) => {
   }
 });
 
-r.patch("/:id", async (req, res) => {
+r.patch("/:id", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       caption: z.string().optional(),
     });
     const body = schema.parse(req.body);
-    const updated = await storage.updatePost(req.params.id, body);
+
+    // Ownership is the UPDATE predicate: a post that is not the caller's matches nothing, and a post that
+    // does not exist is answered exactly the same way, so a foreign post's existence is not disclosed.
+    const updated = await storage.updatePostAsOwner(req.params.id, req.user!.id, body);
     if (!updated) return res.status(404).json({ message: "Post not found" });
     res.json(updated);
   } catch (err: any) {
@@ -190,43 +218,34 @@ r.delete("/:id", requireAuth, async (req, res) => {
     const postId = req.params.id;
     const userId = req.user!.id; // requireAuth ensures user exists
 
-    // Get the post first to check ownership
-    const post = await storage.getPost(postId);
-
-    if (!post) {
-      return res.status(404).json({ message: "Post not found" });
-    }
-
-    // Check if user owns the post
-    if (post.userId !== userId) {
-      return res.status(403).json({ message: "You can only delete your own posts" });
-    }
-
-    const ok = await storage.deletePost(postId);
+    // Ownership is carried by the delete itself (`id = ? AND user_id = actor`), so there is no window between
+    // an ownership read and the write, and a post belonging to someone else is indistinguishable from a
+    // missing one.
+    const ok = await storage.deletePost(postId, userId);
 
     if (!ok) {
-      return res.status(500).json({ message: "Failed to delete post" });
+      return res.status(404).json({ message: "Post not found" });
     }
 
     res.json({ message: "Post deleted", postId });
   } catch (err: any) {
     console.error("DELETE /api/posts/:id - Error:", err);
-    console.error("DELETE /api/posts/:id - Error message:", err.message);
-    console.error("DELETE /api/posts/:id - Error stack:", err.stack);
-    res.status(500).json({
-      message: "Failed to delete post",
-      error: err.message,
-      details: err.toString()
-    });
+    res.status(500).json({ message: "Failed to delete post" });
   }
 });
 
 // Get all likes for a specific post.  This route must come before the generic
 // "/:id" handler otherwise Express will treat "likes" as the id and never
 // reach this handler.
-r.get("/:postId/likes", async (req, res) => {
+r.get("/:postId/likes", optionalAuth, async (req, res) => {
   try {
     const postId = req.params.postId;
+
+    // Who liked a post is part of that post: a private account's engagement does not leak to outsiders.
+    if (!(await getVisiblePost(postId, viewerIdFrom(req)))) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
     const likesList = await storage.getPostLikes(postId);
     const userPromises = likesList.map((like) => storage.getUser(like.userId));
     const usersList = await Promise.all(userPromises);
@@ -243,39 +262,61 @@ r.get("/:postId/likes", async (req, res) => {
 // Get details for a single post
 r.get(
   "/:id",
+  optionalAuth,
   asyncHandler(async (req, res) => {
-    const post = await storage.getPostWithUser(req.params.id);
+    // Knowing a private post's id is not access: an inaccessible post answers as "not found".
+    const post = await getVisiblePostWithUser(req.params.id, viewerIdFrom(req));
     if (!post) throw ErrorFactory.notFound("Post not found");
-    res.json(post);
+    res.json(withPublicAuthor(post));
   })
 );
 
 /**
  * Comments
  */
-r.get("/:postId/comments", async (req, res) => {
+r.get("/:postId/comments", optionalAuth, async (req, res) => {
   try {
+    if (!(await getVisiblePost(req.params.postId, viewerIdFrom(req)))) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
     const comments = await storage.getPostComments(req.params.postId);
-    res.json(comments);
+    res.json(comments.map(withPublicAuthor));
   } catch (err) {
     console.error("comments/list error", err);
     res.status(500).json({ message: "Failed to fetch comments" });
   }
 });
 
-r.post("/comments", async (req, res) => {
+r.post("/comments", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
-      userId: z.string(),
+      // Accepted for compatibility and ignored: the commenter is the authenticated user.
+      userId: z.string().optional(),
       postId: z.string(),
       // If provided, this comment becomes a reply to parentId (supports unlimited nesting)
       parentId: z.string().min(1).nullable().optional(),
       text: z.string().min(1),
     });
     const body = schema.parse(req.body);
+    const authorId = req.user!.id;
+
+    // You can only comment on a post you are allowed to see.
+    if (!(await getVisiblePost(body.postId, authorId))) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    if (body.parentId) {
+      // A reply's parent has to exist and belong to the same post -- no cross-post reply threads.
+      const parent = await storage.getComment(body.parentId);
+      if (!parent || parent.postId !== body.postId) {
+        return res.status(400).json({ message: "Parent comment does not belong to this post" });
+      }
+    }
+
     // Map 'text' to 'content' for database
     const created = await storage.createComment({
-      userId: body.userId,
+      userId: authorId,
       postId: body.postId,
       parentId: body.parentId ?? null,
       content: body.text,
@@ -284,14 +325,18 @@ r.post("/comments", async (req, res) => {
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid comment", errors: err.issues });
     console.error("comments/create error:", err);
-    console.error("Error stack:", err.stack);
-    res.status(500).json({ message: "Failed to create comment", error: err.message });
+    res.status(500).json({ message: "Failed to create comment" });
   }
 });
 
-r.delete("/comments/:id", async (req, res) => {
+/**
+ * Delete a comment. ChefSire's rule, matching the other comment surfaces in this codebase (see
+ * routes/meal-social.ts), is author-only: the delete is scoped to the comment's own author. There is no
+ * post-owner or moderator deletion anywhere in the product today, so none is introduced here.
+ */
+r.delete("/comments/:id", requireAuth, async (req, res) => {
   try {
-    const ok = await storage.deleteComment(req.params.id);
+    const ok = await storage.deleteCommentAsAuthor(req.params.id, req.user!.id);
     if (!ok) return res.status(404).json({ message: "Comment not found" });
     res.json({ message: "Comment deleted" });
   } catch (err) {
@@ -303,11 +348,21 @@ r.delete("/comments/:id", async (req, res) => {
 /**
  * Likes
  */
-r.post("/likes", async (req, res) => {
+r.post("/likes", requireAuth, async (req, res) => {
   try {
-    const schema = z.object({ userId: z.string(), postId: z.string() });
+    const schema = z.object({
+      // Accepted for compatibility and ignored: the liker is the authenticated user.
+      userId: z.string().optional(),
+      postId: z.string(),
+    });
     const body = schema.parse(req.body);
-    const like = await storage.likePost(body.userId, body.postId);
+    const actorId = req.user!.id;
+
+    if (!(await getVisiblePost(body.postId, actorId))) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    const like = await storage.likePost(actorId, body.postId);
     res.status(201).json(like);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid like data", errors: err.issues });
@@ -316,9 +371,11 @@ r.post("/likes", async (req, res) => {
   }
 });
 
-r.delete("/likes/:userId/:postId", async (req, res) => {
+// `/likes/:postId` is the canonical shape. `/likes/:userId/:postId` is kept so existing clients keep working;
+// its `:userId` segment is ignored -- the like removed is always the authenticated caller's own.
+r.delete(["/likes/:postId", "/likes/:userId/:postId"], requireAuth, async (req, res) => {
   try {
-    const ok = await storage.unlikePost(req.params.userId, req.params.postId);
+    const ok = await storage.unlikePost(req.user!.id, req.params.postId);
     if (!ok) return res.status(404).json({ message: "Like not found" });
     res.json({ message: "Post unliked" });
   } catch (err) {
@@ -327,9 +384,17 @@ r.delete("/likes/:userId/:postId", async (req, res) => {
   }
 });
 
-r.get("/likes/:userId/:postId", async (req, res) => {
+// Like status is "did *I* like this": the viewer is the authenticated caller, never the legacy `:userId`
+// segment, which is ignored.
+r.get(["/likes/:postId", "/likes/:userId/:postId"], optionalAuth, async (req, res) => {
   try {
-    const isLiked = await storage.isPostLiked(req.params.userId, req.params.postId);
+    const viewerId = viewerIdFrom(req);
+    if (!(await getVisiblePost(req.params.postId, viewerId))) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+    if (!viewerId) return res.json({ isLiked: false });
+
+    const isLiked = await storage.isPostLiked(viewerId, req.params.postId);
     res.json({ isLiked });
   } catch (err) {
     console.error("likes/check error", err);
@@ -337,17 +402,25 @@ r.get("/likes/:userId/:postId", async (req, res) => {
   }
 });
 
-// Get all likes for a post.  Returns an array of users (id and displayName) who have liked this post.
-
 /**
  * Comment Likes endpoints
  */
 // Like a comment
-r.post("/comments/likes", async (req, res) => {
+r.post("/comments/likes", requireAuth, async (req, res) => {
   try {
-    const schema = z.object({ userId: z.string(), commentId: z.string() });
+    const schema = z.object({
+      // Accepted for compatibility and ignored: the liker is the authenticated user.
+      userId: z.string().optional(),
+      commentId: z.string(),
+    });
     const body = schema.parse(req.body);
-    const like = await storage.likeComment(body.userId, body.commentId);
+    const actorId = req.user!.id;
+
+    if (!(await getVisibleCommentContext(body.commentId, actorId))) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    const like = await storage.likeComment(actorId, body.commentId);
     res.status(201).json(like);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid like data", errors: err.issues });
@@ -356,10 +429,10 @@ r.post("/comments/likes", async (req, res) => {
   }
 });
 
-// Unlike a comment
-r.delete("/comments/likes/:userId/:commentId", async (req, res) => {
+// Unlike a comment -- the legacy `:userId` segment is ignored; the like removed is the caller's own.
+r.delete(["/comments/likes/:commentId", "/comments/likes/:userId/:commentId"], requireAuth, async (req, res) => {
   try {
-    const ok = await storage.unlikeComment(req.params.userId, req.params.commentId);
+    const ok = await storage.unlikeComment(req.user!.id, req.params.commentId);
     if (!ok) return res.status(404).json({ message: "Like not found" });
     res.json({ message: "Comment unliked" });
   } catch (err) {
@@ -368,10 +441,16 @@ r.delete("/comments/likes/:userId/:commentId", async (req, res) => {
   }
 });
 
-// Check if a comment is liked by a user
-r.get("/comments/likes/:userId/:commentId", async (req, res) => {
+// Check if a comment is liked -- by the authenticated viewer, never by the legacy `:userId` segment.
+r.get(["/comments/likes/:commentId", "/comments/likes/:userId/:commentId"], optionalAuth, async (req, res) => {
   try {
-    const isLiked = await storage.isCommentLiked(req.params.userId, req.params.commentId);
+    const viewerId = viewerIdFrom(req);
+    if (!(await getVisibleCommentContext(req.params.commentId, viewerId))) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+    if (!viewerId) return res.json({ isLiked: false });
+
+    const isLiked = await storage.isCommentLiked(viewerId, req.params.commentId);
     res.json({ isLiked });
   } catch (err) {
     console.error("comments/likes/check error", err);
@@ -380,9 +459,14 @@ r.get("/comments/likes/:userId/:commentId", async (req, res) => {
 });
 
 // List all likes on a comment
-r.get("/comments/:commentId/likes", async (req, res) => {
+r.get("/comments/:commentId/likes", optionalAuth, async (req, res) => {
   try {
     const commentId = req.params.commentId;
+
+    if (!(await getVisibleCommentContext(commentId, viewerIdFrom(req)))) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
     const likesList = await storage.getCommentLikes(commentId);
     const userPromises = likesList.map((like) => storage.getUser(like.userId));
     const usersList = await Promise.all(userPromises);
@@ -398,36 +482,59 @@ r.get("/comments/:commentId/likes", async (req, res) => {
 
 /**
  * Follows
+ *
+ * The follower is the authenticated caller. `followerId` in the body and `:followerId` in the path are legacy
+ * shape and are ignored -- a caller can pick who to follow, never who is doing the following.
  */
-r.post("/follows", async (req, res) => {
+r.post("/follows", requireAuth, async (req, res) => {
   try {
-    const schema = z.object({ followerId: z.string(), followingId: z.string() });
+    const schema = z.object({
+      // Accepted for compatibility and ignored.
+      followerId: z.string().optional(),
+      followingId: z.string(),
+    });
     const body = schema.parse(req.body);
-    const follow = await storage.followUser(body.followerId, body.followingId);
-    res.status(201).json(follow);
+    const followerId = req.user!.id;
+
+    if (body.followingId === followerId) {
+      return res.status(400).json({ message: "You cannot follow yourself" });
+    }
+
+    // Private accounts get a pending follow request instead of an immediate follow.
+    const outcome = await followOrRequest(followerId, body.followingId);
+    res.status(201).json(outcome);
   } catch (err: any) {
     if (err?.issues) return res.status(400).json({ message: "Invalid follow data", errors: err.issues });
+    if (err?.status === 404) return res.status(404).json({ message: "User not found" });
     console.error("follows/create error", err);
     res.status(500).json({ message: "Failed to follow user" });
   }
 });
 
-r.delete("/follows/:followerId/:followingId", async (req, res) => {
+// Drops an established follow or withdraws a pending request -- whichever the caller has. Handling only the
+// former would leave a request against a private account with no way out.
+r.delete("/follows/:followerId/:followingId", requireAuth, async (req, res) => {
   try {
-    const ok = await storage.unfollowUser(req.params.followerId, req.params.followingId);
-    if (!ok) return res.status(404).json({ message: "Follow relationship not found" });
-    res.json({ message: "User unfollowed" });
+    const outcome = await unfollowOrCancelRequest(req.user!.id, req.params.followingId);
+    if (outcome.status === "none") {
+      return res.status(404).json({ message: "Follow relationship not found" });
+    }
+    res.json({ message: outcome.status === "canceled" ? "Follow request canceled" : "User unfollowed", ...outcome });
   } catch (err) {
     console.error("follows/delete error", err);
     res.status(500).json({ message: "Failed to unfollow user" });
   }
 });
 
-r.get("/follows/:followerId/:followingId", async (req, res) => {
+// "Where do I stand with this user?" -- the follower side is the authenticated caller, so this cannot be used
+// to enumerate other people's relationships, and a pending request is reported as pending rather than
+// flattened into `isFollowing: false`.
+r.get("/follows/:followerId/:followingId", requireAuth, async (req, res) => {
   try {
-    const isFollowing = await storage.isFollowing(req.params.followerId, req.params.followingId);
-    res.json({ isFollowing });
-  } catch (err) {
+    const relationship = await followRelationship(req.user!.id, req.params.followingId);
+    res.json({ isFollowing: relationship.isFollowing, isRequested: relationship.isRequested });
+  } catch (err: any) {
+    if (err?.status === 404) return res.status(404).json({ message: "User not found" });
     console.error("follows/check error", err);
     res.status(500).json({ message: "Failed to check follow status" });
   }

@@ -371,8 +371,8 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
     }
 
     const baseTags = [...cleanedTags];
+    // No userId: the server always makes the authenticated session the post's author.
     const payload: any = {
-      userId: user!.id,
       imageUrl,
       tags: baseTags,
       caption: caption,

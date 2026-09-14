@@ -10,6 +10,8 @@ import { db } from "../db";
 import { posts, users } from "@shared/schema";
 import { and, desc, eq, ilike } from "drizzle-orm";
 import { parseContentSourceFilter } from "@shared/content-source";
+import { optionalAuth } from "../middleware/auth";
+import { viewerIdFrom, visiblePostsCondition } from "../lib/post-visibility";
 
 const router = Router();
 
@@ -195,7 +197,7 @@ function loadDrinkRouteSearchEntries(index: DrinkIndexFile | null): DrinkRouteSe
  * Unified autocomplete endpoint that searches across users, recipes, drinks, reviews, and pet food.
  * Returns top results from each category.
  */
-router.get("/autocomplete", async (req, res) => {
+router.get("/autocomplete", optionalAuth, async (req, res) => {
   try {
     const query = typeof req.query.q === "string" ? req.query.q : "";
 
@@ -318,7 +320,14 @@ router.get("/autocomplete", async (req, res) => {
             .select({ post: posts, user: users })
             .from(posts)
             .innerJoin(users, eq(posts.userId, users.id))
-            .where(and(ilike(posts.caption, "%📝 Review:%"), ilike(posts.caption, `%${trimmedQuery}%`)))
+            .where(
+              and(
+                ilike(posts.caption, "%📝 Review:%"),
+                ilike(posts.caption, `%${trimmedQuery}%`),
+                // A private account's review posts are not searchable by people who cannot see them.
+                visiblePostsCondition(viewerIdFrom(req))
+              )
+            )
             .orderBy(desc(posts.createdAt))
             .limit(5)
             .then((rows: any[]) =>

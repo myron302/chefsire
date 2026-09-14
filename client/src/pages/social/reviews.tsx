@@ -214,7 +214,6 @@ export default function ReviewsPage() {
       const params = new URLSearchParams();
       params.set("offset", "0");
       params.set("limit", "100");
-      if (currentUserId) params.set("userId", String(currentUserId));
 
       const res = await fetch(`/api/posts/explore?${params.toString()}`, {
         credentials: "include",

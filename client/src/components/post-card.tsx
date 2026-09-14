@@ -307,8 +307,8 @@ export default function PostCard({
       }
 
       if (shouldLike) {
+        // The server takes the liker from the session; the client never nominates an actor.
         const res = await apiRequest("POST", `/api/posts/likes`, {
-          userId: effectiveUserId,
           postId: post.id,
         });
         if (!res.ok) throw new Error("Failed to like post");
@@ -316,7 +316,7 @@ export default function PostCard({
       } else {
         const res = await apiRequest(
           "DELETE",
-          `/api/posts/likes/${effectiveUserId}/${post.id}`
+          `/api/posts/likes/${post.id}`
         );
         if (!res.ok) throw new Error("Failed to unlike post");
         return res.json();

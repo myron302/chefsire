@@ -79,8 +79,8 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
   // Add comment / reply
   const addCommentMutation = useMutation({
     mutationFn: async (text: string) => {
+      // No userId: the comment's author is the authenticated session.
       const payload = {
-        userId: currentUserId,
         postId,
         parentId: replyTo?.id ?? null,
         text,
@@ -118,7 +118,7 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
       queryKey: ["/api/posts", "comments", "likes", currentUserId, comment.id],
       queryFn: async () => {
         if (!currentUserId) return { isLiked: false };
-        const res = await fetch(`/api/posts/comments/likes/${currentUserId}/${comment.id}`, {
+        const res = await fetch(`/api/posts/comments/likes/${comment.id}`, {
           credentials: "include",
         });
         if (!res.ok) return { isLiked: false };
@@ -141,15 +141,15 @@ export default function CommentsSection({ postId, currentUserId }: CommentsSecti
       mutationFn: async (shouldLike: boolean) => {
         if (!currentUserId) throw new Error("Please log in to like comments");
         if (shouldLike) {
+          // The liker is the authenticated session on the server side.
           const res = await apiRequest("POST", "/api/posts/comments/likes", {
-            userId: currentUserId,
             commentId: comment.id,
           });
           const body = await res.text();
           if (!res.ok) throw new Error(body || "Failed to like comment");
           return body ? JSON.parse(body) : null;
         } else {
-          const res = await apiRequest("DELETE", `/api/posts/comments/likes/${currentUserId}/${comment.id}`);
+          const res = await apiRequest("DELETE", `/api/posts/comments/likes/${comment.id}`);
           const body = await res.text();
           if (!res.ok) throw new Error(body || "Failed to unlike comment");
           return body ? JSON.parse(body) : null;
