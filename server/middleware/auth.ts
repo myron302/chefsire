@@ -1,8 +1,14 @@
 // server/middleware/auth.ts
 import type { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { verifyAuthToken } from "../lib/jwt-config";
+import { hasCurrentAdminAuthority } from "../lib/admin-authority";
 
-/** What we store inside the token */
+/**
+ * What we store inside the token.
+ *
+ * These claims identify the authenticated account; they do not grant authority. Anything that
+ * depends on mutable account state (admin membership above all) is re-read from the database.
+ */
 type JwtPayload = {
   id: string;
   email?: string;
@@ -10,18 +16,6 @@ type JwtPayload = {
   iat?: number;
   exp?: number;
 };
-
-/** Use an env secret if available; otherwise fall back (safe for dev, not for prod) */
-const RAW_SECRET =
-  process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
-const JWT_SECRET = RAW_SECRET.trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
-
-if (!RAW_SECRET) {
-  console.warn(
-    "[auth] JWT_SECRET not set. Using insecure fallback secret (dev-only). " +
-      "Set JWT_SECRET in Plesk → Node.js → Environment Variables."
-  );
-}
 
 /** Attach user to req once verified */
 declare global {
@@ -66,7 +60,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return res.status(401).json({ error: "Unauthorized", code: "NO_TOKEN" });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const decoded = verifyAuthToken(token) as JwtPayload;
     if (!decoded || !decoded.id) {
       return res.status(401).json({ error: "Unauthorized", code: "BAD_TOKEN" });
     }
@@ -130,17 +124,22 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
-/** Admin gate — must run after requireAuth. Checks INTERNAL_ADMIN_EMAILS env var. */
-export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const email = req.user?.email ?? "";
-  const adminEmails = (process.env.INTERNAL_ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
+/**
+ * Admin gate — must run after requireAuth.
+ *
+ * Authority comes from the *current* stored account, never from the token: the verified token
+ * supplies the user id, the database supplies the email that is checked against
+ * INTERNAL_ADMIN_EMAILS. A forged or stale email claim therefore buys nothing, and a token whose
+ * account no longer exists is denied.
+ */
+export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const deny = () => res.status(403).json({ ok: false, error: "Admin only" });
 
-  if (!email || !adminEmails.includes(email.toLowerCase())) {
-    return res.status(403).json({ ok: false, error: "Admin only" });
-  }
+  const userId = req.user?.id;
+  if (!userId) return deny();
+
+  if (!(await hasCurrentAdminAuthority(userId))) return deny();
+
   next();
 }
 
@@ -152,7 +151,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       return next(); // No token, that's fine
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const decoded = verifyAuthToken(token) as JwtPayload;
     if (decoded && decoded.id) {
       req.user = {
         id: String(decoded.id),

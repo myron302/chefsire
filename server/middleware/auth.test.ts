@@ -1,10 +1,9 @@
+import { TEST_JWT_SECRET as secret } from "../test-support/auth-test-env";
 import assert from "node:assert/strict";
 import test from "node:test";
 import jwt from "jsonwebtoken";
 import type { NextFunction, Request, Response } from "express";
 import { optionalAuth } from "./auth";
-
-const secret = (process.env.JWT_SECRET || process.env.SESSION_SECRET || "").trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
 const response = {} as Response;
 const run = async (request: Partial<Request>) => {
   let continued = false;

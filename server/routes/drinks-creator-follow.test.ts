@@ -10,6 +10,7 @@
  * Real HTTP against the real router; only `storage` is faked, with the same semantics as the SQL (including
  * the actor-scoped cancel and the conflict-tolerant request insert).
  */
+import { TEST_JWT_SECRET } from "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -22,8 +23,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const SECRET =
-  (process.env.JWT_SECRET || process.env.SESSION_SECRET || "").trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
+const SECRET = TEST_JWT_SECRET;
 const auth = (userId: string) => ({ authorization: `Bearer ${jwt.sign({ id: userId }, SECRET)}` });
 
 /* ------------------------------------------------------------------ the world */

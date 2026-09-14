@@ -1,5 +1,8 @@
 // server/index.ts
 import "dotenv/config";
+// Must stay above every other import: validates the JWT signing configuration and exits the
+// process when production is missing a safe secret, before any route or socket is constructed.
+import "./boot/verify-auth-config";
 import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
 import { attachNotificationRealtime } from "./realtime/notificationSocket";
