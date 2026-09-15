@@ -1,0 +1,751 @@
+/**
+ * Planner, grocery, family-profile and remix updates, driven as real HTTP requests.
+ *
+ * The defect: three update handlers read the request body as an object and handed it straight to
+ * drizzle's `.set(...)`:
+ *
+ *     const updates = req.body;
+ *     await db.update(groceryListItems).set(updates).where(...)       // PATCH /grocery-list/:id
+ *     await db.update(familyMealProfiles).set(updates).where(...)     // PATCH /family-profiles/:id
+ *     await db.update(recipeRemixes).set(updates).where(...)          // PUT   /remixes/:id
+ *
+ * Drizzle maps every key it is given to that table's column, so the body WAS the update statement.
+ * Naming a column was enough to write it: `userId` handed the row to another account, `id` changed
+ * its identity, `createdAt`/`purchasedAt` rewrote audit timestamps, `originalRecipeId` and
+ * `remixedRecipeId` repointed a remix's lineage, and `likesCount`/`savesCount`/`remixCount` let a
+ * routine edit forge engagement. Ownership was checked -- the `where` was scoped to the caller -- but
+ * a check on WHICH row is reached says nothing about WHICH COLUMNS may be written, which is the whole
+ * of this defect.
+ *
+ * These tests are the allowlist as a client sees it: for each endpoint, a legitimate patch, then one
+ * forged field at a time, then a mixed payload. The rule asserted for a forged field is the strong
+ * one -- 400, and the row byte-identical afterwards -- because a strip-and-continue repair would give
+ * a 200 that looks like the attack worked while the row silently kept its value, and that difference
+ * is exactly what "rejected" has to mean here.
+ *
+ * There is no Postgres; `db` is a double that really applies an update to stored rows and records the
+ * object each `.set(...)` received, so a test can assert both what the caller sees and what would have
+ * reached the database. The double drops `undefined` entries exactly as drizzle's `mapUpdateSet` does,
+ * which is what makes the PATCH-semantics assertions meaningful. Auth is real: tokens are signed with
+ * the repository's own `signAuthToken`, so a request that asserts an identity any other way -- a body
+ * field, a query parameter, an `x-user-id` header -- is treated as the account its token names.
+ */
+import test from "node:test";
+import assert from "node:assert/strict";
+import express from "express";
+import type { AddressInfo } from "node:net";
+import { PgDialect } from "drizzle-orm/pg-core";
+import {
+  groceryListItems,
+  familyMealProfiles,
+  recipeRemixes,
+  recipes,
+  users,
+} from "../../shared/schema";
+import {
+  PLANNER_REMIX_FORBIDDEN_FIELDS,
+  familyMealProfilePatchSchema,
+  groceryListItemPatchSchema,
+  remixPatchSchema,
+  toFamilyMealProfilePatch,
+  toGroceryListItemPatch,
+  toRemixPatch,
+} from "../../shared/planner-remix-mutations";
+import { signAuthToken } from "../lib/jwt-config";
+
+process.env.NODE_ENV = "test";
+process.env.DATABASE_URL ||= "postgres://planner-remix-tests/none";
+
+const { db } = await import("../db");
+
+const OWNER = "owner-user-id";
+const VICTIM = "victim-user-id";
+const ATTACKER = "attacker-user-id";
+
+const GROCERY_ID = "grocery-item-id";
+const PROFILE_ID = "family-profile-id";
+const REMIX_ID = "remix-id";
+
+const CREATED_AT = new Date("2024-01-01T00:00:00.000Z");
+const PURCHASED_AT = new Date("2024-02-02T00:00:00.000Z");
+
+/** The stored grocery row, in its pre-attack state. */
+const groceryRow = () => ({
+  id: GROCERY_ID,
+  userId: OWNER,
+  mealPlanId: "meal-plan-id",
+  listName: "My Grocery List",
+  ingredientName: "Tomatoes",
+  quantity: "3",
+  unit: "lb",
+  location: "Produce",
+  category: "produce",
+  estimatedPrice: "4.00",
+  actualPrice: null,
+  store: "Corner Market",
+  aisle: "1",
+  priority: "normal",
+  isPantryItem: false,
+  purchased: false,
+  purchasedAt: PURCHASED_AT,
+  notes: "ripe ones",
+  isRunningLow: false,
+  createdAt: CREATED_AT,
+});
+
+const profileRow = () => ({
+  id: PROFILE_ID,
+  userId: OWNER,
+  familyMemberId: "family-member-id",
+  name: "Sam",
+  calorieTarget: 2000,
+  macroGoals: { protein: 150, carbs: 200, fat: 65 },
+  preferences: ["spicy"],
+  dislikes: ["olives"],
+  portionMultiplier: "1.00",
+  isActive: true,
+  createdAt: CREATED_AT,
+});
+
+const remixRow = () => ({
+  id: REMIX_ID,
+  originalRecipeId: "original-recipe-id",
+  remixedRecipeId: "remixed-recipe-id",
+  userId: OWNER,
+  remixType: "variation",
+  changes: { notes: "swapped the butter for oil" },
+  likesCount: 7,
+  savesCount: 3,
+  remixCount: 1,
+  isPublic: true,
+  createdAt: CREATED_AT,
+});
+
+// --------------------------------------------------------------------------------------------
+// The database double
+// --------------------------------------------------------------------------------------------
+
+type Store = { table: unknown; rows: any[] };
+
+let stores: Store[] = [];
+/** Every object a route handed to `.set(...)`, with the table it targeted. */
+let setCalls: Array<{ table: unknown; value: Record<string, unknown> }> = [];
+
+const dialect = new PgDialect();
+
+/** The bound values inside a drizzle `where`, in the order the clause binds them. */
+function paramsOf(node: any, out: unknown[] = []): unknown[] {
+  if (!node || typeof node !== "object") return out;
+  if (Array.isArray(node)) {
+    for (const entry of node) paramsOf(entry, out);
+    return out;
+  }
+  if (node.constructor?.name === "Param" && "value" in node) {
+    out.push(node.value);
+    return out;
+  }
+  if (Array.isArray(node.queryChunks)) for (const chunk of node.queryChunks) paramsOf(chunk, out);
+  return out;
+}
+
+function storeFor(table: unknown) {
+  return stores.find((entry) => entry.table === table);
+}
+
+/**
+ * Rows a `where` selects. The clauses in play are equality conjunctions over a single table, so the
+ * bound parameters are matched against the row's own values -- which is enough to tell "my row" from
+ * "someone else's row", the distinction the cross-user tests turn on.
+ */
+function rowsMatching(table: unknown, clause: any) {
+  const rows = storeFor(table)?.rows ?? [];
+  if (!clause) return rows;
+  const { sql } = dialect.sqlToQuery(clause);
+  const bound = paramsOf(clause);
+  const columns = [...sql.matchAll(/"([a-z_]+)"\."([a-z_]+)"/g)].map((match) => match[2]);
+  return rows.filter((row) =>
+    columns.every((column, index) => {
+      const key = column.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      if (index >= bound.length) return true;
+      return row[key] === bound[index];
+    })
+  );
+}
+
+function installDatabaseDouble() {
+  const anyDb = db as any;
+
+  anyDb.execute = () => Promise.resolve({ rows: [] });
+
+  anyDb.select = (fields?: any) => {
+    let table: unknown;
+    let whereClause: any = null;
+    const chain: any = {
+      from(t: unknown) { table = t; return chain; },
+      innerJoin() { return chain; },
+      leftJoin() { return chain; },
+      where(clause: unknown) { whereClause = clause; return chain; },
+      limit() { return chain; },
+      offset() { return chain; },
+      orderBy() { return chain; },
+      groupBy() { return chain; },
+      then(resolve: any, reject: any) {
+        return Promise.resolve()
+          .then(() => rowsMatching(table, whereClause))
+          .then(resolve, reject);
+      },
+    };
+    return chain;
+  };
+
+  anyDb.insert = (table: unknown) => ({
+    values(value: any) {
+      const row = { id: "inserted-row-id", createdAt: new Date(), ...value };
+      storeFor(table)?.rows.push(row);
+      const result: any = {
+        onConflictDoUpdate() { return result; },
+        onConflictDoNothing() { return result; },
+        returning() { return result; },
+        then: (resolve: any) => Promise.resolve([row]).then(resolve),
+      };
+      return result;
+    },
+  });
+
+  anyDb.update = (table: unknown) => ({
+    set(value: Record<string, unknown>) {
+      setCalls.push({ table, value });
+      // Drizzle's own `mapUpdateSet` drops `undefined` entries before building the statement, so an
+      // omitted PATCH field never reaches SQL. The double has to do the same or the
+      // preserved-on-omission assertions below would be testing the double, not the route.
+      const applied = Object.fromEntries(
+        Object.entries(value).filter(([, entry]) => entry !== undefined)
+      );
+      return {
+        where(clause: unknown) {
+          const matched = rowsMatching(table, clause);
+          for (const row of matched) Object.assign(row, applied);
+          const result: any = {
+            returning() { return result; },
+            then: (resolve: any) => Promise.resolve(matched).then(resolve),
+          };
+          return result;
+        },
+      };
+    },
+  });
+
+  anyDb.delete = (table: unknown) => ({
+    where(clause: unknown) {
+      const matched = rowsMatching(table, clause);
+      const store = storeFor(table);
+      if (store) store.rows = store.rows.filter((row) => !matched.includes(row));
+      const result: any = {
+        returning() { return result; },
+        then: (resolve: any) => Promise.resolve(matched).then(resolve),
+      };
+      return result;
+    },
+  });
+}
+
+installDatabaseDouble();
+
+const mealPlannerAdvancedRouter = (await import("./meal-planner-advanced")).default;
+const remixesRouter = (await import("./remixes")).default;
+
+const app = express();
+app.use(express.json());
+app.use("/api/meal-planner", mealPlannerAdvancedRouter);
+app.use("/api/remixes", remixesRouter);
+const server = app.listen(0);
+await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+test.after(() => server.close());
+
+const asUser = (id: string) => ({ Authorization: `Bearer ${signAuthToken({ id })}` });
+
+/** Reset the world: three rows owned by OWNER, plus the accounts `requireAuth` looks up. */
+function given() {
+  stores = [
+    { table: groceryListItems, rows: [groceryRow()] },
+    { table: familyMealProfiles, rows: [profileRow()] },
+    { table: recipeRemixes, rows: [remixRow()] },
+    {
+      table: users,
+      rows: [OWNER, VICTIM, ATTACKER].map((id) => ({
+        id,
+        username: `user-${id}`,
+        avatar: null,
+        nutritionPremium: false,
+        nutritionTrialEndsAt: null,
+      })),
+    },
+    {
+      table: recipes,
+      rows: [
+        { id: "original-recipe-id", userId: VICTIM, title: "Original" },
+        { id: "remixed-recipe-id", userId: OWNER, title: "Remixed" },
+        { id: "other-recipe-id", userId: VICTIM, title: "Other" },
+      ],
+    },
+  ];
+  setCalls = [];
+}
+
+function stored(table: unknown, id: string) {
+  return storeFor(table)?.rows.find((row) => row.id === id);
+}
+
+async function send(method: string, path: string, body: unknown, headers: Record<string, string> = {}) {
+  const response = await fetch(`${base}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  return {
+    status: response.status,
+    text,
+    body: (() => { try { return JSON.parse(text); } catch { return null; } })(),
+  };
+}
+
+/** Every `.set(...)` object a request produced, with drizzle's `undefined` filtering applied. */
+function appliedSets() {
+  return setCalls.map((call) =>
+    Object.fromEntries(Object.entries(call.value).filter(([, value]) => value !== undefined))
+  );
+}
+
+// ============================================================================================
+// The three endpoints, as a table: what a legitimate edit is, and what must never be writable
+// ============================================================================================
+
+type Endpoint = {
+  name: string;
+  method: string;
+  path: string;
+  table: unknown;
+  id: string;
+  /** A patch the product legitimately sends, and the columns it is expected to change. */
+  legitimate: Record<string, unknown>;
+  /** Forged single-field payloads: a label -> the body, each of which must be refused. */
+  forged: Record<string, Record<string, unknown>>;
+};
+
+const ENDPOINTS: Endpoint[] = [
+  {
+    name: "PATCH /api/meal-planner/grocery-list/:id",
+    method: "PATCH",
+    path: `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    table: groceryListItems,
+    id: GROCERY_ID,
+    // Exactly what `client/src/pages/pantry/shopping-list.tsx` sends when a user edits an item.
+    legitimate: {
+      ingredientName: "Heirloom tomatoes",
+      quantity: "4",
+      unit: "lb",
+      category: "produce",
+      notes: "the striped ones",
+    },
+    forged: {
+      ownership: { userId: VICTIM },
+      "resource id": { id: "some-other-item-id" },
+      "created timestamp": { createdAt: "2030-01-01T00:00:00.000Z" },
+      "purchase timestamp": { purchasedAt: "2030-01-01T00:00:00.000Z" },
+      "meal plan relationship": { mealPlanId: "another-meal-plan-id" },
+      "mixed legitimate + ownership": { ingredientName: "Valid new name", userId: VICTIM },
+      "unknown field": { somethingInvented: true },
+    },
+  },
+  {
+    name: "PATCH /api/meal-planner/family-profiles/:id",
+    method: "PATCH",
+    path: `/api/meal-planner/family-profiles/${PROFILE_ID}`,
+    table: familyMealProfiles,
+    id: PROFILE_ID,
+    legitimate: {
+      name: "Sam (teen)",
+      calorieTarget: 2400,
+      preferences: ["spicy", "grilled"],
+      portionMultiplier: 1.25,
+    },
+    forged: {
+      ownership: { userId: VICTIM },
+      "resource id": { id: "some-other-profile-id" },
+      "created timestamp": { createdAt: "2030-01-01T00:00:00.000Z" },
+      "family member relationship": { familyMemberId: "another-households-member-id" },
+      "mixed legitimate + ownership": { name: "Valid new name", userId: VICTIM },
+      "unknown field": { householdId: "attacker-household" },
+    },
+  },
+  {
+    name: "PUT /api/remixes/:id",
+    method: "PUT",
+    path: `/api/remixes/${REMIX_ID}`,
+    table: recipeRemixes,
+    id: REMIX_ID,
+    legitimate: {
+      remixType: "ingredient_swap",
+      changes: { notes: "used olive oil instead", removedIngredients: ["butter"] },
+      isPublic: false,
+    },
+    forged: {
+      ownership: { userId: VICTIM },
+      "resource id": { id: "some-other-remix-id" },
+      "created timestamp": { createdAt: "2030-01-01T00:00:00.000Z" },
+      "source recipe relationship": { originalRecipeId: "other-recipe-id" },
+      "output recipe relationship": { remixedRecipeId: "other-recipe-id" },
+      "likes counter": { likesCount: 99999 },
+      "saves counter": { savesCount: 99999 },
+      "remix counter": { remixCount: 99999 },
+      "mixed legitimate + counter": { remixType: "variation", likesCount: 99999 },
+      "mixed legitimate + ownership": { isPublic: false, userId: VICTIM },
+      "unknown remix type": { remixType: "not-a-real-remix-type" },
+      "unknown field inside changes": { changes: { userId: VICTIM } },
+    },
+  },
+];
+
+for (const endpoint of ENDPOINTS) {
+  // ------------------------------------------------------------------------------------------
+  // Legitimate patch: it succeeds, and it changes only what it named
+  // ------------------------------------------------------------------------------------------
+
+  test(`${endpoint.name}: a legitimate patch succeeds`, async () => {
+    given();
+    const result = await send(endpoint.method, endpoint.path, endpoint.legitimate, asUser(OWNER));
+    assert.equal(result.status, 200, result.text);
+  });
+
+  test(`${endpoint.name}: a legitimate patch changes only the fields it named`, async () => {
+    given();
+    const before = { ...stored(endpoint.table, endpoint.id) };
+    await send(endpoint.method, endpoint.path, endpoint.legitimate, asUser(OWNER));
+    const after = stored(endpoint.table, endpoint.id)!;
+
+    // `purchasedAt` is the server's own derived value; the legitimate patches here do not touch
+    // `purchased`, so it must be untouched too, and it is covered by the named keys below.
+    const named = new Set(Object.keys(endpoint.legitimate));
+    for (const key of Object.keys(before)) {
+      if (named.has(key)) continue;
+      assert.deepEqual(
+        after[key],
+        (before as any)[key],
+        `${key} changed although the patch never named it`
+      );
+    }
+    for (const key of named) {
+      assert.notEqual(after[key], undefined, `${key} was not written`);
+    }
+  });
+
+  test(`${endpoint.name}: omitted fields keep their stored values`, async () => {
+    given();
+    const before = { ...stored(endpoint.table, endpoint.id) };
+    const [onlyKey, onlyValue] = Object.entries(endpoint.legitimate)[0];
+    const result = await send(endpoint.method, endpoint.path, { [onlyKey]: onlyValue }, asUser(OWNER));
+    assert.equal(result.status, 200, result.text);
+
+    const after = stored(endpoint.table, endpoint.id)!;
+    for (const key of Object.keys(before)) {
+      if (key === onlyKey) continue;
+      assert.deepEqual(
+        after[key],
+        (before as any)[key],
+        `${key} was overwritten by a patch that omitted it`
+      );
+    }
+    // Not null, not false, not 0, not "" -- omission has to mean "leave it alone" all the way down
+    // to the statement, so the `.set(...)` object must not carry the omitted columns at all.
+    for (const applied of appliedSets()) {
+      for (const key of Object.keys(applied)) {
+        assert.ok(
+          key === onlyKey || key === "purchasedAt",
+          `${key} reached .set(...) although the request omitted it`
+        );
+      }
+    }
+  });
+
+  test(`${endpoint.name}: an empty patch is a 400, not a database error`, async () => {
+    given();
+    const result = await send(endpoint.method, endpoint.path, {}, asUser(OWNER));
+    assert.equal(result.status, 400, result.text);
+    assert.deepEqual(setCalls, [], "an empty patch must not reach the database at all");
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // Forged fields: rejected as a whole, row unchanged, nothing sent to the database
+  // ------------------------------------------------------------------------------------------
+
+  for (const [label, body] of Object.entries(endpoint.forged)) {
+    test(`${endpoint.name}: ${label} is rejected`, async () => {
+      given();
+      const before = { ...stored(endpoint.table, endpoint.id) };
+      const result = await send(endpoint.method, endpoint.path, body, asUser(OWNER));
+
+      assert.equal(result.status, 400, `expected a 400, got ${result.status}: ${result.text}`);
+      assert.deepEqual(
+        stored(endpoint.table, endpoint.id),
+        before,
+        `the row changed despite a rejected request: ${result.text}`
+      );
+      assert.deepEqual(
+        setCalls,
+        [],
+        "a rejected request must not reach .set(...) at all -- not even with the forged key stripped"
+      );
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Cross-user: knowing an id is not authority over it
+  // ------------------------------------------------------------------------------------------
+
+  test(`${endpoint.name}: another user cannot patch this row by knowing its id`, async () => {
+    given();
+    const before = { ...stored(endpoint.table, endpoint.id) };
+    const result = await send(endpoint.method, endpoint.path, endpoint.legitimate, asUser(ATTACKER));
+
+    assert.equal(result.status, 404, result.text);
+    assert.deepEqual(stored(endpoint.table, endpoint.id), before, "another user's row was modified");
+  });
+
+  test(`${endpoint.name}: the update is scoped to the authenticated owner, not just the row id`, async () => {
+    given();
+    await send(endpoint.method, endpoint.path, endpoint.legitimate, asUser(ATTACKER));
+    // The attacker's request reached `.set(...)` only if the statement ran at all; what matters is
+    // that its `where` bound the AUTHENTICATED id, so it matched nothing. The row check above proves
+    // the outcome; this pins that the scoping is in the statement rather than a prior read.
+    const row = stored(endpoint.table, endpoint.id)!;
+    assert.equal(row.userId, OWNER);
+  });
+
+  // ------------------------------------------------------------------------------------------
+  // Forged actor: identity comes from the token and nothing else
+  // ------------------------------------------------------------------------------------------
+
+  test(`${endpoint.name}: an x-user-id header does not change the actor`, async () => {
+    given();
+    const result = await send(endpoint.method, endpoint.path, endpoint.legitimate, {
+      ...asUser(ATTACKER),
+      "x-user-id": OWNER,
+    });
+    assert.equal(result.status, 404, `x-user-id was honoured as identity: ${result.text}`);
+  });
+
+  test(`${endpoint.name}: a userId query parameter does not change the actor`, async () => {
+    given();
+    const result = await send(
+      endpoint.method,
+      `${endpoint.path}?userId=${OWNER}`,
+      endpoint.legitimate,
+      asUser(ATTACKER)
+    );
+    assert.equal(result.status, 404, `a query parameter was honoured as identity: ${result.text}`);
+  });
+
+  test(`${endpoint.name}: an unauthenticated request is refused`, async () => {
+    given();
+    const before = { ...stored(endpoint.table, endpoint.id) };
+    const result = await send(endpoint.method, endpoint.path, endpoint.legitimate);
+    assert.equal(result.status, 401, result.text);
+    assert.deepEqual(stored(endpoint.table, endpoint.id), before);
+  });
+}
+
+// ============================================================================================
+// The grocery purchase timestamp: server-derived, both ways
+// ============================================================================================
+
+test("PATCH /grocery-list/:id: marking an item purchased stamps purchasedAt server-side", async () => {
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { purchased: true },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+
+  const row = stored(groceryListItems, GROCERY_ID)!;
+  assert.equal(row.purchased, true);
+  assert.ok(row.purchasedAt instanceof Date, "purchasedAt was not stamped by the server");
+  assert.notDeepEqual(row.purchasedAt, PURCHASED_AT, "purchasedAt kept its old value");
+});
+
+test("PATCH /grocery-list/:id: un-purchasing an item clears purchasedAt", async () => {
+  given();
+  await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { purchased: false },
+    asUser(OWNER)
+  );
+  const row = stored(groceryListItems, GROCERY_ID)!;
+  assert.equal(row.purchased, false);
+  assert.equal(row.purchasedAt, null);
+});
+
+test("PATCH /grocery-list/:id: a purchased flag plus a forged purchasedAt is refused", async () => {
+  given();
+  const before = { ...stored(groceryListItems, GROCERY_ID) };
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { purchased: true, purchasedAt: "1999-01-01T00:00:00.000Z" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 400, result.text);
+  assert.deepEqual(stored(groceryListItems, GROCERY_ID), before);
+});
+
+// ============================================================================================
+// POST /api/remixes -- the create path reads named fields, and now validates them
+// ============================================================================================
+
+test("POST /api/remixes: a legitimate creation succeeds", async () => {
+  given();
+  const result = await send(
+    "POST",
+    "/api/remixes",
+    {
+      originalRecipeId: "original-recipe-id",
+      remixedRecipeId: "remixed-recipe-id",
+      remixType: "dietary_conversion",
+      changes: { notes: "made it vegan" },
+    },
+    asUser(ATTACKER)
+  );
+  assert.equal(result.status, 200, result.text);
+  // Attribution comes from the token, never from the body.
+  assert.equal(result.body.remix.userId, ATTACKER);
+});
+
+test("POST /api/remixes: a body-supplied userId is refused rather than honoured", async () => {
+  given();
+  const result = await send(
+    "POST",
+    "/api/remixes",
+    {
+      originalRecipeId: "original-recipe-id",
+      remixedRecipeId: "remixed-recipe-id",
+      userId: VICTIM,
+    },
+    asUser(ATTACKER)
+  );
+  assert.equal(result.status, 400, result.text);
+  assert.deepEqual(storeFor(recipeRemixes)?.rows.map((row) => row.id), [REMIX_ID]);
+});
+
+test("POST /api/remixes: a body-supplied counter is refused", async () => {
+  given();
+  const result = await send(
+    "POST",
+    "/api/remixes",
+    {
+      originalRecipeId: "original-recipe-id",
+      remixedRecipeId: "remixed-recipe-id",
+      likesCount: 99999,
+    },
+    asUser(ATTACKER)
+  );
+  assert.equal(result.status, 400, result.text);
+});
+
+test("POST /api/remixes: an unrecognized remix type is refused", async () => {
+  given();
+  const result = await send(
+    "POST",
+    "/api/remixes",
+    {
+      originalRecipeId: "original-recipe-id",
+      remixedRecipeId: "remixed-recipe-id",
+      remixType: "arbitrary-client-string",
+    },
+    asUser(ATTACKER)
+  );
+  assert.equal(result.status, 400, result.text);
+});
+
+// ============================================================================================
+// The contracts themselves: the allowlist is structural, not a list of blocked names
+// ============================================================================================
+
+const CONTRACTS = [
+  { name: "grocery list item", schema: groceryListItemPatchSchema },
+  { name: "family meal profile", schema: familyMealProfilePatchSchema },
+  { name: "remix", schema: remixPatchSchema },
+];
+
+for (const contract of CONTRACTS) {
+  test(`${contract.name} contract: every server-controlled field name is refused`, () => {
+    for (const field of PLANNER_REMIX_FORBIDDEN_FIELDS) {
+      const parsed = contract.schema.safeParse({ [field]: "anything" });
+      assert.equal(parsed.success, false, `${field} was accepted by the ${contract.name} contract`);
+    }
+  });
+
+  test(`${contract.name} contract: an unknown field is refused, not stripped`, () => {
+    const parsed = contract.schema.safeParse({ totallyUnknownField: 1 });
+    assert.equal(parsed.success, false);
+  });
+}
+
+test("the patch builders emit no server-controlled column, whatever they are handed", () => {
+  // The builders are the only thing that reaches `.set(...)`. Even handed an object carrying every
+  // forbidden name, they can only produce the columns they spell out -- which is what makes the
+  // repair structural rather than a filter that a future field could slip past.
+  const hostile = Object.fromEntries(
+    PLANNER_REMIX_FORBIDDEN_FIELDS.map((field) => [field, "forged"])
+  ) as any;
+
+  const built = [
+    toGroceryListItemPatch(hostile, new Date()),
+    toFamilyMealProfilePatch(hostile),
+    toRemixPatch(hostile),
+  ];
+
+  for (const patch of built) {
+    for (const field of PLANNER_REMIX_FORBIDDEN_FIELDS) {
+      if (field === "purchasedAt") continue; // server-derived, never client-supplied
+      assert.ok(!(field in patch), `${field} appeared in a built patch`);
+    }
+  }
+
+  // `purchasedAt` appears only as the server's own value, and only when `purchased` was validated.
+  const groceryPatch = toGroceryListItemPatch(hostile, new Date());
+  assert.equal(groceryPatch.purchasedAt, undefined);
+});
+
+test("no planner or remix update handler passes a request body to .set(...)", async () => {
+  // A grep is not a proof of behavior, but it is a proof about SHAPE: the defect was a variable that
+  // was the request body flowing into `.set(...)`, and this pins that no such variable came back
+  // under another name in these two files.
+  const { readFile } = await import("node:fs/promises");
+  for (const file of ["./meal-planner-advanced.ts", "./remixes.ts"]) {
+    const source = await readFile(new URL(file, import.meta.url), "utf8");
+    assert.ok(
+      !/const\s+updates\s*=\s*(req\.body|\{\s*\.\.\.req\.body)/.test(source),
+      `${file} still derives an update object from the request body`
+    );
+    for (const match of source.matchAll(/\.set\(([^)]*)\)/g)) {
+      const argument = match[1].trim();
+      assert.ok(
+        !/^(req\.body|body|updates|input|data|payload)$/.test(argument),
+        `${file} passes \`${argument}\` straight to .set(...)`
+      );
+    }
+  }
+});
+
+test("POST /api/remixes: a creation missing its recipe ids keeps its original 400 message", async () => {
+  // The pre-repair handler answered this case with its own message; validation must not degrade an
+  // existing client's error into something unrecognizable.
+  given();
+  const result = await send("POST", "/api/remixes", { remixType: "variation" }, asUser(ATTACKER));
+  assert.equal(result.status, 400, result.text);
+  assert.equal(result.body.error, "originalRecipeId and remixedRecipeId are required");
+});

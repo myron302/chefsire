@@ -3,7 +3,13 @@ import { Router } from "express";
 import { and, eq, desc, sql } from "drizzle-orm";
 import { db } from "../db";
 import { recipeRemixes, recipes, users } from "../../shared/schema";
+import { z } from "zod";
 import { requireAuth } from "../middleware";
+import {
+  remixCreateSchema,
+  remixPatchSchema,
+  toRemixPatch,
+} from "../../shared/planner-remix-mutations";
 import { sendRemixNotification } from "../services/notification-service";
 
 const router = Router();
@@ -114,20 +120,11 @@ router.get("/user/:userId", async (req, res) => {
 // POST /api/remixes - Create a new remix
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const {
-      originalRecipeId,
-      remixedRecipeId,
-      remixType,
-      changes,
-      isPublic = true,
-    } = req.body;
+    // Creation named its fields already, but read them unchecked; the same validated contract the
+    // update uses now covers `remixType` and the `changes` jsonb here too.
+    const { originalRecipeId, remixedRecipeId, remixType, changes, isPublic } =
+      remixCreateSchema.parse(req.body ?? {});
     const userId = req.user!.id;
-
-    if (!originalRecipeId || !remixedRecipeId) {
-      return res.status(400).json({
-        error: "originalRecipeId and remixedRecipeId are required",
-      });
-    }
 
     // Verify recipes exist
     const [originalRecipe] = await db
@@ -153,8 +150,8 @@ router.post("/", requireAuth, async (req, res) => {
         originalRecipeId,
         remixedRecipeId,
         userId,
-        remixType: remixType || "variation",
-        changes: changes || {},
+        remixType,
+        changes,
         isPublic,
       })
       .returning();
@@ -188,20 +185,29 @@ router.post("/", requireAuth, async (req, res) => {
 
     return res.json({ remix });
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.issues[0]?.message, errors: error.issues });
+    }
     return res.status(500).json({ error: error.message });
   }
 });
 
 // PUT /api/remixes/:id - Update a remix
+//
+// A remix edit touches the author's own metadata and nothing else. The body is parsed as a whole
+// against a `.strict()` contract, so a payload naming lineage (`originalRecipeId`,
+// `remixedRecipeId`), ownership (`userId`), identity (`id`), a counter (`likesCount`, `savesCount`,
+// `remixCount`) or `createdAt` is refused outright and leaves the row untouched. The update is still
+// scoped to (remix id, authenticated author), so it can only ever reach the caller's own row.
 router.put("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
     const userId = req.user!.id;
+    const patch = toRemixPatch(remixPatchSchema.parse(req.body ?? {}));
 
     const [updated] = await db
       .update(recipeRemixes)
-      .set(updates)
+      .set(patch)
       .where(and(eq(recipeRemixes.id, id), eq(recipeRemixes.userId, userId)))
       .returning();
 
@@ -211,6 +217,9 @@ router.put("/:id", requireAuth, async (req, res) => {
 
     return res.json({ remix: updated });
   } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.issues[0]?.message, errors: error.issues });
+    }
     return res.status(500).json({ error: error.message });
   }
 });
