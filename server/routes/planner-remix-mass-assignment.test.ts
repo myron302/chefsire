@@ -749,3 +749,290 @@ test("POST /api/remixes: a creation missing its recipe ids keeps its original 40
   assert.equal(result.status, 400, result.text);
   assert.equal(result.body.error, "originalRecipeId and remixedRecipeId are required");
 });
+
+// ============================================================================================
+// The update contract must not be narrower than the creation contract
+//
+// Codex flagged this on the first revision of the repair: `ingredientName` carried a 200-character
+// cap that existed nowhere else in the repository. `ingredient_name` is `TEXT NOT NULL` with no
+// `varchar(n)` and no CHECK, `POST /grocery-list` validates only `if (!ingredientName)`, the week
+// generator writes raw recipe ingredient strings by itself, and no client input has a `maxLength` --
+// so rows longer than the cap are ordinary data. Because the edit dialog in `shopping-list.tsx`
+// resends `ingredientName` on every save, that cap turned a quantity change on such a row into a
+// 400: data the product created, and then refused to let anyone edit.
+//
+// These tests pin the rule that prevents it coming back -- a value creation accepts stays editable --
+// on the same rows the mass-assignment tests above protect.
+// ============================================================================================
+
+/** Longer than the cap that used to be here, and longer than any cap a future edit might add. */
+const LONG_NAME = `Organic vine-ripened San Marzano tomatoes ${"very ".repeat(120)}fresh`;
+
+assert.ok(LONG_NAME.length > 200, "the fixture must exceed the cap this regression is about");
+
+/** Creates a grocery item through the real `POST /grocery-list` handler and returns its row. */
+async function createGroceryItem(body: Record<string, unknown>, actor = OWNER) {
+  const result = await send("POST", "/api/meal-planner/grocery-list", body, asUser(actor));
+  return { result, row: result.body?.item ? stored(groceryListItems, result.body.item.id) : undefined };
+}
+
+test("POST /grocery-list accepts an ingredient name far longer than 200 characters", async () => {
+  // Establishes the premise the rest of this section rests on: such a row is legitimate data, not
+  // something only a hand-crafted fixture could produce.
+  given();
+  const { result, row } = await createGroceryItem({ ingredientName: LONG_NAME, quantity: "2" });
+  assert.equal(result.status, 200, result.text);
+  assert.equal(row?.ingredientName, LONG_NAME);
+});
+
+test("PATCH /grocery-list/:id: a quantity-only edit succeeds on a long-named row", async () => {
+  given();
+  const { row } = await createGroceryItem({ ingredientName: LONG_NAME, quantity: "2" });
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${row!.id}`,
+    { quantity: "5" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  assert.equal(stored(groceryListItems, row!.id)!.quantity, "5");
+  assert.equal(stored(groceryListItems, row!.id)!.ingredientName, LONG_NAME, "the name was altered");
+});
+
+test("PATCH /grocery-list/:id: the UI's full edit payload succeeds on a long-named row", async () => {
+  // The exact shape `client/src/pages/pantry/shopping-list.tsx` sends, which resends the stored name
+  // verbatim -- the path that made the cap a blocking bug rather than a theoretical one.
+  given();
+  const { row } = await createGroceryItem({ ingredientName: LONG_NAME, quantity: "2" });
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${row!.id}`,
+    {
+      ingredientName: LONG_NAME,
+      quantity: "6",
+      unit: "lb",
+      category: "produce",
+      notes: "the striped ones",
+    },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  const after = stored(groceryListItems, row!.id)!;
+  assert.equal(after.ingredientName, LONG_NAME);
+  assert.equal(after.quantity, "6");
+});
+
+test("PATCH /grocery-list/:id: a long-named row is still protected from mass assignment", async () => {
+  // Loosening the value domain must not loosen the allowlist. Same row, same forged payloads.
+  given();
+  const { row } = await createGroceryItem({ ingredientName: LONG_NAME, quantity: "2" });
+  const before = { ...stored(groceryListItems, row!.id) };
+
+  for (const forged of [
+    { userId: VICTIM },
+    { id: "some-other-item-id" },
+    { createdAt: "2030-01-01T00:00:00.000Z" },
+    { purchasedAt: "2030-01-01T00:00:00.000Z" },
+    { mealPlanId: "another-meal-plan-id" },
+    { quantity: "5", userId: VICTIM },
+    { somethingInvented: true },
+  ]) {
+    setCalls = [];
+    const result = await send("PATCH", `/api/meal-planner/grocery-list/${row!.id}`, forged, asUser(OWNER));
+    assert.equal(result.status, 400, `${JSON.stringify(forged)} was accepted: ${result.text}`);
+    assert.deepEqual(stored(groceryListItems, row!.id), before, `the row changed for ${JSON.stringify(forged)}`);
+    assert.deepEqual(setCalls, [], "a rejected request reached .set(...)");
+  }
+});
+
+test("PATCH /grocery-list/:id: another user still cannot patch a long-named row", async () => {
+  given();
+  const { row } = await createGroceryItem({ ingredientName: LONG_NAME, quantity: "2" });
+  const before = { ...stored(groceryListItems, row!.id) };
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${row!.id}`,
+    { quantity: "5" },
+    asUser(ATTACKER)
+  );
+  assert.equal(result.status, 404, result.text);
+  assert.deepEqual(stored(groceryListItems, row!.id), before);
+});
+
+// --------------------------------------------------------------------------------------------
+// Same class, every other text column: anything creation stores, editing accepts
+// --------------------------------------------------------------------------------------------
+
+test("PATCH /grocery-list/:id: every text column round-trips a value creation accepted", async () => {
+  // The audit that followed Codex's finding: each of these carried an invented cap. A round-trip
+  // edit -- read the row, send it back unchanged but for one field -- has to work for all of them,
+  // because that is what a fuller edit UI would do.
+  const long = "x".repeat(5000);
+  given();
+  const { result: created, row } = await createGroceryItem({
+    ingredientName: long,
+    listName: long,
+    quantity: long,
+    unit: long,
+    category: long,
+    store: long,
+    aisle: long,
+    priority: long,
+    notes: long,
+  });
+  assert.equal(created.status, 200, created.text);
+
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${row!.id}`,
+    {
+      ingredientName: long,
+      listName: long,
+      quantity: long,
+      unit: long,
+      location: long,
+      category: long,
+      store: long,
+      aisle: long,
+      priority: long,
+      notes: long,
+    },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  assert.equal(stored(groceryListItems, row!.id)!.notes, long);
+});
+
+test("PATCH /family-profiles/:id: long strings and unbounded jsonb values are accepted", async () => {
+  given();
+  const long = "y".repeat(5000);
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/family-profiles/${PROFILE_ID}`,
+    {
+      name: long,
+      calorieTarget: 1000000,
+      macroGoals: { protein: 999999, carbs: 0.5, fat: -3 },
+      preferences: [long, ""],
+      dislikes: [long],
+    },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  const after = stored(familyMealProfiles, PROFILE_ID)!;
+  assert.equal(after.name, long);
+  assert.equal(after.calorieTarget, 1000000);
+});
+
+test("PUT /remixes/:id: a long changes payload is accepted", async () => {
+  given();
+  const long = "z".repeat(5000);
+  const result = await send(
+    "PUT",
+    `/api/remixes/${REMIX_ID}`,
+    {
+      changes: {
+        notes: long,
+        difficultyChange: long,
+        addedIngredients: [long],
+        prepTimeChange: 99999,
+        nutritionChanges: { [long]: 1.5 },
+      },
+    },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  assert.equal(stored(recipeRemixes, REMIX_ID)!.changes.notes, long);
+});
+
+test("POST /api/remixes: the create and update contracts accept the same remix types", async () => {
+  // The one narrowing this change makes is `remixType`, and it is only safe because creation enforces
+  // the same enum -- so nothing POST can store is something PUT would then refuse.
+  for (const remixType of ["variation", "dietary_conversion", "portion_adjustment", "ingredient_swap"]) {
+    given();
+    const created = await send(
+      "POST",
+      "/api/remixes",
+      { originalRecipeId: "original-recipe-id", remixedRecipeId: "remixed-recipe-id", remixType },
+      asUser(OWNER)
+    );
+    assert.equal(created.status, 200, created.text);
+
+    const edited = await send("PUT", `/api/remixes/${REMIX_ID}`, { remixType }, asUser(OWNER));
+    assert.equal(edited.status, 200, edited.text);
+  }
+});
+
+// --------------------------------------------------------------------------------------------
+// The limits that remain are the database's own, and they produce a 400 rather than a 500
+// --------------------------------------------------------------------------------------------
+
+test("PATCH /grocery-list/:id: a price within decimal(8,2) is accepted, beyond it is a 400", async () => {
+  given();
+  const ok = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { estimatedPrice: -999999.99, actualPrice: 999999.99 },
+    asUser(OWNER)
+  );
+  assert.equal(ok.status, 200, ok.text);
+  assert.equal(stored(groceryListItems, GROCERY_ID)!.actualPrice, "999999.99");
+
+  given();
+  const tooBig = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { estimatedPrice: 1000000 },
+    asUser(OWNER)
+  );
+  assert.equal(tooBig.status, 400, tooBig.text);
+  assert.deepEqual(setCalls, [], "an out-of-range numeric must not reach the database");
+});
+
+test("PATCH /family-profiles/:id: a multiplier within decimal(3,2) is accepted, beyond it is a 400", async () => {
+  given();
+  const ok = await send(
+    "PATCH",
+    `/api/meal-planner/family-profiles/${PROFILE_ID}`,
+    { portionMultiplier: 9.99 },
+    asUser(OWNER)
+  );
+  assert.equal(ok.status, 200, ok.text);
+  assert.equal(stored(familyMealProfiles, PROFILE_ID)!.portionMultiplier, "9.99");
+
+  given();
+  const tooBig = await send(
+    "PATCH",
+    `/api/meal-planner/family-profiles/${PROFILE_ID}`,
+    { portionMultiplier: 10 },
+    asUser(OWNER)
+  );
+  assert.equal(tooBig.status, 400, tooBig.text);
+});
+
+test("PATCH /grocery-list/:id: a non-numeric price is a 400, not a database error", async () => {
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { estimatedPrice: "not a number" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 400, result.text);
+  assert.deepEqual(setCalls, []);
+});
+
+test("the patch contracts carry no invented maximum on a text column", async () => {
+  // A shape assertion on the contract itself, so a future `.max(n)` on one of these columns has to
+  // be a deliberate decision with this test in front of it rather than an accident.
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../../shared/planner-remix-mutations.ts", import.meta.url),
+    "utf8"
+  );
+  const helpers = source.slice(
+    source.indexOf("const requiredText"),
+    source.indexOf("const decimalField")
+  );
+  assert.ok(!/\.max\(/.test(helpers), "a text-column helper regained a maximum length");
+});

@@ -17,6 +17,25 @@
  *      parsed value, field by field; it is never the request body and never a spread of one. Even if
  *      a schema later grew a field, nothing reaches `.set(...)` unless a builder here spells it out.
  *
+ * WHAT THESE SCHEMAS DELIBERATELY DO NOT DO is narrow the value domain. The question they answer is
+ * "may this column be written by a client?", not "is this a tidy value?". That boundary matters,
+ * because an update contract stricter than the creation contract makes existing rows uneditable: the
+ * grocery edit flow in `client/src/pages/pantry/shopping-list.tsx` resends `ingredientName` verbatim
+ * on every edit, so a length cap here would reject a quantity change on any row whose name is longer
+ * than the cap -- a row `POST /grocery-list` accepted, since it validates only `if (!ingredientName)`,
+ * and one the week generator creates by itself from raw recipe ingredient strings. Nothing bounds
+ * those columns: `ingredient_name` is `TEXT NOT NULL` in the drizzle schema, in
+ * `server/drizzle/20251225_advanced_meal_planning.sql` and in `ensureAdvancedMealPlanningSchema`,
+ * with no `varchar(n)` and no CHECK, and no client input carries a `maxLength`. So the text fields
+ * below are unbounded here too, matching creation exactly. This costs nothing in exposure: an
+ * authenticated caller can already store unbounded text through `POST /grocery-list`, so a cap on
+ * PATCH alone would deter no one while breaking real edits.
+ *
+ * The limits that DO appear are the ones the database really imposes -- `decimal(8, 2)` and
+ * `decimal(3, 2)` precision, and int32 -- where validating turns a Postgres range error into a 400
+ * instead of a 500. The one value-domain narrowing is `remixType`, and only because this change
+ * enforces the same enum on creation too, so create and update agree.
+ *
  * PATCH semantics are preserved by omission, not by defaults: an absent field parses to `undefined`,
  * and drizzle's `mapUpdateSet` drops `undefined` entries before building the statement, so the column
  * keeps its stored value. `null` is a DIFFERENT, explicit request to clear a nullable column, and is
@@ -66,21 +85,28 @@ export const PLANNER_REMIX_FORBIDDEN_FIELDS = [
 const atLeastOneField = (value: object) => Object.keys(value).length > 0;
 const ONE_FIELD_REQUIRED = "Provide at least one field to update";
 
-/** A text column that is `notNull`: settable, never clearable. */
-const requiredText = (max: number) => z.string().trim().min(1).max(max).optional();
-/** A nullable text column: settable, and `null` clears it. */
-const nullableText = (max: number) =>
-  z.string().trim().max(max).nullable().optional().transform((value) =>
-    value === undefined || value === null ? value : value || null
-  );
+/**
+ * A `notNull` text column: settable, never clearable. `min(1)` is not a new rule -- it is exactly the
+ * `if (!ingredientName)` check `POST /grocery-list` already applies -- and there is no maximum,
+ * because neither the column nor creation nor any client input has one.
+ */
+const requiredText = () => z.string().min(1).optional();
+/** A nullable text column: any string creation would accept, and `null` clears it. */
+const nullableText = () => z.string().nullable().optional();
 
 /**
- * A `decimal` column. Postgres numerics arrive over JSON as either a number or a numeric string;
- * drizzle wants the string form, so both are accepted and normalized to a fixed-scale string here
- * rather than in a route. A non-finite or non-numeric value is a 400, not a database error.
+ * A `decimal(precision, scale)` column. Postgres numerics arrive over JSON as either a number or a
+ * numeric string; drizzle wants the string form, so both are accepted and normalized to a
+ * fixed-scale string here rather than in a route.
+ *
+ * The bound is the column's own precision, not a product rule: a value outside it is a Postgres
+ * range error, so rejecting it with a 400 is strictly better than the 500 it would otherwise become.
+ * It is symmetric because `numeric(p, s)` itself is -- creation never restricted the sign, so
+ * neither does editing.
  */
-const decimalField = (scale: number, min: number, max: number) =>
-  z
+const decimalField = (precision: number, scale: number) => {
+  const limit = Number(`${"9".repeat(precision - scale)}.${"9".repeat(scale)}`);
+  return z
     .union([z.number(), z.string().trim().min(1)])
     .nullable()
     .optional()
@@ -91,8 +117,11 @@ const decimalField = (scale: number, min: number, max: number) =>
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Expected a number" });
         return;
       }
-      if (numeric < min || numeric > max) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Expected a number between ${min} and ${max}` });
+      if (Math.abs(numeric) > limit) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Expected a number between -${limit} and ${limit}`,
+        });
       }
     })
     .transform((value) => {
@@ -100,6 +129,11 @@ const decimalField = (scale: number, min: number, max: number) =>
       const numeric = typeof value === "number" ? value : Number(value);
       return numeric.toFixed(scale);
     });
+};
+
+/** The range a Postgres `integer` column accepts; outside it is a range error, not a product rule. */
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
 
 // ------------------------------------------------------------------------------------------------
 // PATCH /api/meal-planner/grocery-list/:id
@@ -109,24 +143,29 @@ const decimalField = (scale: number, min: number, max: number) =>
  * The shopping list as the user edits it: what the item is, how much of it, where it sits in a store,
  * what it costs, and whether it has been bought. `purchasedAt` is deliberately not here -- the route
  * derives it from `purchased` so the audit timestamp cannot be backdated by a caller.
+ *
+ * `priority` is a plain string rather than an enum. The column comments `// high, normal, low`, but
+ * `POST /grocery-list` stores `priority || "normal"` without checking it, so a stored row may hold
+ * any string and constraining it only on the update path would be the same create/update mismatch
+ * this contract exists to avoid.
  */
 export const groceryListItemPatchSchema = z
   .object({
-    listName: nullableText(120),
-    ingredientName: requiredText(200),
-    quantity: nullableText(60),
-    unit: nullableText(40),
-    location: nullableText(120),
-    category: nullableText(60),
-    store: nullableText(120),
-    aisle: nullableText(60),
-    priority: z.enum(["high", "normal", "low"]).optional(),
-    estimatedPrice: decimalField(2, 0, 999999),
-    actualPrice: decimalField(2, 0, 999999),
+    listName: nullableText(),
+    ingredientName: requiredText(),
+    quantity: nullableText(),
+    unit: nullableText(),
+    location: nullableText(),
+    category: nullableText(),
+    store: nullableText(),
+    aisle: nullableText(),
+    priority: nullableText(),
+    estimatedPrice: decimalField(8, 2),
+    actualPrice: decimalField(8, 2),
     isPantryItem: z.boolean().optional(),
     isRunningLow: z.boolean().optional(),
     purchased: z.boolean().optional(),
-    notes: nullableText(2000),
+    notes: nullableText(),
   })
   .strict()
   .refine(atLeastOneField, ONE_FIELD_REQUIRED);
@@ -163,25 +202,31 @@ export function toGroceryListItemPatch(parsed: GroceryListItemPatch, now: Date) 
 // PATCH /api/meal-planner/family-profiles/:id
 // ------------------------------------------------------------------------------------------------
 
-const macroGoalNumber = z.number().min(0).max(100000);
-
 /**
  * A household member's eating profile. `familyMemberId` is absent on purpose: which member a profile
  * describes is set once at creation, and a `family_members` row id is not scoped to the caller, so
  * letting a patch repoint it would let one account attach its profile to another household's member.
+ *
+ * `macroGoals`, `preferences` and `dislikes` are jsonb columns with no database constraint, and
+ * `POST /family-profiles` writes them through unvalidated, so only their SHAPE is checked here --
+ * enough to keep the typed column typed, without narrowing values creation already accepts.
  */
 export const familyMealProfilePatchSchema = z
   .object({
-    name: requiredText(120),
-    calorieTarget: z.number().int().min(0).max(20000).nullable().optional(),
+    name: requiredText(),
+    calorieTarget: z.number().int().min(INT32_MIN).max(INT32_MAX).nullable().optional(),
     macroGoals: z
-      .object({ protein: macroGoalNumber, carbs: macroGoalNumber, fat: macroGoalNumber })
+      .object({
+        protein: z.number().finite(),
+        carbs: z.number().finite(),
+        fat: z.number().finite(),
+      })
       .strict()
       .nullable()
       .optional(),
-    preferences: z.array(z.string().trim().min(1).max(100)).max(200).optional(),
-    dislikes: z.array(z.string().trim().min(1).max(100)).max(200).optional(),
-    portionMultiplier: decimalField(2, 0.01, 9.99),
+    preferences: z.array(z.string()).optional(),
+    dislikes: z.array(z.string()).optional(),
+    portionMultiplier: decimalField(3, 2),
     isActive: z.boolean().optional(),
   })
   .strict()
@@ -205,7 +250,7 @@ export function toFamilyMealProfilePatch(parsed: FamilyMealProfilePatch) {
 // Remixes
 // ------------------------------------------------------------------------------------------------
 
-/** The remix kinds the product offers, as listed by `RecipeRemixButton`. */
+/** The remix kinds the product offers, as listed by `RecipeRemixButton` and the column's comment. */
 export const REMIX_TYPES = [
   "variation",
   "dietary_conversion",
@@ -213,33 +258,32 @@ export const REMIX_TYPES = [
   "ingredient_swap",
 ] as const;
 
-const ingredientName = z.string().trim().min(1).max(200);
-
 /**
  * The `changes` jsonb, matching the shape `recipeRemixes.changes` declares. It is `.strict()` too:
  * the column is typed, and an untyped bag of client keys inside it is the same mass-assignment
- * problem one level down -- it is where a forged `userId` or counter would go next.
+ * problem one level down -- it is where a forged `userId` or counter would go next. Only the KEY SET
+ * and the types are constrained; the strings and numbers inside are as unbounded as creation left
+ * them, and `remixCreateSchema` applies this same definition so the two paths agree.
  */
 export const remixChangesSchema = z
   .object({
-    addedIngredients: z.array(ingredientName).max(200).optional(),
-    removedIngredients: z.array(ingredientName).max(200).optional(),
+    addedIngredients: z.array(z.string()).optional(),
+    removedIngredients: z.array(z.string()).optional(),
     modifiedIngredients: z
       .array(
         z
           .object({
-            original: ingredientName,
-            new: ingredientName,
-            reason: z.string().trim().max(500).optional(),
+            original: z.string(),
+            new: z.string(),
+            reason: z.string().optional(),
           })
           .strict()
       )
-      .max(200)
       .optional(),
-    nutritionChanges: z.record(z.string().trim().min(1).max(60), z.number().finite()).optional(),
-    prepTimeChange: z.number().int().min(-10080).max(10080).optional(),
-    difficultyChange: z.string().trim().max(60).optional(),
-    notes: z.string().trim().max(4000).optional(),
+    nutritionChanges: z.record(z.string(), z.number().finite()).optional(),
+    prepTimeChange: z.number().finite().optional(),
+    difficultyChange: z.string().optional(),
+    notes: z.string().optional(),
   })
   .strict();
 
@@ -276,24 +320,24 @@ export function toRemixPatch(parsed: RemixPatch) {
 /**
  * POST /api/remixes -- creation already named its fields rather than spreading the body, so it was
  * never mass-assignable; what it lacked was validation of the fields it did read. `remixType` and
- * `changes` went to the database unchecked, so this shares the same validated definitions.
+ * `changes` went to the database unchecked, so this shares the same validated definitions -- which is
+ * what lets `remixPatchSchema` constrain `remixType` to the product's four kinds without making a
+ * newly created remix uneditable: both paths now accept exactly the same set.
  *
- * The recipe ids stay here because creation is where lineage is legitimately established. Whether
- * that lineage is correctly attributed -- and whether the counters it drives are right -- is a
- * separate, deeper finding (P2-03) and is deliberately untouched by this schema.
+ * The recipe ids stay here because creation is where lineage is legitimately established. `min(1)`
+ * reproduces the handler's original required-field check and nothing more; the ids are looked up
+ * before insert, so a value that matches no recipe is already a 404. Whether that lineage is
+ * correctly attributed -- and whether the counters it drives are right -- is a separate, deeper
+ * finding (P2-03) and is deliberately untouched by this schema.
  */
 export const remixCreateSchema = z
   .object({
     originalRecipeId: z
       .string({ required_error: "originalRecipeId and remixedRecipeId are required" })
-      .trim()
-      .min(1, "originalRecipeId and remixedRecipeId are required")
-      .max(128),
+      .min(1, "originalRecipeId and remixedRecipeId are required"),
     remixedRecipeId: z
       .string({ required_error: "originalRecipeId and remixedRecipeId are required" })
-      .trim()
-      .min(1, "originalRecipeId and remixedRecipeId are required")
-      .max(128),
+      .min(1, "originalRecipeId and remixedRecipeId are required"),
     remixType: z.enum(REMIX_TYPES).default("variation"),
     changes: remixChangesSchema.default({}),
     isPublic: z.boolean().default(true),
