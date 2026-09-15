@@ -1,7 +1,17 @@
 // server/routes/competitions.ts
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
+import { z } from "zod";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 import { db } from "../db";
+import { requireAuth } from "../middleware/index";
+import { ApiError } from "../middleware/error-handler";
+import {
+  castCompetitionVoteBody,
+  competitionLibraryQuery,
+  createCompetitionBody,
+  firstIssueMessage,
+  submitCompetitionEntryBody,
+} from "../lib/competition-requests";
 import {
   competitions,
   competitionParticipants,
@@ -15,16 +25,43 @@ const nowUtc = () => new Date();
 const isMissingTable = (e: any) =>
   e && (e.code === "42P01" || /relation .* does not exist/i.test(e?.message || ""));
 
-function requireUserId(req: any): string {
-  const uid =
-    (req.user && req.user.id) || (req.headers["x-user-id"] as string) || "";
-  if (!uid) {
-    const err: any = new Error("Unauthorized: missing user id");
-    err.status = 401;
-    throw err;
+/**
+ * The acting user, and the ONLY source of one in this router.
+ *
+ * Every mutation here runs behind `requireAuth`, so `req.user` carries a verified token claim
+ * rather than anything the caller typed. `x-user-id`, `req.body.userId` and `/:userId` path
+ * segments name a target at most; they are never an identity.
+ *
+ * The guard is belt-and-braces: unreachable behind the middleware, but a route added later that
+ * forgets it fails closed here instead of acting as whoever the request said it was.
+ */
+function actorId(req: Request): string {
+  const id = (req.user as { id?: string } | undefined)?.id;
+  if (typeof id !== "string" || id.length === 0) {
+    // `ApiError` is what the global handler reads a status off; a bare Error would surface as a 500.
+    throw new ApiError(401, "Unauthorized");
   }
-  return uid;
+  return id;
 }
+/**
+ * Parse a request against a schema, or answer 400 and stop.
+ *
+ * Returns the PARSED value and nothing else, so a handler has no un-narrowed copy of the request
+ * left to reach for. Client input is only ever used through what comes back from here.
+ */
+function parsed<T extends z.ZodTypeAny>(
+  schema: T,
+  input: unknown,
+  res: Response
+): z.infer<T> | null {
+  const result = schema.safeParse(input);
+  if (!result.success) {
+    res.status(400).json({ error: firstIssueMessage(result.error) });
+    return null;
+  }
+  return result.data;
+}
+
 function clamp1to10(n: any) {
   const x = Number(n);
   if (!isFinite(x)) return 1;
@@ -61,7 +98,7 @@ async function getCompetitionDetail(competitionId: string) {
       voteTallies: tallies,
       media: [],
     };
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return null;
     }
@@ -75,34 +112,25 @@ router.get("/health", (_req, res) => {
 });
 
 // --- create ---
-router.post("/", async (req, res, next) => {
+router.post("/", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
-    const {
-      title = null,
-      themeName = null,
-      recipeId = null,
-      isPrivate = false,
-      timeLimitMinutes = 60,
-      minOfficialVoters = 3,
-    } = req.body || {};
-
-    if (timeLimitMinutes < 15 || timeLimitMinutes > 120) {
-      return res
-        .status(400)
-        .json({ error: "timeLimitMinutes must be between 15 and 120" });
-    }
+    const userId = actorId(req);
+    // The bounds check used to coerce (`"60" < 15`) while the RAW field was what got stored, so the
+    // checked value and the stored value were never required to be the same value. Now the parsed
+    // body is the only thing this handler can see.
+    const body = parsed(createCompetitionBody, req.body ?? {}, res);
+    if (!body) return;
 
     const [created] = await db
       .insert(competitions)
       .values({
         creatorId: userId,
-        title,
-        themeName,
-        recipeId,
-        isPrivate: !!isPrivate,
-        timeLimitMinutes,
-        minOfficialVoters,
+        title: body.title,
+        themeName: body.themeName,
+        recipeId: body.recipeId,
+        isPrivate: body.isPrivate,
+        timeLimitMinutes: body.timeLimitMinutes,
+        minOfficialVoters: body.minOfficialVoters,
         status: "upcoming",
       })
       .returning({ id: competitions.id });
@@ -113,7 +141,7 @@ router.post("/", async (req, res, next) => {
       .onConflictDoNothing();
 
     res.json({ id: created.id });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -130,7 +158,7 @@ router.get("/:id", async (req, res, next) => {
     const detail = await getCompetitionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: "Not found" });
     res.json(detail);
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res
         .status(404)
@@ -141,9 +169,9 @@ router.get("/:id", async (req, res, next) => {
 });
 
 // --- start (upcoming -> live) ---
-router.post("/:id/start", async (req, res, next) => {
+router.post("/:id/start", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const compId = req.params.id;
 
     const [comp] = await db
@@ -170,10 +198,10 @@ router.post("/:id/start", async (req, res, next) => {
         endTime: end,
         updatedAt: nowUtc(),
       })
-      .where(eq(competitions.id, compId));
+      .where(eq(competitions.id, comp.id));
 
     res.json({ ok: true });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -185,9 +213,9 @@ router.post("/:id/start", async (req, res, next) => {
 });
 
 // --- end (live -> judging for 24h) ---
-router.post("/:id/end", async (req, res, next) => {
+router.post("/:id/end", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const compId = req.params.id;
 
     const [comp] = await db
@@ -213,10 +241,10 @@ router.post("/:id/end", async (req, res, next) => {
         judgingClosesAt: closeAt,
         updatedAt: nowUtc(),
       })
-      .where(eq(competitions.id, compId));
+      .where(eq(competitions.id, comp.id));
 
     res.json({ ok: true, judgingClosesAt: closeAt.toISOString() });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -228,11 +256,12 @@ router.post("/:id/end", async (req, res, next) => {
 });
 
 // --- competitor submission ---
-router.post("/:id/submit", async (req, res, next) => {
+router.post("/:id/submit", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const compId = req.params.id;
-    const { dishTitle, dishDescription, finalDishPhotoUrl } = req.body || {};
+    const body = parsed(submitCompetitionEntryBody, req.body ?? {}, res);
+    if (!body) return;
 
     const [comp] = await db
       .select()
@@ -249,12 +278,12 @@ router.post("/:id/submit", async (req, res, next) => {
     await db
       .insert(competitionParticipants)
       .values({
-        competitionId: compId,
+        competitionId: comp.id,
         userId,
         role: "competitor",
-        dishTitle: dishTitle ?? null,
-        dishDescription: dishDescription ?? null,
-        finalDishPhotoUrl: finalDishPhotoUrl ?? null,
+        dishTitle: body.dishTitle,
+        dishDescription: body.dishDescription,
+        finalDishPhotoUrl: body.finalDishPhotoUrl,
       })
       .onConflictDoUpdate({
         target: [
@@ -263,15 +292,15 @@ router.post("/:id/submit", async (req, res, next) => {
         ],
         set: {
           role: "competitor",
-          dishTitle: dishTitle ?? null,
-          dishDescription: dishDescription ?? null,
-          finalDishPhotoUrl: finalDishPhotoUrl ?? null,
+          dishTitle: body.dishTitle,
+          dishDescription: body.dishDescription,
+          finalDishPhotoUrl: body.finalDishPhotoUrl,
           updatedAt: nowUtc(),
         },
       });
 
     res.json({ ok: true });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -283,11 +312,12 @@ router.post("/:id/submit", async (req, res, next) => {
 });
 
 // --- spectator vote (participants cannot vote) ---
-router.post("/:id/votes", async (req, res, next) => {
+router.post("/:id/votes", requireAuth, async (req, res, next) => {
   try {
-    const voterId = requireUserId(req);
+    const voterId = actorId(req);
     const compId = req.params.id;
-    const { participantId, presentation, creativity, technique } = req.body || {};
+    const body = parsed(castCompetitionVoteBody, req.body ?? {}, res);
+    if (!body) return;
 
     const [comp] = await db
       .select()
@@ -306,23 +336,51 @@ router.post("/:id/votes", async (req, res, next) => {
       .from(competitionParticipants)
       .where(
         and(
-          eq(competitionParticipants.competitionId, compId),
+          eq(competitionParticipants.competitionId, comp.id),
           eq(competitionParticipants.userId, voterId)
         )
       )
       .limit(1);
     if (maybeParticipant) return res.status(403).json({ error: "Participants cannot vote." });
 
-    const pv = clamp1to10(presentation);
-    const cv = clamp1to10(creativity);
-    const tv = clamp1to10(technique);
+    // `participantId` is a caller-supplied row id, and it is the id `/complete` later writes
+    // placements back onto. Two things have to be true of it, and the order matters:
+    //
+    //   1. It is a string. `String(participantId)` is NOT a substitute -- `["id"]` and `[["id"]]`
+    //      both stringify to `id` and would pass this lookup, while the driver serialises the
+    //      array itself as `{"id"}` / `{{"id"}}`. Each is a distinct stored value, so each slips
+    //      past `uniq_vote_per_voter_participant` and lands a ballot pointing at no participant
+    //      row at all. The schema rejects every non-string form before we get here.
+    //   2. It names an entrant in THIS competition -- otherwise a ballot could steer another
+    //      competition's scoring when `/complete` writes placements back by participant id.
+    //
+    // What is then persisted is `target.id`, read back from the row we just validated. The request
+    // value is not used again; there is no path by which the checked id and the stored id differ.
+    const [target] = await db
+      .select({ id: competitionParticipants.id })
+      .from(competitionParticipants)
+      .where(
+        and(
+          eq(competitionParticipants.id, body.participantId),
+          eq(competitionParticipants.competitionId, comp.id)
+        )
+      )
+      .limit(1);
+    if (!target)
+      return res
+        .status(400)
+        .json({ error: "participantId is not an entrant in this competition." });
+
+    const pv = clamp1to10(body.presentation);
+    const cv = clamp1to10(body.creativity);
+    const tv = clamp1to10(body.technique);
 
     await db
       .insert(competitionVotes)
       .values({
-        competitionId: compId,
+        competitionId: comp.id,
         voterId,
-        participantId,
+        participantId: target.id,
         presentation: pv,
         creativity: cv,
         technique: tv,
@@ -337,7 +395,7 @@ router.post("/:id/votes", async (req, res, next) => {
       });
 
     res.json({ ok: true });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -349,9 +407,9 @@ router.post("/:id/votes", async (req, res, next) => {
 });
 
 // --- finalize results (judging -> completed) ---
-router.post("/:id/complete", async (req, res, next) => {
+router.post("/:id/complete", requireAuth, async (req, res, next) => {
   try {
-    const userId = requireUserId(req);
+    const userId = actorId(req);
     const compId = req.params.id;
 
     const [comp] = await db
@@ -374,7 +432,7 @@ router.post("/:id/complete", async (req, res, next) => {
         voters: countDistinct(competitionVotes.voterId).as("voters"),
       })
       .from(competitionVotes)
-      .where(eq(competitionVotes.competitionId, compId))
+      .where(eq(competitionVotes.competitionId, comp.id))
       .groupBy(competitionVotes.participantId)
       .orderBy(
         desc(
@@ -406,11 +464,11 @@ router.post("/:id/complete", async (req, res, next) => {
         isOfficial,
         updatedAt: nowUtc(),
       })
-      .where(eq(competitions.id, compId));
+      .where(eq(competitions.id, comp.id));
 
-    const detail = await getCompetitionDetail(compId);
+    const detail = await getCompetitionDetail(comp.id);
     res.json({ ok: true, winnerParticipantId, isOfficial, detail });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.status(409).json({
         error:
@@ -424,24 +482,21 @@ router.post("/:id/complete", async (req, res, next) => {
 // --- library / archive ---
 router.get("/library", async (req, res, next) => {
   try {
-    const {
-      q,
-      theme,
-      creator,
-      dateFrom,
-      dateTo,
-      limit = "30",
-      offset = "0",
-    } = req.query as Record<string, string>;
-    const lim = Math.max(1, Math.min(100, parseInt(limit || "30", 10)));
-    const off = Math.max(0, parseInt(offset || "0", 10));
+    // `req.query` is NOT `Record<string, string>`, whatever the old cast claimed: Express hands back
+    // an array for `?theme=a&theme=b` and an object for a bracketed key. `new Date(<array>)` then
+    // reached `timestamp.toISOString()` and threw a RangeError, answering an unauthenticated
+    // request with a 500. The schema settles the shape, and the parsed values are what get used.
+    const query = parsed(competitionLibraryQuery, req.query ?? {}, res);
+    if (!query) return;
+    const lim = query.limit;
+    const off = query.offset;
 
     const where: any[] = [];
-    if (q) where.push(ilike(competitions.title, `%${q}%`));
-    if (theme) where.push(eq(competitions.themeName, theme));
-    if (creator) where.push(eq(competitions.creatorId, creator));
-    if (dateFrom) where.push(gte(competitions.createdAt, new Date(dateFrom)));
-    if (dateTo) where.push(lte(competitions.createdAt, new Date(dateTo)));
+    if (query.q) where.push(ilike(competitions.title, `%${query.q}%`));
+    if (query.theme) where.push(eq(competitions.themeName, query.theme));
+    if (query.creator) where.push(eq(competitions.creatorId, query.creator));
+    if (query.dateFrom) where.push(gte(competitions.createdAt, query.dateFrom));
+    if (query.dateTo) where.push(lte(competitions.createdAt, query.dateTo));
 
     const whereExpr =
       where.length ? (where.length === 1 ? where[0] : and(...where)) : undefined;
@@ -460,7 +515,7 @@ router.get("/library", async (req, res, next) => {
       .offset(off);
 
     res.json({ items, total, limit: lim, offset: off });
-  } catch (error) {
+  } catch (err: any) {
     if (isMissingTable(err)) {
       return res.json({
         items: [],
