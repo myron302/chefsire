@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { and, countDistinct, desc, eq, gte, ilike, lte, sql } from "drizzle-orm";
 import { db } from "../db";
-import { requireAuth } from "../middleware/index";
+import { optionalAuth, requireAuth } from "../middleware/index";
 import { ApiError } from "../middleware/error-handler";
 import {
   castCompetitionVoteBody,
@@ -17,6 +17,11 @@ import {
   competitionParticipants,
   competitionVotes,
 } from "../db/competitions";
+import {
+  canViewCompetition,
+  viewerIdFrom,
+  visibleCompetitionsCondition,
+} from "../lib/competition-visibility";
 
 const router = Router();
 
@@ -111,6 +116,73 @@ router.get("/health", (_req, res) => {
   res.json({ ok: true, scope: "competitions" });
 });
 
+/**
+ * STATIC ROUTES GO ABOVE `/:id`, AND HAVE TO.
+ *
+ * Express matches in declaration order and `/:id` matches ANY single segment, so `/library`
+ * declared after it was never reached: `GET /api/competitions/library` ran the detail handler with
+ * `id = "library"`, found no such row and answered 404. The endpoint was unreachable, not broken.
+ *
+ * `/health` was already safe only because it happens to be declared first. Anything static added
+ * later belongs in this block, above the `/:id` family -- not behind an `if (id === "library")`
+ * special case in the detail handler, which would leave the next static route to rediscover this.
+ */
+
+// --- library / archive ---
+router.get("/library", optionalAuth, async (req, res, next) => {
+  try {
+    // `req.query` is NOT `Record<string, string>`, whatever the old cast claimed: Express hands back
+    // an array for `?theme=a&theme=b` and an object for a bracketed key. `new Date(<array>)` then
+    // reached `timestamp.toISOString()` and threw a RangeError, answering an unauthenticated
+    // request with a 500. The schema settles the shape, and the parsed values are what get used.
+    const query = parsed(competitionLibraryQuery, req.query ?? {}, res);
+    if (!query) return;
+    const lim = query.limit;
+    const off = query.offset;
+
+    // The privacy term is the FIRST filter and is not optional, so every other filter narrows a
+    // set that is ALREADY restricted to what this viewer may see. It is one more `and(...)` term
+    // rather than a replacement, so `q`, `theme`, `creator`, `dateFrom`, `dateTo` and the
+    // limit/offset page compose with it untouched -- and `total` counts the same restricted set,
+    // so a private competition cannot even be inferred from a result count or a gap in a page.
+    const where: any[] = [visibleCompetitionsCondition(viewerIdFrom(req))];
+    if (query.q) where.push(ilike(competitions.title, `%${query.q}%`));
+    if (query.theme) where.push(eq(competitions.themeName, query.theme));
+    if (query.creator) where.push(eq(competitions.creatorId, query.creator));
+    if (query.dateFrom) where.push(gte(competitions.createdAt, query.dateFrom));
+    if (query.dateTo) where.push(lte(competitions.createdAt, query.dateTo));
+
+    // Never empty now -- the privacy term is always in there.
+    const whereExpr = where.length === 1 ? where[0] : and(...where);
+
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(competitions)
+      .where(whereExpr);
+
+    const items = await db
+      .select()
+      .from(competitions)
+      .where(whereExpr)
+      .orderBy(desc(competitions.createdAt))
+      .limit(lim)
+      .offset(off);
+
+    res.json({ items, total, limit: lim, offset: off });
+  } catch (err: any) {
+    if (isMissingTable(err)) {
+      return res.json({
+        items: [],
+        total: 0,
+        limit: 30,
+        offset: 0,
+        note: "competitions tables not initialized yet",
+      });
+    }
+    next(err);
+  }
+});
+
 // --- create ---
 router.post("/", requireAuth, async (req, res, next) => {
   try {
@@ -153,8 +225,31 @@ router.post("/", requireAuth, async (req, res, next) => {
 });
 
 // --- detail ---
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", optionalAuth, async (req, res, next) => {
   try {
+    // `optionalAuth`, not `requireAuth`: a PUBLIC competition stays readable by anyone, including
+    // an anonymous caller. The verified session only decides whether a PRIVATE one is also readable.
+    const viewerId = viewerIdFrom(req);
+
+    // The id and the permission are ONE query: the same predicate the library filters on, ANDed
+    // onto the primary-key lookup. So visibility is settled before the participants, the ballots
+    // and the dish entries are assembled -- an unauthorized caller never causes that work, let
+    // alone receives it -- and, just as important, a competition hidden from this viewer and an id
+    // that was never real take the identical path. Checking the row in application code after
+    // loading it would have cost a second, conditional query for exactly one of those two cases,
+    // and the difference in timing is itself the answer the 404 is withholding.
+    const [row] = await db
+      .select({ id: competitions.id })
+      .from(competitions)
+      .where(and(eq(competitions.id, req.params.id), visibleCompetitionsCondition(viewerId)))
+      .limit(1);
+
+    // A competition this viewer may not see answers EXACTLY as one that does not exist: same 404,
+    // same body. This is the convention the rest of the server already follows for private
+    // resources (`getVisiblePost` collapses "absent" and "hidden" into one null), and it is why the
+    // response says nothing more specific -- a 403 here would confirm the competition is real.
+    if (!row) return res.status(404).json({ error: "Not found" });
+
     const detail = await getCompetitionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: "Not found" });
     res.json(detail);
@@ -168,6 +263,20 @@ router.get("/:id", async (req, res, next) => {
   }
 });
 
+/**
+ * EVERY `/:id` ROUTE BELOW GATES ON `canViewCompetition` FIRST.
+ *
+ * Same rule as the detail read, and the same 404: a competition the actor cannot SEE is one they
+ * cannot act on either, and the refusal must not confirm that a private competition exists -- a 403
+ * would -- and it resolves the same way for an id that does not exist, so the two refusals cannot
+ * be told apart by how long they took. For a PUBLIC competition the gate is a no-op, so the 403 a
+ * non-creator already got from `/start`, `/end` and `/complete` is unchanged.
+ *
+ * It matters most on `/submit`, which is the route that CREATES a participant row. Without the gate
+ * any authenticated user could enrol themselves into a live private competition and then read it
+ * legitimately, as a member -- self-issuing the access that membership is supposed to represent.
+ */
+
 // --- start (upcoming -> live) ---
 router.post("/:id/start", requireAuth, async (req, res, next) => {
   try {
@@ -179,7 +288,11 @@ router.post("/:id/start", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, userId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.creatorId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     if (comp.status !== "upcoming")
@@ -223,7 +336,11 @@ router.post("/:id/end", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, userId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.creatorId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     if (comp.status !== "live")
@@ -268,7 +385,11 @@ router.post("/:id/submit", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, userId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.status !== "live" && comp.status !== "judging") {
       return res
         .status(400)
@@ -324,7 +445,11 @@ router.post("/:id/votes", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, voterId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.status !== "judging" && comp.status !== "live") {
       return res
         .status(400)
@@ -417,7 +542,11 @@ router.post("/:id/complete", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, userId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.creatorId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     if (comp.status !== "judging")
@@ -473,56 +602,6 @@ router.post("/:id/complete", requireAuth, async (req, res, next) => {
       return res.status(409).json({
         error:
           "Competitions tables are not initialized. Run `npm run db:push`.",
-      });
-    }
-    next(err);
-  }
-});
-
-// --- library / archive ---
-router.get("/library", async (req, res, next) => {
-  try {
-    // `req.query` is NOT `Record<string, string>`, whatever the old cast claimed: Express hands back
-    // an array for `?theme=a&theme=b` and an object for a bracketed key. `new Date(<array>)` then
-    // reached `timestamp.toISOString()` and threw a RangeError, answering an unauthenticated
-    // request with a 500. The schema settles the shape, and the parsed values are what get used.
-    const query = parsed(competitionLibraryQuery, req.query ?? {}, res);
-    if (!query) return;
-    const lim = query.limit;
-    const off = query.offset;
-
-    const where: any[] = [];
-    if (query.q) where.push(ilike(competitions.title, `%${query.q}%`));
-    if (query.theme) where.push(eq(competitions.themeName, query.theme));
-    if (query.creator) where.push(eq(competitions.creatorId, query.creator));
-    if (query.dateFrom) where.push(gte(competitions.createdAt, query.dateFrom));
-    if (query.dateTo) where.push(lte(competitions.createdAt, query.dateTo));
-
-    const whereExpr =
-      where.length ? (where.length === 1 ? where[0] : and(...where)) : undefined;
-
-    const [{ total }] = await db
-      .select({ total: sql<number>`count(*)` })
-      .from(competitions)
-      .where(whereExpr);
-
-    const items = await db
-      .select()
-      .from(competitions)
-      .where(whereExpr)
-      .orderBy(desc(competitions.createdAt))
-      .limit(lim)
-      .offset(off);
-
-    res.json({ items, total, limit: lim, offset: off });
-  } catch (err: any) {
-    if (isMissingTable(err)) {
-      return res.json({
-        items: [],
-        total: 0,
-        limit: 30,
-        offset: 0,
-        note: "competitions tables not initialized yet",
       });
     }
     next(err);
