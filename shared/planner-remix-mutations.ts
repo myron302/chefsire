@@ -52,6 +52,7 @@
  * it from the validated `purchased` flag -- it is never read from the request.
  */
 import { z } from "zod";
+import { normalizePgNumeric } from "./pg-numeric";
 
 /** Every column name the planner/remix contracts must never accept from a client. */
 export const PLANNER_REMIX_FORBIDDEN_FIELDS = [
@@ -95,41 +96,43 @@ const requiredText = () => z.string().min(1).optional();
 const nullableText = () => z.string().nullable().optional();
 
 /**
- * A `decimal(precision, scale)` column. Postgres numerics arrive over JSON as either a number or a
- * numeric string; drizzle wants the string form, so both are accepted and normalized to a
- * fixed-scale string here rather than in a route.
+ * A `decimal(precision, scale)` column.
  *
- * The bound is the column's own precision, not a product rule: a value outside it is a Postgres
- * range error, so rejecting it with a 400 is strictly better than the 500 it would otherwise become.
- * It is symmetric because `numeric(p, s)` itself is -- creation never restricted the sign, so
- * neither does editing.
+ * Validation only -- the value is handed to the database as it arrived, and Postgres does the
+ * rounding it has always done. `normalizePgNumeric` models that rounding with string and integer
+ * arithmetic to decide whether the value FITS the column, so a decimal never passes through a
+ * JavaScript float: `"1.005"` is stored by Postgres as `1.01`, not turned into `"1.00"` by
+ * `Number("1.005").toFixed(2)`, and `"999999.994"` is accepted because Postgres rounds it to
+ * `999999.99` rather than being rejected on its unrounded magnitude.
+ *
+ * The range check is what stops a value that overflows AFTER rounding -- `"999999.995"` rounds to
+ * `1000000.00`, which `numeric(8, 2)` cannot hold -- from reaching the driver and becoming a 500.
+ *
+ * Both JSON forms are accepted, because both are already sent: a string keeps its exact decimal
+ * semantics and is passed through untouched, while a number is spelled with `String(value)`, the
+ * shortest decimal that round-trips it. See `shared/pg-numeric.ts` for why that distinction matters.
  */
-const decimalField = (precision: number, scale: number) => {
-  const limit = Number(`${"9".repeat(precision - scale)}.${"9".repeat(scale)}`);
-  return z
-    .union([z.number(), z.string().trim().min(1)])
+const decimalField = (precision: number, scale: number) =>
+  z
+    .union([z.number(), z.string()])
     .nullable()
     .optional()
-    .superRefine((value, ctx) => {
-      if (value === undefined || value === null) return;
-      const numeric = typeof value === "number" ? value : Number(value);
-      if (!Number.isFinite(numeric)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Expected a number" });
-        return;
-      }
-      if (Math.abs(numeric) > limit) {
+    .transform((value, ctx) => {
+      if (value === undefined || value === null) return value;
+
+      const result = normalizePgNumeric(value, precision, scale);
+      if (!result.ok) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Expected a number between -${limit} and ${limit}`,
+          message:
+            result.reason === "syntax"
+              ? "Expected a decimal number"
+              : `Expected a value that fits numeric(${precision}, ${scale})`,
         });
+        return z.NEVER;
       }
-    })
-    .transform((value) => {
-      if (value === undefined || value === null) return value;
-      const numeric = typeof value === "number" ? value : Number(value);
-      return numeric.toFixed(scale);
+      return result.value;
     });
-};
 
 /** The range a Postgres `integer` column accepts; outside it is a range error, not a product rule. */
 const INT32_MIN = -2147483648;

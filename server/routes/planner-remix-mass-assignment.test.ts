@@ -1036,3 +1036,297 @@ test("the patch contracts carry no invented maximum on a text column", async () 
   );
   assert.ok(!/\.max\(/.test(helpers), "a text-column helper regained a maximum length");
 });
+
+// ============================================================================================
+// Decimal columns keep PostgreSQL's semantics through the mutation path
+//
+// Codex flagged this on 9a150e5: the price validator normalized through a JavaScript number,
+// `Number(value).toFixed(scale)`. That rewrote decimals the client sent -- `"1.005"` became
+// `"1.00"` where Postgres stores `1.01` -- and its range check ran BEFORE rounding, so
+// `"999999.994"` was rejected even though `numeric(8, 2)` rounds it to `999999.99`. It also hid
+// genuine overflows: `Number("999999.995").toFixed(2)` is `"999999.99"`.
+//
+// Validation now decides only whether a value fits; the value itself reaches the database as it
+// arrived, so Postgres does the rounding it has always done -- which is what `POST /grocery-list`
+// relied on before this PR, since it passed its price straight to drizzle. `shared/pg-numeric.test.ts`
+// pins the arithmetic against measured Postgres output; these tests pin the wire behavior.
+// ============================================================================================
+
+/** What actually reached `.set(...)` for one column, across a request. */
+function setValueFor(column: string) {
+  for (const call of setCalls) {
+    if (column in call.value && call.value[column] !== undefined) return call.value[column];
+  }
+  return undefined;
+}
+
+test("PATCH /grocery-list/:id: \"1.005\" reaches the database as \"1.005\", never \"1.00\"", async () => {
+  // The exact regression. If this value is normalized in JS it becomes "1.00" and the cent is lost;
+  // passed through, Postgres rounds the decimal and stores 1.01.
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { actualPrice: "1.005" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+
+  const sent = setValueFor("actualPrice");
+  assert.equal(sent, "1.005", `the decimal was rewritten before the database saw it: ${sent}`);
+  assert.notEqual(sent, "1.00", "this is the float-rounding defect Codex reported");
+  assert.equal(stored(groceryListItems, GROCERY_ID)!.actualPrice, "1.005");
+});
+
+test("PATCH /grocery-list/:id: negative and other half-way decimals are not rewritten either", async () => {
+  for (const [input, floatWouldGive] of [
+    ["-1.005", "-1.00"],
+    ["2.675", "2.67"],
+    ["1.015", "1.01"],
+    ["0.005", "0.01"],
+  ] as Array<[string, string]>) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { estimatedPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 200, result.text);
+    const sent = setValueFor("estimatedPrice");
+    assert.equal(sent, input, `${input} was rewritten to ${sent}`);
+    if (floatWouldGive !== input) {
+      assert.notEqual(sent, floatWouldGive, `${input} came back as the float-rounded ${floatWouldGive}`);
+    }
+  }
+});
+
+test("PATCH /grocery-list/:id: 999999.994 is accepted -- it rounds into numeric(8,2)", async () => {
+  // Codex's boundary case. The previous check compared the UNROUNDED magnitude against the column
+  // maximum and rejected a value Postgres stores as 999999.99.
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { actualPrice: "999999.994" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  assert.equal(setValueFor("actualPrice"), "999999.994");
+});
+
+test("PATCH /grocery-list/:id: -999999.994 is accepted as well", async () => {
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { actualPrice: "-999999.994" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+});
+
+test("PATCH /grocery-list/:id: a value that overflows after rounding is a 400, not a 500", async () => {
+  // 999999.995 rounds to 1000000.00, which numeric(8,2) cannot hold. Postgres would raise
+  // `numeric field overflow`; the request must be refused before the driver sees it.
+  for (const input of ["999999.995", "-999999.995", "999999.999", "1000000", "5e6"]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { estimatedPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 400, `${input} was not refused: ${result.text}`);
+    assert.deepEqual(setCalls, [], `${input} reached the database`);
+  }
+});
+
+test("PATCH /grocery-list/:id: exact numeric(8,2) limits are accepted", async () => {
+  for (const input of ["999999.99", "-999999.99", "0", "0.00"]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { estimatedPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 200, `${input} was refused: ${result.text}`);
+  }
+});
+
+test("PATCH /grocery-list/:id: extra fractional digits, leading zeros and exponents are accepted", async () => {
+  for (const input of ["0.0049999", "007.5", "1.20", "1.", ".5", "-.5", "+1.5", "1e2", "1.5e1", "1E-3"]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { actualPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 200, `${input} was refused: ${result.text}`);
+    assert.equal(setValueFor("actualPrice"), input, `${input} was rewritten`);
+  }
+});
+
+test("PATCH /grocery-list/:id: a malformed decimal is a 400", async () => {
+  for (const input of ["", "abc", "1.2.3", "--1", "1e", "1,5", ".", "0x10", "$1.00"]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { actualPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 400, `${JSON.stringify(input)} was accepted: ${result.text}`);
+    assert.deepEqual(setCalls, []);
+  }
+});
+
+test("PATCH /grocery-list/:id: a JSON number price still works, and keeps its own spelling", async () => {
+  // `NutritionMealPlanner.tsx` posts a number, so numbers must remain valid; the conversion is the
+  // number's shortest round-trip decimal, not a re-rounding of it.
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { estimatedPrice: 1.005, actualPrice: 0 },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  assert.equal(setValueFor("estimatedPrice"), "1.005");
+  assert.equal(setValueFor("actualPrice"), "0");
+});
+
+test("PATCH /grocery-list/:id: a non-finite number price is a 400", async () => {
+  // JSON cannot carry NaN or Infinity, but a client can send the strings, and `'NaN'::numeric` is a
+  // legal Postgres value that would poison the report totals that sum this column.
+  for (const input of ["NaN", "Infinity", "-Infinity"]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { actualPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 400, `${input} was accepted: ${result.text}`);
+  }
+});
+
+test("PATCH /grocery-list/:id: clearing a price with null still works", async () => {
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { estimatedPrice: null },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  assert.equal(stored(groceryListItems, GROCERY_ID)!.estimatedPrice, null);
+});
+
+// --------------------------------------------------------------------------------------------
+// numeric(3, 2) has ONE integer digit -- its boundary is not numeric(8, 2)'s
+// --------------------------------------------------------------------------------------------
+
+test("PATCH /family-profiles/:id: portionMultiplier respects numeric(3,2), not numeric(8,2)", async () => {
+  for (const [input, expected] of [
+    ["9.99", 200],
+    ["-9.99", 200],
+    ["9.994", 200], // rounds to 9.99
+    ["1.005", 200], // rounds to 1.01
+    ["0.5", 200],
+    ["9.995", 400], // rounds to 10.00 -- one integer digit cannot hold it
+    ["-9.995", 400],
+    ["10", 400],
+    ["999999.99", 400], // valid for numeric(8,2), invalid here
+  ] as Array<[string, number]>) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/family-profiles/${PROFILE_ID}`,
+      { portionMultiplier: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, expected, `${input} expected ${expected}: ${result.text}`);
+  }
+});
+
+test("PATCH /family-profiles/:id: portionMultiplier \"1.005\" is not rewritten to \"1.00\"", async () => {
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/family-profiles/${PROFILE_ID}`,
+    { portionMultiplier: "1.005" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  assert.equal(setValueFor("portionMultiplier"), "1.005");
+  assert.equal(stored(familyMealProfiles, PROFILE_ID)!.portionMultiplier, "1.005");
+});
+
+// --------------------------------------------------------------------------------------------
+// Loosening normalization must not loosen the allowlist
+// --------------------------------------------------------------------------------------------
+
+test("a price field cannot be used to smuggle a forbidden column", async () => {
+  given();
+  const before = { ...stored(groceryListItems, GROCERY_ID) };
+  for (const forged of [
+    { actualPrice: "1.005", userId: VICTIM },
+    { actualPrice: "1.005", id: "some-other-item-id" },
+    { actualPrice: "1.005", purchasedAt: "2030-01-01T00:00:00.000Z" },
+    { estimatedPrice: "1.005", createdAt: "2030-01-01T00:00:00.000Z" },
+  ]) {
+    setCalls = [];
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      forged,
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 400, `${JSON.stringify(forged)} was accepted: ${result.text}`);
+    assert.deepEqual(stored(groceryListItems, GROCERY_ID), before);
+    assert.deepEqual(setCalls, []);
+  }
+});
+
+test("another user cannot set a price on someone else's item", async () => {
+  given();
+  const before = { ...stored(groceryListItems, GROCERY_ID) };
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { actualPrice: "1.005" },
+    asUser(ATTACKER)
+  );
+  assert.equal(result.status, 404, result.text);
+  assert.deepEqual(stored(groceryListItems, GROCERY_ID), before);
+});
+
+test("no decimal in the mutation contracts is normalized through a JavaScript number", async () => {
+  // A shape assertion, so the float conversion cannot return under another name. The two `Number(...)`
+  // uses left in `pg-numeric.ts` operate on a single digit and on an integer exponent, never on a
+  // decimal value, and are asserted by name rather than banned outright.
+  const { readFile } = await import("node:fs/promises");
+  const contracts = await readFile(
+    new URL("../../shared/planner-remix-mutations.ts", import.meta.url),
+    "utf8"
+  );
+  const code = contracts.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  for (const banned of ["toFixed", "parseFloat", "parseInt", "Number("]) {
+    assert.ok(!code.includes(banned), `${banned} reappeared in the mutation contracts`);
+  }
+
+  const helper = await readFile(new URL("../../shared/pg-numeric.ts", import.meta.url), "utf8");
+  const helperCode = helper.replace(/\/\*\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  for (const banned of ["toFixed", "parseFloat", "parseInt"]) {
+    assert.ok(!helperCode.includes(banned), `${banned} appeared in the decimal helper`);
+  }
+  const numberUses = [...helperCode.matchAll(/Number\(([^)]*)\)/g)].map((m) => m[1].trim());
+  assert.deepEqual(
+    numberUses.sort(),
+    ["exponentText", "out[i]"],
+    `an unexpected Number(...) in the decimal helper: ${numberUses.join(", ")}`
+  );
+});
