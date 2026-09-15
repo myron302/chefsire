@@ -231,26 +231,24 @@ router.get("/:id", optionalAuth, async (req, res, next) => {
     // an anonymous caller. The verified session only decides whether a PRIVATE one is also readable.
     const viewerId = viewerIdFrom(req);
 
-    // Visibility is settled on the competition row alone, BEFORE the participants, the ballots and
-    // the dish entries are assembled -- an unauthorized caller never causes that work, let alone
-    // receives it. It costs one extra primary-key lookup on an authorized read; that is the price
-    // of the gate being impossible to read past.
+    // The id and the permission are ONE query: the same predicate the library filters on, ANDed
+    // onto the primary-key lookup. So visibility is settled before the participants, the ballots
+    // and the dish entries are assembled -- an unauthorized caller never causes that work, let
+    // alone receives it -- and, just as important, a competition hidden from this viewer and an id
+    // that was never real take the identical path. Checking the row in application code after
+    // loading it would have cost a second, conditional query for exactly one of those two cases,
+    // and the difference in timing is itself the answer the 404 is withholding.
     const [row] = await db
-      .select({
-        id: competitions.id,
-        creatorId: competitions.creatorId,
-        isPrivate: competitions.isPrivate,
-      })
+      .select({ id: competitions.id })
       .from(competitions)
-      .where(eq(competitions.id, req.params.id))
+      .where(and(eq(competitions.id, req.params.id), visibleCompetitionsCondition(viewerId)))
       .limit(1);
 
     // A competition this viewer may not see answers EXACTLY as one that does not exist: same 404,
     // same body. This is the convention the rest of the server already follows for private
     // resources (`getVisiblePost` collapses "absent" and "hidden" into one null), and it is why the
     // response says nothing more specific -- a 403 here would confirm the competition is real.
-    if (!(await canViewCompetition(row, viewerId)))
-      return res.status(404).json({ error: "Not found" });
+    if (!row) return res.status(404).json({ error: "Not found" });
 
     const detail = await getCompetitionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: "Not found" });
@@ -270,8 +268,9 @@ router.get("/:id", optionalAuth, async (req, res, next) => {
  *
  * Same rule as the detail read, and the same 404: a competition the actor cannot SEE is one they
  * cannot act on either, and the refusal must not confirm that a private competition exists -- a 403
- * would. For a PUBLIC competition the gate is a no-op, so the 403 a non-creator already got from
- * `/start`, `/end` and `/complete` is unchanged.
+ * would -- and it resolves the same way for an id that does not exist, so the two refusals cannot
+ * be told apart by how long they took. For a PUBLIC competition the gate is a no-op, so the 403 a
+ * non-creator already got from `/start`, `/end` and `/complete` is unchanged.
  *
  * It matters most on `/submit`, which is the route that CREATES a participant row. Without the gate
  * any authenticated user could enrol themselves into a live private competition and then read it
@@ -289,10 +288,11 @@ router.post("/:id/start", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
-    // A competition the actor cannot SEE is one they cannot act on -- see the note above.
-    if (!(await canViewCompetition(comp, userId)))
-      return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, userId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.creatorId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     if (comp.status !== "upcoming")
@@ -336,10 +336,11 @@ router.post("/:id/end", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
-    // A competition the actor cannot SEE is one they cannot act on -- see the note above.
-    if (!(await canViewCompetition(comp, userId)))
-      return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, userId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.creatorId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     if (comp.status !== "live")
@@ -384,10 +385,11 @@ router.post("/:id/submit", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
-    // A competition the actor cannot SEE is one they cannot act on -- see the note above.
-    if (!(await canViewCompetition(comp, userId)))
-      return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, userId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.status !== "live" && comp.status !== "judging") {
       return res
         .status(400)
@@ -443,10 +445,11 @@ router.post("/:id/votes", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
-    // A competition the actor cannot SEE is one they cannot act on -- see the note above.
-    if (!(await canViewCompetition(comp, voterId)))
-      return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, voterId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.status !== "judging" && comp.status !== "live") {
       return res
         .status(400)
@@ -539,10 +542,11 @@ router.post("/:id/complete", requireAuth, async (req, res, next) => {
       .from(competitions)
       .where(eq(competitions.id, compId))
       .limit(1);
-    if (!comp) return res.status(404).json({ error: "Not found" });
-    // A competition the actor cannot SEE is one they cannot act on -- see the note above.
-    if (!(await canViewCompetition(comp, userId)))
-      return res.status(404).json({ error: "Not found" });
+    // A competition the actor cannot SEE is one they cannot act on -- see the note above. Resolved
+    // for EVERY outcome, a competition that does not exist included, so that refusal costs the same
+    // whichever it was; `!comp` then narrows the row rather than skipping the check.
+    const visible = await canViewCompetition(req.params.id, comp, userId);
+    if (!comp || !visible) return res.status(404).json({ error: "Not found" });
     if (comp.creatorId !== userId)
       return res.status(403).json({ error: "Forbidden" });
     if (comp.status !== "judging")

@@ -25,10 +25,17 @@
 //
 // Two shapes of the same rule live here so list queries and direct reads cannot drift apart --
 // the same split, for the same reason, as `post-visibility.ts`:
-//   - `visibleCompetitionsCondition(viewerId)` -- a SQL predicate for `GET /competitions/library`.
-//   - `canViewCompetition(comp, viewerId)`     -- a row-level check for direct reads, and for the
-//                                                 writes that are only allowed on a competition the
-//                                                 actor can actually see.
+//   - `visibleCompetitionsCondition(viewerId)` -- a SQL predicate, used by BOTH reads: the library
+//                                                 listing and the `/:id` detail lookup, which folds
+//                                                 it into its `where` so one query settles the row
+//                                                 and the permission together.
+//   - `canViewCompetition(id, comp, viewerId)` -- a row-level check for the writes that are only
+//                                                 allowed on a competition the actor can see, where
+//                                                 the row has already been loaded.
+//
+// Both refuse in EQUAL WORK. A 404 that hides a competition and a 404 for an id that was never real
+// have to cost the same, or the difference in response time is itself the answer the 404 is
+// withholding -- so neither shape short-circuits on a path that would tell those two cases apart.
 //
 // The viewer is ALWAYS the authenticated identity (`viewerIdFrom`, re-exported from
 // `post-visibility` so there is exactly one definition of it in the server). A viewer id arriving in
@@ -75,34 +82,44 @@ export function visibleCompetitionsCondition(viewerId?: string | null) {
 }
 
 /**
- * May `viewerId` see this competition? The row-level twin of the predicate above, matching it case
- * for case -- public, creator, member -- so a direct read and a listing can never disagree.
+ * May `viewerId` see the competition `competitionId`? The row-level twin of the predicate above,
+ * matching it case for case -- public, creator, member -- so a direct read and a listing can never
+ * disagree.
  *
- * A public competition is open to everyone including anonymous callers; that is what "public" means
- * here, and it is why competition reads sit behind `optionalAuth` rather than `requireAuth`. The
- * membership query only runs for a private competition the viewer does not own, so the ordinary
- * public read costs no extra round trip -- and a caller cannot use response timing to learn whether
- * an id they do not own exists.
+ * `comp` is the already-loaded row, or null/undefined when no such competition exists. The id is
+ * passed separately AND the absent case is not short-circuited, because those two refusals have to
+ * be indistinguishable: an earlier version returned `false` immediately for a missing row while a
+ * private competition the caller had no claim on cost an extra membership query first, so timing a
+ * pair of 404s told an attacker which ids were real. Every refusal now takes the same path.
+ *
+ * Only a competition proven PUBLIC, and an anonymous caller, decide without a query -- neither can
+ * distinguish anything, because a public competition answers 200 to everyone and an anonymous
+ * caller is refused on both branches without one. Everything else reaches the same single lookup.
  */
 export async function canViewCompetition(
+  competitionId: string,
   comp: CompetitionVisibilityFields | null | undefined,
   viewerId: string | null | undefined
 ): Promise<boolean> {
-  if (!comp) return false;
-  if (!comp.isPrivate) return true;
+  // Public: open to everyone including anonymous callers -- that is what "public" means here, and
+  // it is why competition reads sit behind `optionalAuth` rather than `requireAuth`.
+  if (comp && !comp.isPrivate) return true;
+  // Anonymous: refused whether or not the competition exists, and without a query either way.
   if (!viewerId) return false;
-  if (comp.creatorId === viewerId) return true;
 
   const [membership] = await db
     .select({ id: competitionParticipants.id })
     .from(competitionParticipants)
     .where(
       and(
-        eq(competitionParticipants.competitionId, comp.id),
+        eq(competitionParticipants.competitionId, competitionId),
         eq(competitionParticipants.userId, viewerId)
       )
     )
     .limit(1);
 
-  return Boolean(membership);
+  // The creator is checked AFTER the lookup, never instead of it. They hold a `host` participant row
+  // from creation so the lookup alone almost always answers, but a competition whose host row was
+  // lost must still belong to whoever made it.
+  return Boolean(membership) || (comp != null && comp.creatorId === viewerId);
 }

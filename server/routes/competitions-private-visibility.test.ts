@@ -121,6 +121,30 @@ function renderSql(clause: any) {
   return dialect.sqlToQuery(clause);
 }
 
+/**
+ * The double stands in for Postgres where it has to: for a query carrying the privacy predicate it
+ * APPLIES that predicate to `competitionRows` instead of ignoring the `where` and handing back
+ * everything. The viewer it filters by is read out of the clause's own bound parameters, so what is
+ * applied is the rule the ROUTER sent -- and the SQL-shape assertions further down pin that the
+ * router sent the right one. A query with no privacy term (the mutations' plain primary-key lookup)
+ * is left alone, because there the rule is enforced in application code instead.
+ */
+function applyVisibility(rows: any[], clause: any) {
+  const { sql, params } = renderSql(clause);
+  if (!sql.includes("is_private")) return rows;
+
+  // The authenticated form of the predicate is the one with a creator branch; its viewer id is the
+  // parameter bound straight after the `is_private = false` literal.
+  const viewer = sql.includes("creator_id") ? (params[params.indexOf(false) + 1] as string) : null;
+
+  return rows.filter((row) => {
+    if (!row.isPrivate) return true;
+    if (!viewer) return false;
+    if (row.creatorId === viewer) return true;
+    return participantRows.some((p) => p.userId === viewer && p.competitionId === row.id);
+  });
+}
+
 function installDatabaseDouble() {
   const anyDb = db as any;
 
@@ -139,9 +163,10 @@ function installDatabaseDouble() {
           .then(() => {
             if (table === competitions) {
               competitionWheres.push(whereClause);
+              const rows = applyVisibility(competitionRows, whereClause);
               // The library's `count(*)` select is the one that asks for a `total` column.
-              if (fields && "total" in fields) return [{ total: competitionRows.length }];
-              return competitionRows;
+              if (fields && "total" in fields) return [{ total: rows.length }];
+              return rows;
             }
             if (table === competitionParticipants) {
               // `canViewCompetition` asks for `{ id }` scoped to (competition, user);
@@ -272,6 +297,91 @@ test("a public read costs no membership lookup", async () => {
 });
 
 // ============================================================================================
+// Equal work: a hidden competition and an id that was never real cost the same
+// ============================================================================================
+
+/** Every table a request queried, in order, so two refusals can be compared query for query. */
+function queryLog() {
+  const log: unknown[] = [];
+  const anyDb = db as any;
+  const realSelect = anyDb.select;
+  anyDb.select = (fields?: any) => {
+    const chain = realSelect(fields);
+    const realFrom = chain.from;
+    chain.from = (table: unknown) => { log.push(table); return realFrom(table); };
+    return chain;
+  };
+  return { log, restore: () => { anyDb.select = realSelect; } };
+}
+
+test("detail: a hidden competition and a missing id issue the SAME queries", async () => {
+  // The finding this closes: the row-level check returned immediately for a missing row but cost an
+  // extra membership lookup for a private competition the caller had no claim on, so timing a pair
+  // of 404s told an attacker which ids were real.
+  for (const viewer of [anonymous, asUser(STRANGER)]) {
+    given(PRIVATE_COMPETITION, PRIVATE_PARTICIPANT_ROWS);
+    const hiddenProbe = queryLog();
+    const hidden = await get(`/${PRIVATE_COMPETITION.id}`, viewer);
+    hiddenProbe.restore();
+
+    competitionRows = [];
+    participantRows = [];
+    membershipByUser = {};
+    const missingProbe = queryLog();
+    const missing = await get("/no-such-competition-at-all", viewer);
+    missingProbe.restore();
+
+    assert.equal(hidden.status, 404);
+    assert.equal(missing.status, 404);
+    assert.equal(hidden.text, missing.text);
+    // Same number of queries, against the same tables, in the same order.
+    assert.deepEqual(hiddenProbe.log, missingProbe.log);
+    // And the read settles row + permission in ONE query rather than loading then checking.
+    assert.equal(hiddenProbe.log.length, 1, "the detail read took more than one query to refuse");
+  }
+});
+
+test("mutations: a hidden competition and a missing id issue the SAME queries", async () => {
+  for (const action of ["start", "end", "submit", "complete"]) {
+    given(PRIVATE_COMPETITION, PRIVATE_PARTICIPANT_ROWS);
+    const hiddenProbe = queryLog();
+    const hidden = await post(`/${PRIVATE_COMPETITION.id}/${action}`, {}, asUser(STRANGER));
+    hiddenProbe.restore();
+
+    competitionRows = [];
+    participantRows = [];
+    membershipByUser = {};
+    const missingProbe = queryLog();
+    const missing = await post(`/no-such-competition-at-all/${action}`, {}, asUser(STRANGER));
+    missingProbe.restore();
+
+    assert.equal(hidden.status, 404, `${action}: ${hidden.text}`);
+    assert.equal(missing.status, 404, `${action}: ${missing.text}`);
+    assert.equal(hidden.text, missing.text, action);
+    assert.deepEqual(hiddenProbe.log, missingProbe.log, action);
+    // Specifically: the membership lookup ran for BOTH, not just for the competition that exists.
+    // That lookup is the work the old short-circuit skipped, and skipping it was the whole tell.
+    for (const probe of [hiddenProbe, missingProbe]) {
+      assert.equal(
+        probe.log.filter((t) => t === competitionParticipants).length,
+        1,
+        `${action}: membership lookup skipped -- the two refusals are distinguishable again`
+      );
+    }
+  }
+});
+
+test("an anonymous refusal never issues a membership query, whichever case it is", async () => {
+  // Nothing to distinguish: an anonymous caller is refused on both branches without a lookup.
+  given(PRIVATE_COMPETITION, PRIVATE_PARTICIPANT_ROWS);
+  const hiddenProbe = queryLog();
+  await get(`/${PRIVATE_COMPETITION.id}`);
+  hiddenProbe.restore();
+
+  assert.deepEqual(hiddenProbe.log, [competitions]);
+});
+
+// ============================================================================================
 // GET /:id -- PRIVATE competitions
 // ============================================================================================
 
@@ -306,26 +416,21 @@ test("private competition: a participant can read it", async () => {
   assert.equal(result.body.competition.id, PRIVATE_COMPETITION.id);
 });
 
-test("private competition: membership is read from the database, scoped to that competition", async () => {
+test("private competition: membership is resolved in the database, scoped to that competition", async () => {
   given(PRIVATE_COMPETITION, PRIVATE_PARTICIPANT_ROWS);
-  let asked: unknown[] = [];
-  const anyDb = db as any;
-  const realSelect = anyDb.select;
-  anyDb.select = (fields?: any) => {
-    const chain = realSelect(fields);
-    const realWhere = chain.where;
-    chain.where = (clause: unknown) => {
-      if (fields && "id" in fields && !("creatorId" in fields)) asked = paramsOf(clause);
-      return realWhere(clause);
-    };
-    return chain;
-  };
+  const result = await get(`/${PRIVATE_COMPETITION.id}`, asUser(PARTICIPANT));
+  assert.equal(result.status, 200, result.text);
 
-  await get(`/${PRIVATE_COMPETITION.id}`, asUser(PARTICIPANT));
-  anyDb.select = realSelect;
-
-  // The competition being viewed AND the verified viewer -- not a caller-supplied pair.
-  assert.deepEqual(asked, [PRIVATE_COMPETITION.id, PARTICIPANT]);
+  // The gate asked Postgres ONE question: this id, AND may this viewer see it. (The authorized
+  // read then goes on to assemble the detail; the refusal path stops at this single query, which
+  // is what the equal-work test above pins.)
+  const { sql, params } = renderSql(competitionWheres[0]);
+  assert.match(sql, /"id" = \$\d+ and \(/, sql);
+  assert.match(sql, /exists \(select 1 from "competition_participants"/i, sql);
+  assert.match(sql, /"competition_id" = "competitions"\."id"/i, sql);
+  // The competition being viewed AND the verified viewer -- not a caller-supplied pair, and no
+  // other value bound anywhere in the clause.
+  assert.deepEqual(params, [PRIVATE_COMPETITION.id, false, PARTICIPANT, PARTICIPANT]);
 });
 
 test("private competition: a 404 for the hidden case is indistinguishable from a missing row", async () => {
@@ -586,10 +691,16 @@ test("the visibility rule has exactly one definition, and the router uses it eve
     .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
     .join("\n");
 
-  // Every route that loads a competition gates on it: the detail read plus all five mutations.
-  assert.equal((code.match(/canViewCompetition\(/g) ?? []).length, 6, code);
-  // The list route uses the SQL twin of the same rule.
-  assert.equal((code.match(/visibleCompetitionsCondition\(/g) ?? []).length, 1, code);
+  // All five mutations gate on the row-level check...
+  assert.equal((code.match(/canViewCompetition\(/g) ?? []).length, 5, code);
+  // ...and BOTH reads use the SQL twin of the same rule: the library listing and the `/:id` lookup,
+  // which ANDs it onto the primary-key match so one query settles the row and the permission.
+  assert.equal((code.match(/visibleCompetitionsCondition\(/g) ?? []).length, 2, code);
+  assert.match(
+    code,
+    /\.where\(and\(eq\(competitions\.id, req\.params\.id\), visibleCompetitionsCondition\(viewerId\)\)\)/,
+    code
+  );
   // Reads are `optionalAuth` -- public competitions must not start requiring a login.
   assert.match(code, /router\.get\("\/library", optionalAuth/, code);
   assert.match(code, /router\.get\("\/:id", optionalAuth/, code);
