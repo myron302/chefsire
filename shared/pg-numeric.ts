@@ -51,6 +51,21 @@
 /** A syntactically valid decimal, as Postgres spells one. Exponent notation included. */
 const DECIMAL_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
+/**
+ * The most fractional digits a Postgres `numeric` can carry. This is a limit of the numeric FORMAT
+ * itself, applied when the literal is parsed and before any cast to `numeric(p, s)`, so a value past
+ * it is refused by Postgres no matter how small the target column's scale is:
+ *
+ *     '1e-16383'::numeric      -> 0.000...      (16383 fractional digits)
+ *     '1e-16384'::numeric      -> ERROR: value overflows numeric format
+ *
+ * It is modeled here for the same reason the range check is: a value the database will refuse has to
+ * become a 400 rather than reaching the driver and surfacing as a 500. Measured on PostgreSQL 16.13,
+ * the rule is the count of fractional digits the value needs -- `fractional digits - exponent` -- and
+ * it applies to zero as well (`'0e-1000000000'::numeric` overflows, while `'0e1000000000'` is 0).
+ */
+const PG_MAX_DECIMAL_PLACES = 16383;
+
 export type PgNumericResult =
   | {
       ok: true;
@@ -129,16 +144,34 @@ export function normalizePgNumeric(
   const [rawInt = "", rawFrac = ""] = unsigned.split(".");
   const exponent = exponentText ? Number(exponentText) : 0;
 
-  // A zero mantissa is zero at any exponent, and short-circuiting it keeps the shifting below from
-  // having to reason about a value with no significant digits.
-  if (!/[1-9]/.test(rawInt + rawFrac)) {
+  // How many fractional digits the VALUE needs, which is what the numeric format limits. Checked
+  // before anything else because it binds even a zero mantissa, and because it is what makes an
+  // enormous negative exponent a rejection rather than a very long string.
+  if (rawFrac.length - exponent > PG_MAX_DECIMAL_PLACES) return { ok: false, reason: "range" };
+
+  // Where the value's first significant digit sits, counted across the WHOLE mantissa rather than
+  // the integer part alone. `0.001` has no significant integer digit, so counting only `rawInt`
+  // would put its magnitude at 0 and then read `0.001e7` as seven integer digits instead of the five
+  // that `10000` actually has -- rejecting a value `numeric(8, 2)` holds comfortably.
+  //
+  // The index is the position of that digit within `rawInt + rawFrac`, so `rawInt.length - index` is
+  // the count of integer digits the value has before the exponent is applied, and it goes NEGATIVE
+  // when the first significant digit is behind the point: `0.001` gives 1 - 3 = -2, which is
+  // `floor(log10(0.001)) + 1`. Adding the exponent shifts it.
+  const mantissaDigits = rawInt + rawFrac;
+  const firstSignificant = mantissaDigits.search(/[1-9]/);
+
+  // An all-zero mantissa is zero at any exponent the format allows, and short-circuiting it keeps
+  // the shifting below from having to reason about a value with no significant digits.
+  if (firstSignificant === -1) {
     return { ok: true, value: text, rounded: `0.${"0".repeat(scale)}` };
   }
 
   // An exponent can be arbitrarily large in the input, so decide the extreme cases before building
   // any digit string -- otherwise `1e1000000000` would allocate a gigabyte to reach the same answer.
-  const significantIntDigits = integerDigitCount(rawInt);
-  const magnitudeDigits = significantIntDigits + exponent;
+  // Surviving both guards bounds the shift below to the mantissa's own length plus a constant, so
+  // the work is proportional to the input rather than to the exponent.
+  const magnitudeDigits = rawInt.length - firstSignificant + exponent;
   if (magnitudeDigits > precision - scale) return { ok: false, reason: "range" };
   if (magnitudeDigits < -(scale + 1)) {
     // Smaller than half of the last representable digit, so it rounds to zero.

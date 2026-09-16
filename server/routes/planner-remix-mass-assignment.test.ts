@@ -1330,3 +1330,153 @@ test("no decimal in the mutation contracts is normalized through a JavaScript nu
     `an unexpected Number(...) in the decimal helper: ${numberUses.join(", ")}`
   );
 });
+
+// ============================================================================================
+// Scientific notation through the mutation path
+//
+// Codex, on 5f5516e: the magnitude guard in `normalizePgNumeric` counted significant digits in the
+// integer portion only, so a price written as `"0.001e7"` was refused although the value is `10000`
+// and `numeric(8, 2)` holds it -- and `"0.001e3"`, which is `1`, was refused for the profile's
+// `numeric(3, 2)`. `shared/pg-numeric.test.ts` pins the arithmetic against measured Postgres output;
+// these pin that the endpoints agree.
+// ============================================================================================
+
+test("PATCH /grocery-list/:id: \"0.001e7\" is accepted -- it is 10000, which numeric(8,2) holds", async () => {
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+    { actualPrice: "0.001e7" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  // And, as always, the decimal reaches the database unrewritten.
+  assert.equal(setValueFor("actualPrice"), "0.001e7");
+});
+
+test("PATCH /family-profiles/:id: \"0.001e3\" is accepted -- it is 1, which numeric(3,2) holds", async () => {
+  given();
+  const result = await send(
+    "PATCH",
+    `/api/meal-planner/family-profiles/${PROFILE_ID}`,
+    { portionMultiplier: "0.001e3" },
+    asUser(OWNER)
+  );
+  assert.equal(result.status, 200, result.text);
+  assert.equal(setValueFor("portionMultiplier"), "0.001e3");
+});
+
+test("PATCH /grocery-list/:id: scientific notation with leading fractional zeros round-trips", async () => {
+  for (const input of [
+    "0.001e7",
+    "-0.001e7",
+    "0.01e7",
+    "0.0001e4",
+    "0.0001e5",
+    "00.001e3",
+    "000.000100e4",
+    "0.001e0",
+    "0.001e-3",
+    "1e3",
+    "12e2",
+  ]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { estimatedPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 200, `${input} was refused: ${result.text}`);
+    assert.equal(setValueFor("estimatedPrice"), input, `${input} was rewritten`);
+  }
+});
+
+test("PATCH /grocery-list/:id: scientific notation that really is out of range is still a 400", async () => {
+  // The guard must stay a guard: 0.1e7 is 1000000, which numeric(8,2) cannot hold.
+  for (const input of ["0.1e7", "0.1e8", "0.001e9", "0.9999999e7"]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { estimatedPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 400, `${input} was accepted: ${result.text}`);
+    assert.deepEqual(setCalls, [], `${input} reached the database`);
+  }
+});
+
+test("PATCH /family-profiles/:id: numeric(3,2) keeps its own, much smaller range", async () => {
+  // Values that are fine for a price column but not for a one-integer-digit multiplier.
+  for (const [input, expected] of [
+    ["0.001e3", 200],
+    ["-0.001e3", 200],
+    ["0.0001e4", 200],
+    ["0.999e1", 200],
+    ["0.0001e5", 400],
+    ["0.001e4", 400],
+    ["1e3", 400],
+    ["12e2", 400],
+    ["0.9999e1", 400], // rounds to 10.00
+  ] as Array<[string, number]>) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/family-profiles/${PROFILE_ID}`,
+      { portionMultiplier: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, expected, `${input} expected ${expected}: ${result.text}`);
+  }
+});
+
+test("PATCH /grocery-list/:id: zero survives an exponent", async () => {
+  for (const input of ["0", "0.0", "0.000", "0e3", "0.000e3", "0.000e999", "-0.000e999"]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { actualPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 200, `${input} was refused: ${result.text}`);
+  }
+});
+
+test("PATCH /grocery-list/:id: a value past the numeric format itself is a 400, not a 500", async () => {
+  // Postgres cannot represent these at all -- `'1e-16384'::numeric` fails before any cast -- so they
+  // have to be refused here rather than reaching the driver.
+  for (const input of ["1e-16384", "0.001e-16381", "0e-1000000000", "1e-1000000000"]) {
+    given();
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      { actualPrice: input },
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 400, `${input} was accepted: ${result.text}`);
+    assert.deepEqual(setCalls, []);
+  }
+});
+
+test("scientific notation cannot be used to smuggle a forbidden column", async () => {
+  given();
+  const before = { ...stored(groceryListItems, GROCERY_ID) };
+  for (const forged of [
+    { actualPrice: "0.001e7", userId: VICTIM },
+    { actualPrice: "0.001e7", id: "some-other-item-id" },
+    { estimatedPrice: "0.001e7", createdAt: "2030-01-01T00:00:00.000Z" },
+  ]) {
+    setCalls = [];
+    const result = await send(
+      "PATCH",
+      `/api/meal-planner/grocery-list/${GROCERY_ID}`,
+      forged,
+      asUser(OWNER)
+    );
+    assert.equal(result.status, 400, `${JSON.stringify(forged)} was accepted: ${result.text}`);
+    assert.deepEqual(stored(groceryListItems, GROCERY_ID), before);
+    assert.deepEqual(setCalls, []);
+  }
+});
