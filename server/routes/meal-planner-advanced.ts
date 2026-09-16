@@ -22,7 +22,14 @@ import {
   mealFavorites,
   waterLogs,
 } from "../../shared/schema.js";
+import { z } from "zod";
 import { requireAuth } from "../middleware";
+import {
+  familyMealProfilePatchSchema,
+  groceryListItemPatchSchema,
+  toFamilyMealProfilePatch,
+  toGroceryListItemPatch,
+} from "../../shared/planner-remix-mutations.js";
 import { ensureAdvancedMealPlanningSchema } from "./meal-planner-advanced/schema.js";
 import {
   calculateBudgetSummary,
@@ -569,20 +576,21 @@ router.get("/grocery-list/optimized", requireAuth, async (req: Request, res: Res
 });
 
 // Update grocery item (mark purchased, update price, etc)
+//
+// The body is parsed as a whole against a `.strict()` contract rather than cherry-picked from, so a
+// payload naming a column outside that contract -- `userId`, `id`, `mealPlanId`, `createdAt`,
+// `purchasedAt` -- is refused entirely and nothing is written. `purchasedAt` is the server's own
+// value, derived from the validated `purchased` flag.
 router.patch("/grocery-list/:id", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id } = req.params;
-    const updates = req.body;
-
-    // If marking as purchased, set purchasedAt
-    if (updates.purchased === true) {
-      updates.purchasedAt = new Date();
-    }
+    const parsed = groceryListItemPatchSchema.parse(req.body ?? {});
+    const patch = toGroceryListItemPatch(parsed, new Date());
 
     const [updated] = await db
       .update(groceryListItems)
-      .set(updates)
+      .set(patch)
       .where(
         and(
           eq(groceryListItems.id, id),
@@ -591,8 +599,15 @@ router.patch("/grocery-list/:id", requireAuth, async (req: Request, res: Respons
       )
       .returning();
 
+    if (!updated) {
+      return res.status(404).json({ message: "Grocery item not found" });
+    }
+
     res.json({ item: updated });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.issues[0]?.message, errors: error.issues });
+    }
     console.error("Error updating grocery item:", error);
     res.status(500).json({ message: "Failed to update item" });
   }
@@ -753,15 +768,20 @@ router.get("/family-profiles", requireAuth, async (req: Request, res: Response) 
 });
 
 // Update family meal profile
+//
+// Same shape as the grocery patch above: a `.strict()` contract covering the profile's own editable
+// fields, so ownership (`userId`), identity (`id`), the `familyMemberId` this profile describes, and
+// `createdAt` cannot be written by a caller.
 router.patch("/family-profiles/:id", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id } = req.params;
-    const updates = req.body;
+    const parsed = familyMealProfilePatchSchema.parse(req.body ?? {});
+    const patch = toFamilyMealProfilePatch(parsed);
 
     const [updated] = await db
       .update(familyMealProfiles)
-      .set(updates)
+      .set(patch)
       .where(
         and(
           eq(familyMealProfiles.id, id),
@@ -770,8 +790,15 @@ router.patch("/family-profiles/:id", requireAuth, async (req: Request, res: Resp
       )
       .returning();
 
+    if (!updated) {
+      return res.status(404).json({ message: "Family profile not found" });
+    }
+
     res.json({ profile: updated });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.issues[0]?.message, errors: error.issues });
+    }
     console.error("Error updating family profile:", error);
     res.status(500).json({ message: "Failed to update family profile" });
   }
