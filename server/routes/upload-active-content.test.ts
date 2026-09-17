@@ -90,7 +90,24 @@ const storedFiles = () => {
 const image = (format: "jpeg" | "png" | "webp" | "gif") =>
   (sharp({ create: { width: 24, height: 18, channels: 3, background: { r: 10, g: 120, b: 200 } } }) as never as Record<string, () => sharp.Sharp>)[format]().toBuffer();
 
-const isoBmff = (brand: string) => Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftyp", "latin1"), Buffer.from(brand, "latin1"), Buffer.alloc(64, 0)]);
+/**
+ * A structurally valid ISO-BMFF `ftyp` box: size, "ftyp", major brand, minor version, then compatible brands.
+ *
+ * The earlier version of this helper declared a size of 24 and then appended 64 zero bytes, so its "compatible
+ * brands" were NUL padding. Nothing noticed while detection only read bytes 8..12; once the box is actually
+ * parsed, that is not an `ftyp` at all. The fixture was wrong, so the fixture is what changed.
+ */
+const isoBmff = (major: string, compatible: string[] = [major]) => {
+  const header = Buffer.alloc(16);
+  header.writeUInt32BE(16 + compatible.length * 4, 0);
+  header.write("ftyp", 4, "latin1");
+  header.write(major, 8, "latin1");
+  header.writeUInt32BE(0x200, 12);
+  const moov = Buffer.alloc(16);
+  moov.writeUInt32BE(16, 0);
+  moov.write("moov", 4, "latin1");
+  return Buffer.concat([header, ...compatible.map((brand) => Buffer.from(brand, "latin1")), moov]);
+};
 const mp4 = () => isoBmff("isom");
 const mov = () => isoBmff("qt  ");
 const webm = () => Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.from([0x01, 0x00, 0x00, 0x00]), Buffer.from("Bwebm", "latin1"), Buffer.alloc(64, 0)]);
@@ -282,6 +299,18 @@ test("an object left by an older build is served inert, not as a same-origin doc
     assert.equal(response.headers.get("content-type"), "application/octet-stream", legacy);
     assert.equal(response.headers.get("content-disposition"), "attachment", legacy);
     assert.equal(response.headers.get("x-content-type-options"), "nosniff", legacy);
+  }
+});
+
+test("the promotion directory is not reachable over HTTP, even by exact URL", async () => {
+  // `<UPLOADS_DIR>/.promote` holds a validated file for the instant between "copied" and "published" on a
+  // cross-filesystem promotion. It has to live on the uploads filesystem for the publishing rename to be atomic,
+  // so the mount denies dotfiles rather than relying on the name being unguessable.
+  fs.mkdirSync(path.join(uploadsDir, ".promote"), { recursive: true });
+  fs.writeFileSync(path.join(uploadsDir, ".promote", "in-flight.part"), await image("jpeg"));
+  for (const url of ["/uploads/.promote/in-flight.part", "/uploads/.promote/"]) {
+    const response = await fetch(`${origin}${url}`);
+    assert.equal(response.status === 403 || response.status === 404, true, `${url} answered ${response.status}`);
   }
 });
 

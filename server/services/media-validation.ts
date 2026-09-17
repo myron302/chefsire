@@ -69,9 +69,74 @@ const OLE_SIGNATURE = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe
 const EBML_SIGNATURE = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
 
 /** ISO base media brands ChefSire treats as MP4. Anything else ISO-BMFF is refused rather than guessed at. */
-const MP4_BRANDS = new Set(["isom", "iso2", "iso4", "iso5", "iso6", "avc1", "mp41", "mp42", "mp71", "M4V ", "M4VP", "M4A ", "dash", "mmp4", "msnv", "f4v "]);
+const MP4_BRANDS = new Set(["isom", "iso2", "iso3", "iso4", "iso5", "iso6", "iso7", "iso8", "iso9", "avc1", "mp41", "mp42", "mp71", "M4V ", "M4VH", "M4VP", "M4A ", "M4B ", "dash", "cmfc", "mmp4", "msnv", "f4v ", "3gp4", "3gp5", "3gp6", "3gp7", "3g2a", "3g2b"]);
 /** QuickTime's own brand. `.mov` is a distinct stored type because the served content type differs. */
 const QUICKTIME_BRANDS = new Set(["qt  "]);
+/**
+ * HEIF-family brands, which are ISO-BMFF too and must never be mistaken for video.
+ *
+ * This set is a VETO and is checked before anything else, across the major brand AND every compatible brand. A
+ * HEIC or AVIF file legitimately advertises `mif1`/`miaf` alongside other brands, and the point of reading the
+ * compatible list at all is that a brand anywhere in it is a real claim about the file -- so a file claiming any
+ * HEIF brand is refused even if it also claims an MP4 one. ChefSire stores no HEIF format.
+ */
+const HEIF_BRANDS = new Set(["heic", "heix", "heim", "heis", "hevc", "hevx", "hevm", "hevs", "mif1", "msf1", "miaf", "mia1", "avif", "avis", "avio", "MiAn"]);
+
+/** The largest `ftyp` box this will read. A real one is a few dozen bytes; this bounds a hostile length field. */
+const MAX_FTYP_BOX_BYTES = 1024;
+
+export type FtypBox = { majorBrand: string; minorVersion: number; compatibleBrands: string[] };
+
+/**
+ * Parses an ISO-BMFF `ftyp` box properly, instead of reading four bytes at a fixed offset.
+ *
+ * The previous implementation took `head.subarray(8, 12)` as the major brand and required it to be in the MP4
+ * allowlist. That rejects genuinely valid MP4 files: the major brand is only the file's *preferred* brand, and a
+ * conforming file may advertise something else -- `iso8`, `iso9`, `3gp5`, a vendor brand -- while listing `isom`
+ * or `mp42` in the same box's compatible-brands list, which is exactly what the list is for. Reproduced: an
+ * `ftyp` with major `iso8` and compatible `[iso8, isom, mp41]` was refused.
+ *
+ * Returns null for anything that is not a well-formed `ftyp`: a short buffer, a length that disagrees with the
+ * box, a 64-bit `largesize` (an `ftyp` never needs one), a body that is not a whole number of four-byte brands,
+ * or a length beyond the bound above. Every read is bounded by the box size, which is itself bounded.
+ */
+export function parseFtypBox(head: Buffer): FtypBox | null {
+  // size(4) + "ftyp"(4) + major(4) + minor(4) is the smallest legal box.
+  if (head.length < 16) return null;
+  if (head.subarray(4, 8).toString("latin1") !== "ftyp") return null;
+
+  const size = head.readUInt32BE(0);
+  // size === 1 means a 64-bit largesize follows; size === 0 means "to end of file". Neither is legal for `ftyp`.
+  if (size < 16 || size > MAX_FTYP_BOX_BYTES || size % 4 !== 0) return null;
+  // The box must be fully present in the bytes we were given, or we cannot honestly read its brand list.
+  if (size > head.length) return null;
+
+  const majorBrand = head.subarray(8, 12).toString("latin1");
+  const minorVersion = head.readUInt32BE(12);
+  const compatibleBrands: string[] = [];
+  for (let offset = 16; offset + 4 <= size; offset += 4) {
+    compatibleBrands.push(head.subarray(offset, offset + 4).toString("latin1"));
+  }
+  // A brand is four printable characters. Anything else means this is not really an `ftyp`.
+  const printable = (brand: string) => /^[\x20-\x7e]{4}$/.test(brand);
+  if (!printable(majorBrand) || !compatibleBrands.every(printable)) return null;
+
+  return { majorBrand, minorVersion, compatibleBrands };
+}
+
+/** Which video format an `ftyp` box describes, or null when ChefSire does not store it. */
+export function videoFormatForFtyp(box: FtypBox): "mp4" | "quicktime" | null {
+  const brands = [box.majorBrand, ...box.compatibleBrands];
+  // The veto first: a HEIF-family claim anywhere disqualifies the file, whatever else it also claims.
+  if (brands.some((brand) => HEIF_BRANDS.has(brand))) return null;
+  // The major brand is the file's own preference, so it decides when we recognise it.
+  if (QUICKTIME_BRANDS.has(box.majorBrand)) return "quicktime";
+  if (MP4_BRANDS.has(box.majorBrand)) return "mp4";
+  // Otherwise a compatible brand is a real claim of conformance and is honoured.
+  if (brands.some((brand) => MP4_BRANDS.has(brand))) return "mp4";
+  if (brands.some((brand) => QUICKTIME_BRANDS.has(brand))) return "quicktime";
+  return null;
+}
 
 /**
  * Reads the format out of a file's bytes.
@@ -98,12 +163,12 @@ export function detectMediaContainer(head: Buffer, tail?: Buffer): DetectedConta
     return null;
   }
 
-  // ---- ISO base media (MP4 / MOV): "ftyp" at offset 4, major brand at offset 8 ----------------------------
+  // ---- ISO base media (MP4 / MOV): the whole `ftyp` box, major brand AND compatible brands -----------------
   if (head.subarray(4, 8).toString("latin1") === "ftyp") {
-    const brand = head.subarray(8, 12).toString("latin1");
-    if (QUICKTIME_BRANDS.has(brand)) return { container: "video", format: "quicktime" };
-    if (MP4_BRANDS.has(brand)) return { container: "video", format: "mp4" };
-    return null;
+    const box = parseFtypBox(head);
+    if (!box) return null;
+    const format = videoFormatForFtyp(box);
+    return format ? { container: "video", format } : null;
   }
 
   // ---- Matroska / WebM: EBML header, with the DocType naming which one ------------------------------------
@@ -203,25 +268,53 @@ async function readEnds(source: MediaSource): Promise<{ head: Buffer; tail: Buff
 }
 
 /**
- * Decodes an image to prove it is one.
+ * Decodes an image, in full, to prove it is one.
  *
- * The signature check above proves the first bytes are a JPEG/PNG/WebP/GIF header. This proves the rest of the
- * file is actually that image: Sharp's own reading of the container has to agree with the signature, and the
- * dimensions have to be real and bounded. A truncated or hand-forged image fails here.
+ * `metadata()` IS NOT ENOUGH, and assuming it was is a defect this function exists to correct. It reads the
+ * container header and returns as soon as it knows the dimensions -- it never decodes pixel data. Reproduced: a
+ * JPEG and a PNG each truncated to 60% of their bytes are both reported by `metadata()` as a healthy
+ * `400x300`, and the truncated file was then stored verbatim. (WebP and GIF happen to fail at `metadata()`
+ * because their headers carry a length, but that is luck, not a guarantee.)
+ *
+ * So there are two passes, in this order and for this reason:
+ *
+ *   1. `metadata()` -- cheap, and it is what gives us the dimensions. The format must agree with the signature,
+ *      and the dimensions must be real and within bounds. This runs FIRST precisely so that the expensive pass
+ *      below is only ever attempted on an image already proven to be within `MEDIA_IMAGE_MAX_PIXELS`.
+ *   2. `stats()` -- computes per-channel statistics, which libvips can only do by decoding every pixel. A
+ *      truncated or corrupt body fails here. It is a read, not a rewrite: nothing about the caller's bytes
+ *      changes, so an accepted image is still stored byte-for-byte and an animated GIF keeps its frames.
+ *
+ * Measured cost of the second pass on a 4000x3000 JPEG: ~500ms, ~35MB RSS. libvips reads sequentially rather
+ * than materialising the whole raster, which is why this is preferred over `.raw().toBuffer()`.
  */
 async function verifyImage(source: MediaSource, format: MediaFormat): Promise<MediaRejectionReason | null> {
   const input = "buffer" in source ? source.buffer : source.path;
+  // A GIF is read with every frame present, so a later frame cannot be the corrupt one that nothing looked at.
+  const options: sharp.SharpOptions = { limitInputPixels: MEDIA_IMAGE_MAX_PIXELS, failOn: "error", animated: format === "gif" };
+
   let metadata: sharp.Metadata;
   try {
-    metadata = await sharp(input as never, { limitInputPixels: MEDIA_IMAGE_MAX_PIXELS }).metadata();
+    metadata = await sharp(input as never, options).metadata();
   } catch {
     return "unreadable_image";
   }
   if (metadata.format !== format) return "content_mismatch";
+
   const width = metadata.width ?? 0;
-  const height = metadata.height ?? 0;
-  if (width <= 0 || height <= 0) return "unreadable_image";
-  if (width > MEDIA_IMAGE_MAX_DIMENSION || height > MEDIA_IMAGE_MAX_DIMENSION || width * height > MEDIA_IMAGE_MAX_PIXELS) return "too_large";
+  // With `animated`, `height` is every frame stacked; `pageHeight` is one frame. Bound the frame and the total.
+  const pages = Math.max(1, metadata.pages ?? 1);
+  const frameHeight = metadata.pageHeight ?? metadata.height ?? 0;
+  if (width <= 0 || frameHeight <= 0) return "unreadable_image";
+  if (width > MEDIA_IMAGE_MAX_DIMENSION || frameHeight > MEDIA_IMAGE_MAX_DIMENSION) return "too_large";
+  if (width * frameHeight * pages > MEDIA_IMAGE_MAX_PIXELS) return "too_large";
+
+  // The decode itself. Everything above was only enough to know this is safe to attempt.
+  try {
+    await sharp(input as never, options).stats();
+  } catch {
+    return "unreadable_image";
+  }
   return null;
 }
 

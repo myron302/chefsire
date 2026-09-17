@@ -12,6 +12,7 @@ import { attachDmRealtime } from "./realtime/dmSocket";
 import { attachNotificationRealtime } from "./realtime/notificationSocket";
 import { initializeCronJobs } from "./cron";
 import { pool } from "./db/index";
+import { sweepStaleUploadsOnStartup } from "./services/upload-staging";
 
 const HAS_PASSENGER_PORT = !!process.env.PORT;
 const PORT = Number(process.env.PORT || 3001);
@@ -49,6 +50,12 @@ const server = app.listen(PORT, HOST, () => {
   if (pool) {
     pool.query("SELECT 1").catch(() => {/* non-fatal */});
   }
+  // Remove upload leftovers from a previous process that died mid-request. The per-request cleanup covers every
+  // outcome a request can reach, but not a crash, an OOM kill or a deploy restart. It runs once, never on a
+  // timer, and can never prevent startup: every failure is counted and logged rather than thrown.
+  sweepStaleUploadsOnStartup().catch((error) => {
+    console.warn("[uploads] startup sweep failed:", error instanceof Error ? error.message : error);
+  });
 });
 
 // Attach WebSocket handlers

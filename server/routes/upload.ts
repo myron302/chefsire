@@ -14,30 +14,23 @@
  */
 import { Router } from "express";
 import multer from "multer";
-import os from "os";
-import path from "path";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
 import fs from "fs";
 import { MEDIA_REJECTION_MESSAGES, MEDIA_REJECTION_STATUS } from "@shared/media-types";
-import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
+import { uploadUrlPath } from "../lib/uploads-dir";
 import { isR2Configured, publicUrl, uploadFileToR2 } from "../lib/r2";
 import { UnsupportedMediaError, imageUpload, storeUploadedImage } from "../services/image-upload";
 import { generatedMediaKey, generatedMediaName, validateUploadedMedia } from "../services/media-validation";
+import { UPLOAD_STAGING_DIR, ensureUploadDirectories, promoteToUploadsDir } from "../services/upload-staging";
 
 const router = Router();
 
 export const GENERAL_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024; // 100MB
 
-/**
- * Where an upload lives while it is still untrusted.
- *
- * It is under the OS temp directory and therefore outside both `express.static` mounts, so a file that turns out
- * to be active content is never addressable even for the moment it is on disk. The previous local path wrote
- * directly into the served directory, which is why "rejected" and "already public" were not mutually exclusive.
- */
-const UPLOAD_STAGING_DIR = path.join(os.tmpdir(), "chefsire-upload-staging");
-fs.mkdirSync(UPLOAD_STAGING_DIR, { recursive: true });
+// Where an upload lives while it is still untrusted, and how a validated one is published atomically. Both
+// directories and the reasoning behind them live in services/upload-staging.
+ensureUploadDirectories();
 
 /**
  * A cheap pre-filter, and explicitly NOT the security decision.
@@ -110,18 +103,6 @@ async function discardStagedUpload(file?: Express.Multer.File) {
     if (error?.code !== 'ENOENT') {
       console.warn("Failed to delete staged upload:", error);
     }
-  }
-}
-
-/** Moves a validated file out of staging into the served directory, across filesystems if it has to. */
-async function promoteToUploadsDir(from: string, filename: string): Promise<void> {
-  const destination = path.join(UPLOADS_DIR, filename);
-  try {
-    await fs.promises.rename(from, destination);
-  } catch (error: any) {
-    // The staging directory and the uploads directory can be on different devices, where rename cannot work.
-    if (error?.code !== 'EXDEV') throw error;
-    await fs.promises.copyFile(from, destination);
   }
 }
 

@@ -40,6 +40,10 @@ export function uploadsStaticHandler(uploadsDir: string): RequestHandler {
   return express.static(uploadsDir, {
     maxAge: "365d",
     immutable: true,
+    // `<UPLOADS_DIR>/.promote` holds validated files for the instant between "copied" and "published" when the
+    // staging and uploads directories are on different filesystems. Denying dotfiles means nothing under it is
+    // reachable even by exact URL, so a half-copied file is never addressable while it exists.
+    dotfiles: "deny",
     setHeaders: (res, filePath) => {
       // `send` only fills in a Content-Type when one is not already set, so stating it here is authoritative.
       for (const [header, value] of Object.entries(uploadResponseHeaders(filePath))) res.setHeader(header, value);
