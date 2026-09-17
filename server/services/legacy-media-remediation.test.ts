@@ -1,10 +1,16 @@
 /**
- * Classification of legacy public-R2 objects, which is the part of the R2 remediation that can be tested without
- * a bucket. Codex and Greptile both found that the `/uploads` hardening does nothing for objects clients fetch
- * directly from `R2_PUBLIC_BASE_URL`, and this is what decides which of those objects are dangerous.
+ * Scope and classification for legacy public-R2 objects.
  *
- * The fixtures are not invented. Each one is a key/type pair the pre-repair code at caafde3 could actually have
- * written, and the comment on each says which path wrote it.
+ * Two review findings against head 70a24fd shape this file, and both are asserted against the behaviour that was
+ * actually observed there:
+ *
+ *   SCOPE WAS NOT FAIL-CLOSED. `--prefix=` was passed straight to `ListObjectsV2` and to the scope check, and
+ *   `key.startsWith("")` is true of every key -- so the whole bucket came into scope and, with deletion enabled,
+ *   unrelated objects could be destroyed. `--prefix=post` matched `postsomething/`.
+ *
+ *   AN EXTENSION IS NOT EVIDENCE OF CONTENT. The old script would have deleted an object for ending in `.html`.
+ *   The original vulnerability took the extension from the uploader's FILENAME, so a real JPEG uploaded as
+ *   `photo.html` is sitting at `posts/<uuid>.html` right now. Deleting it destroys a user's photo.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -13,98 +19,207 @@ import {
   LEGACY_PUBLIC_PREFIXES,
   NEUTRALIZED_CONTENT_DISPOSITION,
   NEUTRALIZED_CONTENT_TYPE,
-  classifyLegacyObject,
-  isIllegitimateUnderCurrentPolicy,
+  REFERENCE_AUDIT,
+  decideLegacyRemediation,
+  isKeyWithinOwnedScope,
   keyExtension,
   normalizeContentType,
+  resolveRequestedPrefixes,
+  triageLegacyObject,
 } from "./legacy-media-remediation";
 
-/* ------------------------------------------------------------------ the dangerous legacy objects */
+/* ------------------------------------------------------------------ FINDING 1: scope is code-owned */
 
-test("an SVG stored as image/svg+xml is a candidate: the severe case, written by persistDataUri", () => {
-  // persistDataUri mapped the declared `data:` media type straight through, so this object is a script-capable
-  // document that R2 serves inline today.
-  const disposition = classifyLegacyObject({ key: "posts/3f2b-uuid.svg", contentType: "image/svg+xml" });
-  assert.deepEqual(disposition, { action: "neutralize", reason: "active_content_type" });
-  assert.equal(isIllegitimateUnderCurrentPolicy(disposition.reason), true);
+test("the default scope is exactly the three ChefSire public-media prefixes and nothing else", () => {
+  assert.deepEqual([...LEGACY_PUBLIC_PREFIXES], ["posts/", "avatars/", "reviews/"]);
+  assert.equal(Object.isFrozen(LEGACY_PUBLIC_PREFIXES), true, "the list is code-owned, not assembled at runtime");
+  const resolved = resolveRequestedPrefixes([]);
+  assert.equal(resolved.ok, true);
+  assert.deepEqual(resolved.ok && [...resolved.prefixes], ["posts/", "avatars/", "reviews/"]);
 });
 
-test("an executable key with an inert stored type is still a candidate", () => {
-  // The three multipart paths took the extension from the uploader's filename while the ContentType came from a
-  // declared-MIME allowlist. R2 serves the stored type, so this is not live today -- but the key is executable
-  // and any serving change that derives a type from it makes it live.
-  for (const [key, contentType] of [
-    ["posts/aaaa.html", "image/jpeg"],
-    ["avatars/avatar-bbbb.html", "image/png"],
-    ["posts/cccc.js", "image/gif"],
-    ["reviews/review-dddd.xhtml", "image/webp"],
-    ["posts/eeee.svg", "image/jpeg"],
-    ["posts/ffff.xml", "application/pdf"],
-  ] as const) {
-    const disposition = classifyLegacyObject({ key, contentType });
-    assert.deepEqual(disposition, { action: "neutralize", reason: "active_extension" }, key);
+test("an exact allowed prefix selects a subset", () => {
+  for (const prefix of ["posts/", "avatars/", "reviews/"]) {
+    const resolved = resolveRequestedPrefixes([prefix]);
+    assert.equal(resolved.ok, true, prefix);
+    assert.deepEqual(resolved.ok && [...resolved.prefixes], [prefix], prefix);
   }
+  // Several at once, returned in the code-owned order rather than the order argv happened to use.
+  const two = resolveRequestedPrefixes(["reviews/", "posts/"]);
+  assert.deepEqual(two.ok && [...two.prefixes], ["posts/", "reviews/"]);
 });
 
-test("an active stored type is caught whatever the key looks like, and charset parameters do not hide it", () => {
-  assert.equal(classifyLegacyObject({ key: "posts/looks-fine.jpg", contentType: "text/html" }).action, "neutralize");
-  assert.equal(classifyLegacyObject({ key: "posts/looks-fine.png", contentType: "text/html; charset=utf-8" }).reason, "active_content_type");
-  assert.equal(classifyLegacyObject({ key: "posts/x.webp", contentType: "IMAGE/SVG+XML" }).reason, "active_content_type");
-  assert.equal(classifyLegacyObject({ key: "posts/x.gif", contentType: "application/xhtml+xml" }).reason, "active_content_type");
+test("every widening or malformed prefix is refused, and one bad value fails the whole run", () => {
+  // OBSERVED ON 70a24fd: each of these was accepted verbatim as a ListObjectsV2 prefix.
+  for (const bad of ["", "post", "posts", "/", "../", "unrelated/", "catering-bookings/", "posts/foo/", "POSTS/", " posts/", "posts/ ", "*"]) {
+    const resolved = resolveRequestedPrefixes([bad]);
+    assert.equal(resolved.ok, false, JSON.stringify(bad));
+    assert.deepEqual(resolved.ok === false && [...resolved.rejected], [bad], JSON.stringify(bad));
+  }
+  // A good value does not rescue a bad one in the same invocation.
+  const mixed = resolveRequestedPrefixes(["posts/", "unrelated/"]);
+  assert.equal(mixed.ok, false);
+  assert.deepEqual(mixed.ok === false && [...mixed.rejected], ["unrelated/"]);
 });
 
-test("an object with no stored type at all is a candidate, because the client would sniff it", () => {
-  assert.deepEqual(classifyLegacyObject({ key: "posts/gggg.jpg", contentType: undefined }), { action: "neutralize", reason: "missing_content_type" });
-  assert.deepEqual(classifyLegacyObject({ key: "posts/hhhh.jpg", contentType: "  " }), { action: "neutralize", reason: "missing_content_type" });
+test("the key boundary is re-asserted per key, and partial matches do not count", () => {
+  for (const key of ["posts/uuid.jpg", "avatars/avatar-uuid.png", "reviews/review-uuid.webp", "posts/nested/deep.jpg"]) {
+    assert.equal(isKeyWithinOwnedScope(key), true, key);
+  }
+  // OBSERVED ON 70a24fd with --prefix=post: `postsomething/evil.html` classified as a mutation candidate.
+  for (const key of [
+    "postsomething/evil.html", "posts-backup/x.jpg", "avatarsx/y.png", "unrelated/x.html",
+    "catering-bookings/b/f/f.pdf", "x.svg", "", "/posts/x.jpg", "posts/", "posts//x.jpg",
+    "posts/../unrelated/x.html", "posts/./x.jpg", "../posts/x.jpg",
+  ]) {
+    assert.equal(isKeyWithinOwnedScope(key), false, JSON.stringify(key));
+  }
+  // A narrowed run does not see the other owned prefixes.
+  assert.equal(isKeyWithinOwnedScope("avatars/x.png", ["posts/"]), false);
+  assert.equal(isKeyWithinOwnedScope("posts/x.png", ["posts/"]), true);
+  // And a prefix that is not code-owned can never authorise a key, even if passed in directly.
+  assert.equal(isKeyWithinOwnedScope("unrelated/x.html", ["unrelated/"]), false);
+  assert.equal(isKeyWithinOwnedScope("postsomething/x.html", ["post"]), false);
 });
 
-/* ------------------------------------------------------------------ what must NOT be swept up */
+/* ------------------------------------------------------------------ triage, from metadata alone */
 
-test("canonical media is never touched", () => {
-  // Every format the current validator can produce, stored as the type its extension says it is.
+test("an object that presents an active surface is inspected rather than judged", () => {
+  // Nothing here decides an outcome; it decides only whether to read the bytes.
+  assert.deepEqual(triageLegacyObject({ key: "posts/a.svg", contentType: "image/svg+xml" }), { action: "inspect", reason: "active_content_type" });
+  assert.deepEqual(triageLegacyObject({ key: "posts/b.html", contentType: "image/jpeg" }), { action: "inspect", reason: "active_extension" });
+  assert.deepEqual(triageLegacyObject({ key: "posts/c.jpg", contentType: undefined }), { action: "inspect", reason: "missing_content_type" });
+  assert.deepEqual(triageLegacyObject({ key: "posts/d.jpg", contentType: "text/html; charset=utf-8" }), { action: "inspect", reason: "active_content_type" });
+});
+
+test("canonical media is never even read", () => {
   for (const [extension, contentType] of Object.entries(CANONICAL_EXTENSION_CONTENT_TYPES)) {
-    const disposition = classifyLegacyObject({ key: `posts/legit-object.${extension}`, contentType });
-    assert.deepEqual(disposition, { action: "keep", reason: "canonical_media" }, extension);
+    assert.deepEqual(triageLegacyObject({ key: `posts/legit.${extension}`, contentType }), { action: "keep", reason: "canonical_media" }, extension);
   }
-  // Including the ones the old pipeline wrote in bulk.
-  assert.equal(classifyLegacyObject({ key: "posts/uuid_thumb.webp", contentType: "image/webp" }).action, "keep");
-  assert.equal(classifyLegacyObject({ key: "avatars/avatar-uuid.jpg", contentType: "image/jpeg" }).action, "keep");
-  assert.equal(classifyLegacyObject({ key: "reviews/review-uuid.png", contentType: "image/png" }).action, "keep");
-  assert.equal(classifyLegacyObject({ key: "posts/clip.mp4", contentType: "video/mp4" }).action, "keep");
+  assert.equal(triageLegacyObject({ key: "posts/uuid_thumb.webp", contentType: "image/webp" }).action, "keep");
+  assert.equal(triageLegacyObject({ key: "avatars/avatar-uuid.jpg", contentType: "image/jpeg" }).action, "keep");
 });
 
-test("a safe extension with a different safe type is reported, not modified", () => {
-  // Both inert. There is no proof anything is wrong, and it may be serving users correctly, so it is left alone.
-  const disposition = classifyLegacyObject({ key: "posts/iiii.jpg", contentType: "image/png" });
-  assert.deepEqual(disposition, { action: "keep", reason: "type_mismatch_left_alone" });
-  assert.equal(isIllegitimateUnderCurrentPolicy(disposition.reason), false);
-});
-
-test("something this repository never wrote is reported and left alone", () => {
-  assert.deepEqual(classifyLegacyObject({ key: "posts/jjjj.heic", contentType: "image/heic" }), { action: "keep", reason: "unrecognized_left_alone" });
-  assert.deepEqual(classifyLegacyObject({ key: "posts/kkkk", contentType: "application/octet-stream" }), { action: "keep", reason: "unrecognized_left_alone" });
-});
-
-test("nothing outside ChefSire's own prefixes is ever a candidate", () => {
-  // Including the private catering documents, which live in a different bucket and must never be reached at all.
-  for (const key of ["catering-bookings/booking/file/file.pdf", "some-other-app/x.html", "x.svg", "backups/dump.html"]) {
-    assert.deepEqual(classifyLegacyObject({ key, contentType: "text/html" }), { action: "keep", reason: "out_of_scope" }, key);
-  }
-  // And a narrowed run only sees what it was pointed at.
-  assert.equal(classifyLegacyObject({ key: "avatars/x.html", contentType: "image/png" }, ["posts/"]).reason, "out_of_scope");
-  assert.equal(classifyLegacyObject({ key: "posts/x.html", contentType: "image/png" }, ["posts/"]).action, "neutralize");
-});
-
-/* ------------------------------------------------------------------ idempotence */
-
-test("an already-neutralized object is recognised and skipped, so re-running costs nothing", () => {
+test("an already-neutralized object is skipped, so re-running costs nothing", () => {
   const neutralized = { contentType: NEUTRALIZED_CONTENT_TYPE, contentDisposition: NEUTRALIZED_CONTENT_DISPOSITION };
-  assert.deepEqual(classifyLegacyObject({ key: "posts/was-dangerous.html", ...neutralized }), { action: "keep", reason: "already_neutralized" });
-  assert.deepEqual(classifyLegacyObject({ key: "posts/was-dangerous.svg", ...neutralized }), { action: "keep", reason: "already_neutralized" });
-  // A disposition carrying a filename parameter still counts as neutralized.
-  assert.equal(classifyLegacyObject({ key: "posts/x.html", contentType: NEUTRALIZED_CONTENT_TYPE, contentDisposition: 'attachment; filename="x"' }).reason, "already_neutralized");
-  // Half-done is not done: octet-stream without the disposition is still a candidate.
-  assert.equal(classifyLegacyObject({ key: "posts/x.html", contentType: NEUTRALIZED_CONTENT_TYPE }).action, "neutralize");
+  assert.deepEqual(triageLegacyObject({ key: "posts/was-dangerous.html", ...neutralized }), { action: "keep", reason: "already_neutralized" });
+  assert.equal(triageLegacyObject({ key: "posts/x.html", contentType: NEUTRALIZED_CONTENT_TYPE, contentDisposition: 'attachment; filename="x"' }).reason, "already_neutralized");
+  // Half-done is not done.
+  assert.equal(triageLegacyObject({ key: "posts/x.html", contentType: NEUTRALIZED_CONTENT_TYPE }).action, "inspect");
+});
+
+test("nothing outside the owned prefixes is ever triaged as actionable", () => {
+  for (const key of ["catering-bookings/b/f/f.pdf", "some-other-app/x.html", "x.svg", "backups/dump.html", "postsomething/x.html"]) {
+    assert.deepEqual(triageLegacyObject({ key, contentType: "text/html" }), { action: "keep", reason: "out_of_scope" }, key);
+  }
+});
+
+/* ------------------------------------------------------------------ FINDING 2: the bytes decide */
+
+const accepted = (contentType: string, format = "jpeg", extension = "jpg") =>
+  ({ kind: "accepted", format, mediaClass: "image", contentType, extension }) as never;
+const rejected = { kind: "rejected", reason: "content_mismatch" } as never;
+
+test("A. real media under an unsafe key is PRESERVED, and its verified type is pinned", () => {
+  // OBSERVED ON 70a24fd: `--delete-illegitimate` would have DELETED this object because the key ends in `.html`.
+  // It is a user's JPEG, uploaded as `photo.html` through the original vulnerability.
+  const object = { key: "posts/uuid.html", contentType: "image/jpeg" };
+  const decision = decideLegacyRemediation(object, { action: "inspect", reason: "active_extension" }, accepted("image/jpeg"));
+  assert.equal(decision.action, "pin_content_type");
+  assert.equal(decision.action === "pin_content_type" && decision.contentType, "image/jpeg");
+  assert.equal(decision.reason, "valid_media_unsafe_key");
+  assert.equal(decision.action === "pin_content_type" && decision.unsafeKeyRetained, true, "reported, not silently accepted");
+  // Emphatically not destroyed, and not renamed.
+  assert.notEqual(decision.action, "neutralize");
+});
+
+test("A. real media whose stored type is simply wrong has the true type pinned", () => {
+  const object = { key: "posts/uuid.jpg", contentType: undefined };
+  const decision = decideLegacyRemediation(object, { action: "inspect", reason: "missing_content_type" }, accepted("image/jpeg"));
+  assert.deepEqual(
+    { action: decision.action, reason: decision.reason, unsafe: decision.action === "pin_content_type" && decision.unsafeKeyRetained },
+    { action: "pin_content_type", reason: "valid_media_wrong_type", unsafe: false },
+  );
+});
+
+test("B. bytes that really are active content are neutralized in place, never deleted", () => {
+  for (const [key, contentType, reason] of [
+    ["posts/uuid.svg", "image/svg+xml", "active_content_type"],
+    ["posts/uuid.html", "image/jpeg", "active_extension"],
+  ] as const) {
+    const decision = decideLegacyRemediation({ key, contentType }, { action: "inspect", reason }, rejected);
+    assert.deepEqual(decision, { action: "neutralize", reason: "active_content" }, key);
+  }
+});
+
+test("C. unverifiable content fails closed without ever being destroyed", () => {
+  // Unreadable AND presenting an active surface: neutralized, which is reversible and preserves the bytes.
+  const active = decideLegacyRemediation(
+    { key: "posts/uuid.svg", contentType: "image/svg+xml" },
+    { action: "inspect", reason: "active_content_type" },
+    { kind: "not_inspected", why: "unreadable" },
+  );
+  assert.deepEqual(active, { action: "neutralize", reason: "unverifiable_active_surface" });
+
+  // Too large to read: reported for a human, nothing touched.
+  const large = decideLegacyRemediation(
+    { key: "posts/uuid.html", contentType: "video/mp4" },
+    { action: "inspect", reason: "active_extension" },
+    { kind: "not_inspected", why: "too_large" },
+  );
+  assert.deepEqual(large, { action: "report_only", reason: "too_large_to_inspect" });
+
+  // Unreadable but inert either way: reported, not modified.
+  const inert = decideLegacyRemediation(
+    { key: "posts/uuid.bin", contentType: "application/pdf" },
+    { action: "inspect", reason: "missing_content_type" },
+    rejected,
+  );
+  assert.deepEqual(inert, { action: "report_only", reason: "unverifiable_inert" });
+});
+
+test("D. an object already correct is left entirely alone", () => {
+  const decision = decideLegacyRemediation(
+    { key: "posts/uuid.jpg", contentType: "image/jpeg" },
+    { action: "inspect", reason: "missing_content_type" },
+    accepted("image/jpeg"),
+  );
+  assert.deepEqual(decision, { action: "keep", reason: "already_correct" });
+  // And anything triaged as keep never reaches a decision at all.
+  assert.equal(decideLegacyRemediation({ key: "posts/x.jpg" }, { action: "keep", reason: "canonical_media" }, rejected).action, "keep");
+});
+
+test("no decision this module can return renames or deletes anything", () => {
+  // Swept across every combination the runner can reach. The property asserted is an ABSENCE: no input produces
+  // a destructive or key-changing action, so `--delete-illegitimate` cannot be reintroduced by accident.
+  const actions = new Set<string>();
+  const validations = [accepted("image/jpeg"), rejected, { kind: "not_inspected", why: "unreadable" } as const, { kind: "not_inspected", why: "too_large" } as const];
+  for (const validation of validations) {
+    for (const reason of ["active_content_type", "active_extension", "missing_content_type"] as const) {
+      for (const key of ["posts/x.html", "posts/x.jpg", "avatars/x.svg", "reviews/x.bin"]) {
+        for (const contentType of ["image/svg+xml", "image/jpeg", "text/html", undefined]) {
+          actions.add(decideLegacyRemediation({ key, contentType }, { action: "inspect", reason }, validation).action);
+        }
+      }
+    }
+  }
+  for (const destructive of ["delete", "rename", "copy_to_new_key", "move"]) {
+    assert.equal(actions.has(destructive), false, destructive);
+  }
+  assert.deepEqual([...actions].sort(), ["keep", "neutralize", "pin_content_type", "report_only"]);
+});
+
+/* ------------------------------------------------------------------ the audit that shapes the design */
+
+test("the reference audit records why keys are never rewritten", () => {
+  assert.equal(REFERENCE_AUDIT.centralMediaTable, false);
+  // Three JSONB arrays, and columns spread across social, commerce, drinks, clubs, catering and users.
+  assert.equal(REFERENCE_AUDIT.columns.filter((column) => column.includes("jsonb")).length, 3);
+  assert.equal(REFERENCE_AUDIT.columns.length >= 16, true);
+  for (const expected of ["posts.image_url", "users.avatar", "recipe_review_photos.photo_url", "products.images (jsonb array)"]) {
+    assert.equal(REFERENCE_AUDIT.columns.includes(expected), true, expected);
+  }
+  assert.deepEqual([...REFERENCE_AUDIT.storedShapes], ["absolute R2_PUBLIC_BASE_URL url", "/uploads/<name> path"]);
 });
 
 /* ------------------------------------------------------------------ helpers */
@@ -119,14 +234,7 @@ test("key and content-type parsing handle the shapes real keys take", () => {
   assert.equal(normalizeContentType(undefined), "");
 });
 
-test("the scoped prefixes are exactly the three the vulnerable paths wrote", () => {
-  assert.deepEqual([...LEGACY_PUBLIC_PREFIXES], ["posts/", "avatars/", "reviews/"]);
-});
-
 test("an R2-served object is addressed off ChefSire's origin, which is why the static hardening cannot reach it", async () => {
-  // This is the architectural fact the whole finding rests on, pinned so the claim cannot quietly become false
-  // in either direction. `publicUrl` hands the client an absolute `R2_PUBLIC_BASE_URL` address; a request to it
-  // never enters Express, so `uploadsStaticHandler` -- and every header it sets -- is simply not on the path.
   const saved = { ...process.env };
   Object.assign(process.env, {
     R2_ENDPOINT: "https://example.invalid", R2_ACCESS_KEY_ID: "k", R2_SECRET_ACCESS_KEY: "s",
@@ -136,8 +244,7 @@ test("an R2-served object is addressed off ChefSire's origin, which is why the s
     const { publicUrl } = await import("../lib/r2");
     const url = publicUrl("posts/legacy-uuid.svg");
     assert.equal(url, "https://media.example.invalid/posts/legacy-uuid.svg");
-    assert.equal(url.startsWith("/uploads/"), false, "it is not a ChefSire path");
-    assert.equal(new URL(url).origin, "https://media.example.invalid", "and not ChefSire's origin");
+    assert.equal(new URL(url).origin, "https://media.example.invalid", "not ChefSire's origin");
   } finally {
     for (const name of ["R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "R2_PUBLIC_BASE_URL"]) {
       if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name];
