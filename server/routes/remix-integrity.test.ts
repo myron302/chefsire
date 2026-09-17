@@ -222,6 +222,11 @@ function makeRunner() {
       offset() { return chain; },
       orderBy() { return chain; },
       groupBy() { return chain; },
+      // `SELECT ... FOR UPDATE` is the serialization point the engagement and deletion paths take on
+      // the remix row. The double has no real locking, so it simply resolves like any other select;
+      // what the real protocol guarantees is proven against a real server in
+      // server/lib/remix-engagement-cleanup.test.ts.
+      for() { return chain; },
       then(resolve: any, reject: any) {
         return Promise.resolve()
           .then(() => rowsMatching(table, whereClause).map((row) => ({ ...row })))
@@ -1232,4 +1237,28 @@ test("every mutating remix endpoint requires authentication", () => {
   for (const [, method, route, next] of mutations) {
     assert.equal(next, "requireAuth", `${method.toUpperCase()} ${route} is not behind requireAuth`);
   }
+});
+
+test("every multi-remix lock in the router is taken in ascending id order", () => {
+  // Account deletion locks the remixes an account engaged with; remix deletion locks the remix and
+  // the parents whose remix_count it reverses. Both are multi-row, so both must acquire in the SAME
+  // total order or they can cycle. Ascending by primary id is that order, everywhere.
+  const code = routeSource.replace(/^\s*(\/\/|\*|\/\*).*$/gm, "");
+  const ordered = [...code.matchAll(/\.orderBy\(asc\(recipeRemixes\.id\)\)\s*\n\s*\.for\("update"\)/g)];
+  assert.equal(ordered.length, 1, "the remix-delete path must take one ordered locking pass");
+
+  const deleteHandler = routeSource.slice(
+    routeSource.indexOf('router.delete("/:id", requireAuth'),
+    routeSource.indexOf('async function setEngagement')
+  );
+  const lockAt = deleteHandler.indexOf('.for("update")');
+  assert.notEqual(lockAt, -1, "remix deletion must lock before it mutates");
+  assert.ok(
+    lockAt < deleteHandler.indexOf("tx\n        .delete(recipeRemixes)"),
+    "the lock must precede the delete, not be taken by it"
+  );
+  assert.ok(
+    lockAt < deleteHandler.indexOf("remixCount: sql`GREATEST"),
+    "and precede the parent counter update"
+  );
 });

@@ -1,7 +1,7 @@
 // server/routes/remixes.ts
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { and, eq, desc, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   posts,
@@ -19,6 +19,7 @@ import {
   toRemixPatch,
 } from "../../shared/planner-remix-mutations";
 import { sendRemixNotification } from "../services/notification-service";
+import { applyRemixEngagement } from "../lib/remix-engagement-cleanup";
 
 const router = Router();
 
@@ -344,6 +345,43 @@ router.delete("/:id", requireAuth, async (req, res) => {
     const userId = req.user!.id;
 
     const deleted = await db.transaction(async (tx: typeof db) => {
+      // Read first, unlocked, only to learn which rows this deletion will touch: the remix itself
+      // and the parents whose remix_count it reverses.
+      const [candidate] = await tx
+        .select({ id: recipeRemixes.id, originalRecipeId: recipeRemixes.originalRecipeId })
+        .from(recipeRemixes)
+        .where(and(eq(recipeRemixes.id, id), eq(recipeRemixes.userId, userId)))
+        .limit(1);
+
+      if (!candidate) return null;
+
+      const parents = await tx
+        .select({ id: recipeRemixes.id })
+        .from(recipeRemixes)
+        .where(eq(recipeRemixes.remixedRecipeId, candidate.originalRecipeId));
+
+      // Lock the whole affected set in ONE ascending-by-id pass, the same order the account-deletion
+      // purge uses. Without this, deleting a remix would lock its own row (via the DELETE) and only
+      // then its parents, which is descending whenever a parent sorts lower -- and that is a lock
+      // cycle against a multi-remix account deletion holding the parent and waiting for this row.
+      // One ordered pass over the union removes the cycle rather than relying on deadlock detection.
+      const affected = [candidate.id, ...parents.map((row: { id: string }) => row.id)];
+      const uniqueAffected: string[] = [];
+      const seen = new Set<string>();
+      for (const remixId of affected) {
+        if (!seen.has(remixId)) {
+          seen.add(remixId);
+          uniqueAffected.push(remixId);
+        }
+      }
+      await tx
+        .select({ id: recipeRemixes.id })
+        .from(recipeRemixes)
+        .where(inArray(recipeRemixes.id, uniqueAffected))
+        .orderBy(asc(recipeRemixes.id))
+        .for("update");
+
+      // Re-checked after the lock: a concurrent request may have deleted it while we waited.
       const [row] = await tx
         .delete(recipeRemixes)
         .where(and(eq(recipeRemixes.id, id), eq(recipeRemixes.userId, userId)))
@@ -396,64 +434,12 @@ async function setEngagement(
 ) {
   const { id } = req.params;
   const userId = req.user!.id;
-  const table = kind === "like" ? remixLikes : remixSaves;
-  const counter = kind === "like" ? recipeRemixes.likesCount : recipeRemixes.savesCount;
 
-  const result = await db.transaction(async (tx: typeof db) => {
-    // Scoped to the remix so a missing one is a 404 rather than an insert against a dangling id.
-    const [remix] = await tx
-      .select()
-      .from(recipeRemixes)
-      .where(eq(recipeRemixes.id, id))
-      .limit(1);
-
-    if (!remix) return null;
-
-    let changed = false;
-
-    if (action === "add") {
-      const [inserted] = await tx
-        .insert(table)
-        .values({ userId, remixId: id })
-        .onConflictDoNothing({ target: [table.userId, table.remixId] })
-        .returning();
-      changed = Boolean(inserted);
-      if (changed) {
-        await tx
-          .update(recipeRemixes)
-          .set(
-            kind === "like"
-              ? { likesCount: sql`${counter} + 1` }
-              : { savesCount: sql`${counter} + 1` }
-          )
-          .where(eq(recipeRemixes.id, id));
-      }
-    } else {
-      const removed = await tx
-        .delete(table)
-        .where(and(eq(table.remixId, id), eq(table.userId, userId)))
-        .returning();
-      changed = removed.length > 0;
-      if (changed) {
-        await tx
-          .update(recipeRemixes)
-          .set(
-            kind === "like"
-              ? { likesCount: sql`GREATEST(${counter} - 1, 0)` }
-              : { savesCount: sql`GREATEST(${counter} - 1, 0)` }
-          )
-          .where(eq(recipeRemixes.id, id));
-      }
-    }
-
-    const [updated] = await tx
-      .select()
-      .from(recipeRemixes)
-      .where(eq(recipeRemixes.id, id))
-      .limit(1);
-
-    return { remix: updated, changed };
-  });
+  // The lock-first protocol and the counter arithmetic live in one place, shared with the
+  // account-deletion purge, so both sides of the race provably serialize on the same remix row.
+  const result = await db.transaction(async (tx: typeof db) =>
+    applyRemixEngagement(tx as any, { remixId: id, userId, kind, action })
+  );
 
   if (!result) {
     return res.status(404).json({ error: "Remix not found" });

@@ -25,7 +25,7 @@ import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq } from "drizzle-orm";
 import { users } from "../../shared/schema";
-import { purgeRemixEngagementForUser } from "./remix-engagement-cleanup";
+import { applyRemixEngagement, purgeRemixEngagementForUser } from "./remix-engagement-cleanup";
 
 const CANDIDATES = [
   process.env.TEST_DATABASE_URL,
@@ -79,13 +79,13 @@ const SCHEMA = `
     created_at timestamp DEFAULT now()
   );
   CREATE TABLE remix_likes (
-    id varchar PRIMARY KEY,
+    id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id varchar NOT NULL REFERENCES users(id),
     remix_id varchar NOT NULL REFERENCES recipe_remixes(id) ON DELETE CASCADE,
     created_at timestamp NOT NULL DEFAULT now()
   );
   CREATE TABLE remix_saves (
-    id varchar PRIMARY KEY,
+    id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id varchar NOT NULL REFERENCES users(id),
     remix_id varchar NOT NULL REFERENCES recipe_remixes(id) ON DELETE CASCADE,
     created_at timestamp NOT NULL DEFAULT now()
@@ -549,4 +549,292 @@ test("storage.deleteUser wraps the cleanup and the account delete in ONE transac
     /await db\.delete\(users\)/,
     "the account must never be deleted outside the transaction"
   );
+});
+
+// ================================================================================================
+// The READ COMMITTED recomputation race, forced deterministically
+//
+// Account deletion recomputes a counter from `remix_likes`. Under READ COMMITTED every statement
+// takes its own snapshot when it begins, and the manual is explicit that an updating command "can
+// see the effects of concurrent updating commands on the same rows it is trying to update, but it
+// does not see effects of those commands on other rows in the database." The subquery reads OTHER
+// rows. So if the recomputing UPDATE were the first statement to touch the remix, it would snapshot,
+// block on a concurrent liker's row lock, and on resuming recompute from its own stale snapshot --
+// writing a count that omits the like that just committed.
+//
+// Reproduced at the previous head: one surviving relationship, counter 0.
+//
+// The fix is to take the remix row lock BEFORE the snapshot-dependent read. The lock waits for the
+// competing transaction, and every statement after it gets a fresh snapshot that includes what that
+// transaction committed.
+//
+// These tests force the dangerous interleaving rather than hoping for it: the competing transaction
+// grabs the remix row and holds it uncommitted, the deletion is started in the background, and the
+// competitor commits only once `pg_stat_activity` shows the deletion genuinely parked on a lock.
+// ================================================================================================
+
+/** A second connection, in the same scratch schema, with a lock timeout so nothing can hang. */
+async function companion(w: World) {
+  const ns = (await w.client.query(`SELECT current_schema() AS s`)).rows[0].s;
+  const client = new pg.Client({ connectionString: CONNECTION! });
+  await client.connect();
+  await client.query(`SET search_path TO ${ns}`);
+  await client.query(`SET lock_timeout = '10s'`);
+  return client;
+}
+
+/** Resolves once this backend is actually waiting on a lock, so the interleaving is not a guess. */
+async function untilBlocked(observer: pg.Client, pid: number) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const waiting = await observer.query(
+      `SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock'`,
+      [pid]
+    );
+    if (waiting.rowCount === 1) return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return false;
+}
+
+/**
+ * Run the race: `mutate` is the competing engagement, performed through the REAL
+ * `applyRemixEngagement`; the deletion is the REAL `purgeRemixEngagementForUser` plus the account
+ * delete, exactly as storage.deleteUser sequences them.
+ */
+async function race(
+  w: World,
+  deletingUser: string,
+  competitor: { user: string; kind: "like" | "save"; action: "add" | "remove"; remix: string }
+) {
+  const other = await companion(w);
+  const observer = await companion(w);
+  try {
+    const otherDb = drizzle(other);
+    const pid = (await w.client.query(`SELECT pg_backend_pid() AS p`)).rows[0].p;
+
+    // The competitor opens its transaction, takes the remix row, mutates -- and waits.
+    await other.query("BEGIN");
+    await applyRemixEngagement(otherDb as any, {
+      remixId: competitor.remix,
+      userId: competitor.user,
+      kind: competitor.kind,
+      action: competitor.action,
+    });
+
+    // The deletion runs in the background; it will park on the competitor's row lock.
+    const deletion = (async () => {
+      await w.client.query("BEGIN");
+      try {
+        const db = drizzle(w.client);
+        await purgeRemixEngagementForUser(db as any, deletingUser);
+        await w.client.query(`DELETE FROM users WHERE id = $1`, [deletingUser]);
+        await w.client.query("COMMIT");
+      } catch (error) {
+        await w.client.query("ROLLBACK").catch(() => {});
+        throw error;
+      }
+    })();
+
+    const parked = await untilBlocked(observer, pid);
+    await other.query("COMMIT");
+    const outcome = await Promise.allSettled([deletion]);
+
+    return {
+      parked,
+      failed: outcome[0].status === "rejected",
+      error: outcome[0].status === "rejected" ? String((outcome[0] as any).reason?.code ?? "") : "",
+    };
+  } finally {
+    await other.query("ROLLBACK").catch(() => {});
+    await other.end().catch(() => {});
+    await observer.end().catch(() => {});
+  }
+}
+
+it("A. deleting an account while another user LIKES an affected remix", async () => {
+  // A likes R (counter 1). B likes R during the deletion. The forbidden outcomes are
+  // relationships=1/counter=0 and relationships=1/counter=2.
+  const w = await world({
+    accounts: ["alice", "bob", "carol"], author: "alice", remixes: ["A"],
+    likes: [["A", "bob"]],
+  });
+  try {
+    assert.deepEqual((await w.counters()).A, { likes: 1, saves: 0 });
+
+    const outcome = await race(w, "bob", { user: "carol", kind: "like", action: "add", remix: "A" });
+    assert.ok(outcome.parked, "the deletion must really have waited on the lock");
+
+    assert.equal(await w.userExists("bob"), false, "the account is gone");
+    assert.deepEqual((await w.likeRows()).map((r) => r.user_id), ["carol"], "only carol's like remains");
+    assert.deepEqual((await w.counters()).A, { likes: 1, saves: 0 });
+    await assertInvariant(w);
+  } finally {
+    await w.done();
+  }
+});
+
+it("B. deleting an account while another user UNLIKES an affected remix", async () => {
+  // A and B both like R (counter 2). B unlikes during A's deletion. Both must end up gone.
+  const w = await world({
+    accounts: ["alice", "bob", "carol"], author: "alice", remixes: ["A"],
+    likes: [["A", "bob"], ["A", "carol"]],
+  });
+  try {
+    assert.deepEqual((await w.counters()).A, { likes: 2, saves: 0 });
+
+    const outcome = await race(w, "bob", { user: "carol", kind: "like", action: "remove", remix: "A" });
+    assert.ok(outcome.parked);
+
+    assert.equal(await w.userExists("bob"), false);
+    assert.deepEqual(await w.likeRows(), [], "both likes gone");
+    assert.deepEqual((await w.counters()).A, { likes: 0, saves: 0 });
+    await assertInvariant(w);
+  } finally {
+    await w.done();
+  }
+});
+
+it("C. deleting an account while another user SAVES an affected remix", async () => {
+  const w = await world({
+    accounts: ["alice", "bob", "carol"], author: "alice", remixes: ["A"],
+    saves: [["A", "bob"]],
+  });
+  try {
+    assert.deepEqual((await w.counters()).A, { likes: 0, saves: 1 });
+
+    const outcome = await race(w, "bob", { user: "carol", kind: "save", action: "add", remix: "A" });
+    assert.ok(outcome.parked);
+
+    assert.equal(await w.userExists("bob"), false);
+    assert.deepEqual((await w.saveRows()).map((r) => r.user_id), ["carol"]);
+    assert.deepEqual((await w.counters()).A, { likes: 0, saves: 1 });
+    await assertInvariant(w);
+  } finally {
+    await w.done();
+  }
+});
+
+it("D. deleting an account while another user UNSAVES an affected remix", async () => {
+  const w = await world({
+    accounts: ["alice", "bob", "carol"], author: "alice", remixes: ["A"],
+    saves: [["A", "bob"], ["A", "carol"]],
+  });
+  try {
+    assert.deepEqual((await w.counters()).A, { likes: 0, saves: 2 });
+
+    const outcome = await race(w, "bob", { user: "carol", kind: "save", action: "remove", remix: "A" });
+    assert.ok(outcome.parked);
+
+    assert.equal(await w.userExists("bob"), false);
+    assert.deepEqual(await w.saveRows(), []);
+    assert.deepEqual((await w.counters()).A, { likes: 0, saves: 0 });
+    await assertInvariant(w);
+  } finally {
+    await w.done();
+  }
+});
+
+it("E. the same race across MULTIPLE affected remixes", async () => {
+  // The deleted account engaged with A and B; the competitor mutates only B. Both counters must
+  // still equal their relationship tables, and the multi-row lock must be taken in id order.
+  const w = await world({
+    accounts: ["alice", "bob", "carol"], author: "alice", remixes: ["A", "B"],
+    likes: [["A", "bob"], ["B", "bob"], ["B", "carol"]],
+    saves: [["A", "bob"]],
+  });
+  try {
+    const before = await w.counters();
+    assert.deepEqual(before.A, { likes: 1, saves: 1 });
+    assert.deepEqual(before.B, { likes: 2, saves: 0 });
+
+    const outcome = await race(w, "bob", { user: "carol", kind: "like", action: "remove", remix: "B" });
+    assert.ok(outcome.parked);
+
+    assert.equal(await w.userExists("bob"), false);
+    const after = await w.counters();
+    assert.deepEqual(after.A, { likes: 0, saves: 0 });
+    assert.deepEqual(after.B, { likes: 0, saves: 0 });
+    assert.deepEqual(await w.likeRows(), []);
+    await assertInvariant(w);
+  } finally {
+    await w.done();
+  }
+});
+
+it("F. two account deletions over overlapping remixes neither deadlock nor drift", async () => {
+  // Both accounts engaged with the SAME two remixes. Ascending-by-id locking is what makes this
+  // safe: without a fixed order the two deletions could take R1/R2 in opposite orders and deadlock.
+  // PostgreSQL may legitimately serialize one behind the other, so the assertion is on the final
+  // invariant rather than on completion order.
+  const w = await world({
+    accounts: ["alice", "bob", "carol", "dave"], author: "alice", remixes: ["A", "B"],
+    likes: [["A", "bob"], ["B", "bob"], ["A", "carol"], ["B", "carol"], ["A", "dave"]],
+    saves: [["A", "bob"], ["B", "carol"]],
+  });
+  try {
+    const second = await companion(w);
+    try {
+      const run = async (client: pg.Client, userId: string) => {
+        await client.query("BEGIN");
+        try {
+          await purgeRemixEngagementForUser(drizzle(client) as any, userId);
+          await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
+          await client.query("COMMIT");
+          return "committed";
+        } catch (error: any) {
+          await client.query("ROLLBACK").catch(() => {});
+          return error.code === "40P01" ? "deadlock" : `failed:${error.code}`;
+        }
+      };
+
+      const outcomes = await Promise.all([run(w.client, "bob"), run(second, "carol")]);
+      assert.ok(
+        !outcomes.includes("deadlock"),
+        `ascending lock order must prevent deadlock, got ${outcomes.join(" / ")}`
+      );
+      assert.deepEqual(outcomes, ["committed", "committed"]);
+
+      assert.equal(await w.userExists("bob"), false);
+      assert.equal(await w.userExists("carol"), false);
+      // Only dave's like on A survives.
+      assert.deepEqual((await w.likeRows()).map((r) => r.user_id), ["dave"]);
+      assert.deepEqual(await w.saveRows(), []);
+      assert.deepEqual((await w.counters()).A, { likes: 1, saves: 0 });
+      assert.deepEqual((await w.counters()).B, { likes: 0, saves: 0 });
+      await assertInvariant(w);
+    } finally {
+      await second.query("ROLLBACK").catch(() => {});
+      await second.end().catch(() => {});
+    }
+  } finally {
+    await w.done();
+  }
+});
+
+it("the engagement path takes the remix row lock before touching the relationship", async () => {
+  // Both sides must serialize on the SAME resource, so this asserts the ordering in the shared
+  // helper's source rather than trusting the two to stay in step.
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const source = fs.readFileSync(path.join(here, "remix-engagement-cleanup.ts"), "utf8");
+
+  for (const fn of ["purgeRemixEngagementForUser", "applyRemixEngagement"]) {
+    const start = source.indexOf(`export async function ${fn}`);
+    assert.notEqual(start, -1, `${fn} missing`);
+    const body = source.slice(start, source.indexOf("\n}", start));
+    const lockAt = body.indexOf('.for("update")');
+    assert.notEqual(lockAt, -1, `${fn} must take a row lock`);
+
+    for (const mutation of ["tx.delete(", "tx.insert(", "tx.update("]) {
+      const at = body.indexOf(mutation);
+      if (at !== -1) {
+        assert.ok(at > lockAt, `${fn}: ${mutation} must come after the lock, not before`);
+      }
+    }
+  }
+
+  // And the ordered multi-row lock is what makes concurrent deletions safe.
+  assert.match(source, /\.orderBy\(asc\(recipeRemixes\.id\)\)\s*\n\s*\.for\("update"\)/);
 });

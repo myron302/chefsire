@@ -1,5 +1,5 @@
 // server/lib/remix-engagement-cleanup.ts
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { recipeRemixes, remixLikes, remixSaves } from "../../shared/schema";
 
 /**
@@ -13,6 +13,7 @@ import { recipeRemixes, remixLikes, remixSaves } from "../../shared/schema";
  */
 type EngagementTx = {
   select: (...args: any[]) => any;
+  insert: (...args: any[]) => any;
   delete: (...args: any[]) => any;
   update: (...args: any[]) => any;
 };
@@ -59,29 +60,148 @@ export async function purgeRemixEngagementForUser(tx: EngagementTx, userId: stri
     }
   }
 
-  await tx.delete(remixLikes).where(eq(remixLikes.userId, userId));
-  await tx.delete(remixSaves).where(eq(remixSaves.userId, userId));
+  if (affected.length === 0) return affected;
 
-  // Scoped to the remixes this account actually touched, so no unrelated row is rewritten. The
-  // subqueries see the post-delete state inside this transaction, which is what makes the result
-  // equal to what survives rather than to what was there a moment ago.
-  if (affected.length > 0) {
-    await tx
-      .update(recipeRemixes)
-      .set({
-        likesCount: sql`(
-          SELECT count(DISTINCT ${remixLikes.userId})
-          FROM ${remixLikes}
-          WHERE ${remixLikes.remixId} = ${recipeRemixes.id}
-        )`,
-        savesCount: sql`(
-          SELECT count(DISTINCT ${remixSaves.userId})
-          FROM ${remixSaves}
-          WHERE ${remixSaves.remixId} = ${recipeRemixes.id}
-        )`,
-      })
-      .where(inArray(recipeRemixes.id, affected));
-  }
+  // ----------------------------------------------------------------------------------------------
+  // THE SERIALIZATION POINT. Take the row lock on every affected remix BEFORE anything below reads
+  // or writes a relationship.
+  //
+  // This has to happen first, and the reason is specific to READ COMMITTED. Under it, each statement
+  // takes its OWN snapshot at the moment the statement begins. A recomputing UPDATE whose subquery
+  // reads `remix_likes` therefore behaves exactly as the manual warns: "it can see the effects of
+  // concurrent updating commands on the same rows it is trying to update, but it does not see
+  // effects of those commands on other rows in the database." So if the UPDATE were the first thing
+  // to touch this remix, it would take its snapshot, then block on a concurrent liker's row lock,
+  // and when that liker committed it would resume and recompute from its OWN older snapshot -- one
+  // in which the new like does not exist -- and write a count that is already wrong, overwriting the
+  // liker's correct value. Reproduced: one surviving relationship, counter 0.
+  //
+  // Acquiring the lock first inverts that. The lock waits for any competing transaction to finish,
+  // and every statement AFTER it gets a fresh snapshot that includes whatever that transaction
+  // committed. The delete and the recomputation below therefore both see the true current state.
+  //
+  // LOCK ORDER: ascending by primary id, always. Account deletion can touch many remixes at once,
+  // so a fixed total order is what stops two concurrent deletions over overlapping sets from
+  // deadlocking. Every other path that locks more than one remix row uses the same ascending order,
+  // and the single-remix engagement paths take their one row before anything else, so the global
+  // order across the feature is: recipe_remixes rows ascending, then `users`.
+  // ----------------------------------------------------------------------------------------------
+  const locked: Array<{ id: string }> = await tx
+    .select({ id: recipeRemixes.id })
+    .from(recipeRemixes)
+    .where(inArray(recipeRemixes.id, affected))
+    .orderBy(asc(recipeRemixes.id))
+    .for("update");
+
+  const lockedIds = locked.map((row) => row.id);
+  if (lockedIds.length === 0) return affected;
+
+  // Scoped to the remixes actually locked, so this can never delete a relationship whose counter is
+  // not about to be repaired. If the account acquired NEW engagement between the discovery above and
+  // the lock, that row is deliberately left in place: the caller's `DELETE FROM users` then fails on
+  // the foreign key and the whole transaction rolls back, which is the safe direction -- a failed,
+  // retryable deletion rather than a counter silently left above its rows.
+  await tx
+    .delete(remixLikes)
+    .where(and(eq(remixLikes.userId, userId), inArray(remixLikes.remixId, lockedIds)));
+  await tx
+    .delete(remixSaves)
+    .where(and(eq(remixSaves.userId, userId), inArray(remixSaves.remixId, lockedIds)));
+
+  // Recomputed from what actually survives. The subqueries run on a snapshot taken after the lock
+  // was granted, so a concurrent liker's committed row is included rather than missed.
+  await tx
+    .update(recipeRemixes)
+    .set({
+      likesCount: sql`(
+        SELECT count(DISTINCT ${remixLikes.userId})
+        FROM ${remixLikes}
+        WHERE ${remixLikes.remixId} = ${recipeRemixes.id}
+      )`,
+      savesCount: sql`(
+        SELECT count(DISTINCT ${remixSaves.userId})
+        FROM ${remixSaves}
+        WHERE ${remixSaves.remixId} = ${recipeRemixes.id}
+      )`,
+    })
+    .where(inArray(recipeRemixes.id, lockedIds));
 
   return affected;
+}
+
+/**
+ * Apply one account's like/save/unlike/unsave to one remix, under the shared lock.
+ *
+ * This is the OTHER side of the serialization protocol, and it lives here beside the purge so that
+ * both sides demonstrably take the same lock on the same resource. Returns `null` when the remix does
+ * not exist (the caller turns that into a 404), otherwise the refreshed remix and whether a
+ * relationship row actually changed.
+ *
+ * The lock comes FIRST -- before the relationship is inserted or deleted, and before the counter
+ * moves. See `purgeRemixEngagementForUser` for why that ordering is what closes the READ COMMITTED
+ * recomputation race; from this side the point is that the relationship write and its counter move
+ * cannot be split by a transaction that recomputes the counter from the relationship table.
+ *
+ * The counter moves by arithmetic here rather than by recomputation, and that stays exact: `x + 1`
+ * and `GREATEST(x - 1, 0)` are re-evaluated by PostgreSQL against the newest version of the row
+ * being updated, which is the one case READ COMMITTED does handle, and the row is held under this
+ * transaction's lock for the whole sequence anyway. It moves only when a row was really created or
+ * really deleted, so the counter still counts relationships and nothing else.
+ */
+export async function applyRemixEngagement(
+  tx: EngagementTx,
+  params: {
+    remixId: string;
+    userId: string;
+    kind: "like" | "save";
+    action: "add" | "remove";
+  }
+): Promise<{ remix: any; changed: boolean } | null> {
+  const { remixId, userId, kind, action } = params;
+  const table = kind === "like" ? remixLikes : remixSaves;
+
+  // THE SERIALIZATION POINT, taken before any relationship read or write.
+  const [remix] = await tx
+    .select()
+    .from(recipeRemixes)
+    .where(eq(recipeRemixes.id, remixId))
+    .limit(1)
+    .for("update");
+
+  if (!remix) return null;
+
+  let changed = false;
+
+  if (action === "add") {
+    const [inserted] = await tx
+      .insert(table)
+      .values({ userId, remixId })
+      .onConflictDoNothing({ target: [table.userId, table.remixId] })
+      .returning();
+    changed = Boolean(inserted);
+  } else {
+    const removed = await tx
+      .delete(table)
+      .where(and(eq(table.remixId, remixId), eq(table.userId, userId)))
+      .returning();
+    changed = removed.length > 0;
+  }
+
+  if (changed) {
+    const column = kind === "like" ? recipeRemixes.likesCount : recipeRemixes.savesCount;
+    const next =
+      action === "add" ? sql`${column} + 1` : sql`GREATEST(${column} - 1, 0)`;
+    await tx
+      .update(recipeRemixes)
+      .set(kind === "like" ? { likesCount: next } : { savesCount: next })
+      .where(eq(recipeRemixes.id, remixId));
+  }
+
+  const [updated] = await tx
+    .select()
+    .from(recipeRemixes)
+    .where(eq(recipeRemixes.id, remixId))
+    .limit(1);
+
+  return { remix: updated, changed };
 }
