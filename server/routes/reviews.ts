@@ -14,14 +14,10 @@ import {
 } from "../../shared/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
 import { requireAuth } from "../middleware/auth";
 import { RecipeService } from "../services/recipe.service";
 import { sendRecipeReviewNotification } from "../services/notification-service";
-import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
-import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
-import { randomUUID } from "crypto";
+import { UnsupportedMediaError, storeVerifiedImage } from "../services/image-upload";
 
 const router = Router();
 
@@ -221,56 +217,32 @@ async function resolveRecipeIdentityForReview(recipeId: string): Promise<Resolve
   };
 }
 
-// Multer config for review photos — writes to UPLOADS_DIR/reviews/ (absolute, canonical path)
-const reviewsSubdir = path.join(UPLOADS_DIR, "reviews");
-if (!fs.existsSync(reviewsSubdir)) {
-  fs.mkdirSync(reviewsSubdir, { recursive: true });
-}
+/**
+ * Review photos.
+ *
+ * The previous filter tested an unanchored `/jpeg|jpg|png|webp/` against the original filename's extension and
+ * against the declared MIME, and the disk branch then persisted `review-<timestamp>${path.extname(
+ * file.originalname)}` directly into the directory served at `/uploads/reviews`. Both inputs come from the
+ * request, so neither established that the bytes were an image at all -- a substring match on a name the uploader
+ * chose is not a format check. The photo is now parsed into memory (5MB), decoded, and stored under a name
+ * generated from the format its bytes turned out to be.
+ */
+const REVIEW_PHOTO_LIMIT_BYTES = 5 * 1024 * 1024;
 
-const multerStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, reviewsSubdir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `review-${uniqueSuffix}${path.extname(file.originalname)}`);
-  },
-});
-
-const localUpload = multer({
-  storage: multerStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (extname && mimetype) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only images are allowed (jpeg, jpg, png, webp)"));
-    }
-  },
-});
-
-const memoryUpload = multer({
+const reviewPhotoUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (extname && mimetype) {
+  limits: { fileSize: REVIEW_PHOTO_LIMIT_BYTES, files: 1 },
+  // A cheap pre-filter on the declared type, and explicitly not the decision.
+  fileFilter: (_req, file, cb) => {
+    if (["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"].includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error("Only images are allowed (jpeg, jpg, png, webp)"));
+      cb(new Error("Only images are allowed (jpeg, png, webp, gif)"));
     }
   },
 });
 
-const upload = (req: Request, res: Response, next: (err?: any) => void) => {
-  const middleware = isR2Configured() ? memoryUpload : localUpload;
-  return middleware.single("photo")(req, res, next);
-};
+const upload = (req: Request, res: Response, next: (err?: any) => void) => reviewPhotoUpload.single("photo")(req, res, next);
 
 // Get all reviews for a recipe
 router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
@@ -732,15 +704,14 @@ router.post(
         return res.status(403).json({ error: "You can only add photos to your own reviews" });
       }
 
-      let photoUrl: string;
-      if (isR2Configured()) {
-        const ext = path.extname(req.file.originalname).toLowerCase() || (req.file.mimetype === "image/png" ? ".png" : req.file.mimetype === "image/webp" ? ".webp" : ".jpg");
-        const key = `reviews/${randomUUID()}${ext}`;
-        await uploadToR2(key, req.file.buffer, req.file.mimetype);
-        photoUrl = publicUrl(key);
-      } else {
-        photoUrl = uploadUrlPath(`reviews/${req.file.filename}`);
-      }
+      // Ownership has been established above; only now are any bytes verified and stored. Both destinations get
+      // the same generated name and the same server-decided content type.
+      const photoUrl = await storeVerifiedImage(req.file, {
+        folder: "reviews",
+        prefix: "review-",
+        localSubdirectory: "reviews",
+        maxBytes: REVIEW_PHOTO_LIMIT_BYTES,
+      });
 
       // Create photo record
       const photoData: InsertRecipeReviewPhoto = {
@@ -753,6 +724,9 @@ router.post(
 
       res.status(201).json(photo);
     } catch (error: any) {
+      if (error instanceof UnsupportedMediaError) {
+        return res.status(error.status).json({ error: error.message });
+      }
       console.error("Error uploading review photo:", error);
       res.status(500).json({ error: "Failed to upload photo" });
     }

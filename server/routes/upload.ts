@@ -1,3 +1,17 @@
+/**
+ * The general upload route, and the one place a large file (a post video, a marketplace digital product) crosses
+ * ChefSire's trust boundary.
+ *
+ * THE SHAPE THIS ROUTE NOW HAS. Multer writes the request body to a STAGING directory that nothing serves, under a
+ * name with no extension at all. Only after the file's own bytes have been classified is it promoted: to R2 under
+ * a generated key with the verified content type, or into `UPLOADS_DIR` under a generated name. A file that fails
+ * validation is unlinked from staging and never existed anywhere durable or public.
+ *
+ * WHAT IT REPLACES. The disk-storage path wrote straight into `UPLOADS_DIR` -- the directory `express.static`
+ * serves at `/uploads` -- under `${randomUUID()}${path.extname(file.originalname)}`. The uploader chose the
+ * extension and, through `file.mimetype`, chose whether the upload was allowed at all. HTML bytes declared
+ * `image/jpeg` and named `attack.html` landed as `<uuid>.html` and came back as `text/html` on ChefSire's origin.
+ */
 import { Router } from "express";
 import multer from "multer";
 import os from "os";
@@ -5,14 +19,32 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
 import fs from "fs";
+import { MEDIA_REJECTION_MESSAGES, MEDIA_REJECTION_STATUS } from "@shared/media-types";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
-import { isR2Configured, publicUrl, uploadFileToR2, uploadToR2 } from "../lib/r2";
-import { imageUpload, storeUploadedImage } from "../services/image-upload";
+import { isR2Configured, publicUrl, uploadFileToR2 } from "../lib/r2";
+import { UnsupportedMediaError, imageUpload, storeUploadedImage } from "../services/image-upload";
+import { generatedMediaKey, generatedMediaName, validateUploadedMedia } from "../services/media-validation";
 
 const router = Router();
 
-const GENERAL_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024; // 100MB
+export const GENERAL_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024; // 100MB
 
+/**
+ * Where an upload lives while it is still untrusted.
+ *
+ * It is under the OS temp directory and therefore outside both `express.static` mounts, so a file that turns out
+ * to be active content is never addressable even for the moment it is on disk. The previous local path wrote
+ * directly into the served directory, which is why "rejected" and "already public" were not mutually exclusive.
+ */
+const UPLOAD_STAGING_DIR = path.join(os.tmpdir(), "chefsire-upload-staging");
+fs.mkdirSync(UPLOAD_STAGING_DIR, { recursive: true });
+
+/**
+ * A cheap pre-filter, and explicitly NOT the security decision.
+ *
+ * The declared MIME is copied out of the multipart part header by the client, so all this can do is avoid
+ * spooling 100MB of something that could never be accepted. `validateUploadedMedia` decides what the file is.
+ */
 const allowedGeneralUploadTypes = [
   'application/pdf',
   'application/msword',
@@ -40,88 +72,71 @@ function generalUploadFileFilter(_req: Express.Request, file: Express.Multer.Fil
   }
 }
 
-// Configure multer for general local file uploads (disk storage → UPLOADS_DIR)
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, UPLOADS_DIR);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueName = `${randomUUID()}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  },
-});
-
-const localUpload = multer({
-  storage,
-  limits: {
-    fileSize: GENERAL_UPLOAD_LIMIT_BYTES,
-  },
-  fileFilter: generalUploadFileFilter,
-});
-
-const r2TempUpload = multer({
+/**
+ * One staging parser for both destinations.
+ *
+ * The staged name carries NO extension: there is nothing to derive one from yet, and a name without an extension
+ * cannot be mistaken for a served object if it is ever left behind. R2 and local storage now receive exactly the
+ * same already-validated bytes under exactly the same generated names, so a deployment that falls back from R2 to
+ * local storage does not fall back to a weaker rule.
+ */
+const stagingUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => {
-      cb(null, os.tmpdir());
+      cb(null, UPLOAD_STAGING_DIR);
     },
-    filename: (_req, file, cb) => {
-      cb(null, `chefsire-upload-${randomUUID()}${path.extname(file.originalname)}`);
+    filename: (_req, _file, cb) => {
+      cb(null, `chefsire-upload-${randomUUID()}`);
     },
   }),
   limits: {
     fileSize: GENERAL_UPLOAD_LIMIT_BYTES,
+    files: 1,
   },
   fileFilter: generalUploadFileFilter,
 });
 
-function tempUploadPath(file?: Express.Multer.File): string | undefined {
+function stagedPath(file?: Express.Multer.File): string | undefined {
   return file && 'path' in file ? file.path : undefined;
 }
 
-async function cleanupTempUpload(file?: Express.Multer.File) {
-  const filePath = tempUploadPath(file);
+async function discardStagedUpload(file?: Express.Multer.File) {
+  const filePath = stagedPath(file);
   if (!filePath) return;
 
   try {
     await fs.promises.unlink(filePath);
   } catch (error: any) {
     if (error?.code !== 'ENOENT') {
-      console.warn("Failed to delete temp upload:", error);
+      console.warn("Failed to delete staged upload:", error);
     }
   }
 }
 
-function extensionForUpload(file: Express.Multer.File): string {
-  const ext = path.extname(file.originalname);
-  if (ext) return ext.toLowerCase();
-
-  const mimeExt: Record<string, string> = {
-    "video/mp4": ".mp4",
-    "video/quicktime": ".mov",
-    "video/x-msvideo": ".avi",
-    "video/webm": ".webm",
-    "video/ogg": ".ogg",
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-    "application/pdf": ".pdf",
-    "application/zip": ".zip",
-    "application/epub+zip": ".epub",
-  };
-
-  return mimeExt[file.mimetype] || "";
+/** Moves a validated file out of staging into the served directory, across filesystems if it has to. */
+async function promoteToUploadsDir(from: string, filename: string): Promise<void> {
+  const destination = path.join(UPLOADS_DIR, filename);
+  try {
+    await fs.promises.rename(from, destination);
+  } catch (error: any) {
+    // The staging directory and the uploads directory can be on different devices, where rename cannot work.
+    if (error?.code !== 'EXDEV') throw error;
+    await fs.promises.copyFile(from, destination);
+  }
 }
 
-// POST /api/upload - General file upload (videos, docs, etc.)
+/** Display metadata only. It is echoed back to the uploader and never touches a path, a key or a header. */
+function displayFilename(originalName: string): string {
+  const lastSegment = (originalName ?? "").split(/[\\/]/).pop() ?? "";
+  // eslint-disable-next-line no-control-regex
+  return lastSegment.replace(/[\x00-\x1f\x7f]/g, " ").trim().slice(0, 200) || "upload";
+}
+
+// POST /api/upload - General file upload (videos, documents, images)
 router.post("/", requireAuth, (req, res) => {
-  const usingR2 = isR2Configured();
-  const middleware = usingR2 ? r2TempUpload : localUpload;
-  middleware.single('file')(req, res, async (err) => {
+  stagingUpload.single('file')(req, res, async (err) => {
     if (err) {
-      if (usingR2) {
-        await cleanupTempUpload(req.file);
-      }
+      await discardStagedUpload(req.file);
 
       console.error("Upload error:", err);
 
@@ -139,31 +154,51 @@ router.post("/", requireAuth, (req, res) => {
       if (!req.file) {
         return res.status(400).json({ ok: false, error: "No file uploaded" });
       }
+      const staged = stagedPath(req.file);
+      if (!staged) {
+        return res.status(400).json({ ok: false, error: "No file uploaded" });
+      }
+
+      // Nothing has been stored yet. This is what decides whether anything ever will be.
+      const validated = await validateUploadedMedia({
+        source: { path: staged, byteSize: req.file.size },
+        allow: ["image", "video", "document"],
+        declaredMimeType: req.file.mimetype,
+        originalName: req.file.originalname,
+        maxBytes: GENERAL_UPLOAD_LIMIT_BYTES,
+      });
+      if (validated.kind === "rejected") {
+        return res.status(MEDIA_REJECTION_STATUS[validated.reason]).json({ ok: false, error: MEDIA_REJECTION_MESSAGES[validated.reason] });
+      }
 
       let fileUrl: string;
 
-      if (usingR2) {
-        const key = `posts/${randomUUID()}${extensionForUpload(req.file)}`;
-        await uploadFileToR2(key, req.file.path, req.file.mimetype);
+      if (isR2Configured()) {
+        const key = generatedMediaKey("posts", validated.extension);
+        // The content type R2 stores, and therefore the one a browser is handed, is the verified one.
+        await uploadFileToR2(key, staged, validated.contentType);
         fileUrl = publicUrl(key);
       } else {
-        fileUrl = uploadUrlPath(req.file.filename);
+        const filename = generatedMediaName(validated.extension);
+        await promoteToUploadsDir(staged, filename);
+        fileUrl = uploadUrlPath(filename);
       }
 
       res.json({
         ok: true,
         url: fileUrl,
-        filename: req.file.originalname,
+        filename: displayFilename(req.file.originalname),
         size: req.file.size,
-        mimetype: req.file.mimetype,
+        // The verified type, not the declared one. A client that echoes this is echoing the server's finding.
+        mimetype: validated.contentType,
       });
     } catch (error: any) {
       console.error("Error processing upload:", error);
-      res.status(500).json({ ok: false, error: error.message || "Failed to process upload" });
+      res.status(500).json({ ok: false, error: "Failed to process upload" });
     } finally {
-      if (usingR2) {
-        await cleanupTempUpload(req.file);
-      }
+      // A promoted local file has already been renamed out of staging; this removes anything still there --
+      // the R2 copy's source, and every rejected or failed upload.
+      await discardStagedUpload(req.file);
     }
   });
 });
@@ -186,8 +221,11 @@ router.post("/image", requireAuth, (req, res) => {
 
       res.json({ ok: true, ...await storeUploadedImage(req.file) });
     } catch (error: any) {
+      if (error instanceof UnsupportedMediaError) {
+        return res.status(error.status).json({ ok: false, error: error.message });
+      }
       console.error("Error processing image upload:", error);
-      res.status(500).json({ ok: false, error: error.message || "Failed to process image" });
+      res.status(500).json({ ok: false, error: "Failed to process image" });
     }
   });
 });

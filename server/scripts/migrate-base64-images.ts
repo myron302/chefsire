@@ -7,31 +7,37 @@
 import "dotenv/config";
 import path from "path";
 import fs from "fs/promises";
-import { randomUUID } from "crypto";
 import { db } from "../db";
 import { posts, recipes, stories } from "../../shared/schema";
 import { sql, like, or } from "drizzle-orm";
 import { UPLOADS_DIR } from "../lib/uploads-dir";
+import { generatedMediaName, validateUploadedMedia } from "../services/media-validation";
 
-const MIME_TO_EXT: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-  "video/mp4": "mp4",
-  "video/webm": "webm",
-  "video/quicktime": "mov",
-};
-
-async function saveDataUri(dataUri: string): Promise<{ url: string; bytes: number }> {
+/**
+ * The base64 this migration moves out of the database was supplied by users, so it crosses the same trust
+ * boundary an upload does and goes through the same validator.
+ *
+ * It used to pick the extension from the data URI's own declared media type through a table that mapped
+ * `"image/svg+xml"` to `"svg"`, writing attacker-chosen active content into the directory served at `/uploads`
+ * with an extension that made it a document on ChefSire's origin. The bytes now decide, and a row whose payload
+ * is not media ChefSire accepts is left in place and reported rather than written out.
+ */
+async function saveDataUri(dataUri: string): Promise<{ url: string; bytes: number } | null> {
   const match = dataUri.match(/^data:([^;]+);base64,([\s\S]+)$/);
   if (!match) throw new Error("Invalid data URI format");
 
-  const [, mime, base64] = match;
+  const [, , base64] = match;
   const buffer = Buffer.from(base64, "base64");
-  const ext = MIME_TO_EXT[mime] ?? "bin";
-  const filename = `${randomUUID()}.${ext}`;
+
+  const validated = await validateUploadedMedia({ source: { buffer }, allow: ["image", "video"] });
+  if (validated.kind === "rejected") {
+    // Reported and left in place rather than thrown: one unacceptable row must not abort a migration whose
+    // whole point is that it can be re-run, and the operator needs to know which rows were not moved.
+    console.warn(`  [skip] payload is not accepted media (${validated.reason}); the row is left unchanged`);
+    return null;
+  }
+
+  const filename = generatedMediaName(validated.extension);
   const filepath = path.join(UPLOADS_DIR, filename);
 
   await fs.writeFile(filepath, buffer);
@@ -60,19 +66,22 @@ async function migratePosts() {
     let newAdditionalImages = (row.additionalImages as string[]) ?? [];
 
     if (row.imageUrl.startsWith("data:")) {
-      const { url, bytes } = await saveDataUri(row.imageUrl);
-      console.log(`  [posts] id=${row.id} image_url -> ${url} (${(bytes / 1024).toFixed(1)} KB)`);
-      newImageUrl = url;
-      changed = true;
+      const saved = await saveDataUri(row.imageUrl);
+      if (saved) {
+        console.log(`  [posts] id=${row.id} image_url -> ${saved.url} (${(saved.bytes / 1024).toFixed(1)} KB)`);
+        newImageUrl = saved.url;
+        changed = true;
+      }
     }
 
     const migratedAdditional = await Promise.all(
       newAdditionalImages.map(async (img) => {
         if (!img.startsWith("data:")) return img;
-        const { url, bytes } = await saveDataUri(img);
-        console.log(`  [posts] id=${row.id} additional_image -> ${url} (${(bytes / 1024).toFixed(1)} KB)`);
+        const saved = await saveDataUri(img);
+        if (!saved) return img;
+        console.log(`  [posts] id=${row.id} additional_image -> ${saved.url} (${(saved.bytes / 1024).toFixed(1)} KB)`);
         changed = true;
-        return url;
+        return saved.url;
       })
     );
 
@@ -100,11 +109,12 @@ async function migrateRecipes() {
 
   for (const row of rows) {
     if (!row.imageUrl?.startsWith("data:")) continue;
-    const { url, bytes } = await saveDataUri(row.imageUrl);
-    console.log(`  [recipes] id=${row.id} image_url -> ${url} (${(bytes / 1024).toFixed(1)} KB)`);
+    const saved = await saveDataUri(row.imageUrl);
+    if (!saved) continue;
+    console.log(`  [recipes] id=${row.id} image_url -> ${saved.url} (${(saved.bytes / 1024).toFixed(1)} KB)`);
     await db
       .update(recipes)
-      .set({ imageUrl: url })
+      .set({ imageUrl: saved.url })
       .where(sql`${recipes.id} = ${row.id}`);
   }
 }
@@ -121,11 +131,12 @@ async function migrateStories() {
 
   for (const row of rows) {
     if (!row.imageUrl.startsWith("data:")) continue;
-    const { url, bytes } = await saveDataUri(row.imageUrl);
-    console.log(`  [stories] id=${row.id} image_url -> ${url} (${(bytes / 1024).toFixed(1)} KB)`);
+    const saved = await saveDataUri(row.imageUrl);
+    if (!saved) continue;
+    console.log(`  [stories] id=${row.id} image_url -> ${saved.url} (${(saved.bytes / 1024).toFixed(1)} KB)`);
     await db
       .update(stories)
-      .set({ imageUrl: url })
+      .set({ imageUrl: saved.url })
       .where(sql`${stories.id} = ${row.id}`);
   }
 }

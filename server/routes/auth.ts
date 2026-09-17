@@ -4,9 +4,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import passport from "passport";
 import multer from "multer";
-import path from "path";
-import { randomUUID } from "crypto";
-import fs from "fs";
 import { storage } from "../storage";
 import { AuthService } from "../services/auth.service";
 import {
@@ -16,8 +13,7 @@ import {
   passwordChangeLimiter,
   verifyEmailLimiter,
 } from "../middleware/rate-limit";
-import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
-import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
+import { UnsupportedMediaError, storeVerifiedImage } from "../services/image-upload";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { signAuthToken, verifyAuthToken } from "../lib/jwt-config";
 
@@ -42,38 +38,31 @@ function safeInternalDestination(value: unknown): string | null {
   }
 }
 
-// Configure multer for avatar uploads — writes to UPLOADS_DIR (canonical absolute path)
-const avatarStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, UPLOADS_DIR);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueName = `avatar-${randomUUID()}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  },
-});
-
-const avatarLocalUpload = multer({
-  storage: avatarStorage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit for avatars
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed for avatars'));
-    }
-  }
-});
+/**
+ * Avatar uploads.
+ *
+ * This was the most exposed upload path in ChefSire and the reason it is worth spelling out. `POST /auth/signup`
+ * is unauthenticated by necessity, and the disk-storage branch wrote the request body straight into `UPLOADS_DIR`
+ * -- the directory `express.static` serves at `/uploads` -- under `avatar-${randomUUID()}${path.extname(
+ * file.originalname)}`. An anonymous caller therefore chose the stored extension, and the only gate was a declared
+ * MIME copied out of their own request. Posting HTML bytes with `Content-Type: image/png` and the filename
+ * `avatar.html` left `avatar-<uuid>.html` on the served origin, and it stayed there even when the signup itself
+ * failed, because the file was written by the parser before the handler ever ran.
+ *
+ * Both of those are gone. Avatars are parsed into memory -- 5MB is well inside a request's budget -- so nothing is
+ * on disk until `storeVerifiedImage` has decoded the bytes and named the object from the DETECTED format. A
+ * failed signup now leaves nothing behind for the same reason.
+ */
+const AVATAR_UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024;
 
 const avatarMemoryUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit for avatars
+    fileSize: AVATAR_UPLOAD_LIMIT_BYTES,
+    files: 1,
   },
-  fileFilter: (req, file, cb) => {
+  // A cheap pre-filter, not the decision: what the file actually is comes from its bytes, below.
+  fileFilter: (_req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
@@ -83,10 +72,7 @@ const avatarMemoryUpload = multer({
   }
 });
 
-const avatarUpload = (req: any, res: any, next: any) => {
-  const middleware = isR2Configured() ? avatarMemoryUpload : avatarLocalUpload;
-  return middleware.single('avatar')(req, res, next);
-};
+const avatarUpload = (req: any, res: any, next: any) => avatarMemoryUpload.single('avatar')(req, res, next);
 
 // Map slug values to pretty labels for the space version
 const TITLE_LABELS: Record<string, string> = {
@@ -138,17 +124,12 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Handle avatar URL (if file was uploaded, it will be in /uploads locally or R2 in production)
+    // Handle avatar URL (if file was uploaded, it will be in /uploads locally or R2 in production).
+    // One call, one rule: the bytes are verified, and the key, the extension and the stored content type are all
+    // generated from what they turned out to be. Neither destination sees an unvalidated byte.
     let avatarUrl: string | null = null;
     if (avatarFile) {
-      if (isR2Configured()) {
-        const ext = path.extname(avatarFile.originalname).toLowerCase() || (avatarFile.mimetype === "image/png" ? ".png" : avatarFile.mimetype === "image/gif" ? ".gif" : avatarFile.mimetype === "image/webp" ? ".webp" : ".jpg");
-        const key = `avatars/${randomUUID()}${ext}`;
-        await uploadToR2(key, avatarFile.buffer, avatarFile.mimetype);
-        avatarUrl = publicUrl(key);
-      } else {
-        avatarUrl = uploadUrlPath(avatarFile.filename);
-      }
+      avatarUrl = await storeVerifiedImage(avatarFile, { folder: "avatars", prefix: "avatar-", maxBytes: AVATAR_UPLOAD_LIMIT_BYTES });
     }
 
     // Create user
@@ -184,6 +165,10 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
       });
     }
   } catch (error) {
+    // A rejected avatar is the caller's error and answers with the media status, not a 500 that hides why.
+    if (error instanceof UnsupportedMediaError) {
+      return res.status(error.status).json({ error: error.message });
+    }
     console.error("Error during signup:", error);
     res.status(500).json({ error: "Failed to create account" });
   }

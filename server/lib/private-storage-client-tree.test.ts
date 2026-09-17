@@ -10,7 +10,8 @@ import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./public-s
 /**
  * Private storage must be isolated from EVERY unauthenticated static root, not just the uploads tree.
  *
- * `server/app.ts` mounts two `express.static` roots: UPLOADS_DIR at `/uploads`, and the built client bundle at `/`.
+ * The app mounts two `express.static` roots: UPLOADS_DIR at `/uploads` -- through `lib/uploads-static`, which
+ * owns that mount's response headers -- and the built client bundle at `/`, inline in `server/app.ts`.
  * Validating only the first left `PRIVATE_STORAGE_DIR=dist/public` passing every check while every booking document
  * written under it was served to anyone who could guess its name. The client directory is resolved dynamically from
  * the working directory, so the check cannot hardcode `dist/public` either -- it has to read the same list the app
@@ -18,7 +19,10 @@ import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./public-s
  */
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appSource = fs.readFileSync(path.join(here, "..", "app.ts"), "utf8");
+const uploadsStaticSource = fs.readFileSync(path.join(here, "uploads-static.ts"), "utf8");
 const storageSource = fs.readFileSync(path.join(here, "private-storage.ts"), "utf8");
+/** Both files that may mount a static root, so "there is no third mount" is still counted across all of them. */
+const staticMountSources = [appSource, uploadsStaticSource];
 
 const UPLOADS = path.resolve("/srv/chefsire/uploads");
 const CLIENT = path.resolve("/srv/chefsire/dist/public");
@@ -30,10 +34,18 @@ const ROOTS: PublicStaticRoot[] = [
 test("the app really does serve the client build statically, which is why this suite exists", () => {
   // Both mounts are unauthenticated: neither carries a guard, a session check or a middleware between it and the
   // static handler. A file under either is public.
-  assert.equal(appSource.includes("express.static(UPLOADS_DIR"), true);
+  //
+  // The uploads mount is built in `lib/uploads-static` rather than inline, because the upload-security repair
+  // gave it response headers the tests exercise directly. That moves WHERE the call is written and nothing about
+  // what it means, so the assertion follows it: the handler is still `express.static` over UPLOADS_DIR, app.ts
+  // still mounts exactly that handler at `/uploads`, and it is still unauthenticated.
+  assert.equal(uploadsStaticSource.includes("express.static(uploadsDir"), true);
+  assert.equal(appSource.includes('app.use("/uploads", uploadsStaticHandler(UPLOADS_DIR))'), true);
   assert.equal(appSource.includes("express.static(clientDir"), true);
-  // And there is no third static mount that this suite would be unaware of.
-  assert.equal((appSource.match(/express\.static\(/g) ?? []).length, 2);
+  // And there is no third static mount that this suite would be unaware of -- counted across every file that
+  // can create one, so moving a mount into a helper cannot hide it from this check.
+  const mounts = staticMountSources.reduce((total, source) => total + (source.match(/express\.static\(/g) ?? []).length, 0);
+  assert.equal(mounts, 2);
 });
 
 test("a private root inside the built client tree is rejected exactly as one inside uploads is", () => {
