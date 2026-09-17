@@ -1,6 +1,6 @@
 // server/lib/remix-engagement-cleanup.ts
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { recipeRemixes, remixLikes, remixSaves } from "../../shared/schema";
+import { recipeRemixes, remixLikes, remixSaves, users } from "../../shared/schema";
 
 /**
  * The subset of a drizzle transaction this helper needs.
@@ -42,8 +42,40 @@ type EngagementTx = {
  * independently valid states, and neither is valid without the account deletion that follows.
  */
 export async function purgeRemixEngagementForUser(tx: EngagementTx, userId: string): Promise<string[]> {
-  // Which remixes this account engaged with. Captured BEFORE the rows go, because afterwards there
-  // is nothing left to say which counters need repairing.
+  // ----------------------------------------------------------------------------------------------
+  // THE OUTER SERIALIZATION POINT: this account's own `users` row, taken BEFORE discovery.
+  //
+  // Discovering first and locking afterwards leaves a window. Between reading which remixes the
+  // account engaged with and locking them, the SAME account can commit engagement on a remix that
+  // was not in the discovered set -- so the cleanup never sees it, and the caller's DELETE FROM
+  // users then trips the NO ACTION foreign key and fails with 23503. The counters stay exact (the
+  // whole transaction rolls back), but a legitimate account deletion fails for no reason the user
+  // can act on. Reproduced against a real server at the previous head.
+  //
+  // FOR UPDATE here is what forecloses it. Inserting a `remix_likes` / `remix_saves` row needs
+  // FOR KEY SHARE on the actor's `users` row for the foreign key, and FOR KEY SHARE conflicts with
+  // FOR UPDATE. So once this lock is held, no new engagement for this account can commit until this
+  // transaction ends -- and because the lock is taken BEFORE the discovery below, and every
+  // statement after it gets a fresh READ COMMITTED snapshot, the discovery sees everything that
+  // committed beforehand. The set it produces is therefore complete, not a guess.
+  //
+  // The engagement path takes the same `users` row explicitly (FOR KEY SHARE) before it takes any
+  // remix row, so the global order across the feature is: users, then recipe_remixes ascending.
+  // Nothing acquires a `users` row after a remix row, which is what makes a cycle impossible.
+  // ----------------------------------------------------------------------------------------------
+  const actor: Array<{ id: string }> = await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .for("update");
+
+  // Already gone -- nothing to clean, and the caller's delete will report no rows.
+  if (actor.length === 0) return [];
+
+  // Which remixes this account engaged with. Complete, because the lock above stops the set from
+  // growing, and captured before the rows go, because afterwards there is nothing left to say which
+  // counters need repairing.
   const [likedRemixes, savedRemixes] = await Promise.all([
     tx.select({ remixId: remixLikes.remixId }).from(remixLikes).where(eq(remixLikes.userId, userId)),
     tx.select({ remixId: remixSaves.remixId }).from(remixSaves).where(eq(remixSaves.userId, userId)),
@@ -82,9 +114,7 @@ export async function purgeRemixEngagementForUser(tx: EngagementTx, userId: stri
   //
   // LOCK ORDER: ascending by primary id, always. Account deletion can touch many remixes at once,
   // so a fixed total order is what stops two concurrent deletions over overlapping sets from
-  // deadlocking. Every other path that locks more than one remix row uses the same ascending order,
-  // and the single-remix engagement paths take their one row before anything else, so the global
-  // order across the feature is: recipe_remixes rows ascending, then `users`.
+  // deadlocking. Every other path that locks more than one remix row uses the same ascending order.
   // ----------------------------------------------------------------------------------------------
   const locked: Array<{ id: string }> = await tx
     .select({ id: recipeRemixes.id })
@@ -97,10 +127,11 @@ export async function purgeRemixEngagementForUser(tx: EngagementTx, userId: stri
   if (lockedIds.length === 0) return affected;
 
   // Scoped to the remixes actually locked, so this can never delete a relationship whose counter is
-  // not about to be repaired. If the account acquired NEW engagement between the discovery above and
-  // the lock, that row is deliberately left in place: the caller's `DELETE FROM users` then fails on
-  // the foreign key and the whole transaction rolls back, which is the safe direction -- a failed,
-  // retryable deletion rather than a counter silently left above its rows.
+  // not about to be repaired. With the `users` row held from the start the discovered set cannot
+  // grow, so the only way `lockedIds` is smaller than `affected` is a remix deleted concurrently --
+  // which took this account's engagement rows with it through ON DELETE CASCADE, leaving nothing to
+  // clean. The foreign key on `DELETE FROM users` remains as a backstop, but it is no longer
+  // expected to fire for engagement this account created itself.
   await tx
     .delete(remixLikes)
     .where(and(eq(remixLikes.userId, userId), inArray(remixLikes.remixId, lockedIds)));
@@ -133,9 +164,9 @@ export async function purgeRemixEngagementForUser(tx: EngagementTx, userId: stri
  * Apply one account's like/save/unlike/unsave to one remix, under the shared lock.
  *
  * This is the OTHER side of the serialization protocol, and it lives here beside the purge so that
- * both sides demonstrably take the same lock on the same resource. Returns `null` when the remix does
- * not exist (the caller turns that into a 404), otherwise the refreshed remix and whether a
- * relationship row actually changed.
+ * both sides demonstrably take the same locks, in the same order, on the same resources. The result
+ * distinguishes a missing remix (the caller turns that into a 404) from an account that no longer
+ * exists (a 401 -- it was deleted while this request was in flight).
  *
  * The lock comes FIRST -- before the relationship is inserted or deleted, and before the counter
  * moves. See `purgeRemixEngagementForUser` for why that ordering is what closes the READ COMMITTED
@@ -156,11 +187,35 @@ export async function applyRemixEngagement(
     kind: "like" | "save";
     action: "add" | "remove";
   }
-): Promise<{ remix: any; changed: boolean } | null> {
+): Promise<
+  | { status: "ok"; remix: any; changed: boolean }
+  | { status: "actor-missing" }
+  | { status: "remix-missing" }
+> {
   const { remixId, userId, kind, action } = params;
   const table = kind === "like" ? remixLikes : remixSaves;
 
-  // THE SERIALIZATION POINT, taken before any relationship read or write.
+  // FIRST LOCK: the actor's own `users` row, in the weakest mode that does the job.
+  //
+  // FOR KEY SHARE is exactly the lock the foreign key on `remix_likes.user_id` would take when the
+  // row below is inserted -- this only takes it EARLIER and explicitly. Two engagement requests from
+  // the same account are both FOR KEY SHARE and so do not block each other, while an account
+  // deletion's FOR UPDATE on the same row conflicts with both. That is what stops this account from
+  // committing engagement that a deletion in flight has already finished discovering.
+  //
+  // Taking it before the remix row is also what keeps the global order acyclic: users, then
+  // recipe_remixes ascending. The previous order (remix first, users implicitly second via the FK)
+  // was the reverse, and would cycle against a deletion holding `users` and waiting for a remix.
+  const actor: Array<{ id: string }> = await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .for("key share");
+
+  if (actor.length === 0) return { status: "actor-missing" };
+
+  // SECOND LOCK: the remix row, still before any relationship read or write.
   const [remix] = await tx
     .select()
     .from(recipeRemixes)
@@ -168,7 +223,7 @@ export async function applyRemixEngagement(
     .limit(1)
     .for("update");
 
-  if (!remix) return null;
+  if (!remix) return { status: "remix-missing" };
 
   let changed = false;
 
@@ -203,5 +258,5 @@ export async function applyRemixEngagement(
     .where(eq(recipeRemixes.id, remixId))
     .limit(1);
 
-  return { remix: updated, changed };
+  return { status: "ok", remix: updated, changed };
 }

@@ -441,7 +441,13 @@ async function setEngagement(
     applyRemixEngagement(tx as any, { remixId: id, userId, kind, action })
   );
 
-  if (!result) {
+  if (result.status === "actor-missing") {
+    // The account was deleted while this request was in flight. Its token is still syntactically
+    // valid, so this is an authentication outcome rather than a missing-remix one.
+    return res.status(401).json({ error: "Unauthorized", code: "ACCOUNT_DELETED" });
+  }
+
+  if (result.status === "remix-missing") {
     return res.status(404).json({ error: "Remix not found" });
   }
 
