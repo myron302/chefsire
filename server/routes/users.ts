@@ -487,7 +487,11 @@ r.delete("/:id", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Delete the user (database CASCADE will handle related records)
+    // storage.deleteUser runs the whole thing in one transaction: it clears this account's remix
+    // likes and saves and repairs the counters they backed before removing the account, because
+    // those engagement rows reference users(id) with NO ACTION on purpose (see
+    // server/lib/remix-engagement-cleanup.ts). Other related records still rely on their own FK
+    // behaviour.
     const deleted = await storage.deleteUser(userId);
 
     if (!deleted) {
