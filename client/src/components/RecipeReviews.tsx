@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import { ThumbsUp, Camera, X, Loader2 } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
+import { IMAGE_UPLOAD_ACCEPT } from "@shared/media-types";
 
 interface ReviewPhoto {
   id: string;
@@ -415,7 +416,7 @@ Check browser console (F12) for full details.`;
                         <label className="cursor-pointer">
                           <input
                             type="file"
-                            accept="image/*"
+                            accept={IMAGE_UPLOAD_ACCEPT}
                             className="hidden"
                             onChange={(e) => {
                               const file = e.target.files?.[0];

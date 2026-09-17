@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
 import { FaFacebook, FaInstagram, FaTiktok } from 'react-icons/fa';
+import { IMAGE_UPLOAD_ACCEPT } from "@shared/media-types";
 
 type Errors = {
   firstName: string;
@@ -465,7 +466,7 @@ export default function SignupPage() {
                     id="profilePicture"
                     name="profilePicture"
                     type="file"
-                    accept="image/*"
+                    accept={IMAGE_UPLOAD_ACCEPT}
                     onChange={handleProfilePictureChange}
                     className="hidden"
                   />

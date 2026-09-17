@@ -34,6 +34,7 @@ import { useGoogleMaps } from "@/hooks/useGoogleMaps";
 import GoLiveModal from "@/components/GoLiveModal";
 import CameraModal from "@/components/CameraModal";
 import { uploadMediaUrl } from "@/lib/uploadMedia";
+import { MEDIA_UPLOAD_ACCEPT } from "@shared/media-types";
 
 const EMPTY_SELECT = "__empty__";
 
@@ -899,7 +900,7 @@ export default function CreatePost() {
                 <input
                   ref={biteFileRef}
                   type="file"
-                  accept="video/*,image/*"
+                  accept={MEDIA_UPLOAD_ACCEPT}
                   className="hidden"
                   onChange={handleBiteFileSelect}
                 />
@@ -1150,7 +1151,7 @@ export default function CreatePost() {
                     <input
                       id="file-input"
                       type="file"
-                      accept="image/*,video/*"
+                      accept={MEDIA_UPLOAD_ACCEPT}
                       multiple
                       onChange={handleFileSelect}
                       className="hidden"

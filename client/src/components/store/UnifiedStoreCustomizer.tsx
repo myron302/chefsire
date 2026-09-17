@@ -48,6 +48,7 @@ import StorefrontPreview from "@/components/store/preview/StorefrontPreview";
 import type { StoreProduct } from "@/pages/store/StoreViewerContent";
 import type { StoreSocialProof } from "@shared/store/storeSocialProof";
 import { DEFAULT_SOCIAL_PROOF_VISIBILITY } from "@shared/store/storeSocialProof";
+import { IMAGE_UPLOAD_ACCEPT } from "@shared/media-types";
 
 interface UnifiedStoreCustomizerProps {
   store: any;
@@ -433,7 +434,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved, socia
                       <input
                         type="file"
                         className="hidden"
-                        accept="image/*"
+                        accept={IMAGE_UPLOAD_ACCEPT}
                         onChange={(e) => handleImageUpload(e, "logo")}
                         disabled={uploading}
                       />
@@ -707,7 +708,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved, socia
                       <input
                         type="file"
                         className="hidden"
-                        accept="image/*"
+                        accept={IMAGE_UPLOAD_ACCEPT}
                         onChange={(e) => handleImageUpload(e, "bannerImage")}
                         disabled={uploading}
                       />

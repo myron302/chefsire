@@ -41,6 +41,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { IMAGE_UPLOAD_ACCEPT } from "@shared/media-types";
 
 const FOOD_CATEGORIES = [
   "Italian",
@@ -2696,7 +2697,7 @@ function SubscriptionSettingsPanel() {
                       <input
                         id="avatar-upload"
                         type="file"
-                        accept="image/*"
+                        accept={IMAGE_UPLOAD_ACCEPT}
                         className="hidden"
                         onChange={async (e) => {
                           const file = e.target.files?.[0];

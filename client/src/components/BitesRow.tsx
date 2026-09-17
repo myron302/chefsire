@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import CameraModal from "@/components/CameraModal";
 import { uploadMediaUrl } from "@/lib/uploadMedia";
 import chefLogo from "../asset/logo.jpg"; // Add import to match layout
+import { MEDIA_UPLOAD_ACCEPT } from "@shared/media-types";
 
 const QUICK_EMOJIS = ["❤️", "😂", "😮", "😢", "🔥", "👏", "🎉", "🤤"];
 
@@ -591,7 +592,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
             <input
               ref={fileInputRef}
               type="file"
-              accept="video/*,image/*"
+              accept={MEDIA_UPLOAD_ACCEPT}
               className="hidden"
               onChange={handleFileChange}
             />

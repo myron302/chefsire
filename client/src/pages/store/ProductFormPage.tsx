@@ -11,6 +11,7 @@ import { useUser } from '@/contexts/UserContext';
 import { getMarketplaceProduct, saveMarketplaceProduct } from '@/lib/store/marketplaceApi';
 import { buildMarketplaceProductPayload, ProductFormData, toProductFormData } from '@/lib/store/productPayload';
 import NotifyFollowersDialog from '@/components/store/products/NotifyFollowersDialog';
+import { IMAGE_UPLOAD_ACCEPT } from "@shared/media-types";
 
 export default function ProductFormPage() {
   const { user } = useUser();
@@ -715,7 +716,7 @@ export default function ProductFormPage() {
                       <input
                         id="imageFileUpload"
                         type="file"
-                        accept="image/*"
+                        accept={IMAGE_UPLOAD_ACCEPT}
                         onChange={handleImageFileUpload}
                         disabled={uploadingFile}
                         className="hidden"
