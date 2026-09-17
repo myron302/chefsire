@@ -1104,20 +1104,51 @@ test("the migration enforces uniqueness in the database", () => {
   );
 });
 
-test("the migration de-duplicates before building the lineage index, deterministically", () => {
-  // A unique index cannot be built over existing duplicates, so the DELETE has to come first.
+test("the migration de-duplicates before building the lineage index", () => {
+  // A unique index cannot be built over existing duplicates, so the collapse has to come first.
   assert.ok(
-    migration.indexOf("DELETE FROM recipe_remixes victim") <
+    migration.indexOf("DELETE FROM recipe_remixes") <
       migration.indexOf("CREATE UNIQUE INDEX IF NOT EXISTS recipe_remix_lineage_idx"),
     "de-duplication must precede the index"
   );
-  // Only rows identical in all three lineage columns are candidates, and the survivor is chosen by
-  // a total order rather than by physical row order.
-  assert.match(migration, /victim\.original_recipe_id = keeper\.original_recipe_id/);
-  assert.match(migration, /victim\.remixed_recipe_id = keeper\.remixed_recipe_id/);
-  assert.match(migration, /victim\.user_id = keeper\.user_id/);
-  assert.match(migration, /keeper\.created_at < victim\.created_at/);
-  assert.match(migration, /keeper\.id < victim\.id/);
+  // And the visibility fold has to precede the delete, or a hidden duplicate's choice is gone
+  // before it can be carried onto the survivor.
+  assert.ok(
+    migration.indexOf("SET is_public = false") < migration.indexOf("DELETE FROM recipe_remixes"),
+    "the is_public fold must precede the delete"
+  );
+});
+
+test("the survivor is chosen by a TOTAL order, with NULL created_at ordered explicitly", () => {
+  // `created_at` is nullable. A pairwise `keeper.created_at < victim.created_at` cannot order a NULL
+  // against a timestamp -- both directions are NULL -- so the duplicate survives and the unique
+  // index then fails with 23505. The ordering must be stated, NULLs included.
+  assert.match(
+    migration,
+    /ORDER BY original_recipe_id, remixed_recipe_id, user_id, created_at DESC NULLS LAST, id/,
+    "the collapse must name a total order including NULL placement"
+  );
+  assert.match(
+    migration,
+    /SELECT DISTINCT ON \(original_recipe_id, remixed_recipe_id, user_id\) id/
+  );
+  const code = migration.replace(/^\s*--.*$/gm, "");
+  assert.doesNotMatch(
+    code,
+    /keeper\.created_at < victim\.created_at/,
+    "the partial pairwise comparison must not come back"
+  );
+});
+
+test("the lineage index is the last statement, so a 23505 there strands nothing", () => {
+  // run-migrations.ts treats 23505 anywhere in a file as "already applied" and skips the rest, so
+  // the statement that could raise it is ordered where there is nothing left to skip.
+  const statements = migration
+    .replace(/^\s*--.*$/gm, "")
+    .split(/;/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  assert.match(statements[statements.length - 1], /^CREATE UNIQUE INDEX IF NOT EXISTS recipe_remix_lineage_idx/);
 });
 
 test("the migration rebuilds remix_count from relationships, by output recipe", () => {
@@ -1141,7 +1172,7 @@ test("every statement in the migration is separately executable", () => {
     .split(/;/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  assert.equal(statements.length, 10);
+  assert.equal(statements.length, 11);
   for (const statement of statements) {
     assert.match(statement, /^(CREATE|DELETE|UPDATE)\b/, `not a standalone statement: ${statement}`);
   }
