@@ -38,6 +38,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import {
   groceryListItems,
   familyMealProfiles,
+  posts,
   recipeRemixes,
   recipes,
   users,
@@ -235,6 +236,10 @@ function installDatabaseDouble() {
     },
   });
 
+  // P2-03 wraps remix creation in a transaction. Nothing in THIS suite depends on rollback -- every
+  // case it asserts is refused before any write -- so the double simply runs the body.
+  anyDb.transaction = (fn: (tx: any) => Promise<any>) => Promise.resolve().then(() => fn(anyDb));
+
   anyDb.delete = (table: unknown) => ({
     where(clause: unknown) {
       const matched = rowsMatching(table, clause);
@@ -281,12 +286,25 @@ function given() {
         nutritionTrialEndsAt: null,
       })),
     },
+    // A recipe's author is the author of the post it was published as -- `recipes` itself has no
+    // `user_id` column. P2-03 made `POST /api/remixes` check that, so these fixtures spell the real
+    // relationship out; `remixed-recipe-id` belongs to ATTACKER because ATTACKER is the account the
+    // creation tests below post as, and those tests are about WHOSE NAME lands on a legitimate
+    // remix, not about who may claim which recipe.
+    {
+      table: posts,
+      rows: [
+        { id: "post-original", userId: VICTIM },
+        { id: "post-remixed", userId: ATTACKER },
+        { id: "post-other", userId: VICTIM },
+      ],
+    },
     {
       table: recipes,
       rows: [
-        { id: "original-recipe-id", userId: VICTIM, title: "Original" },
-        { id: "remixed-recipe-id", userId: OWNER, title: "Remixed" },
-        { id: "other-recipe-id", userId: VICTIM, title: "Other" },
+        { id: "original-recipe-id", postId: "post-original", title: "Original" },
+        { id: "remixed-recipe-id", postId: "post-remixed", title: "Remixed" },
+        { id: "other-recipe-id", postId: "post-other", title: "Other" },
       ],
     },
   ];
@@ -950,11 +968,14 @@ test("POST /api/remixes: the create and update contracts accept the same remix t
   // the same enum -- so nothing POST can store is something PUT would then refuse.
   for (const remixType of ["variation", "dietary_conversion", "portion_adjustment", "ingredient_swap"]) {
     given();
+    // ATTACKER authors `remixed-recipe-id`, so this is a legitimate creation; OWNER authors
+    // REMIX_ID, so the edit is a legitimate edit. Which account does which is incidental here --
+    // what is asserted is that the two contracts accept the same four remix types.
     const created = await send(
       "POST",
       "/api/remixes",
       { originalRecipeId: "original-recipe-id", remixedRecipeId: "remixed-recipe-id", remixType },
-      asUser(OWNER)
+      asUser(ATTACKER)
     );
     assert.equal(created.status, 200, created.text);
 

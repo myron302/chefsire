@@ -1,8 +1,16 @@
 // server/routes/remixes.ts
 import { Router } from "express";
+import type { Request, Response } from "express";
 import { and, eq, desc, sql } from "drizzle-orm";
 import { db } from "../db";
-import { recipeRemixes, recipes, users } from "../../shared/schema";
+import {
+  posts,
+  recipeRemixes,
+  recipes,
+  remixLikes,
+  remixSaves,
+  users,
+} from "../../shared/schema";
 import { z } from "zod";
 import { requireAuth } from "../middleware";
 import {
@@ -117,54 +125,154 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
+/**
+ * Who owns a recipe.
+ *
+ * `recipes` carries no `user_id`. A recipe's author is the author of the post it was published as --
+ * `recipes.post_id -> posts.user_id` -- and `post_id` is nullable, so a recipe can genuinely have no
+ * provable owner (club recipes are inserted with `postId: null`, see routes/clubs.ts). The three
+ * outcomes are distinct and the caller has to tell them apart, so they are returned as such:
+ * `missing` (no such recipe), an owner id, or `null` (the recipe exists but no account can be shown
+ * to own it).
+ *
+ * This is also the bug behind remix notifications never firing: the handler used to read
+ * `originalRecipe.userId`, a property the `recipes` row does not have, so the guard was always false.
+ */
+async function loadRecipeWithOwner(recipeId: string) {
+  const [recipe] = await db
+    .select()
+    .from(recipes)
+    .where(eq(recipes.id, recipeId))
+    .limit(1);
+
+  if (!recipe) return { missing: true as const };
+  if (!recipe.postId) return { missing: false as const, recipe, ownerId: null };
+
+  const [post] = await db
+    .select()
+    .from(posts)
+    .where(eq(posts.id, recipe.postId))
+    .limit(1);
+
+  return { missing: false as const, recipe, ownerId: post?.userId ?? null };
+}
+
 // POST /api/remixes - Create a new remix
+//
+// A remix row is an attribution claim: "this recipe, by me, is a remix of that one". Before this
+// repair the only thing checked was that both ids resolved to SOME recipe, so knowing two ids was
+// enough to publish a lineage claiming any recipe on the platform as your own remix output -- and
+// each replay of that request re-ran the counter update and re-sent a notification.
+//
+// Three things now stand between a request and a row:
+//
+//   1. The actor is `req.user!.id` and nothing else. No body, query or header field is read for
+//      identity, and `remixCreateSchema` is `.strict()`, so a payload that even mentions `userId` is
+//      a 400 before any query runs.
+//   2. The caller must own `remixedRecipeId` -- the recipe they are claiming to have made. The
+//      source recipe is deliberately NOT ownership-checked: remixing someone else's recipe is the
+//      entire feature. Self-remixing stays allowed, because nothing in the schema or the UI
+//      prohibits remixing your own recipe; only original === remixed is refused, since a recipe
+//      cannot be its own parent.
+//   3. Insert and counter move inside one transaction, and the insert defers to the unique lineage
+//      index rather than to a preceding SELECT, so two concurrent identical requests produce one row
+//      between them instead of racing through a check that passed for both.
 router.post("/", requireAuth, async (req, res) => {
   try {
-    // Creation named its fields already, but read them unchecked; the same validated contract the
-    // update uses now covers `remixType` and the `changes` jsonb here too.
     const { originalRecipeId, remixedRecipeId, remixType, changes, isPublic } =
       remixCreateSchema.parse(req.body ?? {});
     const userId = req.user!.id;
 
-    // Verify recipes exist
-    const [originalRecipe] = await db
-      .select()
-      .from(recipes)
-      .where(eq(recipes.id, originalRecipeId))
-      .limit(1);
+    // A recipe is not a remix of itself. Allowing it would let a single recipe inflate its own
+    // remix_count, since the row would be both the child of and the parent counted by the update
+    // below.
+    if (originalRecipeId === remixedRecipeId) {
+      return res
+        .status(400)
+        .json({ error: "A recipe cannot be a remix of itself" });
+    }
 
-    const [remixedRecipe] = await db
-      .select()
-      .from(recipes)
-      .where(eq(recipes.id, remixedRecipeId))
-      .limit(1);
+    const original = await loadRecipeWithOwner(originalRecipeId);
+    const remixed = await loadRecipeWithOwner(remixedRecipeId);
 
-    if (!originalRecipe || !remixedRecipe) {
+    if (original.missing || remixed.missing) {
       return res.status(404).json({ error: "Recipe not found" });
     }
 
-    // Create the remix
-    const [remix] = await db
-      .insert(recipeRemixes)
-      .values({
-        originalRecipeId,
-        remixedRecipeId,
-        userId,
-        remixType,
-        changes,
-        isPublic,
-      })
-      .returning();
+    // The attribution check. A recipe with no resolvable owner cannot be claimed by anyone: there is
+    // no account it can be shown to belong to, so "the caller authored it" is unprovable and the
+    // claim is refused rather than assumed.
+    if (remixed.ownerId !== userId) {
+      return res.status(403).json({
+        error: "You can only submit a recipe you authored as your remix",
+      });
+    }
 
-    // Increment remix count on original
-    await db.execute(sql`
-      UPDATE recipe_remixes
-      SET remix_count = remix_count + 1
-      WHERE original_recipe_id = ${originalRecipeId}
-    `);
+    // One transaction: the row and the counter it drives either both land or neither does. A replay
+    // that loses the race to the unique index leaves BOTH alone -- which is the whole point, since a
+    // counter that moved for a row that was not created is exactly the drift this repair removes.
+    const outcome = await db.transaction(async (tx: typeof db) => {
+      const [created] = await tx
+        .insert(recipeRemixes)
+        .values({
+          originalRecipeId,
+          remixedRecipeId,
+          userId,
+          remixType,
+          changes,
+          isPublic,
+        })
+        .onConflictDoNothing({
+          target: [
+            recipeRemixes.originalRecipeId,
+            recipeRemixes.remixedRecipeId,
+            recipeRemixes.userId,
+          ],
+        })
+        .returning();
 
-    // Send notification to original recipe author
-    if (originalRecipe.userId && originalRecipe.userId !== userId) {
+      if (!created) {
+        // The relationship already existed. Return it unchanged: same response shape, no counter
+        // movement, no notification. Retrying a create is a no-op, not a second remix.
+        const [existing] = await tx
+          .select()
+          .from(recipeRemixes)
+          .where(
+            and(
+              eq(recipeRemixes.originalRecipeId, originalRecipeId),
+              eq(recipeRemixes.remixedRecipeId, remixedRecipeId),
+              eq(recipeRemixes.userId, userId)
+            )
+          )
+          .limit(1);
+
+        return { remix: existing, created: false };
+      }
+
+      // remix_count is "how many times the recipe THIS row produced has been remixed", so the rows
+      // that just became truer are the ones whose OUTPUT is the recipe being remixed now:
+      // remixed_recipe_id = originalRecipeId.
+      //
+      // The pre-repair statement was `WHERE original_recipe_id = $1`, which is a different set
+      // entirely -- every sibling remix that shares the source recipe, none of which was remixed by
+      // this request, and never the parent that was. Siblings, and every unrelated row, are
+      // untouched by the predicate below.
+      await tx
+        .update(recipeRemixes)
+        .set({ remixCount: sql`${recipeRemixes.remixCount} + 1` })
+        .where(eq(recipeRemixes.remixedRecipeId, originalRecipeId));
+
+      return { remix: created, created: true };
+    });
+
+    // Notifications are sent only for a relationship that was actually created, and only after the
+    // transaction has committed -- so a replay is silent, and a rolled-back create never announces a
+    // remix that does not exist. `notifications` is written by a separate service on its own
+    // connection and so cannot join this transaction; sequencing it after the commit means the
+    // residual failure mode is a missing notification for a real remix, never a notification for a
+    // remix that was not stored. sendRemixNotification already suppresses self-notification, and
+    // that behaviour is preserved.
+    if (outcome.created && original.ownerId && original.ownerId !== userId) {
       const [remixer] = await db
         .select({ username: users.username, avatar: users.avatar })
         .from(users)
@@ -173,17 +281,17 @@ router.post("/", requireAuth, async (req, res) => {
 
       if (remixer) {
         sendRemixNotification(
-          originalRecipe.userId,
+          original.ownerId,
           userId,
           remixer.username || 'Someone',
           remixer.avatar,
           remixedRecipeId,
-          originalRecipe.title || 'your recipe'
+          original.recipe.title || 'your recipe'
         );
       }
     }
 
-    return res.json({ remix });
+    return res.json({ remix: outcome.remix });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.issues[0]?.message, errors: error.issues });
@@ -225,15 +333,31 @@ router.put("/:id", requireAuth, async (req, res) => {
 });
 
 // DELETE /api/remixes/:id - Delete a remix
+//
+// Deleting a lineage row un-does what creating it counted, so the parent counters come back down in
+// the same transaction. Without this, delete-and-recreate would ratchet remix_count upward forever.
+// The remix's own likes and saves are removed by the ON DELETE CASCADE on remix_likes.remix_id and
+// remix_saves.remix_id, so no orphan engagement rows survive the row they described.
 router.delete("/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user!.id;
 
-    const [deleted] = await db
-      .delete(recipeRemixes)
-      .where(and(eq(recipeRemixes.id, id), eq(recipeRemixes.userId, userId)))
-      .returning();
+    const deleted = await db.transaction(async (tx: typeof db) => {
+      const [row] = await tx
+        .delete(recipeRemixes)
+        .where(and(eq(recipeRemixes.id, id), eq(recipeRemixes.userId, userId)))
+        .returning();
+
+      if (!row) return null;
+
+      await tx
+        .update(recipeRemixes)
+        .set({ remixCount: sql`GREATEST(${recipeRemixes.remixCount} - 1, 0)` })
+        .where(eq(recipeRemixes.remixedRecipeId, row.originalRecipeId));
+
+      return row;
+    });
 
     if (!deleted) {
       return res.status(404).json({ error: "Remix not found or not authorized" });
@@ -245,45 +369,145 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/remixes/:id/like - Like a remix
-router.post("/:id/like", async (req, res) => {
-  try {
-    const { id } = req.params;
+/**
+ * Add or remove one account's engagement row and move the matching counter by exactly one.
+ *
+ * Both endpoints previously did `SET likes_count = likes_count + 1` with no authentication and no
+ * record of who acted, so the columns counted REQUESTS: one caller, anonymous, could raise them
+ * without limit and nothing could ever be undone. The relationship row is now the fact and the
+ * counter is its tally, which is what makes these operations idempotent:
+ *
+ *   - `add` inserts and lets the unique (user_id, remix_id) index decide. If the index rejects the
+ *     insert the account already had the row, so the counter is NOT touched. That decision is made
+ *     by the database on the write itself, not by a SELECT that two concurrent requests could both
+ *     pass, so simultaneous duplicates cannot each produce a like.
+ *   - `remove` deletes and counts what it actually deleted. A second unlike deletes nothing and so
+ *     decrements nothing.
+ *
+ * Insert/delete and the counter share one transaction, so the row and its tally cannot diverge if
+ * either half fails. GREATEST(..., 0) is a floor for rows whose counter predates the relationship
+ * tables; a counter that is only ever moved by this function cannot reach it.
+ */
+async function setEngagement(
+  req: Request,
+  res: Response,
+  kind: "like" | "save",
+  action: "add" | "remove"
+) {
+  const { id } = req.params;
+  const userId = req.user!.id;
+  const table = kind === "like" ? remixLikes : remixSaves;
+  const counter = kind === "like" ? recipeRemixes.likesCount : recipeRemixes.savesCount;
 
-    await db
-      .update(recipeRemixes)
-      .set({ likesCount: sql`${recipeRemixes.likesCount} + 1` })
-      .where(eq(recipeRemixes.id, id));
-
-    const [updated] = await db
+  const result = await db.transaction(async (tx: typeof db) => {
+    // Scoped to the remix so a missing one is a 404 rather than an insert against a dangling id.
+    const [remix] = await tx
       .select()
       .from(recipeRemixes)
       .where(eq(recipeRemixes.id, id))
       .limit(1);
 
-    return res.json({ remix: updated });
+    if (!remix) return null;
+
+    let changed = false;
+
+    if (action === "add") {
+      const [inserted] = await tx
+        .insert(table)
+        .values({ userId, remixId: id })
+        .onConflictDoNothing({ target: [table.userId, table.remixId] })
+        .returning();
+      changed = Boolean(inserted);
+      if (changed) {
+        await tx
+          .update(recipeRemixes)
+          .set(
+            kind === "like"
+              ? { likesCount: sql`${counter} + 1` }
+              : { savesCount: sql`${counter} + 1` }
+          )
+          .where(eq(recipeRemixes.id, id));
+      }
+    } else {
+      const removed = await tx
+        .delete(table)
+        .where(and(eq(table.remixId, id), eq(table.userId, userId)))
+        .returning();
+      changed = removed.length > 0;
+      if (changed) {
+        await tx
+          .update(recipeRemixes)
+          .set(
+            kind === "like"
+              ? { likesCount: sql`GREATEST(${counter} - 1, 0)` }
+              : { savesCount: sql`GREATEST(${counter} - 1, 0)` }
+          )
+          .where(eq(recipeRemixes.id, id));
+      }
+    }
+
+    const [updated] = await tx
+      .select()
+      .from(recipeRemixes)
+      .where(eq(recipeRemixes.id, id))
+      .limit(1);
+
+    return { remix: updated, changed };
+  });
+
+  if (!result) {
+    return res.status(404).json({ error: "Remix not found" });
+  }
+
+  // `{ remix }` is the shape both endpoints already returned, so existing callers are unaffected.
+  // The per-user flag is added because it is now a real, readable fact about the caller.
+  const active = action === "add";
+  return res.json(
+    kind === "like"
+      ? { remix: result.remix, liked: active, likesCount: result.remix?.likesCount ?? 0 }
+      : { remix: result.remix, saved: active, savesCount: result.remix?.savesCount ?? 0 }
+  );
+}
+
+// POST /api/remixes/:id/like - Like a remix (idempotent: liking twice leaves one like)
+//
+// POST stays "like", not "toggle": RemixesPage.handleLikeRemix fires this and never reads the
+// result, so a toggle would silently turn a double click into an unlike. Undoing is DELETE.
+router.post("/:id/like", requireAuth, async (req, res) => {
+  try {
+    return await setEngagement(req, res, "like", "add");
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
 });
 
-// POST /api/remixes/:id/save - Save a remix
-router.post("/:id/save", async (req, res) => {
+// DELETE /api/remixes/:id/like - Remove this account's like (idempotent)
+router.delete("/:id/like", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    return await setEngagement(req, res, "like", "remove");
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
 
-    await db
-      .update(recipeRemixes)
-      .set({ savesCount: sql`${recipeRemixes.savesCount} + 1` })
-      .where(eq(recipeRemixes.id, id));
+// POST /api/remixes/:id/save - Save a remix (idempotent)
+//
+// This is a save of the REMIX, keyed by recipe_remixes.id, which is what saves_count counts and what
+// the endpoint has always addressed. The repository's existing `recipe_saves` is a different
+// relationship -- an account to a `recipes` row -- and cannot express "saved this lineage" or back
+// this column, so reusing it would have silently changed what the endpoint means.
+router.post("/:id/save", requireAuth, async (req, res) => {
+  try {
+    return await setEngagement(req, res, "save", "add");
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
 
-    const [updated] = await db
-      .select()
-      .from(recipeRemixes)
-      .where(eq(recipeRemixes.id, id))
-      .limit(1);
-
-    return res.json({ remix: updated });
+// DELETE /api/remixes/:id/save - Remove this account's save (idempotent)
+router.delete("/:id/save", requireAuth, async (req, res) => {
+  try {
+    return await setEngagement(req, res, "save", "remove");
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
