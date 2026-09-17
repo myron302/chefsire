@@ -83,10 +83,18 @@ if (!CONNECTION) {
  */
 const SCHEMA = `
   CREATE TABLE users (id varchar PRIMARY KEY);
+  CREATE TABLE posts (
+    id varchar PRIMARY KEY,
+    user_id varchar NOT NULL REFERENCES users(id)
+  );
+  CREATE TABLE recipes (
+    id varchar PRIMARY KEY,
+    post_id varchar REFERENCES posts(id)
+  );
   CREATE TABLE recipe_remixes (
     id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-    original_recipe_id varchar NOT NULL,
-    remixed_recipe_id varchar NOT NULL,
+    original_recipe_id varchar NOT NULL REFERENCES recipes(id),
+    remixed_recipe_id varchar NOT NULL REFERENCES recipes(id),
     user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     remix_type text DEFAULT 'variation',
     changes jsonb DEFAULT '{}'::jsonb,
@@ -98,6 +106,7 @@ const SCHEMA = `
   );
 `;
 
+
 type Row = {
   id: string;
   original?: string;
@@ -107,15 +116,30 @@ type Row = {
   isPublic?: boolean | null;
   remixType?: string | null;
   changes?: unknown;
+  /**
+   * Who authors the OUTPUT recipe, through its post. Defaults to the row's own `user`, which makes
+   * the row legitimate. Naming someone else is what forges it -- exactly the shape the old endpoint
+   * allowed, since it never checked.
+   */
+  outputOwner?: string;
+  /** Give the output recipe no post at all, so no account can be shown to author it. */
+  outputUnowned?: boolean;
 };
 
+type Engagement = { remix: string; user: string };
+
 let scratch = 0;
+
+
 
 /**
  * Build a fresh schema, seed it, run the real migration through the runner's own splitting, and hand
  * back what survived. Each case gets its own schema so nothing leaks between tests.
  */
-async function applyMigration(rows: Row[]) {
+async function applyMigration(
+  rows: Row[],
+  engagement: { likes?: Engagement[]; saves?: Engagement[] } = {}
+) {
   const client = new pg.Client({ connectionString: CONNECTION! });
   await client.connect();
   const ns = `remix_mig_${process.pid}_${scratch++}`;
@@ -124,10 +148,46 @@ async function applyMigration(rows: Row[]) {
     await client.query(`SET search_path TO ${ns}`);
     await client.query(SCHEMA);
 
-    const owners = [...new Set(rows.map((r) => r.user ?? "u1"))];
-    for (const owner of owners) {
-      await client.query(`INSERT INTO users (id) VALUES ($1)`, [owner]);
+    const accounts = new Set<string>();
+    for (const row of rows) {
+      accounts.add(row.user ?? "u1");
+      if (row.outputOwner) accounts.add(row.outputOwner);
     }
+    for (const entry of [...(engagement.likes ?? []), ...(engagement.saves ?? [])]) {
+      accounts.add(entry.user);
+    }
+    for (const account of accounts) {
+      await client.query(`INSERT INTO users (id) VALUES ($1)`, [account]);
+    }
+
+    /**
+     * Build the ownership chain the invariant actually reads: recipes.post_id -> posts.user_id.
+     *
+     * A recipe can have only one author, so the FIRST row naming an output recipe fixes who owns it
+     * (its `outputOwner` if given, otherwise its own `user`). Any later row claiming the same output
+     * under a different account is therefore forged -- which is precisely the situation the old
+     * endpoint permitted and this migration has to remediate.
+     */
+    const recipeOwner = new Map<string, string | null>();
+    for (const row of rows) {
+      const output = row.remixed ?? "out";
+      if (!recipeOwner.has(output)) {
+        recipeOwner.set(output, row.outputUnowned ? null : row.outputOwner ?? row.user ?? "u1");
+      }
+      const source = row.original ?? "src";
+      if (!recipeOwner.has(source)) recipeOwner.set(source, row.user ?? "u1");
+    }
+    for (const [recipe, owner] of recipeOwner) {
+      if (owner === null) {
+        // No post at all: a recipe nobody can be shown to author (club recipes are inserted so).
+        await client.query(`INSERT INTO recipes (id, post_id) VALUES ($1, NULL)`, [recipe]);
+        continue;
+      }
+      const postId = `post_${recipe}`;
+      await client.query(`INSERT INTO posts (id, user_id) VALUES ($1, $2)`, [postId, owner]);
+      await client.query(`INSERT INTO recipes (id, post_id) VALUES ($1, $2)`, [recipe, postId]);
+    }
+
     for (const row of rows) {
       await client.query(
         `INSERT INTO recipe_remixes
@@ -144,6 +204,25 @@ async function applyMigration(rows: Row[]) {
           row.createdAt,
         ]
       );
+    }
+
+    // Engagement rows need the tables, which the migration itself creates. Seed after a first pass
+    // of the table-creating statements so a test can describe likes and saves declaratively.
+    if (engagement.likes?.length || engagement.saves?.length) {
+      for (const statement of statementsOf(MIGRATION).slice(0, 6)) await client.query(statement);
+      let n = 0;
+      for (const like of engagement.likes ?? []) {
+        await client.query(
+          `INSERT INTO remix_likes (id, user_id, remix_id) VALUES ($1,$2,$3)`,
+          [`like_${n++}`, like.user, like.remix]
+        );
+      }
+      for (const save of engagement.saves ?? []) {
+        await client.query(
+          `INSERT INTO remix_saves (id, user_id, remix_id) VALUES ($1,$2,$3)`,
+          [`save_${n++}`, save.user, save.remix]
+        );
+      }
     }
 
     // The real file, the runner's real splitting, one statement at a time.
@@ -173,11 +252,41 @@ async function applyMigration(rows: Row[]) {
          HAVING count(*) > 1) d`
     );
 
+    // Tolerant on purpose: a migration that never creates the archive must fail these tests on
+    // BEHAVIOUR (a forged row still sitting in the live table), not because a query errored.
+    const quarantined = await client
+      .query(
+        `SELECT id, user_id, original_recipe_id, remixed_recipe_id, remix_type, changes, is_public,
+                invalid_reason
+           FROM recipe_remixes_invalid_lineage ORDER BY id`
+      )
+      .catch(() => ({ rows: [] as any[] }));
+    // Every surviving row must satisfy the ownership invariant, checked independently of the
+    // migration's own predicate rather than by trusting it.
+    const violating = await client.query(
+      `SELECT rr.id FROM recipe_remixes rr
+        WHERE rr.original_recipe_id = rr.remixed_recipe_id
+           OR NOT EXISTS (
+                SELECT 1 FROM recipes r JOIN posts p ON p.id = r.post_id
+                 WHERE r.id = rr.remixed_recipe_id AND p.user_id = rr.user_id)`
+    );
+    const likes = await client.query(
+      `SELECT id, user_id, remix_id FROM remix_likes ORDER BY id`
+    ).catch(() => ({ rows: [] as any[] }));
+    const saves = await client.query(
+      `SELECT id, user_id, remix_id FROM remix_saves ORDER BY id`
+    ).catch(() => ({ rows: [] as any[] }));
+
     return {
       rows: survivors.rows,
       ids: survivors.rows.map((r) => r.id),
       indexExists: index.rowCount === 1,
       duplicateGroups: groups.rows[0].n as number,
+      quarantined: quarantined.rows,
+      quarantinedIds: quarantined.rows.map((r) => r.id),
+      violating: violating.rows.map((r) => r.id),
+      likeRows: likes.rows,
+      saveRows: saves.rows,
       errors,
     };
   } finally {
@@ -191,6 +300,20 @@ function assertCollapsed(result: Awaited<ReturnType<typeof applyMigration>>) {
   assert.deepEqual(result.errors, [], "the migration ran without a single statement failing");
   assert.equal(result.duplicateGroups, 0, "no lineage key may retain more than one row");
   assert.ok(result.indexExists, "recipe_remix_lineage_idx must exist after the migration");
+  assert.deepEqual(
+    result.violating,
+    [],
+    "every surviving row must satisfy the ownership invariant, checked independently"
+  );
+}
+
+/** Seed the ownership chain for tests that drive the client directly instead of via applyMigration. */
+async function seedOwnership(client: pg.Client, owner: string, recipeIds: string[]) {
+  await client.query(`INSERT INTO users (id) VALUES ($1)`, [owner]);
+  for (const recipe of recipeIds) {
+    await client.query(`INSERT INTO posts (id, user_id) VALUES ($1, $2)`, [`post_${recipe}`, owner]);
+    await client.query(`INSERT INTO recipes (id, post_id) VALUES ($1, $2)`, [recipe, `post_${recipe}`]);
+  }
 }
 
 const T1 = "2024-01-01T00:00:00.000Z";
@@ -278,8 +401,9 @@ it("several distinct lineage groups collapse independently", async () => {
     { id: "g1_dated", original: "s1", remixed: "o1", user: "u1", createdAt: T1 },
     { id: "g2_old", original: "s2", remixed: "o2", user: "u1", createdAt: T1 },
     { id: "g2_new", original: "s2", remixed: "o2", user: "u1", createdAt: T2 },
-    // Same recipes, different author: a DIFFERENT lineage key, so it is not a duplicate.
-    { id: "g3_other_user", original: "s1", remixed: "o1", user: "u2", createdAt: null },
+    // A different author with their OWN output recipe: a distinct lineage key and a legitimate row.
+    // (Two accounts cannot both author o1 -- that case is forged, and is covered on its own below.)
+    { id: "g3_other_user", original: "s1", remixed: "o9", user: "u2", createdAt: null },
     { id: "g4_unique", original: "s3", remixed: "o3", user: "u1", createdAt: null },
   ]);
   assertCollapsed(result);
@@ -291,7 +415,7 @@ it("rows with distinct lineage are never touched", async () => {
     { id: "a", original: "s1", remixed: "o1", user: "u1", createdAt: null },
     { id: "b", original: "s1", remixed: "o2", user: "u1", createdAt: null },
     { id: "c", original: "s2", remixed: "o1", user: "u1", createdAt: null },
-    { id: "d", original: "s1", remixed: "o1", user: "u2", createdAt: null },
+    { id: "d", original: "s1", remixed: "o9", user: "u2", createdAt: null },
   ]);
   assertCollapsed(result);
   assert.deepEqual(result.ids, ["a", "b", "c", "d"], "nothing was a duplicate, nothing was deleted");
@@ -309,7 +433,7 @@ it("negative control: the old pairwise predicate leaves the NULL/timestamp dupli
     await client.query(`CREATE SCHEMA ${ns}`);
     await client.query(`SET search_path TO ${ns}`);
     await client.query(SCHEMA);
-    await client.query(`INSERT INTO users (id) VALUES ('u1')`);
+    await seedOwnership(client, "u1", ["src", "out"]);
     await client.query(
       `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
        VALUES ('a','src','out','u1',NULL), ('b','src','out','u1',$1)`,
@@ -452,7 +576,7 @@ it("the unique index can be created, and the ON CONFLICT the route uses then wor
     await client.query(`CREATE SCHEMA ${ns}`);
     await client.query(`SET search_path TO ${ns}`);
     await client.query(SCHEMA);
-    await client.query(`INSERT INTO users (id) VALUES ('u1')`);
+    await seedOwnership(client, "u1", ["src", "out", "other-out"]);
     await client.query(
       `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
        VALUES ('a','src','out','u1',NULL), ('b','src','out','u1',$1), ('c','src','out','u1',NULL)`,
@@ -535,7 +659,7 @@ it("the route's generated ON CONFLICT names exactly the columns the index is bui
   }
 });
 
-it("counters are rebuilt from relationships and engagement tallies are zeroed", async () => {
+it("remix_count is rebuilt by output recipe, and a remix with no engagement rows reads zero", async () => {
   const result = await applyMigration([
     // parent: produced 'out'. Two children remix 'out', so its remix_count must land on 2.
     { id: "parent", original: "src", remixed: "out", user: "u1", createdAt: T1 },
@@ -563,7 +687,7 @@ it("the whole migration is re-runnable", async () => {
     await client.query(`CREATE SCHEMA ${ns}`);
     await client.query(`SET search_path TO ${ns}`);
     await client.query(SCHEMA);
-    await client.query(`INSERT INTO users (id) VALUES ('u1')`);
+    await seedOwnership(client, "u1", ["src", "out"]);
     await client.query(
       `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
        VALUES ('a','src','out','u1',NULL), ('b','src','out','u1',$1)`,
@@ -577,6 +701,428 @@ it("the whole migration is re-runnable", async () => {
     }
     const left = await client.query(`SELECT count(*)::int AS n FROM recipe_remixes`);
     assert.equal(left.rows[0].n, 1);
+  } finally {
+    await client.query(`DROP SCHEMA IF EXISTS ${ns} CASCADE`).catch(() => {});
+    await client.end();
+  }
+});
+
+// ================================================================================================
+// Greptile P1 -- historically forged lineage must not survive the migration
+//
+// The repaired route stops NEW forged attribution, but every row the old endpoint accepted is still
+// in the table. Before this correction the migration removed only duplicate lineage tuples and never
+// asked whether a row's user_id authors the output recipe -- so a forged claim stayed visible, stayed
+// attributed to the forger, and was counted into the rebuilt remix_count.
+//
+// Ownership is derived from persisted data only: recipes.post_id -> posts.id -> posts.user_id.
+// `recipes` has no author column and the schema has no collaborator model, so this is the whole of it.
+// ================================================================================================
+
+it("valid lineage survives: the author of the output recipe keeps their remix", async () => {
+  const result = await applyMigration([
+    { id: "legit", original: "src", remixed: "out", user: "alice", createdAt: T1 },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids, ["legit"]);
+  assert.deepEqual(result.quarantinedIds, [], "nothing legitimate was quarantined");
+});
+
+it("forged lineage is remediated: the forger is not left attributed to another's recipe", async () => {
+  // Alice authors `out`. Mallory claims it as HER remix output -- the exact shape the old endpoint
+  // permitted, since it only checked that both ids resolved to some recipe.
+  const result = await applyMigration([
+    { id: "forged", original: "src", remixed: "out", user: "mallory", outputOwner: "alice", createdAt: T1 },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids, [], "the forged row is gone from the live table");
+  assert.deepEqual(result.quarantinedIds, ["forged"]);
+  assert.equal(result.quarantined[0].user_id, "mallory");
+  assert.equal(result.quarantined[0].invalid_reason, "user_is_not_the_author_of_the_output_recipe");
+});
+
+it("an output recipe nobody can be shown to author cannot be claimed", async () => {
+  // post_id IS NULL -- the join yields nothing, so no account satisfies the invariant. The route
+  // refuses such a claim rather than assuming it, and the data has to agree.
+  const result = await applyMigration([
+    { id: "unowned", original: "src", remixed: "orphan", user: "bob", outputUnowned: true, createdAt: T1 },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids, []);
+  assert.equal(result.quarantined[0].invalid_reason, "output_recipe_has_no_resolvable_owner");
+});
+
+it("a recipe recorded as a remix of itself is removed", async () => {
+  const result = await applyMigration([
+    { id: "selfloop", original: "src", remixed: "src", user: "alice", createdAt: T1 },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids, []);
+  assert.equal(result.quarantined[0].invalid_reason, "self_lineage");
+});
+
+it("forged + legitimate collision resolves to one correct canonical relationship", async () => {
+  // Both rows name the same original and output. Alice authors `out`, so hers is legitimate and
+  // Mallory's is forged. They are different lineage KEYS (different user_id), so the unique index
+  // alone would happily keep both -- only the ownership check removes the right one.
+  const result = await applyMigration([
+    { id: "legit", original: "src", remixed: "out", user: "alice", createdAt: T1 },
+    { id: "forged", original: "src", remixed: "out", user: "mallory", outputOwner: "alice", createdAt: T2 },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids, ["legit"], "the author's row is the one that survives");
+  assert.deepEqual(result.quarantinedIds, ["forged"]);
+  assert.equal(result.rows[0].user_id, "alice");
+});
+
+it("several accounts forging the same output are all remediated, deterministically", async () => {
+  const result = await applyMigration([
+    { id: "f1", original: "src", remixed: "out", user: "mallory", outputOwner: "alice", createdAt: T1 },
+    { id: "f2", original: "src", remixed: "out", user: "trudy", createdAt: T2 },
+    { id: "f3", original: "src", remixed: "out", user: "eve", createdAt: null },
+    { id: "legit", original: "src", remixed: "out", user: "alice", createdAt: T3 },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids, ["legit"]);
+  assert.deepEqual(result.quarantinedIds, ["f1", "f2", "f3"]);
+  for (const row of result.quarantined) {
+    assert.equal(row.invalid_reason, "user_is_not_the_author_of_the_output_recipe");
+  }
+});
+
+it("forged rows are archived in full, not silently dropped", async () => {
+  const result = await applyMigration([
+    {
+      id: "forged",
+      original: "src",
+      remixed: "out",
+      user: "mallory",
+      outputOwner: "alice",
+      createdAt: T1,
+      remixType: "ingredient_swap",
+      changes: { notes: "mallory's text" },
+      isPublic: false,
+    },
+  ]);
+  assertCollapsed(result);
+  const archived = result.quarantined[0];
+  assert.equal(archived.remix_type, "ingredient_swap");
+  assert.deepEqual(archived.changes, { notes: "mallory's text" });
+  assert.equal(archived.is_public, false);
+  assert.equal(archived.original_recipe_id, "src");
+  assert.equal(archived.remixed_recipe_id, "out");
+});
+
+it("forged lineage contributes nothing to the rebuilt remix_count", async () => {
+  // `parent` produced `out`. One VALID child remixes `out`, and two FORGED rows also claim to. Only
+  // the valid one may be counted -- this is the assertion that failed before the correction, where
+  // the forged rows survived and were counted like any other.
+  const result = await applyMigration([
+    { id: "parent", original: "src", remixed: "out", user: "alice", createdAt: T1 },
+    { id: "valid_child", original: "out", remixed: "kid", user: "alice", createdAt: T2 },
+    { id: "forged_child_a", original: "out", remixed: "kid2", user: "mallory", outputOwner: "alice", createdAt: T2 },
+    { id: "forged_child_b", original: "out", remixed: "kid3", user: "trudy", outputOwner: "alice", createdAt: T3 },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids.sort(), ["parent", "valid_child"]);
+  const parent = result.rows.find((r) => r.id === "parent")!;
+  assert.equal(parent.remix_count, 1, "one valid child, not three");
+});
+
+it("a forged duplicate does not displace the author's authored metadata", async () => {
+  // The forged row is NEWER, so plain newest-wins canonicalisation would have taken its metadata.
+  // Ownership remediation runs first, so the forged row is gone before canonicalisation even looks.
+  const result = await applyMigration([
+    {
+      id: "legit", original: "src", remixed: "out", user: "alice", createdAt: T1,
+      remixType: "variation", changes: { notes: "alice's own" }, isPublic: true,
+    },
+    {
+      id: "forged", original: "src", remixed: "out", user: "mallory", outputOwner: "alice",
+      createdAt: T3, remixType: "ingredient_swap", changes: { notes: "mallory's" }, isPublic: false,
+    },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids, ["legit"]);
+  assert.equal(result.rows[0].remix_type, "variation");
+  assert.deepEqual(result.rows[0].changes, { notes: "alice's own" });
+  assert.equal(result.rows[0].is_public, true, "a forged row's hidden flag does not close the author's remix");
+});
+
+it("ownership remediation runs before de-duplication, so no re-attribution collision exists", async () => {
+  // Alice has TWO duplicate legitimate rows and Mallory has a forged one on the same lineage. Had
+  // the migration corrected attribution instead of removing it, Mallory's row would have become a
+  // third copy of Alice's key. Removal first means there is no collision to resolve.
+  const result = await applyMigration([
+    { id: "alice_old", original: "src", remixed: "out", user: "alice", createdAt: T1 },
+    { id: "alice_new", original: "src", remixed: "out", user: "alice", createdAt: T2 },
+    { id: "forged", original: "src", remixed: "out", user: "mallory", outputOwner: "alice", createdAt: T3 },
+  ]);
+  assertCollapsed(result);
+  assert.deepEqual(result.ids, ["alice_new"], "newest of Alice's own duplicates");
+  assert.deepEqual(result.quarantinedIds, ["forged"]);
+});
+
+it("remediation is re-runnable and does not re-quarantine or resurrect", async () => {
+  const client = new pg.Client({ connectionString: CONNECTION! });
+  await client.connect();
+  const ns = `remix_mig_rerun_forged_${process.pid}`;
+  try {
+    await client.query(`CREATE SCHEMA ${ns}`);
+    await client.query(`SET search_path TO ${ns}`);
+    await client.query(SCHEMA);
+    await client.query(`INSERT INTO users (id) VALUES ('alice'), ('mallory')`);
+    await client.query(`INSERT INTO posts (id, user_id) VALUES ('p_src','alice'), ('p_out','alice')`);
+    await client.query(`INSERT INTO recipes (id, post_id) VALUES ('src','p_src'), ('out','p_out')`);
+    await client.query(
+      `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
+       VALUES ('legit','src','out','alice',$1), ('forged','src','out','mallory',$2)`,
+      [T1, T2]
+    );
+
+    for (let pass = 1; pass <= 3; pass += 1) {
+      for (const statement of statementsOf(MIGRATION)) await client.query(statement);
+    }
+
+    const live = await client.query(`SELECT id FROM recipe_remixes ORDER BY id`);
+    const held = await client.query(`SELECT id FROM recipe_remixes_invalid_lineage ORDER BY id`);
+    assert.deepEqual(live.rows.map((r) => r.id), ["legit"]);
+    assert.deepEqual(held.rows.map((r) => r.id), ["forged"], "archived once, not once per run");
+  } finally {
+    await client.query(`DROP SCHEMA IF EXISTS ${ns} CASCADE`).catch(() => {});
+    await client.end();
+  }
+});
+
+// ================================================================================================
+// Codex / Greptile P2 -- reruns must reconstruct engagement counters, not zero them
+// ================================================================================================
+
+it("counters are reconstructed from relationships, and stay correct across reruns", async () => {
+  // A: 3 likes / 2 saves, B: 1 / 0, C: 0 / 1, D: 0 / 0 -- with every stored counter deliberately
+  // wrong beforehand, so a no-op reconstruction could not pass this.
+  const rows: Row[] = [
+    { id: "A", original: "src", remixed: "oA", user: "alice", createdAt: T1 },
+    { id: "B", original: "src", remixed: "oB", user: "alice", createdAt: T1 },
+    { id: "C", original: "src", remixed: "oC", user: "alice", createdAt: T1 },
+    { id: "D", original: "src", remixed: "oD", user: "alice", createdAt: T1 },
+  ];
+  const likes: Engagement[] = [
+    { remix: "A", user: "alice" }, { remix: "A", user: "bob" }, { remix: "A", user: "carol" },
+    { remix: "B", user: "alice" },
+  ];
+  const saves: Engagement[] = [
+    { remix: "A", user: "alice" }, { remix: "A", user: "bob" },
+    { remix: "C", user: "carol" },
+  ];
+
+  const client = new pg.Client({ connectionString: CONNECTION! });
+  await client.connect();
+  const ns = `remix_mig_counters_${process.pid}`;
+  try {
+    await client.query(`CREATE SCHEMA ${ns}`);
+    await client.query(`SET search_path TO ${ns}`);
+    await client.query(SCHEMA);
+    await client.query(`INSERT INTO users (id) VALUES ('alice'),('bob'),('carol')`);
+    await client.query(`INSERT INTO posts (id, user_id) VALUES ('p_src','alice')`);
+    await client.query(`INSERT INTO recipes (id, post_id) VALUES ('src','p_src')`);
+    for (const row of rows) {
+      await client.query(`INSERT INTO posts (id, user_id) VALUES ($1,'alice')`, [`p_${row.remixed}`]);
+      await client.query(`INSERT INTO recipes (id, post_id) VALUES ($1,$2)`, [row.remixed, `p_${row.remixed}`]);
+      await client.query(
+        `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
+         VALUES ($1,$2,$3,$4,$5)`,
+        [row.id, row.original, row.remixed, row.user, row.createdAt]
+      );
+    }
+
+    // First pass creates the relationship tables; then seed the relationships.
+    for (const statement of statementsOf(MIGRATION)) await client.query(statement);
+    let n = 0;
+    for (const like of likes) {
+      await client.query(`INSERT INTO remix_likes (id,user_id,remix_id) VALUES ($1,$2,$3)`,
+        [`l${n++}`, like.user, like.remix]);
+    }
+    for (const save of saves) {
+      await client.query(`INSERT INTO remix_saves (id,user_id,remix_id) VALUES ($1,$2,$3)`,
+        [`s${n++}`, save.user, save.remix]);
+    }
+
+    // 1. Deliberately wrong stored counters.
+    await client.query(`UPDATE recipe_remixes SET likes_count = 999, saves_count = -7`);
+
+    const expected: Record<string, [number, number]> = { A: [3, 2], B: [1, 0], C: [0, 1], D: [0, 0] };
+
+    for (let pass = 1; pass <= 3; pass += 1) {
+      // 2 & 4. Apply the reconstruction, then apply it again.
+      for (const statement of statementsOf(MIGRATION)) await client.query(statement);
+
+      // 3 & 5. Every counter equals its relationship source of truth, on every pass.
+      const state = await client.query(
+        `SELECT id, likes_count, saves_count,
+                (SELECT count(*)::int FROM remix_likes l WHERE l.remix_id = r.id) AS real_likes,
+                (SELECT count(*)::int FROM remix_saves s WHERE s.remix_id = r.id) AS real_saves
+           FROM recipe_remixes r ORDER BY id`
+      );
+      for (const row of state.rows) {
+        const [likeCount, saveCount] = expected[row.id];
+        assert.equal(row.likes_count, likeCount, `pass ${pass}: ${row.id} likes_count`);
+        assert.equal(row.saves_count, saveCount, `pass ${pass}: ${row.id} saves_count`);
+        // 8 & 9. Zero-relationship rows are zero, and no remix carries another's aggregate.
+        assert.equal(row.likes_count, row.real_likes, `pass ${pass}: ${row.id} matches relationships`);
+        assert.equal(row.saves_count, row.real_saves, `pass ${pass}: ${row.id} matches relationships`);
+      }
+
+      // 6 & 7. Reconstruction reads relationships, it never destroys them.
+      const liveLikes = await client.query(`SELECT id FROM remix_likes ORDER BY id`);
+      const liveSaves = await client.query(`SELECT id FROM remix_saves ORDER BY id`);
+      assert.equal(liveLikes.rowCount, likes.length, `pass ${pass}: like rows preserved`);
+      assert.equal(liveSaves.rowCount, saves.length, `pass ${pass}: save rows preserved`);
+    }
+  } finally {
+    await client.query(`DROP SCHEMA IF EXISTS ${ns} CASCADE`).catch(() => {});
+    await client.end();
+  }
+});
+
+it("a like is one row per user per remix, and the database enforces it", async () => {
+  // This is what makes count(DISTINCT user_id) and count(*) agree. If the constraint were missing,
+  // duplicate relationship rows could inflate a counter -- so the constraint is asserted, not assumed.
+  const client = new pg.Client({ connectionString: CONNECTION! });
+  await client.connect();
+  const ns = `remix_mig_uniq_${process.pid}`;
+  try {
+    await client.query(`CREATE SCHEMA ${ns}`);
+    await client.query(`SET search_path TO ${ns}`);
+    await client.query(SCHEMA);
+    await client.query(`INSERT INTO users (id) VALUES ('alice')`);
+    await client.query(`INSERT INTO posts (id, user_id) VALUES ('p','alice')`);
+    await client.query(`INSERT INTO recipes (id, post_id) VALUES ('src','p'), ('out','p')`);
+    await client.query(
+      `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
+       VALUES ('r','src','out','alice',$1)`, [T1]
+    );
+    for (const statement of statementsOf(MIGRATION)) await client.query(statement);
+
+    await client.query(`INSERT INTO remix_likes (id,user_id,remix_id) VALUES ('l1','alice','r')`);
+    await assert.rejects(
+      () => client.query(`INSERT INTO remix_likes (id,user_id,remix_id) VALUES ('l2','alice','r')`),
+      (error: any) => error.code === "23505",
+      "a second like by the same account on the same remix is refused by the database"
+    );
+    await client.query(`INSERT INTO remix_saves (id,user_id,remix_id) VALUES ('s1','alice','r')`);
+    await assert.rejects(
+      () => client.query(`INSERT INTO remix_saves (id,user_id,remix_id) VALUES ('s2','alice','r')`),
+      (error: any) => error.code === "23505"
+    );
+  } finally {
+    await client.query(`DROP SCHEMA IF EXISTS ${ns} CASCADE`).catch(() => {});
+    await client.end();
+  }
+});
+
+it("engagement rows of a removed forged remix go with it, and counters reflect that", async () => {
+  const client = new pg.Client({ connectionString: CONNECTION! });
+  await client.connect();
+  const ns = `remix_mig_cascade_${process.pid}`;
+  try {
+    await client.query(`CREATE SCHEMA ${ns}`);
+    await client.query(`SET search_path TO ${ns}`);
+    await client.query(SCHEMA);
+    await client.query(`INSERT INTO users (id) VALUES ('alice'),('mallory'),('bob')`);
+    await client.query(`INSERT INTO posts (id, user_id) VALUES ('p_src','alice'),('p_out','alice')`);
+    await client.query(`INSERT INTO recipes (id, post_id) VALUES ('src','p_src'),('out','p_out')`);
+    await client.query(
+      `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
+       VALUES ('forged','src','out','mallory',$1)`, [T1]
+    );
+    // Create the tables, attach a like to the forged remix, then run the migration for real.
+    for (const statement of statementsOf(MIGRATION).slice(0, 6)) await client.query(statement);
+    await client.query(`INSERT INTO remix_likes (id,user_id,remix_id) VALUES ('l1','bob','forged')`);
+
+    for (const statement of statementsOf(MIGRATION)) await client.query(statement);
+
+    const live = await client.query(`SELECT id FROM recipe_remixes`);
+    const orphanLikes = await client.query(`SELECT id FROM remix_likes`);
+    assert.equal(live.rowCount, 0, "the forged remix is gone");
+    assert.equal(orphanLikes.rowCount, 0, "and its engagement rows went with it, not orphaned");
+  } finally {
+    await client.query(`DROP SCHEMA IF EXISTS ${ns} CASCADE`).catch(() => {});
+    await client.end();
+  }
+});
+
+it("an account deletion cannot silently drop a like and leave the counter above it", async () => {
+  // The invariant this whole migration establishes is likes_count == number of like relationships.
+  // ON DELETE CASCADE on remix_likes.user_id would break it on a reachable path
+  // (DELETE /api/users/:id), because nothing in the codebase decrements a counter when an account
+  // goes. The constraint is what holds the line, so it is asserted rather than assumed.
+  const client = new pg.Client({ connectionString: CONNECTION! });
+  await client.connect();
+  const ns = `remix_mig_userfk_${process.pid}`;
+  try {
+    await client.query(`CREATE SCHEMA ${ns}`);
+    await client.query(`SET search_path TO ${ns}`);
+    await client.query(SCHEMA);
+    await client.query(`INSERT INTO users (id) VALUES ('alice'),('bob')`);
+    await client.query(`INSERT INTO posts (id, user_id) VALUES ('p','alice')`);
+    await client.query(`INSERT INTO recipes (id, post_id) VALUES ('src','p'),('out','p')`);
+    await client.query(
+      `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
+       VALUES ('r','src','out','alice',$1)`, [T1]
+    );
+    for (const statement of statementsOf(MIGRATION)) await client.query(statement);
+    await client.query(`INSERT INTO remix_likes (id,user_id,remix_id) VALUES ('l1','bob','r')`);
+    await client.query(`INSERT INTO remix_saves (id,user_id,remix_id) VALUES ('s1','bob','r')`);
+    await client.query(`UPDATE recipe_remixes SET likes_count = 1, saves_count = 1 WHERE id = 'r'`);
+
+    // Deleting the liker is REFUSED while the like exists, rather than cascading behind the counter.
+    await assert.rejects(
+      () => client.query(`DELETE FROM users WHERE id = 'bob'`),
+      (error: any) => error.code === "23503",
+      "a like row must block the account deletion rather than vanish under the counter"
+    );
+
+    const state = await client.query(
+      `SELECT likes_count, saves_count,
+              (SELECT count(*)::int FROM remix_likes WHERE remix_id = 'r') AS real_likes,
+              (SELECT count(*)::int FROM remix_saves WHERE remix_id = 'r') AS real_saves
+         FROM recipe_remixes WHERE id = 'r'`
+    );
+    assert.equal(state.rows[0].likes_count, state.rows[0].real_likes, "invariant intact");
+    assert.equal(state.rows[0].saves_count, state.rows[0].real_saves, "invariant intact");
+  } finally {
+    await client.query(`DROP SCHEMA IF EXISTS ${ns} CASCADE`).catch(() => {});
+    await client.end();
+  }
+});
+
+it("deleting a remix still takes its engagement rows with it", async () => {
+  // The other half of the FK decision: CASCADE on remix_id is correct, because the counter lives on
+  // the remix row and goes with it, so there is nothing left to drift.
+  const client = new pg.Client({ connectionString: CONNECTION! });
+  await client.connect();
+  const ns = `remix_mig_remixfk_${process.pid}`;
+  try {
+    await client.query(`CREATE SCHEMA ${ns}`);
+    await client.query(`SET search_path TO ${ns}`);
+    await client.query(SCHEMA);
+    await client.query(`INSERT INTO users (id) VALUES ('alice'),('bob')`);
+    await client.query(`INSERT INTO posts (id, user_id) VALUES ('p','alice')`);
+    await client.query(`INSERT INTO recipes (id, post_id) VALUES ('src','p'),('out','p')`);
+    await client.query(
+      `INSERT INTO recipe_remixes (id, original_recipe_id, remixed_recipe_id, user_id, created_at)
+       VALUES ('r','src','out','alice',$1)`, [T1]
+    );
+    for (const statement of statementsOf(MIGRATION)) await client.query(statement);
+    await client.query(`INSERT INTO remix_likes (id,user_id,remix_id) VALUES ('l1','bob','r')`);
+    await client.query(`INSERT INTO remix_saves (id,user_id,remix_id) VALUES ('s1','bob','r')`);
+
+    await client.query(`DELETE FROM recipe_remixes WHERE id = 'r'`);
+    const likes = await client.query(`SELECT id FROM remix_likes`);
+    const saves = await client.query(`SELECT id FROM remix_saves`);
+    assert.equal(likes.rowCount, 0, "no orphaned like survives its remix");
+    assert.equal(saves.rowCount, 0, "no orphaned save survives its remix");
   } finally {
     await client.query(`DROP SCHEMA IF EXISTS ${ns} CASCADE`).catch(() => {});
     await client.end();

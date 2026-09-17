@@ -188,7 +188,9 @@ export const remixLikes = pgTable(
   "remix_likes",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    // Plain reference, as every other engagement table here does: an account deletion must not be
+    // able to remove a like row without the counter it backs moving with it.
+    userId: varchar("user_id").references(() => users.id).notNull(),
     remixId: varchar("remix_id").references(() => recipeRemixes.id, { onDelete: "cascade" }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -203,7 +205,9 @@ export const remixSaves = pgTable(
   "remix_saves",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    // Plain reference, as every other engagement table here does: an account deletion must not be
+    // able to remove a like row without the counter it backs moving with it.
+    userId: varchar("user_id").references(() => users.id).notNull(),
     remixId: varchar("remix_id").references(() => recipeRemixes.id, { onDelete: "cascade" }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

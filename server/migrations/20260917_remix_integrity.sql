@@ -13,27 +13,48 @@
 --      relationships between an account and a remix, and are now stored as rows whose unique index
 --      is what makes a repeated or concurrent request idempotent.
 --
---   2. Pre-existing duplicate lineage rows are collapsed to one canonical row each, and
+--   2. Historically forged lineage rows -- ones whose user_id does not author the output recipe --
+--      are archived into recipe_remixes_invalid_lineage and removed from the live table, so the
+--      ownership rule the route now enforces also holds for the data already stored.
+--
+--   3. Pre-existing duplicate lineage rows are collapsed to one canonical row each, and
 --      recipe_remixes gains a unique index on (original_recipe_id, remixed_recipe_id, user_id), so a
 --      replayed POST /api/remixes cannot create a second identical relationship and re-fire the
 --      counter and the notification.
 --
---   3. The three counters are rebuilt from the relationships that now back them.
+--   4. All three counters are rebuilt from the valid relationships that now back them.
 --
--- ADDITIVE except for the duplicate collapse and the counter rebuilds described below. No column is
--- dropped and no remix row is altered other than in its three counter columns and, for rows in a
--- duplicate group only, is_public.
+-- ADDITIVE except for the forged-lineage removal, the duplicate collapse and the counter rebuilds
+-- described below. No column is dropped, every removed row is archived first, and no surviving remix
+-- row is altered other than in its three counter columns and, for rows in a duplicate group only,
+-- is_public.
 
 CREATE TABLE IF NOT EXISTS remix_likes (
   id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- NO ACTION on user_id, deliberately, and matching every analogous table in this schema
+  -- (posts `likes`, `drink_likes`, `drink_saves`, `recipe_saves` all reference users(id) plainly).
+  -- ON DELETE CASCADE here would let an account deletion silently remove like/save rows WITHOUT
+  -- decrementing the counters they back, leaving likes_count permanently above the number of
+  -- relationships -- exactly the drift this migration exists to remove. Nothing in the codebase
+  -- decrements a counter on account deletion, so the constraint is what has to hold the line.
+  user_id varchar NOT NULL REFERENCES users(id),
+  -- CASCADE on remix_id IS correct: the counter lives on the remix row, so when that row goes its
+  -- engagement rows go with it and there is no counter left to drift.
   remix_id varchar NOT NULL REFERENCES recipe_remixes(id) ON DELETE CASCADE,
   created_at timestamp NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS remix_saves (
   id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- NO ACTION on user_id, deliberately, and matching every analogous table in this schema
+  -- (posts `likes`, `drink_likes`, `drink_saves`, `recipe_saves` all reference users(id) plainly).
+  -- ON DELETE CASCADE here would let an account deletion silently remove like/save rows WITHOUT
+  -- decrementing the counters they back, leaving likes_count permanently above the number of
+  -- relationships -- exactly the drift this migration exists to remove. Nothing in the codebase
+  -- decrements a counter on account deletion, so the constraint is what has to hold the line.
+  user_id varchar NOT NULL REFERENCES users(id),
+  -- CASCADE on remix_id IS correct: the counter lives on the remix row, so when that row goes its
+  -- engagement rows go with it and there is no counter left to drift.
   remix_id varchar NOT NULL REFERENCES recipe_remixes(id) ON DELETE CASCADE,
   created_at timestamp NOT NULL DEFAULT now()
 );
@@ -80,6 +101,103 @@ CREATE INDEX IF NOT EXISTS remix_saves_remix_idx ON remix_saves (remix_id);
 -- remix_type and changes are taken from the canonical row and are NOT merged across duplicates. Both
 -- are replace-state: toRemixPatch assigns each wholesale, and changes is a jsonb document replaced in
 -- full. The application provides no basis for combining two versions of either, so none is invented.
+
+-- ------------------------------------------------------------------------------------------------
+-- Remediating historically forged lineage
+-- ------------------------------------------------------------------------------------------------
+--
+-- The repaired POST /api/remixes refuses a claim unless the caller authors the OUTPUT recipe. The
+-- old endpoint checked only that both ids resolved to some recipe, so knowing two ids was enough to
+-- publish a row claiming any recipe on the platform as your own remix output. Those rows are still
+-- in the table. A migration that establishes lineage integrity cannot leave them there: they stay
+-- visible in every public feed, they are attributed to an account that did not author the recipe,
+-- and -- before this change -- they were counted into the rebuilt remix_count, so the migration was
+-- actively blessing forged lineage with a freshly computed counter.
+--
+-- THE INVARIANT, AS PERSISTED DATA. `recipes` has NO user/author/owner/creator column, and there is
+-- no collaborator or shared-ownership table anywhere in the schema. A recipe's author is the author
+-- of the post it was published as, and nothing else:
+--
+--     recipes.post_id -> posts.id -> posts.user_id
+--
+-- So a lineage row is legitimate exactly when all three hold, which is precisely what the route now
+-- enforces (server/routes/remixes.ts, loadRecipeWithOwner and the two refusals after it):
+--
+--   1. original_recipe_id <> remixed_recipe_id   -- a recipe is not a remix of itself
+--   2. original_recipe_id resolves to a recipe   -- already guaranteed by the foreign key
+--   3. the row's user_id IS the author of remixed_recipe_id, derived through the post
+--
+-- Condition 3 also covers the "no provable owner" case for free: a recipe whose post_id is NULL
+-- (club recipes are inserted that way) joins to nothing, so no user_id can satisfy it -- matching
+-- the route, which refuses such a claim rather than assuming it.
+--
+-- WHY THESE ROWS ARE REMOVED RATHER THAN RE-ATTRIBUTED. Rewriting user_id to the output recipe's
+-- real author would not correct a claim, it would FABRICATE one: it would assert that the author
+-- created a remix they never created, and hand them authored metadata (remix_type, changes) written
+-- by the forger. That manufactures data rather than repairing it. Re-attribution would also collide
+-- with the victim's own genuine row whenever they really had remixed that recipe, turning two rows
+-- into one lineage key. Removal has neither problem, and it is ordered BEFORE the de-duplication
+-- below so that no collision can arise at all -- nothing is rewritten, so nothing can collapse onto
+-- an existing key.
+--
+-- NOTHING IS DESTROYED. Every removed row is copied first, in full, into
+-- recipe_remixes_invalid_lineage together with the reason it failed. The live table regains its
+-- invariant while the rows remain auditable and restorable; a forged claim simply stops being served
+-- as a legitimate remix relationship.
+CREATE TABLE IF NOT EXISTS recipe_remixes_invalid_lineage (
+  id varchar PRIMARY KEY,
+  original_recipe_id varchar NOT NULL,
+  remixed_recipe_id varchar NOT NULL,
+  user_id varchar NOT NULL,
+  remix_type text,
+  changes jsonb,
+  likes_count integer,
+  saves_count integer,
+  remix_count integer,
+  is_public boolean,
+  created_at timestamp,
+  -- Why the row failed the invariant, so an operator can tell a forged claim from an unownable one.
+  invalid_reason text NOT NULL,
+  quarantined_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Deliberately no foreign keys on the archive: a quarantined row must survive the later deletion of
+-- the account or recipe it referred to, which is the whole point of keeping it.
+INSERT INTO recipe_remixes_invalid_lineage (
+  id, original_recipe_id, remixed_recipe_id, user_id, remix_type, changes,
+  likes_count, saves_count, remix_count, is_public, created_at, invalid_reason
+)
+SELECT rr.id, rr.original_recipe_id, rr.remixed_recipe_id, rr.user_id, rr.remix_type, rr.changes,
+       rr.likes_count, rr.saves_count, rr.remix_count, rr.is_public, rr.created_at,
+       CASE
+         WHEN rr.original_recipe_id = rr.remixed_recipe_id THEN 'self_lineage'
+         WHEN NOT EXISTS (
+           SELECT 1 FROM recipes r
+           WHERE r.id = rr.remixed_recipe_id AND r.post_id IS NOT NULL
+         ) THEN 'output_recipe_has_no_resolvable_owner'
+         ELSE 'user_is_not_the_author_of_the_output_recipe'
+       END
+FROM recipe_remixes rr
+WHERE rr.original_recipe_id = rr.remixed_recipe_id
+   OR NOT EXISTS (
+        SELECT 1
+        FROM recipes r
+        JOIN posts p ON p.id = r.post_id
+        WHERE r.id = rr.remixed_recipe_id
+          AND p.user_id = rr.user_id
+      )
+ON CONFLICT (id) DO NOTHING;
+
+-- The same predicate, so the live table keeps exactly the rows the archive did not take.
+DELETE FROM recipe_remixes rr
+WHERE rr.original_recipe_id = rr.remixed_recipe_id
+   OR NOT EXISTS (
+        SELECT 1
+        FROM recipes r
+        JOIN posts p ON p.id = r.post_id
+        WHERE r.id = rr.remixed_recipe_id
+          AND p.user_id = rr.user_id
+      );
 
 -- is_public is folded conservatively BEFORE any row is deleted, because it is a visibility control
 -- and the risk is asymmetric: wrongly restoring true would re-expose a remix its author had hidden,
@@ -128,9 +246,11 @@ WHERE id NOT IN (
 -- pre-repair route incremented it with WHERE original_recipe_id = $1, which bumped every SIBLING
 -- remix of the source recipe and never the row whose output was actually remixed -- so the stored
 -- values do not measure the quantity the column names, at any row. They are rebuilt from the
--- relationships, which is the only source that can produce the correct value, and only after the
--- de-duplication above so that collapsed rows are not counted. A remix whose output recipe has never
--- been remixed correctly lands on 0.
+-- relationships, which is the only source that can produce the correct value, and only after BOTH
+-- the forged-lineage removal and the de-duplication above -- so a quarantined or collapsed row can
+-- no longer contribute to anyone's count. Every row still in the table satisfies the ownership
+-- invariant by then, which is what makes count(*) here a count of VALID lineage rather than of rows.
+-- A remix whose output recipe has never been remixed correctly lands on 0.
 UPDATE recipe_remixes target
 SET remix_count = (
   SELECT count(*)
@@ -138,15 +258,35 @@ SET remix_count = (
   WHERE child.original_recipe_id = target.remixed_recipe_id
 );
 
--- likes_count and saves_count are reset to 0 because remix_likes and remix_saves are empty and
--- there is no way to populate them. Every increment those columns ever received came from
--- POST /:id/like and POST /:id/save as they stood before this repair: no requireAuth, no per-user
--- record, no request body -- nothing was persisted that names WHO liked or saved, and the same
--- caller could raise the number without limit. There is no user data here to preserve, only an
--- unattributable, forgeable request tally, and leaving it in place would mean the counter this
--- repair makes exact starts from an inexact number and stays permanently overstated. Zero is the
--- value consistent with the relationship rows that now define these counts.
-UPDATE recipe_remixes SET likes_count = 0, saves_count = 0;
+-- likes_count and saves_count are RECONSTRUCTED from the relationship tables, which are now their
+-- only source of truth. They are not zeroed.
+--
+-- Zeroing was wrong in a way that only a re-run exposes. On the first pass remix_likes and
+-- remix_saves are empty, so zero happens to be the right answer -- every increment those columns
+-- ever received came from POST /:id/like and /:id/save as they stood before this repair (no
+-- requireAuth, no per-user record, nothing naming WHO acted), so there was no relationship to count
+-- and nothing attributable to preserve. But this migration is meant to be safe to run again, and by
+-- the second run real likes and saves exist. Zeroing then discards live, correctly attributed
+-- counts while leaving the relationship rows in place -- and because the runtime like and save are
+-- idempotent (insert ... on conflict do nothing, counter moved only when a row is actually
+-- created), those users re-liking would change nothing and the counters could never catch up.
+--
+-- count(DISTINCT user_id) is the semantic identity of "one like per user per remix", which is what
+-- the product means and what remix_likes_user_remix_idx / remix_saves_user_remix_idx enforce a few
+-- statements above. With those unique indexes in place count(*) would give the same answer, so
+-- DISTINCT costs nothing and cannot inflate a counter from duplicate relationship rows even if an
+-- index were ever missing.
+--
+-- This runs after the forged-lineage removal and the de-duplication, so any engagement rows attached
+-- to a removed remix have already gone with it through ON DELETE CASCADE, and a remix with no
+-- relationships correctly lands on 0.
+UPDATE recipe_remixes target
+SET likes_count = (
+      SELECT count(DISTINCT l.user_id) FROM remix_likes l WHERE l.remix_id = target.id
+    ),
+    saves_count = (
+      SELECT count(DISTINCT sv.user_id) FROM remix_saves sv WHERE sv.remix_id = target.id
+    );
 
 -- The lineage index is created LAST, deliberately.
 --

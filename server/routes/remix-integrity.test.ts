@@ -1104,19 +1104,50 @@ test("the migration enforces uniqueness in the database", () => {
   );
 });
 
-test("the migration de-duplicates before building the lineage index", () => {
-  // A unique index cannot be built over existing duplicates, so the collapse has to come first.
+test("the migration's data steps run in the only order that is correct", () => {
+  // Each of these orderings is load-bearing, and getting any of them wrong is silent rather than
+  // loud, so the order is pinned rather than trusted.
+  const at = (needle: string) => {
+    const index = migration.indexOf(needle);
+    assert.notEqual(index, -1, `missing from the migration: ${needle}`);
+    return index;
+  };
+
+  // Forged lineage is archived before it is deleted, or the evidence goes with the row.
+  assert.ok(at("INSERT INTO recipe_remixes_invalid_lineage") < at("DELETE FROM recipe_remixes rr"));
+  // Ownership remediation precedes canonicalisation: removing invalid rows first is what makes the
+  // "re-attribution could collide with a real row" problem not exist.
+  assert.ok(at("DELETE FROM recipe_remixes rr") < at("SET is_public = false"));
+  // The visibility fold precedes the collapse, or a hidden duplicate's choice is gone before it can
+  // be carried onto the survivor.
+  assert.ok(at("SET is_public = false") < at("DELETE FROM recipe_remixes\nWHERE id NOT IN"));
+  // Counters are rebuilt only after both removals, so nothing invalid can be counted.
+  assert.ok(at("DELETE FROM recipe_remixes\nWHERE id NOT IN") < at("SET remix_count = ("));
+  assert.ok(at("SET remix_count = (") < at("SET likes_count = ("));
+  // And a unique index cannot be built over duplicates, so it comes last of all.
   assert.ok(
-    migration.indexOf("DELETE FROM recipe_remixes") <
-      migration.indexOf("CREATE UNIQUE INDEX IF NOT EXISTS recipe_remix_lineage_idx"),
-    "de-duplication must precede the index"
+    at("SET likes_count = (") < at("CREATE UNIQUE INDEX IF NOT EXISTS recipe_remix_lineage_idx")
   );
-  // And the visibility fold has to precede the delete, or a hidden duplicate's choice is gone
-  // before it can be carried onto the survivor.
-  assert.ok(
-    migration.indexOf("SET is_public = false") < migration.indexOf("DELETE FROM recipe_remixes"),
-    "the is_public fold must precede the delete"
+});
+
+test("the ownership predicate is derived from posts, the only authorship the schema has", () => {
+  // `recipes` has no author column, so any remediation that did not join through posts would be
+  // inventing an ownership model.
+  const code = migration.replace(/^\s*--.*$/gm, "");
+  assert.match(code, /JOIN posts p ON p\.id = r\.post_id/);
+  assert.match(code, /AND p\.user_id = rr\.user_id/);
+  assert.match(code, /rr\.original_recipe_id = rr\.remixed_recipe_id/);
+});
+
+test("engagement counters are reconstructed from relationships, never zeroed outright", () => {
+  const code = migration.replace(/^\s*--.*$/gm, "");
+  assert.doesNotMatch(
+    code,
+    /SET likes_count = 0, saves_count = 0/,
+    "an unconditional reset destroys real counts on any re-run"
   );
+  assert.match(code, /SELECT count\(DISTINCT l\.user_id\) FROM remix_likes l WHERE l\.remix_id = target\.id/);
+  assert.match(code, /SELECT count\(DISTINCT sv\.user_id\) FROM remix_saves sv WHERE sv\.remix_id = target\.id/);
 });
 
 test("the survivor is chosen by a TOTAL order, with NULL created_at ordered explicitly", () => {
@@ -1172,9 +1203,9 @@ test("every statement in the migration is separately executable", () => {
     .split(/;/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  assert.equal(statements.length, 11);
+  assert.equal(statements.length, 14);
   for (const statement of statements) {
-    assert.match(statement, /^(CREATE|DELETE|UPDATE)\b/, `not a standalone statement: ${statement}`);
+    assert.match(statement, /^(CREATE|DELETE|UPDATE|INSERT)\b/, `not a standalone statement: ${statement}`);
   }
 });
 
