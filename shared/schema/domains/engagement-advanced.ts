@@ -145,7 +145,11 @@ export const recipeRemixes = pgTable(
     }>().default(sql`'{}'::jsonb`),
     likesCount: integer("likes_count").default(0),
     savesCount: integer("saves_count").default(0),
-    remixCount: integer("remix_count").default(0), // how many times this remix was remixed
+    // How many times this remix was itself remixed -- i.e. the number of remix relationships whose
+    // original_recipe_id is THIS row's remixed_recipe_id. It is a property of the recipe this row
+    // produced, not of the recipe it came from, so the only rows a new remix of recipe X may touch
+    // are those with remixed_recipe_id = X. Siblings sharing original_recipe_id = X are unrelated.
+    remixCount: integer("remix_count").default(0),
     isPublic: boolean("is_public").default(true),
     createdAt: timestamp("created_at").defaultNow(),
   },
@@ -154,6 +158,62 @@ export const recipeRemixes = pgTable(
     remixedIdx: index("recipe_remix_remixed_idx").on(table.remixedRecipeId),
     userIdx: index("recipe_remix_user_idx").on(table.userId),
     publicIdx: index("recipe_remix_public_idx").on(table.isPublic),
+    // One row per logical lineage claim. A retried or replayed POST /api/remixes carrying the same
+    // (original, output, author) resolves to this index rather than to a second row, which is what
+    // keeps remix_count and the "your recipe was remixed" notification tied to a relationship that
+    // was actually created. The author is part of the identity because the row records WHO claims
+    // the lineage; the route additionally requires that author to own remixed_recipe_id, so two
+    // accounts cannot hold competing claims on one output recipe.
+    lineageIdx: uniqueIndex("recipe_remix_lineage_idx").on(
+      table.originalRecipeId,
+      table.remixedRecipeId,
+      table.userId
+    ),
+  })
+);
+
+/**
+ * Per-user like state for a remix.
+ *
+ * `recipe_remixes.likes_count` used to be the only record of a like, incremented by an endpoint that
+ * required no authentication -- so the column counted REQUESTS, not likers, and anyone could raise it
+ * without limit. A like is a relationship between an account and a remix, so it is stored as one. The
+ * unique index is the thing that makes a like idempotent: two concurrent requests from the same
+ * account both attempt the insert and exactly one of them creates a row, so the counter moves once.
+ *
+ * Shape follows the repository's existing engagement-relationship tables (`drink_likes`,
+ * `drink_saves`, `recipe_saves`).
+ */
+export const remixLikes = pgTable(
+  "remix_likes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    // Plain reference, as every other engagement table here does: an account deletion must not be
+    // able to remove a like row without the counter it backs moving with it.
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    remixId: varchar("remix_id").references(() => recipeRemixes.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userRemixIdx: uniqueIndex("remix_likes_user_remix_idx").on(table.userId, table.remixId),
+    remixIdx: index("remix_likes_remix_idx").on(table.remixId),
+  })
+);
+
+/** Per-user save state for a remix. Same reasoning as `remixLikes`, for `saves_count`. */
+export const remixSaves = pgTable(
+  "remix_saves",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    // Plain reference, as every other engagement table here does: an account deletion must not be
+    // able to remove a like row without the counter it backs moving with it.
+    userId: varchar("user_id").references(() => users.id).notNull(),
+    remixId: varchar("remix_id").references(() => recipeRemixes.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userRemixIdx: uniqueIndex("remix_saves_user_remix_idx").on(table.userId, table.remixId),
+    remixIdx: index("remix_saves_remix_idx").on(table.remixId),
   })
 );
 

@@ -1,13 +1,16 @@
 // server/storage.ts — COMPLETE FILE WITH DRINKS
 import "./lib/load-env";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { eq, desc, and, or, sql, asc, ilike } from "drizzle-orm";
+import { eq, desc, and, or, sql, asc, ilike, inArray } from "drizzle-orm";
 import { pool as sharedPool } from "./db/index";
 
 import {
   users,
   posts,
   recipes,
+  recipeRemixes,
+  remixLikes,
+  remixSaves,
   stories,
   likes,
   comments,
@@ -71,6 +74,7 @@ import {
 } from "@shared/schema";
 import { isProviderInRange, milesBetween, type Coordinates } from "./services/catering-geo";
 import { visiblePostsCondition } from "./lib/post-visibility";
+import { purgeRemixEngagementForUser } from "./lib/remix-engagement-cleanup";
 
 // Reuse the shared pool so there's only one connection pool in the process
 const _db = sharedPool ? drizzle(sharedPool) : null;
@@ -398,10 +402,42 @@ export class DrizzleStorage implements IStorage {
       .limit(limit);
   }
 
+  /**
+   * Delete an account, taking its remix engagement with it.
+   *
+   * The cleanup itself lives in `purgeRemixEngagementForUser`, which documents why the foreign keys
+   * are NO ACTION and why counters are recomputed rather than decremented. This method's job is the
+   * transaction boundary and the ordering: engagement rows and their counters are repaired, and only
+   * then is the account removed, all or nothing. There is no state in which the rows are gone but the
+   * account survives, or the counters moved but the rows remain.
+   *
+   * CONCURRENCY. No application lock is used, because PostgreSQL's foreign-key locking already gives
+   * the guarantee. Inserting a like takes FOR KEY SHARE on the liker's `users` row while the DELETE
+   * below needs FOR UPDATE on it, so the two serialise:
+   *
+   *   - if a concurrent like commits first, this DELETE then finds a referencing row and raises
+   *     23503, so the whole transaction rolls back. The deletion fails cleanly and is retryable, and
+   *     no counter is ever left disagreeing with its rows.
+   *   - if this transaction commits first, that like's INSERT fails with 23503 because the account no
+   *     longer exists, so new engagement can never be committed for a deleted user.
+   *
+   * A concurrent unlike or unsave only deletes rows this transaction would have deleted; row locks
+   * serialise them and the recomputation runs afterwards inside this transaction, so the committed
+   * counter matches the committed rows either way.
+   */
   async deleteUser(userId: string): Promise<boolean> {
     const db = getDb();
-    const result = await db.delete(users).where(eq(users.id, userId)).returning();
-    return result.length > 0;
+
+    return await db.transaction(async (tx) => {
+      await purgeRemixEngagementForUser(tx as any, userId);
+
+      // Remixes this account authored cascade from here, and their own engagement rows cascade with
+      // them, so nothing is orphaned and no counter outlives the row it described.
+      // Only the id is needed to report success, and asking for it alone avoids hauling every
+      // column of a wide table back for a row that is being destroyed.
+      const result = await tx.delete(users).where(eq(users.id, userId)).returning({ id: users.id });
+      return result.length > 0;
+    });
   }
 
   // ---------- Email Verification ----------

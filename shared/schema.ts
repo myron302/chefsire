@@ -1116,6 +1116,8 @@ import {
   dailyQuests,
   questProgress,
   recipeRemixes,
+  remixLikes,
+  remixSaves,
   aiSuggestions,
   mealRecommendations,
   mealPrepSchedules,
@@ -1132,6 +1134,8 @@ export {
   dailyQuests,
   questProgress,
   recipeRemixes,
+  remixLikes,
+  remixSaves,
   aiSuggestions,
   mealRecommendations,
   mealPrepSchedules,
@@ -1178,6 +1182,8 @@ export type Notification = typeof notifications.$inferSelect;
 export type DailyQuest = typeof dailyQuests.$inferSelect;
 export type QuestProgress = typeof questProgress.$inferSelect;
 export type RecipeRemix = typeof recipeRemixes.$inferSelect;
+export type RemixLike = typeof remixLikes.$inferSelect;
+export type RemixSave = typeof remixSaves.$inferSelect;
 export type AiSuggestion = typeof aiSuggestions.$inferSelect;
 
 export type NotificationWithDetails = Notification & {
