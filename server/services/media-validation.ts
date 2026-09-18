@@ -275,6 +275,57 @@ export async function readZipCentralDirectoryNames(source: MediaSource, byteSize
   return names;
 }
 
+/** The exact payload OCF requires, and the only thing an EPUB's first member may contain. */
+const EPUB_MEDIA_TYPE = "application/epub+zip";
+/** A tolerated bound on the first header's extra field. OCF says there should be none; this refuses a silly one. */
+const ZIP_MAX_LOCAL_EXTRA_BYTES = 1024;
+
+/**
+ * Whether these bytes open an EPUB container, judged by the OCF rules rather than by finding a string.
+ *
+ * EPUB's Open Container Format requires the `mimetype` entry to be the FIRST entry in the archive, stored
+ * uncompressed, containing exactly `application/epub+zip` and nothing else. All four of those are structural
+ * facts about the first local file header, which sits at offset 0, so this reads them there:
+ *
+ *   - the local file header signature;
+ *   - the general purpose bit flag, with bit 3 (sizes deferred to a data descriptor) refused, because a stored
+ *     entry declaring its size elsewhere is not something to reason about;
+ *   - the compression method, which must be 0 (stored) -- a deflated `mimetype` is not conforming;
+ *   - the file name, which must be exactly `mimetype` and nothing longer;
+ *   - both declared sizes, which must equal the media type's length exactly, so a payload with extra bytes
+ *     appended is refused rather than prefix-matched;
+ *   - the payload itself, compared exactly.
+ *
+ * Every offset is derived from bounded, already-validated lengths and checked against the buffer before use.
+ * Nothing is decompressed: a conforming `mimetype` is stored, so there is nothing to decompress.
+ */
+export function looksLikeEpubContainer(head: Buffer): boolean {
+  // 30-byte local file header + "mimetype" + the media type.
+  if (head.length < 30 + 8 + EPUB_MEDIA_TYPE.length) return false;
+  if (head.readUInt32LE(0) !== 0x04034b50) return false;
+
+  const flags = head.readUInt16LE(6);
+  if ((flags & 0x0008) !== 0) return false; // sizes deferred to a data descriptor
+  if (head.readUInt16LE(8) !== 0) return false; // compression method must be 0 (stored)
+
+  const nameLength = head.readUInt16LE(26);
+  const extraLength = head.readUInt16LE(28);
+  if (nameLength !== "mimetype".length) return false;
+  if (extraLength > ZIP_MAX_LOCAL_EXTRA_BYTES) return false;
+
+  const compressedSize = head.readUInt32LE(18);
+  const uncompressedSize = head.readUInt32LE(22);
+  // Stored, so both sizes are the payload length, and it must be the media type exactly -- no trailing bytes.
+  if (compressedSize !== EPUB_MEDIA_TYPE.length || uncompressedSize !== EPUB_MEDIA_TYPE.length) return false;
+
+  if (head.subarray(30, 30 + nameLength).toString("latin1") !== "mimetype") return false;
+
+  const payloadStart = 30 + nameLength + extraLength;
+  const payloadEnd = payloadStart + EPUB_MEDIA_TYPE.length;
+  if (payloadEnd > head.length) return false;
+  return head.subarray(payloadStart, payloadEnd).toString("latin1") === EPUB_MEDIA_TYPE;
+}
+
 /**
  * Which member of the ZIP family an archive is, decided from its own index.
  *
@@ -282,13 +333,15 @@ export async function readZipCentralDirectoryNames(source: MediaSource, byteSize
  * if it contains the parts a DOCX is made of. OOXML requires `[Content_Types].xml` at the package root, and the
  * primary part is what distinguishes Word from Excel, so both are required rather than either.
  *
- * EPUB is decided by the OCF rule instead, which is a genuine structural guarantee: the specification requires
- * `mimetype` to be the FIRST member, stored uncompressed, holding exactly `application/epub+zip`. That is a
- * fixed position near the head, so it is checked there and does not depend on the central directory being
- * readable at all.
+ * EPUB is decided by the OCF rule instead, which is a genuine structural guarantee -- and one that has to be
+ * checked structurally. Searching the head for the literal `application/epub+zip`, as an earlier version did, is
+ * not a check at all: reproduced, a generic archive whose first ENTRY IS NAMED `application/epub+zip`, one whose
+ * first member merely CONTAINS that text, one where `mimetype` is present but not first, and one where it is
+ * first but DEFLATED were all classified `epub` and would have been stored as `.epub`. `looksLikeEpubContainer`
+ * reads the first local file header instead.
  */
 export function classifyZipPackage(head: Buffer, names: readonly string[] | null): MediaFormat {
-  if (head.subarray(0, 128).includes("application/epub+zip")) return "epub";
+  if (looksLikeEpubContainer(head)) return "epub";
   if (!names) return "zip";
   const has = (name: string) => names.some((entry) => entry.toLowerCase() === name);
   const hasPrefix = (prefix: string) => names.some((entry) => entry.toLowerCase().startsWith(prefix));
@@ -405,12 +458,14 @@ async function readEnds(source: MediaSource): Promise<{ head: Buffer; tail: Buff
  */
 async function verifyImage(source: MediaSource, format: MediaFormat): Promise<MediaRejectionReason | null> {
   const input = "buffer" in source ? source.buffer : source.path;
-  // A GIF is read with every frame present, so a later frame cannot be the corrupt one that nothing looked at.
-  const options: sharp.SharpOptions = { limitInputPixels: MEDIA_IMAGE_MAX_PIXELS, failOn: "error", animated: format === "gif" };
+
+  // The probe is read with `animated: true` for EVERY format, not just GIF. That is what makes `pages` the true
+  // frame count rather than 1, and it is safe: a static JPEG, PNG, WebP or GIF read this way reports `pages: 1`.
+  const probeOptions: sharp.SharpOptions = { limitInputPixels: MEDIA_IMAGE_MAX_PIXELS, failOn: "error", animated: true };
 
   let metadata: sharp.Metadata;
   try {
-    metadata = await sharp(input as never, options).metadata();
+    metadata = await sharp(input as never, probeOptions).metadata();
   } catch {
     return "unreadable_image";
   }
@@ -422,11 +477,23 @@ async function verifyImage(source: MediaSource, format: MediaFormat): Promise<Me
   const frameHeight = metadata.pageHeight ?? metadata.height ?? 0;
   if (width <= 0 || frameHeight <= 0) return "unreadable_image";
   if (width > MEDIA_IMAGE_MAX_DIMENSION || frameHeight > MEDIA_IMAGE_MAX_DIMENSION) return "too_large";
+  // `width * frameHeight * pages` is the whole decode, so the pixel bound covers every frame rather than the
+  // first one. A many-framed image is refused on its total cost, not waved through on its frame dimensions.
   if (width * frameHeight * pages > MEDIA_IMAGE_MAX_PIXELS) return "too_large";
 
-  // The decode itself. Everything above was only enough to know this is safe to attempt.
+  // THE DECODE, AND WHY IT FOLLOWS THE PAGE COUNT RATHER THAN THE FORMAT.
+  //
+  // This used to pass `animated: format === "gif"`, which decoded only the FIRST page of every other format --
+  // an animated WebP's later frames were never looked at, so whatever was in them was stored unexamined.
+  // Measured directly: on a two-page image whose first frame is black and second is bright, `stats()` reports a
+  // mean of 0.0 while `stats({animated: true})` reports 100.0. The default read covers page 0 and nothing else,
+  // for WebP and GIF alike.
+  //
+  // So the decision is the page count, not the format, and it holds for any multi-page raster this stack can
+  // read -- including an APNG, if libvips reports one as multi-page. Every frame that survives into the stored
+  // original is a frame validation has decoded.
   try {
-    await sharp(input as never, options).stats();
+    await sharp(input as never, { limitInputPixels: MEDIA_IMAGE_MAX_PIXELS, failOn: "error", animated: pages > 1 }).stats();
   } catch {
     return "unreadable_image";
   }

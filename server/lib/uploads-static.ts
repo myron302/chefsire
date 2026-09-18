@@ -23,53 +23,58 @@ const uploadContentTypes: Record<string, string> = Object.fromEntries(
 );
 const inlineUploadExtensions = new Set(INLINE_EXTENSIONS.map((extension) => `.${extension}`));
 
-/** A year, which is what a genuinely immutable object deserves and what this mount has always sent. */
-export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
-/** What a legacy object gets instead: no stored copy, and revalidate every time. */
-export const LEGACY_CACHE_CONTROL = "no-store, must-revalidate";
-
 /**
- * Whether a filename is one THIS repair's generators produced.
+ * Caching for local `/uploads`, and why none of it is immutable.
  *
- * `generatedMediaName` builds `<prefix><uuid>.<canonical extension>` with a prefix that is either empty,
- * `avatar-` or `review-`, and `storeUploadedImage` writes a `<uuid>_thumb.webp` beside each processed image.
- * Nothing else matches, which is exactly the point: the historical names the vulnerable paths wrote --
- * `<uuid>.html`, `avatar-<uuid>.html`, `review-<timestamp>-<random>.<anything>` -- do not.
+ * An earlier version of this file gated a one-year immutable lease on a filename shape, on the theory that only
+ * this repair's generators produce `<prefix><uuid>.<canonical extension>`. That theory is false, and the
+ * inventory of every pre-repair writer says so plainly -- these are the names they wrote, from caafde3:
+ *
+ *   routes/upload.ts             `${randomUUID()}${path.extname(file.originalname)}`   e.g. <uuid>.jpg
+ *   services/image-upload.ts     `${randomUUID()}.gif`, `${id}.webp`, `${id}_thumb.webp`
+ *   routes/auth.ts               `avatar-${randomUUID()}${path.extname(file.originalname)}`
+ *   lib/data-uri.ts              `${randomUUID()}.${ext}`
+ *   scripts/migrate-base64-images.ts  `${randomUUID()}.${ext}`
+ *   routes/reviews.ts            `review-${Date.now()}-${random}${ext}`   (the only one that differs)
+ *
+ * The new generators produce THE SAME SHAPES. Reproduced: seven of the eight historical name forms satisfied the
+ * rule and were handed `public, max-age=31536000, immutable`, despite never having been byte-verified. No
+ * filename-only discriminator can separate them, because there is nothing to separate -- the strings are drawn
+ * from the same grammar.
+ *
+ * So the filename is out of the cache decision entirely. Until verified uploads live in a namespace historical
+ * writers never used -- a storage-layout migration this repair is not the place for -- nothing served from local
+ * `/uploads` gets an immutable lease. Canonical media keeps a short revalidated window, which a conditional
+ * request satisfies with a 304, and anything whose extension is not a format this pipeline produces is not stored
+ * by a cache at all. R2 has its own policy and is unaffected.
+ *
+ * WHAT NONE OF THIS DOES is revoke a lease already issued. `maxAge: "365d", immutable: true` is on main at
+ * caafde3, so clients that fetched a legacy URL before this deploys hold a cached response -- for a legacy
+ * `.html`, a `text/html` one -- and will not revalidate until it expires. No header can cancel that, because the
+ * client never asks again. The pull request states that residual exposure and its remedy.
  */
-export function isCanonicalUploadName(filename: string): boolean {
-  return /^(avatar-|review-)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(_thumb)?\.[a-z0-9]{1,5}$/.test(filename);
-}
+
+/** Canonical media: cacheable, but only for a window short enough that a policy change takes effect quickly. */
+export const LOCAL_MEDIA_CACHE_CONTROL = "public, max-age=300, must-revalidate";
+/** Anything whose extension this pipeline never produces: inert, and never stored by a cache. */
+export const LEGACY_CACHE_CONTROL = "no-store, must-revalidate";
 
 /**
  * What `/uploads` answers with for one stored object. Exported so the rule can be asserted without a socket.
  *
- * CACHING IS SPLIT, AND THE REASON IS HISTORICAL. This mount has sent `public, max-age=31536000, immutable`
- * since before this PR -- it is on `main` at caafde3, not something introduced here. So every legacy object was
- * served under a stable URL with a one-year immutable lease, and a `.html` or `.svg` written by the vulnerable
- * upload paths went out as `text/html` or `image/svg+xml` with that lease attached. Reproduced against main's
- * handler verbatim.
- *
- * An immutable lease is a promise that the content at a URL will never change, and for a canonical object --
- * a generated UUID name that is written once and never rewritten -- that promise is true and worth keeping. For
- * a legacy object it is false twice over: this repair changes how it is served, and the R2 remediation changes
- * its stored metadata. So legacy names no longer receive that promise; they are `no-store, must-revalidate`, and
- * every request reaches the repaired server.
- *
- * WHAT THIS DOES NOT DO. It cannot revoke a lease already issued. A client that fetched `/uploads/<uuid>.html`
- * before this deploys holds a cached `text/html` response and will not revalidate until it expires -- up to a
- * year. No response header can reach back and cancel that, because the client never asks again. Changing the URL
- * would, but the reference audit in `services/legacy-media-remediation.ts` explains why keys cannot be rewritten.
- * The residual exposure and the operational remedy are stated in the pull request rather than papered over here.
+ * The content type is not derived from the extension by `send`'s MIME table. It is looked up in the canonical
+ * table, which contains only the formats validation can produce. An extension that is not in it -- every legacy
+ * active-content object included -- is served as an inert `application/octet-stream` attachment.
  */
 export function uploadResponseHeaders(filePath: string): Record<string, string> {
   const extension = path.extname(filePath).toLowerCase();
   const contentType = uploadContentTypes[extension];
-  const canonical = isCanonicalUploadName(path.basename(filePath)) && Boolean(contentType);
   const headers: Record<string, string> = {
     "Content-Type": contentType ?? "application/octet-stream",
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'none'; sandbox",
-    "Cache-Control": canonical ? IMMUTABLE_CACHE_CONTROL : LEGACY_CACHE_CONTROL,
+    // Never `immutable`: see above. The filename plays no part in this decision.
+    "Cache-Control": contentType ? LOCAL_MEDIA_CACHE_CONTROL : LEGACY_CACHE_CONTROL,
   };
   if (!contentType || !inlineUploadExtensions.has(extension)) headers["Content-Disposition"] = "attachment";
   return headers;
@@ -78,8 +83,7 @@ export function uploadResponseHeaders(filePath: string): Record<string, string> 
 export function uploadsStaticHandler(uploadsDir: string): RequestHandler {
   return express.static(uploadsDir, {
     // `maxAge`/`immutable` are deliberately NOT set here. `send` only applies them when nothing has already set
-    // Cache-Control, and `uploadResponseHeaders` always does -- so leaving them out keeps one source of truth
-    // for a policy that now differs between canonical and legacy objects.
+    // Cache-Control, and `uploadResponseHeaders` always does -- so leaving them out keeps one source of truth.
     // `<UPLOADS_DIR>/.promote` holds validated files for the instant between "copied" and "published" when the
     // staging and uploads directories are on different filesystems. Denying dotfiles means nothing under it is
     // reachable even by exact URL, so a half-copied file is never addressable while it exists.

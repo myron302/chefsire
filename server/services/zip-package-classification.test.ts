@@ -19,6 +19,7 @@ import {
   ZIP_MAX_ENTRY_NAME_BYTES,
   classifyZipPackage,
   detectMediaContainer,
+  looksLikeEpubContainer,
   readZipCentralDirectoryNames,
   validateUploadedMedia,
 } from "./media-validation";
@@ -35,7 +36,7 @@ function crc32(buffer: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-type Entry = { name: string; data: Buffer };
+type Entry = { name: string; data: Buffer; method?: number; flags?: number };
 
 function buildZip(entries: Entry[], options: { entryCountOverride?: number; directorySizeOverride?: number; directoryOffsetOverride?: number } = {}): Buffer {
   const locals: Buffer[] = [];
@@ -46,6 +47,8 @@ function buildZip(entries: Entry[], options: { entryCountOverride?: number; dire
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(entry.flags ?? 0, 6);
+    local.writeUInt16LE(entry.method ?? 0, 8);
     local.writeUInt32LE(crc32(entry.data), 14);
     local.writeUInt32LE(entry.data.length, 18);
     local.writeUInt32LE(entry.data.length, 22);
@@ -57,6 +60,8 @@ function buildZip(entries: Entry[], options: { entryCountOverride?: number; dire
     header.writeUInt32LE(0x02014b50, 0);
     header.writeUInt16LE(20, 4);
     header.writeUInt16LE(20, 6);
+    header.writeUInt16LE(entry.flags ?? 0, 8);
+    header.writeUInt16LE(entry.method ?? 0, 10);
     header.writeUInt32LE(crc32(entry.data), 16);
     header.writeUInt32LE(entry.data.length, 20);
     header.writeUInt32LE(entry.data.length, 24);
@@ -224,4 +229,60 @@ test("the original Office bytes are preserved exactly", async () => {
   const result = await asDocument(original);
   assert.equal(result.kind === "accepted" && result.format, "docx");
   assert.equal(original.equals(copy), true, "the buffer handed in is untouched");
+});
+
+/* ------------------------------------------------------------------ EPUB, structurally */
+
+const EPUB_MEDIA_TYPE = "application/epub+zip";
+
+test("EPUB is decided by the OCF rules, not by finding a string near the head", async () => {
+  // OBSERVED ON b558f5b: the rule was `head.subarray(0, 128).includes("application/epub+zip")`, and every one of
+  // these generic archives was classified `epub` and would have been stored as `.epub`.
+  const fakes: [string, Buffer][] = [
+    ["first ENTRY IS NAMED the media type", buildZip([{ name: EPUB_MEDIA_TYPE, data: Buffer.from("just a file") }, { name: "readme.txt", data: Buffer.from("x") }])],
+    ["the media type sits in the first member's PAYLOAD", buildZip([{ name: "a.txt", data: Buffer.from(EPUB_MEDIA_TYPE) }])],
+    ["mimetype present but NOT first", buildZip([{ name: "readme.txt", data: Buffer.from("x") }, { name: "mimetype", data: Buffer.from(EPUB_MEDIA_TYPE) }])],
+    ["mimetype first but DEFLATED", buildZip([{ name: "mimetype", data: Buffer.from(EPUB_MEDIA_TYPE), method: 8 }])],
+    ["mimetype with trailing bytes", buildZip([{ name: "mimetype", data: Buffer.from(`${EPUB_MEDIA_TYPE} and more`) }])],
+    ["mimetype with a leading space", buildZip([{ name: "mimetype", data: Buffer.from(` ${EPUB_MEDIA_TYPE}`) }])],
+    ["entry named mimetypes, not mimetype", buildZip([{ name: "mimetypes", data: Buffer.from(EPUB_MEDIA_TYPE) }])],
+    ["sizes deferred to a data descriptor", buildZip([{ name: "mimetype", data: Buffer.from(EPUB_MEDIA_TYPE), flags: 0x0008 }])],
+  ];
+  for (const [label, buffer] of fakes) {
+    assert.equal(looksLikeEpubContainer(buffer), false, label);
+    const result = await asDocument(buffer, "application/epub+zip", "novel.epub");
+    assert.equal(result.kind === "accepted" && result.format, "zip", label);
+    assert.equal(result.kind === "accepted" && result.extension, "zip", label);
+  }
+  // The genuine article still passes, by the same rules.
+  assert.equal(looksLikeEpubContainer(epub()), true);
+  assert.equal((await asDocument(epub())).kind === "accepted" && ((await asDocument(epub())) as { format: string }).format, "epub");
+});
+
+test("a malformed or truncated first local header is not an EPUB", () => {
+  const valid = epub();
+  for (const [label, buffer] of [
+    ["empty", Buffer.alloc(0)],
+    ["signature only", Buffer.from([0x50, 0x4b, 0x03, 0x04])],
+    ["header truncated mid-way", valid.subarray(0, 24)],
+    ["name present but payload cut", valid.subarray(0, 30 + 8 + 4)],
+    ["not a local file header at all", Buffer.concat([Buffer.from([0x50, 0x4b, 0x01, 0x02]), Buffer.alloc(120)])],
+  ] as const) {
+    assert.equal(looksLikeEpubContainer(buffer), false, label);
+  }
+  // An absurd extra-field length is refused rather than used as an offset.
+  const absurdExtra = Buffer.from(valid);
+  absurdExtra.writeUInt16LE(0xffff, 28);
+  assert.equal(looksLikeEpubContainer(absurdExtra), false, "absurd extra-field length");
+});
+
+test("neither the declared type nor the filename can force EPUB", async () => {
+  for (const [declared, name] of [
+    ["application/epub+zip", "novel.epub"],
+    ["application/epub+zip", "novel.zip"],
+    ["application/zip", "novel.epub"],
+  ] as const) {
+    const result = await asDocument(plainZip(), declared, name);
+    assert.equal(result.kind === "accepted" && result.format, "zip", `${declared} / ${name}`);
+  }
 });

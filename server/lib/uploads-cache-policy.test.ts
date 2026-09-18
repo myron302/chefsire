@@ -1,21 +1,29 @@
 /**
- * The `/uploads` cache policy, split between canonical and legacy objects.
+ * The `/uploads` cache policy.
  *
- * THE FINDING, AND THE HISTORY THAT MAKES IT REAL. `maxAge: "365d", immutable: true` is on `main` at caafde3 --
- * this PR did not introduce it. Reproduced against main's handler verbatim, a legacy object was served as:
+ * TWO FINDINGS, ONE FILE. The first was that `maxAge: "365d", immutable: true` -- which is on main at caafde3,
+ * not introduced by this PR -- handed legacy `.html` and `.svg` objects a one-year lease under a stable URL. The
+ * fix for that gated the lease on a filename shape.
  *
- *   GET /uploads/legacy-attack.html
- *     Content-Type : text/html; charset=UTF-8
- *     Cache-Control: public, max-age=31536000, immutable
+ * THAT FIX DID NOT WORK, and this file now tests why. The pre-repair writers produced the SAME name shapes the
+ * new generators produce, so the shape proves nothing about provenance. Reproduced on head b558f5b: seven of the
+ * eight historical name forms satisfied `isCanonicalUploadName` and were handed
+ * `public, max-age=31536000, immutable` despite never having been byte-verified:
  *
- * So every legacy `.html` and `.svg` went out under a stable URL with a one-year immutable lease. A client
- * holding one will not revalidate, and no header this server sends later can reach back and cancel it. What the
- * split below fixes is the forward half: legacy objects stop being handed new leases, so every request reaches
- * the repaired handler. The residual exposure is stated in the pull request, not assumed away.
+ *   routes/upload.ts             `${randomUUID()}${path.extname(originalname)}`      MATCHED
+ *   services/image-upload.ts     `${randomUUID()}.gif` / `${id}.webp` / `_thumb`     MATCHED
+ *   routes/auth.ts               `avatar-${randomUUID()}${path.extname(...)}`        MATCHED
+ *   lib/data-uri.ts              `${randomUUID()}.${ext}`                            MATCHED
+ *   scripts/migrate-base64-images.ts  `${randomUUID()}.${ext}`                       MATCHED
+ *   routes/reviews.ts            `review-${Date.now()}-${random}${ext}`              did not match
+ *
+ * So the filename is out of the decision entirely and nothing local is immutable any more. These tests exist to
+ * keep it that way.
  */
 process.env.NODE_ENV = "test";
 
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import express from "express";
 import fs from "node:fs";
 import http from "node:http";
@@ -27,27 +35,35 @@ const uploadsDir = fs.mkdtempSync(path.join(os.tmpdir(), "chefsire-cache-policy-
 process.env.UPLOADS_DIR = uploadsDir;
 
 const {
-  IMMUTABLE_CACHE_CONTROL,
   LEGACY_CACHE_CONTROL,
-  isCanonicalUploadName,
+  LOCAL_MEDIA_CACHE_CONTROL,
   uploadResponseHeaders,
   uploadsStaticHandler,
 } = await import("./uploads-static");
 
 const UUID = "11111111-1111-4111-8111-111111111111";
+
+/**
+ * Every historical local name form, generated exactly the way the pre-repair code at caafde3 generated it. The
+ * point of the list is that the NEW generators produce these same shapes -- there is nothing to tell apart.
+ */
+const historicalNames = {
+  "upload.ts general upload": `${randomUUID()}.jpg`,
+  "image-upload.ts gif branch": `${randomUUID()}.gif`,
+  "image-upload.ts webp main": `${randomUUID()}.webp`,
+  "image-upload.ts webp thumb": `${randomUUID()}_thumb.webp`,
+  "auth.ts avatar": `avatar-${randomUUID()}.png`,
+  "data-uri.ts persistDataUri": `${randomUUID()}.jpg`,
+  "migrate-base64-images.ts": `${randomUUID()}.png`,
+  "reviews.ts old naming": `review-${Date.now()}-123456789.jpg`,
+};
+
 const files: Record<string, string> = {
-  // Names this repair's generators produce.
-  [`${UUID}.jpg`]: "jpeg-bytes",
-  [`${UUID}.webp`]: "webp-bytes",
-  [`${UUID}_thumb.webp`]: "thumb-bytes",
+  ...Object.fromEntries(Object.values(historicalNames).map((name) => [name, "legacy-bytes"])),
   [`${UUID}.mp4`]: "video-bytes",
-  [`avatar-${UUID}.png`]: "avatar-bytes",
-  [`review-${UUID}.jpg`]: "review-bytes",
-  // Names only the vulnerable paths could have written.
   [`${UUID}.html`]: "<script>alert(1)</script>",
   [`${UUID}.svg`]: "<svg><script>alert(1)</script></svg>",
   "legacy-attack.html": "<script>alert(1)</script>",
-  "review-1699999999999-123456789.jpg": "old-review-bytes",
   [`${UUID}.jfif`]: "unusual-but-harmless",
 };
 
@@ -70,62 +86,64 @@ after(async () => {
 
 const fetchUpload = (name: string) => fetch(`${origin}/uploads/${name}`);
 
-/* ------------------------------------------------------------------ canonical objects keep long caching */
+/* ------------------------------------------------------------------ no filename earns an immutable lease */
 
-test("a canonical image keeps the immutable one-year policy", async () => {
-  for (const name of [`${UUID}.jpg`, `${UUID}.webp`, `${UUID}_thumb.webp`, `avatar-${UUID}.png`, `review-${UUID}.jpg`]) {
+test("no historical name form receives an immutable lease, whatever it looks like", async () => {
+  // OBSERVED ON b558f5b: all but the last of these were served `public, max-age=31536000, immutable`.
+  for (const [writer, name] of Object.entries(historicalNames)) {
     const response = await fetchUpload(name);
-    assert.equal(response.status, 200, name);
-    assert.equal(response.headers.get("cache-control"), IMMUTABLE_CACHE_CONTROL, name);
-    assert.equal(response.headers.get("content-disposition"), null, `${name} still renders inline`);
+    assert.equal(response.status, 200, writer);
+    assert.equal(response.headers.get("cache-control"), LOCAL_MEDIA_CACHE_CONTROL, writer);
+    assert.equal(response.headers.get("cache-control")!.includes("immutable"), false, writer);
   }
 });
 
-test("a canonical video keeps the immutable one-year policy", async () => {
-  const response = await fetchUpload(`${UUID}.mp4`);
-  assert.equal(response.headers.get("cache-control"), IMMUTABLE_CACHE_CONTROL);
-  assert.equal(response.headers.get("content-type"), "video/mp4");
-  assert.equal(response.headers.get("content-disposition"), null);
+test("nothing served from local /uploads is immutable, for any name or extension at all", async () => {
+  for (const name of Object.keys(files)) {
+    const response = await fetchUpload(name);
+    assert.equal(response.headers.get("cache-control")!.includes("immutable"), false, name);
+    assert.equal(response.headers.get("cache-control")!.includes("31536000"), false, name);
+  }
+  // And directly, across a spread of shapes a future refactor might be tempted to special-case.
+  for (const name of [
+    `${UUID}.jpg`, `${UUID}_thumb.webp`, `avatar-${UUID}.png`, `review-${UUID}.jpg`, `${UUID}.mp4`,
+    "anything.jpg", "deeply/nested/file.png", `${randomUUID()}.webp`,
+  ]) {
+    assert.equal(uploadResponseHeaders(`/u/${name}`)["Cache-Control"]!.includes("immutable"), false, name);
+  }
 });
 
-/* ------------------------------------------------------------------ legacy objects do not */
+test("the filename plays no part in the cache decision -- only the extension does", () => {
+  // Two names of completely different shape, same extension, same policy.
+  assert.equal(uploadResponseHeaders(`/u/${UUID}.jpg`)["Cache-Control"], uploadResponseHeaders("/u/utterly-arbitrary.jpg")["Cache-Control"]);
+  // Same name shape, different extension, different policy.
+  assert.equal(uploadResponseHeaders(`/u/${UUID}.jpg`)["Cache-Control"], LOCAL_MEDIA_CACHE_CONTROL);
+  assert.equal(uploadResponseHeaders(`/u/${UUID}.html`)["Cache-Control"], LEGACY_CACHE_CONTROL);
+});
 
-test("a legacy .html object is inert AND is never given a new immutable lease", async () => {
-  for (const name of [`${UUID}.html`, "legacy-attack.html"]) {
+/* ------------------------------------------------------------------ what each class does get */
+
+test("canonical media is cacheable, but only for a short revalidated window", async () => {
+  for (const name of [`${UUID}.mp4`, historicalNames["image-upload.ts webp main"], historicalNames["auth.ts avatar"]]) {
     const response = await fetchUpload(name);
-    assert.equal(response.status, 200, name);
+    assert.equal(response.headers.get("cache-control"), LOCAL_MEDIA_CACHE_CONTROL, name);
+    assert.equal(response.headers.get("content-disposition"), null, `${name} still renders inline`);
+    assert.equal(response.headers.get("etag") !== null || response.headers.get("last-modified") !== null, true, `${name} can be revalidated cheaply`);
+  }
+});
+
+test("an active or unknown extension is inert and is never stored by a cache", async () => {
+  for (const name of [`${UUID}.html`, `${UUID}.svg`, "legacy-attack.html", `${UUID}.jfif`]) {
+    const response = await fetchUpload(name);
     assert.equal(response.headers.get("content-type"), "application/octet-stream", name);
     assert.equal(response.headers.get("content-disposition"), "attachment", name);
     assert.equal(response.headers.get("cache-control"), LEGACY_CACHE_CONTROL, name);
-    assert.equal(response.headers.get("cache-control")!.includes("immutable"), false, name);
   }
-});
-
-test("a legacy .svg object is inert AND is never given a new immutable lease", async () => {
-  const response = await fetchUpload(`${UUID}.svg`);
-  assert.equal(response.headers.get("content-type"), "application/octet-stream");
-  assert.equal(response.headers.get("content-disposition"), "attachment");
-  assert.equal(response.headers.get("cache-control"), LEGACY_CACHE_CONTROL);
-});
-
-test("an unknown legacy extension is inert and short-lived, never executable", async () => {
-  const response = await fetchUpload(`${UUID}.jfif`);
-  assert.equal(response.headers.get("content-type"), "application/octet-stream", "not guessed at");
-  assert.equal(response.headers.get("content-disposition"), "attachment");
-  assert.equal(response.headers.get("cache-control"), LEGACY_CACHE_CONTROL);
-});
-
-test("a legacy name carrying a canonical extension still loses the immutable lease", async () => {
-  // Its bytes were never validated and the old review naming is not something this repair produces, so the
-  // promise "this will never change" is not one we can make about it.
-  const response = await fetchUpload("review-1699999999999-123456789.jpg");
-  assert.equal(response.headers.get("content-type"), "image/jpeg", "it still serves as the image it claims");
-  assert.equal(response.headers.get("cache-control"), LEGACY_CACHE_CONTROL);
 });
 
 /* ------------------------------------------------------------------ the other guarantees are untouched */
 
-test("nosniff, the sandbox CSP and canonical types survive the cache split", async () => {
+test("nosniff, the sandbox CSP and canonical types survive the policy change", async () => {
   for (const name of Object.keys(files)) {
     const response = await fetchUpload(name);
     assert.equal(response.headers.get("x-content-type-options"), "nosniff", name);
@@ -135,26 +153,18 @@ test("nosniff, the sandbox CSP and canonical types survive the cache split", asy
   }
 });
 
-/* ------------------------------------------------------------------ the name rule itself */
-
-test("only names this repair's generators produce are treated as canonical", () => {
-  for (const name of [`${UUID}.jpg`, `${UUID}_thumb.webp`, `avatar-${UUID}.png`, `review-${UUID}.webp`, `${UUID}.mp4`]) {
-    assert.equal(isCanonicalUploadName(name), true, name);
-  }
-  for (const name of [
-    "legacy-attack.html", "review-1699999999999-123456789.jpg", `${UUID}`, `${UUID}.`,
-    `photo-${UUID}.jpg`, `${UUID}.verylongext`, `${UUID}_thumbnail.webp`, `AVATAR-${UUID}.png`,
-    // A real UUID's hex letters must be lower case; this one upper-cases to something the rule rejects.
-    "ABCDEF01-1111-4111-8111-111111111111.jpg", `../${UUID}.jpg`,
-  ]) {
-    assert.equal(isCanonicalUploadName(name), false, name);
-  }
-  // An unusual extension on an otherwise canonical name is still not canonical, because nothing generates it.
-  assert.equal(uploadResponseHeaders(`/x/${UUID}.jfif`)["Cache-Control"], LEGACY_CACHE_CONTROL);
+test("the promotion directory is still unreachable", async () => {
+  fs.mkdirSync(path.join(uploadsDir, ".promote"), { recursive: true });
+  fs.writeFileSync(path.join(uploadsDir, ".promote", "in-flight.part"), "partial");
+  const response = await fetchUpload(".promote/in-flight.part");
+  assert.equal(response.status === 403 || response.status === 404, true, `answered ${response.status}`);
 });
 
-test("the negative control: main's handler really did hand legacy objects an immutable year", async () => {
-  // main at caafde3, verbatim. This is what a client may still be holding, and why the split above exists.
+/* ------------------------------------------------------------------ negative control */
+
+test("the negative control: main's handler handed every one of these an immutable year", async () => {
+  // main at caafde3, verbatim. This is what a client may still be holding -- and, because the historical names
+  // are the same shapes the new generators produce, it is also why a filename rule could never have fixed it.
   const legacyApp = express();
   const mainContentTypes: Record<string, string> = { ".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm" };
   legacyApp.use("/uploads", express.static(uploadsDir, {
@@ -169,13 +179,19 @@ test("the negative control: main's handler really did hand legacy objects an imm
   await new Promise<void>((resolve) => legacyServer.listen(0, "127.0.0.1", resolve));
   const legacyOrigin = `http://127.0.0.1:${(legacyServer.address() as { port: number }).port}`;
   try {
-    const before = await fetch(`${legacyOrigin}/uploads/legacy-attack.html`);
-    assert.equal(before.headers.get("content-type"), "text/html; charset=UTF-8", "served as a document");
-    assert.equal(before.headers.get("cache-control"), "public, max-age=31536000, immutable", "for a year, without revalidation");
+    const attack = await fetch(`${legacyOrigin}/uploads/legacy-attack.html`);
+    assert.equal(attack.headers.get("content-type"), "text/html; charset=UTF-8", "served as a document");
+    assert.equal(attack.headers.get("cache-control"), "public, max-age=31536000, immutable", "for a year, without revalidation");
 
-    const after = await fetchUpload("legacy-attack.html");
-    assert.equal(after.headers.get("content-type"), "application/octet-stream");
-    assert.equal(after.headers.get("cache-control"), LEGACY_CACHE_CONTROL);
+    for (const name of Object.values(historicalNames)) {
+      const response = await fetch(`${legacyOrigin}/uploads/${name}`);
+      assert.equal(response.headers.get("cache-control"), "public, max-age=31536000, immutable", name);
+    }
+
+    // And now, through the repaired handler, none of them is immutable and the attack is inert.
+    const repaired = await fetchUpload("legacy-attack.html");
+    assert.equal(repaired.headers.get("content-type"), "application/octet-stream");
+    assert.equal(repaired.headers.get("cache-control"), LEGACY_CACHE_CONTROL);
   } finally {
     await new Promise<void>((resolve) => legacyServer.close(() => resolve()));
   }
