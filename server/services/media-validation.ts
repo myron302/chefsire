@@ -29,6 +29,7 @@
 import { randomUUID } from "crypto";
 import fs from "fs";
 import sharp from "sharp";
+import zlib from "zlib";
 import {
   MEDIA_TYPES,
   REJECTED_ACTIVE_EXTENSIONS,
@@ -657,7 +658,9 @@ const ZIP_MAX_VERIFIED_LOCAL_HEADERS = 8;
  * directory reader applies, and the whole header-plus-name-plus-extra region must be present. Zip64 sentinels
  * and any entry claiming another disk are refused rather than guessed at.
  */
-async function readZipLocalHeaderName(source: MediaSource, byteSize: number, entry: ZipCentralEntry): Promise<string | null> {
+type ZipLocalHeaderInfo = { name: string; dataOffset: number };
+
+async function readZipLocalHeader(source: MediaSource, byteSize: number, entry: ZipCentralEntry): Promise<ZipLocalHeaderInfo | null> {
   if (entry.zip64 || entry.diskNumberStart !== 0) return null;
   const offset = entry.localHeaderOffset;
   if (!Number.isSafeInteger(offset) || offset < 0) return null;
@@ -676,7 +679,7 @@ async function readZipLocalHeaderName(source: MediaSource, byteSize: number, ent
 
   const name = await readRange(source, offset + ZIP_LOCAL_HEADER_FIXED_BYTES, nameLength);
   if (!name || name.length !== nameLength) return null;
-  return name.toString("latin1");
+  return { name: name.toString("latin1"), dataOffset: offset + ZIP_LOCAL_HEADER_FIXED_BYTES + nameLength + extraLength };
 }
 
 /**
@@ -715,10 +718,178 @@ async function ooxmlMarkersAgreeWithLocalHeaders(source: MediaSource, byteSize: 
   for (const entry of entries) {
     if (!OOXML_MARKER_PARTS.has(asciiLowerCase(entry.name))) continue;
     if (++verified > ZIP_MAX_VERIFIED_LOCAL_HEADERS) return false;
-    const localName = await readZipLocalHeaderName(source, byteSize, entry);
-    if (localName === null || localName !== entry.name) return false;
+    const local = await readZipLocalHeader(source, byteSize, entry);
+    if (local === null || local.name !== entry.name) return false;
   }
   return true;
+}
+
+/* ------------------------------------------------------------------ the EPUB container descriptor */
+
+/** The one path OCF fixes for the container descriptor. Not a guess: the specification names this exact file. */
+const EPUB_CONTAINER_PATH = "META-INF/container.xml";
+/** The media type a `rootfile` must declare for its target to be a Package Document. */
+const EPUB_PACKAGE_MEDIA_TYPE = "application/oebps-package+xml";
+/** A real container descriptor is a few hundred bytes. This bounds both the read and the inflate. */
+const EPUB_CONTAINER_MAX_BYTES = 64 * 1024;
+/** Flags a member this reads may set: the UTF-8 name bit, and bit 3, whose real sizes are in the directory. */
+const ZIP_MEMBER_TOLERATED_FLAGS = 0x0800 | 0x0008;
+
+/**
+ * One member's bytes, bounded at every step, or null when it is not a member this will read.
+ *
+ * This is the only place in this module that decompresses anything, and it is deliberately hemmed in: one
+ * member, chosen by exact name, at most `maxBytes` in and out, stored or deflate only, never encrypted, with
+ * the local header verified to name the same member first and the CRC-32 checked afterwards so what came out
+ * is provably what the directory described. `inflateRawSync` is given `maxOutputLength`, so a member that
+ * claims a small size and expands past the bound throws rather than allocating.
+ */
+async function readZipMemberBytes(source: MediaSource, byteSize: number, entry: ZipCentralEntry, maxBytes: number): Promise<Buffer | null> {
+  if (entry.zip64 || entry.diskNumberStart !== 0) return null;
+  if ((entry.flags & ~ZIP_MEMBER_TOLERATED_FLAGS) !== 0) return null;
+  if (entry.method !== 0 && entry.method !== 8) return null;
+  if (entry.uncompressedSize === 0 || entry.uncompressedSize > maxBytes) return null;
+  if (entry.compressedSize === 0 || entry.compressedSize > maxBytes) return null;
+
+  const local = await readZipLocalHeader(source, byteSize, entry);
+  if (!local || local.name !== entry.name) return null;
+  if (local.dataOffset + entry.compressedSize > byteSize) return null;
+
+  const compressed = await readRange(source, local.dataOffset, entry.compressedSize);
+  if (!compressed || compressed.length !== entry.compressedSize) return null;
+
+  let bytes: Buffer;
+  if (entry.method === 0) {
+    if (entry.compressedSize !== entry.uncompressedSize) return null;
+    bytes = compressed;
+  } else {
+    try {
+      bytes = zlib.inflateRawSync(compressed, { maxOutputLength: maxBytes });
+    } catch {
+      return null;
+    }
+  }
+  if (bytes.length !== entry.uncompressedSize) return null;
+  if (zipCrc32(bytes) !== entry.crc32) return null;
+  return bytes;
+}
+
+/**
+ * The `full-path` of the FIRST `rootfile` in the container descriptor, or null when there is not one to read.
+ *
+ * NOT A GENERAL XML PARSER, and not pretending to be. It reads one shape out of a document already bounded to
+ * `EPUB_CONTAINER_MAX_BYTES`, resolves nothing, and fails closed on anything it cannot read unambiguously. A
+ * document type declaration or an entity declaration is refused outright rather than reasoned about, so there
+ * is no entity to expand, no DTD to fetch and nothing to resolve over a network. An attribute value containing
+ * `&` is likewise refused instead of being decoded -- a package-document path containing an ampersand is
+ * vanishingly rare, and refusing it is the honest way to avoid guessing at a reference.
+ *
+ * THE FIRST rootfile, specifically: OCF says an OCF Processor must consider the first `rootfile` element within
+ * `rootfiles` to represent the Default Rendition. So the choice is the specification's, not an attacker's --
+ * a later element cannot be used to smuggle a different target past the first one.
+ */
+function readEpubRootfilePath(xml: string): string | null {
+  if (/<!DOCTYPE/i.test(xml) || /<!ENTITY/i.test(xml)) return null;
+
+  // `rootfiles` wraps the renditions; the element name may carry a namespace prefix.
+  const open = /<(?:[A-Za-z_][\w.-]*:)?rootfiles[\s>]/.exec(xml);
+  if (!open) return null;
+  const close = /<\/(?:[A-Za-z_][\w.-]*:)?rootfiles\s*>/.exec(xml.slice(open.index));
+  if (!close) return null;
+  const rootfiles = xml.slice(open.index + open[0].length, open.index + close.index);
+
+  const element = /<(?:[A-Za-z_][\w.-]*:)?rootfile\s([^>]*)>/.exec(rootfiles);
+  if (!element) return null;
+  const attributes = element[1]!;
+
+  const attribute = (name: string): string | null => {
+    const found = new RegExp(`(?:^|\\s)${name}\\s*=\\s*("([^"]*)"|'([^']*)')`).exec(attributes);
+    if (!found) return null;
+    const value = found[2] ?? found[3] ?? "";
+    return value.includes("&") ? null : value;
+  };
+
+  if (attribute("media-type")?.trim() !== EPUB_PACKAGE_MEDIA_TYPE) return null;
+  const fullPath = attribute("full-path");
+  return fullPath === null || fullPath.trim() === "" ? null : fullPath;
+}
+
+/**
+ * Whether a declared `full-path` is a path this will look up at all.
+ *
+ * OCF says `full-path` is relative to the root directory of the container, so an absolute path, a drive letter,
+ * a traversal segment or an empty segment is not a location inside this archive -- it is an attempt to name
+ * something else. Control characters are refused because a name that renders as one thing and compares as
+ * another is exactly the ambiguity this module exists to refuse.
+ */
+function isSafeEpubRootfilePath(path: string): boolean {
+  if (path.length === 0 || path.length > ZIP_MAX_ENTRY_NAME_BYTES) return false;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(path)) return false;
+  if (path.startsWith("/") || path.endsWith("/")) return false;
+  if (path.includes("\\") || path.includes("//")) return false;
+  if (/^[A-Za-z]:/.test(path)) return false;
+  return path.split("/").every((segment) => segment !== "" && segment !== "." && segment !== "..");
+}
+
+/** The one entry with this exact name, or null when there is not exactly one, foldable ambiguity included. */
+function unambiguousEntry(entries: readonly ZipCentralEntry[], name: string): ZipCentralEntry | null {
+  const exact = entries.filter((entry) => entry.name === name);
+  if (exact.length !== 1) return null;
+  // Two members differing only in case are one file to a case-insensitive extractor and two to a
+  // case-sensitive one. That disagreement is refused here as everywhere else in this module.
+  if (entries.filter((entry) => asciiLowerCase(entry.name) === asciiLowerCase(name)).length !== 1) return null;
+  return exact[0]!;
+}
+
+/**
+ * Whether the archive carries the minimum structure an EPUB is, beyond its `mimetype` entry.
+ *
+ * THE FINDING (R14). `looksLikeEpubContainer` proved the `mimetype` member and nothing else, so an ordinary ZIP
+ * holding `mimetype` plus `readme.txt` classified `epub` and was published as `.epub` with
+ * `application/epub+zip` -- a file no reader can open. Reproduced on head 1a73a6f, along with an archive whose
+ * container names `OEBPS/content.opf` when no such member exists, and one with no container at all: all three
+ * were `epub`.
+ *
+ * OCF makes `META-INF/container.xml` REQUIRED, and each `rootfile` element within it must identify the location
+ * of a Package Document, given by `full-path` relative to the container root with the media type
+ * `application/oebps-package+xml`. So the minimum evidence is: that descriptor exists and is readable, it names
+ * a Package Document, and the member it names is actually in this archive and is structurally sound.
+ *
+ * DELIBERATELY NOT AN EPUB READER. The package document's CONTENTS are never parsed -- no manifest, no spine,
+ * no XHTML, no stylesheet. This asks only whether the archive is structurally the thing it claims to be before
+ * ChefSire advertises it as one. Everything fails closed to an inert generic `zip`.
+ */
+async function epubDeclaresUsableRootfile(source: MediaSource, byteSize: number, entries: readonly ZipCentralEntry[]): Promise<boolean> {
+  const container = unambiguousEntry(entries, EPUB_CONTAINER_PATH);
+  if (!container) return false;
+
+  const descriptor = await readZipMemberBytes(source, byteSize, container, EPUB_CONTAINER_MAX_BYTES);
+  if (!descriptor) return false;
+
+  const rootfilePath = readEpubRootfilePath(descriptor.toString("utf8"));
+  if (!rootfilePath || !isSafeEpubRootfilePath(rootfilePath)) return false;
+
+  // The declared Package Document must be a member of THIS archive, named unambiguously...
+  const rootfile = unambiguousEntry(entries, rootfilePath);
+  if (!rootfile) return false;
+  // ...and it must agree with its own local header, the same rule every package marker is held to.
+  const local = await readZipLocalHeader(source, byteSize, rootfile);
+  return local !== null && local.name === rootfile.name;
+}
+
+/**
+ * Which member of the ZIP family an archive is, including the evidence that needs the archive's bytes.
+ *
+ * `classifyZipPackage` answers everything decidable from the index alone and stays synchronous. This wraps it
+ * with the one question that cannot be: an EPUB must carry a container descriptor naming a Package Document
+ * that is really here. Keeping both in one named function means the EPUB rule lives in one place rather than
+ * being reassembled at the call site.
+ */
+export async function classifyZipArchive(source: MediaSource, byteSize: number, head: Buffer, entries: readonly ZipCentralEntry[] | null): Promise<MediaFormat> {
+  const format = classifyZipPackage(head, entries);
+  if (format !== "epub") return format;
+  return entries && await epubDeclaresUsableRootfile(source, byteSize, entries) ? "epub" : "zip";
 }
 
 /**
@@ -991,7 +1162,7 @@ export async function validateUploadedMedia(request: MediaValidationRequest): Pr
   // A ZIP is classified from its own central directory rather than from a head scan or from anything the request
   // claimed; every other container is decided by its signature.
   const format = detected.container === "zip"
-    ? classifyZipPackage(ends.head, await readVerifiedZipCentralDirectory(request.source, ends.byteSize))
+    ? await classifyZipArchive(request.source, ends.byteSize, ends.head, await readVerifiedZipCentralDirectory(request.source, ends.byteSize))
     : resolveMediaFormat(detected, ends.head, request.originalName, request.declaredMimeType);
   if (!format) return { kind: "rejected", reason: "unsupported_media_type" };
 

@@ -102,7 +102,9 @@ const docxLateContentTypes = () => buildZip([bigMedia("word/media/image1.png"), 
 const xlsx = () => buildZip([contentTypes, { name: "xl/workbook.xml", data: Buffer.from("<workbook/>") }]);
 const xlsxLateContentTypes = () => buildZip([bigMedia("xl/media/image1.png"), contentTypes, { name: "xl/workbook.xml", data: Buffer.from("<workbook/>") }]);
 const plainZip = () => buildZip([{ name: "notes.txt", data: Buffer.from("hello") }, { name: "data/readme.md", data: Buffer.from("# hi") }]);
-const epub = () => buildZip([{ name: "mimetype", data: Buffer.from("application/epub+zip") }, { name: "META-INF/container.xml", data: Buffer.from("<container/>") }, { name: "OEBPS/content.opf", data: Buffer.from("<package/>") }]);
+/** A real OCF container descriptor: EPUB needs one, and it must name a Package Document that exists. */
+const EPUB_CONTAINER_XML = '<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
+const epub = () => buildZip([{ name: "mimetype", data: Buffer.from("application/epub+zip") }, { name: "META-INF/container.xml", data: Buffer.from(EPUB_CONTAINER_XML) }, { name: "OEBPS/content.opf", data: Buffer.from("<package/>") }]);
 
 const asDocument = (buffer: Buffer, declaredMimeType?: string, originalName?: string) =>
   validateUploadedMedia({ source: { buffer }, allow: ["document"], declaredMimeType, originalName });

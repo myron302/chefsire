@@ -129,7 +129,9 @@ function buildZip(entries: Entry[], options: ZipOptions = {}): Buffer {
 
 const MEDIA_TYPE = "application/epub+zip";
 const mimetype = (over: Partial<Entry> = {}): Entry => ({ name: "mimetype", data: Buffer.from(MEDIA_TYPE, "latin1"), ...over });
-const container = { name: "META-INF/container.xml", data: Buffer.from("<container/>") };
+/** A real OCF container descriptor: EPUB needs one, and it must name a Package Document that exists. */
+const EPUB_CONTAINER_XML = '<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
+const container = { name: "META-INF/container.xml", data: Buffer.from(EPUB_CONTAINER_XML) };
 const content = { name: "OEBPS/content.opf", data: Buffer.from("<package/>") };
 
 /** A conforming EPUB: `mimetype` first, stored, exact payload, and a central directory that says exactly that. */

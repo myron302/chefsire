@@ -320,7 +320,12 @@ test("EPUB is untouched: the name is exact, and a case-variant duplicate is stil
   // case-insensitive extractor and two to a case-sensitive one. Different questions, different answers, both
   // failing closed to an inert generic `zip`. None of this moved when OOXML identity changed.
   const media = Buffer.from("application/epub+zip", "latin1");
-  const book = (names: readonly string[]) => buildZip(names.map((name) => ({ name, data: name.toLowerCase() === "mimetype" ? media : Buffer.from("<x/>") })));
+  // A real OCF container descriptor, because an EPUB needs one that names a Package Document that exists.
+  const descriptor = Buffer.from('<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
+  const book = (names: readonly string[]) => buildZip(names.map((name) => ({
+    name,
+    data: name.toLowerCase() === "mimetype" ? media : name === "META-INF/container.xml" ? descriptor : Buffer.from("<x/>"),
+  })));
 
   const real = book(["mimetype", "META-INF/container.xml", "OEBPS/content.opf"]);
   assert.equal((await asDocument(real)).kind === "accepted" && ((await asDocument(real)) as { format: string }).format, "epub", "a real book still reads");

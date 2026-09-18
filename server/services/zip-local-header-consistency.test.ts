@@ -295,9 +295,11 @@ test("EPUB already refused this, by its own OCF local-header rule", async () => 
   // offset 0 and requires the index entry at offset 0 to name `mimetype`. Python agrees: BadZipFile,
   // "File name in directory 'mimetype' and header b'MISMATCH' differ."
   const media = Buffer.from("application/epub+zip", "latin1");
+  // A real OCF container descriptor, because an EPUB needs one that names a Package Document that exists.
+  const descriptor = Buffer.from('<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
   const book = (over: Partial<Entry> = {}) => buildZip([
     { name: "mimetype", data: media, ...over },
-    part("META-INF/container.xml"),
+    { name: "META-INF/container.xml", data: descriptor },
     part("OEBPS/content.opf"),
   ]);
   assert.equal((await asDocument(book())).kind === "accepted" && ((await asDocument(book())) as { format: string }).format, "epub", "a real book still reads");
