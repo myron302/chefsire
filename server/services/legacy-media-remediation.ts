@@ -110,7 +110,23 @@ export function isKeyWithinOwnedScope(key: string, prefixes: readonly string[] =
 
 /* ------------------------------------------------------------------ triage, from metadata alone */
 
-export type LegacyObjectMetadata = { key: string; contentType?: string; contentDisposition?: string; size?: number };
+/**
+ * Everything HEAD tells us about one object. Held in full because remediation rewrites metadata by copy, and a
+ * copy that only supplies some fields discards the rest -- see `planObjectMetadata`.
+ */
+export type LegacyObjectMetadata = {
+  key: string;
+  contentType?: string;
+  contentDisposition?: string;
+  cacheControl?: string;
+  contentEncoding?: string;
+  contentLanguage?: string;
+  expires?: string;
+  /** Custom `x-amz-meta-*` entries. The uploader's, not ours, and never ours to discard. */
+  metadata?: Record<string, string>;
+  websiteRedirectLocation?: string;
+  size?: number;
+};
 
 export type TriageReason =
   | "active_content_type" | "active_extension" | "missing_content_type"
@@ -189,6 +205,10 @@ export type LegacyRemediation =
  *   C. UNVERIFIABLE -- fail closed, and split by whether it presents an active surface at all. Something
  *      unreadable that R2 is serving as `text/html`, or that sits under a `.svg` key, is neutralized (reversible,
  *      non-destructive). Something unreadable that is inert either way is reported for a human and not touched.
+ *      In practice the runner only ever reaches this function for objects that DO present an active surface --
+ *      triage inspects an object only when its stored type is active, its key extension is active, or it has no
+ *      stored type at all, and all three are active surfaces -- so the inert branch exists for direct callers
+ *      and as a guard against a future triage that widens what it inspects.
  *   D. ALREADY CORRECT -- untouched.
  */
 export function decideLegacyRemediation(
@@ -217,6 +237,24 @@ export function decideLegacyRemediation(
       : { action: "report_only", reason: "unverifiable_inert" };
   }
 
+  // CONTENT-ENCODING, AND WHY IT BLOCKS A PIN.
+  //
+  // A content coding tells the client to transform the stored bytes before interpreting them. S3 and R2 return
+  // the STORED bytes for a GET -- the coding is object metadata, not a transfer encoding -- so what this tool
+  // validated and what a browser ends up interpreting are only the same thing when there is no coding in play.
+  // With one present we cannot honestly say "these bytes are a JPEG, so serve them as image/jpeg": the browser
+  // would gunzip them first and get something we never looked at.
+  //
+  // So a non-identity coding is treated as unverifiable rather than reasoned around. It never becomes a pin; it
+  // is neutralized if the object presents an active surface, and reported otherwise. Neutralization drops the
+  // coding (see `planObjectMetadata`) precisely so the object then serves its literal bytes and nothing else.
+  const coding = (object.contentEncoding ?? "").trim().toLowerCase();
+  if (coding !== "" && coding !== "identity") {
+    return presentsActiveSurface
+      ? { action: "neutralize", reason: "unverifiable_active_surface" }
+      : { action: "report_only", reason: "unverifiable_inert" };
+  }
+
   // The bytes ARE valid media. It is never destroyed, whatever its key says.
   const unsafeKeyRetained = ACTIVE_EXTENSIONS.has(extension);
   if (storedType === validation.contentType && !unsafeKeyRetained) {
@@ -227,6 +265,80 @@ export function decideLegacyRemediation(
     contentType: validation.contentType,
     reason: unsafeKeyRetained ? "valid_media_unsafe_key" : "valid_media_wrong_type",
     unsafeKeyRetained,
+  };
+}
+
+
+/* ------------------------------------------------------------------ metadata, preserved deliberately */
+
+/**
+ * The COMPLETE metadata an object should carry after remediation.
+ *
+ * It is a complete state rather than a patch because that is what the underlying operation is: rewriting an
+ * object's metadata means copying it onto itself with `MetadataDirective: "REPLACE"`, and REPLACE keeps only
+ * what the request supplies. The first version supplied three fields, so remediating an object silently erased
+ * its custom `x-amz-meta-*` entries, its `Content-Language`, its `Expires` and -- on a pin, which supplied only
+ * a content type -- its `Cache-Control` and `Content-Disposition` as well. That is a generic metadata reset, not
+ * a security fix, and it is what this function exists to prevent.
+ *
+ * A field left `undefined` here is genuinely removed. Every removal below is deliberate and explained.
+ */
+export type ObjectMetadataPlan = {
+  contentType: string;
+  contentDisposition?: string;
+  cacheControl?: string;
+  contentEncoding?: string;
+  contentLanguage?: string;
+  expires?: string;
+  metadata?: Record<string, string>;
+  websiteRedirectLocation?: string;
+};
+
+/**
+ * PRESERVED, always -- none of it affects how the bytes are interpreted:
+ *   `Metadata` (custom `x-amz-meta-*`), `Content-Language`, `Expires`.
+ *
+ * PRESERVED on a pin, OVERRIDDEN on a neutralization:
+ *   `Content-Disposition` -- a pin is valid media that should keep serving the way it serves today; a
+ *      neutralized object must download rather than render, so it becomes `attachment`.
+ *   `Cache-Control` -- a pin keeps whatever caching policy it had; a neutralized object becomes `no-store`, so a
+ *      cache cannot keep handing out the pre-remediation response.
+ *
+ * OVERRIDDEN, always: `Content-Type`. That is the remediation.
+ *
+ * REMOVED on a neutralization: `Content-Encoding` and `Website-Redirect-Location`. A neutralized object is one
+ * whose content we have concluded we do not trust, and both of these tell a client to do something other than
+ * take the bytes literally -- decode them, or go somewhere else entirely. Removing them is what makes
+ * "serves as an inert download" true rather than approximately true. On a pin neither is removed: a pin can only
+ * happen when the coding is absent or `identity` (see `decideLegacyRemediation`), so there is nothing to strip.
+ */
+export function planObjectMetadata(existing: LegacyObjectMetadata, remediation: LegacyRemediation): ObjectMetadataPlan | null {
+  if (remediation.action !== "neutralize" && remediation.action !== "pin_content_type") return null;
+
+  const always = {
+    contentLanguage: existing.contentLanguage,
+    expires: existing.expires,
+    metadata: existing.metadata,
+  };
+
+  if (remediation.action === "neutralize") {
+    return {
+      ...always,
+      contentType: NEUTRALIZED_CONTENT_TYPE,
+      contentDisposition: NEUTRALIZED_CONTENT_DISPOSITION,
+      cacheControl: "no-store",
+      contentEncoding: undefined,
+      websiteRedirectLocation: undefined,
+    };
+  }
+
+  return {
+    ...always,
+    contentType: remediation.contentType,
+    contentDisposition: existing.contentDisposition,
+    cacheControl: existing.cacheControl,
+    contentEncoding: existing.contentEncoding,
+    websiteRedirectLocation: existing.websiteRedirectLocation,
   };
 }
 

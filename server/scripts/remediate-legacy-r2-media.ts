@@ -26,10 +26,10 @@
  *   - Failures are counted and reported, set a non-zero exit, and never abort the rest of the run.
  */
 import "../lib/load-env";
-import { CopyObjectCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { isR2Configured, r2Client } from "../lib/r2";
 import { LEGACY_PUBLIC_PREFIXES, REFERENCE_AUDIT, resolveRequestedPrefixes } from "../services/legacy-media-remediation";
-import { runLegacyRemediation, type LegacyObjectStore } from "../services/legacy-media-remediation-run";
+import { runLegacyRemediation } from "../services/legacy-media-remediation-run";
+import { createR2ObjectStore } from "../services/legacy-r2-store";
 
 type Options = { apply: boolean; requestedPrefixes: string[]; max: number };
 
@@ -41,43 +41,6 @@ export function parseArgs(argv: string[]): Options {
     // guessing what an operator meant is how `--prefix=post` would become `posts/`.
     requestedPrefixes: argv.filter((a) => a.startsWith("--prefix=")).map((a) => a.slice("--prefix=".length)),
     max: maxArg ? Math.max(1, Number(maxArg.slice("--max=".length)) || 0) : Number.POSITIVE_INFINITY,
-  };
-}
-
-/** The S3-backed port. Read and rewrite-metadata only: there is no delete here to call. */
-function r2Store(bucket: string): LegacyObjectStore {
-  return {
-    async list(prefix, continuationToken) {
-      const page = await r2Client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: continuationToken, MaxKeys: 1000 }));
-      return {
-        keys: (page.Contents ?? []).map((entry) => entry.Key).filter((key): key is string => Boolean(key)),
-        nextToken: page.IsTruncated ? page.NextContinuationToken : undefined,
-      };
-    },
-    async head(key) {
-      const head = await r2Client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
-      return { contentType: head.ContentType, contentDisposition: head.ContentDisposition, size: Number(head.ContentLength ?? 0) };
-    },
-    async get(key, maxBytes) {
-      const object = await r2Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-      const body = object.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
-      if (!body?.transformToByteArray) return null;
-      const bytes = Buffer.from(await body.transformToByteArray());
-      return bytes.length > maxBytes ? null : bytes;
-    },
-    async setMetadata(key, metadata) {
-      // Copy onto the same key. The bytes and the key are untouched; only the served metadata changes, which is
-      // what keeps every database reference to this object valid.
-      await r2Client.send(new CopyObjectCommand({
-        Bucket: bucket,
-        Key: key,
-        CopySource: `${bucket}/${key.split("/").map(encodeURIComponent).join("/")}`,
-        MetadataDirective: "REPLACE",
-        ContentType: metadata.contentType,
-        ContentDisposition: metadata.contentDisposition,
-        CacheControl: metadata.cacheControl,
-      }));
-    },
   };
 }
 
@@ -104,7 +67,7 @@ async function main(): Promise<number> {
   console.log("[legacy-r2] remediation is in-place metadata only: nothing is renamed and nothing is deleted.");
   if (!options.apply) console.log("[legacy-r2] nothing will be modified; re-run with --apply to act");
 
-  const outcome = await runLegacyRemediation(r2Store(bucket), options);
+  const outcome = await runLegacyRemediation(createR2ObjectStore(r2Client, bucket), options);
 
   for (const line of outcome.log) {
     console.log(`[legacy-r2] ${line.action}  ${line.key}  (${line.reason}${line.detail ? `; ${line.detail}` : ""})`);

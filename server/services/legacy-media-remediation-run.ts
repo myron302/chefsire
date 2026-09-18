@@ -10,13 +10,14 @@
  */
 import {
   LEGACY_INSPECT_MAX_BYTES,
-  NEUTRALIZED_CONTENT_DISPOSITION,
-  NEUTRALIZED_CONTENT_TYPE,
   decideLegacyRemediation,
+  planObjectMetadata,
   emptyLegacySummary,
   isKeyWithinOwnedScope,
   resolveRequestedPrefixes,
   triageLegacyObject,
+  type LegacyObjectMetadata,
+  type ObjectMetadataPlan,
   type LegacySummary,
 } from "./legacy-media-remediation";
 import { validateUploadedMedia } from "./media-validation";
@@ -24,11 +25,15 @@ import { validateUploadedMedia } from "./media-validation";
 /** Everything the run may do to storage. Read, and rewrite metadata in place. Nothing else exists. */
 export type LegacyObjectStore = {
   list(prefix: string, continuationToken?: string): Promise<{ keys: string[]; nextToken?: string }>;
-  head(key: string): Promise<{ contentType?: string; contentDisposition?: string; size: number }>;
-  /** Reads at most `maxBytes`; returns null when the object is larger or cannot be read. */
+  /** Everything HEAD knows, in full, so a rewrite can preserve what it is not changing. */
+  head(key: string): Promise<Omit<LegacyObjectMetadata, "key"> & { size: number }>;
+  /**
+   * Reads at most `maxBytes`, enforcing that at the read itself rather than after the fact, and returns null
+   * when the object is larger than the bound or cannot be read.
+   */
   get(key: string, maxBytes: number): Promise<Buffer | null>;
-  /** Rewrites served metadata on the SAME key. The bytes and the key are never changed. */
-  setMetadata(key: string, metadata: { contentType: string; contentDisposition?: string; cacheControl?: string }): Promise<void>;
+  /** Rewrites served metadata on the SAME key, to the COMPLETE state in the plan. Bytes and key never change. */
+  setMetadata(key: string, plan: ObjectMetadataPlan): Promise<void>;
 };
 
 export type RemediationOptions = { apply: boolean; requestedPrefixes: readonly string[]; max: number };
@@ -88,7 +93,7 @@ export async function runLegacyRemediation(store: LegacyObjectStore, options: Re
         }
         outcome.scanned += 1;
 
-        let metadata: { contentType?: string; contentDisposition?: string; size: number };
+        let metadata: Omit<LegacyObjectMetadata, "key"> & { size: number };
         try {
           metadata = await store.head(key);
         } catch (error: unknown) {
@@ -96,7 +101,7 @@ export async function runLegacyRemediation(store: LegacyObjectStore, options: Re
           continue;
         }
 
-        const object = { key, contentType: metadata.contentType, contentDisposition: metadata.contentDisposition, size: metadata.size };
+        const object: LegacyObjectMetadata = { key, ...metadata };
         const triage = triageLegacyObject(object, scope.prefixes);
         outcome.summary[triage.reason] += 1;
         if (triage.action === "keep") continue;
@@ -139,21 +144,22 @@ export async function runLegacyRemediation(store: LegacyObjectStore, options: Re
         outcome.candidates += 1;
         if (decision.action === "pin_content_type" && decision.unsafeKeyRetained) outcome.unsafeKeysRetained += 1;
 
-        const target = decision.action === "neutralize"
-          ? { contentType: NEUTRALIZED_CONTENT_TYPE, contentDisposition: NEUTRALIZED_CONTENT_DISPOSITION, cacheControl: "no-store" }
-          : { contentType: decision.contentType };
+        // The COMPLETE metadata the object should end up with: what the remediation changes, plus everything it
+        // is not changing, carried through explicitly so a REPLACE copy cannot quietly drop it.
+        const plan = planObjectMetadata(object, decision);
+        if (!plan) continue;
 
         outcome.log.push({
           key,
           action: options.apply ? decision.action : `would ${decision.action}`,
           reason: decision.reason,
-          detail: `stored type: ${metadata.contentType ?? "none"} -> ${target.contentType}`,
+          detail: `stored type: ${metadata.contentType ?? "none"} -> ${plan.contentType}`,
         });
 
         if (!options.apply) continue;
         try {
           // Same key, same bytes. Only the served metadata changes, so every existing reference still resolves.
-          await store.setMetadata(key, target);
+          await store.setMetadata(key, plan);
           outcome.mutated += 1;
         } catch (error: unknown) {
           outcome.failures.push({ key, error: error instanceof Error ? error.message : "remediation failed" });

@@ -18,7 +18,12 @@ import { runLegacyRemediation, type LegacyObjectStore } from "./legacy-media-rem
 
 /* ------------------------------------------------------------------ a recording stub */
 
-type StoredObject = { body: Buffer; contentType?: string; contentDisposition?: string; cacheControl?: string };
+type StoredObject = {
+  body: Buffer;
+  contentType?: string; contentDisposition?: string; cacheControl?: string;
+  contentEncoding?: string; contentLanguage?: string; expires?: string;
+  metadata?: Record<string, string>; websiteRedirectLocation?: string;
+};
 
 type Recorder = {
   store: LegacyObjectStore;
@@ -40,7 +45,8 @@ function recordingStore(initial: Record<string, StoredObject>, failOn?: Recorder
       if (failOn?.op === "head" && failOn.key === key) throw new Error("head failed");
       const object = objects.get(key);
       if (!object) throw new Error("no such key");
-      return { contentType: object.contentType, contentDisposition: object.contentDisposition, size: object.body.length };
+      const { body, ...metadata } = object;
+      return { ...metadata, size: body.length };
     },
     async get(key, maxBytes) {
       calls.push({ op: "get", key });
@@ -49,12 +55,23 @@ function recordingStore(initial: Record<string, StoredObject>, failOn?: Recorder
       if (!object) return null;
       return object.body.length > maxBytes ? null : object.body;
     },
-    async setMetadata(key, metadata) {
+    async setMetadata(key, plan) {
       calls.push({ op: "setMetadata", key });
       if (failOn?.op === "setMetadata" && failOn.key === key) throw new Error("copy failed");
       const object = objects.get(key)!;
-      // A real CopyObject with MetadataDirective REPLACE keeps the bytes and the key; so does this.
-      objects.set(key, { ...object, ...metadata });
+      // Real CopyObject + MetadataDirective REPLACE keeps the bytes and the key and writes EXACTLY the supplied
+      // metadata, dropping anything absent. The stub mirrors that, so a plan that forgets a field shows up here.
+      objects.set(key, {
+        body: object.body,
+        contentType: plan.contentType,
+        contentDisposition: plan.contentDisposition,
+        cacheControl: plan.cacheControl,
+        contentEncoding: plan.contentEncoding,
+        contentLanguage: plan.contentLanguage,
+        expires: plan.expires,
+        metadata: plan.metadata,
+        websiteRedirectLocation: plan.websiteRedirectLocation,
+      });
     },
   };
   return { store, objects, calls, failOn };
@@ -248,6 +265,74 @@ test("the run bound stops after the requested number of candidates", async () =>
   const outcome = await runLegacyRemediation(recorder.store, { apply: true, requestedPrefixes: [], max: 2 });
   assert.equal(outcome.mutated, 2);
   assert.equal(mutations(recorder).length, 2);
+});
+
+
+/* ------------------------------------------------------------------ metadata survives a real run */
+
+test("a run preserves the metadata it is not changing, end to end", async () => {
+  // OBSERVED ON e46e167: the same run left `{ContentType}` on the pinned object and erased everything else.
+  const unrelated = {
+    cacheControl: "public, max-age=31536000, immutable",
+    contentLanguage: "en-GB",
+    expires: "Wed, 21 Oct 2026 07:28:00 GMT",
+    metadata: { "uploaded-by": "user-123", "original-name": "holiday.jpg" },
+  };
+  const recorder = recordingStore({
+    "posts/photo.html": { body: jpeg, contentType: "image/jpeg", contentDisposition: "inline", ...unrelated },
+    "posts/attack.html": { body: htmlBytes, contentType: "image/jpeg", ...unrelated },
+  });
+  await runLegacyRemediation(recorder.store, { apply: true, requestedPrefixes: [], max: Infinity });
+
+  const pinned = recorder.objects.get("posts/photo.html")!;
+  assert.equal(pinned.contentType, "image/jpeg");
+  assert.equal(pinned.contentDisposition, "inline", "a pin leaves valid media serving as it did");
+  assert.equal(pinned.cacheControl, unrelated.cacheControl);
+  assert.equal(pinned.contentLanguage, "en-GB");
+  assert.equal(pinned.expires, unrelated.expires);
+  assert.deepEqual(pinned.metadata, unrelated.metadata);
+  assert.equal(pinned.body.equals(jpeg), true);
+
+  const neutralized = recorder.objects.get("posts/attack.html")!;
+  assert.equal(neutralized.contentType, NEUTRALIZED_CONTENT_TYPE);
+  assert.equal(neutralized.contentDisposition, "attachment");
+  assert.equal(neutralized.cacheControl, "no-store");
+  assert.equal(neutralized.contentLanguage, "en-GB", "unrelated metadata survives neutralization too");
+  assert.deepEqual(neutralized.metadata, unrelated.metadata);
+});
+
+test("an object carrying a content coding is never pinned, because we cannot say what a client would see", async () => {
+  // A GET returns the STORED bytes; a coding tells the client to transform them first. So what we validated and
+  // what a browser interprets are only the same thing when there is no coding in play. Fail closed.
+  const recorder = recordingStore({
+    "posts/coded.html": { body: jpeg, contentType: "image/jpeg", contentEncoding: "gzip" },
+    "posts/coded.jpg": { body: jpeg, contentType: undefined, contentEncoding: "br" },
+  });
+  await runLegacyRemediation(recorder.store, { apply: true, requestedPrefixes: [], max: Infinity });
+
+  // Active surface (a `.html` key): neutralized, and the coding is dropped so it serves its literal bytes.
+  const active = recorder.objects.get("posts/coded.html")!;
+  assert.equal(active.contentType, NEUTRALIZED_CONTENT_TYPE);
+  assert.equal(active.contentEncoding, undefined, "the coding is removed deliberately");
+  assert.equal(active.body.equals(jpeg), true, "and the bytes are still preserved");
+
+  // A missing Content-Type is itself an active surface -- the client sniffs -- so this is neutralized too
+  // rather than merely reported. Every route into the decision layer implies an active surface (an active
+  // stored type, an active key extension, or no stored type at all), so through the runner an unverifiable
+  // candidate is always neutralized; `report_only` for an inert one is reachable only by a direct caller and is
+  // asserted there, in legacy-media-remediation.test.ts.
+  const sniffable = recorder.objects.get("posts/coded.jpg")!;
+  assert.equal(sniffable.contentType, NEUTRALIZED_CONTENT_TYPE);
+  assert.equal(sniffable.contentEncoding, undefined, "the coding is removed here too");
+  assert.equal(sniffable.body.equals(jpeg), true, "and the bytes are preserved");
+});
+
+test("an identity coding does not block a pin", async () => {
+  const recorder = recordingStore({ "posts/photo.html": { body: jpeg, contentType: "image/jpeg", contentEncoding: "identity" } });
+  await runLegacyRemediation(recorder.store, { apply: true, requestedPrefixes: [], max: Infinity });
+  const pinned = recorder.objects.get("posts/photo.html")!;
+  assert.equal(pinned.contentType, "image/jpeg");
+  assert.equal(pinned.contentEncoding, "identity");
 });
 
 test("the storage port has no delete operation to call", () => {
