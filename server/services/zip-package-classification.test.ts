@@ -20,6 +20,7 @@ import {
   classifyZipPackage,
   detectMediaContainer,
   looksLikeEpubContainer,
+  readZipCentralDirectory,
   readZipCentralDirectoryNames,
   validateUploadedMedia,
 } from "./media-validation";
@@ -79,6 +80,18 @@ function buildZip(entries: Entry[], options: { entryCountOverride?: number; dire
   eocd.writeUInt32LE(options.directoryOffsetOverride ?? offset, 16);
   return Buffer.concat([...locals, directory, eocd]);
 }
+
+/**
+ * A central-directory index carrying just these names, for the name-only rules. Offsets start at 1 so that none
+ * of these stubs claims offset 0, which is the position the OCF rule turns on and which these tests are not about.
+ */
+const index = (...names: string[]) => names.map((name, position) => ({
+  name, flags: 0, method: 0, crc32: 0, compressedSize: 0, uncompressedSize: 0,
+  localHeaderOffset: position + 1, diskNumberStart: 0, zip64: false,
+}));
+
+/** The index a real archive actually carries, read the same way the validator reads it. */
+const indexOf = (buffer: Buffer) => readZipCentralDirectory({ buffer }, buffer.length);
 
 const contentTypes = { name: "[Content_Types].xml", data: Buffer.from("<Types/>") };
 /** Large enough to push everything after it beyond the 64 KiB head the old implementation searched. */
@@ -152,14 +165,14 @@ test("a misleading name or declared type cannot make an archive into an Office d
 });
 
 test("content types without a primary part is not enough, and a primary part without content types is not either", () => {
-  assert.equal(classifyZipPackage(Buffer.alloc(128), ["[Content_Types].xml", "docProps/app.xml"]), "zip", "no word/ or xl/ part");
-  assert.equal(classifyZipPackage(Buffer.alloc(128), ["word/document.xml"]), "zip", "no [Content_Types].xml");
-  assert.equal(classifyZipPackage(Buffer.alloc(128), ["[Content_Types].xml", "word/document.xml"]), "docx");
-  assert.equal(classifyZipPackage(Buffer.alloc(128), ["[Content_Types].xml", "xl/workbook.xml"]), "xlsx");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "docProps/app.xml")), "zip", "no word/ or xl/ part");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("word/document.xml")), "zip", "no [Content_Types].xml");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "word/document.xml")), "docx");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "xl/workbook.xml")), "xlsx");
   // A document embedding a spreadsheet is still a document.
-  assert.equal(classifyZipPackage(Buffer.alloc(128), ["[Content_Types].xml", "word/document.xml", "xl/embedded.xlsx"]), "docx");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "word/document.xml", "xl/embedded.xlsx")), "docx");
   // Entry names are compared case-insensitively, as archive tooling writes them inconsistently.
-  assert.equal(classifyZipPackage(Buffer.alloc(128), ["[content_types].xml", "WORD/document.xml"]), "docx");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[content_types].xml", "WORD/document.xml")), "docx");
 });
 
 /* ------------------------------------------------------------------ malformed and hostile archives */
@@ -249,17 +262,17 @@ test("EPUB is decided by the OCF rules, not by finding a string near the head", 
     ["sizes deferred to a data descriptor", buildZip([{ name: "mimetype", data: Buffer.from(EPUB_MEDIA_TYPE), flags: 0x0008 }])],
   ];
   for (const [label, buffer] of fakes) {
-    assert.equal(looksLikeEpubContainer(buffer), false, label);
+    assert.equal(looksLikeEpubContainer(buffer, await indexOf(buffer)), false, label);
     const result = await asDocument(buffer, "application/epub+zip", "novel.epub");
     assert.equal(result.kind === "accepted" && result.format, "zip", label);
     assert.equal(result.kind === "accepted" && result.extension, "zip", label);
   }
   // The genuine article still passes, by the same rules.
-  assert.equal(looksLikeEpubContainer(epub()), true);
+  assert.equal(looksLikeEpubContainer(epub(), await indexOf(epub())), true);
   assert.equal((await asDocument(epub())).kind === "accepted" && ((await asDocument(epub())) as { format: string }).format, "epub");
 });
 
-test("a malformed or truncated first local header is not an EPUB", () => {
+test("a malformed or truncated first local header is not an EPUB", async () => {
   const valid = epub();
   for (const [label, buffer] of [
     ["empty", Buffer.alloc(0)],
@@ -268,12 +281,12 @@ test("a malformed or truncated first local header is not an EPUB", () => {
     ["name present but payload cut", valid.subarray(0, 30 + 8 + 4)],
     ["not a local file header at all", Buffer.concat([Buffer.from([0x50, 0x4b, 0x01, 0x02]), Buffer.alloc(120)])],
   ] as const) {
-    assert.equal(looksLikeEpubContainer(buffer), false, label);
+    assert.equal(looksLikeEpubContainer(buffer, await indexOf(buffer)), false, label);
   }
   // An absurd extra-field length is refused rather than used as an offset.
   const absurdExtra = Buffer.from(valid);
   absurdExtra.writeUInt16LE(0xffff, 28);
-  assert.equal(looksLikeEpubContainer(absurdExtra), false, "absurd extra-field length");
+  assert.equal(looksLikeEpubContainer(absurdExtra, await indexOf(absurdExtra)), false, "absurd extra-field length");
 });
 
 test("neither the declared type nor the filename can force EPUB", async () => {

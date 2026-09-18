@@ -139,6 +139,90 @@ export function videoFormatForFtyp(box: FtypBox): "mp4" | "quicktime" | null {
 }
 
 /**
+ * The only top-level boxes this will walk PAST while looking for `ftyp`.
+ *
+ * All three are defined as content-free padding -- `free` and `skip` in ISO/IEC 14496-12, `wide` in the QuickTime
+ * file format -- so skipping one cannot skip anything that carries meaning. Nothing else is walked past, and the
+ * exclusions are deliberate: `mdat` is attacker-controlled payload of attacker-declared length, and `moov`,
+ * `pnot` and `PICT` are real structure whose presence before `ftyp` would say the file is not what `ftyp` would
+ * later claim. Keeping the set to the three no-op boxes means walking cannot change what a file is judged to be,
+ * only whether the box that decides it is found at all.
+ */
+const ISO_BMFF_SKIPPABLE_BOXES = new Set(["free", "skip", "wide"]);
+/** How many leading no-op boxes are walked before giving up. Real files carry at most one or two. */
+const ISO_BMFF_MAX_LEADING_BOXES = 8;
+
+/**
+ * Finds the `ftyp` box in an ISO base media file, which is not always the first box.
+ *
+ * THE FINDING. Detection required `head.subarray(4, 8) === "ftyp"`, i.e. that `ftyp` is the file's first
+ * top-level box. That is the common layout, not a guarantee: a remuxer that rewrites a file in place leaves the
+ * space it reclaimed as a leading `free` box, and QuickTime writers emit `wide` as a placeholder. Reproduced on
+ * head f3f29e2: `free`+`ftyp(isom)`, `skip`+`ftyp(mp42)` and `wide`+`ftyp(qt  )` were each detected as `null`,
+ * and `validateUploadedMedia` refused the first with `content_mismatch` -- a valid MP4 the product accepts by
+ * policy, refused at the door.
+ *
+ * The walk is bounded in every direction, because every number in it comes from the file:
+ *
+ *   - at most {@link ISO_BMFF_MAX_LEADING_BOXES} boxes are visited, so a chain of tiny boxes cannot spin;
+ *   - it never reads outside `head`, which is itself capped at {@link MEDIA_HEAD_BYTES};
+ *   - `size === 1` means a 64-bit `largesize` follows the type; it is read only when those eight bytes are
+ *     present, as two 32-bit halves so nothing passes through a lossy conversion, and rejected unless the high
+ *     word is zero and the low word is at least the 16-byte header it describes;
+ *   - `size === 0` means "to end of file", so nothing can follow and there is no `ftyp` behind it;
+ *   - `size` between 2 and 7 is smaller than the header it sits in, which is malformed, not a short box;
+ *   - each advance must move strictly forward and land inside `head`, so neither a zero-length step nor an
+ *     overflowed offset is possible.
+ *
+ * A `free` box large enough to push `ftyp` past the head is not searched for beyond it: the box is simply not
+ * found, and the file is refused. That is the bound doing its job rather than a gap.
+ *
+ * NO-`ftyp` QUICKTIME IS DELIBERATELY NOT SUPPORTED. A classic `.mov` may omit `ftyp` entirely, identifying
+ * itself only by its top-level atom sequence -- typically `wide`, `mdat`, `moov`. There is no safe evidence to
+ * act on there. `mdat` is raw payload whose declared length routinely exceeds the bounded head, so `moov` is
+ * usually not even reachable; and accepting `wide`+`mdat` as QuickTime would classify an arbitrary binary as a
+ * video because it carries a familiar four-character name, which is precisely the type confusion this module
+ * exists to prevent. So such a file is refused, the same as on main and on every earlier head of this branch.
+ * That is a stated limitation, not a claim of support: every current writer -- iOS, macOS, ffmpeg, Premiere --
+ * emits `ftyp` with the `qt  ` brand, which this detects.
+ */
+export function locateFtypBox(head: Buffer): FtypBox | null {
+  let offset = 0;
+  for (let visited = 0; visited < ISO_BMFF_MAX_LEADING_BOXES; visited++) {
+    // size(4) + type(4) is the smallest box header there is.
+    if (offset + 8 > head.length) return null;
+    const declaredSize = head.readUInt32BE(offset);
+    const type = head.subarray(offset + 4, offset + 8).toString("latin1");
+    if (type === "ftyp") return parseFtypBox(head.subarray(offset));
+    if (!ISO_BMFF_SKIPPABLE_BOXES.has(type)) return null;
+
+    let size: number;
+    if (declaredSize === 1) {
+      // A 64-bit `largesize` follows the type. It is read as two 32-bit halves rather than as a BigInt so that
+      // no value is ever converted through a type that could lose precision: a non-zero high word means at least
+      // 4 GiB, which is orders of magnitude past the bounded head, so it is refused without further arithmetic.
+      if (offset + 16 > head.length) return null;
+      const highWord = head.readUInt32BE(offset + 8);
+      const lowWord = head.readUInt32BE(offset + 12);
+      if (highWord !== 0) return null;
+      if (lowWord < 16) return null; // smaller than the extended header it describes
+      size = lowWord;
+    } else if (declaredSize === 0) {
+      return null; // extends to end of file: nothing follows it
+    } else if (declaredSize < 8) {
+      return null; // smaller than its own header
+    } else {
+      size = declaredSize;
+    }
+
+    const next = offset + size;
+    if (!Number.isSafeInteger(next) || next <= offset || next > head.length) return null;
+    offset = next;
+  }
+  return null;
+}
+
+/**
  * Reads the format out of a file's bytes.
  *
  * `tail` is only needed to tell a real PDF from a file that borrowed "%PDF-": every conforming PDF carries a
@@ -163,12 +247,21 @@ export function detectMediaContainer(head: Buffer, tail?: Buffer): DetectedConta
     return null;
   }
 
-  // ---- ISO base media (MP4 / MOV): the whole `ftyp` box, major brand AND compatible brands -----------------
-  if (head.subarray(4, 8).toString("latin1") === "ftyp") {
-    const box = parseFtypBox(head);
-    if (!box) return null;
-    const format = videoFormatForFtyp(box);
-    return format ? { container: "video", format } : null;
+  // ---- ISO base media (MP4 / MOV): find the `ftyp` box, then read the whole of it ------------------------
+  // `ftyp` is usually the first top-level box but is not required to be; `locateFtypBox` walks a bounded number
+  // of leading no-op boxes to find it. See that function for why only `free`, `skip` and `wide` are walked past.
+  const firstBoxType = head.subarray(4, 8).toString("latin1");
+  if (firstBoxType === "ftyp" || ISO_BMFF_SKIPPABLE_BOXES.has(firstBoxType)) {
+    const box = locateFtypBox(head);
+    if (box) {
+      const format = videoFormatForFtyp(box);
+      return format ? { container: "video", format } : null;
+    }
+    // A file whose very first box announces itself as `ftyp` and then is not a well-formed one is not quietly
+    // reconsidered as some other format -- it is refused, exactly as before this walk existed. A leading
+    // `free`/`skip`/`wide` is a weaker claim, so those fall through to the detectors below rather than deciding
+    // the answer: four bytes that happen to spell `free` inside an EBML or Ogg header must not veto them.
+    if (firstBoxType === "ftyp") return null;
   }
 
   // ---- Matroska / WebM: EBML header, with the DocType naming which one ------------------------------------
@@ -215,9 +308,32 @@ const ZIP_EOCD_SEARCH_BYTES = 22 + 0xffff;
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_FILE_SIGNATURE = 0x02014b50;
 
+/** A Zip64 sentinel: the field's real value lives in an extra field this module deliberately does not parse. */
+const ZIP64_SENTINEL_32 = 0xffffffff;
+
 /**
- * The names of a ZIP's members, read from its central directory, or null when the archive cannot be indexed
- * safely.
+ * One member as the archive's own index describes it. Every field is the archive's claim, not a verified fact --
+ * verifying a claim means comparing it against the local header, which is what {@link looksLikeEpubContainer}
+ * does for the one entry whose structure decides a format.
+ */
+export type ZipCentralEntry = {
+  name: string;
+  /** General purpose bit flag. Bit 3 defers the sizes to a data descriptor; bits 0, 6 and 13 concern encryption. */
+  flags: number;
+  /** 0 is stored (uncompressed); 8 is deflate. Nothing here ever decompresses a member. */
+  method: number;
+  crc32: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  /** Where this member's local file header sits. `0` is the first entry in the archive, which is what OCF rules on. */
+  localHeaderOffset: number;
+  diskNumberStart: number;
+  /** True when a size or the offset is a Zip64 sentinel, so the value above is not the real one. */
+  zip64: boolean;
+};
+
+/**
+ * A ZIP's members, read from its central directory, or null when the archive cannot be indexed safely.
  *
  * WHY THE CENTRAL DIRECTORY. The previous implementation searched the first 64 KiB for the literal
  * `[Content_Types].xml`, which assumes that member comes early. ZIP guarantees no such ordering: reproduced, a
@@ -227,9 +343,11 @@ const ZIP_CENTRAL_FILE_SIGNATURE = 0x02014b50;
  *
  * Every field is treated as hostile: the declared directory size, entry count, name lengths and offsets are all
  * bounded and cross-checked against the real file size before a single byte is addressed. Zip64 is not parsed --
- * an archive that needs it falls back to generic `zip` rather than being guessed at.
+ * an archive that needs it falls back to generic `zip` rather than being guessed at, and the per-entry sentinels
+ * are recorded on the entry so a caller that relies on an exact size or offset can refuse it too. Multi-disk
+ * archives are refused outright: there is no second disk to read, so any field that names one is a contradiction.
  */
-export async function readZipCentralDirectoryNames(source: MediaSource, byteSize: number): Promise<string[] | null> {
+export async function readZipCentralDirectory(source: MediaSource, byteSize: number): Promise<ZipCentralEntry[] | null> {
   if (byteSize < 22) return null;
   const tailLength = Math.min(ZIP_EOCD_SEARCH_BYTES, byteSize);
   const tail = await readRange(source, byteSize - tailLength, tailLength);
@@ -242,12 +360,17 @@ export async function readZipCentralDirectoryNames(source: MediaSource, byteSize
   }
   if (eocd < 0) return null;
 
+  const thisDisk = tail.readUInt16LE(eocd + 4);
+  const directoryDisk = tail.readUInt16LE(eocd + 6);
+  const entriesOnThisDisk = tail.readUInt16LE(eocd + 8);
   const totalEntries = tail.readUInt16LE(eocd + 10);
   const directorySize = tail.readUInt32LE(eocd + 12);
   const directoryOffset = tail.readUInt32LE(eocd + 16);
 
   // Zip64 sentinels. Not parsed, and not guessed at.
-  if (totalEntries === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff) return null;
+  if (totalEntries === 0xffff || directorySize === ZIP64_SENTINEL_32 || directoryOffset === ZIP64_SENTINEL_32) return null;
+  // A single-file upload is one disk. Anything claiming otherwise is describing bytes that are not here.
+  if (thisDisk !== 0 || directoryDisk !== 0 || entriesOnThisDisk !== totalEntries) return null;
   if (totalEntries === 0 || totalEntries > ZIP_MAX_ENTRIES) return null;
   if (directorySize === 0 || directorySize > ZIP_MAX_CENTRAL_DIRECTORY_BYTES) return null;
   // The directory must actually lie inside the file, with room for itself.
@@ -256,7 +379,7 @@ export async function readZipCentralDirectoryNames(source: MediaSource, byteSize
   const directory = await readRange(source, directoryOffset, directorySize);
   if (!directory || directory.length !== directorySize) return null;
 
-  const names: string[] = [];
+  const entries: ZipCentralEntry[] = [];
   let cursor = 0;
   for (let entry = 0; entry < totalEntries; entry++) {
     // A central file header is 46 bytes before its variable-length name.
@@ -269,61 +392,172 @@ export async function readZipCentralDirectoryNames(source: MediaSource, byteSize
     const next = cursor + 46 + nameLength + extraLength + commentLength;
     // Every advance must move forward and stay inside the directory we read.
     if (next <= cursor || next > directory.length) return null;
-    names.push(directory.subarray(cursor + 46, cursor + 46 + nameLength).toString("latin1"));
+
+    const compressedSize = directory.readUInt32LE(cursor + 20);
+    const uncompressedSize = directory.readUInt32LE(cursor + 24);
+    const localHeaderOffset = directory.readUInt32LE(cursor + 42);
+    entries.push({
+      name: directory.subarray(cursor + 46, cursor + 46 + nameLength).toString("latin1"),
+      flags: directory.readUInt16LE(cursor + 8),
+      method: directory.readUInt16LE(cursor + 10),
+      crc32: directory.readUInt32LE(cursor + 16),
+      compressedSize,
+      uncompressedSize,
+      localHeaderOffset,
+      diskNumberStart: directory.readUInt16LE(cursor + 34),
+      zip64: compressedSize === ZIP64_SENTINEL_32 || uncompressedSize === ZIP64_SENTINEL_32 || localHeaderOffset === ZIP64_SENTINEL_32,
+    });
     cursor = next;
   }
-  return names;
+  return entries;
+}
+
+/** The member names from {@link readZipCentralDirectory}, for callers that only classify by name. */
+export async function readZipCentralDirectoryNames(source: MediaSource, byteSize: number): Promise<string[] | null> {
+  const entries = await readZipCentralDirectory(source, byteSize);
+  return entries ? entries.map((entry) => entry.name) : null;
 }
 
 /** The exact payload OCF requires, and the only thing an EPUB's first member may contain. */
 const EPUB_MEDIA_TYPE = "application/epub+zip";
 /** A tolerated bound on the first header's extra field. OCF says there should be none; this refuses a silly one. */
 const ZIP_MAX_LOCAL_EXTRA_BYTES = 1024;
+const ZIP_LOCAL_FILE_SIGNATURE = 0x04034b50;
+/**
+ * The only general-purpose bit an OCF `mimetype` entry may set. Bit 11 says the name is UTF-8, which some writers
+ * set for every member; `mimetype` is pure ASCII, so it means nothing either way and refusing it would reject
+ * conforming books. Every other bit is refused: bit 3 defers the sizes to a data descriptor, bits 0, 6 and 13
+ * concern encryption, and a stored, plaintext, fixed-length entry has no business claiming any of them.
+ */
+const ZIP_TOLERATED_FLAG_MASK = 0x0800;
+
+/** CRC-32 as ZIP defines it. Used on exactly one 20-byte payload, to check the index against the bytes. */
+function zipCrc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (let index = 0; index < buffer.length; index++) {
+    let byte = (crc ^ buffer[index]!) & 0xff;
+    for (let bit = 0; bit < 8; bit++) byte = byte & 1 ? 0xedb88320 ^ (byte >>> 1) : byte >>> 1;
+    crc = (crc >>> 8) ^ byte;
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** The CRC-32 an OCF `mimetype` entry must carry, since its contents are fixed by the specification. */
+const EPUB_MIMETYPE_CRC32 = zipCrc32(Buffer.from(EPUB_MEDIA_TYPE, "latin1"));
+
+/** What the local file header at offset 0 says about itself, once every field has been bounds-checked. */
+type ZipLocalHeader = { name: string; flags: number; method: number; crc32: number; compressedSize: number; uncompressedSize: number };
 
 /**
- * Whether these bytes open an EPUB container, judged by the OCF rules rather than by finding a string.
+ * Reads the local file header at offset 0 as an OCF `mimetype` entry, or null if it is not one.
  *
  * EPUB's Open Container Format requires the `mimetype` entry to be the FIRST entry in the archive, stored
- * uncompressed, containing exactly `application/epub+zip` and nothing else. All four of those are structural
- * facts about the first local file header, which sits at offset 0, so this reads them there:
+ * uncompressed, containing exactly `application/epub+zip` and nothing else. All of those are structural facts
+ * about the local file header at offset 0, so this reads them there:
  *
  *   - the local file header signature;
- *   - the general purpose bit flag, with bit 3 (sizes deferred to a data descriptor) refused, because a stored
- *     entry declaring its size elsewhere is not something to reason about;
+ *   - the general purpose bit flag, with everything but the UTF-8-name bit refused (see the mask above);
  *   - the compression method, which must be 0 (stored) -- a deflated `mimetype` is not conforming;
  *   - the file name, which must be exactly `mimetype` and nothing longer;
  *   - both declared sizes, which must equal the media type's length exactly, so a payload with extra bytes
  *     appended is refused rather than prefix-matched;
- *   - the payload itself, compared exactly.
+ *   - the payload itself, compared exactly, and its CRC-32, compared against the value the header declares.
  *
  * Every offset is derived from bounded, already-validated lengths and checked against the buffer before use.
  * Nothing is decompressed: a conforming `mimetype` is stored, so there is nothing to decompress.
  */
-export function looksLikeEpubContainer(head: Buffer): boolean {
+function readEpubMimetypeLocalHeader(head: Buffer): ZipLocalHeader | null {
   // 30-byte local file header + "mimetype" + the media type.
-  if (head.length < 30 + 8 + EPUB_MEDIA_TYPE.length) return false;
-  if (head.readUInt32LE(0) !== 0x04034b50) return false;
+  if (head.length < 30 + 8 + EPUB_MEDIA_TYPE.length) return null;
+  if (head.readUInt32LE(0) !== ZIP_LOCAL_FILE_SIGNATURE) return null;
 
   const flags = head.readUInt16LE(6);
-  if ((flags & 0x0008) !== 0) return false; // sizes deferred to a data descriptor
-  if (head.readUInt16LE(8) !== 0) return false; // compression method must be 0 (stored)
+  if ((flags & ~ZIP_TOLERATED_FLAG_MASK) !== 0) return null;
+  const method = head.readUInt16LE(8);
+  if (method !== 0) return null; // must be stored
 
   const nameLength = head.readUInt16LE(26);
   const extraLength = head.readUInt16LE(28);
-  if (nameLength !== "mimetype".length) return false;
-  if (extraLength > ZIP_MAX_LOCAL_EXTRA_BYTES) return false;
+  if (nameLength !== "mimetype".length) return null;
+  if (extraLength > ZIP_MAX_LOCAL_EXTRA_BYTES) return null;
 
+  const crc32 = head.readUInt32LE(14);
   const compressedSize = head.readUInt32LE(18);
   const uncompressedSize = head.readUInt32LE(22);
   // Stored, so both sizes are the payload length, and it must be the media type exactly -- no trailing bytes.
-  if (compressedSize !== EPUB_MEDIA_TYPE.length || uncompressedSize !== EPUB_MEDIA_TYPE.length) return false;
+  if (compressedSize !== EPUB_MEDIA_TYPE.length || uncompressedSize !== EPUB_MEDIA_TYPE.length) return null;
+  // The contents of this entry are fixed by the specification, so its checksum is a constant too.
+  if (crc32 !== EPUB_MIMETYPE_CRC32) return null;
 
-  if (head.subarray(30, 30 + nameLength).toString("latin1") !== "mimetype") return false;
+  if (head.subarray(30, 30 + nameLength).toString("latin1") !== "mimetype") return null;
 
   const payloadStart = 30 + nameLength + extraLength;
   const payloadEnd = payloadStart + EPUB_MEDIA_TYPE.length;
-  if (payloadEnd > head.length) return false;
-  return head.subarray(payloadStart, payloadEnd).toString("latin1") === EPUB_MEDIA_TYPE;
+  if (payloadEnd > head.length) return null;
+  if (head.subarray(payloadStart, payloadEnd).toString("latin1") !== EPUB_MEDIA_TYPE) return null;
+
+  return { name: "mimetype", flags, method, crc32, compressedSize, uncompressedSize };
+}
+
+/**
+ * Whether these bytes open an EPUB container, judged by the OCF rules AND by the archive's own index agreeing.
+ *
+ * THE FINDING. The previous version read only the local file header at offset 0. A ZIP has two descriptions of
+ * every member -- that header and the central directory record the readers actually use -- and nothing had ever
+ * required them to agree. Reproduced on head f3f29e2, every one of these was classified `epub` and would have
+ * been stored as `.epub` with `application/epub+zip`:
+ *
+ *   - a conforming `mimetype` local header at offset 0 that the central directory does not list at all (the
+ *     index named one member, `evil.txt`);
+ *   - the same header, listed in the index under a different name (`not-a-mimetype`);
+ *   - the same header, with the index pointing that member's local header at some other offset entirely;
+ *   - the same header, with the index contradicting it -- deflated, sizes 5 and 999;
+ *   - the same header with NO central directory at all, so the archive has no index to disagree with;
+ *   - a genuine DOCX with a forged `mimetype` local header bolted on the front, which real readers open as a
+ *     Word document and this classified as a book.
+ *
+ * Every one of those is a file whose index says it is not an EPUB, and in the last case a file that a reader
+ * would open as something else -- exactly the disagreement between what a file is and what it is stored as that
+ * this module exists to close.
+ *
+ * So the local header is now a necessary condition and not a sufficient one. The archive's own index must
+ * describe the same entry, and describe it the same way: present, named `mimetype`, sitting at offset 0, stored,
+ * with the same CRC-32 and both sizes, and with no flag set that the local header did not also set. `offset 0`
+ * is the check that carries OCF's "first entry in the archive" rule, which is what makes `mimetype` meaningful
+ * in the first place -- and exactly one entry may claim it, so an ambiguous index is refused rather than
+ * resolved. Central-directory ORDER is deliberately not required: the rule is about position in the archive,
+ * and the directory is free to list members in any order.
+ *
+ * It fails closed in every direction. A missing, truncated, Zip64, multi-disk or otherwise unreadable index
+ * yields no entries, and no entries means not an EPUB -- a generic `.zip`, which is inert, correctly typed and
+ * served as an attachment. Nothing is decompressed and no member name is ever used as a path.
+ */
+export function looksLikeEpubContainer(head: Buffer, entries: readonly ZipCentralEntry[] | null): boolean {
+  const local = readEpubMimetypeLocalHeader(head);
+  if (!local) return false;
+  // No readable index means nothing corroborates the header, and an uncorroborated header is not evidence.
+  if (!entries || entries.length === 0) return false;
+
+  // OCF's rule is about position in the ARCHIVE, so the index entry that matters is the one at offset 0. Exactly
+  // one entry may claim it: two records describing the same bytes differently is a contradiction, not a choice.
+  const atStart = entries.filter((entry) => entry.localHeaderOffset === 0);
+  if (atStart.length !== 1) return false;
+  const indexed = atStart[0]!;
+
+  if (indexed.zip64) return false; // a sentinel means the real offset or size is somewhere we do not parse
+  if (indexed.diskNumberStart !== 0) return false;
+  if (indexed.name !== "mimetype") return false;
+  if (indexed.method !== local.method) return false;
+  if (indexed.crc32 !== local.crc32) return false;
+  if (indexed.compressedSize !== local.compressedSize) return false;
+  if (indexed.uncompressedSize !== local.uncompressedSize) return false;
+  // Same tolerance as the local header, and the two must agree: a data-descriptor or encryption bit set on one
+  // side only is the index and the header telling different stories about how to read the very same member.
+  if ((indexed.flags & ~ZIP_TOLERATED_FLAG_MASK) !== 0) return false;
+  if ((indexed.flags & ~ZIP_TOLERATED_FLAG_MASK) !== (local.flags & ~ZIP_TOLERATED_FLAG_MASK)) return false;
+
+  // And no other member may also be called `mimetype`: a second one is what a differing reader might pick up.
+  return entries.filter((entry) => entry.name === "mimetype").length === 1;
 }
 
 /**
@@ -333,16 +567,17 @@ export function looksLikeEpubContainer(head: Buffer): boolean {
  * if it contains the parts a DOCX is made of. OOXML requires `[Content_Types].xml` at the package root, and the
  * primary part is what distinguishes Word from Excel, so both are required rather than either.
  *
- * EPUB is decided by the OCF rule instead, which is a genuine structural guarantee -- and one that has to be
- * checked structurally. Searching the head for the literal `application/epub+zip`, as an earlier version did, is
- * not a check at all: reproduced, a generic archive whose first ENTRY IS NAMED `application/epub+zip`, one whose
- * first member merely CONTAINS that text, one where `mimetype` is present but not first, and one where it is
- * first but DEFLATED were all classified `epub` and would have been stored as `.epub`. `looksLikeEpubContainer`
- * reads the first local file header instead.
+ * EPUB is decided by the OCF rule, cross-checked against the same index -- see `looksLikeEpubContainer` for why
+ * the local header alone was not enough. EPUB is still tried first, because a conforming EPUB carrying an
+ * `[Content_Types].xml` of its own would otherwise be filed as an Office document; now that the index has to
+ * corroborate the OCF header, winning that tie takes a real EPUB rather than a forged first entry.
+ *
+ * Every path here fails closed to generic `zip`, which is an inert, correctly typed, attachment-served format.
  */
-export function classifyZipPackage(head: Buffer, names: readonly string[] | null): MediaFormat {
-  if (looksLikeEpubContainer(head)) return "epub";
-  if (!names) return "zip";
+export function classifyZipPackage(head: Buffer, entries: readonly ZipCentralEntry[] | null): MediaFormat {
+  if (looksLikeEpubContainer(head, entries)) return "epub";
+  if (!entries) return "zip";
+  const names = entries.map((entry) => entry.name);
   const has = (name: string) => names.some((entry) => entry.toLowerCase() === name);
   const hasPrefix = (prefix: string) => names.some((entry) => entry.toLowerCase().startsWith(prefix));
   if (!has("[content_types].xml")) return "zip";
@@ -526,7 +761,7 @@ export async function validateUploadedMedia(request: MediaValidationRequest): Pr
   // A ZIP is classified from its own central directory rather than from a head scan or from anything the request
   // claimed; every other container is decided by its signature.
   const format = detected.container === "zip"
-    ? classifyZipPackage(ends.head, await readZipCentralDirectoryNames(request.source, ends.byteSize))
+    ? classifyZipPackage(ends.head, await readZipCentralDirectory(request.source, ends.byteSize))
     : resolveMediaFormat(detected, ends.head, request.originalName, request.declaredMimeType);
   if (!format) return { kind: "rejected", reason: "unsupported_media_type" };
 
