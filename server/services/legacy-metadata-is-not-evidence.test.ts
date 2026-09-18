@@ -395,14 +395,21 @@ test("inspection uses the same hardened validator new uploads use, not a second 
   // Everything the upload boundary refuses, the remediation refuses too -- including the package rules this PR
   // corrected in earlier rounds, so a legacy object cannot slip through on a defect already fixed upstream.
   const zipWithEpubText = buildZip([{ name: "a.txt", data: Buffer.from("application/epub+zip") }]);
-  const caseMutatedDocx = buildZip([part("[content_types].xml"), part("WORD/document.xml")]);
+  // R11 used a case-mutated package here, on the since-corrected premise that OPC part names are
+  // case-sensitive. ECMA-376 Part 2 7.2.3.5 makes that package a real DOCX, so the case that belongs here is
+  // the one the package rules still refuse: two members colliding on one part identity.
+  const collidingDocx = buildZip([part("[Content_Types].xml"), part("word/document.xml"), part("WORD/DOCUMENT.XML")]);
+  const caseVariantDocx = buildZip([part("[content_types].xml"), part("WORD/DOCUMENT.XML")]);
 
   for (const [label, key, contentType, body, expectedType] of [
     ["HTML", "posts/a.jpg", "image/jpeg", html, "application/octet-stream"],
     ["SVG", "posts/b.png", "image/png", svg, "application/octet-stream"],
     ["truncated JPEG", "posts/c.jpg", "image/jpeg", jpeg.subarray(0, Math.floor(jpeg.length * 0.5)), "application/octet-stream"],
     ["a ZIP merely containing the EPUB media type", "posts/d.epub", "application/epub+zip", zipWithEpubText, "application/zip"],
-    ["a case-mutated OOXML lookalike", "posts/e.docx", DOCX_TYPE, caseMutatedDocx, "application/zip"],
+    ["an OOXML package declaring one part twice", "posts/e.docx", DOCX_TYPE, collidingDocx, "application/zip"],
+    // And the other direction: a package whose parts merely differ in case IS a Word document, so the
+    // remediation inherits the corrected rule rather than downgrading a conforming legacy file.
+    ["a case-variant but conforming DOCX", "posts/f.docx", DOCX_TYPE, caseVariantDocx, DOCX_TYPE],
   ] as const) {
     const result = await remediate(key, { body, contentType });
     assert.equal(result.read, true, label);

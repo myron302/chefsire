@@ -426,12 +426,13 @@ test("the R5 correction survives: a primary part far into the archive is still f
   assert.equal(await formatOf(lateWorkbook), "xlsx");
 });
 
-test("a primary part is matched by its exact name, and only at the package root", () => {
-  // THESE TWO ASSERTED THE DEFECT until R10: OPC part names are case-sensitive, so a case-mutated lookalike is
-  // not the part it resembles. The full set of mutations lives in `zip-ooxml-case-sensitivity.test.ts`.
-  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[content_types].xml", "WORD/Document.xml")), "zip");
-  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[CONTENT_TYPES].XML", "XL/WORKBOOK.XML")), "zip");
-  // A lookalike in a subdirectory is not the primary part.
+test("a primary part is matched by OPC identity, and only at the package root", () => {
+  // R10 had these asserting `zip`, on the mistaken premise that OPC part names are case-sensitive. ECMA-376
+  // Part 2 7.2.3.5 says the opposite -- "The comparison shall be ASCII case-insensitive matching" -- so these
+  // ARE the parts they resemble. The full set lives in `zip-ooxml-part-identity.test.ts`.
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[content_types].xml", "WORD/Document.xml")), "docx");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[CONTENT_TYPES].XML", "XL/WORKBOOK.XML")), "xlsx");
+  // A lookalike in a subdirectory is not the primary part -- a different path is a different part, whatever its case.
   assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "nested/word/document.xml")), "zip");
   assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "word/document.xml.bak")), "zip");
   // And the content types part is still required.

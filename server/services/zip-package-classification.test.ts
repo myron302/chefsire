@@ -171,10 +171,9 @@ test("content types without a primary part is not enough, and a primary part wit
   assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "xl/workbook.xml")), "xlsx");
   // A document embedding a spreadsheet is still a document.
   assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "word/document.xml", "xl/embedded.xlsx")), "docx");
-  // THIS ASSERTED THE DEFECT until R10. OPC part names are case-sensitive, so a case-mutated lookalike is not
-  // the part it resembles -- Word would not open such a package as a document. See
-  // `zip-ooxml-case-sensitivity.test.ts` for the full set; the corrected expectation is pinned here too.
-  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[content_types].xml", "WORD/document.xml")), "zip");
+  // OPC part identity is ASCII case-insensitive (ECMA-376 Part 2 7.2.3.5), so this IS a Word package. R10 had
+  // this asserting `zip` on the opposite premise; see `zip-ooxml-part-identity.test.ts` for the full set.
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[content_types].xml", "WORD/document.xml")), "docx");
 });
 
 /* ------------------------------------------------------------------ malformed and hostile archives */

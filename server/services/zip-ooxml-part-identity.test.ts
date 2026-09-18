@@ -1,31 +1,31 @@
 /**
- * OPC part names are case-sensitive, and a central directory must account for all of itself.
+ * OPC part identity is ASCII case-insensitive, and two members that collide under it are nonconforming.
  *
- * FINDING A -- OOXML IS NOT A CASE-INSENSITIVE FORMAT. `classifyZipPackage` lower-cased every entry name before
- * comparing it to the package markers. ECMA-376 fixes the content-types stream as `[Content_Types].xml` and the
- * primary parts as `word/document.xml` and `xl/workbook.xml`; a conforming reader looks for those names, not for
- * their case-folded shapes. Reproduced on head 4683cd9 -- every one of these was classified `docx` or `xlsx`:
+ * THE SPECIFICATION, CHECKED RATHER THAN TAKEN ON TRUST. ECMA-376 5th Edition Part 2 (Open Packaging
+ * Conventions) 7.2.3.5 says of part-name comparison: "The comparison shall be ASCII case-insensitive matching."
+ * Microsoft aligned `System.IO.Packaging` with exactly that in .NET 8 (dotnet/runtime#112783), having compared
+ * case-sensitively before -- the same mistake this classifier made in R10, when an earlier review talked it into
+ * exact matching. `[content_types].xml` and `[Content_Types].xml` name ONE part, and a reader opening the
+ * package sees one part, so refusing the first spelling refuses conforming packages.
  *
- *   [content_types].xml  +  word/document.xml     -> docx
- *   [Content_Types].xml  +  WORD/document.xml     -> docx
- *   [Content_Types].xml  +  word/DOCUMENT.XML     -> docx
- *   [CONTENT_TYPES].XML  +  WORD/DOCUMENT.XML     -> docx
- *   [content_types].xml  +  XL/WORKBOOK.XML       -> xlsx
+ * WHAT THIS FILE REPLACES. `zip-ooxml-case-sensitivity.test.ts` encoded the opposite rule: it asserted that
+ * every casing variant of a marker had to fall back to generic `zip`. That was wrong about the format, so the
+ * assertions are inverted here rather than preserved.
  *
- * So a generic archive was published under a generated `.docx` key with the Word content type while Word would
- * not open it as a document at all -- ChefSire asserting a format its own contents deny. The fix compares the
- * markers exactly; nothing in that decision is case-folded any more.
+ * WHAT DID NOT CHANGE, AND MUST NOT. The primary part is still required by name: an archive holding
+ * `[Content_Types].xml` and nothing but `word/media/image1.png` is still a generic archive, because a directory
+ * is not a part. That was the R8 correction and it is independent of casing.
  *
- * FINDING B -- A RECORD COUNT THAT UNDER-REPORTS PARSED A PREFIX. The entry loop runs exactly `totalEntries`
- * times, so an archive whose `directorySize` covers more records than its count admits used to be read as just
- * the first few. Reproduced on head 4683cd9: two central records with `directorySize` covering both and
- * `totalEntries` altered to 1 read as a ONE-member index -- so the members this validator saw were not the
- * members a real reader sees, which is the whole class of confusion this module exists to close. Parsing must
- * now land exactly on the end of the declared directory, or the archive is not indexed at all.
+ * THE FOLD IS DELIBERATELY NARROW. It is written out as an ASCII-only map rather than `toLowerCase()`, because
+ * the specification says ASCII and `toLowerCase()` is Unicode-aware: it folds the Kelvin sign U+212A onto `k`,
+ * so `WORD/DOCUMENT.XML` spelled with a Kelvin sign would become the Word primary part under Unicode folding
+ * and is not one. Narrow folding is both spec-exact and the harder thing to spoof, and only A-Z move, so it is
+ * locale-independent by construction.
  *
- * PPTX, STATED PLAINLY. This pipeline stores no PowerPoint format -- there is no `pptx` entry in `MEDIA_TYPES` --
- * so a presentation is a generic `zip`: inert, correctly typed, served as an attachment. There is no PPTX marker
- * to compare case-sensitively. That is pinned below rather than left to be assumed, in both directions.
+ * AND FOLDING MUST NOT COLLAPSE MEMBERS SILENTLY. A package holding both `word/document.xml` and
+ * `WORD/DOCUMENT.XML` declares one part twice: nonconforming under OPC, and an ambiguity that leaves two
+ * readers free to open different bytes under one name. Collisions are detected before any lookup and fail
+ * closed to an inert generic `zip`.
  *
  * Every fixture is a real ZIP written byte by byte, with a correct CRC-32 per member. Nothing is decompressed.
  */
@@ -118,7 +118,7 @@ const index = (...names: string[]) => names.map((name, position) => ({
 const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/* ------------------------------------------------------------------ canonical packages still classify */
+/* ------------------------------------------------------------------ canonical packages */
 
 test("a canonical DOCX and a canonical XLSX classify, with their canonical type and extension", async () => {
   assert.deepEqual(await classify([CONTENT_TYPES, "_rels/.rels", WORD_PRIMARY]), { format: "docx", extension: "docx", contentType: DOCX_TYPE });
@@ -128,78 +128,133 @@ test("a canonical DOCX and a canonical XLSX classify, with their canonical type 
   assert.equal((await classify([CONTENT_TYPES, "_rels/.rels", EXCEL_PRIMARY, "xl/worksheets/sheet1.xml", "xl/styles.xml"])).format, "xlsx");
 });
 
-/* ------------------------------------------------------------------ the finding: every casing mutation */
+/* ------------------------------------------------------------------ case variants name the same part */
 
-test("a mis-cased content-types stream does not identify an OOXML package", async () => {
-  // OBSERVED ON 4683cd9: `docx`, with a `.docx` key and the Word content type.
-  for (const mutation of ["[content_types].xml", "[CONTENT_TYPES].XML", "[Content_types].xml", "[content_Types].XML", "[CONTENT_types].xml"]) {
-    assert.equal((await classify([mutation, WORD_PRIMARY])).format, "zip", `${mutation} + ${WORD_PRIMARY}`);
-    assert.equal((await classify([mutation, EXCEL_PRIMARY])).format, "zip", `${mutation} + ${EXCEL_PRIMARY}`);
+test("a case-variant content-types stream names the same part", async () => {
+  for (const variant of ["[content_types].xml", "[CONTENT_TYPES].XML", "[Content_types].xml", "[content_Types].XML", "[CONTENT_types].xml"]) {
+    assert.equal((await classify([variant, WORD_PRIMARY])).format, "docx", `${variant} + ${WORD_PRIMARY}`);
+    assert.equal((await classify([variant, EXCEL_PRIMARY])).format, "xlsx", `${variant} + ${EXCEL_PRIMARY}`);
   }
 });
 
-test("a mis-cased Word primary part does not identify a DOCX", async () => {
-  // OBSERVED ON 4683cd9: every one of these was `docx`.
-  for (const mutation of ["WORD/document.xml", "Word/document.xml", "word/DOCUMENT.XML", "word/Document.xml", "WORD/DOCUMENT.XML", "wOrD/dOcUmEnT.xMl"]) {
-    const result = await classify([CONTENT_TYPES, mutation]);
-    assert.equal(result.format, "zip", mutation);
-    assert.equal(result.extension, "zip", `${mutation}: never stored under a .docx key`);
-    assert.equal(result.contentType, "application/zip", `${mutation}: never given the Word content type`);
+test("a case-variant Word primary part names the same part", async () => {
+  for (const variant of ["WORD/document.xml", "Word/document.xml", "word/DOCUMENT.XML", "word/Document.xml", "WORD/DOCUMENT.XML", "wOrD/dOcUmEnT.xMl"]) {
+    const result = await classify([CONTENT_TYPES, variant]);
+    assert.equal(result.format, "docx", variant);
+    assert.equal(result.extension, "docx", variant);
+    assert.equal(result.contentType, DOCX_TYPE, variant);
   }
 });
 
-test("a mis-cased Excel primary part does not identify an XLSX", async () => {
-  for (const mutation of ["XL/workbook.xml", "Xl/workbook.xml", "xl/WORKBOOK.XML", "xl/Workbook.xml", "XL/WORKBOOK.XML"]) {
-    const result = await classify([CONTENT_TYPES, mutation]);
-    assert.equal(result.format, "zip", mutation);
-    assert.equal(result.extension, "zip", `${mutation}: never stored under a .xlsx key`);
-    assert.equal(result.contentType, "application/zip", `${mutation}: never given the Excel content type`);
+test("a case-variant Excel primary part names the same part", async () => {
+  for (const variant of ["XL/workbook.xml", "Xl/workbook.xml", "xl/WORKBOOK.XML", "xl/Workbook.xml", "XL/WORKBOOK.XML"]) {
+    const result = await classify([CONTENT_TYPES, variant]);
+    assert.equal(result.format, "xlsx", variant);
+    assert.equal(result.extension, "xlsx", variant);
+    assert.equal(result.contentType, XLSX_TYPE, variant);
   }
 });
 
-test("both markers must be exactly right -- getting one right does not carry the other", async () => {
-  // The half-fixed shape this finding warns about: exact on one marker, folded on the other.
-  assert.equal((await classify([CONTENT_TYPES, "WORD/document.xml"])).format, "zip", "content types exact, part mutated");
-  assert.equal((await classify(["[content_types].xml", WORD_PRIMARY])).format, "zip", "part exact, content types mutated");
-  assert.equal((await classify(["[content_types].xml", "WORD/document.xml"])).format, "zip", "both mutated");
-  assert.equal((await classify([CONTENT_TYPES, WORD_PRIMARY])).format, "docx", "both exact");
-
-  assert.equal((await classify([CONTENT_TYPES, "XL/workbook.xml"])).format, "zip", "content types exact, part mutated");
-  assert.equal((await classify(["[CONTENT_TYPES].XML", EXCEL_PRIMARY])).format, "zip", "part exact, content types mutated");
-  assert.equal((await classify([CONTENT_TYPES, EXCEL_PRIMARY])).format, "xlsx", "both exact");
+test("both markers may vary independently, in any combination", async () => {
+  assert.equal((await classify(["[content_types].xml", "WORD/DOCUMENT.XML"])).format, "docx", "both varied");
+  assert.equal((await classify([CONTENT_TYPES, "WORD/document.xml"])).format, "docx", "part varied");
+  assert.equal((await classify(["[CONTENT_TYPES].XML", WORD_PRIMARY])).format, "docx", "content types varied");
+  assert.equal((await classify(["[CONTENT_TYPES].XML", "XL/WORKBOOK.XML"])).format, "xlsx", "both varied, workbook");
 });
 
 test("the rule holds on the classifier itself, not only end to end", () => {
   assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, WORD_PRIMARY)), "docx");
-  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, EXCEL_PRIMARY)), "xlsx");
-  for (const names of [
-    ["[content_types].xml", WORD_PRIMARY],
-    [CONTENT_TYPES, "WORD/document.xml"],
-    [CONTENT_TYPES, "word/DOCUMENT.XML"],
-    ["[CONTENT_TYPES].XML", "WORD/DOCUMENT.XML"],
-    ["[content_types].xml", "XL/WORKBOOK.XML"],
-    [CONTENT_TYPES, "xl/Workbook.xml"],
-  ] as const) {
-    assert.equal(classifyZipPackage(Buffer.alloc(128), index(...names)), "zip", names.join(" + "));
-  }
-  // A mutated lookalike sitting alongside the real part changes nothing: the real part is present.
-  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, "WORD/document.xml", WORD_PRIMARY)), "docx");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[content_types].xml", "WORD/DOCUMENT.XML")), "docx");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[CONTENT_TYPES].XML", "XL/WORKBOOK.XML")), "xlsx");
+  // Word still wins over Excel: a document embedding a spreadsheet is still a document.
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, "WORD/DOCUMENT.XML", "xl/workbook.xml")), "docx");
 });
 
-test("the request cannot supply the casing the archive lacks", async () => {
-  // The declared type and filename are recorded and never believed, here as everywhere else.
-  for (const [declared, name] of [[DOCX_TYPE, "report.docx"], [XLSX_TYPE, "book.xlsx"], ["application/zip", "thing.zip"]] as const) {
-    const result = await classify(["[content_types].xml", "WORD/document.xml"], declared, name);
+test("only ASCII letters fold, so a Unicode lookalike is not the part", async () => {
+  // `toLowerCase()` maps the Kelvin sign U+212A onto `k`; the specification says ASCII, and so does this.
+  // A member spelled with one is a different part and cannot stand in for the primary part.
+  const kelvin = "K"; // KELVIN SIGN
+  assert.equal("WORK/DOCUMENT.XML".toLowerCase(), "work/document.xml", "Unicode folding really would do this");
+  assert.equal((await classify([CONTENT_TYPES, `WOR${kelvin}/DOCUMENT.XML`])).format, "zip", "but it is not word/document.xml");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, `WOR${kelvin}/DOCUMENT.XML`)), "zip");
+});
+
+/* ------------------------------------------------------------------ colliding parts are nonconforming */
+
+test("two members that fold to the same Word part are ambiguous and fail closed", async () => {
+  for (const [label, names] of [
+    ["exact and upper", [CONTENT_TYPES, WORD_PRIMARY, "WORD/DOCUMENT.XML"]],
+    ["two variants, neither canonical", [CONTENT_TYPES, "Word/Document.xml", "WORD/document.XML"]],
+    ["three spellings", [CONTENT_TYPES, WORD_PRIMARY, "WORD/document.xml", "word/DOCUMENT.xml"]],
+    ["byte-identical duplicates", [CONTENT_TYPES, WORD_PRIMARY, WORD_PRIMARY]],
+  ] as const) {
+    const result = await classify(names);
+    assert.equal(result.format, "zip", `${label}: ${result.format}`);
+    assert.equal(result.extension, "zip", label);
+    assert.equal(result.contentType, "application/zip", label);
+  }
+});
+
+test("two members that fold to the same content-types stream are ambiguous and fail closed", async () => {
+  assert.equal((await classify([CONTENT_TYPES, "[content_types].xml", WORD_PRIMARY])).format, "zip");
+  assert.equal((await classify(["[CONTENT_TYPES].XML", "[content_types].xml", EXCEL_PRIMARY])).format, "zip");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, "[content_types].xml", WORD_PRIMARY)), "zip");
+});
+
+test("two members that fold to the same Excel part are ambiguous and fail closed", async () => {
+  assert.equal((await classify([CONTENT_TYPES, EXCEL_PRIMARY, "XL/WORKBOOK.XML"])).format, "zip");
+  assert.equal((await classify([CONTENT_TYPES, "Xl/Workbook.xml", "xL/wORKBOOK.xml"])).format, "zip");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, EXCEL_PRIMARY, "XL/WORKBOOK.XML")), "zip");
+});
+
+test("a collision anywhere in the package is enough, even away from the markers", async () => {
+  // A package that declares any part twice is nonconforming; the ambiguity does not have to be on the part that
+  // decides the format to make the package one this pipeline should not label.
+  assert.equal((await classify([CONTENT_TYPES, WORD_PRIMARY, "word/media/i.png", "word/media/I.PNG"])).format, "zip");
+  assert.equal((await classify([CONTENT_TYPES, EXCEL_PRIMARY, "docProps/app.xml", "docprops/APP.xml"])).format, "zip");
+  // And a generic archive with a collision was already generic; nothing changes for it.
+  assert.equal((await classify(["notes.txt", "NOTES.TXT"])).format, "zip");
+});
+
+/* ------------------------------------------------------------------ the R8 rule is untouched by any of this */
+
+test("a package with an OOXML directory but no primary part is still an archive", async () => {
+  for (const [label, member] of [
+    ["word/media only", "word/media/image1.png"],
+    ["WORD/MEDIA only", "WORD/MEDIA/IMAGE1.PNG"],
+    ["word settings only", "word/settings.xml"],
+    ["xl/media only", "xl/media/image1.png"],
+    ["XL/MEDIA only", "XL/MEDIA/IMAGE1.PNG"],
+    ["a worksheet without a workbook", "xl/worksheets/sheet1.xml"],
+  ] as const) {
+    assert.equal((await classify([CONTENT_TYPES, member])).format, "zip", label);
+    assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, member)), "zip", label);
+  }
+});
+
+test("a part must be at the package root, and a near-miss name is a different part", () => {
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, "nested/word/document.xml")), "zip");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, "word/document.xml.bak")), "zip");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, "word/documents.xml")), "zip");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, "xl/workbooks.xml")), "zip");
+  // And the content-types stream is still required.
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(WORD_PRIMARY)), "zip");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index(EXCEL_PRIMARY)), "zip");
+});
+
+test("the request still cannot supply a part the archive does not have", async () => {
+  for (const [declared, name] of [[DOCX_TYPE, "report.docx"], [XLSX_TYPE, "book.xlsx"]] as const) {
+    const result = await classify([CONTENT_TYPES, "word/media/image1.png"], declared, name);
     assert.equal(result.format, "zip", `${declared}/${name}`);
     assert.equal(result.extension, "zip", `${declared}/${name}`);
   }
 });
 
-/* ------------------------------------------------------------------ PPTX: not a format this pipeline stores */
+/* ------------------------------------------------------------------ PPTX: still not a format this pipeline stores */
 
-test("a presentation is a generic archive, canonical casing or not", async () => {
-  // Stated rather than assumed: there is no `pptx` entry in `MEDIA_TYPES`, so there is no PPTX marker here to
-  // compare case-sensitively. A presentation is inert, correctly typed and served as an attachment.
+test("a presentation is a generic archive, in any casing", async () => {
+  // Unchanged and re-verified this round: there is no `pptx` entry in `MEDIA_TYPES`, so there is no PowerPoint
+  // part to identify at all. A presentation stays inert, correctly typed and served as an attachment.
   for (const names of [
     [CONTENT_TYPES, POWERPOINT_PRIMARY],
     [CONTENT_TYPES, POWERPOINT_PRIMARY, "ppt/slides/slide1.xml", "_rels/.rels"],
@@ -211,34 +266,29 @@ test("a presentation is a generic archive, canonical casing or not", async () =>
     assert.equal(result.extension, "zip");
     assert.equal(result.contentType, "application/zip");
   }
-  // And it is not mistaken for a Word or Excel package either.
   assert.equal(classifyZipPackage(Buffer.alloc(128), index(CONTENT_TYPES, POWERPOINT_PRIMARY)), "zip");
 });
 
 /* ------------------------------------------------------------------ the central directory accounts for itself */
 
 test("a record count that under-reports the directory is not an index", async () => {
-  // OBSERVED ON 4683cd9: this read as a ONE-member index -- `[Content_Types].xml` alone -- and the rest of the
-  // archive's members were invisible to the validator while a real reader sees them all.
+  // Preserved from R10. OBSERVED ON 4683cd9: this read as a ONE-member index and the rest of the archive's
+  // members were invisible to the validator while a real reader sees them all.
   const underReported = buildZip([part(CONTENT_TYPES), part(WORD_PRIMARY)], { totalEntriesOverride: 1 });
   assert.equal(await indexOf(underReported), null, "the archive is not indexed at all");
   assert.equal((await asDocument(underReported)).kind === "accepted" && ((await asDocument(underReported)) as { format: string }).format, "zip");
 
-  // Any shortfall, at any count.
   for (const [entries, claimed] of [[3, 1], [3, 2], [5, 4], [5, 1], [2, 1]] as const) {
     const names = Array.from({ length: entries }, (_, position) => part(`member${position}.xml`));
     assert.equal(await indexOf(buildZip(names, { totalEntriesOverride: claimed })), null, `${entries} records claiming ${claimed}`);
   }
 
-  // The honest count reads every one of them, so the rule is about agreement and not about rejecting archives.
   const honest = buildZip([part(CONTENT_TYPES), part("_rels/.rels"), part(WORD_PRIMARY)]);
   assert.deepEqual((await indexOf(honest))!.map((entry) => entry.name), [CONTENT_TYPES, "_rels/.rels", WORD_PRIMARY]);
   assert.equal((await asDocument(honest)).kind === "accepted" && ((await asDocument(honest)) as { format: string }).format, "docx");
 });
 
 test("parsing must land exactly on the end of the declared directory", async () => {
-  // Over-reporting already failed, because the loop runs out of directory. Under-reporting is what needed the
-  // new check. Padding after the last record fails for the same reason: the bytes and the count disagree.
   const overReported = buildZip([part(CONTENT_TYPES), part(WORD_PRIMARY)], { totalEntriesOverride: 3 });
   assert.equal(await indexOf(overReported), null, "more entries claimed than are there");
 
@@ -251,13 +301,10 @@ test("parsing must land exactly on the end of the declared directory", async () 
     assert.equal(await indexOf(padded), null, label);
   }
 
-  // A directory with no padding and an honest count is consumed exactly, and reads.
   assert.equal((await indexOf(buildZip([part(CONTENT_TYPES), part(WORD_PRIMARY)])))!.length, 2);
 });
 
 test("an under-reported count cannot hide a member from the validator", async () => {
-  // The security shape of it: an archive whose visible prefix says one thing and whose full directory says
-  // another must not be indexed from the prefix. Here the hidden member is the one that decides the format.
   const hidden = buildZip([part(CONTENT_TYPES), part(WORD_PRIMARY), part(EXCEL_PRIMARY)], { totalEntriesOverride: 2 });
   assert.equal(await indexOf(hidden), null);
   const result = await asDocument(hidden, DOCX_TYPE, "report.docx");
@@ -268,10 +315,10 @@ test("an under-reported count cannot hide a member from the validator", async ()
 /* ------------------------------------------------------------------ nothing else moved */
 
 test("EPUB is untouched: the name is exact, and a case-variant duplicate is still refused", async () => {
-  // OCF fixes the name as lower-case `mimetype`, so identity is exact -- `MIMETYPE` first is not an EPUB. But
-  // two members differing only in case are one file to a case-insensitive extractor and two to a case-sensitive
-  // one, so the DUPLICATE defence folds case deliberately and refuses more. Different questions, different
-  // answers, both failing closed to an inert generic `zip`.
+  // OCF fixes the name as lower-case `mimetype`, so identity is exact -- `MIMETYPE` first is not an EPUB. The
+  // DUPLICATE defence folds case deliberately, because two members differing only in case are one file to a
+  // case-insensitive extractor and two to a case-sensitive one. Different questions, different answers, both
+  // failing closed to an inert generic `zip`. None of this moved when OOXML identity changed.
   const media = Buffer.from("application/epub+zip", "latin1");
   const book = (names: readonly string[]) => buildZip(names.map((name) => ({ name, data: name.toLowerCase() === "mimetype" ? media : Buffer.from("<x/>") })));
 
@@ -284,8 +331,7 @@ test("EPUB is untouched: the name is exact, and a case-variant duplicate is stil
     ["a second member differing only in case", ["mimetype", "MIMETYPE", "META-INF/container.xml"]],
     ["a second member named mimetype exactly", ["mimetype", "mimetype", "META-INF/container.xml"]],
   ] as const) {
-    const forged = book(names);
-    const result = await asDocument(forged, "application/epub+zip", "novel.epub");
+    const result = await asDocument(book(names), "application/epub+zip", "novel.epub");
     assert.equal(result.kind === "accepted" && result.format, "zip", label);
     assert.equal(result.kind === "accepted" && result.extension, "zip", label);
   }

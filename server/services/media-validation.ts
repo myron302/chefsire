@@ -634,6 +634,22 @@ export function looksLikeEpubContainer(head: Buffer, entries: readonly ZipCentra
 }
 
 /**
+ * ASCII-only lower-casing, which is what OPC part-name comparison is defined as.
+ *
+ * ECMA-376 Part 2 7.2.3.5: "The comparison shall be ASCII case-insensitive matching." Only A-Z move, so this is
+ * locale-independent by construction and folds nothing outside ASCII -- deliberately unlike `toLowerCase()`,
+ * which would map the Kelvin sign U+212A onto `k` and let a lookalike pass for a package part.
+ */
+function asciiLowerCase(value: string): string {
+  let out = "";
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    out += code >= 0x41 && code <= 0x5a ? String.fromCharCode(code + 0x20) : value[index];
+  }
+  return out;
+}
+
+/**
  * Which member of the ZIP family an archive is, decided from its own index.
  *
  * Neither the declared MIME nor the filename is consulted: an archive naming itself `report.docx` is a DOCX only
@@ -650,22 +666,34 @@ export function looksLikeEpubContainer(head: Buffer, entries: readonly ZipCentra
 export function classifyZipPackage(head: Buffer, entries: readonly ZipCentralEntry[] | null): MediaFormat {
   if (looksLikeEpubContainer(head, entries)) return "epub";
   if (!entries) return "zip";
-  // OPC part names are CASE-SENSITIVE, so these comparisons are exact (R10).
+  // OPC PART IDENTITY IS ASCII CASE-INSENSITIVE, AND COLLIDING PARTS ARE NONCONFORMING (R12).
   //
-  // This used to lower-case every entry name before comparing. OOXML is not a case-insensitive format: ECMA-376
-  // fixes the content-types stream as `[Content_Types].xml` and the parts as `word/document.xml` and
-  // `xl/workbook.xml`, and a conforming reader looks for those names, not for their case-folded shapes.
-  // Reproduced: `[content_types].xml` + `word/document.xml`, `[Content_Types].xml` + `WORD/document.xml`,
-  // `[Content_Types].xml` + `word/DOCUMENT.XML` and `[CONTENT_TYPES].XML` + `WORD/DOCUMENT.XML` were all
-  // classified `docx`, so a generic archive was published under a generated `.docx` key with the Word content
-  // type while Word would not open it as a document at all -- ChefSire asserting a format its own contents deny.
+  // ECMA-376 5th Edition Part 2 (Open Packaging Conventions) 7.2.3.5 states of part-name comparison: "The
+  // comparison shall be ASCII case-insensitive matching." Microsoft aligned `System.IO.Packaging` with exactly
+  // that in .NET 8, having previously compared case-sensitively -- which is the same mistake this code made in
+  // R10, when an earlier review talked it into exact matching. `[content_types].xml` and `[Content_Types].xml`
+  // are ONE part, and a reader that opens the package sees it that way, so refusing the first spelling refuses
+  // conforming packages.
   //
-  // Nothing here is case-folded. `declaredExtension` and the declared MIME type are still lower-cased where they
-  // are used, which is correct and unrelated: those are the REQUEST's claims, a media type is case-insensitive
-  // by RFC 2045, and neither ever decides a ZIP's format.
-  const names = entries.map((entry) => entry.name);
-  const has = (name: string) => names.includes(name);
-  if (!has("[Content_Types].xml")) return "zip";
+  // The fold is ASCII-only and written out rather than `toLowerCase()`, for two reasons. The specification says
+  // ASCII, and `toLowerCase()` is Unicode-aware: it folds the Kelvin sign U+212A to `k` and the dotted capital
+  // I to `i` + a combining dot, so an entry named `WORD/DOCUMENT.XML` spelled with a Kelvin sign would become
+  // the Word primary part under Unicode folding and is not one. Narrow folding is both spec-exact and the
+  // harder thing to spoof. It is also locale-independent by construction: only A-Z move.
+  //
+  // WHAT THE FOLD MUST NOT DO is let two physical members collapse into one identity silently. A package
+  // holding both `word/document.xml` and `WORD/DOCUMENT.XML` declares one part twice, which OPC makes
+  // nonconforming and which leaves two readers free to open different bytes under one name -- the ambiguity
+  // this module exists to refuse. So a collision is detected BEFORE any lookup and fails closed to an inert
+  // generic `zip`. Exact duplicates collide the same way and are refused for the same reason.
+  //
+  // This equivalence is scoped to OPC part identity and nothing else. ZIP itself is byte-oriented and stays
+  // that way: the EPUB rules above have already decided by now, generic archives are unaffected, and no entry
+  // name is folded for structure, traversal or duplicate detection anywhere else in this module.
+  const names = entries.map((entry) => asciiLowerCase(entry.name));
+  if (new Set(names).size !== names.length) return "zip";
+  const has = (part: string) => names.includes(part);
+  if (!has("[content_types].xml")) return "zip";
   // The PRIMARY PART decides, by its exact name, and nothing else does.
   //
   // THE CATCH (R8). This used to fall back to "any member under `word/` or `xl/`", which is not a statement
