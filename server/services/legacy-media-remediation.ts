@@ -130,7 +130,8 @@ export type LegacyObjectMetadata = {
 
 export type TriageReason =
   | "active_content_type" | "active_extension" | "missing_content_type"
-  | "already_neutralized" | "canonical_media" | "type_mismatch_left_alone" | "unrecognized_left_alone" | "out_of_scope";
+  | "already_neutralized" | "canonical_metadata_unverified" | "type_mismatch_unverified"
+  | "unrecognized_unverified" | "out_of_scope";
 
 export type LegacyTriage = { action: "inspect" | "keep"; reason: TriageReason };
 
@@ -165,12 +166,25 @@ export function triageLegacyObject(object: LegacyObjectMetadata, prefixes: reado
   if (contentType === NEUTRALIZED_CONTENT_TYPE && disposition.startsWith(NEUTRALIZED_CONTENT_DISPOSITION)) {
     return { action: "keep", reason: "already_neutralized" };
   }
+  // EVERYTHING ELSE IS INSPECTED (R11). The reason is recorded for the report, not to decide anything.
+  //
+  // These used to branch three ways into `keep`, and the worst of them was `canonical_media`: an extension the
+  // canonical table knows, carrying exactly the content type that table says it should. That reads like proof
+  // and is not. The pre-repair uploader took the extension from `file.originalname` and the stored type from
+  // `file.mimetype` -- two halves of the SAME attacker-supplied multipart header -- so making them agree costs
+  // an attacker nothing. Reproduced on head 97b93e7: `posts/attack.jpg` stored as `image/jpeg` whose bytes are
+  // `<!doctype html><script>...`, triaged `keep / canonical_media`, and the runner never fetched a byte of it.
+  // It did not appear in the run log at all. The objects this tool exists to find were the ones it skipped.
+  //
+  // The same reasoning condemns the other two keeps, which the same reproduction confirmed: a `.jpg` stored as
+  // `image/png` (`type_mismatch_left_alone`) and a `.bin` stored as `application/pdf`
+  // (`unrecognized_left_alone`) were both kept unread with HTML bodies.
   if (ACTIVE_CONTENT_TYPES.has(contentType)) return { action: "inspect", reason: "active_content_type" };
   if (ACTIVE_EXTENSIONS.has(extension)) return { action: "inspect", reason: "active_extension" };
   if (contentType === "") return { action: "inspect", reason: "missing_content_type" };
-  if (CANONICAL_EXTENSION_CONTENT_TYPES[extension] === contentType) return { action: "keep", reason: "canonical_media" };
-  if (CANONICAL_EXTENSION_CONTENT_TYPES[extension]) return { action: "keep", reason: "type_mismatch_left_alone" };
-  return { action: "keep", reason: "unrecognized_left_alone" };
+  if (CANONICAL_EXTENSION_CONTENT_TYPES[extension] === contentType) return { action: "inspect", reason: "canonical_metadata_unverified" };
+  if (CANONICAL_EXTENSION_CONTENT_TYPES[extension]) return { action: "inspect", reason: "type_mismatch_unverified" };
+  return { action: "inspect", reason: "unrecognized_unverified" };
 }
 
 /* ------------------------------------------------------------------ the decision, from the bytes */
@@ -251,11 +265,18 @@ export function decideLegacyRemediation(
   }
 
   if (validation.kind === "rejected") {
-    // The bytes are not media ChefSire accepts. Combined with an active surface that is the real hazard; without
-    // one it is still not something to destroy, so it is reported instead.
-    return presentsActiveSurface
-      ? { action: "neutralize", reason: "active_content" }
-      : { action: "report_only", reason: "unverifiable_inert" };
+    // WHEN THE BYTES WERE READ, THE BYTES DECIDE -- ALONE (R11).
+    //
+    // This used to require `presentsActiveSurface` as well, which is a test on the metadata. That reproduced the
+    // finding one level down: an object whose bytes the hardened validator refuses, wearing a `.jpg` key and an
+    // `image/jpeg` stored type, was merely REPORTED because its metadata looked harmless. Metadata cannot make
+    // refused bytes safe, and this module's whole premise is that the bytes are the only honest evidence. So an
+    // object the validator refuses is neutralized, whatever its key and stored type claim.
+    //
+    // Neutralizing is metadata-only, reversible, and preserves both the bytes and the key, so the cost of being
+    // wrong is an object that downloads instead of rendering. The cost of the old behaviour was a stored-XSS
+    // payload left served.
+    return { action: "neutralize", reason: "active_content" };
   }
 
   // CONTENT-ENCODING, AND WHY IT BLOCKS A PIN.
@@ -368,7 +389,7 @@ export type LegacySummary = Record<TriageReason | RemediationReason, number>;
 export function emptyLegacySummary(): LegacySummary {
   return {
     active_content_type: 0, active_extension: 0, missing_content_type: 0, already_neutralized: 0,
-    canonical_media: 0, type_mismatch_left_alone: 0, unrecognized_left_alone: 0, out_of_scope: 0,
+    canonical_metadata_unverified: 0, type_mismatch_unverified: 0, unrecognized_unverified: 0, out_of_scope: 0,
     valid_media_unsafe_key: 0, valid_media_wrong_type: 0, active_content: 0,
     unverifiable_active_surface: 0, unverifiable_inert: 0, too_large_active_surface: 0,
     too_large_to_inspect: 0, already_correct: 0,

@@ -161,15 +161,22 @@ test("bytes that really are HTML or SVG are neutralized in place", async () => {
   }
 });
 
-test("canonical media is never read and never written", async () => {
+test("canonical-looking media IS read, and real media survives the reading", async () => {
+  // THIS TEST ASSERTED THE DEFECT until R11: it pinned that an object whose extension and stored type agree is
+  // "not even fetched". That is exactly how `posts/attack.jpg` stored as `image/jpeg` with an HTML body escaped
+  // the tool entirely. Every in-scope object is now fetched under the existing bounded read.
   const recorder = recordingStore({
     "posts/fine.jpg": { body: jpeg, contentType: "image/jpeg" },
     "avatars/fine.png": { body: png, contentType: "image/png" },
   });
   const outcome = await runLegacyRemediation(recorder.store, { apply: true, requestedPrefixes: [], max: Infinity });
-  assert.deepEqual(mutations(recorder), []);
-  assert.equal(recorder.calls.some((call) => call.op === "get"), false, "not even fetched");
-  assert.equal(outcome.inspected, 0);
+  assert.equal(recorder.calls.filter((call) => call.op === "get").length, 2, "both are fetched now");
+  assert.equal(outcome.inspected, 2);
+  // And having been read, genuine media is left exactly alone -- no rewrite, no neutralization.
+  assert.deepEqual(mutations(recorder), [], "nothing legitimate is touched");
+  // A keep is counted, not logged -- so assert the count, not an empty log, which would pass vacuously.
+  assert.equal(outcome.summary.already_correct, 2, "both were kept on the evidence of their bytes");
+  assert.deepEqual(outcome.log, [], "and a kept object adds no line to the report");
 });
 
 test("an object too large to read is neutralized when it presents an active surface", async () => {

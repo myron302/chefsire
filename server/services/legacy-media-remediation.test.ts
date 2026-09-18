@@ -92,12 +92,19 @@ test("an object that presents an active surface is inspected rather than judged"
   assert.deepEqual(triageLegacyObject({ key: "posts/d.jpg", contentType: "text/html; charset=utf-8" }), { action: "inspect", reason: "active_content_type" });
 });
 
-test("canonical media is never even read", () => {
+test("canonical-LOOKING metadata is inspected, because it proves nothing about the bytes", () => {
+  // THIS TEST ASSERTED THE DEFECT until R11. It pinned `keep / canonical_media` -- so an object whose extension
+  // and stored type agree was never fetched. Both halves came from the same attacker-supplied multipart header
+  // in the pre-repair uploader, so agreeing costs an attacker nothing. See
+  // `legacy-metadata-is-not-evidence.test.ts` for the reproduction this corrects.
   for (const [extension, contentType] of Object.entries(CANONICAL_EXTENSION_CONTENT_TYPES)) {
-    assert.deepEqual(triageLegacyObject({ key: `posts/legit.${extension}`, contentType }), { action: "keep", reason: "canonical_media" }, extension);
+    assert.deepEqual(triageLegacyObject({ key: `posts/legit.${extension}`, contentType }), { action: "inspect", reason: "canonical_metadata_unverified" }, extension);
   }
-  assert.equal(triageLegacyObject({ key: "posts/uuid_thumb.webp", contentType: "image/webp" }).action, "keep");
-  assert.equal(triageLegacyObject({ key: "avatars/avatar-uuid.jpg", contentType: "image/jpeg" }).action, "keep");
+  assert.equal(triageLegacyObject({ key: "posts/uuid_thumb.webp", contentType: "image/webp" }).action, "inspect");
+  assert.equal(triageLegacyObject({ key: "avatars/avatar-uuid.jpg", contentType: "image/jpeg" }).action, "inspect");
+  // The other two metadata-only keeps went the same way, for the same reason.
+  assert.deepEqual(triageLegacyObject({ key: "posts/uuid.jpg", contentType: "image/png" }), { action: "inspect", reason: "type_mismatch_unverified" });
+  assert.deepEqual(triageLegacyObject({ key: "posts/uuid.bin", contentType: "application/pdf" }), { action: "inspect", reason: "unrecognized_unverified" });
 });
 
 test("an already-neutralized object is skipped, so re-running costs nothing", () => {
@@ -194,13 +201,26 @@ test("C. unverifiable content fails closed without ever being destroyed", () => 
   );
   assert.deepEqual(largeInert, { action: "report_only", reason: "too_large_to_inspect" });
 
-  // Unreadable but inert either way: reported, not modified.
-  const inert = decideLegacyRemediation(
+  // Bytes READ and REFUSED: neutralized, whatever the metadata says.
+  //
+  // THIS ASSERTED THE DEFECT until R11, one level below the triage one. It pinned `report_only` for bytes the
+  // hardened validator had already refused, purely because the key and stored type looked harmless. Metadata
+  // cannot make refused bytes safe, and it is the bytes this module exists to believe.
+  const refused = decideLegacyRemediation(
     { key: "posts/uuid.bin", contentType: "application/pdf" },
     { action: "inspect", reason: "missing_content_type" },
     rejected,
   );
-  assert.deepEqual(inert, { action: "report_only", reason: "unverifiable_inert" });
+  assert.deepEqual(refused, { action: "neutralize", reason: "active_content" });
+
+  // `unverifiable_inert` still exists for the case it was always meant for: bytes that could not be read at all
+  // on an object whose metadata presents nothing active.
+  const unread = decideLegacyRemediation(
+    { key: "posts/uuid.bin", contentType: "application/pdf" },
+    { action: "inspect", reason: "missing_content_type" },
+    { kind: "not_inspected", why: "unreadable" },
+  );
+  assert.deepEqual(unread, { action: "report_only", reason: "unverifiable_inert" });
 });
 
 test("D. an object already correct is left entirely alone", () => {

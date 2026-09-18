@@ -105,8 +105,10 @@ test("an oversized but genuinely inert object is still reported and still untouc
 });
 
 test("objects triage keeps are still never reached, whatever their size", () => {
+  // The canonical-media row was removed in R11: canonical-LOOKING metadata is no longer a keep, because it was
+  // never evidence. Only two metadata-only keeps survive, and neither is a claim about the bytes -- one is not
+  // ours to touch, and the other is already inert whatever its bytes are.
   for (const [label, object] of [
-    ["canonical media", { key: "posts/uuid.jpg", contentType: "image/jpeg", size: 90 * 1024 * 1024 }],
     ["already neutralized", { key: "posts/uuid.html", contentType: "application/octet-stream", contentDisposition: "attachment", size: 90 * 1024 * 1024 }],
     ["out of scope", { key: "unrelated/uuid.html", contentType: "text/html", size: 90 * 1024 * 1024 }],
   ] as const) {
