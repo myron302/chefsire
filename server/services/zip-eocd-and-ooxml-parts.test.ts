@@ -426,9 +426,11 @@ test("the R5 correction survives: a primary part far into the archive is still f
   assert.equal(await formatOf(lateWorkbook), "xlsx");
 });
 
-test("names are still compared case-insensitively, and only at the package root", () => {
-  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[content_types].xml", "WORD/Document.xml")), "docx");
-  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[CONTENT_TYPES].XML", "XL/WORKBOOK.XML")), "xlsx");
+test("a primary part is matched by its exact name, and only at the package root", () => {
+  // THESE TWO ASSERTED THE DEFECT until R10: OPC part names are case-sensitive, so a case-mutated lookalike is
+  // not the part it resembles. The full set of mutations lives in `zip-ooxml-case-sensitivity.test.ts`.
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[content_types].xml", "WORD/Document.xml")), "zip");
+  assert.equal(classifyZipPackage(Buffer.alloc(128), index("[CONTENT_TYPES].XML", "XL/WORKBOOK.XML")), "zip");
   // A lookalike in a subdirectory is not the primary part.
   assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "nested/word/document.xml")), "zip");
   assert.equal(classifyZipPackage(Buffer.alloc(128), index("[Content_Types].xml", "word/document.xml.bak")), "zip");

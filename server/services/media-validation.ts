@@ -430,6 +430,15 @@ async function readCentralDirectoryEntries(source: MediaSource, record: ZipEndOf
     });
     cursor = next;
   }
+  // AND the records must account for the WHOLE declared directory (R10).
+  //
+  // The loop runs exactly `totalEntries` times, so a record count that under-reports what is physically there
+  // used to parse a PREFIX and return it as if it were the index. Reproduced: an archive holding two central
+  // records, with `directorySize` covering both and `totalEntries` altered to 1, read as a single-member index
+  // -- so the members this validator saw were not the members a real reader sees, which is the whole class of
+  // confusion this module exists to close. Requiring the cursor to land exactly on the end of the directory
+  // makes the count and the bytes agree, or the archive is not indexed at all.
+  if (cursor !== directory.length) return null;
   return entries;
 }
 
@@ -614,7 +623,14 @@ export function looksLikeEpubContainer(head: Buffer, entries: readonly ZipCentra
   if ((indexed.flags & ~ZIP_TOLERATED_FLAG_MASK) !== (local.flags & ~ZIP_TOLERATED_FLAG_MASK)) return false;
 
   // And no other member may also be called `mimetype`: a second one is what a differing reader might pick up.
-  return entries.filter((entry) => entry.name === "mimetype").length === 1;
+  //
+  // THIS comparison folds case, and the one above deliberately does not. They answer different questions. The
+  // check above is IDENTITY -- OCF fixes the name as lower-case `mimetype`, so only that exact string is the
+  // entry the specification means. This one is an AMBIGUITY DEFENCE: two members whose names differ only in
+  // case are the same file to a case-insensitive extractor and different files to a case-sensitive one, which
+  // is precisely the disagreement worth refusing. Folding case here refuses strictly more, and fails closed to
+  // an inert generic `zip`.
+  return entries.filter((entry) => entry.name.toLowerCase() === "mimetype").length === 1;
 }
 
 /**
@@ -634,9 +650,22 @@ export function looksLikeEpubContainer(head: Buffer, entries: readonly ZipCentra
 export function classifyZipPackage(head: Buffer, entries: readonly ZipCentralEntry[] | null): MediaFormat {
   if (looksLikeEpubContainer(head, entries)) return "epub";
   if (!entries) return "zip";
-  const names = entries.map((entry) => entry.name.toLowerCase());
+  // OPC part names are CASE-SENSITIVE, so these comparisons are exact (R10).
+  //
+  // This used to lower-case every entry name before comparing. OOXML is not a case-insensitive format: ECMA-376
+  // fixes the content-types stream as `[Content_Types].xml` and the parts as `word/document.xml` and
+  // `xl/workbook.xml`, and a conforming reader looks for those names, not for their case-folded shapes.
+  // Reproduced: `[content_types].xml` + `word/document.xml`, `[Content_Types].xml` + `WORD/document.xml`,
+  // `[Content_Types].xml` + `word/DOCUMENT.XML` and `[CONTENT_TYPES].XML` + `WORD/DOCUMENT.XML` were all
+  // classified `docx`, so a generic archive was published under a generated `.docx` key with the Word content
+  // type while Word would not open it as a document at all -- ChefSire asserting a format its own contents deny.
+  //
+  // Nothing here is case-folded. `declaredExtension` and the declared MIME type are still lower-cased where they
+  // are used, which is correct and unrelated: those are the REQUEST's claims, a media type is case-insensitive
+  // by RFC 2045, and neither ever decides a ZIP's format.
+  const names = entries.map((entry) => entry.name);
   const has = (name: string) => names.includes(name);
-  if (!has("[content_types].xml")) return "zip";
+  if (!has("[Content_Types].xml")) return "zip";
   // The PRIMARY PART decides, by its exact name, and nothing else does.
   //
   // THE CATCH (R8). This used to fall back to "any member under `word/` or `xl/`", which is not a statement
@@ -649,6 +678,11 @@ export function classifyZipPackage(head: Buffer, entries: readonly ZipCentralEnt
   // `word/document.xml`, and every Excel one names it `xl/workbook.xml`, so the exact check costs no real
   // format. A package with those directories and no primary part is an archive, and is stored as one.
   // Word is checked first: a document embedding a spreadsheet is still a document.
+  //
+  // PPTX IS NOT IN THIS TABLE, deliberately. This pipeline stores no PowerPoint format -- there is no `pptx`
+  // entry in `MEDIA_TYPES` -- so a presentation is classified as a generic `zip`, which is inert, correctly
+  // typed and served as an attachment. That is the behaviour on every head of this branch and on main; there is
+  // no PPTX marker here to compare case-sensitively, and adding one would be adding a supported format.
   if (has("word/document.xml")) return "docx";
   if (has("xl/workbook.xml")) return "xlsx";
   return "zip";
