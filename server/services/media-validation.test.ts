@@ -160,20 +160,24 @@ test("no accepted format maps to an extension a browser executes", () => {
   }
 });
 
-test("a document's label is chosen only among inert members of the container its bytes established", () => {
-  // A ZIP that declares itself a DOCX and carries the OOXML marker is labelled DOCX.
-  assert.equal(resolveMediaFormat({ container: "zip" }, ooxml(), "report.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "docx");
-  // The same declaration over an archive WITHOUT the marker falls back to the honest answer.
-  assert.equal(resolveMediaFormat({ container: "zip" }, zip(), "report.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "zip");
-  assert.equal(resolveMediaFormat({ container: "zip" }, epub(), "book.epub", "application/epub+zip"), "epub");
-  // A declaration from outside the family cannot pull the label out of it.
-  for (const claimed of ["payload.html", "payload.svg", "payload.js", "payload.mp4"]) {
-    const format = resolveMediaFormat({ container: "zip" }, zip(), claimed, "text/html");
-    assert.equal(format, "zip", claimed);
+test("a ZIP's label comes from the archive, never from the request", () => {
+  // This assertion USED to say a declared `.docx` plus an OOXML marker in the first 64 KiB made a DOCX. That
+  // rule was the defect: ZIP guarantees no member ordering, so a real DOCX with a large first member was
+  // labelled `zip`. Classification now reads the archive's own central directory, which is why
+  // `resolveMediaFormat` no longer decides ZIP at all -- see zip-package-classification.test.ts for the rule and
+  // for the fixture that defeats a head scan.
+  for (const claimed of ["report.docx", "book.epub", "payload.html", "payload.mp4"]) {
+    assert.equal(resolveMediaFormat({ container: "zip" }, zip(), claimed, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), "zip", claimed);
   }
-  // An OLE compound file that names neither member is refused rather than labelled as a guess.
-  assert.equal(resolveMediaFormat({ container: "ole" }, ole(), "payload.html", "text/html"), null);
+});
+
+test("an OLE document's label is chosen only among inert members of the container its bytes established", () => {
+  // OLE keeps the declared-value tie-break, and deliberately: `.doc` and `.xls` are the same container with no
+  // cheap structural discriminator, both are inert, and both are served as attachments either way.
   assert.equal(resolveMediaFormat({ container: "ole" }, ole(), "notes.doc", "application/msword"), "doc");
+  assert.equal(resolveMediaFormat({ container: "ole" }, ole(), "sheet.xls", "application/vnd.ms-excel"), "xls");
+  // Naming neither member is refused rather than labelled as a guess.
+  assert.equal(resolveMediaFormat({ container: "ole" }, ole(), "payload.html", "text/html"), null);
 });
 
 /* ------------------------------------------------------------------ the required matrix */

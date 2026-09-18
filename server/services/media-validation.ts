@@ -199,26 +199,119 @@ export function declaredExtension(originalName: string | undefined): string {
   return dot <= 0 ? "" : lastSegment.slice(dot + 1).toLowerCase();
 }
 
-const ZIP_MEMBERS: readonly MediaFormat[] = ["docx", "xlsx", "epub", "zip"];
 const OLE_MEMBERS: readonly MediaFormat[] = ["doc", "xls"];
 
+/* ------------------------------------------------------------------ ZIP packages, read structurally */
+
 /**
- * Picks which member of a verified container family a document is.
- *
- * The bytes already decided the container. This only chooses the label, and only among formats that are inert by
- * construction, so the worst outcome of a wrong answer is a `.docx` served as `application/zip`. Where a cheap,
- * unambiguous marker exists in the archive head it is required rather than trusted: an OOXML archive carries
- * `[Content_Types].xml` as an early member, and an EPUB carries its media type as a stored first member. A
- * declared value that the archive contradicts falls through to the honest answer, `zip`.
+ * Bounds on reading a ZIP's own index. This is CLASSIFICATION, not extraction: no member is ever inflated, no
+ * name is ever used as a path, and every number the archive supplies is checked before it is used.
  */
-function resolveFamilyMember(members: readonly MediaFormat[], head: Buffer, declared: { extension: string; mimeType: string }, fallback: MediaFormat | null): MediaFormat | null {
+export const ZIP_MAX_CENTRAL_DIRECTORY_BYTES = 1024 * 1024;
+export const ZIP_MAX_ENTRIES = 2048;
+export const ZIP_MAX_ENTRY_NAME_BYTES = 512;
+/** An end-of-central-directory record is 22 bytes plus a comment of at most 65535. */
+const ZIP_EOCD_SEARCH_BYTES = 22 + 0xffff;
+const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const ZIP_CENTRAL_FILE_SIGNATURE = 0x02014b50;
+
+/**
+ * The names of a ZIP's members, read from its central directory, or null when the archive cannot be indexed
+ * safely.
+ *
+ * WHY THE CENTRAL DIRECTORY. The previous implementation searched the first 64 KiB for the literal
+ * `[Content_Types].xml`, which assumes that member comes early. ZIP guarantees no such ordering: reproduced, a
+ * DOCX whose first member is an 80 KiB image puts `[Content_Types].xml` at offset 82001 and was classified as a
+ * generic `.zip`, so a legitimate Office document was stored under the wrong type. The central directory is the
+ * archive's own index and is where member names are supposed to be read from.
+ *
+ * Every field is treated as hostile: the declared directory size, entry count, name lengths and offsets are all
+ * bounded and cross-checked against the real file size before a single byte is addressed. Zip64 is not parsed --
+ * an archive that needs it falls back to generic `zip` rather than being guessed at.
+ */
+export async function readZipCentralDirectoryNames(source: MediaSource, byteSize: number): Promise<string[] | null> {
+  if (byteSize < 22) return null;
+  const tailLength = Math.min(ZIP_EOCD_SEARCH_BYTES, byteSize);
+  const tail = await readRange(source, byteSize - tailLength, tailLength);
+  if (!tail || tail.length < 22) return null;
+
+  // The EOCD is last, but a trailing comment can follow it, so scan backwards for the signature.
+  let eocd = -1;
+  for (let offset = tail.length - 22; offset >= 0; offset--) {
+    if (tail.readUInt32LE(offset) === ZIP_EOCD_SIGNATURE) { eocd = offset; break; }
+  }
+  if (eocd < 0) return null;
+
+  const totalEntries = tail.readUInt16LE(eocd + 10);
+  const directorySize = tail.readUInt32LE(eocd + 12);
+  const directoryOffset = tail.readUInt32LE(eocd + 16);
+
+  // Zip64 sentinels. Not parsed, and not guessed at.
+  if (totalEntries === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff) return null;
+  if (totalEntries === 0 || totalEntries > ZIP_MAX_ENTRIES) return null;
+  if (directorySize === 0 || directorySize > ZIP_MAX_CENTRAL_DIRECTORY_BYTES) return null;
+  // The directory must actually lie inside the file, with room for itself.
+  if (directoryOffset + directorySize > byteSize) return null;
+
+  const directory = await readRange(source, directoryOffset, directorySize);
+  if (!directory || directory.length !== directorySize) return null;
+
+  const names: string[] = [];
+  let cursor = 0;
+  for (let entry = 0; entry < totalEntries; entry++) {
+    // A central file header is 46 bytes before its variable-length name.
+    if (cursor + 46 > directory.length) return null;
+    if (directory.readUInt32LE(cursor) !== ZIP_CENTRAL_FILE_SIGNATURE) return null;
+    const nameLength = directory.readUInt16LE(cursor + 28);
+    const extraLength = directory.readUInt16LE(cursor + 30);
+    const commentLength = directory.readUInt16LE(cursor + 32);
+    if (nameLength === 0 || nameLength > ZIP_MAX_ENTRY_NAME_BYTES) return null;
+    const next = cursor + 46 + nameLength + extraLength + commentLength;
+    // Every advance must move forward and stay inside the directory we read.
+    if (next <= cursor || next > directory.length) return null;
+    names.push(directory.subarray(cursor + 46, cursor + 46 + nameLength).toString("latin1"));
+    cursor = next;
+  }
+  return names;
+}
+
+/**
+ * Which member of the ZIP family an archive is, decided from its own index.
+ *
+ * Neither the declared MIME nor the filename is consulted: an archive naming itself `report.docx` is a DOCX only
+ * if it contains the parts a DOCX is made of. OOXML requires `[Content_Types].xml` at the package root, and the
+ * primary part is what distinguishes Word from Excel, so both are required rather than either.
+ *
+ * EPUB is decided by the OCF rule instead, which is a genuine structural guarantee: the specification requires
+ * `mimetype` to be the FIRST member, stored uncompressed, holding exactly `application/epub+zip`. That is a
+ * fixed position near the head, so it is checked there and does not depend on the central directory being
+ * readable at all.
+ */
+export function classifyZipPackage(head: Buffer, names: readonly string[] | null): MediaFormat {
+  if (head.subarray(0, 128).includes("application/epub+zip")) return "epub";
+  if (!names) return "zip";
+  const has = (name: string) => names.some((entry) => entry.toLowerCase() === name);
+  const hasPrefix = (prefix: string) => names.some((entry) => entry.toLowerCase().startsWith(prefix));
+  if (!has("[content_types].xml")) return "zip";
+  // The primary part decides. Word is checked first: a document embedding a spreadsheet is still a document.
+  if (has("word/document.xml") || hasPrefix("word/")) return "docx";
+  if (has("xl/workbook.xml") || hasPrefix("xl/")) return "xlsx";
+  return "zip";
+}
+
+/**
+ * Picks which member of a verified OLE compound file a document is.
+ *
+ * ZIP packages are NOT decided here -- they are read structurally by `classifyZipPackage`, because an archive's
+ * own index is available and is the honest source. OLE has no equally cheap discriminator: `.doc` and `.xls` are
+ * the same container, and telling them apart means walking the compound-file directory. Both members are inert
+ * and are served as attachments either way, so the declared value is allowed to break that one tie -- and when
+ * it names neither, the file is refused rather than labelled as a guess.
+ */
+function resolveFamilyMember(members: readonly MediaFormat[], declared: { extension: string; mimeType: string }, fallback: MediaFormat | null): MediaFormat | null {
   const claimed = members.find((format) => MEDIA_TYPES[format].extension === declared.extension)
     ?? members.find((format) => MEDIA_TYPES[format].contentType === declared.mimeType);
-  if (!claimed) return fallback;
-  const marker = head.subarray(0, Math.min(head.length, MEDIA_HEAD_BYTES));
-  if ((claimed === "docx" || claimed === "xlsx") && !marker.includes("[Content_Types].xml")) return fallback;
-  if (claimed === "epub" && !marker.subarray(0, 128).includes("application/epub+zip")) return fallback;
-  return claimed;
+  return claimed ?? fallback;
 }
 
 /** What the bytes are, expressed as one of the formats ChefSire stores. */
@@ -231,11 +324,13 @@ export function resolveMediaFormat(detected: DetectedContainer, head: Buffer, or
     case "pdf":
       return "pdf";
     case "zip":
-      return resolveFamilyMember(ZIP_MEMBERS, head, declared, "zip");
+      // Decided structurally by `classifyZipPackage`; never from the request. This branch exists only so the
+      // function is total, and a caller that reaches it without the archive index gets the honest answer.
+      return "zip";
     case "ole":
       // There is no honest fallback: a `.doc` and a `.xls` are the same container and nothing cheap tells them
       // apart, so an OLE file that names neither is refused rather than labelled as a guess.
-      return resolveFamilyMember(OLE_MEMBERS, head, declared, null);
+      return resolveFamilyMember(OLE_MEMBERS, declared, null);
   }
 }
 
@@ -245,6 +340,26 @@ export type MediaValidationResult =
 
 /** Where the bytes are. A staged file is classified by reading its head and tail, never by buffering it whole. */
 export type MediaSource = { buffer: Buffer } | { path: string; byteSize: number };
+
+/** Reads a bounded window from either source kind. Used only for a ZIP's own index, never for its contents. */
+async function readRange(source: MediaSource, offset: number, length: number): Promise<Buffer | null> {
+  if (offset < 0 || length <= 0 || length > ZIP_MAX_CENTRAL_DIRECTORY_BYTES + ZIP_EOCD_SEARCH_BYTES) return null;
+  if ("buffer" in source) {
+    if (offset + length > source.buffer.length) return null;
+    return source.buffer.subarray(offset, offset + length);
+  }
+  let handle: fs.promises.FileHandle | undefined;
+  try {
+    handle = await fs.promises.open(source.path, "r");
+    const into = Buffer.alloc(length);
+    const { bytesRead } = await handle.read(into, 0, length, offset);
+    return bytesRead === length ? into : null;
+  } catch {
+    return null;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
+}
 
 async function readEnds(source: MediaSource): Promise<{ head: Buffer; tail: Buffer; byteSize: number } | null> {
   if ("buffer" in source) {
@@ -341,7 +456,11 @@ export async function validateUploadedMedia(request: MediaValidationRequest): Pr
   const detected = detectMediaContainer(ends.head, ends.tail);
   if (!detected) return { kind: "rejected", reason: "content_mismatch" };
 
-  const format = resolveMediaFormat(detected, ends.head, request.originalName, request.declaredMimeType);
+  // A ZIP is classified from its own central directory rather than from a head scan or from anything the request
+  // claimed; every other container is decided by its signature.
+  const format = detected.container === "zip"
+    ? classifyZipPackage(ends.head, await readZipCentralDirectoryNames(request.source, ends.byteSize))
+    : resolveMediaFormat(detected, ends.head, request.originalName, request.declaredMimeType);
   if (!format) return { kind: "rejected", reason: "unsupported_media_type" };
 
   const descriptor = MEDIA_TYPES[format];
