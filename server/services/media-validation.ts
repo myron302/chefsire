@@ -347,40 +347,37 @@ export type ZipCentralEntry = {
  * are recorded on the entry so a caller that relies on an exact size or offset can refuse it too. Multi-disk
  * archives are refused outright: there is no second disk to read, so any field that names one is a contradiction.
  */
-export async function readZipCentralDirectory(source: MediaSource, byteSize: number): Promise<ZipCentralEntry[] | null> {
-  if (byteSize < 22) return null;
-  const tailLength = Math.min(ZIP_EOCD_SEARCH_BYTES, byteSize);
-  const tail = await readRange(source, byteSize - tailLength, tailLength);
-  if (!tail || tail.length < 22) return null;
+/** One end-of-central-directory record, after every field it declares has been checked against the archive. */
+type ZipEndOfCentralDirectory = { totalEntries: number; directoryOffset: number; directorySize: number };
 
-  // The EOCD is the last RECORD, but a comment of up to 65535 bytes follows it, so scan backwards for the
-  // signature.
-  //
-  // THE CATCH (R8). Those four bytes are not rare, and the comment is attacker- or producer-supplied data that
-  // sits AFTER the real record -- so a backward scan reaches a copy inside the comment before it reaches the
-  // record itself. Reproduced: a valid DOCX whose comment begins `PK\x05\x06` had the embedded marker read as
-  // its EOCD, the garbage fields behind it failed every bound, `readZipCentralDirectory` returned null, and the
-  // document was stored as a generic `.zip` with `application/zip` -- a real Office file losing its format.
-  //
-  // The record states its own comment length, and the comment runs to the end of the archive. So a genuine EOCD
-  // is exactly `22 + commentLength` bytes from the end, and a candidate that is not is those four bytes
-  // appearing inside something else. `tail` ends at the last byte of the file, so that test is this comparison.
-  // Failing candidates are skipped rather than fatal: the real record lies further back, and this finds it.
-  let eocd = -1;
-  for (let offset = tail.length - 22; offset >= 0; offset--) {
-    if (tail.readUInt32LE(offset) !== ZIP_EOCD_SIGNATURE) continue;
-    if (offset + 22 + tail.readUInt16LE(offset + 20) !== tail.length) continue;
-    eocd = offset;
-    break;
-  }
-  if (eocd < 0) return null;
+/**
+ * How many candidates may have their central directory actually READ.
+ *
+ * Header validation below is cheap and runs over every signature match in the search region, which is itself
+ * bounded. Reading a directory is not cheap, so only candidates that survive every header check reach that
+ * point, and only this many of them do. A conforming archive has exactly one; needing more than a couple means
+ * the file is carrying deliberately EOCD-shaped decoys, and the work spent on them stays bounded.
+ */
+const ZIP_MAX_EOCD_CANDIDATES = 8;
 
-  const thisDisk = tail.readUInt16LE(eocd + 4);
-  const directoryDisk = tail.readUInt16LE(eocd + 6);
-  const entriesOnThisDisk = tail.readUInt16LE(eocd + 8);
-  const totalEntries = tail.readUInt16LE(eocd + 10);
-  const directorySize = tail.readUInt32LE(eocd + 12);
-  const directoryOffset = tail.readUInt32LE(eocd + 16);
+/**
+ * One EOCD candidate, fully validated, or null if it is not a record that describes THIS archive.
+ *
+ * Split out for a reason (R9): every one of these checks used to run AFTER the scan had already committed to a
+ * candidate, so a candidate that passed the first two checks and failed a later one made the whole read fail
+ * instead of the scan moving on. Validation belongs where the choice is made.
+ */
+function readEndOfCentralDirectory(tail: Buffer, offset: number, tailStart: number, byteSize: number): ZipEndOfCentralDirectory | null {
+  // The comment is the last thing in the archive, so a genuine record sits exactly `22 + commentLength` from
+  // the end. `tail` ends at the last byte of the file, so that is this comparison.
+  if (offset + 22 + tail.readUInt16LE(offset + 20) !== tail.length) return null;
+
+  const thisDisk = tail.readUInt16LE(offset + 4);
+  const directoryDisk = tail.readUInt16LE(offset + 6);
+  const entriesOnThisDisk = tail.readUInt16LE(offset + 8);
+  const totalEntries = tail.readUInt16LE(offset + 10);
+  const directorySize = tail.readUInt32LE(offset + 12);
+  const directoryOffset = tail.readUInt32LE(offset + 16);
 
   // Zip64 sentinels. Not parsed, and not guessed at.
   if (totalEntries === 0xffff || directorySize === ZIP64_SENTINEL_32 || directoryOffset === ZIP64_SENTINEL_32) return null;
@@ -390,13 +387,22 @@ export async function readZipCentralDirectory(source: MediaSource, byteSize: num
   if (directorySize === 0 || directorySize > ZIP_MAX_CENTRAL_DIRECTORY_BYTES) return null;
   // The directory must actually lie inside the file, with room for itself.
   if (directoryOffset + directorySize > byteSize) return null;
+  // AND it must end exactly where this record begins. The central directory is immediately followed by the
+  // record that describes it, so this ties a candidate to a real directory rather than to any directory. It is
+  // what stops a decoy in the comment from borrowing the archive's own index and passing for the real record.
+  if (directoryOffset + directorySize !== tailStart + offset) return null;
 
-  const directory = await readRange(source, directoryOffset, directorySize);
-  if (!directory || directory.length !== directorySize) return null;
+  return { totalEntries, directoryOffset, directorySize };
+}
+
+/** The entries a validated record points at, or null when that directory is not one this will read. */
+async function readCentralDirectoryEntries(source: MediaSource, record: ZipEndOfCentralDirectory): Promise<ZipCentralEntry[] | null> {
+  const directory = await readRange(source, record.directoryOffset, record.directorySize);
+  if (!directory || directory.length !== record.directorySize) return null;
 
   const entries: ZipCentralEntry[] = [];
   let cursor = 0;
-  for (let entry = 0; entry < totalEntries; entry++) {
+  for (let entry = 0; entry < record.totalEntries; entry++) {
     // A central file header is 46 bytes before its variable-length name.
     if (cursor + 46 > directory.length) return null;
     if (directory.readUInt32LE(cursor) !== ZIP_CENTRAL_FILE_SIGNATURE) return null;
@@ -425,6 +431,42 @@ export async function readZipCentralDirectory(source: MediaSource, byteSize: num
     cursor = next;
   }
   return entries;
+}
+
+export async function readZipCentralDirectory(source: MediaSource, byteSize: number): Promise<ZipCentralEntry[] | null> {
+  if (byteSize < 22) return null;
+  const tailLength = Math.min(ZIP_EOCD_SEARCH_BYTES, byteSize);
+  const tail = await readRange(source, byteSize - tailLength, tailLength);
+  if (!tail || tail.length < 22) return null;
+  const tailStart = byteSize - tail.length;
+
+  // FINDING A CANDIDATE IS NOT CHOOSING ONE (R9).
+  //
+  // The EOCD is the last record, but a comment of up to 65535 bytes follows it, and that comment is producer- or
+  // attacker-supplied data sitting AFTER the record -- so a backward scan meets anything shaped like an EOCD in
+  // the comment before it meets the real one. R8 added the comment-length test, which rules out those four bytes
+  // appearing by accident. It did not rule out a DELIBERATE decoy: a 22-byte record whose comment-length field
+  // is chosen so it too reaches the end of the file. The scan took such a candidate, stopped, and every
+  // remaining check ran afterwards -- so a decoy failing any of them made the whole read fail instead of the
+  // scan moving on. Reproduced on head fb77848 with a valid DOCX carrying one decoy in its comment: seven
+  // variants (bad disk number, bad directory disk, disagreeing entry counts, zero entries, zero directory size,
+  // a directory offset past EOF, a directory that does not end at the record) each returned null, and the
+  // document was stored as a generic `.zip` with `application/zip`.
+  //
+  // So a candidate is now validated COMPLETELY before it is chosen, and failing one does not end the search --
+  // the scan keeps walking backwards to the real record behind the decoys. Only exhausting the search region
+  // without a candidate whose directory actually parses is a failure.
+  let attempted = 0;
+  for (let offset = tail.length - 22; offset >= 0; offset--) {
+    if (tail.readUInt32LE(offset) !== ZIP_EOCD_SIGNATURE) continue;
+    const record = readEndOfCentralDirectory(tail, offset, tailStart, byteSize);
+    if (!record) continue;
+    if (++attempted > ZIP_MAX_EOCD_CANDIDATES) return null;
+    const entries = await readCentralDirectoryEntries(source, record);
+    if (entries) return entries;
+    // Shaped like a record and pointing somewhere plausible, but its directory does not read. Keep looking.
+  }
+  return null;
 }
 
 /** The member names from {@link readZipCentralDirectory}, for callers that only classify by name. */
