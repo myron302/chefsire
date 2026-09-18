@@ -172,12 +172,31 @@ test("canonical media is never read and never written", async () => {
   assert.equal(outcome.inspected, 0);
 });
 
-test("an object too large to read is reported, never modified", async () => {
+test("an object too large to read is neutralized when it presents an active surface", async () => {
+  // THIS TEST ASSERTED THE DEFECT until R8: it pinned "reported, never modified" for a 26 MB object under a
+  // `.html` key, so `--apply` left an executable stored-XSS URL in place. Everything that reaches inspection
+  // presents an active surface -- triage only returns `inspect` for an active type, an active extension or a
+  // missing type -- so an oversized one is neutralized without being read.
   const recorder = recordingStore({ "posts/huge.html": { body: Buffer.alloc(26 * 1024 * 1024, 0x41), contentType: "video/mp4" } });
   const outcome = await runLegacyRemediation(recorder.store, { apply: true, requestedPrefixes: [], max: Infinity });
-  assert.deepEqual(mutations(recorder), []);
-  assert.equal(outcome.summary.too_large_to_inspect, 1);
-  assert.equal(outcome.log.some((line) => line.action === "report" && line.reason === "too_large_to_inspect"), true);
+
+  const changes = mutations(recorder);
+  assert.equal(changes.length, 1, "exactly one object rewritten");
+  assert.equal(changes[0]!.key, "posts/huge.html", "and it is the one under the active key");
+  assert.equal(outcome.summary.too_large_active_surface, 1);
+  assert.equal(outcome.log.some((line) => line.action === "neutralize" && line.reason === "too_large_active_surface"), true);
+
+  // Metadata only. The bytes and the key are untouched, so the change is reversible and every reference to it
+  // keeps resolving -- the same guarantee every other remediation path gives.
+  const after = recorder.objects.get("posts/huge.html")!;
+  assert.equal(after.contentType, "application/octet-stream");
+  assert.equal(after.contentDisposition, "attachment");
+  assert.equal(after.cacheControl, "no-store");
+  assert.equal(after.body.length, 26 * 1024 * 1024, "the bytes are untouched");
+  assert.equal(recorder.objects.has("posts/huge.html"), true, "and the key is untouched");
+
+  // And it was neutralized WITHOUT the oversized body ever being materialised: the bounded read refused it.
+  assert.equal(outcome.inspected, 0, "nothing was successfully read");
 });
 
 /* ------------------------------------------------------------------ dry run and idempotence */

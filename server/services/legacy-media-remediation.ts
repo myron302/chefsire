@@ -181,7 +181,8 @@ export type RemediationReason =
   | "active_content"              // the bytes really are HTML/SVG/script: make it an inert download
   | "unverifiable_active_surface" // bytes unreadable AND the object presents an active surface: inert download
   | "unverifiable_inert"          // bytes unreadable but nothing about it is active: report, touch nothing
-  | "too_large_to_inspect"        // beyond the read bound: report, touch nothing
+  | "too_large_active_surface"    // beyond the read bound AND presents an active surface: inert download
+  | "too_large_to_inspect"        // beyond the read bound and inert: report, touch nothing
   | "already_correct";            // the bytes agree with the stored type and the key: nothing to do
 
 export type LegacyRemediation =
@@ -223,10 +224,30 @@ export function decideLegacyRemediation(
   const presentsActiveSurface = ACTIVE_CONTENT_TYPES.has(storedType) || ACTIVE_EXTENSIONS.has(extension) || storedType === "";
 
   if (validation.kind === "not_inspected") {
-    if (validation.why === "too_large") return { action: "report_only", reason: "too_large_to_inspect" };
+    // NOT HAVING LOOKED IS NOT A REASON TO LEAVE IT EXECUTABLE (R8).
+    //
+    // `too_large` used to return `report_only` unconditionally, before this function had even asked whether the
+    // object presents an active surface. That is the one branch where the tool knows least and the exposure is
+    // largest: the pre-repair `/api/upload` accepted files up to 100 MB (GENERAL_UPLOAD_LIMIT_BYTES on main at
+    // caafde3) while this reads at most LEGACY_INSPECT_MAX_BYTES, so an HTML payload of 25-100 MB sat in the
+    // gap. Reproduced on head 00e7dfa: an oversized object stored as `text/html`, one under a `.html` key, one
+    // under a `.svg` key and one with no stored type at all each decided `report_only`, so `--apply` logged the
+    // stored-XSS URL and left it executable.
+    //
+    // Nothing reaches this branch by accident. `triageLegacyObject` returns `inspect` only for an active stored
+    // type, an active extension, or a missing type -- so every object here already presents an active surface,
+    // and the inert arm exists for direct callers and for a future triage that widens what it inspects.
+    //
+    // THE COST, STATED. Neutralizing without reading means a large file whose bytes really are media -- a 50 MB
+    // MP4 uploaded as `clip.html`, which the original defect made possible -- becomes an inert attachment and
+    // stops playing. That is a deliberate trade: it is reversible, the bytes and the key are untouched, and the
+    // run reports these separately from the inert ones precisely so an operator can find and re-upload them.
+    // Reading further to avoid it would not help -- an object this tool cannot fully verify cannot be pinned
+    // either, so it would be neutralized on the same rule with more bytes read.
+    const tooLarge = validation.why === "too_large";
     return presentsActiveSurface
-      ? { action: "neutralize", reason: "unverifiable_active_surface" }
-      : { action: "report_only", reason: "unverifiable_inert" };
+      ? { action: "neutralize", reason: tooLarge ? "too_large_active_surface" : "unverifiable_active_surface" }
+      : { action: "report_only", reason: tooLarge ? "too_large_to_inspect" : "unverifiable_inert" };
   }
 
   if (validation.kind === "rejected") {
@@ -349,6 +370,7 @@ export function emptyLegacySummary(): LegacySummary {
     active_content_type: 0, active_extension: 0, missing_content_type: 0, already_neutralized: 0,
     canonical_media: 0, type_mismatch_left_alone: 0, unrecognized_left_alone: 0, out_of_scope: 0,
     valid_media_unsafe_key: 0, valid_media_wrong_type: 0, active_content: 0,
-    unverifiable_active_surface: 0, unverifiable_inert: 0, too_large_to_inspect: 0, already_correct: 0,
+    unverifiable_active_surface: 0, unverifiable_inert: 0, too_large_active_surface: 0,
+    too_large_to_inspect: 0, already_correct: 0,
   };
 }

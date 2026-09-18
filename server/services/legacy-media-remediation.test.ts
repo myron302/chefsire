@@ -161,13 +161,38 @@ test("C. unverifiable content fails closed without ever being destroyed", () => 
   );
   assert.deepEqual(active, { action: "neutralize", reason: "unverifiable_active_surface" });
 
-  // Too large to read: reported for a human, nothing touched.
+  // Too large to read AND an active surface: neutralized without reading.
+  //
+  // THIS TEST ASSERTED THE DEFECT until R8. It pinned `report_only` for an object under a `.html` key that the
+  // tool could not read -- so `--apply` logged the stored-XSS URL and left it executable. The pre-repair
+  // `/api/upload` accepted up to 100 MB while this reads at most 25 MB, so that gap is a real place for a
+  // payload to sit. Not having looked is not a reason to leave an active surface alone.
   const large = decideLegacyRemediation(
     { key: "posts/uuid.html", contentType: "video/mp4" },
     { action: "inspect", reason: "active_extension" },
     { kind: "not_inspected", why: "too_large" },
   );
-  assert.deepEqual(large, { action: "report_only", reason: "too_large_to_inspect" });
+  assert.deepEqual(large, { action: "neutralize", reason: "too_large_active_surface" });
+
+  // The same, for every other shape of active surface an oversized object can present.
+  for (const [label, object] of [
+    ["active stored type", { key: "posts/uuid.jpg", contentType: "text/html" }],
+    ["svg key", { key: "posts/uuid.svg", contentType: "image/svg+xml" }],
+    ["no stored type at all", { key: "posts/uuid.bin", contentType: "" }],
+  ] as const) {
+    const decision = decideLegacyRemediation(object, { action: "inspect", reason: "active_extension" }, { kind: "not_inspected", why: "too_large" });
+    assert.deepEqual(decision, { action: "neutralize", reason: "too_large_active_surface" }, label);
+  }
+
+  // Oversized but inert: still reported and still untouched, so the bound has not become a blanket rewrite.
+  // Real triage never routes an inert object here, so this arm is reached only by a direct caller -- which is
+  // exactly why it is asserted rather than assumed.
+  const largeInert = decideLegacyRemediation(
+    { key: "posts/uuid.bin", contentType: "application/pdf" },
+    { action: "inspect", reason: "missing_content_type" },
+    { kind: "not_inspected", why: "too_large" },
+  );
+  assert.deepEqual(largeInert, { action: "report_only", reason: "too_large_to_inspect" });
 
   // Unreadable but inert either way: reported, not modified.
   const inert = decideLegacyRemediation(

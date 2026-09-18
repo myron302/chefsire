@@ -353,10 +353,25 @@ export async function readZipCentralDirectory(source: MediaSource, byteSize: num
   const tail = await readRange(source, byteSize - tailLength, tailLength);
   if (!tail || tail.length < 22) return null;
 
-  // The EOCD is last, but a trailing comment can follow it, so scan backwards for the signature.
+  // The EOCD is the last RECORD, but a comment of up to 65535 bytes follows it, so scan backwards for the
+  // signature.
+  //
+  // THE CATCH (R8). Those four bytes are not rare, and the comment is attacker- or producer-supplied data that
+  // sits AFTER the real record -- so a backward scan reaches a copy inside the comment before it reaches the
+  // record itself. Reproduced: a valid DOCX whose comment begins `PK\x05\x06` had the embedded marker read as
+  // its EOCD, the garbage fields behind it failed every bound, `readZipCentralDirectory` returned null, and the
+  // document was stored as a generic `.zip` with `application/zip` -- a real Office file losing its format.
+  //
+  // The record states its own comment length, and the comment runs to the end of the archive. So a genuine EOCD
+  // is exactly `22 + commentLength` bytes from the end, and a candidate that is not is those four bytes
+  // appearing inside something else. `tail` ends at the last byte of the file, so that test is this comparison.
+  // Failing candidates are skipped rather than fatal: the real record lies further back, and this finds it.
   let eocd = -1;
   for (let offset = tail.length - 22; offset >= 0; offset--) {
-    if (tail.readUInt32LE(offset) === ZIP_EOCD_SIGNATURE) { eocd = offset; break; }
+    if (tail.readUInt32LE(offset) !== ZIP_EOCD_SIGNATURE) continue;
+    if (offset + 22 + tail.readUInt16LE(offset + 20) !== tail.length) continue;
+    eocd = offset;
+    break;
   }
   if (eocd < 0) return null;
 
@@ -577,13 +592,23 @@ export function looksLikeEpubContainer(head: Buffer, entries: readonly ZipCentra
 export function classifyZipPackage(head: Buffer, entries: readonly ZipCentralEntry[] | null): MediaFormat {
   if (looksLikeEpubContainer(head, entries)) return "epub";
   if (!entries) return "zip";
-  const names = entries.map((entry) => entry.name);
-  const has = (name: string) => names.some((entry) => entry.toLowerCase() === name);
-  const hasPrefix = (prefix: string) => names.some((entry) => entry.toLowerCase().startsWith(prefix));
+  const names = entries.map((entry) => entry.name.toLowerCase());
+  const has = (name: string) => names.includes(name);
   if (!has("[content_types].xml")) return "zip";
-  // The primary part decides. Word is checked first: a document embedding a spreadsheet is still a document.
-  if (has("word/document.xml") || hasPrefix("word/")) return "docx";
-  if (has("xl/workbook.xml") || hasPrefix("xl/")) return "xlsx";
+  // The PRIMARY PART decides, by its exact name, and nothing else does.
+  //
+  // THE CATCH (R8). This used to fall back to "any member under `word/` or `xl/`", which is not a statement
+  // about the package at all -- those directories hold images, themes, fonts and settings. Reproduced: an
+  // archive holding `[Content_Types].xml` and nothing but `word/media/image1.png` was classified `docx` and
+  // stored under a generated `.docx` key with the Word content type, so a marketplace download advertised as a
+  // document would not open as one; `xl/media/image1.png` became `xlsx` the same way.
+  //
+  // Every Word package this pipeline stores -- .docx, .docm, .dotx, .dotm -- names its primary part
+  // `word/document.xml`, and every Excel one names it `xl/workbook.xml`, so the exact check costs no real
+  // format. A package with those directories and no primary part is an archive, and is stored as one.
+  // Word is checked first: a document embedding a spreadsheet is still a document.
+  if (has("word/document.xml")) return "docx";
+  if (has("xl/workbook.xml")) return "xlsx";
   return "zip";
 }
 
