@@ -633,6 +633,107 @@ export function looksLikeEpubContainer(head: Buffer, entries: readonly ZipCentra
   return entries.filter((entry) => entry.name.toLowerCase() === "mimetype").length === 1;
 }
 
+/** The fixed part of a local file header, before its variable-length name and extra field. */
+const ZIP_LOCAL_HEADER_FIXED_BYTES = 30;
+/**
+ * The OPC parts whose presence decides an Office format, folded for comparison.
+ *
+ * These are the only entries this module treats as security-sensitive package markers, so these are the ones
+ * whose local file headers are verified before they are allowed to decide anything.
+ */
+const OOXML_CONTENT_TYPES_PART = "[content_types].xml";
+const OOXML_WORD_PRIMARY_PART = "word/document.xml";
+const OOXML_EXCEL_PRIMARY_PART = "xl/workbook.xml";
+const OOXML_MARKER_PARTS: ReadonlySet<string> = new Set([OOXML_CONTENT_TYPES_PART, OOXML_WORD_PRIMARY_PART, OOXML_EXCEL_PRIMARY_PART]);
+/** A conforming package has three markers at most; more than this means colliding parts, which fail closed anyway. */
+const ZIP_MAX_VERIFIED_LOCAL_HEADERS = 8;
+
+/**
+ * The file name in an entry's LOCAL file header, or null when that header is not one this will read.
+ *
+ * Every number here comes from the central directory, which is the archive's own claim about itself, so each is
+ * bounds-checked before it is used: the offset must lie inside the file with room for a fixed header, the
+ * signature must be a local file header's, the name and extra lengths are bounded by the same limits the
+ * directory reader applies, and the whole header-plus-name-plus-extra region must be present. Zip64 sentinels
+ * and any entry claiming another disk are refused rather than guessed at.
+ */
+async function readZipLocalHeaderName(source: MediaSource, byteSize: number, entry: ZipCentralEntry): Promise<string | null> {
+  if (entry.zip64 || entry.diskNumberStart !== 0) return null;
+  const offset = entry.localHeaderOffset;
+  if (!Number.isSafeInteger(offset) || offset < 0) return null;
+  if (offset + ZIP_LOCAL_HEADER_FIXED_BYTES > byteSize) return null;
+
+  const header = await readRange(source, offset, ZIP_LOCAL_HEADER_FIXED_BYTES);
+  if (!header || header.length !== ZIP_LOCAL_HEADER_FIXED_BYTES) return null;
+  if (header.readUInt32LE(0) !== ZIP_LOCAL_FILE_SIGNATURE) return null;
+
+  const nameLength = header.readUInt16LE(26);
+  const extraLength = header.readUInt16LE(28);
+  if (nameLength === 0 || nameLength > ZIP_MAX_ENTRY_NAME_BYTES) return null;
+  if (extraLength > ZIP_MAX_LOCAL_EXTRA_BYTES) return null;
+  // The whole region the header declares must actually be in the file, or the header is truncated.
+  if (offset + ZIP_LOCAL_HEADER_FIXED_BYTES + nameLength + extraLength > byteSize) return null;
+
+  const name = await readRange(source, offset + ZIP_LOCAL_HEADER_FIXED_BYTES, nameLength);
+  if (!name || name.length !== nameLength) return null;
+  return name.toString("latin1");
+}
+
+/**
+ * Whether every entry that could decide an Office format agrees with its own local file header.
+ *
+ * THE FINDING (R13). A ZIP describes each member TWICE: once in the local file header the data follows, and
+ * once in the central directory. Classification read only the directory, so an archive could advertise
+ * `word/document.xml` there while the local header at that offset named something else. Real readers do not
+ * agree on such a file, which is the whole problem -- reproduced on head 13d0ece with a real DOCX whose one
+ * local header was rewritten:
+ *
+ *   Python `zipfile`   namelist() shows word/document.xml, then read() raises BadZipFile:
+ *                      "File name in directory 'word/document.xml' and header b'zzzz/zzzzzzzz.xml' differ."
+ *   Info-ZIP `unzip`   'mismatching "local" filename ... continuing with "central" filename version',
+ *                      and the run ends "At least one warning-error was detected".
+ *   ChefSire           accepted it, and published it as .docx with the Word content type.
+ *
+ * So ChefSire asserted a format that the tools which open the file refuse to. The comparison is BYTE-FOR-BYTE:
+ * the format has one file-name field, defined once and written into both structures to name one member, and
+ * nothing in it licenses the two spellings differing. (The Unicode Path extra field carries an alternative name
+ * in an EXTRA FIELD, not in the name field, so it does not.)
+ *
+ * TWO QUESTIONS, KEPT APART. Selecting WHICH entries to verify uses the OPC fold, deliberately: a case variant
+ * like `WORD/DOCUMENT.XML` is a marker under OPC and must be verified too, or it would skip the check and then
+ * be used to classify. Deciding whether the verified entry IS the required part is a separate question, and is
+ * still the OPC ASCII case-insensitive comparison in `classifyZipPackage`. ZIP asks whether the two headers
+ * name the same member; OPC asks which part that member is.
+ *
+ * NOTHING ELSE IS COMPARED, and that is deliberate too. A general-purpose bit flag with bit 3 set means the
+ * local CRC-32 and both sizes are written as zero and the real values live in the data descriptor and the
+ * central directory, so requiring those fields to agree would refuse conforming archives. Only identity is at
+ * stake here: signature, bounds and name.
+ */
+async function ooxmlMarkersAgreeWithLocalHeaders(source: MediaSource, byteSize: number, entries: readonly ZipCentralEntry[]): Promise<boolean> {
+  let verified = 0;
+  for (const entry of entries) {
+    if (!OOXML_MARKER_PARTS.has(asciiLowerCase(entry.name))) continue;
+    if (++verified > ZIP_MAX_VERIFIED_LOCAL_HEADERS) return false;
+    const localName = await readZipLocalHeaderName(source, byteSize, entry);
+    if (localName === null || localName !== entry.name) return false;
+  }
+  return true;
+}
+
+/**
+ * The archive's index, but only once the entries that can decide a format agree with their own local headers.
+ *
+ * This is the set `classifyZipPackage` is meant to see: a directory whose security-sensitive members are
+ * mutually consistent with the bytes they point at. Any disagreement yields null, which fails closed to an
+ * inert generic `zip` exactly as every other structural failure in this module does.
+ */
+export async function readVerifiedZipCentralDirectory(source: MediaSource, byteSize: number): Promise<ZipCentralEntry[] | null> {
+  const entries = await readZipCentralDirectory(source, byteSize);
+  if (!entries) return null;
+  return await ooxmlMarkersAgreeWithLocalHeaders(source, byteSize, entries) ? entries : null;
+}
+
 /**
  * ASCII-only lower-casing, which is what OPC part-name comparison is defined as.
  *
@@ -693,7 +794,7 @@ export function classifyZipPackage(head: Buffer, entries: readonly ZipCentralEnt
   const names = entries.map((entry) => asciiLowerCase(entry.name));
   if (new Set(names).size !== names.length) return "zip";
   const has = (part: string) => names.includes(part);
-  if (!has("[content_types].xml")) return "zip";
+  if (!has(OOXML_CONTENT_TYPES_PART)) return "zip";
   // The PRIMARY PART decides, by its exact name, and nothing else does.
   //
   // THE CATCH (R8). This used to fall back to "any member under `word/` or `xl/`", which is not a statement
@@ -711,8 +812,8 @@ export function classifyZipPackage(head: Buffer, entries: readonly ZipCentralEnt
   // entry in `MEDIA_TYPES` -- so a presentation is classified as a generic `zip`, which is inert, correctly
   // typed and served as an attachment. That is the behaviour on every head of this branch and on main; there is
   // no PPTX marker here to compare case-sensitively, and adding one would be adding a supported format.
-  if (has("word/document.xml")) return "docx";
-  if (has("xl/workbook.xml")) return "xlsx";
+  if (has(OOXML_WORD_PRIMARY_PART)) return "docx";
+  if (has(OOXML_EXCEL_PRIMARY_PART)) return "xlsx";
   return "zip";
 }
 
@@ -890,7 +991,7 @@ export async function validateUploadedMedia(request: MediaValidationRequest): Pr
   // A ZIP is classified from its own central directory rather than from a head scan or from anything the request
   // claimed; every other container is decided by its signature.
   const format = detected.container === "zip"
-    ? classifyZipPackage(ends.head, await readZipCentralDirectory(request.source, ends.byteSize))
+    ? classifyZipPackage(ends.head, await readVerifiedZipCentralDirectory(request.source, ends.byteSize))
     : resolveMediaFormat(detected, ends.head, request.originalName, request.declaredMimeType);
   if (!format) return { kind: "rejected", reason: "unsupported_media_type" };
 
