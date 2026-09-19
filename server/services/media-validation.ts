@@ -868,7 +868,13 @@ function isNameStartChar(code: number): boolean {
     (code >= 0x37f && code <= 0x1fff) || (code >= 0x200c && code <= 0x200d) ||
     (code >= 0x2070 && code <= 0x218f) || (code >= 0x2c00 && code <= 0x2fef) ||
     (code >= 0x3001 && code <= 0xd7ff) || (code >= 0xf900 && code <= 0xfdcf) ||
-    (code >= 0xfdf0 && code <= 0xfffd) || (code >= 0x10000 && code <= 0xeffff)
+    // U+FEFF sits inside [#xFDF0-#xFFFD] by the letter of the production, and is excluded anyway (R20).
+    // expat refuses it in element names, attribute names and PI targets alike while accepting it as text, and
+    // a zero-width character that renders as nothing inside a name is the same render-one-way/compare-another
+    // ambiguity this module refuses everywhere else. R18 established it as an encoding signature; letting it
+    // become part of a NAME would undo that. No real descriptor is affected -- it never matches an OCF name
+    // either way, so this only decides whether the document is malformed or merely not a container.
+    (code >= 0xfdf0 && code <= 0xfffd && code !== 0xfeff) || (code >= 0x10000 && code <= 0xeffff)
   );
 }
 function isNameChar(code: number): boolean {
@@ -989,7 +995,7 @@ function parseXmlAttributes(text: string): XmlRawAttribute[] | null {
   const attributes: XmlRawAttribute[] = [];
   const seen = new Set<string>();
   let position = 0;
-  const skipSpace = () => { while (position < text.length && /[\s]/.test(text[position]!)) position++; };
+  const skipSpace = () => { while (position < text.length && isXmlSpace(text.charCodeAt(position))) position++; };
 
   skipSpace();
   while (position < text.length) {
@@ -1030,7 +1036,7 @@ function parseXmlAttributes(text: string): XmlRawAttribute[] | null {
 
     // Attributes must be separated by whitespace, and nothing else may follow the last one.
     if (position >= text.length) break;
-    if (!/\s/.test(text[position]!)) return null; // e.g. `full-path="a"media-type="b"`
+    if (!isXmlSpace(text.charCodeAt(position))) return null; // e.g. `full-path="a"media-type="b"`
     skipSpace();
   }
   return attributes;
@@ -1084,17 +1090,17 @@ function isConformingXmlDeclaration(text: string): boolean {
   let position = 0;
   const space = () => {
     const start = position;
-    while (position < text.length && /\s/.test(text[position]!)) position++;
+    while (position < text.length && isXmlSpace(text.charCodeAt(position))) position++;
     return position > start;
   };
   /** `Eq` then a quoted value, returned raw. Null when the field is not spelled the way XML spells it. */
   const value = (name: string): string | null => {
     if (!text.startsWith(name, position)) return null;
     position += name.length;
-    while (position < text.length && /\s/.test(text[position]!)) position++; // Eq's leading S?
+    while (position < text.length && isXmlSpace(text.charCodeAt(position))) position++; // Eq's leading S?
     if (text[position] !== "=") return null;
     position++;
-    while (position < text.length && /\s/.test(text[position]!)) position++; // Eq's trailing S?
+    while (position < text.length && isXmlSpace(text.charCodeAt(position))) position++; // Eq's trailing S?
     const quote = text[position];
     if (quote !== '"' && quote !== "'") return null;
     const close = text.indexOf(quote, ++position);
@@ -1125,12 +1131,24 @@ function isConformingXmlDeclaration(text: string): boolean {
   return position === text.length;
 }
 
-/** XML's `S` production: the only character data the grammar permits outside the document element. */
+/**
+ * XML's `S` production, and the ONLY definition of whitespace this parser uses.
+ *
+ * THE FINDING (R20, Codex and Greptile independently). Every other whitespace test in the tokenizer was a
+ * JavaScript `\s`, which is a much larger set: it matches NBSP, form feed, vertical tab, U+2028, the Unicode
+ * space separators, and -- least comfortably, given R18 -- U+FEFF. XML's `S` is four characters and no more.
+ * Reproduced on head 84bdb54: each of those characters stood in for `S` in all six places the grammar requires
+ * it, and the descriptor still classified `epub`. expat refuses every one of them, in every position.
+ *
+ * So the predicate lives here once and the call sites ask it, rather than each spelling its own rule.
+ */
+function isXmlSpace(code: number): boolean {
+  return code === 0x20 || code === 0x09 || code === 0x0d || code === 0x0a;
+}
+
+/** Whether the whole of `text` is XML `S` -- used for the character data outside the document element. */
 function isXmlWhitespace(text: string): boolean {
-  for (let index = 0; index < text.length; index++) {
-    const code = text.charCodeAt(index);
-    if (code !== 0x20 && code !== 0x09 && code !== 0x0d && code !== 0x0a) return false;
-  }
+  for (let index = 0; index < text.length; index++) if (!isXmlSpace(text.charCodeAt(index))) return false;
   return true;
 }
 
@@ -1273,7 +1291,7 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
       // `PI ::= '<?' PITarget (S (Char* - (Char* '?>' Char*)))? '?>'` and `PITarget ::= Name - (('X'|'x')
       // ('M'|'m')('L'|'l'))`, so the target must be a Name and may not be `xml` in any case.
       let cursor = position + 2;
-      while (cursor < end && !/\s/.test(xml[cursor]!)) cursor++;
+      while (cursor < end && !isXmlSpace(xml.charCodeAt(cursor))) cursor++;
       const target = xml.slice(position + 2, cursor);
       if (!isXmlName(target)) return null;
       // `<?xml ...?>` at offset zero is the XML DECLARATION, which every real descriptor carries -- but it is
@@ -1295,7 +1313,7 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
     const closing = xml.startsWith("</", position);
     let cursor = position + (closing ? 2 : 1);
     const nameStart = cursor;
-    while (cursor < xml.length && !/[\s/>]/.test(xml[cursor]!)) cursor++;
+    while (cursor < xml.length && !isXmlSpace(xml.charCodeAt(cursor)) && xml[cursor] !== "/" && xml[cursor] !== ">") cursor++;
     if (cursor === nameStart) return null; // `<` not followed by a name
 
     const qualified = xml.slice(nameStart, cursor);
