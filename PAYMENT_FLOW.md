@@ -251,6 +251,15 @@ Decline: 4000 0000 0000 0002
 
 ## 📝 Next Steps
 
+### Database updates
+
+Use `npm run db:push` (or the explicit `npm run db:push:accept`) rather than
+running Drizzle directly. The supported command keeps one selected
+`DATABASE_URL` for every phase, runs financial migration preflights before
+schema synchronization, and re-verifies the staged payout constraints after
+every push. An audit-required duplicate-claim failure must be resolved by a
+financial review; the workflow never deletes or chooses among those records.
+
 1. **Set up Square application** (30 min)
    - Create app in Square Developer Portal
    - Get credentials

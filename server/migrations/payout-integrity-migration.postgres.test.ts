@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { applyMigration } from "../scripts/migration-runner";
+import { applyMigration, splitPostgresStatements } from "../scripts/migration-runner";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const migration = fs.readFileSync(path.join(here, "20260919_payout_integrity.sql"), "utf8");
@@ -73,6 +73,41 @@ async function teardown(client: pg.Client, schema: string, decoy: string) {
   await client.end();
 }
 
+async function enforceInvariant(client: pg.Client) {
+  await client.query("BEGIN");
+  try {
+    for (const statement of splitPostgresStatements(migration)) await client.query(statement);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
+postgresTest("financial duplicate preflight fails before index creation without rewriting claims", async () => {
+  const { client, schema, decoy } = await setup();
+  try {
+    await client.query(`INSERT INTO payouts (id) VALUES ('duplicate-a'), ('duplicate-b')`);
+    await client.query(`INSERT INTO commissions (id, order_id, payout_id, status, audit_note) VALUES
+      ('duplicate-1', 'same-order', 'duplicate-a', 'processing', 'first'),
+      ('duplicate-2', 'same-order', 'duplicate-b', 'paid', 'second')`);
+    await assert.rejects(
+      applyMigration(client, "20260919_payout_integrity.sql", migration, { error() {} }),
+      (error: any) => error.code === "P0001" && /financial audit/.test(error.message)
+    );
+    assert.deepEqual(
+      (await client.query(`SELECT id, audit_note FROM commissions ORDER BY id`)).rows,
+      [
+        { id: "duplicate-1", audit_note: "first" },
+        { id: "duplicate-2", audit_note: "second" },
+      ]
+    );
+    assert.equal((await client.query(`SELECT to_regclass('commissions_active_payout_order_uidx') AS index`)).rows[0].index, null);
+  } finally {
+    await teardown(client, schema, decoy);
+  }
+});
+
 postgresTest("production payout migration enforces completion and preserves history", async () => {
   const { client, schema, decoy } = await setup();
   try {
@@ -111,6 +146,17 @@ postgresTest("production payout migration enforces completion and preserves hist
     await assert.rejects(insertCompleted("control-placeholder", "\t\nsq_payout_1700000000000\r"), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("spaced-simulation", " \tpayout_sim_1700000000000\n"), (error: any) => error.code === "23514");
     await insertCompleted("verified", "provider-transfer-abc123");
+
+    // Simulate a later Drizzle sync treating the staged database-only CHECK as
+    // drift. The supported workflow's post-push enforcement must restore it
+    // independently of the already-written migration ledger.
+    await client.query(`ALTER TABLE payouts DROP CONSTRAINT payouts_completed_transfer_check`);
+    await enforceInvariant(client);
+    assert.equal((await client.query(
+      `SELECT count(*)::int AS count FROM pg_constraint
+        WHERE conname = 'payouts_completed_transfer_check' AND conrelid = 'payouts'::regclass`
+    )).rows[0].count, 1);
+    await assert.rejects(insertCompleted("post-push-invalid", "\t"), (error: any) => error.code === "23514");
   } finally {
     await teardown(client, schema, decoy);
   }

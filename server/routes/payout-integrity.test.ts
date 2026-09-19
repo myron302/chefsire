@@ -13,6 +13,8 @@ const ordersSchema = fs.readFileSync(path.join(root, "shared/schema/domains/comm
 const marketplaceDocs = fs.readFileSync(path.join(root, "MARKETPLACE_IMPLEMENTATION.md"), "utf8");
 const paymentFlowDocs = fs.readFileSync(path.join(root, "PAYMENT_FLOW.md"), "utf8");
 const packageJson = fs.readFileSync(path.join(root, "package.json"), "utf8");
+const pushSchema = fs.readFileSync(path.join(root, "server/scripts/push-schema.ts"), "utf8");
+const enforcePayoutIntegrity = fs.readFileSync(path.join(root, "server/scripts/enforce-payout-integrity.ts"), "utf8");
 
 test("an unconfigured/simulated provider cannot report or persist payout completion", () => {
   const result = rejectUnavailablePayout({ sellerId: "seller-1", orderIds: ["order-1"] });
@@ -78,11 +80,20 @@ test("migration and staged Drizzle predicate require the same whitespace-normali
   }
 });
 
-test("db:push follows schema sync with the authoritative staged migration", () => {
+test("db:push selects one environment for preflight, sync, and post-push enforcement", () => {
   const scripts = JSON.parse(packageJson).scripts;
-  assert.match(scripts["db:push"], /drizzle-kit push && npm run db:migrate$/);
-  assert.match(scripts["db:push:accept"], /drizzle-kit push --force && npm run db:migrate$/);
+  assert.equal(scripts["db:push"], "dotenv -e server/.env -- tsx server/scripts/push-schema.ts");
+  assert.equal(scripts["db:push:accept"], "dotenv -e server/.env -- tsx server/scripts/push-schema.ts --force");
+  assert.match(pushSchema, /run\(\["run", "db:migrate"\]\)[\s\S]*enforce-payout-integrity[\s\S]*drizzle-kit[\s\S]*enforce-payout-integrity/);
+  assert.match(pushSchema, /env: process\.env/);
+  assert.doesNotMatch(pushSchema, /dotenv -e|DATABASE_URL\s*=/);
   assert.match(migration, /\) NOT VALID/);
+});
+
+test("post-push enforcement reuses the production migration without consulting its ledger", () => {
+  assert.match(enforcePayoutIntegrity, /20260919_payout_integrity\.sql/);
+  assert.match(enforcePayoutIntegrity, /splitPostgresStatements\(sql\)/);
+  assert.doesNotMatch(enforcePayoutIntegrity, /_app_migrations|applyMigration/);
 });
 
 test("completion constraint idempotency is scoped to the payouts relation", () => {
