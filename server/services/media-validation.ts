@@ -822,36 +822,283 @@ async function readZipMemberBytes(source: MediaSource, byteSize: number, entry: 
 const XML_MAX_ELEMENT_TOKENS = 4096;
 /** How deeply elements may nest. A container descriptor nests three levels; this bounds a hostile one. */
 const XML_MAX_ELEMENT_DEPTH = 256;
-
-/** One real element tag. Comments, CDATA, processing instructions and text never become one of these. */
-type XmlElementToken = { kind: "open" | "empty" | "close"; localName: string; attributes: string };
+/** How many attributes one tag may carry. A real `rootfile` carries two; this bounds a hostile one. */
+const XML_MAX_ATTRIBUTES_PER_ELEMENT = 64;
+/** How many namespace declarations may be in scope at once. */
+const XML_MAX_NAMESPACE_BINDINGS = 256;
 
 /**
- * The element tags of a bounded XML document, in order, or null when it is not well-formed enough to read.
+ * The namespace every OCF container descriptor element is in.
  *
- * THE FINDING (R15). The descriptor was located with regular expressions over the raw text, so anything SHAPED
- * like markup counted as markup. Reproduced on head 0a96182, with a conforming archive in every other respect:
+ * NOT GUESSED. EPUB's Open Container Format says the `container.xml` file "contains XML that uses the
+ * `urn:oasis:names:tc:opendocument:xmlns:container` namespace for all of its elements and attributes", and the
+ * URI is unchanged across OCF 2.0.1, 3.0, 3.0.1, 3.1, 3.2 and EPUB 3.3 -- so one constant covers every version
+ * this pipeline would ever see. A prefix is not a namespace: `evil:rootfile` bound to `urn:not-ocf` is not this
+ * element, and `ocf:rootfile` bound to this URI is, whatever the prefix is spelled.
+ */
+const OCF_CONTAINER_NAMESPACE = "urn:oasis:names:tc:opendocument:xmlns:container";
+/** The two URIs XML reserves. `xml` is bound to the first by definition; the second may never be bound at all. */
+const XML_RESERVED_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
+const XMLNS_RESERVED_NAMESPACE = "http://www.w3.org/2000/xmlns/";
+
+/**
+ * One real element tag, with its namespace resolved and its attributes parsed.
+ *
+ * `namespace` is the URI in scope for this element's prefix, or null when it is in no namespace. `attributes`
+ * is keyed by EXPANDED name -- `{uri}local` for a prefixed attribute, bare `local` for an unprefixed one, which
+ * XML Namespaces puts in no namespace regardless of any default declaration. `depth` is the element's position
+ * in the tree, so ancestry can be required rather than hoped for.
+ */
+type XmlElementToken = {
+  kind: "open" | "empty" | "close";
+  localName: string;
+  namespace: string | null;
+  attributes: ReadonlyMap<string, string>;
+  depth: number;
+};
+
+/* XML 1.0 NameStartChar / NameChar, minus the ranges no descriptor can contain (this text is already known to
+ * be valid UTF-8, and surrogate pairs are handled as their code units, which fall outside every range below). */
+function isNameStartChar(code: number): boolean {
+  return (
+    code === 0x3a || code === 0x5f || // ':' '_'
+    (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a) ||
+    (code >= 0xc0 && code <= 0xd6) || (code >= 0xd8 && code <= 0xf6) ||
+    (code >= 0xf8 && code <= 0x2ff) || (code >= 0x370 && code <= 0x37d) ||
+    (code >= 0x37f && code <= 0x1fff) || (code >= 0x200c && code <= 0x200d) ||
+    (code >= 0x2070 && code <= 0x218f) || (code >= 0x2c00 && code <= 0x2fef) ||
+    (code >= 0x3001 && code <= 0xd7ff) || (code >= 0xf900 && code <= 0xfdcf) ||
+    (code >= 0xfdf0 && code <= 0xfffd) || code >= 0x10000
+  );
+}
+function isNameChar(code: number): boolean {
+  return (
+    isNameStartChar(code) || code === 0x2d || code === 0x2e || // '-' '.'
+    (code >= 0x30 && code <= 0x39) || code === 0xb7 ||
+    (code >= 0x300 && code <= 0x36f) || (code >= 0x203f && code <= 0x2040)
+  );
+}
+/** Whether every character of `name` is legal for an XML Name. Empty is never a name. */
+function isXmlName(name: string): boolean {
+  if (name.length === 0) return false;
+  if (!isNameStartChar(name.charCodeAt(0))) return false;
+  for (let index = 1; index < name.length; index++) if (!isNameChar(name.charCodeAt(index))) return false;
+  return true;
+}
+
+/** A qualified name split into prefix and local part, or null when it is not a legal QName. */
+function parseQName(raw: string): { prefix: string; localName: string } | null {
+  const colon = raw.indexOf(":");
+  if (colon < 0) return isXmlName(raw) ? { prefix: "", localName: raw } : null;
+  // Exactly one colon: `a:b:c` is a Name but NOT a QName, and this module never treats one as an element.
+  const prefix = raw.slice(0, colon);
+  const localName = raw.slice(colon + 1);
+  if (localName.includes(":")) return null;
+  // Neither half may itself contain a colon, so both must be NCNames.
+  if (!isXmlName(prefix) || prefix.includes(":") || !isXmlName(localName)) return null;
+  return { prefix, localName };
+}
+
+/**
+ * An attribute value with its character references resolved, or null when it carries something this refuses.
+ *
+ * ONLY WHAT XML ITSELF DEFINES. The five predefined entities and numeric character references are decoded,
+ * because they are part of XML with no DTD in sight and each one produces exactly one character -- there is no
+ * recursion, no growth and so no expansion surface. Every OTHER `&name;` is refused rather than decoded or
+ * compared raw: this module rejects DOCTYPE outright, so a general entity can never have been declared, and a
+ * reference to an undeclared entity is a well-formedness error, not text. A bare `&` is refused for the same
+ * reason. `<` is never legal in an attribute value.
+ */
+function decodeXmlAttributeValue(raw: string): string | null {
+  if (raw.includes("<")) return null;
+  if (!raw.includes("&")) return raw;
+  let decoded = "";
+  let position = 0;
+  while (position < raw.length) {
+    const amp = raw.indexOf("&", position);
+    if (amp < 0) { decoded += raw.slice(position); break; }
+    decoded += raw.slice(position, amp);
+    const semicolon = raw.indexOf(";", amp + 1);
+    if (semicolon < 0) return null;
+    const reference = raw.slice(amp + 1, semicolon);
+    if (reference.startsWith("#")) {
+      const hex = reference[1] === "x" || reference[1] === "X";
+      const digits = hex ? reference.slice(2) : reference.slice(1);
+      if (digits.length === 0 || digits.length > 8) return null;
+      if (!(hex ? /^[0-9a-fA-F]+$/ : /^[0-9]+$/).test(digits)) return null;
+      const code = Number.parseInt(digits, hex ? 16 : 10);
+      // Exactly the characters XML 1.0 permits. A reference to anything else is not a character at all.
+      const legal =
+        code === 0x9 || code === 0xa || code === 0xd ||
+        (code >= 0x20 && code <= 0xd7ff) || (code >= 0xe000 && code <= 0xfffd) ||
+        (code >= 0x10000 && code <= 0x10ffff);
+      if (!legal) return null;
+      decoded += String.fromCodePoint(code);
+    } else {
+      const predefined: Record<string, string> = { lt: "<", gt: ">", amp: "&", apos: "'", quot: '"' };
+      const replacement = predefined[reference];
+      if (replacement === undefined) return null; // an undeclared general entity, and there can be no DTD
+      decoded += replacement;
+    }
+    position = semicolon + 1;
+  }
+  return decoded;
+}
+
+/** One attribute as written: its qualified name, split, and its decoded value. */
+type XmlRawAttribute = { prefix: string; localName: string; qualified: string; value: string };
+
+/**
+ * EVERY attribute of one tag, or null when any part of the list is not valid XML attribute syntax.
+ *
+ * THE FINDING (R16). The previous reader pulled the two attributes it wanted out of the raw tag text with a
+ * regular expression and never looked at the rest, so a tag could carry anything at all beside them.
+ * Reproduced on head 91d32bb -- each of these classified `epub`:
+ *
+ *   <rootfile nonsense full-path="..." media-type="..."/>         a bare token, which XML has no such thing as
+ *   <rootfile full-path="..." media-type="..." %%$$ />            trailing garbage
+ *   <rootfile a:b:c="x" full-path="..." media-type="..."/>        a name that is not a QName
+ *   <rootfile full-path="A" full-path="A" media-type="..."/>      a duplicate, which is never well-formed
+ *
+ * So the WHOLE list is parsed now, and the text between the element name and its `>` must consist of nothing
+ * but well-formed attributes and the whitespace separating them. Anything left over makes the tag malformed,
+ * which makes the descriptor malformed, which fails closed to a generic `zip` like every other structural
+ * failure here. Duplicates are rejected outright rather than resolved: the old code took the FIRST match, so a
+ * document could show one value to this validator and, to a reader that took the last, another.
+ */
+function parseXmlAttributes(text: string): XmlRawAttribute[] | null {
+  const attributes: XmlRawAttribute[] = [];
+  const seen = new Set<string>();
+  let position = 0;
+  const skipSpace = () => { while (position < text.length && /[\s]/.test(text[position]!)) position++; };
+
+  skipSpace();
+  while (position < text.length) {
+    // A name.
+    const nameStart = position;
+    while (position < text.length && isNameChar(text.charCodeAt(position))) position++;
+    if (position === nameStart) return null; // not a name: a bare symbol, a stray quote, trailing garbage
+    const qualified = text.slice(nameStart, position);
+    const name = parseQName(qualified);
+    if (!name) return null;
+
+    // `=`, with whitespace permitted on either side, exactly as XML allows.
+    skipSpace();
+    if (text[position] !== "=") return null; // a bare token such as `nonsense`
+    position++;
+    skipSpace();
+
+    // A quoted value, in matching quotes.
+    const quote = text[position];
+    if (quote !== '"' && quote !== "'") return null;
+    const valueStart = ++position;
+    const close = text.indexOf(quote, valueStart);
+    if (close < 0) return null; // unterminated
+    const value = decodeXmlAttributeValue(text.slice(valueStart, close));
+    if (value === null) return null;
+    position = close + 1;
+
+    if (seen.has(qualified)) return null; // XML: no element may carry two attributes of the same name
+    seen.add(qualified);
+    attributes.push({ prefix: name.prefix, localName: name.localName, qualified, value });
+    if (attributes.length > XML_MAX_ATTRIBUTES_PER_ELEMENT) return null;
+
+    // Attributes must be separated by whitespace, and nothing else may follow the last one.
+    if (position >= text.length) break;
+    if (!/\s/.test(text[position]!)) return null; // e.g. `full-path="a"media-type="b"`
+    skipSpace();
+  }
+  return attributes;
+}
+
+/** One element's namespace bindings, layered over its ancestors'. */
+type NamespaceScope = { readonly prefixes: ReadonlyMap<string, string>; readonly fallback: string | null };
+
+/**
+ * The scope inside an element, given the scope around it and the element's own `xmlns` attributes.
+ *
+ * Declarations are resolved per XML Namespaces: `xmlns="uri"` sets the default for unprefixed ELEMENTS only,
+ * `xmlns:p="uri"` binds one prefix, and both are inherited by descendants until shadowed. `xmlns=""` is the
+ * one legal undeclaration. Malformed and reserved declarations are refused rather than tolerated: an empty URI
+ * for a prefix (XML 1.0 has no prefix undeclaration), rebinding `xml` to anything but its own URI, binding any
+ * prefix to the `xmlns` URI, or declaring the `xmlns` prefix at all.
+ */
+function extendNamespaceScope(scope: NamespaceScope, attributes: readonly XmlRawAttribute[]): NamespaceScope | null {
+  let prefixes: Map<string, string> | null = null;
+  let fallback = scope.fallback;
+  for (const attribute of attributes) {
+    const isDefault = attribute.prefix === "" && attribute.localName === "xmlns";
+    const isPrefixed = attribute.prefix === "xmlns";
+    if (!isDefault && !isPrefixed) continue;
+
+    if (attribute.value === XMLNS_RESERVED_NAMESPACE) return null; // never bindable, by either form
+    if (isDefault) {
+      if (attribute.value === XML_RESERVED_NAMESPACE) return null; // the xml namespace has one prefix only
+      fallback = attribute.value === "" ? null : attribute.value;
+      continue;
+    }
+    const prefix = attribute.localName;
+    if (prefix === "xmlns") return null; // the `xmlns` prefix may not be declared
+    if (prefix === "xml") {
+      if (attribute.value !== XML_RESERVED_NAMESPACE) return null; // `xml` is bound, and only to its own URI
+      continue;
+    }
+    if (attribute.value === "") return null; // XML 1.0 cannot undeclare a prefix
+    prefixes ??= new Map(scope.prefixes);
+    prefixes.set(prefix, attribute.value);
+    if (prefixes.size > XML_MAX_NAMESPACE_BINDINGS) return null;
+  }
+  return prefixes === null && fallback === scope.fallback ? scope : { prefixes: prefixes ?? scope.prefixes, fallback };
+}
+
+/** The expanded name of an attribute: `{uri}local` when prefixed, bare `local` when not (attributes have no default). */
+function expandedAttributeName(attribute: XmlRawAttribute, scope: NamespaceScope): string | null {
+  if (attribute.prefix === "") return attribute.localName;
+  if (attribute.prefix === "xmlns") return `{${XMLNS_RESERVED_NAMESPACE}}${attribute.localName}`;
+  const uri = attribute.prefix === "xml" ? XML_RESERVED_NAMESPACE : scope.prefixes.get(attribute.prefix);
+  if (uri === undefined) return null; // a prefix nothing declared names no namespace at all
+  return `{${uri}}${attribute.localName}`;
+}
+
+/**
+ * The element tags of a bounded XML document, namespace-resolved and in order, or null when it is not
+ * well-formed enough to read.
+ *
+ * THE FINDING (R15) was that anything SHAPED like markup counted as markup, because the descriptor was located
+ * with regular expressions over the raw text. Reproduced on head 0a96182, with a conforming archive in every
+ * other respect:
  *
  *   <!-- <rootfiles><rootfile full-path="OEBPS/fake.opf" .../></rootfiles> -->   -> epub
  *   <![CDATA[<rootfiles><rootfile full-path="OEBPS/fake.opf" .../></rootfiles>]]> -> epub
  *
  * Both declare no rendition at all -- an XML parser sees a comment and a text node -- yet both were accepted.
- * And the failure ran the other way too: with a commented decoy placed BEFORE a real `rootfiles` element, the
- * decoy was what got used. Removing only the decoy's target turned those archives into generic `zip`, which is
- * how it was proved that the live element had never been consulted.
+ * With a commented decoy placed BEFORE a real `rootfiles`, the decoy was what got used; removing only the
+ * decoy's target turned those archives into generic `zip`, proving the live element was never consulted.
  *
- * So text is no longer treated as markup. This is a deliberately small scanner, not an XML parser and not
- * pretending to be one: it recognises the constructs that decide whether bytes are an element, and refuses
- * anything it cannot place. Comments and CDATA sections are skipped as units, so their contents can never
- * become a tag. Processing instructions are skipped. Any other `<!` construct -- a DOCTYPE, an ENTITY
- * declaration, anything else -- is refused outright, so there is still nothing to expand, no DTD to fetch and
- * nothing to resolve over a network. A quoted attribute value is consumed as a unit, so a `<rootfile ...>`
- * written inside one is text and stays text. An unterminated comment, CDATA section, instruction or tag makes
- * the whole document unreadable rather than partially read.
+ * THE FINDING (R16) was that a PREFIX IS NOT A NAMESPACE. The tokenizer stripped prefixes and compared local
+ * names, so an element's identity came from how it was spelled rather than what it is. Reproduced on head
+ * 91d32bb with the named member present:
+ *
+ *   <evil:document xmlns:evil="urn:not-ocf"><evil:rootfiles><evil:rootfile .../></evil:rootfiles></evil:document>
+ *
+ * -> `epub`, from a document with no OCF element anywhere in it. Every element now carries the namespace URI in
+ * scope for its prefix, resolved through ancestry with shadowing and default-namespace changes honoured, and
+ * an undeclared prefix makes the document unreadable rather than namespace-less.
+ *
+ * WHAT THIS IS. A deliberately small scanner for the OCF `container.xml` subset -- not an XML parser, and not
+ * pretending to be one. It accepts: elements (open, close, empty) with QName names, a complete and well-formed
+ * attribute list on each, namespace declarations, comments, CDATA sections and processing instructions (all
+ * three skipped as units so their contents can never become a tag), character data, and the five predefined
+ * entities plus numeric character references inside attribute values. It refuses, by returning null: any other
+ * `<!` construct -- a DOCTYPE, an ENTITY declaration, anything else -- so there is still no DTD to fetch,
+ * nothing to expand and nothing to resolve over a network; unbalanced or unterminated markup; a name that is
+ * not a QName; a malformed attribute list; a malformed or reserved namespace declaration; and any document
+ * past its token, depth, attribute or binding bounds. Everything it refuses fails closed to a generic `zip`.
  */
 function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
   const tokens: XmlElementToken[] = [];
-  const open: string[] = [];
+  const open: { qualified: string; scope: NamespaceScope }[] = [];
+  const rootScope: NamespaceScope = { prefixes: new Map(), fallback: null };
   let position = 0;
   while (position < xml.length) {
     const next = xml.indexOf("<", position);
@@ -903,27 +1150,60 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
     if (cursor >= xml.length) return null; // unterminated tag
 
     const raw = xml.slice(attributeStart, cursor);
-    const empty = /\/\s*$/.test(raw);
-    // A namespace prefix names the same element, so identity is the local name. The prefix itself is not
-    // resolved to a namespace URI -- OCF fixes these element names, and this does not invent a resolver.
-    const colon = qualified.indexOf(":");
+    const empty = !closing && /\/\s*$/.test(raw);
+    const name = parseQName(qualified);
+    if (!name) return null;
     const kind = closing ? "close" : empty ? "empty" : "open";
+
+    // The ENTIRE attribute list, or the tag is malformed. An end tag may carry none at all.
+    const attributeText = empty ? raw.replace(/\/\s*$/, "") : raw;
+    const rawAttributes = parseXmlAttributes(attributeText);
+    if (!rawAttributes) return null;
+    if (closing && rawAttributes.length > 0) return null;
 
     // WELL-FORMEDNESS, not just tag recognition. Every element must be closed by a matching end tag, in order.
     // Without this a truncated document reads as if the elements it never closed were complete -- which is how
     // `<container><rootfiles><rootfile .../>` with no end tags looked like a declared rendition.
-    if (kind === "open") {
-      if (open.length >= XML_MAX_ELEMENT_DEPTH) return null;
-      open.push(qualified);
-    } else if (kind === "close") {
-      if (open.pop() !== qualified) return null;
+    if (closing) {
+      const parent = open.pop();
+      if (!parent || parent.qualified !== qualified) return null;
+      tokens.push({ kind, localName: name.localName, namespace: null, attributes: new Map(), depth: open.length });
+      if (tokens.length > XML_MAX_ELEMENT_TOKENS) return null;
+      position = cursor + 1;
+      continue;
     }
 
-    tokens.push({
-      kind,
-      localName: colon < 0 ? qualified : qualified.slice(colon + 1),
-      attributes: empty ? raw.replace(/\/\s*$/, "") : raw,
-    });
+    const enclosing = open.length > 0 ? open[open.length - 1]!.scope : rootScope;
+    const scope = extendNamespaceScope(enclosing, rawAttributes);
+    if (!scope) return null;
+
+    // The element's own namespace: its prefix's binding, or the default for an unprefixed name.
+    let namespace: string | null;
+    if (name.prefix === "") {
+      namespace = scope.fallback;
+    } else if (name.prefix === "xml") {
+      namespace = XML_RESERVED_NAMESPACE;
+    } else {
+      const bound = scope.prefixes.get(name.prefix);
+      if (bound === undefined) return null; // an undeclared prefix is a namespace error, not a bare name
+      namespace = bound;
+    }
+
+    const attributes = new Map<string, string>();
+    for (const attribute of rawAttributes) {
+      const expanded = expandedAttributeName(attribute, scope);
+      if (expanded === null) return null; // an attribute on an undeclared prefix
+      // Two attributes may spell differently and expand to one name, which XML Namespaces forbids as well.
+      if (attributes.has(expanded)) return null;
+      attributes.set(expanded, attribute.value);
+    }
+
+    const depth = open.length;
+    if (kind === "open") {
+      if (open.length >= XML_MAX_ELEMENT_DEPTH) return null;
+      open.push({ qualified, scope });
+    }
+    tokens.push({ kind, localName: name.localName, namespace, attributes, depth });
     if (tokens.length > XML_MAX_ELEMENT_TOKENS) return null;
     position = cursor + 1;
   }
@@ -931,43 +1211,67 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
   return open.length === 0 && tokens.length > 0 ? tokens : null;
 }
 
-/** One attribute's value from a tag's attribute text, or null when it is absent or carries a reference. */
-function readXmlAttribute(attributes: string, name: string): string | null {
-  const found = new RegExp(`(?:^|\\s)${name}\\s*=\\s*("([^"]*)"|'([^']*)')`).exec(attributes);
-  if (!found) return null;
-  const value = found[2] ?? found[3] ?? "";
-  // Nothing is ever resolved, so a value carrying a reference is refused rather than decoded and guessed at.
-  return value.includes("&") ? null : value;
+/** Whether this token is the named OCF element -- by namespace URI and local name, never by prefix. */
+function isOcfElement(token: XmlElementToken, localName: string): boolean {
+  return token.namespace === OCF_CONTAINER_NAMESPACE && token.localName === localName;
 }
 
 /**
- * The `full-path` of the FIRST `rootfile` ELEMENT inside the `rootfiles` element, or null when there is none.
+ * The `full-path` of the Default Rendition declared by this descriptor, or null when it declares none.
  *
- * Only real element markup counts -- see `tokenizeXmlElements` for the finding this closes. THE FIRST one,
- * specifically: OCF says an OCF Processor must consider the first `rootfile` element within `rootfiles` to
- * represent the Default Rendition, so the choice is the specification's rather than an uploader's.
+ * THE FINDING (R16). The scan looked for a `rootfiles` element ANYWHERE and then a `rootfile` at ANY depth
+ * beneath it, so local names alone decided. Reproduced on head 91d32bb -- every one of these classified `epub`
+ * with the named member present, and none of them declares a rendition an OCF Processor would ever read:
+ *
+ *   <something><rootfiles><rootfile .../></rootfiles></something>          rootfiles outside any container
+ *   <container><wrapper><rootfiles>...</rootfiles></wrapper></container>   a wrapper in between
+ *   <container><rootfiles><wrapper><rootfile .../></wrapper></rootfiles>   a wrapper in between, lower down
+ *   <html><body><rootfiles>...</rootfiles></body></html>                   an unrelated document entirely
+ *   <root><container/><other><rootfiles>...</rootfiles></other></root>     two trees, one supplying each piece
+ *
+ * OCF fixes the structure: `rootfiles` is the REQUIRED first child of `container`, and it contains one or more
+ * `rootfile` elements. So ANCESTRY is what is required here, not the presence of a name somewhere in the file:
+ * the document element must be `{OCF}container`, `{OCF}rootfiles` must be its DIRECT child, and `{OCF}rootfile`
+ * must be a DIRECT child of that. Nothing is searched for globally.
+ *
+ * TWO DELIBERATE CHOICES. A second `{OCF}rootfiles` child fails closed rather than being resolved, because two
+ * of them leave two readers free to pick different renditions -- the ambiguity this module refuses everywhere.
+ * And among the children of `rootfiles`, the FIRST `{OCF}rootfile` decides, which is the specification's choice
+ * and not an uploader's: an OCF Processor must consider the first `rootfile` element within `rootfiles` to
+ * represent the Default Rendition.
  */
 function readEpubRootfilePath(xml: string): string | null {
   const tokens = tokenizeXmlElements(xml);
   if (!tokens) return null;
 
-  let insideRootfiles = false;
-  for (const token of tokens) {
-    if (!insideRootfiles) {
-      // `<rootfiles/>` has no children, so it declares no rendition and there is nothing further to find.
-      if (token.localName === "rootfiles" && token.kind === "empty") return null;
-      if (token.localName === "rootfiles" && token.kind === "open") insideRootfiles = true;
-      continue;
-    }
-    if (token.kind === "close") {
-      if (token.localName === "rootfiles") return null; // closed without naming a rendition
-      continue;
-    }
-    if (token.localName !== "rootfile") continue;
+  // The document element, which OCF requires to be `container`. Nothing above or beside it is looked at.
+  const root = tokens[0]!;
+  if (root.depth !== 0 || root.kind === "close" || !isOcfElement(root, "container")) return null;
+  if (root.kind === "empty") return null; // a container with no children declares nothing
 
-    if (readXmlAttribute(token.attributes, "media-type")?.trim() !== EPUB_PACKAGE_MEDIA_TYPE) return null;
-    const fullPath = readXmlAttribute(token.attributes, "full-path");
-    return fullPath === null || fullPath.trim() === "" ? null : fullPath;
+  // Its direct `rootfiles` child, of which there must be exactly one.
+  let rootfilesAt = -1;
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!;
+    if (token.depth !== 1 || token.kind === "close" || !isOcfElement(token, "rootfiles")) continue;
+    if (rootfilesAt >= 0) return null; // two of them, and no way to choose
+    if (token.kind === "empty") return null; // declares no rendition
+    rootfilesAt = index;
+  }
+  if (rootfilesAt < 0) return null;
+
+  // Its direct `rootfile` children, of which the first decides.
+  for (let index = rootfilesAt + 1; index < tokens.length; index++) {
+    const token = tokens[index]!;
+    if (token.depth === 1 && token.kind === "close") break; // past the end of this `rootfiles`
+    if (token.depth !== 2 || token.kind === "close") continue;
+    if (!isOcfElement(token, "rootfile")) continue;
+
+    // `full-path` and `media-type` carry no prefix, so XML Namespaces puts them in NO namespace -- a default
+    // declaration does not reach attributes, and a prefixed spelling of them would be a different attribute.
+    if (token.attributes.get("media-type")?.trim() !== EPUB_PACKAGE_MEDIA_TYPE) return null;
+    const fullPath = token.attributes.get("full-path");
+    return fullPath === undefined || fullPath.trim() === "" ? null : fullPath;
   }
   return null;
 }

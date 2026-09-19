@@ -225,8 +225,10 @@ test("a descriptor declaring a doctype or an entity is refused outright", async 
   ] as const) {
     assert.equal((await classify([MIMETYPE, container(xml), packageDocument()])).format, "zip", label);
   }
-  // And an attribute carrying a character reference is refused rather than decoded and guessed at.
-  assert.equal((await classify([MIMETYPE, container(descriptorFor("OEBPS&#47;content.opf")), packageDocument()])).format, "zip");
+  // UPDATED IN R16. A numeric character reference is part of XML itself rather than an entity -- `&#47;` is
+  // one `/`, needing no DTD and incapable of recursion or growth -- so it is decoded now. The declarations
+  // above are still refused outright, and nothing is ever resolved.
+  assert.equal((await classify([MIMETYPE, container(descriptorFor("OEBPS&#47;content.opf")), packageDocument()])).format, "epub");
 });
 
 test("an unsafe rootfile path is never looked up", async () => {

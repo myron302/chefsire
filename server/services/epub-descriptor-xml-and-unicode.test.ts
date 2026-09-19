@@ -182,12 +182,21 @@ test("a CDATA decoy before a real element does not displace the real element", a
 });
 
 test("markup written inside an attribute value is text, not markup", async () => {
-  const xml = `<?xml version="1.0"?><container ${NS} note="<rootfiles>${rootfile(DECOY_PATH)}</rootfiles>"><rootfiles>${rootfile(PACKAGE_PATH)}</rootfiles></container>`;
+  // FIXTURE CORRECTED IN R16, assertions unchanged. These originally wrote a RAW `<` inside the value, which
+  // XML forbids outright, so R16's complete attribute grammar now refuses the whole descriptor -- a different
+  // (and correct) reason for `zip` than the one this test exists to pin. Spelled legally with `&lt;`, the value
+  // is exactly the same text and the point still stands: it is a value, and a value is never markup.
+  const decoy = `&lt;rootfiles&gt;${rootfile(DECOY_PATH).replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}&lt;/rootfiles&gt;`;
+  const xml = `<?xml version="1.0"?><container ${NS} note="${decoy}"><rootfiles>${rootfile(PACKAGE_PATH)}</rootfiles></container>`;
   assert.equal((await withDescriptor(xml, [packageDocument(DECOY_PATH)])).format, "epub", "the live element decides");
 
   // And an attribute that is the ONLY place a rootfile appears declares nothing.
-  const only = `<?xml version="1.0"?><container ${NS} note="<rootfiles>${rootfile(DECOY_PATH)}</rootfiles>"></container>`;
+  const only = `<?xml version="1.0"?><container ${NS} note="${decoy}"></container>`;
   assert.equal((await withDescriptor(only, [packageDocument(DECOY_PATH)])).format, "zip");
+
+  // A raw `<` in a value is not legal XML at all, so such a descriptor is malformed and fails closed.
+  const raw = `<?xml version="1.0"?><container ${NS} note="<rootfiles/>"><rootfiles>${rootfile(PACKAGE_PATH)}</rootfiles></container>`;
+  assert.equal((await withDescriptor(raw)).format, "zip", "a raw `<` in an attribute value is malformed XML");
 });
 
 test("a processing instruction is skipped as a unit, not read as markup", async () => {
@@ -224,8 +233,13 @@ test("a DOCTYPE or an ENTITY declaration is still refused, and nothing is ever r
   ] as const) {
     assert.equal((await withDescriptor(xml)).format, "zip", label);
   }
-  // A reference in an attribute is refused rather than decoded, so there is nothing to resolve there either.
-  assert.equal((await withDescriptor(descriptorFor("OEBPS&#47;content.opf"))).format, "zip");
+  // UPDATED IN R16. A NUMERIC CHARACTER REFERENCE is part of XML itself, not an entity: `&#47;` is one `/`,
+  // it needs no DTD, it cannot recurse and it cannot grow, so R16 decodes it -- comparing the raw text would
+  // have been the incorrect reading. Every assertion above is unchanged: there is still no DOCTYPE, no entity
+  // declaration and nothing resolved.
+  assert.equal((await withDescriptor(descriptorFor("OEBPS&#47;content.opf"))).format, "epub");
+  // A GENERAL entity reference is still refused, because no DTD can have declared one.
+  assert.equal((await withDescriptor(descriptorFor("&undeclared;"))).format, "zip");
 });
 
 test("an oversized descriptor is still bounded and refused", async () => {
