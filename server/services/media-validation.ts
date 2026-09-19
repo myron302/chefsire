@@ -1055,6 +1055,76 @@ function decodeXmlDocument(bytes: Buffer): string {
   return (bom ? bytes.subarray(3) : bytes).toString("utf8");
 }
 
+/**
+ * Whether the text between `<?xml` and `?>` is a conforming XML declaration.
+ *
+ * THE FINDING (R19). R18 validated ordinary processing-instruction targets but EXEMPTED `xml` at offset zero
+ * without ever asking whether what followed was a declaration. Reproduced on head 5c436a3, each classifying
+ * `epub`: `<?xml?>`, `<?xml junk?>`, `<?XML version="1.0"?>` and `<?xml version="2.0"?>`, plus a missing
+ * version, reordered fields, duplicates, unknown fields and every malformed value tried.
+ *
+ *   XMLDecl      ::= '<?xml' VersionInfo EncodingDecl? SDDecl? S? '?>'
+ *   VersionInfo  ::= S 'version' Eq ("'" VersionNum "'" | '"' VersionNum '"')
+ *   VersionNum   ::= '1.' [0-9]+
+ *   Eq           ::= S? '=' S?
+ *   EncodingDecl ::= S 'encoding' Eq ('"' EncName '"' | "'" EncName "'")
+ *   EncName      ::= [A-Za-z] ([A-Za-z0-9._] | '-')*
+ *   SDDecl       ::= S 'standalone' Eq (("'" ('yes' | 'no') "'") | ('"' ('yes' | 'no') '"'))
+ *
+ * Walking it in that fixed order is what rejects a duplicate, an unknown field and a reordering, without
+ * needing a rule for each: there is exactly one place each field may appear, and anything left over fails.
+ *
+ * ONE DELIBERATE DIVERGENCE FROM EXPAT, in favour of the specification. expat accepts `version="2.0"`,
+ * `version=""`, `version="1."` and `version="1.0.0"`; XML 1.0 Fifth Edition production [26] is `'1.' [0-9]+`,
+ * which admits none of them. That is a known leniency rather than a reading of the grammar -- libexpat carries
+ * an open change to reject exactly these -- and `version="2.0"` was one of the reported reproductions, so the
+ * production is what is enforced here. Every other expectation in this function matches expat exactly.
+ */
+function isConformingXmlDeclaration(text: string): boolean {
+  let position = 0;
+  const space = () => {
+    const start = position;
+    while (position < text.length && /\s/.test(text[position]!)) position++;
+    return position > start;
+  };
+  /** `Eq` then a quoted value, returned raw. Null when the field is not spelled the way XML spells it. */
+  const value = (name: string): string | null => {
+    if (!text.startsWith(name, position)) return null;
+    position += name.length;
+    while (position < text.length && /\s/.test(text[position]!)) position++; // Eq's leading S?
+    if (text[position] !== "=") return null;
+    position++;
+    while (position < text.length && /\s/.test(text[position]!)) position++; // Eq's trailing S?
+    const quote = text[position];
+    if (quote !== '"' && quote !== "'") return null;
+    const close = text.indexOf(quote, ++position);
+    if (close < 0) return null;
+    const raw = text.slice(position, close);
+    position = close + 1;
+    return raw;
+  };
+
+  // VersionInfo is REQUIRED, and its leading S with it.
+  if (!space()) return false;
+  const version = value("version");
+  if (version === null || !/^1\.[0-9]+$/.test(version)) return false;
+
+  // EncodingDecl?, then SDDecl?, in that order and no other. A field out of order simply never matches.
+  let separated = space();
+  if (separated && text.startsWith("encoding", position)) {
+    const encoding = value("encoding");
+    if (encoding === null || !/^[A-Za-z][A-Za-z0-9._-]*$/.test(encoding)) return false;
+    separated = space();
+  }
+  if (separated && text.startsWith("standalone", position)) {
+    const standalone = value("standalone");
+    if (standalone !== "yes" && standalone !== "no") return false;
+    separated = space();
+  }
+  // `S? '?>'`: whatever is left must be nothing. A duplicate, an unknown field or a reordered one lands here.
+  return position === text.length;
+}
+
 /** XML's `S` production: the only character data the grammar permits outside the document element. */
 function isXmlWhitespace(text: string): boolean {
   for (let index = 0; index < text.length; index++) {
@@ -1206,10 +1276,15 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
       while (cursor < end && !/\s/.test(xml[cursor]!)) cursor++;
       const target = xml.slice(position + 2, cursor);
       if (!isXmlName(target)) return null;
-      // `<?xml ...?>` at offset zero is the XML DECLARATION, which is legal and which every real descriptor
-      // carries. Anywhere else that target is reserved and the document is malformed. Only the exact name is
-      // reserved, so `xml-stylesheet` stays a legal target.
-      if (asciiLowerCase(target) === "xml" && position !== 0) return null;
+      // `<?xml ...?>` at offset zero is the XML DECLARATION, which every real descriptor carries -- but it is
+      // a declaration only if it conforms (R19). The target must be exactly lowercase `xml`, so `<?XML ...?>`
+      // stays reserved wherever it appears, and a malformed declaration is refused rather than quietly
+      // re-read as an ordinary processing instruction. Only the exact name is reserved, so `xml-stylesheet`
+      // remains a perfectly legal target.
+      if (asciiLowerCase(target) === "xml") {
+        if (target !== "xml" || position !== 0) return null;
+        if (!isConformingXmlDeclaration(xml.slice(cursor, end))) return null;
+      }
       // The contents are never interpreted -- a processing instruction is inert here, as it always was.
       position = end + 2;
       continue;
