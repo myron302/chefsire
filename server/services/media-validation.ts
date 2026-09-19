@@ -868,7 +868,7 @@ function isNameStartChar(code: number): boolean {
     (code >= 0x37f && code <= 0x1fff) || (code >= 0x200c && code <= 0x200d) ||
     (code >= 0x2070 && code <= 0x218f) || (code >= 0x2c00 && code <= 0x2fef) ||
     (code >= 0x3001 && code <= 0xd7ff) || (code >= 0xf900 && code <= 0xfdcf) ||
-    (code >= 0xfdf0 && code <= 0xfffd) || code >= 0x10000
+    (code >= 0xfdf0 && code <= 0xfffd) || (code >= 0x10000 && code <= 0xeffff)
   );
 }
 function isNameChar(code: number): boolean {
@@ -878,11 +878,30 @@ function isNameChar(code: number): boolean {
     (code >= 0x300 && code <= 0x36f) || (code >= 0x203f && code <= 0x2040)
   );
 }
-/** Whether every character of `name` is legal for an XML Name. Empty is never a name. */
-function isXmlName(name: string): boolean {
+/**
+ * Whether every character of `name` is legal for an XML Name. Empty is never a name.
+ *
+ * THE FINDING (R17). This walked the string with `charCodeAt`, which yields UTF-16 code UNITS. A supplementary
+ * character arrives as two surrogate halves, and neither half is in any range below -- so the `code >= 0x10000`
+ * clause of `isNameStartChar` could never be reached and a name XML permits was refused. Reproduced on head
+ * 09facaf: a descriptor whose namespace prefix or attribute name contains U+10400, conforming in every other
+ * respect, was refused and the book degraded to a generic `zip`.
+ *
+ * Iteration is now by CODE POINT (`for...of` over a string yields code points), so the supplementary ranges are
+ * reachable and the range table itself is unchanged -- the tables were right, the walk was wrong. A LONE
+ * surrogate is refused explicitly: it is not a character, so it is not a name character either. That guard is
+ * defence in depth rather than a reachable path, because the descriptor is decoded from UTF-8 before it gets
+ * here and Node replaces an unpaired surrogate with U+FFFD during that decode.
+ */
+export function isXmlName(name: string): boolean {
   if (name.length === 0) return false;
-  if (!isNameStartChar(name.charCodeAt(0))) return false;
-  for (let index = 1; index < name.length; index++) if (!isNameChar(name.charCodeAt(index))) return false;
+  let first = true;
+  for (const character of name) {
+    const code = character.codePointAt(0)!;
+    if (code >= 0xd800 && code <= 0xdfff) return false; // half of a pair, standing alone
+    if (!(first ? isNameStartChar(code) : isNameChar(code))) return false;
+    first = false;
+  }
   return true;
 }
 
@@ -974,9 +993,15 @@ function parseXmlAttributes(text: string): XmlRawAttribute[] | null {
 
   skipSpace();
   while (position < text.length) {
-    // A name.
+    // A name, walked by CODE POINT for the same reason `isXmlName` is (R17): scanning by UTF-16 unit stopped
+    // dead at the first half of a supplementary character, truncating a legal attribute name and making the
+    // whole list look malformed. A lone surrogate is not a name character, so it still ends the scan here.
     const nameStart = position;
-    while (position < text.length && isNameChar(text.charCodeAt(position))) position++;
+    while (position < text.length) {
+      const code = text.codePointAt(position)!;
+      if (!isNameChar(code)) break;
+      position += code > 0xffff ? 2 : 1;
+    }
     if (position === nameStart) return null; // not a name: a bare symbol, a stray quote, trailing garbage
     const qualified = text.slice(nameStart, position);
     const name = parseQName(qualified);
@@ -1009,6 +1034,15 @@ function parseXmlAttributes(text: string): XmlRawAttribute[] | null {
     skipSpace();
   }
   return attributes;
+}
+
+/** XML's `S` production: the only character data the grammar permits outside the document element. */
+function isXmlWhitespace(text: string): boolean {
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code !== 0x20 && code !== 0x09 && code !== 0x0d && code !== 0x0a) return false;
+  }
+  return true;
 }
 
 /** One element's namespace bindings, layered over its ancestors'. */
@@ -1099,9 +1133,21 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
   const tokens: XmlElementToken[] = [];
   const open: { qualified: string; scope: NamespaceScope }[] = [];
   const rootScope: NamespaceScope = { prefixes: new Map(), fallback: null };
+  /** Whether a document element has been seen. XML permits exactly one, and nothing else at depth zero. */
+  let rootSeen = false;
   let position = 0;
   while (position < xml.length) {
     const next = xml.indexOf("<", position);
+
+    // CHARACTER DATA, AND WHERE XML ALLOWS IT (R17).
+    //
+    // Text was skipped over entirely, so anything outside the document element was invisible. XML is
+    // `document ::= prolog element Misc*` with `Misc ::= Comment | PI | S`, so outside the document element
+    // the only character data permitted is whitespace. Reproduced on head 09facaf, each classified `epub`:
+    // `junk<container ...>...</container>`, `<container ...>...</container>junk`, and the same with the junk
+    // on both sides. Inside an element this is content and is not inspected -- only its position matters.
+    const text = next < 0 ? xml.slice(position) : xml.slice(position, next);
+    if (open.length === 0 && !isXmlWhitespace(text)) return null;
     if (next < 0) break;
     position = next;
 
@@ -1112,6 +1158,11 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
       continue;
     }
     if (xml.startsWith("<![CDATA[", position)) {
+      // A CDATA section is part of `content`, NOT of `Misc`, so it is legal only inside the document element.
+      // Verified against the XML 1.0 grammar and against expat, which rejects a CDATA section before the root
+      // ("syntax error") and after it ("junk after document element"). Note that `fast-xml-parser`'s validator
+      // accepts both -- one more reason R16 did not adopt it.
+      if (open.length === 0) return null;
       const end = xml.indexOf("]]>", position + 9);
       if (end < 0) return null;
       position = end + 3;
@@ -1198,7 +1249,14 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
       attributes.set(expanded, attribute.value);
     }
 
+    // EXACTLY ONE DOCUMENT ELEMENT (R17). An element beginning at depth zero is a document element, and XML
+    // permits one. Reproduced on head 09facaf: `<container ...>...</container><extra/>` classified `epub`,
+    // though every XML reader refuses it -- expat calls it "junk after document element".
     const depth = open.length;
+    if (depth === 0) {
+      if (rootSeen) return null;
+      rootSeen = true;
+    }
     if (kind === "open") {
       if (open.length >= XML_MAX_ELEMENT_DEPTH) return null;
       open.push({ qualified, scope });
@@ -1207,8 +1265,9 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
     if (tokens.length > XML_MAX_ELEMENT_TOKENS) return null;
     position = cursor + 1;
   }
-  // Anything still open at the end is a document that was never finished.
-  return open.length === 0 && tokens.length > 0 ? tokens : null;
+  // Anything still open at the end is a document that was never finished, and a document with no element at
+  // all is not a document: XML requires the document element, so `tokens` alone is never enough.
+  return open.length === 0 && rootSeen && tokens.length > 0 ? tokens : null;
 }
 
 /** Whether this token is the named OCF element -- by namespace URI and local name, never by prefix. */
