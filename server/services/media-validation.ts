@@ -309,6 +309,41 @@ const ZIP_EOCD_SEARCH_BYTES = 22 + 0xffff;
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_FILE_SIGNATURE = 0x02014b50;
 
+/**
+ * General purpose bit 11: the file name and comment fields of this entry are encoded as UTF-8.
+ *
+ * Names were decoded as `latin1` unconditionally, which is wrong whenever a producer sets this bit. Reproduced
+ * on head 0a96182: a conforming EPUB whose package document is `OEBPS/caf\u00e9.opf` -- written by
+ * python-`zipfile`, which sets this bit on exactly that member -- had its member name read as `OEBPS/cafÃ©.opf`,
+ * which no longer matched the UTF-8 path its own `container.xml` declared, so a valid book degraded to a
+ * generic `zip`. The same happened to a CJK path.
+ */
+const ZIP_UTF8_NAME_FLAG = 0x0800;
+
+/**
+ * A member name, decoded the way its own flags say it is encoded, or null when those bytes are not that.
+ *
+ * With bit 11 set the bytes are UTF-8 and are decoded STRICTLY: `TextDecoder` with `fatal` throws rather than
+ * substituting U+FFFD, because a replacement character silently turns distinct byte sequences into one string
+ * and this module matches names for a living. An invalid sequence therefore fails closed -- the archive is not
+ * indexed -- rather than being guessed at.
+ *
+ * With bit 11 clear the existing behaviour is preserved exactly: the bytes are read as `latin1`. That is a
+ * documented LIMITATION rather than a claim. A producer that writes non-ASCII names without setting the flag
+ * (historically CP437, or an Info-ZIP Unicode Path extra field) will have those names read as mojibake, so a
+ * package whose structure depends on such a name is classified as a generic `zip`. Supporting that properly
+ * means CP437 tables and extra-field parsing, which is not what this repair is for; guessing an encoding would
+ * be worse than declining to.
+ */
+function decodeZipEntryName(bytes: Buffer, flags: number): string | null {
+  if ((flags & ZIP_UTF8_NAME_FLAG) === 0) return bytes.toString("latin1");
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
 /** A Zip64 sentinel: the field's real value lives in an extra field this module deliberately does not parse. */
 const ZIP64_SENTINEL_32 = 0xffffffff;
 
@@ -418,9 +453,14 @@ async function readCentralDirectoryEntries(source: MediaSource, record: ZipEndOf
     const compressedSize = directory.readUInt32LE(cursor + 20);
     const uncompressedSize = directory.readUInt32LE(cursor + 24);
     const localHeaderOffset = directory.readUInt32LE(cursor + 42);
+    const flags = directory.readUInt16LE(cursor + 8);
+    // Decoded by this entry's own flags. An entry whose declared encoding its bytes are not fails the whole
+    // read: a name this module cannot state exactly is one it must not match on.
+    const name = decodeZipEntryName(directory.subarray(cursor + 46, cursor + 46 + nameLength), flags);
+    if (name === null) return null;
     entries.push({
-      name: directory.subarray(cursor + 46, cursor + 46 + nameLength).toString("latin1"),
-      flags: directory.readUInt16LE(cursor + 8),
+      name,
+      flags,
       method: directory.readUInt16LE(cursor + 10),
       crc32: directory.readUInt32LE(cursor + 16),
       compressedSize,
@@ -679,7 +719,11 @@ async function readZipLocalHeader(source: MediaSource, byteSize: number, entry: 
 
   const name = await readRange(source, offset + ZIP_LOCAL_HEADER_FIXED_BYTES, nameLength);
   if (!name || name.length !== nameLength) return null;
-  return { name: name.toString("latin1"), dataOffset: offset + ZIP_LOCAL_HEADER_FIXED_BYTES + nameLength + extraLength };
+  // Decoded by the LOCAL header's own flags, which is what keeps the comparison honest: each side is read the
+  // way it says it is encoded, so neither is ever interpreted as Latin-1 while the other is read as UTF-8.
+  const decoded = decodeZipEntryName(name, header.readUInt16LE(6));
+  if (decoded === null) return null;
+  return { name: decoded, dataOffset: offset + ZIP_LOCAL_HEADER_FIXED_BYTES + nameLength + extraLength };
 }
 
 /**
@@ -774,44 +818,158 @@ async function readZipMemberBytes(source: MediaSource, byteSize: number, entry: 
   return bytes;
 }
 
+/** How many element tags the descriptor scan will look at before giving up. A real one has a handful. */
+const XML_MAX_ELEMENT_TOKENS = 4096;
+/** How deeply elements may nest. A container descriptor nests three levels; this bounds a hostile one. */
+const XML_MAX_ELEMENT_DEPTH = 256;
+
+/** One real element tag. Comments, CDATA, processing instructions and text never become one of these. */
+type XmlElementToken = { kind: "open" | "empty" | "close"; localName: string; attributes: string };
+
 /**
- * The `full-path` of the FIRST `rootfile` in the container descriptor, or null when there is not one to read.
+ * The element tags of a bounded XML document, in order, or null when it is not well-formed enough to read.
  *
- * NOT A GENERAL XML PARSER, and not pretending to be. It reads one shape out of a document already bounded to
- * `EPUB_CONTAINER_MAX_BYTES`, resolves nothing, and fails closed on anything it cannot read unambiguously. A
- * document type declaration or an entity declaration is refused outright rather than reasoned about, so there
- * is no entity to expand, no DTD to fetch and nothing to resolve over a network. An attribute value containing
- * `&` is likewise refused instead of being decoded -- a package-document path containing an ampersand is
- * vanishingly rare, and refusing it is the honest way to avoid guessing at a reference.
+ * THE FINDING (R15). The descriptor was located with regular expressions over the raw text, so anything SHAPED
+ * like markup counted as markup. Reproduced on head 0a96182, with a conforming archive in every other respect:
  *
- * THE FIRST rootfile, specifically: OCF says an OCF Processor must consider the first `rootfile` element within
- * `rootfiles` to represent the Default Rendition. So the choice is the specification's, not an attacker's --
- * a later element cannot be used to smuggle a different target past the first one.
+ *   <!-- <rootfiles><rootfile full-path="OEBPS/fake.opf" .../></rootfiles> -->   -> epub
+ *   <![CDATA[<rootfiles><rootfile full-path="OEBPS/fake.opf" .../></rootfiles>]]> -> epub
+ *
+ * Both declare no rendition at all -- an XML parser sees a comment and a text node -- yet both were accepted.
+ * And the failure ran the other way too: with a commented decoy placed BEFORE a real `rootfiles` element, the
+ * decoy was what got used. Removing only the decoy's target turned those archives into generic `zip`, which is
+ * how it was proved that the live element had never been consulted.
+ *
+ * So text is no longer treated as markup. This is a deliberately small scanner, not an XML parser and not
+ * pretending to be one: it recognises the constructs that decide whether bytes are an element, and refuses
+ * anything it cannot place. Comments and CDATA sections are skipped as units, so their contents can never
+ * become a tag. Processing instructions are skipped. Any other `<!` construct -- a DOCTYPE, an ENTITY
+ * declaration, anything else -- is refused outright, so there is still nothing to expand, no DTD to fetch and
+ * nothing to resolve over a network. A quoted attribute value is consumed as a unit, so a `<rootfile ...>`
+ * written inside one is text and stays text. An unterminated comment, CDATA section, instruction or tag makes
+ * the whole document unreadable rather than partially read.
+ */
+function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
+  const tokens: XmlElementToken[] = [];
+  const open: string[] = [];
+  let position = 0;
+  while (position < xml.length) {
+    const next = xml.indexOf("<", position);
+    if (next < 0) break;
+    position = next;
+
+    if (xml.startsWith("<!--", position)) {
+      const end = xml.indexOf("-->", position + 4);
+      if (end < 0) return null;
+      position = end + 3;
+      continue;
+    }
+    if (xml.startsWith("<![CDATA[", position)) {
+      const end = xml.indexOf("]]>", position + 9);
+      if (end < 0) return null;
+      position = end + 3;
+      continue;
+    }
+    if (xml.startsWith("<?", position)) {
+      const end = xml.indexOf("?>", position + 2);
+      if (end < 0) return null;
+      position = end + 2;
+      continue;
+    }
+    // A DOCTYPE, an ENTITY declaration or any other declaration. Refused rather than reasoned about.
+    if (xml.startsWith("<!", position)) return null;
+
+    const closing = xml.startsWith("</", position);
+    let cursor = position + (closing ? 2 : 1);
+    const nameStart = cursor;
+    while (cursor < xml.length && !/[\s/>]/.test(xml[cursor]!)) cursor++;
+    if (cursor === nameStart) return null; // `<` not followed by a name
+
+    const qualified = xml.slice(nameStart, cursor);
+    const attributeStart = cursor;
+    // Walk to this tag's `>`, treating a quoted value as opaque so a `>` or `<` inside one is just text.
+    let quote: string | null = null;
+    while (cursor < xml.length) {
+      const character = xml[cursor]!;
+      if (quote !== null) {
+        if (character === quote) quote = null;
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === ">") {
+        break;
+      }
+      cursor++;
+    }
+    if (cursor >= xml.length) return null; // unterminated tag
+
+    const raw = xml.slice(attributeStart, cursor);
+    const empty = /\/\s*$/.test(raw);
+    // A namespace prefix names the same element, so identity is the local name. The prefix itself is not
+    // resolved to a namespace URI -- OCF fixes these element names, and this does not invent a resolver.
+    const colon = qualified.indexOf(":");
+    const kind = closing ? "close" : empty ? "empty" : "open";
+
+    // WELL-FORMEDNESS, not just tag recognition. Every element must be closed by a matching end tag, in order.
+    // Without this a truncated document reads as if the elements it never closed were complete -- which is how
+    // `<container><rootfiles><rootfile .../>` with no end tags looked like a declared rendition.
+    if (kind === "open") {
+      if (open.length >= XML_MAX_ELEMENT_DEPTH) return null;
+      open.push(qualified);
+    } else if (kind === "close") {
+      if (open.pop() !== qualified) return null;
+    }
+
+    tokens.push({
+      kind,
+      localName: colon < 0 ? qualified : qualified.slice(colon + 1),
+      attributes: empty ? raw.replace(/\/\s*$/, "") : raw,
+    });
+    if (tokens.length > XML_MAX_ELEMENT_TOKENS) return null;
+    position = cursor + 1;
+  }
+  // Anything still open at the end is a document that was never finished.
+  return open.length === 0 && tokens.length > 0 ? tokens : null;
+}
+
+/** One attribute's value from a tag's attribute text, or null when it is absent or carries a reference. */
+function readXmlAttribute(attributes: string, name: string): string | null {
+  const found = new RegExp(`(?:^|\\s)${name}\\s*=\\s*("([^"]*)"|'([^']*)')`).exec(attributes);
+  if (!found) return null;
+  const value = found[2] ?? found[3] ?? "";
+  // Nothing is ever resolved, so a value carrying a reference is refused rather than decoded and guessed at.
+  return value.includes("&") ? null : value;
+}
+
+/**
+ * The `full-path` of the FIRST `rootfile` ELEMENT inside the `rootfiles` element, or null when there is none.
+ *
+ * Only real element markup counts -- see `tokenizeXmlElements` for the finding this closes. THE FIRST one,
+ * specifically: OCF says an OCF Processor must consider the first `rootfile` element within `rootfiles` to
+ * represent the Default Rendition, so the choice is the specification's rather than an uploader's.
  */
 function readEpubRootfilePath(xml: string): string | null {
-  if (/<!DOCTYPE/i.test(xml) || /<!ENTITY/i.test(xml)) return null;
+  const tokens = tokenizeXmlElements(xml);
+  if (!tokens) return null;
 
-  // `rootfiles` wraps the renditions; the element name may carry a namespace prefix.
-  const open = /<(?:[A-Za-z_][\w.-]*:)?rootfiles[\s>]/.exec(xml);
-  if (!open) return null;
-  const close = /<\/(?:[A-Za-z_][\w.-]*:)?rootfiles\s*>/.exec(xml.slice(open.index));
-  if (!close) return null;
-  const rootfiles = xml.slice(open.index + open[0].length, open.index + close.index);
+  let insideRootfiles = false;
+  for (const token of tokens) {
+    if (!insideRootfiles) {
+      // `<rootfiles/>` has no children, so it declares no rendition and there is nothing further to find.
+      if (token.localName === "rootfiles" && token.kind === "empty") return null;
+      if (token.localName === "rootfiles" && token.kind === "open") insideRootfiles = true;
+      continue;
+    }
+    if (token.kind === "close") {
+      if (token.localName === "rootfiles") return null; // closed without naming a rendition
+      continue;
+    }
+    if (token.localName !== "rootfile") continue;
 
-  const element = /<(?:[A-Za-z_][\w.-]*:)?rootfile\s([^>]*)>/.exec(rootfiles);
-  if (!element) return null;
-  const attributes = element[1]!;
-
-  const attribute = (name: string): string | null => {
-    const found = new RegExp(`(?:^|\\s)${name}\\s*=\\s*("([^"]*)"|'([^']*)')`).exec(attributes);
-    if (!found) return null;
-    const value = found[2] ?? found[3] ?? "";
-    return value.includes("&") ? null : value;
-  };
-
-  if (attribute("media-type")?.trim() !== EPUB_PACKAGE_MEDIA_TYPE) return null;
-  const fullPath = attribute("full-path");
-  return fullPath === null || fullPath.trim() === "" ? null : fullPath;
+    if (readXmlAttribute(token.attributes, "media-type")?.trim() !== EPUB_PACKAGE_MEDIA_TYPE) return null;
+    const fullPath = readXmlAttribute(token.attributes, "full-path");
+    return fullPath === null || fullPath.trim() === "" ? null : fullPath;
+  }
+  return null;
 }
 
 /**
