@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, jsonb, decimal, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, jsonb, decimal, index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { orders, products } from "./commerce-billing";
 import type { StoreLayoutConfigV2 } from "../../store/storeLayout";
@@ -98,6 +98,9 @@ export const commissions = pgTable(
     orderIdx: index("commissions_order_idx").on(t.orderId),
     sellerIdx: index("commissions_seller_idx").on(t.sellerId),
     payoutIdx: index("commissions_payout_idx").on(t.payoutId),
+    activePayoutClaimIdx: uniqueIndex("commissions_active_payout_order_uidx")
+      .on(t.orderId)
+      .where(sql`${t.payoutId} IS NOT NULL AND ${t.status} IN ('pending', 'processing', 'paid')`),
     statusIdx: index("commissions_status_idx").on(t.status),
   })
 );
@@ -130,6 +133,15 @@ export const payouts = pgTable(
     statusIdx: index("payouts_status_idx").on(t.status),
     scheduledIdx: index("payouts_scheduled_idx").on(t.scheduledFor),
     providerPayoutIdx: index("payouts_provider_payout_idx").on(t.providerPayoutId),
+    completedTransferCheck: check("payouts_completed_transfer_check", sql`
+      ${t.status} <> 'completed' OR (
+        ${t.providerPayoutId} IS NOT NULL
+        AND left(${t.providerPayoutId}, 10) <> 'sq_payout_'
+        AND left(${t.providerPayoutId}, 11) <> 'payout_sim_'
+        AND ${t.processedAt} IS NOT NULL
+        AND ${t.completedAt} IS NOT NULL
+      )
+    `),
   })
 );
 
