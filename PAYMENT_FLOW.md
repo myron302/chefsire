@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-ChefSire acts as the **payment processor** - all money flows through ChefSire first, then sellers get paid minus commission. This ensures you ALWAYS collect your royalties.
+ChefSire has buyer-payment code and server-side commission calculations, but it does **not** currently have a provider-confirmed seller-transfer implementation. Seller payouts are unavailable and fail closed.
 
 ## 💰 Money Flow
 
@@ -17,31 +17,31 @@ ChefSire acts as the **payment processor** - all money flows through ChefSire fi
    - Professional tier = 5% = $5 commission
    - Seller gets = $95
    ↓
-5. ChefSire transfers $95 to seller via Square Connect
+5. Seller transfer remains unavailable until a payout provider can submit and confirm it
    ↓
 6. ChefSire keeps $5 as platform fee
 ```
 
-**Key Point:** Sellers NEVER receive buyer payments directly. You control all money flow.
+**Key Point:** The calculated seller share is accounting data, not proof that money was transferred.
 
 ## 🔐 How Commission is Guaranteed
 
 ### Why Sellers Can't Bypass Commission:
 
 1. **ChefSire receives ALL payments first** via your Square account
-2. **Commission is deducted BEFORE payout** - it's automatic
-3. **Sellers only get paid via Square Connect transfers** - they can't access the full amount
+2. **Commission is calculated server-side** - clients cannot choose a payout amount
+3. **No seller transfer is currently executed** - Square account linking is not a transfer API
 4. **All transactions are logged** - complete audit trail
-5. **Sellers must connect their Square account** - no Square account = no payouts
+5. **Payout execution remains disabled** even if a seller linked a Square account
 
 ### Example:
 ```javascript
 // In /api/payments/create-payment
 Square charges buyer $100 → Goes to YOUR Square account
 
-// In /api/payouts/process-seller-payout
-Transfer $95 to seller's Square account
-Keep $5 in your account (commission)
+// POST /api/payouts/process-seller-payout
+HTTP 503 { code: "PAYOUT_PROVIDER_UNAVAILABLE" }
+// No payout or commission state is inserted, claimed, or marked paid.
 ```
 
 ## 📋 Required Setup
@@ -62,9 +62,9 @@ SQUARE_LOCATION_ID="LX7Pxxxxx"
 4. Generate Access Token (Production or Sandbox)
 5. Get Location ID from Square Dashboard
 
-### 2. Enable Square Connect (OAuth)
+### 2. Square account linking (OAuth only)
 
-**Required for seller payouts:**
+OAuth account linking may be configured, but it does not enable seller transfers:
 1. In Square Developer Portal → Your App → OAuth
 2. Enable "Square Account Management" permission
 3. Add redirect URL: `https://chefsire.com/api/payouts/square-callback`
@@ -130,7 +130,7 @@ PATCH /api/orders/order_123/status
 }
 ```
 
-#### 4. Payout to Seller
+#### 4. Payout execution (currently unavailable)
 ```javascript
 POST /api/payouts/process-seller-payout
 {
@@ -138,9 +138,15 @@ POST /api/payouts/process-seller-payout
   "orderIds": ["order_123", "order_456"]
 }
 
-// ChefSire transfers $95 to seller's Square account
-// ChefSire keeps $5 commission
+// HTTP 503: PAYOUT_PROVIDER_UNAVAILABLE
+// No transfer is attempted and no payout/commission state changes.
 ```
+
+`GET /api/payouts/pending-balance` also fails closed with HTTP 503 `PAYOUT_ELIGIBILITY_UNVERIFIABLE`.
+The available marketplace order lifecycle
+does not prove provider-captured payment, so its zeroed response must not be
+interpreted as a successful zero pending balance. Existing locally completed
+payout rows are unverified legacy history, not proof of a provider transfer.
 
 ## 💳 Frontend Integration
 
@@ -194,51 +200,11 @@ const SquarePaymentForm = ({ amount, onPaymentSuccess }) => {
 };
 ```
 
-## 🔄 Payout Schedules
+## 🔄 Payout Scheduling (not implemented)
 
-### Option 1: Immediate Payout (Risky)
-- Pay sellers as soon as order is delivered
-- **Risk:** Chargebacks/refunds within 30-60 days
-- **Not recommended**
-
-### Option 2: Delayed Payout (Safer)
-- Wait 7-14 days after delivery before paying sellers
-- Covers most chargeback periods
-- **Recommended for launch**
-
-```javascript
-// Cron job runs daily
-// Pay sellers for orders delivered 7+ days ago
-const cutoffDate = new Date();
-cutoffDate.setDate(cutoffDate.getDate() - 7);
-
-await db
-  .select()
-  .from(orders)
-  .where(
-    and(
-      eq(orders.status, 'delivered'),
-      lt(orders.deliveredAt, cutoffDate),
-      eq(orders.payoutStatus, 'pending')
-    )
-  );
-```
-
-### Option 3: Scheduled Batches (Most Common)
-- Weekly or monthly payouts (like Uber, Airbnb)
-- Lower transaction fees (batch transfers)
-- Easier accounting
-
-```javascript
-// Every Friday at midnight
-cron.schedule('0 0 * * 5', async () => {
-  const sellers = await getSellersWithPendingPayouts();
-
-  for (const seller of sellers) {
-    await processSellerPayout(seller.id);
-  }
-});
-```
+No immediate, delayed, cron, or batch seller payout path is enabled. Delivery
+alone is not payout eligibility: the system must first gain authoritative
+payment-capture evidence and a provider-confirmed transfer implementation.
 
 ## 📊 Commission Tiers
 
@@ -295,19 +261,14 @@ Decline: 4000 0000 0000 0002
    npm install square
    ```
 
-3. **Uncomment Square code** in:
-   - `server/routes/payments.ts`
-   - `server/routes/payouts.ts`
+3. **Implement and security-review a real payout provider** before enabling any seller transfer
 
 4. **Build frontend payment form** (2 hours)
    - Install Square Web SDK
    - Create payment component
    - Handle tokenization
 
-5. **Set up payout schedule** (1 hour)
-   - Choose schedule (immediate/delayed/batched)
-   - Create cron job
-   - Test payouts
+5. **Keep payout execution fail closed** until provider submission and confirmation are persisted safely
 
 6. **Go live!**
    - Switch to production credentials
@@ -321,9 +282,9 @@ Decline: 4000 0000 0000 0002
 - Verify CVV is correct
 - Make sure card isn't expired
 
-**"Payout failed: INSUFFICIENT_BALANCE"**
-- ChefSire Square account needs funds
-- Wait for payments to settle (1-2 days)
+**`PAYOUT_PROVIDER_UNAVAILABLE` or `PAYOUT_ELIGIBILITY_UNVERIFIABLE`**
+- This is the expected fail-closed behavior; it does not mean a transfer was attempted.
+- Do not treat the zeroed eligibility response as a successful pending balance.
 
 **"OAuth error: Invalid redirect URI"**
 - Check redirect URL in Square Developer Portal

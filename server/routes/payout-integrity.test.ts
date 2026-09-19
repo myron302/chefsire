@@ -11,6 +11,8 @@ const migration = fs.readFileSync(path.join(root, "server/migrations/20260919_pa
 const schema = fs.readFileSync(path.join(root, "shared/schema/domains/ops-wedding.ts"), "utf8");
 const ordersSchema = fs.readFileSync(path.join(root, "shared/schema/domains/commerce-billing.ts"), "utf8");
 const marketplaceDocs = fs.readFileSync(path.join(root, "MARKETPLACE_IMPLEMENTATION.md"), "utf8");
+const paymentFlowDocs = fs.readFileSync(path.join(root, "PAYMENT_FLOW.md"), "utf8");
+const packageJson = fs.readFileSync(path.join(root, "package.json"), "utf8");
 
 test("an unconfigured/simulated provider cannot report or persist payout completion", () => {
   const result = rejectUnavailablePayout({ sellerId: "seller-1", orderIds: ["order-1"] });
@@ -54,17 +56,19 @@ test("completed is constrained to a non-simulated provider confirmation", () => 
   assert.match(migration, /payouts_completed_transfer_check/);
   assert.match(migration, /provider_payout_id IS NOT NULL/);
   for (const predicate of [
-    "length(btrim(provider_payout_id)) > 0",
-    "left(provider_payout_id, 10) <> 'sq_payout_'",
-    "left(provider_payout_id, 11) <> 'payout_sim_'",
+    "provider_payout_id !~ '^[[:space:]]*$'",
+    "left(regexp_replace(provider_payout_id, '^[[:space:]]+|[[:space:]]+$', '', 'g'), 10) <> 'sq_payout_'",
+    "left(regexp_replace(provider_payout_id, '^[[:space:]]+|[[:space:]]+$', '', 'g'), 11) <> 'payout_sim_'",
   ]) assert.ok(migration.includes(predicate), predicate);
   assert.match(migration, /processed_at IS NOT NULL/);
   assert.match(migration, /completed_at IS NOT NULL/);
 });
 
-test("migration and Drizzle schema require the same nonblank, nonsynthetic provider evidence", () => {
-  assert.match(schema, /check\("payouts_completed_transfer_check"/);
-  assert.match(schema, /length\(btrim\(\$\{t\.providerPayoutId\}\)\) > 0/);
+test("migration and staged Drizzle predicate require the same whitespace-normalized provider evidence", () => {
+  assert.match(schema, /payoutCompletedTransferPredicate/);
+  assert.doesNotMatch(schema, /check\("payouts_completed_transfer_check"/);
+  assert.match(schema, /\!~ '\^\[\[:space:\]\]\*\$'/);
+  assert.match(schema, /regexp_replace/);
   for (const prefix of ["sq_payout_", "payout_sim_"]) {
     assert.ok(migration.includes(prefix), `migration missing ${prefix}`);
     assert.ok(schema.includes(prefix), `schema missing ${prefix}`);
@@ -72,6 +76,13 @@ test("migration and Drizzle schema require the same nonblank, nonsynthetic provi
   for (const evidence of ["providerPayoutId", "processedAt", "completedAt"]) {
     assert.ok(schema.includes(evidence), `schema missing ${evidence}`);
   }
+});
+
+test("db:push follows schema sync with the authoritative staged migration", () => {
+  const scripts = JSON.parse(packageJson).scripts;
+  assert.match(scripts["db:push"], /drizzle-kit push && npm run db:migrate$/);
+  assert.match(scripts["db:push:accept"], /drizzle-kit push --force && npm run db:migrate$/);
+  assert.match(migration, /\) NOT VALID/);
 });
 
 test("completion constraint idempotency is scoped to the payouts relation", () => {
@@ -106,4 +117,12 @@ test("marketplace documentation describes both fail-closed endpoint contracts", 
   assert.match(marketplaceDocs, /503.*PAYOUT_PROVIDER_UNAVAILABLE/);
   assert.match(marketplaceDocs, /503.*PAYOUT_ELIGIBILITY_UNVERIFIABLE/);
   assert.match(marketplaceDocs, /must not interpret this response as a successful zero balance/);
+});
+
+test("payment-flow documentation no longer claims seller transfers are operational", () => {
+  assert.match(paymentFlowDocs, /503.*PAYOUT_PROVIDER_UNAVAILABLE/);
+  assert.match(paymentFlowDocs, /503.*PAYOUT_ELIGIBILITY_UNVERIFIABLE/);
+  assert.match(paymentFlowDocs, /unverified legacy history/);
+  assert.doesNotMatch(paymentFlowDocs, /ChefSire transfers \$95/);
+  assert.doesNotMatch(paymentFlowDocs, /processSellerPayout\(/);
 });

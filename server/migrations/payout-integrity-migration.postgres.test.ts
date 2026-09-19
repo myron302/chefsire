@@ -76,7 +76,8 @@ async function teardown(client: pg.Client, schema: string, decoy: string) {
 postgresTest("production payout migration enforces completion and preserves history", async () => {
   const { client, schema, decoy } = await setup();
   try {
-    await client.query(`INSERT INTO payouts (id, status) VALUES ('historic-payout', 'pending')`);
+    await client.query(`INSERT INTO payouts (id, provider_payout_id, status, processed_at, completed_at)
+      VALUES ('historic-payout', 'sq_payout_1700000000000', 'completed', now(), now())`);
     await client.query(`INSERT INTO commissions (id, order_id, status, audit_note) VALUES ('historic-commission', 'historic-order', 'pending', 'keep me')`);
 
     await applyMigration(client, "20260919_payout_integrity.sql", migration, { error() {} });
@@ -87,7 +88,10 @@ postgresTest("production payout migration enforces completion and preserves hist
     );
     assert.equal(targetConstraint.rows[0].count, 1, "a same-named constraint on another relation must not suppress creation");
     assert.equal((await client.query(`SELECT audit_note FROM commissions WHERE id = 'historic-commission'`)).rows[0].audit_note, "keep me");
-    assert.equal((await client.query(`SELECT status FROM payouts WHERE id = 'historic-payout'`)).rows[0].status, "pending");
+    assert.deepEqual(
+      (await client.query(`SELECT provider_payout_id, status FROM payouts WHERE id = 'historic-payout'`)).rows[0],
+      { provider_payout_id: "sq_payout_1700000000000", status: "completed" }
+    );
 
     const insertCompleted = (id: string, providerId: string | null, timestamps = true) => client.query(
       `INSERT INTO payouts (id, provider_payout_id, status, processed_at, completed_at)
@@ -97,9 +101,15 @@ postgresTest("production payout migration enforces completion and preserves hist
     await assert.rejects(insertCompleted("missing-evidence", null), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("empty-evidence", ""), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("blank-evidence", "   "), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("tab-evidence", "\t"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("newline-evidence", "\n"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("mixed-whitespace-evidence", " \t\r\n"), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("legacy-placeholder", "sq_payout_1700000000000"), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("legacy-simulation", "payout_sim_1700000000000"), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("legacy-square-simulation", "sq_payout_sim_1700000000000"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("spaced-placeholder", "   sq_payout_1700000000000   "), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("control-placeholder", "\t\nsq_payout_1700000000000\r"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("spaced-simulation", " \tpayout_sim_1700000000000\n"), (error: any) => error.code === "23514");
     await insertCompleted("verified", "provider-transfer-abc123");
   } finally {
     await teardown(client, schema, decoy);

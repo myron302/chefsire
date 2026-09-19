@@ -33,10 +33,10 @@ BEGIN
       ADD CONSTRAINT payouts_completed_transfer_check CHECK (
         status <> 'completed' OR (
           provider_payout_id IS NOT NULL
-          AND length(btrim(provider_payout_id)) > 0
+          AND provider_payout_id !~ '^[[:space:]]*$'
           -- Exact formats emitted by the removed placeholder implementation.
-          AND left(provider_payout_id, 10) <> 'sq_payout_'
-          AND left(provider_payout_id, 11) <> 'payout_sim_'
+          AND left(regexp_replace(provider_payout_id, '^[[:space:]]+|[[:space:]]+$', '', 'g'), 10) <> 'sq_payout_'
+          AND left(regexp_replace(provider_payout_id, '^[[:space:]]+|[[:space:]]+$', '', 'g'), 11) <> 'payout_sim_'
           AND processed_at IS NOT NULL
           AND completed_at IS NOT NULL
         )

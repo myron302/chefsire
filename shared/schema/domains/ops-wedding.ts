@@ -1,5 +1,5 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, jsonb, decimal, index, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { sql, type SQLWrapper } from "drizzle-orm";
+import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, jsonb, decimal, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { orders, products } from "./commerce-billing";
 import type { StoreLayoutConfigV2 } from "../../store/storeLayout";
@@ -77,6 +77,29 @@ export const paymentMethods = pgTable(
 
 type PayoutAccountDetailsSnapshot = Pick<PaymentMethodAccountDetails, "merchantId" | "locationId">;
 
+/**
+ * Canonical Drizzle-side representation of the staged payout completion invariant.
+ * Drizzle 0.39 cannot emit PostgreSQL CHECK constraints as NOT VALID. Attaching
+ * this with `check()` would make `db:push` validate preserved legacy rows, unlike
+ * the authoritative migration. The supported db:push scripts therefore run the
+ * migration immediately after schema sync; keep this predicate aligned with it.
+ */
+export const payoutCompletedTransferPredicate = (payout: {
+  status: SQLWrapper;
+  providerPayoutId: SQLWrapper;
+  processedAt: SQLWrapper;
+  completedAt: SQLWrapper;
+}) => sql`
+  ${payout.status} <> 'completed' OR (
+    ${payout.providerPayoutId} IS NOT NULL
+    AND ${payout.providerPayoutId} !~ '^[[:space:]]*$'
+    AND left(regexp_replace(${payout.providerPayoutId}, '^[[:space:]]+|[[:space:]]+$', '', 'g'), 10) <> 'sq_payout_'
+    AND left(regexp_replace(${payout.providerPayoutId}, '^[[:space:]]+|[[:space:]]+$', '', 'g'), 11) <> 'payout_sim_'
+    AND ${payout.processedAt} IS NOT NULL
+    AND ${payout.completedAt} IS NOT NULL
+  )
+`;
+
 /* ===== COMMISSIONS ===== */
 export const commissions = pgTable(
   "commissions",
@@ -133,16 +156,6 @@ export const payouts = pgTable(
     statusIdx: index("payouts_status_idx").on(t.status),
     scheduledIdx: index("payouts_scheduled_idx").on(t.scheduledFor),
     providerPayoutIdx: index("payouts_provider_payout_idx").on(t.providerPayoutId),
-    completedTransferCheck: check("payouts_completed_transfer_check", sql`
-      ${t.status} <> 'completed' OR (
-        ${t.providerPayoutId} IS NOT NULL
-        AND length(btrim(${t.providerPayoutId})) > 0
-        AND left(${t.providerPayoutId}, 10) <> 'sq_payout_'
-        AND left(${t.providerPayoutId}, 11) <> 'payout_sim_'
-        AND ${t.processedAt} IS NOT NULL
-        AND ${t.completedAt} IS NOT NULL
-      )
-    `),
   })
 );
 
