@@ -169,9 +169,17 @@ test("XML `S` is accepted wherever the grammar requires whitespace", async () =>
 test("characters that are JavaScript whitespace but not XML `S` are refused everywhere", async () => {
   // THE REPRODUCTION MATRIX. Every cell here classified `epub` on head 84bdb54 for the six characters that
   // were reproduced then; the rest are the same defect and are pinned alongside them.
+  //
+  // ONE CELL CORRECTED IN R21, and the assertion it makes is unchanged: U+FEFF is still not `S`. What R20 got
+  // wrong was what it IS instead -- production [4] includes [#xFDF0-#xFFFD], so U+FEFF is a NameChar, which
+  // R20 denied. In every position but one that changes nothing, because a name carrying it still is not the
+  // name the grammar wanted. The exception is a processing-instruction target, which may be any Name: in
+  // `<?target\uFEFFdata?>` the character is absorbed into a legal target, so the document really is
+  // well-formed. Asserting `zip` there was pinning my own R20 error, so it is corrected rather than kept.
   for (const [label, build] of POSITIONS) {
     for (const [name, space] of NOT_XML_SPACE) {
-      assert.equal(await withDescriptor(build(space)), "zip", `${label} :: ${name}`);
+      const absorbedIntoALegalName = space === "\ufeff" && label === "processing instruction: S after the target";
+      assert.equal(await withDescriptor(build(space)), absorbedIntoALegalName ? "epub" : "zip", `${label} :: ${name}`);
     }
   }
 });
@@ -206,12 +214,15 @@ test("whitespace outside the document element is still XML `S` only", async () =
 
 /* ------------------------------------------------------------------ the adjacent consequence: U+FEFF in names */
 
-test("U+FEFF is not a name character, though the literal range contains it", async () => {
-  // Excluded to match expat, which refuses it in all three name positions while accepting it as text.
-  assert.equal(isXmlName("﻿"), false, "alone");
-  assert.equal(isXmlName("a﻿b"), false, "inside");
-  assert.equal(isXmlName("a﻿"), false, "trailing");
-  // Its neighbours in [#xFDF0-#xFFFD] are unaffected -- the carve-out is exactly one code point.
+test("U+FEFF IS a name character -- the R20 exception was wrong and is reverted (R21)", async () => {
+  // CORRECTED IN R21. R20 carved U+FEFF out of the Name ranges on expat's behaviour. Greptile pointed out
+  // that production [4] reads `... | [#xFDF0-#xFFFD] | ...` and #xFEFF is inside that range, so it IS a
+  // NameStartChar. Re-checked against the normative grammar: it is, and the grammar governs -- expat is
+  // merely stricter here. That was my error, so this test now asserts the grammar instead of the exception.
+  assert.equal(isXmlName("\ufeff"), true, "alone");
+  assert.equal(isXmlName("a\ufeffb"), true, "inside");
+  assert.equal(isXmlName("a\ufeff"), true, "trailing");
+  // Its neighbours in [#xFDF0-#xFFFD] were never in dispute and are unchanged.
   assert.equal(isXmlName(String.fromCodePoint(0xfdf0)), true, "U+FDF0, the low end");
   assert.equal(isXmlName(String.fromCodePoint(0xfefe)), true, "U+FEFE, just below");
   assert.equal(isXmlName(String.fromCodePoint(0xff00)), true, "U+FF00, just above");

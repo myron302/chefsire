@@ -868,13 +868,13 @@ function isNameStartChar(code: number): boolean {
     (code >= 0x37f && code <= 0x1fff) || (code >= 0x200c && code <= 0x200d) ||
     (code >= 0x2070 && code <= 0x218f) || (code >= 0x2c00 && code <= 0x2fef) ||
     (code >= 0x3001 && code <= 0xd7ff) || (code >= 0xf900 && code <= 0xfdcf) ||
-    // U+FEFF sits inside [#xFDF0-#xFFFD] by the letter of the production, and is excluded anyway (R20).
-    // expat refuses it in element names, attribute names and PI targets alike while accepting it as text, and
-    // a zero-width character that renders as nothing inside a name is the same render-one-way/compare-another
-    // ambiguity this module refuses everywhere else. R18 established it as an encoding signature; letting it
-    // become part of a NAME would undo that. No real descriptor is affected -- it never matches an OCF name
-    // either way, so this only decides whether the document is malformed or merely not a container.
-    (code >= 0xfdf0 && code <= 0xfffd && code !== 0xfeff) || (code >= 0x10000 && code <= 0xeffff)
+    // R20 carved U+FEFF out of this range because expat refuses it in names. THAT WAS WRONG and is reverted
+    // (R21). Production [4] is `... | [#xFDF0-#xFFFD] | [#x10000-#xEFFFF]`, and #xFEFF is inside #xFDF0-#xFFFD,
+    // so it IS a NameStartChar -- the grammar is normative and expat is merely stricter than it here. The three
+    // concepts stay separate and none substitutes for another: U+FEFF is a NameChar (this production), it is a
+    // `Char` (production [2]), it is NOT `S` (production [3], R20), and a UTF-8 BOM is consumed only at byte
+    // offset zero (R18) rather than being recognised anywhere else.
+    (code >= 0xfdf0 && code <= 0xfffd) || (code >= 0x10000 && code <= 0xeffff)
   );
 }
 function isNameChar(code: number): boolean {
@@ -1132,6 +1132,36 @@ function isConformingXmlDeclaration(text: string): boolean {
 }
 
 /**
+ * XML's `Char` production [2]: the characters a document may contain at all.
+ *
+ * THE FINDING (R21, Codex). Attribute-value decoding returned early when a raw value held neither `<` nor `&`,
+ * so a literal character was never checked against anything. Reproduced on head d253ea1: a required `rootfile`
+ * carrying `note="\f"` classified `epub`, though a form feed is not a `Char` and expat refuses the document.
+ * Auditing the other places literal characters are consumed found the same gap in ALL of them -- character
+ * data, comments, processing-instruction content and CDATA content -- thirty reproductions in total, every one
+ * accepted here and refused by expat.
+ *
+ * `Char` is not a property of one context, it is a property of the document, so it is checked once over the
+ * whole decoded descriptor rather than five times in five places that could drift apart. The scan is bounded
+ * by the 64 KiB descriptor cap and walks CODE POINTS, so a surrogate pair is one character and a lone
+ * surrogate -- which is in neither range -- is refused.
+ */
+function isXmlChar(code: number): boolean {
+  return (
+    code === 0x9 || code === 0xa || code === 0xd ||
+    (code >= 0x20 && code <= 0xd7ff) ||
+    (code >= 0xe000 && code <= 0xfffd) ||
+    (code >= 0x10000 && code <= 0x10ffff)
+  );
+}
+
+/** Whether every character of the document is a `Char`. Walks code points; a lone surrogate is not one. */
+function isXmlCharData(text: string): boolean {
+  for (const character of text) if (!isXmlChar(character.codePointAt(0)!)) return false;
+  return true;
+}
+
+/**
  * XML's `S` production, and the ONLY definition of whitespace this parser uses.
  *
  * THE FINDING (R20, Codex and Greptile independently). Every other whitespace test in the tokenizer was a
@@ -1237,6 +1267,11 @@ function expandedAttributeName(attribute: XmlRawAttribute, scope: NamespaceScope
  * past its token, depth, attribute or binding bounds. Everything it refuses fails closed to a generic `zip`.
  */
 function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
+  // Every character of the document must be a `Char` (R21). Checked here, once, because it is a property of
+  // the document rather than of any one construct -- so attribute values, character data, comments,
+  // processing-instruction content and CDATA content are all covered by the same rule and cannot drift apart.
+  if (!isXmlCharData(xml)) return null;
+
   const tokens: XmlElementToken[] = [];
   const open: { qualified: string; scope: NamespaceScope }[] = [];
   const rootScope: NamespaceScope = { prefixes: new Map(), fallback: null };
