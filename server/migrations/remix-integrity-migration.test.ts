@@ -30,18 +30,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { splitPostgresStatements } from "../scripts/migration-runner";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATION = fs.readFileSync(path.join(here, "20260917_remix_integrity.sql"), "utf8");
 
 /** Exactly how server/scripts/run-migrations.ts turns a file into statements. */
-function statementsOf(sql: string) {
-  return sql
-    .replace(/^\s*--.*$/gm, "")
-    .split(/;/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
+const statementsOf = splitPostgresStatements;
 
 /**
  * An explicit TEST_DATABASE_URL wins; otherwise try the usual local shapes. A developer machine, a

@@ -290,12 +290,9 @@ SET likes_count = (
 
 -- The lineage index is created LAST, deliberately.
 --
--- server/scripts/run-migrations.ts wraps its whole statement loop in a single try, and its
--- DUPLICATE_CODES set treats SQLSTATE 23505 as "objects already exist": a 23505 raised anywhere in
--- the file makes the runner record the migration as APPLIED and skip every remaining statement.
--- Building a unique index over rows that still contain duplicates raises exactly 23505. The
--- de-duplication above is what makes that impossible, but ordering this statement last also means
--- that if it ever did fail it would take no other statement down with it. That runner behaviour is
--- pre-existing and is reported in the PR rather than changed here.
+-- Building a unique index over rows that still contain duplicates raises SQLSTATE 23505. The
+-- de-duplication above is what makes that impossible. The migration runner deliberately does not
+-- treat that data-integrity failure as schema idempotency: it rolls the migration back and leaves its
+-- ledger entry absent so the data can be repaired and the migration retried.
 CREATE UNIQUE INDEX IF NOT EXISTS recipe_remix_lineage_idx
   ON recipe_remixes (original_recipe_id, remixed_recipe_id, user_id);
