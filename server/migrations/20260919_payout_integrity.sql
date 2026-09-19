@@ -24,13 +24,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS commissions_active_payout_order_uidx
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'payouts_completed_transfer_check'
+    SELECT 1
+      FROM pg_constraint
+     WHERE conname = 'payouts_completed_transfer_check'
+       AND conrelid = 'payouts'::regclass
   ) THEN
     ALTER TABLE payouts
       ADD CONSTRAINT payouts_completed_transfer_check CHECK (
         status <> 'completed' OR (
           provider_payout_id IS NOT NULL
-          AND provider_payout_id NOT LIKE '%\_sim\_%' ESCAPE '\'
+          -- Exact formats emitted by the removed placeholder implementation.
+          AND left(provider_payout_id, 10) <> 'sq_payout_'
+          AND left(provider_payout_id, 11) <> 'payout_sim_'
           AND processed_at IS NOT NULL
           AND completed_at IS NOT NULL
         )

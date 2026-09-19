@@ -74,17 +74,14 @@ Every payment automatically creates a commission record:
 - Total amount, commission amount, seller amount
 - Status (pending → paid after payout)
 
-### 3. Seller Payout System (✅ Complete)
+### 3. Seller Payout System (Unavailable — fail closed)
 
-Implemented automated seller payout processing with Square Connect.
+Square account linking exists, but ChefSire does not have a provider-confirmed transfer implementation. Payout execution and pending-earnings calculation are therefore intentionally unavailable; neither endpoint indicates that funds moved.
 
 #### Features
-- Payout processing to connected Square accounts
-- Batch payouts for multiple orders
-- Payout status tracking (pending/processing/completed/failed)
-- Commission marking as "paid" when payout completes
-- Payout history and pending balance queries
-- Provider-agnostic design (supports Square, Stripe, PayPal)
+- Payout history remains available to the authenticated seller.
+- Legacy locally completed records are reported conservatively as unverified.
+- No order or commission is claimed while transfer and payment eligibility cannot be verified.
 
 #### Implementation Details
 **File**: `server/routes/payouts.ts`
@@ -92,11 +89,8 @@ Implemented automated seller payout processing with Square Connect.
 ```javascript
 // Enabled endpoints:
 - POST /api/payouts/process-seller-payout
-  - Verifies seller has connected payment method
-  - Creates payout record
-  - Processes transfer via Square
-  - Marks commissions as paid
-  - Returns payout details
+  - Returns HTTP 503 with `PAYOUT_PROVIDER_UNAVAILABLE`
+  - Does not create a payout or change commission state
 
 - GET /api/payouts/my-payouts
   - Shows seller's payout history
@@ -104,8 +98,9 @@ Implemented automated seller payout processing with Square Connect.
   - Individual payout details
 
 - GET /api/payouts/pending-balance
-  - Shows earnings waiting for payout
-  - List of delivered but unpaid orders
+  - Returns HTTP 503 with `PAYOUT_ELIGIBILITY_UNVERIFIABLE`
+  - Returns no successful pending balance or eligible-order list
+  - Consumers must not interpret this response as a successful zero balance
 
 - POST /api/payouts/connect-square
   - Initiates Square OAuth flow for seller
@@ -113,13 +108,7 @@ Implemented automated seller payout processing with Square Connect.
 ```
 
 #### Payout Workflow
-1. Orders are marked as "delivered"
-2. Admin/automated system calls `/process-seller-payout`
-3. System checks for connected payment method
-4. Creates payout record (status: processing)
-5. Transfers funds via Square Connect
-6. Updates payout status to completed
-7. Marks all related commissions as "paid"
+There is no enabled payout workflow. Delivery alone cannot prove that payment was captured, and Square account linking is not a transfer API. Both payout execution and eligibility therefore fail closed until provider submission and verification are implemented.
 
 ### 4. Subscription Tier Enforcement (✅ Complete)
 
@@ -240,9 +229,9 @@ SQUARE_LOCATION_ID=your_location_id
 - `GET /api/payments/square-config` - Get Square config for frontend
 
 ### Payouts
-- `POST /api/payouts/process-seller-payout` - Process payout to seller
+- `POST /api/payouts/process-seller-payout` - Payout unavailable (`503 PAYOUT_PROVIDER_UNAVAILABLE`)
 - `GET /api/payouts/my-payouts` - Get seller's payout history
-- `GET /api/payouts/pending-balance` - Get pending earnings
+- `GET /api/payouts/pending-balance` - Eligibility unavailable (`503 PAYOUT_ELIGIBILITY_UNVERIFIABLE`); not a successful balance
 - `POST /api/payouts/connect-square` - Connect Square account
 
 ### Products (with tier enforcement)

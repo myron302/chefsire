@@ -10,6 +10,7 @@ const route = fs.readFileSync(path.join(root, "server/routes/payouts.ts"), "utf8
 const migration = fs.readFileSync(path.join(root, "server/migrations/20260919_payout_integrity.sql"), "utf8");
 const schema = fs.readFileSync(path.join(root, "shared/schema/domains/ops-wedding.ts"), "utf8");
 const ordersSchema = fs.readFileSync(path.join(root, "shared/schema/domains/commerce-billing.ts"), "utf8");
+const marketplaceDocs = fs.readFileSync(path.join(root, "MARKETPLACE_IMPLEMENTATION.md"), "utf8");
 
 test("an unconfigured/simulated provider cannot report or persist payout completion", () => {
   const result = rejectUnavailablePayout({ sellerId: "seller-1", orderIds: ["order-1"] });
@@ -52,9 +53,27 @@ test("legacy duplicate claims abort migration without deleting financial history
 test("completed is constrained to a non-simulated provider confirmation", () => {
   assert.match(migration, /payouts_completed_transfer_check/);
   assert.match(migration, /provider_payout_id IS NOT NULL/);
-  assert.match(migration, /provider_payout_id NOT LIKE/);
+  for (const predicate of [
+    "left(provider_payout_id, 10) <> 'sq_payout_'",
+    "left(provider_payout_id, 11) <> 'payout_sim_'",
+  ]) assert.ok(migration.includes(predicate), predicate);
   assert.match(migration, /processed_at IS NOT NULL/);
   assert.match(migration, /completed_at IS NOT NULL/);
+});
+
+test("migration and Drizzle schema reject the same known synthetic payout prefixes", () => {
+  assert.match(schema, /check\("payouts_completed_transfer_check"/);
+  for (const prefix of ["sq_payout_", "payout_sim_"]) {
+    assert.ok(migration.includes(prefix), `migration missing ${prefix}`);
+    assert.ok(schema.includes(prefix), `schema missing ${prefix}`);
+  }
+  for (const evidence of ["providerPayoutId", "processedAt", "completedAt"]) {
+    assert.ok(schema.includes(evidence), `schema missing ${evidence}`);
+  }
+});
+
+test("completion constraint idempotency is scoped to the payouts relation", () => {
+  assert.match(migration, /conrelid = 'payouts'::regclass/);
 });
 
 test("seller payout processing is admin authenticated and accepts no spoofable identity source", () => {
@@ -79,4 +98,10 @@ test("authenticated seller payout history remains available and principal-scoped
 
 test("non-payout marketplace routes are not modified by containment", () => {
   assert.doesNotMatch(route, /router\.(?:post|get|patch|delete)\("\/(?:checkout|orders|products)/);
+});
+
+test("marketplace documentation describes both fail-closed endpoint contracts", () => {
+  assert.match(marketplaceDocs, /503.*PAYOUT_PROVIDER_UNAVAILABLE/);
+  assert.match(marketplaceDocs, /503.*PAYOUT_ELIGIBILITY_UNVERIFIABLE/);
+  assert.match(marketplaceDocs, /must not interpret this response as a successful zero balance/);
 });
