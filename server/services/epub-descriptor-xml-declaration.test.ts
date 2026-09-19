@@ -188,8 +188,13 @@ test("declaration values must match their productions", async () => {
   assert.equal(await withPrologue(`<?xml version="1.0" encoding="1bad"?>`), "zip", "must begin with a letter");
   assert.equal(await withPrologue(`<?xml version="1.0" encoding=""?>`), "zip", "empty");
   assert.equal(await withPrologue(`<?xml version="1.0" encoding="UTF 8"?>`), "zip", "space is not an EncName char");
-  assert.equal(await withPrologue(`<?xml version="1.0" encoding="ISO-8859-1"?>`), "epub", "hyphens and digits are");
-  assert.equal(await withPrologue(`<?xml version="1.0" encoding="x.y_z-1"?>`), "epub", "as are `.` and `_`");
+  // UPDATED IN R22, and this pair now says something sharper than it did. EncName SYNTAX still admits hyphens,
+  // digits, `.` and `_` -- that is what these two names exercise -- but R22 added a second, separate question:
+  // whether the declared encoding describes the bytes this validator actually decoded. Both of these names are
+  // syntactically fine and neither is an encoding it can read, so both now fail closed. The syntax rule is
+  // still pinned, by the cases above and by `utf-8`/`us-ascii` passing elsewhere in this file.
+  assert.equal(await withPrologue(`<?xml version="1.0" encoding="ISO-8859-1"?>`), "zip", "valid EncName, unsupported encoding");
+  assert.equal(await withPrologue(`<?xml version="1.0" encoding="x.y_z-1"?>`), "zip", "valid EncName, unsupported encoding");
   // SDDecl takes exactly `yes` or `no`.
   assert.equal(await withPrologue(`<?xml version="1.0" standalone="maybe"?>`), "zip");
   assert.equal(await withPrologue(`<?xml version="1.0" standalone="YES"?>`), "zip", "and is case-sensitive");
@@ -233,9 +238,13 @@ test("ordinary processing instructions are untouched by any of this", async () =
 });
 
 test("the declaration is still inert, and nothing in it is resolved", async () => {
-  // Its contents are read only to decide whether it conforms. Nothing is fetched, expanded or interpreted --
-  // an `encoding` naming something exotic changes no behaviour, and a DOCTYPE is still refused outright.
-  assert.equal(await withPrologue(`<?xml version="1.0" encoding="EBCDIC-CP-US"?>`), "epub", "not acted on");
+  // Nothing in the declaration is fetched, expanded or interpreted, and a DOCTYPE is still refused outright.
+  // UPDATED IN R22: an `encoding` naming something exotic used to change no behaviour at all, which was the
+  // defect -- the declaration was read and then ignored. It is still never ACTED on (no transcoder is invoked,
+  // nothing is fetched), but it is now CHECKED: a declaration this validator cannot honour fails the document
+  // closed rather than being read as UTF-8 while the document says otherwise.
+  assert.equal(await withPrologue(`<?xml version="1.0" encoding="EBCDIC-CP-US"?>`), "zip", "checked, not acted on");
+  assert.equal(await withPrologue(`<?xml version="1.0" encoding="UTF-8"?>`), "epub", "the one it can honour");
   assert.equal(await withPrologue(`<?xml version="1.0"?><!DOCTYPE container>`), "zip", "DOCTYPE still refused");
 });
 

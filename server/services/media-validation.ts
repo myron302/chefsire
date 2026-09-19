@@ -1056,9 +1056,52 @@ function parseXmlAttributes(text: string): XmlRawAttribute[] | null {
  * outside the root and so remain malformed -- which is what expat does with each of them. Inside the document
  * element U+FEFF is an ordinary character and is left alone, which expat also accepts.
  */
-function decodeXmlDocument(bytes: Buffer): string {
+function decodeXmlDocument(bytes: Buffer): string | null {
   const bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
-  return (bom ? bytes.subarray(3) : bytes).toString("utf8");
+  const body = bom ? bytes.subarray(3) : bytes;
+  // MALFORMED BYTES FAIL CLOSED (R22). This used `toString("utf8")`, which REPAIRS a malformed sequence into
+  // U+FFFD instead of refusing it -- so a descriptor carrying a raw 0xFF classified `epub` on head 4a0ad9c
+  // although its bytes are not UTF-8 at all, and expat refuses the document. `TextDecoder` with `fatal` throws
+  // rather than substituting, which is the same decision R15 already made for ZIP member names: a replacement
+  // character silently turns distinct byte sequences into one string, and this module matches text for a
+  // living. The input is the bounded descriptor, so this is one pass over at most 64 KiB.
+  // `ignoreBOM: true` means "do not give the BOM special treatment", which is what is wanted: a leading mark
+  // is consumed ONCE, above, at the byte level. Left at its default the decoder strips a leading mark of its
+  // own accord, so a descriptor beginning with TWO marks would have both removed and R18's rule -- one mark is
+  // an encoding signature, a second is character data where only `S` is permitted -- would quietly stop
+  // holding. That is a defect this round introduced and caught; the R18 and R20 tests pin it.
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(body);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a declared encoding can be trusted to describe the bytes this validator actually decoded.
+ *
+ * NOT A TRANSCODER, AND DELIBERATELY SO (R22). EPUB requires every XML document in the container to be UTF-8
+ * or UTF-16, with UTF-8 recommended; this validator decodes UTF-8 and nothing else. So the only declarations
+ * it can honour are the ones that agree with the bytes it read:
+ *
+ *   `utf-8`     exactly what was decoded.
+ *   `us-ascii`  a strict subset, so the declaration agrees ONLY while every character really is ASCII; a
+ *               non-ASCII character under that declaration is a contradiction and is refused.
+ *   absent      XML's default for an entity with no external encoding information, which is UTF-8.
+ *
+ * EVERYTHING ELSE FAILS CLOSED, including `UTF-16`, which EPUB permits but this validator cannot read, and
+ * every single-byte encoding. Accepting them would mean either transcoding -- a real engine, not something to
+ * bolt onto a classification path -- or, worse, reading the bytes as UTF-8 anyway and quietly disagreeing with
+ * what the document says it is. A descriptor this validator cannot read degrades to an inert generic `zip`,
+ * the same outcome as every other structural failure here.
+ */
+function declaredEncodingMatchesBytes(encoding: string | null, xml: string): boolean {
+  if (encoding === null) return true;
+  const name = asciiLowerCase(encoding);
+  if (name === "utf-8") return true;
+  if (name !== "us-ascii") return false;
+  for (const character of xml) if (character.codePointAt(0)! > 0x7f) return false;
+  return true;
 }
 
 /**
@@ -1086,7 +1129,7 @@ function decodeXmlDocument(bytes: Buffer): string {
  * an open change to reject exactly these -- and `version="2.0"` was one of the reported reproductions, so the
  * production is what is enforced here. Every other expectation in this function matches expat exactly.
  */
-function isConformingXmlDeclaration(text: string): boolean {
+function parseXmlDeclaration(text: string): { encoding: string | null } | null {
   let position = 0;
   const space = () => {
     const start = position;
@@ -1111,24 +1154,26 @@ function isConformingXmlDeclaration(text: string): boolean {
   };
 
   // VersionInfo is REQUIRED, and its leading S with it.
-  if (!space()) return false;
+  if (!space()) return null;
   const version = value("version");
-  if (version === null || !/^1\.[0-9]+$/.test(version)) return false;
+  if (version === null || !/^1\.[0-9]+$/.test(version)) return null;
 
   // EncodingDecl?, then SDDecl?, in that order and no other. A field out of order simply never matches.
+  let declared: string | null = null;
   let separated = space();
   if (separated && text.startsWith("encoding", position)) {
     const encoding = value("encoding");
-    if (encoding === null || !/^[A-Za-z][A-Za-z0-9._-]*$/.test(encoding)) return false;
+    if (encoding === null || !/^[A-Za-z][A-Za-z0-9._-]*$/.test(encoding)) return null;
+    declared = encoding;
     separated = space();
   }
   if (separated && text.startsWith("standalone", position)) {
     const standalone = value("standalone");
-    if (standalone !== "yes" && standalone !== "no") return false;
+    if (standalone !== "yes" && standalone !== "no") return null;
     separated = space();
   }
   // `S? '?>'`: whatever is left must be nothing. A duplicate, an unknown field or a reordered one lands here.
-  return position === text.length;
+  return position === text.length ? { encoding: declared } : null;
 }
 
 /**
@@ -1290,6 +1335,14 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
     // on both sides. Inside an element this is content and is not inspected -- only its position matters.
     const text = next < 0 ? xml.slice(position) : xml.slice(position, next);
     if (open.length === 0 && !isXmlWhitespace(text)) return null;
+    // `CharData ::= [^<&]* - ([^<&]* ']]>' [^<&]*)` (R22). The sequence is forbidden in ordinary character
+    // data, because it is what ends a CDATA section and a reader meeting it outside one cannot tell which it
+    // is looking at. Reproduced on head 4a0ad9c: `bad]]>` inside the document element classified `epub`, and
+    // expat refuses it. This is the SEQUENCE only -- `]`, `>` and even `]]` stay ordinary characters -- and it
+    // is checked only here, in character data. A CDATA section is consumed by its own branch, so its
+    // terminator is never this text; in attribute values, comments and processing-instruction content the
+    // grammar permits the sequence, which expat confirms, so none of those are touched.
+    if (open.length > 0 && text.includes("]]>")) return null;
     if (next < 0) break;
     position = next;
 
@@ -1336,7 +1389,10 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
       // remains a perfectly legal target.
       if (asciiLowerCase(target) === "xml") {
         if (target !== "xml" || position !== 0) return null;
-        if (!isConformingXmlDeclaration(xml.slice(cursor, end))) return null;
+        const declaration = parseXmlDeclaration(xml.slice(cursor, end));
+        if (!declaration) return null;
+        // And the encoding it declares must describe the bytes that were actually decoded (R22).
+        if (!declaredEncodingMatchesBytes(declaration.encoding, xml)) return null;
       }
       // The contents are never interpreted -- a processing instruction is inert here, as it always was.
       position = end + 2;
@@ -1561,7 +1617,9 @@ async function epubDeclaresUsableRootfile(source: MediaSource, byteSize: number,
   const descriptor = await readZipMemberBytes(source, byteSize, container, EPUB_CONTAINER_MAX_BYTES);
   if (!descriptor) return false;
 
-  const rootfilePath = readEpubRootfilePath(decodeXmlDocument(descriptor));
+  const document = decodeXmlDocument(descriptor);
+  if (document === null) return false; // not UTF-8 at all, so not a descriptor this validator can read
+  const rootfilePath = readEpubRootfilePath(document);
   if (!rootfilePath || !isSafeEpubRootfilePath(rootfilePath)) return false;
 
   // The declared Package Document must be a member of THIS archive, named unambiguously...
