@@ -3,13 +3,14 @@
 // - Uses your env loader
 // - Applies SQL from server/drizzle/
 // - Skips files already applied (via a tiny _app_migrations table)
-// - If objects already exist (applied by other tools), it records the file as applied and moves on
+// - Applies each file and its ledger entry atomically
 
 import "../lib/load-env";
 import { Pool } from "@neondatabase/serverless";
 import { readdir, readFile } from "fs/promises";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { applyMigration } from "./migration-runner";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -26,14 +27,6 @@ if (!/[?&]sslmode=/.test(DATABASE_URL)) {
 }
 
 const pool = new Pool({ connectionString: DATABASE_URL, max: 1 });
-
-// Error codes we can safely ignore as "already applied"
-const DUPLICATE_CODES = new Set([
-  "42P07", // duplicate_table
-  "42710", // duplicate_object (index, constraint, etc.)
-  "42701", // duplicate_column
-  "23505", // unique_violation (e.g., creating unique index that exists)
-]);
 
 async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 5): Promise<T> {
   let lastErr: unknown;
@@ -71,14 +64,6 @@ async function hasApplied(filename: string) {
     [filename]
   );
   return r.rowCount > 0;
-}
-
-async function markApplied(filename: string) {
-  await pool.query(
-    `insert into _app_migrations (filename) values ($1)
-     on conflict (filename) do nothing`,
-    [filename]
-  );
 }
 
 async function runMigrations() {
@@ -132,47 +117,12 @@ async function runMigrations() {
       const filePath = join(file.sourceDir, file.filename);
       const sql = await readFile(filePath, "utf-8");
 
+      const client = await pool.connect();
       try {
-        // Split into individual statements so CONCURRENTLY indexes can run
-        // outside a transaction block (sending the whole file at once triggers
-        // an implicit transaction in the Neon serverless driver).
-        const statements = sql
-          // Strip line comments before splitting. Previously a statement that
-          // started with a comment was discarded along with its SQL.
-          .replace(/^\s*--.*$/gm, "")
-          .split(/;/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0);
-
-        for (const stmt of statements) {
-          await pool.query(stmt);
-        }
-        await markApplied(file.ledgerKey);
+        await applyMigration(client, file.ledgerKey, sql);
         console.log(`✅ Completed: ${file.ledgerKey}\n`);
-      } catch (err: any) {
-        const code = err?.code as string | undefined;
-
-        if (code && DUPLICATE_CODES.has(code)) {
-          console.warn(
-            `⚠️  Objects already exist while applying ${file.ledgerKey} (code ${code}). Marking as applied and continuing.`
-          );
-          await markApplied(file.ledgerKey);
-          continue;
-        }
-
-        // Some migrations have multiple statements; if the first statement failed
-        // due to existing objects, we still treat the whole file as applied.
-        const msg = (err && err.message) || String(err);
-        if (/already exists/i.test(msg)) {
-          console.warn(
-            `⚠️  Detected "already exists" in ${file.ledgerKey}. Marking as applied and continuing.`
-          );
-          await markApplied(file.ledgerKey);
-          continue;
-        }
-
-        console.error(`❌ Migration failed in ${file.ledgerKey}:`, err);
-        throw err;
+      } finally {
+        client.release();
       }
     }
 
