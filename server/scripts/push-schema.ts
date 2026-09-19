@@ -14,14 +14,10 @@ const run = (args: string[]) => {
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
-// Financial preflight and migrations must run before Drizzle can attempt the
-// active-claim unique index. Duplicate claims therefore fail with the explicit
-// audit-required migration error, before schema synchronization changes state.
-run(["run", "db:migrate"]);
-// Repeat the payout preflight independently of the ledger. This covers a
-// database where a prior schema tool removed an invariant after the migration
-// had already been recorded.
-run(["exec", "--", "tsx", "server/scripts/enforce-payout-integrity.ts"]);
+// Run only the payout preflight/invariants before Drizzle. On a fresh database
+// the payout tables are both absent and --allow-missing lets Drizzle bootstrap
+// them. We deliberately do not replay unrelated historical migrations here.
+run(["exec", "--", "tsx", "server/scripts/enforce-payout-integrity.ts", "--allow-missing"]);
 
 const pushArgs = ["exec", "--", "drizzle-kit", "push"];
 if (process.argv.includes("--force")) pushArgs.push("--force");

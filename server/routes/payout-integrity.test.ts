@@ -84,7 +84,8 @@ test("db:push selects one environment for preflight, sync, and post-push enforce
   const scripts = JSON.parse(packageJson).scripts;
   assert.equal(scripts["db:push"], "dotenv -e server/.env -- tsx server/scripts/push-schema.ts");
   assert.equal(scripts["db:push:accept"], "dotenv -e server/.env -- tsx server/scripts/push-schema.ts --force");
-  assert.match(pushSchema, /run\(\["run", "db:migrate"\]\)[\s\S]*enforce-payout-integrity[\s\S]*drizzle-kit[\s\S]*enforce-payout-integrity/);
+  assert.match(pushSchema, /enforce-payout-integrity\.ts", "--allow-missing"[\s\S]*drizzle-kit[\s\S]*enforce-payout-integrity/);
+  assert.doesNotMatch(pushSchema, /db:migrate/);
   assert.match(pushSchema, /env: process\.env/);
   assert.doesNotMatch(pushSchema, /dotenv -e|DATABASE_URL\s*=/);
   assert.match(migration, /\) NOT VALID/);
@@ -94,6 +95,13 @@ test("post-push enforcement reuses the production migration without consulting i
   assert.match(enforcePayoutIntegrity, /20260919_payout_integrity\.sql/);
   assert.match(enforcePayoutIntegrity, /splitPostgresStatements\(sql\)/);
   assert.doesNotMatch(enforcePayoutIntegrity, /_app_migrations|applyMigration/);
+});
+
+test("a database trigger enforces completion while Drizzle may omit the staged CHECK", () => {
+  assert.match(migration, /CREATE OR REPLACE FUNCTION enforce_payout_completed_transfer/);
+  assert.match(migration, /CREATE TRIGGER payouts_completed_transfer_trigger/);
+  assert.match(migration, /BEFORE INSERT OR UPDATE OF status, provider_payout_id, processed_at, completed_at/);
+  assert.match(migration, /ERRCODE = 'check_violation'/);
 });
 
 test("completion constraint idempotency is scoped to the payouts relation", () => {

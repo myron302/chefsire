@@ -15,6 +15,18 @@ async function main() {
 
   await client.connect();
   try {
+    const relations = await client.query<{ payouts: string | null; commissions: string | null }>(
+      `SELECT to_regclass('payouts')::text AS payouts,
+              to_regclass('commissions')::text AS commissions`
+    );
+    const { payouts, commissions } = relations.rows[0];
+    if (!payouts && !commissions && process.argv.includes("--allow-missing")) {
+      console.log("Payout tables are not present; schema bootstrap may proceed.");
+      return;
+    }
+    if (!payouts || !commissions) {
+      throw new Error("Payout integrity cannot be enforced: payouts and commissions tables must both exist.");
+    }
     await client.query("BEGIN");
     for (const statement of splitPostgresStatements(sql)) await client.query(statement);
     await client.query("COMMIT");

@@ -15,6 +15,45 @@ BEGIN
   END IF;
 END $$;
 
+-- Drizzle Kit cannot represent CHECK ... NOT VALID and may temporarily remove
+-- the CHECK as database-only drift. This trigger preserves the identical rule
+-- for every new/updated row throughout schema synchronization. Drizzle does not
+-- manage PostgreSQL functions/triggers; the CHECK is restored after the push.
+CREATE OR REPLACE FUNCTION enforce_payout_completed_transfer()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.status = 'completed' AND NOT (
+    NEW.provider_payout_id IS NOT NULL
+    AND NEW.provider_payout_id !~ '^[[:space:]]*$'
+    AND left(regexp_replace(NEW.provider_payout_id, '^[[:space:]]+|[[:space:]]+$', '', 'g'), 10) <> 'sq_payout_'
+    AND left(regexp_replace(NEW.provider_payout_id, '^[[:space:]]+|[[:space:]]+$', '', 'g'), 11) <> 'payout_sim_'
+    AND NEW.processed_at IS NOT NULL
+    AND NEW.completed_at IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'completed payout requires verified provider transfer evidence'
+      USING ERRCODE = 'check_violation', CONSTRAINT = 'payouts_completed_transfer_check';
+  END IF;
+  RETURN NEW;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_trigger
+     WHERE tgname = 'payouts_completed_transfer_trigger'
+       AND tgrelid = 'payouts'::regclass
+       AND NOT tgisinternal
+  ) THEN
+    CREATE TRIGGER payouts_completed_transfer_trigger
+      BEFORE INSERT OR UPDATE OF status, provider_payout_id, processed_at, completed_at
+      ON payouts
+      FOR EACH ROW EXECUTE FUNCTION enforce_payout_completed_transfer();
+  END IF;
+END $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS commissions_active_payout_order_uidx
   ON commissions (order_id)
   WHERE payout_id IS NOT NULL AND status IN ('pending', 'processing', 'paid');

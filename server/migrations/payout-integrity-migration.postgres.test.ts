@@ -148,13 +148,19 @@ postgresTest("production payout migration enforces completion and preserves hist
     await insertCompleted("verified", "provider-transfer-abc123");
 
     // Simulate a later Drizzle sync treating the staged database-only CHECK as
-    // drift. The supported workflow's post-push enforcement must restore it
-    // independently of the already-written migration ledger.
+    // drift. The trigger must protect concurrent writers before post-push
+    // enforcement restores the CHECK independently of the migration ledger.
     await client.query(`ALTER TABLE payouts DROP CONSTRAINT payouts_completed_transfer_check`);
+    await assert.rejects(insertCompleted("during-push-invalid", "\t"), (error: any) => error.code === "23514");
     await enforceInvariant(client);
     assert.equal((await client.query(
       `SELECT count(*)::int AS count FROM pg_constraint
         WHERE conname = 'payouts_completed_transfer_check' AND conrelid = 'payouts'::regclass`
+    )).rows[0].count, 1);
+    assert.equal((await client.query(
+      `SELECT count(*)::int AS count FROM pg_trigger
+        WHERE tgname = 'payouts_completed_transfer_trigger'
+          AND tgrelid = 'payouts'::regclass AND NOT tgisinternal`
     )).rows[0].count, 1);
     await assert.rejects(insertCompleted("post-push-invalid", "\t"), (error: any) => error.code === "23514");
   } finally {
