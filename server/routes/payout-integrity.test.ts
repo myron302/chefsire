@@ -54,6 +54,7 @@ test("completed is constrained to a non-simulated provider confirmation", () => 
   assert.match(migration, /payouts_completed_transfer_check/);
   assert.match(migration, /provider_payout_id IS NOT NULL/);
   for (const predicate of [
+    "length(btrim(provider_payout_id)) > 0",
     "left(provider_payout_id, 10) <> 'sq_payout_'",
     "left(provider_payout_id, 11) <> 'payout_sim_'",
   ]) assert.ok(migration.includes(predicate), predicate);
@@ -61,8 +62,9 @@ test("completed is constrained to a non-simulated provider confirmation", () => 
   assert.match(migration, /completed_at IS NOT NULL/);
 });
 
-test("migration and Drizzle schema reject the same known synthetic payout prefixes", () => {
+test("migration and Drizzle schema require the same nonblank, nonsynthetic provider evidence", () => {
   assert.match(schema, /check\("payouts_completed_transfer_check"/);
+  assert.match(schema, /length\(btrim\(\$\{t\.providerPayoutId\}\)\) > 0/);
   for (const prefix of ["sq_payout_", "payout_sim_"]) {
     assert.ok(migration.includes(prefix), `migration missing ${prefix}`);
     assert.ok(schema.includes(prefix), `schema missing ${prefix}`);

@@ -95,6 +95,8 @@ postgresTest("production payout migration enforces completion and preserves hist
       [id, providerId, timestamps ? new Date() : null]
     );
     await assert.rejects(insertCompleted("missing-evidence", null), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("empty-evidence", ""), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("blank-evidence", "   "), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("legacy-placeholder", "sq_payout_1700000000000"), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("legacy-simulation", "payout_sim_1700000000000"), (error: any) => error.code === "23514");
     await assert.rejects(insertCompleted("legacy-square-simulation", "sq_payout_sim_1700000000000"), (error: any) => error.code === "23514");

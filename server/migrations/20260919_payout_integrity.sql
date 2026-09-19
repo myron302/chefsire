@@ -33,6 +33,7 @@ BEGIN
       ADD CONSTRAINT payouts_completed_transfer_check CHECK (
         status <> 'completed' OR (
           provider_payout_id IS NOT NULL
+          AND length(btrim(provider_payout_id)) > 0
           -- Exact formats emitted by the removed placeholder implementation.
           AND left(provider_payout_id, 10) <> 'sq_payout_'
           AND left(provider_payout_id, 11) <> 'payout_sim_'

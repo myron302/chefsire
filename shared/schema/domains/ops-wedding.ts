@@ -136,6 +136,7 @@ export const payouts = pgTable(
     completedTransferCheck: check("payouts_completed_transfer_check", sql`
       ${t.status} <> 'completed' OR (
         ${t.providerPayoutId} IS NOT NULL
+        AND length(btrim(${t.providerPayoutId})) > 0
         AND left(${t.providerPayoutId}, 10) <> 'sq_payout_'
         AND left(${t.providerPayoutId}, 11) <> 'payout_sim_'
         AND ${t.processedAt} IS NOT NULL
