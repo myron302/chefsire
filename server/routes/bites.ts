@@ -6,7 +6,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { stories, users, notifications } from "../../shared/schema";
-import { persistDataUri } from "../lib/data-uri";
+import { UnsupportedDataUriError, persistDataUri } from "../lib/data-uri";
 
 const r = Router();
 
@@ -154,11 +154,20 @@ r.get("/user/:userId", async (req, res) => {
   }
 });
 
-// Create a bite (story)
-r.post("/", async (req, res) => {
+/**
+ * Create a bite (story).
+ *
+ * `requireAuth` is part of this repair rather than incidental to it. Creating a bite persists media -- a `data:`
+ * URI in `imageUrl` is decoded and written to public storage by `persistDataUri` -- and this was the only
+ * ChefSire route that would do that for a caller who had not authenticated at all. The author is now the verified
+ * account, matching every other mutation in this file and the actor-identity rule established for competitions;
+ * a body `userId` is still accepted so older clients keep working, and is ignored.
+ */
+r.post("/", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
-      userId: z.string(),
+      // Accepted for compatibility with older clients and ignored: the author is the authenticated user.
+      userId: z.string().optional(),
       imageUrl: z.string().min(1),
       mediaType: z.enum(["image", "video"]),
       caption: z.string().max(500).optional(),
@@ -166,8 +175,10 @@ r.post("/", async (req, res) => {
     });
 
     const data = schema.parse(req.body);
+    const authorId = (req.user as { id: string }).id;
 
-    // Safety net: persist any stray data URIs to disk
+    // Safety net: persist any stray data URIs to disk. The bytes are verified before anything is written, so a
+    // `data:image/svg+xml` or HTML payload is refused here instead of landing in the served uploads directory.
     data.imageUrl = await persistDataUri(data.imageUrl);
 
     const expiresAt = data.expiresAt
@@ -175,7 +186,7 @@ r.post("/", async (req, res) => {
       : new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h default
 
     const created = await storage.createStory({
-      userId: data.userId,
+      userId: authorId,
       imageUrl: data.imageUrl,
       mediaType: data.mediaType,
       caption: data.caption ?? null,
@@ -183,7 +194,7 @@ r.post("/", async (req, res) => {
     } as any);
 
     console.log(
-      `[bites] POST / -> created bite ${created?.id} for user ${data.userId} (expires ${expiresAt.toISOString()})`,
+      `[bites] POST / -> created bite ${created?.id} for user ${authorId} (expires ${expiresAt.toISOString()})`,
     );
     res.status(201).json({ message: "Bite created", bite: created });
   } catch (e: any) {
@@ -192,6 +203,9 @@ r.post("/", async (req, res) => {
       return res
         .status(400)
         .json({ message: "Invalid bite", errors: e.issues });
+    }
+    if (e instanceof UnsupportedDataUriError) {
+      return res.status(415).json({ message: e.message });
     }
     console.error("[bites] POST / error", e);
     res.status(500).json({ message: "Failed to create bite" });

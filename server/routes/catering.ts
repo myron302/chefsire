@@ -21,7 +21,7 @@ import { availabilityExceptionSchema, availabilitySettingsSchema, calendarDateSc
 import { addCalendarDays, calendarDateInTimezone, evaluateNewCateringInquiryAvailability } from "../services/catering-availability";
 import { isCateringProviderBookable } from "../services/catering-bookability";
 import { CATERING_PORTFOLIO_ITEM_LIMIT, cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
-import { imageUpload, storeUploadedImage } from "../services/image-upload";
+import { UnsupportedMediaError, imageUpload, storeUploadedImage } from "../services/image-upload";
 import { serializeCateringPortfolioItem } from "../serializers/catering-portfolio";
 import { canAddPortfolioItem, hasExactPortfolioSet, ownsPortfolioItem } from "../services/catering-portfolio-policy";
 import { cateringPackageInputSchema, cateringPackagePatchSchema, cateringPackageReorderSchema, hasExactPackageSet, validateMergedPackage } from "@shared/catering-packages";
@@ -301,7 +301,11 @@ r.post("/users/:id/packages/:packageId/cover", requireAuth, async (req, res, nex
         // A concurrent delete after storage can leave an orphan; media cleanup is intentionally handled by the existing lifecycle process.
         if (!updated) return res.status(409).json({ message: "Package changed during upload; the stored media is pending cleanup" });
         res.json({ package: serializeCateringPackage(updated) });
-      } catch (error) { next(error); }
+      } catch (error) {
+        // Media whose bytes are not an image ChefSire accepts is the caller's error, not a server fault.
+        if (error instanceof UnsupportedMediaError) return res.status(error.status).json({ message: error.message });
+        next(error);
+      }
     });
   } catch (error) { next(error); }
 });
@@ -327,6 +331,7 @@ r.post("/users/:id/portfolio", requireAuth, (req, res, next) => {
       res.status(201).json({ item: serializeCateringPortfolioItem(item) });
     } catch (error) {
       if (error instanceof PortfolioLimitError) return res.status(409).json({ message: `Portfolio limit reached. You can upload up to ${CATERING_PORTFOLIO_ITEM_LIMIT} photos.` });
+      if (error instanceof UnsupportedMediaError) return res.status(error.status).json({ message: error.message });
       if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message });
       next(error);
     }

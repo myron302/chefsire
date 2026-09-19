@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest } from "../middleware/validation";
 import { optionalAuth, requireAuth } from "../middleware/auth";
-import { persistDataUri } from "../lib/data-uri";
+import { UnsupportedDataUriError, persistDataUri } from "../lib/data-uri";
 import { followOrRequest, followRelationship, unfollowOrCancelRequest } from "../lib/social-follow";
 import { serializePublicUser } from "../serializers/public-user";
 import {
@@ -189,6 +189,11 @@ r.post("/", requireAuth, async (req, res) => {
     });
     if (err?.issues) {
       return res.status(400).json({ message: "Validation error", issues: err.issues });
+    }
+    // A data URI whose decoded bytes are not accepted media is the caller's error, not ours, and the message
+    // says which of the three things was wrong without naming a path, a key or a bucket.
+    if (err instanceof UnsupportedDataUriError) {
+      return res.status(415).json({ message: err.message });
     }
     res.status(500).json({ message: "Failed to create post" });
   }

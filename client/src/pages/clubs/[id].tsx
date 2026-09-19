@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { MEDIA_UPLOAD_ACCEPT } from "@shared/media-types";
 
 type Club = {
   id: string;
@@ -804,7 +805,7 @@ export default function ClubPage() {
                             <input
                               id="club-camera-input"
                               type="file"
-                              accept="image/*,video/*"
+                              accept={MEDIA_UPLOAD_ACCEPT}
                               capture="environment"
                               onChange={handleNewPostMediaChange}
                               className="hidden"
@@ -812,7 +813,7 @@ export default function ClubPage() {
                             <input
                               id="club-file-input"
                               type="file"
-                              accept="image/*,video/*"
+                              accept={MEDIA_UPLOAD_ACCEPT}
                               onChange={handleNewPostMediaChange}
                               className="hidden"
                             />

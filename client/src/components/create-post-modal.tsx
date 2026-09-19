@@ -17,6 +17,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import GoLiveModal from "@/components/GoLiveModal";
+import { IMAGE_UPLOAD_ACCEPT, MEDIA_UPLOAD_ACCEPT } from "@shared/media-types";
 
 type PostType = "post" | "recipe" | "review" | "bite" | "clip";
 
@@ -477,7 +478,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                 <input
                   id="camera-input"
                   type="file"
-                  accept="image/*"
+                  accept={IMAGE_UPLOAD_ACCEPT}
                   capture="environment"
                   onChange={handleFileSelect}
                   className="hidden"
@@ -485,7 +486,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                 <input
                   id="file-input"
                   type="file"
-                  accept="image/*"
+                  accept={IMAGE_UPLOAD_ACCEPT}
                   onChange={handleFileSelect}
                   className="hidden"
                 />
@@ -529,7 +530,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
               <input
                 ref={biteFileRef}
                 type="file"
-                accept="video/*,image/*"
+                accept={MEDIA_UPLOAD_ACCEPT}
                 className="hidden"
                 onChange={handleBiteFileSelect}
               />

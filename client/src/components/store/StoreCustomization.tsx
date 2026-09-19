@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeStoreLayout } from "@shared/store/storeLayout";
+import { IMAGE_UPLOAD_ACCEPT } from "@shared/media-types";
 
 interface StoreCustomizationProps {
   store: any;
@@ -207,7 +208,7 @@ export default function StoreCustomization({
                   <input
                     type="file"
                     className="hidden"
-                    accept="image/*"
+                    accept={IMAGE_UPLOAD_ACCEPT}
                     onChange={(e) => handleImageUpload(e, "logo")}
                     disabled={uploading}
                   />
@@ -401,7 +402,7 @@ export default function StoreCustomization({
                     <input
                       type="file"
                       className="hidden"
-                      accept="image/*"
+                      accept={IMAGE_UPLOAD_ACCEPT}
                       onChange={(e) => handleImageUpload(e, "bannerImage")}
                       disabled={uploading}
                     />

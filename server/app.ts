@@ -12,6 +12,7 @@ import { setupGoogleOAuth } from "./services/google-oauth.service";
 import { setupFacebookOAuth } from "./services/facebook-oauth.service";
 import { setupTikTokOAuth } from "./services/tiktok-oauth.service";
 import { UPLOADS_DIR } from "./lib/uploads-dir";
+import { uploadsStaticHandler } from "./lib/uploads-static";
 import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./lib/public-static-dirs";
 
 const app = express();
@@ -71,27 +72,10 @@ app.get("/api", (_req, res) => {
   });
 });
 
-// Serve uploaded files — UPLOADS_DIR is the canonical absolute path shared by
-// all write sites (routes/upload.ts, lib/data-uri.ts, routes/auth.ts, etc.).
-const uploadContentTypes: Record<string, string> = {
-  ".mp4": "video/mp4",
-  ".mov": "video/quicktime",
-  ".webm": "video/webm",
-};
-
-app.use(
-  "/uploads",
-  express.static(UPLOADS_DIR, {
-    maxAge: "365d",
-    immutable: true,
-    setHeaders: (res, filePath) => {
-      const contentType = uploadContentTypes[path.extname(filePath).toLowerCase()];
-      if (contentType) {
-        res.setHeader("Content-Type", contentType);
-      }
-    },
-  }),
-);
+// Serve uploaded files — UPLOADS_DIR is the canonical absolute path shared by all write sites
+// (routes/upload.ts, lib/data-uri.ts, routes/auth.ts, etc.). The mount's headers, and why they are what they
+// are, live in lib/uploads-static so the application and its tests exercise one handler.
+app.use("/uploads", uploadsStaticHandler(UPLOADS_DIR));
 
 // Serve built client at dist/public. The candidate locations and the choice between them live in
 // lib/public-static-dirs, which is also what private booking storage validates itself against: this mount is
