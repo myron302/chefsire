@@ -1036,6 +1036,25 @@ function parseXmlAttributes(text: string): XmlRawAttribute[] | null {
   return attributes;
 }
 
+/**
+ * The descriptor's bytes as XML text, with a leading UTF-8 byte order mark removed.
+ *
+ * THE FINDING (R18). A conforming `container.xml` may begin with a UTF-8 BOM -- it is an ENCODING SIGNATURE
+ * that belongs to the byte layer, not character data the grammar ever sees. Node's UTF-8 decode keeps it as
+ * U+FEFF, so R17's document-level text check met it before the root element, found it was not whitespace and
+ * refused the document. Reproduced on head 020455b: a descriptor identical to an accepted one except for three
+ * leading bytes classified `zip`.
+ *
+ * Exactly ONE mark, and only at offset zero, is consumed. U+FEFF is NOT treated as whitespace anywhere: a
+ * second mark, one after the XML declaration, and one after the document element all remain character data
+ * outside the root and so remain malformed -- which is what expat does with each of them. Inside the document
+ * element U+FEFF is an ordinary character and is left alone, which expat also accepts.
+ */
+function decodeXmlDocument(bytes: Buffer): string {
+  const bom = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+  return (bom ? bytes.subarray(3) : bytes).toString("utf8");
+}
+
 /** XML's `S` production: the only character data the grammar permits outside the document element. */
 function isXmlWhitespace(text: string): boolean {
   for (let index = 0; index < text.length; index++) {
@@ -1154,6 +1173,13 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
     if (xml.startsWith("<!--", position)) {
       const end = xml.indexOf("-->", position + 4);
       if (end < 0) return null;
+      // ADJACENT, FOUND BY AUDIT RATHER THAN REPORTED (R18). The same class of mistake as the two above: a
+      // construct skipped to its terminator without checking that it is well-formed.
+      // `Comment ::= '<!--' ((Char - '-') | ('-' (Char - '-')))* '-->'`, so `--` may not appear inside a comment
+      // and the content may not end with a single `-` either -- which is what makes `<!-- a --->` malformed.
+      // Both were accepted on head 020455b, and expat refuses both.
+      const content = xml.slice(position + 4, end);
+      if (content.includes("--") || content.endsWith("-")) return null;
       position = end + 3;
       continue;
     }
@@ -1171,6 +1197,20 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
     if (xml.startsWith("<?", position)) {
       const end = xml.indexOf("?>", position + 2);
       if (end < 0) return null;
+      // A PROCESSING INSTRUCTION IS NOT AN ARBITRARY RUN OF BYTES (R18). This skipped everything between the
+      // delimiters without asking whether it was one, so `<??>` and `<?1bad?>` were silently ignored and the
+      // descriptor read as if they had not been there -- both reproduced on head 020455b, classifying `epub`.
+      // `PI ::= '<?' PITarget (S (Char* - (Char* '?>' Char*)))? '?>'` and `PITarget ::= Name - (('X'|'x')
+      // ('M'|'m')('L'|'l'))`, so the target must be a Name and may not be `xml` in any case.
+      let cursor = position + 2;
+      while (cursor < end && !/\s/.test(xml[cursor]!)) cursor++;
+      const target = xml.slice(position + 2, cursor);
+      if (!isXmlName(target)) return null;
+      // `<?xml ...?>` at offset zero is the XML DECLARATION, which is legal and which every real descriptor
+      // carries. Anywhere else that target is reserved and the document is malformed. Only the exact name is
+      // reserved, so `xml-stylesheet` stays a legal target.
+      if (asciiLowerCase(target) === "xml" && position !== 0) return null;
+      // The contents are never interpreted -- a processing instruction is inert here, as it always was.
       position = end + 2;
       continue;
     }
@@ -1201,13 +1241,18 @@ function tokenizeXmlElements(xml: string): XmlElementToken[] | null {
     if (cursor >= xml.length) return null; // unterminated tag
 
     const raw = xml.slice(attributeStart, cursor);
-    const empty = !closing && /\/\s*$/.test(raw);
+    // `EmptyElemTag ::= '<' Name (S Attribute)* S? '/>'`, so the slash and the bracket are CONTIGUOUS (R18).
+    // This had allowed whitespace between them, so `<rootfile .../ >` was read as an empty element -- an
+    // archive carrying one classified `epub` on head 020455b, though expat refuses the descriptor. Whitespace
+    // BEFORE the slash is still legal and still accepted; a tag that is not empty falls through to the open-tag
+    // path, where its stray slash is refused by the attribute grammar.
+    const empty = !closing && raw.endsWith("/");
     const name = parseQName(qualified);
     if (!name) return null;
     const kind = closing ? "close" : empty ? "empty" : "open";
 
     // The ENTIRE attribute list, or the tag is malformed. An end tag may carry none at all.
-    const attributeText = empty ? raw.replace(/\/\s*$/, "") : raw;
+    const attributeText = empty ? raw.slice(0, -1) : raw;
     const rawAttributes = parseXmlAttributes(attributeText);
     if (!rawAttributes) return null;
     if (closing && rawAttributes.length > 0) return null;
@@ -1388,7 +1433,7 @@ async function epubDeclaresUsableRootfile(source: MediaSource, byteSize: number,
   const descriptor = await readZipMemberBytes(source, byteSize, container, EPUB_CONTAINER_MAX_BYTES);
   if (!descriptor) return false;
 
-  const rootfilePath = readEpubRootfilePath(descriptor.toString("utf8"));
+  const rootfilePath = readEpubRootfilePath(decodeXmlDocument(descriptor));
   if (!rootfilePath || !isSafeEpubRootfilePath(rootfilePath)) return false;
 
   // The declared Package Document must be a member of THIS archive, named unambiguously...
