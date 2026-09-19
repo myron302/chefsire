@@ -3,7 +3,8 @@
 // - Uses your env loader
 // - Applies SQL from server/drizzle/
 // - Skips files already applied (via a tiny _app_migrations table)
-// - Applies each file and its ledger entry atomically
+// - Applies each transaction-compatible file and its ledger entry atomically
+// - Rejects transaction-incompatible operations; migrations must not use CREATE INDEX CONCURRENTLY
 
 import "../lib/load-env";
 import { Pool } from "@neondatabase/serverless";

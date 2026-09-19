@@ -8,8 +8,10 @@ class TransactionalFake implements MigrationClient {
   state: Snapshot = { tables: new Set(), rows: [], ledger: [] };
   private before: Snapshot | null = null;
   failCode: string | null = null;
+  queries: string[] = [];
 
   async query(sql: string, params: unknown[] = []) {
+    this.queries.push(sql);
     if (sql === "BEGIN") {
       this.before = { tables: new Set(this.state.tables), rows: [...this.state.rows], ledger: [...this.state.ledger] };
     } else if (sql === "COMMIT") {
@@ -106,4 +108,54 @@ test("splitter preserves strings, comments, identifiers, and dollar-quoted block
   assert.match(statements[0], /'semi;colon'/);
   assert.match(statements[1], /PERFORM 2;/);
   assert.match(statements[2], /"semi;identifier"/);
+});
+
+test("splitter keeps PostgreSQL escape strings intact", () => {
+  const sql = String.raw`SELECT E'one\';two\\three''four'; SELECT e'lower\';case\\'; SELECT 3;`;
+  const statements = splitPostgresStatements(sql);
+  assert.equal(statements.length, 3);
+  assert.equal(statements[0], String.raw`SELECT E'one\';two\\three''four'`);
+  assert.equal(statements[1], String.raw`SELECT e'lower\';case\\'`);
+  assert.equal(statements[2], "SELECT 3");
+});
+
+test("ordinary strings do not acquire escape-string backslash behavior", () => {
+  const statements = splitPostgresStatements(String.raw`SELECT 'ordinary\\'; SELECT 2;`);
+  assert.deepEqual(statements, [String.raw`SELECT 'ordinary\\'`, "SELECT 2"]);
+});
+
+test("CREATE INDEX CONCURRENTLY is rejected before the transaction or ledger write", async () => {
+  for (const sql of [
+    "CREATE INDEX CONCURRENTLY example_idx ON example(id);",
+    "create  unique\n index\tconcurrently example_idx ON example(id);",
+  ]) {
+    const db = new TransactionalFake();
+    await assert.rejects(
+      applyMigration(db, "test:concurrent.sql", sql, quiet),
+      /incompatible with ChefSire's atomic transactional migration runner/
+    );
+    assert.deepEqual(db.queries, []);
+    assert.deepEqual(db.state.ledger, []);
+  }
+});
+
+test("transaction compatibility guard ignores protected mentions", async () => {
+  const db = new TransactionalFake();
+  await applyMigration(
+    db,
+    "test:protected.sql",
+    `
+      -- CREATE INDEX CONCURRENTLY comment_idx ON example(id);
+      SELECT 'CREATE INDEX CONCURRENTLY string_idx ON example(id)';
+      DO $body$ BEGIN
+        PERFORM 'CREATE INDEX CONCURRENTLY body_idx ON example(id)';
+      END $body$;
+      /* nested /* CREATE INDEX CONCURRENTLY nested_idx ON example(id) */ comment */
+    `,
+    quiet
+  );
+  assert.equal(db.queries[0], "BEGIN");
+  assert.match(db.queries.at(-2)!, /insert into _app_migrations/i);
+  assert.equal(db.queries.at(-1), "COMMIT");
+  assert.deepEqual(db.state.ledger, ["test:protected.sql"]);
 });
