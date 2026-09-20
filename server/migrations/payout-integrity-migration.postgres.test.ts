@@ -1,0 +1,285 @@
+/** Executes the production payout-integrity migration against isolated PostgreSQL schemas. */
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import pg from "pg";
+import { applyMigration, splitPostgresStatements } from "../scripts/migration-runner";
+import { enforcePayoutIntegrity } from "../scripts/payout-integrity-enforcement";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const migration = fs.readFileSync(path.join(here, "20260919_payout_integrity.sql"), "utf8");
+const candidates = [
+  process.env.TEST_DATABASE_URL,
+  `postgres://${process.env.USER || "root"}@localhost/postgres?host=/var/run/postgresql`,
+  "postgres://postgres:postgres@localhost:5432/postgres",
+  "postgres://localhost:5432/postgres",
+].filter((value): value is string => Boolean(value));
+
+async function firstReachable() {
+  for (const connectionString of candidates) {
+    const client = new pg.Client({ connectionString });
+    try {
+      await client.connect();
+      await client.end();
+      return connectionString;
+    } catch {
+      // Try the next conventional isolated/local test connection.
+    }
+  }
+  return null;
+}
+
+const connectionString = await firstReachable();
+const postgresTest = connectionString ? test : test.skip;
+if (!connectionString) console.log("# no reachable isolated PostgreSQL -- payout migration integration tests skipped");
+
+const schemaSql = `
+  CREATE TABLE payouts (
+    id varchar PRIMARY KEY,
+    provider_payout_id text,
+    status text DEFAULT 'pending',
+    processed_at timestamp,
+    completed_at timestamp
+  );
+  CREATE TABLE commissions (
+    id varchar PRIMARY KEY,
+    order_id varchar NOT NULL,
+    payout_id varchar REFERENCES payouts(id),
+    status text DEFAULT 'pending',
+    audit_note text
+  );
+  CREATE TABLE _app_migrations (filename text PRIMARY KEY);
+`;
+
+let sequence = 0;
+async function setup() {
+  const client = new pg.Client({ connectionString: connectionString! });
+  await client.connect();
+  const schema = `payout_integrity_${process.pid}_${Date.now()}_${sequence++}`;
+  const decoy = `${schema}_decoy`;
+  await client.query(`CREATE SCHEMA ${schema}`);
+  await client.query(`CREATE SCHEMA ${decoy}`);
+  await client.query(`CREATE TABLE ${decoy}.payouts (id integer, CONSTRAINT payouts_completed_transfer_check CHECK (id > 0))`);
+  await client.query(`SET search_path TO ${schema}`);
+  await client.query(schemaSql);
+  return { client, schema, decoy };
+}
+
+async function teardown(client: pg.Client, schema: string, decoy: string) {
+  await client.query("RESET search_path");
+  await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  await client.query(`DROP SCHEMA IF EXISTS ${decoy} CASCADE`);
+  await client.end();
+}
+
+async function enforceInvariant(client: pg.Client) {
+  await client.query("BEGIN");
+  try {
+    for (const statement of splitPostgresStatements(migration)) await client.query(statement);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+}
+
+postgresTest("partial bootstrap enforces each existing table and requires both post-push", async () => {
+  const client = new pg.Client({ connectionString: connectionString! });
+  await client.connect();
+  const root = `payout_partial_${process.pid}_${Date.now()}_${sequence++}`;
+  try {
+    // Neither table: pre-push permits Drizzle bootstrap; post-push fails closed.
+    await client.query(`CREATE SCHEMA ${root}_none`);
+    await client.query(`SET search_path TO ${root}_none`);
+    assert.deepEqual(await enforcePayoutIntegrity(client, migration, true), { payouts: false, commissions: false });
+    await assert.rejects(enforcePayoutIntegrity(client, migration, false), /must both exist/);
+
+    // Payouts only: install its trigger/CHECK and still permit schema repair.
+    await client.query(`CREATE SCHEMA ${root}_payouts`);
+    await client.query(`SET search_path TO ${root}_payouts`);
+    await client.query(`CREATE TABLE payouts (
+      id varchar PRIMARY KEY, provider_payout_id text, status text,
+      processed_at timestamp, completed_at timestamp
+    )`);
+    assert.deepEqual(await enforcePayoutIntegrity(client, migration, true), { payouts: true, commissions: false });
+    assert.equal((await client.query(`SELECT count(*)::int AS count FROM pg_trigger
+      WHERE tgname = 'payouts_completed_transfer_trigger' AND tgrelid = 'payouts'::regclass`)).rows[0].count, 1);
+    await assert.rejects(client.query(`INSERT INTO payouts VALUES ('bad', NULL, 'completed', now(), now())`),
+      (error: any) => error.code === "23514");
+    await assert.rejects(enforcePayoutIntegrity(client, migration, false), /must both exist/);
+
+    // Commissions only: run the exact duplicate preflight before Drizzle.
+    await client.query(`CREATE SCHEMA ${root}_commissions`);
+    await client.query(`SET search_path TO ${root}_commissions`);
+    await client.query(`CREATE TABLE commissions (
+      id varchar PRIMARY KEY, order_id varchar NOT NULL, payout_id varchar, status text, audit_note text
+    )`);
+    await client.query(`INSERT INTO commissions VALUES
+      ('one', 'order', 'p1', NULL, 'keep one'), ('two', 'order', 'p2', 'pending', 'keep two')`);
+    await assert.rejects(enforcePayoutIntegrity(client, migration, true),
+      (error: any) => error.code === "P0001" && /financial audit/.test(error.message));
+    assert.equal((await client.query(`SELECT count(*)::int AS count FROM commissions`)).rows[0].count, 2);
+    await client.query(`DELETE FROM commissions WHERE id = 'two'`);
+    assert.deepEqual(await enforcePayoutIntegrity(client, migration, true), { payouts: false, commissions: true });
+    assert.notEqual((await client.query(`SELECT to_regclass('commissions_active_payout_order_uidx') AS index`)).rows[0].index, null);
+    await assert.rejects(enforcePayoutIntegrity(client, migration, false), /must both exist/);
+  } finally {
+    await client.query("RESET search_path");
+    for (const suffix of ["none", "payouts", "commissions"]) {
+      await client.query(`DROP SCHEMA IF EXISTS ${root}_${suffix} CASCADE`);
+    }
+    await client.end();
+  }
+});
+
+postgresTest("financial duplicate preflight fails before index creation without rewriting claims", async () => {
+  const { client, schema, decoy } = await setup();
+  try {
+    await client.query(`INSERT INTO payouts (id) VALUES ('duplicate-a'), ('duplicate-b')`);
+    await client.query(`INSERT INTO commissions (id, order_id, payout_id, status, audit_note) VALUES
+      ('duplicate-1', 'same-order', 'duplicate-a', NULL, 'first'),
+      ('duplicate-2', 'same-order', 'duplicate-b', 'pending', 'second')`);
+    await assert.rejects(
+      applyMigration(client, "20260919_payout_integrity.sql", migration, { error() {} }),
+      (error: any) => error.code === "P0001" && /financial audit/.test(error.message)
+    );
+    assert.deepEqual(
+      (await client.query(`SELECT id, audit_note FROM commissions ORDER BY id`)).rows,
+      [
+        { id: "duplicate-1", audit_note: "first" },
+        { id: "duplicate-2", audit_note: "second" },
+      ]
+    );
+    assert.equal((await client.query(`SELECT to_regclass('commissions_active_payout_order_uidx') AS index`)).rows[0].index, null);
+  } finally {
+    await teardown(client, schema, decoy);
+  }
+});
+
+postgresTest("active claim uniqueness includes NULL status but excludes NULL payout IDs", async () => {
+  const { client, schema, decoy } = await setup();
+  try {
+    await applyMigration(client, "20260919_payout_integrity.sql", migration, { error() {} });
+    const combinations: Array<[string | null, string | null]> = [
+      [null, "pending"],
+      [null, "processing"],
+      [null, "paid"],
+      ["pending", null],
+      [null, null],
+      ["pending", "processing"],
+      ["pending", "paid"],
+      ["processing", "paid"],
+    ];
+    for (const [firstStatus, secondStatus] of combinations) {
+      await client.query(`INSERT INTO payouts (id) VALUES ('combo-a'), ('combo-b')`);
+      await client.query(
+        `INSERT INTO commissions (id, order_id, payout_id, status) VALUES ('combo-1', 'combo-order', 'combo-a', $1)`,
+        [firstStatus]
+      );
+      await assert.rejects(
+        client.query(
+          `INSERT INTO commissions (id, order_id, payout_id, status) VALUES ('combo-2', 'combo-order', 'combo-b', $1)`,
+          [secondStatus]
+        ),
+        (error: any) => error.code === "23505"
+      );
+      await client.query(`DELETE FROM commissions`);
+      await client.query(`DELETE FROM payouts`);
+    }
+
+    await client.query(`INSERT INTO commissions (id, order_id, payout_id, status) VALUES
+      ('unclaimed-1', 'unclaimed-order', NULL, NULL),
+      ('unclaimed-2', 'unclaimed-order', NULL, NULL)`);
+    assert.equal((await client.query(`SELECT count(*)::int AS count FROM commissions WHERE order_id = 'unclaimed-order'`)).rows[0].count, 2);
+  } finally {
+    await teardown(client, schema, decoy);
+  }
+});
+
+postgresTest("production payout migration enforces completion and preserves history", async () => {
+  const { client, schema, decoy } = await setup();
+  try {
+    await client.query(`INSERT INTO payouts (id, provider_payout_id, status, processed_at, completed_at)
+      VALUES ('historic-payout', 'sq_payout_1700000000000', 'completed', now(), now())`);
+    await client.query(`INSERT INTO commissions (id, order_id, status, audit_note) VALUES ('historic-commission', 'historic-order', 'pending', 'keep me')`);
+
+    await applyMigration(client, "20260919_payout_integrity.sql", migration, { error() {} });
+
+    const targetConstraint = await client.query(
+      `SELECT count(*)::int AS count FROM pg_constraint
+        WHERE conname = 'payouts_completed_transfer_check' AND conrelid = 'payouts'::regclass`
+    );
+    assert.equal(targetConstraint.rows[0].count, 1, "a same-named constraint on another relation must not suppress creation");
+    assert.equal((await client.query(`SELECT audit_note FROM commissions WHERE id = 'historic-commission'`)).rows[0].audit_note, "keep me");
+    assert.deepEqual(
+      (await client.query(`SELECT provider_payout_id, status FROM payouts WHERE id = 'historic-payout'`)).rows[0],
+      { provider_payout_id: "sq_payout_1700000000000", status: "completed" }
+    );
+
+    const insertCompleted = (id: string, providerId: string | null, timestamps = true) => client.query(
+      `INSERT INTO payouts (id, provider_payout_id, status, processed_at, completed_at)
+       VALUES ($1, $2, 'completed', $3, $3)`,
+      [id, providerId, timestamps ? new Date() : null]
+    );
+    await assert.rejects(insertCompleted("missing-evidence", null), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("empty-evidence", ""), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("blank-evidence", "   "), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("tab-evidence", "\t"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("newline-evidence", "\n"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("mixed-whitespace-evidence", " \t\r\n"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("legacy-placeholder", "sq_payout_1700000000000"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("legacy-simulation", "payout_sim_1700000000000"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("legacy-square-simulation", "sq_payout_sim_1700000000000"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("spaced-placeholder", "   sq_payout_1700000000000   "), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("control-placeholder", "\t\nsq_payout_1700000000000\r"), (error: any) => error.code === "23514");
+    await assert.rejects(insertCompleted("spaced-simulation", " \tpayout_sim_1700000000000\n"), (error: any) => error.code === "23514");
+    await insertCompleted("verified", "provider-transfer-abc123");
+
+    // Simulate a later Drizzle sync treating the staged database-only CHECK as
+    // drift. The trigger must protect concurrent writers before post-push
+    // enforcement restores the CHECK independently of the migration ledger.
+    await client.query(`ALTER TABLE payouts DROP CONSTRAINT payouts_completed_transfer_check`);
+    await assert.rejects(insertCompleted("during-push-invalid", "\t"), (error: any) => error.code === "23514");
+    await enforceInvariant(client);
+    assert.equal((await client.query(
+      `SELECT count(*)::int AS count FROM pg_constraint
+        WHERE conname = 'payouts_completed_transfer_check' AND conrelid = 'payouts'::regclass`
+    )).rows[0].count, 1);
+    assert.equal((await client.query(
+      `SELECT count(*)::int AS count FROM pg_trigger
+        WHERE tgname = 'payouts_completed_transfer_trigger'
+          AND tgrelid = 'payouts'::regclass AND NOT tgisinternal`
+    )).rows[0].count, 1);
+    await assert.rejects(insertCompleted("post-push-invalid", "\t"), (error: any) => error.code === "23514");
+  } finally {
+    await teardown(client, schema, decoy);
+  }
+});
+
+postgresTest("PostgreSQL serializes concurrent claims and rejects the duplicate with 23505", async () => {
+  const { client, schema, decoy } = await setup();
+  const rival = new pg.Client({ connectionString: connectionString! });
+  await rival.connect();
+  try {
+    await applyMigration(client, "20260919_payout_integrity.sql", migration, { error() {} });
+    await client.query(`INSERT INTO payouts (id) VALUES ('claim-a'), ('claim-b')`);
+    await rival.query(`SET search_path TO ${schema}`);
+    await client.query("BEGIN");
+    await rival.query("BEGIN");
+    await client.query(`INSERT INTO commissions (id, order_id, payout_id, status) VALUES ('claim-1', 'order-1', 'claim-a', 'processing')`);
+
+    const competingInsert = rival.query(
+      `INSERT INTO commissions (id, order_id, payout_id, status) VALUES ('claim-2', 'order-1', 'claim-b', 'processing')`
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await client.query("COMMIT");
+    await assert.rejects(competingInsert, (error: any) => error.code === "23505");
+    await rival.query("ROLLBACK");
+    assert.equal((await client.query(`SELECT count(*)::int AS count FROM commissions WHERE order_id = 'order-1'`)).rows[0].count, 1);
+  } finally {
+    await rival.end();
+    await teardown(client, schema, decoy);
+  }
+});
