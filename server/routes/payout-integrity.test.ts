@@ -15,6 +15,7 @@ const paymentFlowDocs = fs.readFileSync(path.join(root, "PAYMENT_FLOW.md"), "utf
 const packageJson = fs.readFileSync(path.join(root, "package.json"), "utf8");
 const pushSchema = fs.readFileSync(path.join(root, "server/scripts/push-schema.ts"), "utf8");
 const enforcePayoutIntegrity = fs.readFileSync(path.join(root, "server/scripts/enforce-payout-integrity.ts"), "utf8");
+const payoutIntegrityEnforcement = fs.readFileSync(path.join(root, "server/scripts/payout-integrity-enforcement.ts"), "utf8");
 
 test("an unconfigured/simulated provider cannot report or persist payout completion", () => {
   const result = rejectUnavailablePayout({ sellerId: "seller-1", orderIds: ["order-1"] });
@@ -95,8 +96,17 @@ test("db:push selects one environment for preflight, sync, and post-push enforce
 
 test("post-push enforcement reuses the production migration without consulting its ledger", () => {
   assert.match(enforcePayoutIntegrity, /20260919_payout_integrity\.sql/);
-  assert.match(enforcePayoutIntegrity, /splitPostgresStatements\(sql\)/);
+  assert.match(enforcePayoutIntegrity, /enforcePayoutIntegrity\(client, sql/);
+  assert.match(payoutIntegrityEnforcement, /splitPostgresStatements\(sql\)/);
   assert.doesNotMatch(enforcePayoutIntegrity, /_app_migrations|applyMigration/);
+});
+
+test("partial bootstrap applies only existing-table invariants and post-push requires both", () => {
+  assert.match(payoutIntegrityEnforcement, /allowPartialBootstrap/);
+  assert.match(payoutIntegrityEnforcement, /relation === null \|\| state\[relation\]/);
+  assert.match(payoutIntegrityEnforcement, /!allowPartialBootstrap && \(!state\.payouts \|\| !state\.commissions\)/);
+  assert.match(payoutIntegrityEnforcement, /\bcommissions\b/);
+  assert.match(payoutIntegrityEnforcement, /payouts_completed_transfer/);
 });
 
 test("a database trigger enforces completion while Drizzle may omit the staged CHECK", () => {

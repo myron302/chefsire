@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { splitPostgresStatements } from "./migration-runner";
+import { enforcePayoutIntegrity } from "./payout-integrity-enforcement";
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -15,25 +15,12 @@ async function main() {
 
   await client.connect();
   try {
-    const relations = await client.query<{ payouts: string | null; commissions: string | null }>(
-      `SELECT to_regclass('payouts')::text AS payouts,
-              to_regclass('commissions')::text AS commissions`
-    );
-    const { payouts, commissions } = relations.rows[0];
-    if (!payouts && !commissions && process.argv.includes("--allow-missing")) {
-      console.log("Payout tables are not present; schema bootstrap may proceed.");
+    const state = await enforcePayoutIntegrity(client, sql, process.argv.includes("--allow-missing"));
+    if (!state.payouts || !state.commissions) {
+      console.log("Partial payout schema detected; existing-table invariants verified and schema repair may proceed.");
       return;
     }
-    if (!payouts || !commissions) {
-      throw new Error("Payout integrity cannot be enforced: payouts and commissions tables must both exist.");
-    }
-    await client.query("BEGIN");
-    for (const statement of splitPostgresStatements(sql)) await client.query(statement);
-    await client.query("COMMIT");
     console.log("Payout integrity invariants verified.");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
   } finally {
     await client.end();
   }

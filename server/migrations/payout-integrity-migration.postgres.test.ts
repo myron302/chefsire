@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { applyMigration, splitPostgresStatements } from "../scripts/migration-runner";
+import { enforcePayoutIntegrity } from "../scripts/payout-integrity-enforcement";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const migration = fs.readFileSync(path.join(here, "20260919_payout_integrity.sql"), "utf8");
@@ -83,6 +84,55 @@ async function enforceInvariant(client: pg.Client) {
     throw error;
   }
 }
+
+postgresTest("partial bootstrap enforces each existing table and requires both post-push", async () => {
+  const client = new pg.Client({ connectionString: connectionString! });
+  await client.connect();
+  const root = `payout_partial_${process.pid}_${Date.now()}_${sequence++}`;
+  try {
+    // Neither table: pre-push permits Drizzle bootstrap; post-push fails closed.
+    await client.query(`CREATE SCHEMA ${root}_none`);
+    await client.query(`SET search_path TO ${root}_none`);
+    assert.deepEqual(await enforcePayoutIntegrity(client, migration, true), { payouts: false, commissions: false });
+    await assert.rejects(enforcePayoutIntegrity(client, migration, false), /must both exist/);
+
+    // Payouts only: install its trigger/CHECK and still permit schema repair.
+    await client.query(`CREATE SCHEMA ${root}_payouts`);
+    await client.query(`SET search_path TO ${root}_payouts`);
+    await client.query(`CREATE TABLE payouts (
+      id varchar PRIMARY KEY, provider_payout_id text, status text,
+      processed_at timestamp, completed_at timestamp
+    )`);
+    assert.deepEqual(await enforcePayoutIntegrity(client, migration, true), { payouts: true, commissions: false });
+    assert.equal((await client.query(`SELECT count(*)::int AS count FROM pg_trigger
+      WHERE tgname = 'payouts_completed_transfer_trigger' AND tgrelid = 'payouts'::regclass`)).rows[0].count, 1);
+    await assert.rejects(client.query(`INSERT INTO payouts VALUES ('bad', NULL, 'completed', now(), now())`),
+      (error: any) => error.code === "23514");
+    await assert.rejects(enforcePayoutIntegrity(client, migration, false), /must both exist/);
+
+    // Commissions only: run the exact duplicate preflight before Drizzle.
+    await client.query(`CREATE SCHEMA ${root}_commissions`);
+    await client.query(`SET search_path TO ${root}_commissions`);
+    await client.query(`CREATE TABLE commissions (
+      id varchar PRIMARY KEY, order_id varchar NOT NULL, payout_id varchar, status text, audit_note text
+    )`);
+    await client.query(`INSERT INTO commissions VALUES
+      ('one', 'order', 'p1', NULL, 'keep one'), ('two', 'order', 'p2', 'pending', 'keep two')`);
+    await assert.rejects(enforcePayoutIntegrity(client, migration, true),
+      (error: any) => error.code === "P0001" && /financial audit/.test(error.message));
+    assert.equal((await client.query(`SELECT count(*)::int AS count FROM commissions`)).rows[0].count, 2);
+    await client.query(`DELETE FROM commissions WHERE id = 'two'`);
+    assert.deepEqual(await enforcePayoutIntegrity(client, migration, true), { payouts: false, commissions: true });
+    assert.notEqual((await client.query(`SELECT to_regclass('commissions_active_payout_order_uidx') AS index`)).rows[0].index, null);
+    await assert.rejects(enforcePayoutIntegrity(client, migration, false), /must both exist/);
+  } finally {
+    await client.query("RESET search_path");
+    for (const suffix of ["none", "payouts", "commissions"]) {
+      await client.query(`DROP SCHEMA IF EXISTS ${root}_${suffix} CASCADE`);
+    }
+    await client.end();
+  }
+});
 
 postgresTest("financial duplicate preflight fails before index creation without rewriting claims", async () => {
   const { client, schema, decoy } = await setup();
