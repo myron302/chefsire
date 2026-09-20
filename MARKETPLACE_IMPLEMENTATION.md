@@ -1,5 +1,13 @@
 # Marketplace Monetization Implementation
 
+> **Financial trust boundary:** order `status` describes fulfillment only.
+> `delivered` is not customer-payment capture, verified seller earnings, or
+> payout eligibility. Only the authenticated server payment route may persist
+> a Square payment ID, exact `COMPLETED` provider status, matched USD amount,
+> and capture timestamp. If that evidence is unavailable, payment remains
+> `unverified`; no commission is created and financial summaries exclude it.
+> Seller payout transfer remains unavailable and fails closed separately.
+
 ## Overview
 This document outlines the complete marketplace monetization system implemented for ChefSire. The system enables vendors (chefs, butchers, spice sellers, etc.) to sell physical products through the platform, with automatic commission deduction and seller payouts.
 

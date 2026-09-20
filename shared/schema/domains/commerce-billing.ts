@@ -9,6 +9,7 @@ import {
   decimal,
   boolean,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 
@@ -68,15 +69,35 @@ export const orders = pgTable(
       country: string;
     }>(),
     fulfillmentMethod: text("fulfillment_method").notNull(),
+    // Fulfillment and payment are separate trust domains. `status` is retained as
+    // the fulfillment status for compatibility; only the provider-facing payment
+    // route may establish the fields below.
     status: text("status").default("pending"),
     trackingNumber: text("tracking_number"),
     squarePaymentId: text("square_payment_id"),
+    squareRefundId: text("square_refund_id"),
+    paymentStatus: text("payment_status").notNull().default("unverified"),
+    paymentProvider: text("payment_provider"),
+    providerPaymentStatus: text("provider_payment_status"),
+    paymentCapturedAt: timestamp("payment_captured_at"),
     createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
   },
   (table) => ({
     buyerIdx: index("orders_buyer_idx").on(table.buyerId),
     sellerIdx: index("orders_seller_idx").on(table.sellerId),
     statusIdx: index("orders_status_idx").on(table.status),
+    paymentStatusIdx: index("orders_payment_status_idx").on(table.paymentStatus),
+    capturedPaymentEvidence: check(
+      "orders_captured_payment_evidence_check",
+      sql`${table.paymentStatus} <> 'captured' OR (
+        ${table.paymentProvider} = 'square'
+        AND ${table.squarePaymentId} IS NOT NULL
+        AND ${table.squarePaymentId} !~ '^[[:space:]]*$'
+        AND ${table.providerPaymentStatus} = 'COMPLETED'
+        AND ${table.paymentCapturedAt} IS NOT NULL
+      )`,
+    ),
   })
 );
 

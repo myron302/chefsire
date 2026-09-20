@@ -2,10 +2,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
-import { orders, products, users, commissions } from "../../shared/schema";
-import { eq } from "drizzle-orm";
+import { orders, users, commissions } from "../../shared/schema";
+import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
+import { requireCompletedSquarePayment } from "../lib/marketplace-payment";
 // Square is a CommonJS module - import it properly
 import square from "square";
 const { Client, Environment } = square;
@@ -52,7 +53,7 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       orderId: z.string(), // Order created earlier via /api/orders/checkout
       sourceId: z.string(), // Square payment token from frontend
       verificationToken: z.string().optional(), // 3D Secure verification
-    });
+    }).strict();
 
     const { orderId, sourceId, verificationToken } = schema.parse(req.body);
     const buyerId = req.user!.id;
@@ -73,8 +74,8 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
 
-    // Verify order hasn't been paid yet
-    if (order.status !== "pending") {
+    // Payment state is independent of fulfillment state.
+    if (order.paymentStatus !== "unverified") {
       return res.status(400).json({ ok: false, error: "Order already processed" });
     }
 
@@ -92,14 +93,16 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "Seller not found" });
     }
 
-    let paymentResult: any;
-    const useSquare = process.env.SQUARE_ACCESS_TOKEN && process.env.SQUARE_LOCATION_ID;
+    if (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID) {
+      return res.status(503).json({
+        ok: false,
+        code: "PAYMENT_PROVIDER_UNAVAILABLE",
+        error: "Marketplace payment capture cannot be verified",
+      });
+    }
 
-    if (useSquare) {
-      // Real Square payment processing
-      try {
-        const squareClient = getSquareClient();
-        const { result } = await squareClient.paymentsApi.createPayment({
+    const squareClient = getSquareClient();
+    const { result } = await squareClient.paymentsApi.createPayment({
           sourceId,
           idempotencyKey: orderId, // Use orderId as idempotency key
           amountMoney: {
@@ -111,85 +114,55 @@ router.post("/create-payment", requireAuth, async (req, res) => {
           note: `ChefSire Order ${orderId}`,
           buyerEmailAddress: req.user!.email,
           ...(verificationToken && { verificationToken })
-        });
-
-        paymentResult = {
-          id: result.payment?.id || `sq_payment_${Date.now()}`,
-          status: result.payment?.status || "COMPLETED",
-          totalMoney: result.payment?.totalMoney || { amount: amountInCents, currency: "USD" },
-          createdAt: result.payment?.createdAt || new Date().toISOString(),
-        };
-      } catch (squareError: any) {
-        console.error("Square payment error:", squareError);
-        // Fall back to simulation in development
-        if (process.env.NODE_ENV === 'development') {
-          console.warn("Square payment failed, using simulation mode");
-          paymentResult = {
-            id: `sq_payment_sim_${Date.now()}`,
-            status: "COMPLETED",
-            totalMoney: { amount: amountInCents, currency: "USD" },
-            createdAt: new Date().toISOString(),
-          };
-        } else {
-          throw squareError;
-        }
-      }
-    } else {
-      // Simulated payment for development/testing
-      console.warn("Square not configured - using simulated payment");
-      paymentResult = {
-        id: `sq_payment_sim_${Date.now()}`,
-        status: "COMPLETED",
-        totalMoney: { amount: amountInCents, currency: "USD" },
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    // Update order status to paid and store Square payment ID
-    const [updatedOrder] = await db
-      .update(orders)
-      .set({
-        status: "paid",
-        squarePaymentId: paymentResult.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(orders.id, orderId))
-      .returning();
+    });
+    const paymentEvidence = requireCompletedSquarePayment(
+      result.payment,
+      BigInt(amountInCents),
+      "USD",
+    );
 
     // Create commission record for audit trail
     const tier = seller.subscriptionTier || 'free';
     const tierInfo = SUBSCRIPTION_TIERS[tier];
     const commissionRate = tierInfo ? tierInfo.commissionRate : 10;
 
-    // Try to create commission record (table may not exist yet if migration not run)
-    try {
-      await db.insert(commissions).values({
-        orderId: order.id,
-        sellerId: order.sellerId,
-        subscriptionTier: tier,
-        commissionRate: commissionRate.toString(),
-        orderTotal: order.totalAmount,
-        commissionAmount: order.platformFee,
-        sellerAmount: order.sellerAmount,
-        status: 'pending', // Will be 'paid' after payout
-      });
-    } catch (commissionError: any) {
-      // Log but don't fail - table might not exist yet
-      console.warn('Failed to create commission record (table may not exist):', commissionError.message);
-    }
+    const updatedOrder = await db.transaction(async (tx: any) => {
+      const [capturedOrder] = await tx
+        .update(orders)
+        .set({ ...paymentEvidence, updatedAt: new Date() })
+        .where(and(eq(orders.id, orderId), eq(orders.paymentStatus, "unverified")))
+        .returning();
+      if (!capturedOrder) {
+        const conflict = new Error("Payment was already recorded");
+        (conflict as Error & { code: string }).code = "PAYMENT_STATE_CONFLICT";
+        throw conflict;
+      }
 
-    // Note: Seller payout will be processed separately
-    // This can be done:
-    // 1. After order is marked "delivered" (safer)
-    // 2. On a schedule (e.g., weekly payouts)
-    // 3. See /api/payouts routes for payout processing
+      // A commission is created only after exact provider capture verification.
+      // The same transaction makes the conditional payment transition the
+      // idempotency gate for commission/revenue side effects.
+      await tx.insert(commissions).values({
+          orderId: order.id,
+          sellerId: order.sellerId,
+          subscriptionTier: tier,
+          commissionRate: commissionRate.toString(),
+          orderTotal: order.totalAmount,
+          commissionAmount: order.platformFee,
+          sellerAmount: order.sellerAmount,
+          status: "pending",
+      });
+      await tx.update(users).set({
+        monthlyRevenue: sql`coalesce(${users.monthlyRevenue}, 0) + ${order.sellerAmount}`,
+      }).where(eq(users.id, order.sellerId));
+      return capturedOrder;
+    });
 
     res.json({
       ok: true,
       message: "Payment processed successfully",
       payment: {
-        id: paymentResult.id,
-        status: paymentResult.status,
+        id: paymentEvidence.squarePaymentId,
+        status: paymentEvidence.providerPaymentStatus,
         amount: order.totalAmount,
         platformFee: order.platformFee,
         sellerReceives: order.sellerAmount,
@@ -200,6 +173,12 @@ router.post("/create-payment", requireAuth, async (req, res) => {
   } catch (error: any) {
     console.error("Payment processing error:", error);
 
+    if (error?.code === "PAYMENT_CAPTURE_UNVERIFIED") {
+      return res.status(502).json({ ok: false, code: error.code, error: error.message });
+    }
+    if (error?.code === "PAYMENT_STATE_CONFLICT") {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
     // Handle Square-specific errors
     if (error?.errors) {
       return res.status(400).json({
@@ -247,14 +226,19 @@ router.post("/refund", requireAuth, async (req, res) => {
     // Calculate refund amount
     const refundAmount = amount || parseFloat(order.totalAmount);
     const refundAmountCents = Math.round(refundAmount * 100);
+    if (refundAmountCents !== Math.round(parseFloat(order.totalAmount) * 100)) {
+      return res.status(400).json({ ok: false, code: "PARTIAL_REFUND_UNSUPPORTED", error: "Marketplace partial refunds are not safely supported" });
+    }
 
-    let squareRefundId: string | undefined;
-    const useSquare = process.env.SQUARE_ACCESS_TOKEN && order.squarePaymentId;
+    if (order.paymentStatus !== "captured" || !order.squarePaymentId) {
+      return res.status(409).json({ ok: false, code: "PAYMENT_CAPTURE_UNVERIFIED", error: "Order has no verified captured payment" });
+    }
+    if (!process.env.SQUARE_ACCESS_TOKEN) {
+      return res.status(503).json({ ok: false, code: "PAYMENT_PROVIDER_UNAVAILABLE", error: "Refund provider unavailable" });
+    }
 
-    if (useSquare) {
-      try {
-        const squareClient = getSquareClient();
-        const { result } = await squareClient.refundsApi.refundPayment({
+    const squareClient = getSquareClient();
+    const { result } = await squareClient.refundsApi.refundPayment({
           idempotencyKey: `refund_${orderId}_${Date.now()}`,
           amountMoney: {
             amount: BigInt(refundAmountCents),
@@ -262,41 +246,41 @@ router.post("/refund", requireAuth, async (req, res) => {
           },
           paymentId: order.squarePaymentId!,
           reason: reason || 'Customer requested refund',
-        });
-        squareRefundId = result.refund?.id;
-      } catch (squareError: any) {
-        console.error("Square refund error:", squareError);
-        if (process.env.NODE_ENV === 'production') {
-          return res.status(502).json({
-            ok: false,
-            error: "Payment processor refund failed",
-            details: squareError?.errors || squareError?.message,
-          });
-        }
-        // In development, fall through to DB-only update
-        console.warn("Square refund failed in dev, updating DB only");
-      }
-    } else if (!order.squarePaymentId) {
-      // Simulated/dev payment — no Square payment to refund
-      console.warn(`Refund for order ${orderId}: no squarePaymentId, updating DB only`);
+    });
+    const providerRefund = result.refund;
+    if (
+      !providerRefund?.id || providerRefund.status !== "COMPLETED" ||
+      providerRefund.amountMoney?.amount === undefined ||
+      BigInt(providerRefund.amountMoney.amount) !== BigInt(refundAmountCents) ||
+      providerRefund.amountMoney.currency !== "USD"
+    ) {
+      return res.status(502).json({ ok: false, code: "REFUND_UNVERIFIED", error: "Square did not return verifiable completed refund evidence" });
     }
 
-    // Update order status
-    const [updatedOrder] = await db
-      .update(orders)
-      .set({
-        status: "refunded",
+    const updatedOrder = await db.transaction(async (tx: any) => {
+      const [refundedOrder] = await tx.update(orders).set({
+        paymentStatus: "refunded",
+        providerPaymentStatus: "REFUNDED",
+        squareRefundId: providerRefund.id,
         updatedAt: new Date(),
-      })
-      .where(eq(orders.id, orderId))
-      .returning();
+      }).where(and(eq(orders.id, orderId), eq(orders.paymentStatus, "captured"))).returning();
+      if (!refundedOrder) return undefined;
+      await tx.update(commissions).set({ status: "refunded" }).where(eq(commissions.orderId, orderId));
+      await tx.update(users).set({
+        monthlyRevenue: sql`greatest(coalesce(${users.monthlyRevenue}, 0) - ${order.sellerAmount}, 0)`,
+      }).where(eq(users.id, order.sellerId));
+      return refundedOrder;
+    });
+    if (!updatedOrder) {
+      return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Payment state changed; reload and retry" });
+    }
 
     res.json({
       ok: true,
       message: "Refund processed successfully",
       refund: {
         amount: refundAmount,
-        id: squareRefundId,
+        id: providerRefund.id,
         status: "completed",
       },
       order: updatedOrder,

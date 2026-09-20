@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
+import { isVerifiedMarketplaceEarning } from "../lib/marketplace-payment";
 
 const router = Router();
 
@@ -130,15 +131,6 @@ router.post("/checkout", requireAuth, async (req, res) => {
         })
         .where(eq(products.id, product.id));
     }
-
-    // Update seller's monthly revenue
-    const currentRevenue = parseFloat((sellerStore as any)?.monthlyRevenue || "0");
-    await db
-      .update(users)
-      .set({
-        monthlyRevenue: (currentRevenue + sellerAmount).toFixed(2)
-      })
-      .where(eq(users.id, product.sellerId));
 
     // Send notification to seller
     const [buyer] = await db
@@ -283,10 +275,13 @@ router.get("/my-sales", requireAuth, async (req, res) => {
     const sales = await query;
 
     // Calculate totals
-    const totalRevenue = sales.reduce((sum, sale) =>
+    // Quoted order economics are not verified earnings. Only independently
+    // captured payments contribute to the seller-facing financial summary.
+    const verifiedSales = sales.filter((sale: any) => isVerifiedMarketplaceEarning(sale.order));
+    const totalRevenue = verifiedSales.reduce((sum: number, sale: any) =>
       sum + parseFloat(sale.order.sellerAmount), 0
     );
-    const totalPlatformFees = sales.reduce((sum, sale) =>
+    const totalPlatformFees = verifiedSales.reduce((sum: number, sale: any) =>
       sum + parseFloat(sale.order.platformFee), 0
     );
 
@@ -297,7 +292,9 @@ router.get("/my-sales", requireAuth, async (req, res) => {
       summary: {
         totalRevenue: totalRevenue.toFixed(2),
         totalPlatformFees: totalPlatformFees.toFixed(2),
-        totalOrders: sales.length
+        totalOrders: sales.length,
+        verifiedPaidOrders: verifiedSales.length,
+        earningsVerification: "provider_capture_required"
       }
     });
   } catch (error) {
@@ -312,7 +309,7 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     const schema = z.object({
       status: z.enum(["pending", "processing", "shipped", "delivered", "cancelled", "refunded"]),
       trackingNumber: z.string().optional()
-    });
+    }).strict();
 
     const { status, trackingNumber } = schema.parse(req.body);
     const orderId = req.params.id;
@@ -334,7 +331,22 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
 
-    // Update order
+    const transitions: Record<string, readonly string[]> = {
+      pending: ["processing", "cancelled"],
+      processing: ["shipped", "delivered", "cancelled"],
+      shipped: ["delivered", "cancelled"],
+      delivered: [],
+      cancelled: [],
+      refunded: [],
+      // Historical rows used `paid` as a mixed payment/fulfillment value.
+      paid: ["processing", "shipped", "delivered", "cancelled"],
+    };
+    if (status !== order.status && !(transitions[order.status ?? "pending"] ?? []).includes(status)) {
+      return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Invalid fulfillment transition" });
+    }
+
+    // Compare-and-set prevents delivery racing cancellation (or another update).
+    // No payment evidence is accepted by the strict request schema or changed here.
     const [updated] = await db
       .update(orders)
       .set({
@@ -342,8 +354,12 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
         trackingNumber: trackingNumber || order.trackingNumber,
         updatedAt: new Date()
       })
-      .where(eq(orders.id, orderId))
+      .where(and(eq(orders.id, orderId), eq(orders.status, order.status!)))
       .returning();
+
+    if (!updated) {
+      return res.status(409).json({ ok: false, code: "FULFILLMENT_STATE_CONFLICT", error: "Order status changed; reload and retry" });
+    }
 
     // Send notification to buyer about status change
     const [product] = await db

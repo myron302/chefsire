@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-ChefSire has buyer-payment code and server-side commission calculations, but it does **not** currently have a provider-confirmed seller-transfer implementation. Seller payouts are unavailable and fail closed.
+ChefSire has buyer-payment code and server-side commission calculations, but it does **not** currently have a provider-confirmed seller-transfer implementation. Seller payouts are unavailable and fail closed. Marketplace fulfillment and customer payment are independent trust domains: **delivered does not mean paid or payout eligible**.
 
 ## 💰 Money Flow
 
@@ -118,7 +118,8 @@ POST /api/payments/create-payment
 }
 
 // ChefSire receives $100 via Square
-// Order status → "paid"
+// Only an exact Square COMPLETED response with matching amount/currency is stored
+// as paymentStatus → "captured". Fulfillment status is unchanged.
 ```
 
 #### 3. Mark Order Delivered
@@ -129,6 +130,10 @@ PATCH /api/orders/order_123/status
   "trackingNumber": "USPS123"
 }
 ```
+
+This seller-owned endpoint accepts only `status` and `trackingNumber`. It cannot
+set `paymentStatus`, Square IDs, provider status, or capture time. Delivery is
+fulfillment evidence only and never creates a commission or verified earning.
 
 #### 4. Payout execution (currently unavailable)
 ```javascript
@@ -202,9 +207,10 @@ const SquarePaymentForm = ({ amount, onPaymentSuccess }) => {
 
 ## 🔄 Payout Scheduling (not implemented)
 
-No immediate, delayed, cron, or batch seller payout path is enabled. Delivery
-alone is not payout eligibility: the system must first gain authoritative
-payment-capture evidence and a provider-confirmed transfer implementation.
+No immediate, delayed, cron, or batch seller payout path is enabled. Any future
+eligibility rule must require both the applicable fulfillment state **and**
+independently verified provider capture. Delivery alone is not payout
+eligibility, and provider capture is not proof of a seller payout transfer.
 
 ## 📊 Commission Tiers
 
