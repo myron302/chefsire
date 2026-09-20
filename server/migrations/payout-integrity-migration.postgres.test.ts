@@ -89,8 +89,8 @@ postgresTest("financial duplicate preflight fails before index creation without 
   try {
     await client.query(`INSERT INTO payouts (id) VALUES ('duplicate-a'), ('duplicate-b')`);
     await client.query(`INSERT INTO commissions (id, order_id, payout_id, status, audit_note) VALUES
-      ('duplicate-1', 'same-order', 'duplicate-a', 'processing', 'first'),
-      ('duplicate-2', 'same-order', 'duplicate-b', 'paid', 'second')`);
+      ('duplicate-1', 'same-order', 'duplicate-a', NULL, 'first'),
+      ('duplicate-2', 'same-order', 'duplicate-b', 'pending', 'second')`);
     await assert.rejects(
       applyMigration(client, "20260919_payout_integrity.sql", migration, { error() {} }),
       (error: any) => error.code === "P0001" && /financial audit/.test(error.message)
@@ -103,6 +103,46 @@ postgresTest("financial duplicate preflight fails before index creation without 
       ]
     );
     assert.equal((await client.query(`SELECT to_regclass('commissions_active_payout_order_uidx') AS index`)).rows[0].index, null);
+  } finally {
+    await teardown(client, schema, decoy);
+  }
+});
+
+postgresTest("active claim uniqueness includes NULL status but excludes NULL payout IDs", async () => {
+  const { client, schema, decoy } = await setup();
+  try {
+    await applyMigration(client, "20260919_payout_integrity.sql", migration, { error() {} });
+    const combinations: Array<[string | null, string | null]> = [
+      [null, "pending"],
+      [null, "processing"],
+      [null, "paid"],
+      ["pending", null],
+      [null, null],
+      ["pending", "processing"],
+      ["pending", "paid"],
+      ["processing", "paid"],
+    ];
+    for (const [firstStatus, secondStatus] of combinations) {
+      await client.query(`INSERT INTO payouts (id) VALUES ('combo-a'), ('combo-b')`);
+      await client.query(
+        `INSERT INTO commissions (id, order_id, payout_id, status) VALUES ('combo-1', 'combo-order', 'combo-a', $1)`,
+        [firstStatus]
+      );
+      await assert.rejects(
+        client.query(
+          `INSERT INTO commissions (id, order_id, payout_id, status) VALUES ('combo-2', 'combo-order', 'combo-b', $1)`,
+          [secondStatus]
+        ),
+        (error: any) => error.code === "23505"
+      );
+      await client.query(`DELETE FROM commissions`);
+      await client.query(`DELETE FROM payouts`);
+    }
+
+    await client.query(`INSERT INTO commissions (id, order_id, payout_id, status) VALUES
+      ('unclaimed-1', 'unclaimed-order', NULL, NULL),
+      ('unclaimed-2', 'unclaimed-order', NULL, NULL)`);
+    assert.equal((await client.query(`SELECT count(*)::int AS count FROM commissions WHERE order_id = 'unclaimed-order'`)).rows[0].count, 2);
   } finally {
     await teardown(client, schema, decoy);
   }

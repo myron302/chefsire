@@ -44,8 +44,10 @@ test("concurrent payout attempts both fail before claiming an earning", async ()
 test("database state prevents the same order entering two active payout claims", () => {
   assert.match(migration, /CREATE UNIQUE INDEX IF NOT EXISTS commissions_active_payout_order_uidx/);
   assert.match(migration, /ON commissions \(order_id\)/);
-  assert.match(migration, /status IN \('pending', 'processing', 'paid'\)/);
+  const claimStatuses = "(status IS NULL OR status IN ('pending', 'processing', 'paid'))";
+  assert.equal(migration.split(claimStatuses).length - 1, 2, "preflight and index must use the same claim predicate");
   assert.match(schema, /uniqueIndex\("commissions_active_payout_order_uidx"\)/);
+  assert.match(schema, /\$\{t\.status\} IS NULL OR \$\{t\.status\} IN \('pending', 'processing', 'paid'\)/);
 });
 
 test("legacy duplicate claims abort migration without deleting financial history", () => {

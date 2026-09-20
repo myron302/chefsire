@@ -123,7 +123,7 @@ export const commissions = pgTable(
     payoutIdx: index("commissions_payout_idx").on(t.payoutId),
     activePayoutClaimIdx: uniqueIndex("commissions_active_payout_order_uidx")
       .on(t.orderId)
-      .where(sql`${t.payoutId} IS NOT NULL AND ${t.status} IN ('pending', 'processing', 'paid')`),
+      .where(sql`${t.payoutId} IS NOT NULL AND (${t.status} IS NULL OR ${t.status} IN ('pending', 'processing', 'paid'))`),
     statusIdx: index("commissions_status_idx").on(t.status),
   })
 );

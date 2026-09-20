@@ -6,7 +6,7 @@ BEGIN
     SELECT 1
       FROM commissions
      WHERE payout_id IS NOT NULL
-       AND status IN ('pending', 'processing', 'paid')
+       AND (status IS NULL OR status IN ('pending', 'processing', 'paid'))
      GROUP BY order_id
     HAVING count(*) > 1
   ) THEN
@@ -56,7 +56,8 @@ END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS commissions_active_payout_order_uidx
   ON commissions (order_id)
-  WHERE payout_id IS NOT NULL AND status IN ('pending', 'processing', 'paid');
+  WHERE payout_id IS NOT NULL
+    AND (status IS NULL OR status IN ('pending', 'processing', 'paid'));
 
 -- Preserve legacy rows for audit while making invalid completion states impossible
 -- for every new or updated row. Existing rows can be validated after financial review.
