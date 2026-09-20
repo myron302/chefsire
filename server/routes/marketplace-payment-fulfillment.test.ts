@@ -3,7 +3,8 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isVerifiedMarketplaceEarning, requireCompletedSquarePayment } from "../lib/marketplace-payment";
+import { isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const ordersRoute = fs.readFileSync(path.join(root, "server/routes/orders.ts"), "utf8");
@@ -27,14 +28,19 @@ test("delivered without provider evidence is not verified earnings", () => {
 
 test("fulfillment input is strict and cannot mass-assign payment evidence", () => {
   assert.match(ordersRoute, /trackingNumber:[\s\S]*?\.strict\(\)/);
-  assert.doesNotMatch(ordersRoute.slice(ordersRoute.indexOf('router.patch("/:id/status"')), /paymentStatus\s*[,}]/);
-  assert.doesNotMatch(ordersRoute.slice(ordersRoute.indexOf('router.patch("/:id/status"')), /squarePaymentId\s*[,}]/);
+  const routeStart = ordersRoute.indexOf('router.patch("/:id/status"');
+  const fulfillmentSet = ordersRoute.slice(
+    ordersRoute.indexOf(".set({", routeStart),
+    ordersRoute.indexOf(".where(and(", routeStart),
+  );
+  assert.doesNotMatch(fulfillmentSet, /paymentStatus|squarePaymentId|squareRefundId|paymentCapturedAt/);
 });
 
 test("only the owning seller can update fulfillment and concurrent changes fail", () => {
   assert.match(ordersRoute, /order\.sellerId !== userId/);
-  assert.match(ordersRoute, /and\(eq\(orders\.id, orderId\), eq\(orders\.status, order\.status!\)\)/);
+  assert.match(ordersRoute, /eq\(orders\.status, order\.status!\)/);
   assert.match(ordersRoute, /FULFILLMENT_STATE_CONFLICT/);
+  assert.match(ordersRoute, /status === "cancelled"[\s\S]*paymentStatus, "unverified"/);
 });
 
 test("Square capture evidence must match status, amount, currency and timestamp", () => {
@@ -59,12 +65,79 @@ test("payment capture fails closed without Square and has no simulation fallback
   assert.match(paymentsRoute, /db\.transaction/);
 });
 
+async function simulateInterruptedOperation(operation: "capture" | "refund") {
+  const providerOperations = new Map<string, { id: string }>();
+  let providerSideEffects = 0;
+  let localSideEffects = 0;
+  let durableProviderEvidence: { id: string } | undefined;
+  let failApply = true;
+  const idempotencyKey = `${operation}-stable-key`;
+  const run = () => executeRecoverableProviderOperation({
+    operation,
+    idempotencyKey,
+    invokeProvider: async (key) => {
+      if (!providerOperations.has(key)) {
+        providerOperations.set(key, { id: `${operation}-provider-id` });
+        providerSideEffects++;
+      }
+      return providerOperations.get(key)!;
+    },
+    persistProviderEvidence: async (evidence) => {
+      durableProviderEvidence = evidence;
+      return evidence;
+    },
+    applyLocally: async (evidence) => {
+      if (failApply) {
+        failApply = false;
+        throw new Error("simulated local transaction rollback");
+      }
+      localSideEffects++;
+      return evidence;
+    },
+  });
+
+  await assert.rejects(run(), ProviderReconciliationRequiredError);
+  assert.equal(durableProviderEvidence?.id, `${operation}-provider-id`, "provider evidence must survive local accounting failure");
+  const recovered = await run();
+  assert.equal(recovered.id, `${operation}-provider-id`);
+  assert.equal(providerSideEffects, 1, "stable key must not duplicate the provider operation");
+  assert.equal(localSideEffects, 1, "reconciliation must apply local accounting once");
+}
+
+test("capture provider success survives local failure and retries without a second charge", async () => {
+  await simulateInterruptedOperation("capture");
+  assert.match(paymentsRoute, /paymentStatus: "capture_pending"/);
+  assert.match(paymentsRoute, /paymentStatus: "capture_reconciliation"/);
+  assert.match(paymentsRoute, /captureIdempotencyKey/);
+});
+
+test("refund provider success survives local failure and retries one logical refund", async () => {
+  await simulateInterruptedOperation("refund");
+  assert.match(paymentsRoute, /paymentStatus: "refund_pending"/);
+  assert.match(paymentsRoute, /paymentStatus: "refund_reconciliation"/);
+  assert.match(paymentsRoute, /refundIdempotencyKey/);
+  assert.doesNotMatch(paymentsRoute, /refund[^\n]*Date\.now|Date\.now[^\n]*refund/);
+});
+
+test("pending Square refunds retain provider evidence and remain non-earning", () => {
+  const evidence = requireSquareRefundEvidence({
+    id: "square-refund",
+    status: "PENDING",
+    amountMoney: { amount: 1234n, currency: "USD" },
+  }, 1234n);
+  assert.equal(evidence.providerRefundStatus, "PENDING");
+  assert.match(paymentsRoute, /squareRefundId: refundEvidence\.squareRefundId/);
+  assert.match(paymentsRoute, /getPaymentRefund\(order\.squareRefundId\)/);
+  assert.equal(isVerifiedMarketplaceEarning({ paymentStatus: "refund_pending" }), false);
+});
+
 test("database and legacy migration require evidence for captured state", () => {
   for (const source of [schema, migration]) {
     assert.match(source, /orders_captured_payment_evidence_check/);
     assert.match(source, /payment_(?:status|Status)[^]*captured/);
     assert.match(source, /square_(?:payment_id|PaymentId)|squarePaymentId/);
     assert.match(source, /COMPLETED/);
+    assert.match(source, /capture_(?:idempotency_key|IdempotencyKey)/);
   }
   assert.match(migration, /DEFAULT 'unverified'/);
   assert.match(migration, /NOT VALID/);

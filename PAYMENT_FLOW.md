@@ -122,6 +122,12 @@ POST /api/payments/create-payment
 // as paymentStatus → "captured". Fulfillment status is unchanged.
 ```
 
+Before calling Square, ChefSire durably records `capture_pending` with one stable
+idempotency key. If Square succeeds but local commission/revenue persistence
+fails, the order remains explicitly pending reconciliation. A retry reuses that
+same key, recovers Square's authoritative result, and cannot create a second
+charge. It never substitutes a local or simulated success.
+
 #### 3. Mark Order Delivered
 ```javascript
 PATCH /api/orders/order_123/status
@@ -134,6 +140,12 @@ PATCH /api/orders/order_123/status
 This seller-owned endpoint accepts only `status` and `trackingNumber`. It cannot
 set `paymentStatus`, Square IDs, provider status, or capture time. Delivery is
 fulfillment evidence only and never creates a commission or verified earning.
+
+Full refunds use the same containment pattern: `refund_pending` and a stable
+refund idempotency key are persisted before the Square call. Square `PENDING`
+refund IDs are retained and polled on retry; completed provider refunds whose
+local accounting transaction fails remain non-earning and recoverable rather
+than appearing unquestionably captured. Partial refunds remain unavailable.
 
 #### 4. Payout execution (currently unavailable)
 ```javascript

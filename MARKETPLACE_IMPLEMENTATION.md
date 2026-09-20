@@ -7,6 +7,10 @@
 > and capture timestamp. If that evidence is unavailable, payment remains
 > `unverified`; no commission is created and financial summaries exclude it.
 > Seller payout transfer remains unavailable and fails closed separately.
+> Capture/refund operations persist a pending reconciliation state and stable
+> idempotency key before contacting Square. Provider success followed by local
+> database failure therefore remains explicit and safely retryable without a
+> duplicate charge or refund.
 
 ## Overview
 This document outlines the complete marketplace monetization system implemented for ChefSire. The system enables vendors (chefs, butchers, spice sellers, etc.) to sell physical products through the platform, with automatic commission deduction and seller payouts.

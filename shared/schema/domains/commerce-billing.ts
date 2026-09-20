@@ -76,6 +76,8 @@ export const orders = pgTable(
     trackingNumber: text("tracking_number"),
     squarePaymentId: text("square_payment_id"),
     squareRefundId: text("square_refund_id"),
+    captureIdempotencyKey: text("capture_idempotency_key"),
+    refundIdempotencyKey: text("refund_idempotency_key"),
     paymentStatus: text("payment_status").notNull().default("unverified"),
     paymentProvider: text("payment_provider"),
     providerPaymentStatus: text("provider_payment_status"),
@@ -94,6 +96,8 @@ export const orders = pgTable(
         ${table.paymentProvider} = 'square'
         AND ${table.squarePaymentId} IS NOT NULL
         AND ${table.squarePaymentId} !~ '^[[:space:]]*$'
+        AND ${table.captureIdempotencyKey} IS NOT NULL
+        AND ${table.captureIdempotencyKey} !~ '^[[:space:]]*$'
         AND ${table.providerPaymentStatus} = 'COMPLETED'
         AND ${table.paymentCapturedAt} IS NOT NULL
       )`,

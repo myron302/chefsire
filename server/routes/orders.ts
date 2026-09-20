@@ -344,6 +344,13 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     if (status !== order.status && !(transitions[order.status ?? "pending"] ?? []).includes(status)) {
       return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Invalid fulfillment transition" });
     }
+    if (status === "cancelled" && order.paymentStatus !== "unverified") {
+      return res.status(409).json({
+        ok: false,
+        code: "PAYMENT_RECONCILIATION_REQUIRED",
+        error: "An in-progress or captured payment must be reconciled before cancellation",
+      });
+    }
 
     // Compare-and-set prevents delivery racing cancellation (or another update).
     // No payment evidence is accepted by the strict request schema or changed here.
@@ -354,7 +361,11 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
         trackingNumber: trackingNumber || order.trackingNumber,
         updatedAt: new Date()
       })
-      .where(and(eq(orders.id, orderId), eq(orders.status, order.status!)))
+      .where(and(
+        eq(orders.id, orderId),
+        eq(orders.status, order.status!),
+        ...(status === "cancelled" ? [eq(orders.paymentStatus, "unverified")] : []),
+      ))
       .returning();
 
     if (!updated) {

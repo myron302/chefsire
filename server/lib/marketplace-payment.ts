@@ -7,6 +7,12 @@ export type SquarePaymentEvidence = {
   createdAt?: string | null;
 };
 
+export type SquareRefundEvidence = {
+  id?: string | null;
+  status?: string | null;
+  amountMoney?: { amount?: bigint | number | null; currency?: string | null } | null;
+};
+
 /**
  * Accept only evidence returned by Square for this exact order amount/currency.
  * A client token, local order flag, or fulfillment state is never evidence.
@@ -39,6 +45,30 @@ export function requireCompletedSquarePayment(
     paymentProvider: "square" as const,
     providerPaymentStatus: payment.status,
     paymentCapturedAt: capturedAt,
+  };
+}
+
+export function requireSquareRefundEvidence(
+  refund: SquareRefundEvidence | undefined,
+  expectedAmount: bigint,
+  expectedCurrency = "USD",
+) {
+  const amount = refund?.amountMoney?.amount;
+  if (
+    !refund?.id ||
+    !["PENDING", "COMPLETED"].includes(refund.status ?? "") ||
+    amount === undefined ||
+    amount === null ||
+    BigInt(amount) !== expectedAmount ||
+    refund.amountMoney?.currency !== expectedCurrency
+  ) {
+    const error = new Error("Square did not return verifiable refund evidence");
+    (error as Error & { code: string }).code = "REFUND_UNVERIFIED";
+    throw error;
+  }
+  return {
+    squareRefundId: refund.id,
+    providerRefundStatus: refund.status as "PENDING" | "COMPLETED",
   };
 }
 

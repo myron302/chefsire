@@ -1,12 +1,14 @@
 // server/routes/payments.ts
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "../db";
 import { orders, users, commissions } from "../../shared/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { requireCompletedSquarePayment } from "../lib/marketplace-payment";
+import { requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 // Square is a CommonJS module - import it properly
 import square from "square";
 const { Client, Environment } = square;
@@ -50,50 +52,23 @@ const getSquareClient = () => {
 router.post("/create-payment", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
-      orderId: z.string(), // Order created earlier via /api/orders/checkout
-      sourceId: z.string(), // Square payment token from frontend
-      verificationToken: z.string().optional(), // 3D Secure verification
+      orderId: z.string(),
+      sourceId: z.string(),
+      verificationToken: z.string().optional(),
     }).strict();
-
     const { orderId, sourceId, verificationToken } = schema.parse(req.body);
     const buyerId = req.user!.id;
 
-    // Get the order
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, orderId))
-      .limit(1);
-
-    if (!order) {
-      return res.status(404).json({ ok: false, error: "Order not found" });
+    let [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+    if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
+    if (order.buyerId !== buyerId) return res.status(403).json({ ok: false, error: "Not authorized" });
+    if (["cancelled", "refunded"].includes(order.status ?? "")) {
+      return res.status(409).json({ ok: false, code: "ORDER_NOT_PAYABLE", error: "A cancelled order cannot be charged" });
     }
-
-    // Verify buyer owns this order
-    if (order.buyerId !== buyerId) {
-      return res.status(403).json({ ok: false, error: "Not authorized" });
-    }
-
-    // Payment state is independent of fulfillment state.
-    if (order.paymentStatus !== "unverified") {
+    if (!["unverified", "capture_pending", "capture_reconciliation"].includes(order.paymentStatus)) {
       return res.status(400).json({ ok: false, error: "Order already processed" });
     }
-
-    // Calculate total amount in cents
-    const amountInCents = Math.round(parseFloat(order.totalAmount) * 100);
-
-    // Get seller info for commission calculation
-    const [seller] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, order.sellerId))
-      .limit(1);
-
-    if (!seller) {
-      return res.status(404).json({ ok: false, error: "Seller not found" });
-    }
-
-    if (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID) {
+    if (order.paymentStatus !== "capture_reconciliation" && (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID)) {
       return res.status(503).json({
         ok: false,
         code: "PAYMENT_PROVIDER_UNAVAILABLE",
@@ -101,47 +76,88 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       });
     }
 
-    const squareClient = getSquareClient();
-    const { result } = await squareClient.paymentsApi.createPayment({
+    // Persist an explicit recoverable state and stable provider key before the
+    // external call. If Square succeeds and local accounting later rolls back,
+    // retrying this order recovers the same charge instead of creating another.
+    if (order.paymentStatus === "unverified") {
+      const captureIdempotencyKey = randomUUID();
+      const [prepared] = await db.update(orders).set({
+        paymentStatus: "capture_pending",
+        paymentProvider: "square",
+        captureIdempotencyKey,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(orders.id, orderId),
+        eq(orders.paymentStatus, "unverified"),
+        notInArray(orders.status, ["cancelled", "refunded"]),
+      )).returning();
+      if (!prepared) {
+        return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Order state changed; reload and retry" });
+      }
+      order = prepared;
+    }
+    if (!order.captureIdempotencyKey) {
+      return res.status(409).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Capture is pending without a recoverable provider key" });
+    }
+
+    const [seller] = await db.select().from(users).where(eq(users.id, order.sellerId)).limit(1);
+    if (!seller) return res.status(404).json({ ok: false, error: "Seller not found" });
+    const amountInCents = Math.round(parseFloat(order.totalAmount) * 100);
+    const tier = seller.subscriptionTier || "free";
+    const tierInfo = SUBSCRIPTION_TIERS[tier];
+    const commissionRate = tierInfo ? tierInfo.commissionRate : 10;
+    const squareClient = order.paymentStatus === "capture_reconciliation" ? null : getSquareClient();
+
+    const updatedOrder = await executeRecoverableProviderOperation({
+      operation: "capture",
+      idempotencyKey: order.captureIdempotencyKey,
+      invokeProvider: async (idempotencyKey) => {
+        if (order.paymentStatus === "capture_reconciliation") {
+          return requireCompletedSquarePayment({
+            id: order.squarePaymentId,
+            status: order.providerPaymentStatus,
+            totalMoney: { amount: BigInt(amountInCents), currency: "USD" },
+            createdAt: order.paymentCapturedAt?.toISOString(),
+          }, BigInt(amountInCents), "USD");
+        }
+        const { result } = await squareClient!.paymentsApi.createPayment({
           sourceId,
-          idempotencyKey: orderId, // Use orderId as idempotency key
-          amountMoney: {
-            amount: BigInt(amountInCents),
-            currency: 'USD'
-          },
-          autocomplete: true, // ChefSire receives money immediately
+          idempotencyKey,
+          amountMoney: { amount: BigInt(amountInCents), currency: "USD" },
+          autocomplete: true,
           locationId: process.env.SQUARE_LOCATION_ID!,
           note: `ChefSire Order ${orderId}`,
           buyerEmailAddress: req.user!.email,
-          ...(verificationToken && { verificationToken })
-    });
-    const paymentEvidence = requireCompletedSquarePayment(
-      result.payment,
-      BigInt(amountInCents),
-      "USD",
-    );
+          ...(verificationToken && { verificationToken }),
+        });
+        return requireCompletedSquarePayment(result.payment, BigInt(amountInCents), "USD");
+      },
+      persistProviderEvidence: async (paymentEvidence) => {
+        if (order.paymentStatus === "capture_reconciliation") return paymentEvidence;
+        const [evidenceOrder] = await db.update(orders).set({
+          ...paymentEvidence,
+          paymentStatus: "capture_reconciliation",
+          updatedAt: new Date(),
+        }).where(and(
+          eq(orders.id, orderId),
+          eq(orders.paymentStatus, "capture_pending"),
+          eq(orders.captureIdempotencyKey, order.captureIdempotencyKey!),
+        )).returning();
+        if (!evidenceOrder) throw new Error("capture evidence could not be recorded for reconciliation");
+        return paymentEvidence;
+      },
+      applyLocally: async (paymentEvidence) => db.transaction(async (tx: any) => {
+        const [capturedOrder] = await tx.update(orders).set({
+          ...paymentEvidence,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(orders.id, orderId),
+          eq(orders.paymentStatus, "capture_reconciliation"),
+          eq(orders.captureIdempotencyKey, order.captureIdempotencyKey!),
+        )).returning();
+        if (!capturedOrder) throw new Error("capture state changed before reconciliation");
 
-    // Create commission record for audit trail
-    const tier = seller.subscriptionTier || 'free';
-    const tierInfo = SUBSCRIPTION_TIERS[tier];
-    const commissionRate = tierInfo ? tierInfo.commissionRate : 10;
-
-    const updatedOrder = await db.transaction(async (tx: any) => {
-      const [capturedOrder] = await tx
-        .update(orders)
-        .set({ ...paymentEvidence, updatedAt: new Date() })
-        .where(and(eq(orders.id, orderId), eq(orders.paymentStatus, "unverified")))
-        .returning();
-      if (!capturedOrder) {
-        const conflict = new Error("Payment was already recorded");
-        (conflict as Error & { code: string }).code = "PAYMENT_STATE_CONFLICT";
-        throw conflict;
-      }
-
-      // A commission is created only after exact provider capture verification.
-      // The same transaction makes the conditional payment transition the
-      // idempotency gate for commission/revenue side effects.
-      await tx.insert(commissions).values({
+        await tx.insert(commissions).values({
           orderId: order.id,
           sellerId: order.sellerId,
           subscriptionTier: tier,
@@ -150,19 +166,20 @@ router.post("/create-payment", requireAuth, async (req, res) => {
           commissionAmount: order.platformFee,
           sellerAmount: order.sellerAmount,
           status: "pending",
-      });
-      await tx.update(users).set({
-        monthlyRevenue: sql`coalesce(${users.monthlyRevenue}, 0) + ${order.sellerAmount}`,
-      }).where(eq(users.id, order.sellerId));
-      return capturedOrder;
+        });
+        await tx.update(users).set({
+          monthlyRevenue: sql`coalesce(${users.monthlyRevenue}, 0) + ${order.sellerAmount}`,
+        }).where(eq(users.id, order.sellerId));
+        return capturedOrder;
+      }),
     });
 
     res.json({
       ok: true,
       message: "Payment processed successfully",
       payment: {
-        id: paymentEvidence.squarePaymentId,
-        status: paymentEvidence.providerPaymentStatus,
+        id: updatedOrder.squarePaymentId,
+        status: updatedOrder.providerPaymentStatus,
         amount: order.totalAmount,
         platformFee: order.platformFee,
         sellerReceives: order.sellerAmount,
@@ -172,22 +189,19 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     });
   } catch (error: any) {
     console.error("Payment processing error:", error);
-
+    if (error instanceof ProviderReconciliationRequiredError) {
+      return res.status(503).json({
+        ok: false,
+        code: error.code,
+        error: "Square returned provider evidence; local reconciliation is still required. Retry this order safely.",
+      });
+    }
     if (error?.code === "PAYMENT_CAPTURE_UNVERIFIED") {
       return res.status(502).json({ ok: false, code: error.code, error: error.message });
     }
-    if (error?.code === "PAYMENT_STATE_CONFLICT") {
-      return res.status(409).json({ ok: false, code: error.code, error: error.message });
-    }
-    // Handle Square-specific errors
     if (error?.errors) {
-      return res.status(400).json({
-        ok: false,
-        error: "Payment failed",
-        details: error.errors,
-      });
+      return res.status(400).json({ ok: false, error: "Payment failed", details: error.errors });
     }
-
     res.status(500).json({ ok: false, error: "Failed to process payment" });
   }
 });
@@ -200,93 +214,146 @@ router.post("/refund", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       orderId: z.string(),
-      amount: z.number().optional(), // Partial refund amount
+      amount: z.number().optional(),
       reason: z.string().optional(),
-    });
-
+    }).strict();
     const { orderId, amount, reason } = schema.parse(req.body);
     const userId = req.user!.id;
 
-    // Get order
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, orderId))
-      .limit(1);
+    let [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+    if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
+    if (order.sellerId !== userId) return res.status(403).json({ ok: false, error: "Not authorized" });
 
-    if (!order) {
-      return res.status(404).json({ ok: false, error: "Order not found" });
-    }
-
-    // Only seller or admin can refund
-    if (order.sellerId !== userId) {
-      return res.status(403).json({ ok: false, error: "Not authorized" });
-    }
-
-    // Calculate refund amount
     const refundAmount = amount || parseFloat(order.totalAmount);
     const refundAmountCents = Math.round(refundAmount * 100);
     if (refundAmountCents !== Math.round(parseFloat(order.totalAmount) * 100)) {
       return res.status(400).json({ ok: false, code: "PARTIAL_REFUND_UNSUPPORTED", error: "Marketplace partial refunds are not safely supported" });
     }
-
-    if (order.paymentStatus !== "captured" || !order.squarePaymentId) {
+    if (!["captured", "refund_pending", "refund_reconciliation"].includes(order.paymentStatus) || !order.squarePaymentId) {
       return res.status(409).json({ ok: false, code: "PAYMENT_CAPTURE_UNVERIFIED", error: "Order has no verified captured payment" });
     }
-    if (!process.env.SQUARE_ACCESS_TOKEN) {
+    if (order.paymentStatus !== "refund_reconciliation" && !process.env.SQUARE_ACCESS_TOKEN) {
       return res.status(503).json({ ok: false, code: "PAYMENT_PROVIDER_UNAVAILABLE", error: "Refund provider unavailable" });
     }
 
-    const squareClient = getSquareClient();
-    const { result } = await squareClient.refundsApi.refundPayment({
-          idempotencyKey: `refund_${orderId}_${Date.now()}`,
-          amountMoney: {
-            amount: BigInt(refundAmountCents),
-            currency: 'USD',
-          },
-          paymentId: order.squarePaymentId!,
-          reason: reason || 'Customer requested refund',
-    });
-    const providerRefund = result.refund;
-    if (
-      !providerRefund?.id || providerRefund.status !== "COMPLETED" ||
-      providerRefund.amountMoney?.amount === undefined ||
-      BigInt(providerRefund.amountMoney.amount) !== BigInt(refundAmountCents) ||
-      providerRefund.amountMoney.currency !== "USD"
-    ) {
-      return res.status(502).json({ ok: false, code: "REFUND_UNVERIFIED", error: "Square did not return verifiable completed refund evidence" });
+    // Enter a conservative non-earning state and persist one stable logical
+    // refund identity before asking Square to refund the customer.
+    if (order.paymentStatus === "captured") {
+      const refundIdempotencyKey = randomUUID();
+      const [prepared] = await db.update(orders).set({
+        paymentStatus: "refund_pending",
+        refundIdempotencyKey,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(orders.id, orderId),
+        eq(orders.paymentStatus, "captured"),
+      )).returning();
+      if (!prepared) {
+        return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Payment state changed; reload and retry" });
+      }
+      order = prepared;
+    }
+    if (!order.refundIdempotencyKey) {
+      return res.status(409).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Refund is pending without a recoverable provider key" });
     }
 
-    const updatedOrder = await db.transaction(async (tx: any) => {
-      const [refundedOrder] = await tx.update(orders).set({
-        paymentStatus: "refunded",
-        providerPaymentStatus: "REFUNDED",
-        squareRefundId: providerRefund.id,
+    const squareClient = order.paymentStatus === "refund_reconciliation" ? null : getSquareClient();
+    const refundEvidence = order.paymentStatus === "refund_reconciliation"
+      ? requireSquareRefundEvidence({
+          id: order.squareRefundId,
+          status: "COMPLETED",
+          amountMoney: { amount: BigInt(refundAmountCents), currency: "USD" },
+        }, BigInt(refundAmountCents), "USD")
+      : requireSquareRefundEvidence(
+          order.squareRefundId
+            ? (await squareClient!.refundsApi.getPaymentRefund(order.squareRefundId)).result.refund
+            : (await squareClient!.refundsApi.refundPayment({
+                idempotencyKey: order.refundIdempotencyKey,
+                amountMoney: { amount: BigInt(refundAmountCents), currency: "USD" },
+                paymentId: order.squarePaymentId,
+                reason: reason || "Customer requested refund",
+              })).result.refund,
+          BigInt(refundAmountCents),
+          "USD",
+        );
+
+    if (refundEvidence.providerRefundStatus === "PENDING") {
+      await db.update(orders).set({
+        squareRefundId: refundEvidence.squareRefundId,
+        providerPaymentStatus: "REFUND_PENDING",
         updatedAt: new Date(),
-      }).where(and(eq(orders.id, orderId), eq(orders.paymentStatus, "captured"))).returning();
-      if (!refundedOrder) return undefined;
-      await tx.update(commissions).set({ status: "refunded" }).where(eq(commissions.orderId, orderId));
-      await tx.update(users).set({
-        monthlyRevenue: sql`greatest(coalesce(${users.monthlyRevenue}, 0) - ${order.sellerAmount}, 0)`,
-      }).where(eq(users.id, order.sellerId));
-      return refundedOrder;
-    });
-    if (!updatedOrder) {
-      return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Payment state changed; reload and retry" });
+      }).where(and(
+        eq(orders.id, orderId),
+        eq(orders.paymentStatus, "refund_pending"),
+        eq(orders.refundIdempotencyKey, order.refundIdempotencyKey),
+      ));
+      return res.status(202).json({
+        ok: false,
+        code: "REFUND_PENDING",
+        error: "Square accepted the refund; provider completion is pending",
+        refund: { id: refundEvidence.squareRefundId, status: "pending" },
+      });
     }
+
+    const updatedOrder = await executeRecoverableProviderOperation({
+      operation: "refund",
+      idempotencyKey: order.refundIdempotencyKey,
+      // Square was already called/retrieved above; this wrapper makes local
+      // failure explicit while retaining the durable pending state and key.
+      invokeProvider: async () => refundEvidence,
+      persistProviderEvidence: async (evidence) => {
+        if (order.paymentStatus === "refund_reconciliation") return evidence;
+        const [evidenceOrder] = await db.update(orders).set({
+          paymentStatus: "refund_reconciliation",
+          providerPaymentStatus: "REFUND_COMPLETED",
+          squareRefundId: evidence.squareRefundId,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(orders.id, orderId),
+          eq(orders.paymentStatus, "refund_pending"),
+          eq(orders.refundIdempotencyKey, order.refundIdempotencyKey!),
+        )).returning();
+        if (!evidenceOrder) throw new Error("refund evidence could not be recorded for reconciliation");
+        return evidence;
+      },
+      applyLocally: async (evidence) => db.transaction(async (tx: any) => {
+        const [refundedOrder] = await tx.update(orders).set({
+          paymentStatus: "refunded",
+          providerPaymentStatus: "REFUNDED",
+          squareRefundId: evidence.squareRefundId,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(orders.id, orderId),
+          eq(orders.paymentStatus, "refund_reconciliation"),
+          eq(orders.refundIdempotencyKey, order.refundIdempotencyKey!),
+        )).returning();
+        if (!refundedOrder) throw new Error("refund state changed before reconciliation");
+        await tx.update(commissions).set({ status: "refunded" }).where(eq(commissions.orderId, orderId));
+        await tx.update(users).set({
+          monthlyRevenue: sql`greatest(coalesce(${users.monthlyRevenue}, 0) - ${order.sellerAmount}, 0)`,
+        }).where(eq(users.id, order.sellerId));
+        return refundedOrder;
+      }),
+    });
 
     res.json({
       ok: true,
       message: "Refund processed successfully",
-      refund: {
-        amount: refundAmount,
-        id: providerRefund.id,
-        status: "completed",
-      },
+      refund: { amount: refundAmount, id: refundEvidence.squareRefundId, status: "completed" },
       order: updatedOrder,
     });
   } catch (error: any) {
     console.error("Refund error:", error);
+    if (error instanceof ProviderReconciliationRequiredError) {
+      return res.status(503).json({
+        ok: false,
+        code: error.code,
+        error: "Square returned refund evidence; local reconciliation is still required. Retry this refund safely.",
+      });
+    }
+    if (error?.code === "REFUND_UNVERIFIED") {
+      return res.status(502).json({ ok: false, code: error.code, error: error.message });
+    }
     res.status(500).json({ ok: false, error: "Failed to process refund" });
   }
 });

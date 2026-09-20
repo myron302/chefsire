@@ -49,7 +49,8 @@ postgresTest("legacy orders stay unverified and captured state requires provider
       /orders_captured_payment_evidence_check/,
     );
     await client.query(`UPDATE orders SET payment_status = 'captured', payment_provider = 'square',
-      square_payment_id = 'provider-payment', provider_payment_status = 'COMPLETED', payment_captured_at = now()
+      square_payment_id = 'provider-payment', capture_idempotency_key = 'stable-capture',
+      provider_payment_status = 'COMPLETED', payment_captured_at = now()
       WHERE id = 'legacy-delivered'`);
   } finally {
     await client.query("RESET search_path").catch(() => undefined);

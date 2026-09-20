@@ -3,6 +3,8 @@
 ALTER TABLE orders
   ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'unverified',
   ADD COLUMN IF NOT EXISTS square_refund_id text,
+  ADD COLUMN IF NOT EXISTS capture_idempotency_key text,
+  ADD COLUMN IF NOT EXISTS refund_idempotency_key text,
   ADD COLUMN IF NOT EXISTS payment_provider text,
   ADD COLUMN IF NOT EXISTS provider_payment_status text,
   ADD COLUMN IF NOT EXISTS payment_captured_at timestamp,
@@ -22,6 +24,8 @@ BEGIN
         payment_provider = 'square'
         AND square_payment_id IS NOT NULL
         AND square_payment_id !~ '^[[:space:]]*$'
+        AND capture_idempotency_key IS NOT NULL
+        AND capture_idempotency_key !~ '^[[:space:]]*$'
         AND provider_payment_status = 'COMPLETED'
         AND payment_captured_at IS NOT NULL
       )
