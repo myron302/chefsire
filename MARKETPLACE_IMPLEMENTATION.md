@@ -22,6 +22,9 @@
 > An `unverified` legacy order with old `paid` status or a stored Square payment
 > ID is neither verified nor safely unpaid: the shared legacy predicate blocks
 > both a new charge and unpaid-style fulfillment cancellation.
+> Refund retries are likewise reconstructed only from a persisted immutable
+> request snapshot (key, payment ID, cents, currency, and canonical reason),
+> never from replacement HTTP input.
 
 ## Overview
 This document outlines the complete marketplace monetization system implemented for ChefSire. The system enables vendors (chefs, butchers, spice sellers, etc.) to sell physical products through the platform, with automatic commission deduction and seller payouts.

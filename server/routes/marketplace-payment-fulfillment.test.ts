@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -193,6 +193,39 @@ test("refund provider success survives local failure and retries one logical ref
   assert.match(paymentsRoute, /paymentStatus: "refund_reconciliation"/);
   assert.match(paymentsRoute, /refundIdempotencyKey/);
   assert.doesNotMatch(paymentsRoute, /refund[^\n]*Date\.now|Date\.now[^\n]*refund/);
+});
+
+test("refund retries reconstruct one immutable provider request from durable state", () => {
+  assert.equal(canonicalizeMarketplaceRefundReason("  Item unavailable  "), "Item unavailable");
+  assert.equal(canonicalizeMarketplaceRefundReason(undefined), "Customer requested refund");
+  assert.throws(() => canonicalizeMarketplaceRefundReason("x".repeat(193)), /at most 192/);
+
+  const durableAttempt = {
+    refundIdempotencyKey: "refund-key-1",
+    refundAttemptPaymentId: "payment-1",
+    refundAttemptAmountCents: 1234,
+    refundAttemptCurrency: "USD",
+    refundAttemptReason: "Customer requested refund",
+  };
+  const first = buildSquareRefundRequest(durableAttempt);
+  // Retry HTTP bodies are deliberately not inputs to the request builder.
+  assert.deepEqual(buildSquareRefundRequest(durableAttempt), first);
+  assert.deepEqual(buildSquareRefundRequest(durableAttempt), first);
+  assert.deepEqual(first, {
+    idempotencyKey: "refund-key-1",
+    paymentId: "payment-1",
+    amountMoney: { amount: 1234n, currency: "USD" },
+    reason: "Customer requested refund",
+  });
+  assert.throws(() => buildSquareRefundRequest({ ...durableAttempt, refundAttemptReason: null }), /immutable provider request/);
+
+  assert.match(paymentsRoute, /refundIdempotencyKey,[\s\S]*refundAttemptPaymentId: order\.squarePaymentId,[\s\S]*refundAttemptAmountCents: fullRefundAmountCents,[\s\S]*refundAttemptCurrency: "USD",[\s\S]*refundAttemptReason/);
+  assert.match(paymentsRoute, /refundPayment\(refundRequest\)/);
+  assert.doesNotMatch(paymentsRoute, /refundPayment\([\s\S]{0,300}reason\s*:\s*reason/);
+  assert.match(paymentsRoute, /refundAttemptReason: null/);
+  for (const field of ["refund_attempt_payment_id", "refund_attempt_amount_cents", "refund_attempt_currency", "refund_attempt_reason"]) {
+    assert.match(migration, new RegExp(field));
+  }
 });
 
 test("pending Square refunds retain provider evidence and remain non-earning", () => {

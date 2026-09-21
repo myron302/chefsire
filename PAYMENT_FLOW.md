@@ -166,6 +166,12 @@ pending. After a provider-confirmed completed refund, the seller may separately
 move pending/processing/shipped fulfillment to `cancelled` without changing any
 payment evidence.
 
+The pending record snapshots the immutable Square request: idempotency key,
+payment ID, amount in cents, USD currency, and a trimmed canonical reason.
+Retries rebuild the request only from that snapshot, so changed or omitted
+HTTP input cannot alter an operation already in flight. A definitive provider
+failure retires the snapshot before a new logical attempt receives a new key.
+
 #### 4. Payout execution (currently unavailable)
 ```javascript
 POST /api/payouts/process-seller-payout

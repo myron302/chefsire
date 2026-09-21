@@ -79,6 +79,12 @@ export const orders = pgTable(
     captureIdempotencyKey: text("capture_idempotency_key"),
     captureAttemptedAt: timestamp("capture_attempted_at"),
     refundIdempotencyKey: text("refund_idempotency_key"),
+    // Immutable snapshot of the Square RefundPayment request associated with
+    // refundIdempotencyKey. Retries never rebuild these fields from HTTP input.
+    refundAttemptPaymentId: text("refund_attempt_payment_id"),
+    refundAttemptAmountCents: integer("refund_attempt_amount_cents"),
+    refundAttemptCurrency: text("refund_attempt_currency"),
+    refundAttemptReason: text("refund_attempt_reason"),
     lastPaymentFailureCode: text("last_payment_failure_code"),
     lastFailedRefundId: text("last_failed_refund_id"),
     lastRefundFailureStatus: text("last_refund_failure_status"),

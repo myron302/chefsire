@@ -7,7 +7,7 @@ import { orders, users, commissions } from "../../shared/schema";
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 // Square is a CommonJS module - import it properly
 import square from "square";
@@ -295,7 +295,7 @@ router.post("/refund", requireAuth, async (req, res) => {
     const schema = z.object({
       orderId: z.string(),
       amount: z.number().optional(),
-      reason: z.string().optional(),
+      reason: z.string().max(192).optional(),
     }).strict();
     const { orderId, amount, reason } = schema.parse(req.body);
     const userId = req.user!.id;
@@ -304,11 +304,7 @@ router.post("/refund", requireAuth, async (req, res) => {
     if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
     if (order.sellerId !== userId) return res.status(403).json({ ok: false, error: "Not authorized" });
 
-    const refundAmount = amount || parseFloat(order.totalAmount);
-    const refundAmountCents = Math.round(refundAmount * 100);
-    if (refundAmountCents !== Math.round(parseFloat(order.totalAmount) * 100)) {
-      return res.status(400).json({ ok: false, code: "PARTIAL_REFUND_UNSUPPORTED", error: "Marketplace partial refunds are not safely supported" });
-    }
+    const fullRefundAmountCents = Math.round(parseFloat(order.totalAmount) * 100);
     if (!["captured", "refund_pending", "refund_reconciliation"].includes(order.paymentStatus) || !order.squarePaymentId) {
       return res.status(409).json({ ok: false, code: "PAYMENT_CAPTURE_UNVERIFIED", error: "Order has no verified captured payment" });
     }
@@ -319,10 +315,19 @@ router.post("/refund", requireAuth, async (req, res) => {
     // Enter a conservative non-earning state and persist one stable logical
     // refund identity before asking Square to refund the customer.
     if (order.paymentStatus === "captured") {
+      const requestedRefundAmountCents = Math.round((amount ?? parseFloat(order.totalAmount)) * 100);
+      if (requestedRefundAmountCents !== fullRefundAmountCents) {
+        return res.status(400).json({ ok: false, code: "PARTIAL_REFUND_UNSUPPORTED", error: "Marketplace partial refunds are not safely supported" });
+      }
       const refundIdempotencyKey = randomUUID();
+      const refundAttemptReason = canonicalizeMarketplaceRefundReason(reason);
       const [prepared] = await db.update(orders).set({
         paymentStatus: "refund_pending",
         refundIdempotencyKey,
+        refundAttemptPaymentId: order.squarePaymentId,
+        refundAttemptAmountCents: fullRefundAmountCents,
+        refundAttemptCurrency: "USD",
+        refundAttemptReason,
         updatedAt: new Date(),
       }).where(and(
         eq(orders.id, orderId),
@@ -333,30 +338,23 @@ router.post("/refund", requireAuth, async (req, res) => {
       }
       order = prepared;
     }
-    if (!order.refundIdempotencyKey) {
-      return res.status(409).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Refund is pending without a recoverable provider key" });
-    }
+    const refundRequest = buildSquareRefundRequest(order);
     refundInProgress = true;
-    refundContext = { orderId, idempotencyKey: order.refundIdempotencyKey };
+    refundContext = { orderId, idempotencyKey: refundRequest.idempotencyKey };
 
     const squareClient = order.paymentStatus === "refund_reconciliation" ? null : getSquareClient();
     const refundEvidence = order.paymentStatus === "refund_reconciliation"
       ? requireSquareRefundEvidence({
           id: order.squareRefundId,
           status: "COMPLETED",
-          amountMoney: { amount: BigInt(refundAmountCents), currency: "USD" },
-        }, BigInt(refundAmountCents), "USD")
+          amountMoney: refundRequest.amountMoney,
+        }, refundRequest.amountMoney.amount, refundRequest.amountMoney.currency)
       : requireSquareRefundEvidence(
           order.squareRefundId
             ? (await squareClient!.refundsApi.getPaymentRefund(order.squareRefundId)).result.refund
-            : (await squareClient!.refundsApi.refundPayment({
-                idempotencyKey: order.refundIdempotencyKey,
-                amountMoney: { amount: BigInt(refundAmountCents), currency: "USD" },
-                paymentId: order.squarePaymentId,
-                reason: reason || "Customer requested refund",
-              })).result.refund,
-          BigInt(refundAmountCents),
-          "USD",
+            : (await squareClient!.refundsApi.refundPayment(refundRequest)).result.refund,
+          refundRequest.amountMoney.amount,
+          refundRequest.amountMoney.currency,
         );
 
     if (refundEvidence.providerRefundStatus === "PENDING") {
@@ -386,6 +384,10 @@ router.post("/refund", requireAuth, async (req, res) => {
         providerPaymentStatus: "COMPLETED",
         squareRefundId: null,
         refundIdempotencyKey: null,
+        refundAttemptPaymentId: null,
+        refundAttemptAmountCents: null,
+        refundAttemptCurrency: null,
+        refundAttemptReason: null,
         lastFailedRefundId: refundEvidence.squareRefundId,
         lastRefundFailureStatus: refundEvidence.providerRefundStatus,
         updatedAt: new Date(),
@@ -449,7 +451,7 @@ router.post("/refund", requireAuth, async (req, res) => {
     res.json({
       ok: true,
       message: "Refund processed successfully",
-      refund: { amount: refundAmount, id: refundEvidence.squareRefundId, status: "completed" },
+      refund: { amount: Number(refundRequest.amountMoney.amount) / 100, id: refundEvidence.squareRefundId, status: "completed" },
       order: updatedOrder,
     });
   } catch (error: any) {
@@ -461,6 +463,10 @@ router.post("/refund", requireAuth, async (req, res) => {
         providerPaymentStatus: "COMPLETED",
         squareRefundId: null,
         refundIdempotencyKey: null,
+        refundAttemptPaymentId: null,
+        refundAttemptAmountCents: null,
+        refundAttemptCurrency: null,
+        refundAttemptReason: null,
         lastFailedRefundId: null,
         lastRefundFailureStatus: definitiveFailure,
         updatedAt: new Date(),

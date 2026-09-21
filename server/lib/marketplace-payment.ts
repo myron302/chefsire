@@ -16,6 +16,45 @@ export type SquareRefundEvidence = {
 
 type SquareApiError = { category?: string; code?: string };
 
+export const DEFAULT_MARKETPLACE_REFUND_REASON = "Customer requested refund";
+export const MAX_MARKETPLACE_REFUND_REASON_LENGTH = 192;
+
+export function canonicalizeMarketplaceRefundReason(reason?: string | null) {
+  const canonical = reason?.trim() || DEFAULT_MARKETPLACE_REFUND_REASON;
+  if (canonical.length > MAX_MARKETPLACE_REFUND_REASON_LENGTH) {
+    throw new Error(`Refund reason must be at most ${MAX_MARKETPLACE_REFUND_REASON_LENGTH} characters`);
+  }
+  return canonical;
+}
+
+/** Rebuild a retry exclusively from the durable, immutable attempt snapshot. */
+export function buildSquareRefundRequest(attempt: {
+  refundIdempotencyKey?: string | null;
+  refundAttemptPaymentId?: string | null;
+  refundAttemptAmountCents?: number | null;
+  refundAttemptCurrency?: string | null;
+  refundAttemptReason?: string | null;
+}) {
+  if (
+    !attempt.refundIdempotencyKey ||
+    !attempt.refundAttemptPaymentId ||
+    !Number.isSafeInteger(attempt.refundAttemptAmountCents) ||
+    attempt.refundAttemptAmountCents! <= 0 ||
+    attempt.refundAttemptCurrency !== "USD" ||
+    !attempt.refundAttemptReason
+  ) {
+    const error = new Error("Refund attempt lacks an immutable provider request snapshot");
+    (error as Error & { code: string }).code = "PAYMENT_RECONCILIATION_REQUIRED";
+    throw error;
+  }
+  return {
+    idempotencyKey: attempt.refundIdempotencyKey,
+    paymentId: attempt.refundAttemptPaymentId,
+    amountMoney: { amount: BigInt(attempt.refundAttemptAmountCents!), currency: "USD" as const },
+    reason: attempt.refundAttemptReason,
+  };
+}
+
 /**
  * Historical `paid` fulfillment or a pre-P1-03 Square ID signals possible
  * payment activity, but is not modern provider verification. Callers must
