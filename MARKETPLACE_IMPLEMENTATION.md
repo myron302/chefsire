@@ -15,6 +15,10 @@
 > replaying a new card token under an old key. Historical possibly-paid orders
 > fail closed, and only provider-confirmed terminal refund failure releases a
 > failed refund attempt for a new idempotency identity.
+> Capture reconciliation follows Square pagination and accepts only the unique
+> stored reference, never an amount-only match. Provider-confirmed refunded
+> orders may subsequently be cancelled in the independent fulfillment state;
+> captured and refund-pending orders may not.
 
 ## Overview
 This document outlines the complete marketplace monetization system implemented for ChefSire. The system enables vendors (chefs, butchers, spice sellers, etc.) to sell physical products through the platform, with automatic commission deduction and seller payouts.

@@ -2,6 +2,7 @@ export const VERIFIED_MARKETPLACE_PAYMENT_STATUS = "captured" as const;
 
 export type SquarePaymentEvidence = {
   id?: string | null;
+  referenceId?: string | null;
   status?: string | null;
   totalMoney?: { amount?: bigint | number | null; currency?: string | null } | null;
   createdAt?: string | null;
@@ -15,25 +16,57 @@ export type SquareRefundEvidence = {
 
 type SquareApiError = { category?: string; code?: string };
 
-const DEFINITIVE_PAYMENT_FAILURE_CODES = new Set([
-  "ADDRESS_VERIFICATION_FAILURE", "BAD_EXPIRATION", "BUYER_REFUSED_PAYMENT",
-  "CARD_DECLINED", "CARD_DECLINED_CALL_ISSUER", "CARD_EXPIRED",
-  "CARD_TOKEN_EXPIRED", "CARD_TOKEN_USED", "CVV_FAILURE", "GENERIC_DECLINE",
-  "INSUFFICIENT_FUNDS", "INVALID_ACCOUNT", "INVALID_CARD",
-  "INVALID_EXPIRATION", "INVALID_EXPIRATION_DATE", "INVALID_EXPIRATION_YEAR",
-  "INVALID_PIN", "INVALID_POSTAL_CODE", "SOURCE_EXPIRED", "SOURCE_USED",
-  "VERIFY_AVS_FAILURE", "VERIFY_CVV_FAILURE",
+const DEFINITIVE_REFUND_FAILURE_CODES = new Set([
+  "INSUFFICIENT_PERMISSIONS_FOR_REFUND",
+  "PAYMENT_NOT_REFUNDABLE",
+  "PAYMENT_NOT_REFUNDABLE_DUE_TO_DISPUTE",
+  "REFUND_AMOUNT_INVALID",
+  "REFUND_DECLINED",
+  "REFUND_ERROR_PAYMENT_NEEDS_COMPLETION",
 ]);
 
 export function getDefinitiveSquarePaymentFailure(error: unknown) {
   const errors = (error as { errors?: SquareApiError[] } | undefined)?.errors;
   if (!Array.isArray(errors) || errors.length === 0) return null;
-  const definitive = errors.every((item) =>
-    item.category === "PAYMENT_METHOD_ERROR"
-    && Boolean(item.code)
-    && DEFINITIVE_PAYMENT_FAILURE_CODES.has(item.code!),
-  );
+  // Square's PAYMENT_METHOD_ERROR category is the provider-supported signal
+  // that the submitted instrument/verification was rejected. Requiring every
+  // returned error to have this category keeps mixed/unknown responses
+  // ambiguous while avoiding a permanently incomplete hand-maintained list.
+  const definitive = errors.every((item) => item.category === "PAYMENT_METHOD_ERROR" && Boolean(item.code));
   return definitive ? errors[0]?.code ?? "PAYMENT_METHOD_ERROR" : null;
+}
+
+export function getDefinitiveSquareRefundFailure(error: unknown) {
+  const errors = (error as { errors?: SquareApiError[] } | undefined)?.errors;
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  const definitive = errors.every((item) =>
+    Boolean(item.code) && DEFINITIVE_REFUND_FAILURE_CODES.has(item.code!),
+  );
+  return definitive ? errors[0]?.code ?? "REFUND_REJECTED" : null;
+}
+
+export type SquarePaymentPage = {
+  payments?: SquarePaymentEvidence[] | null;
+  cursor?: string | null;
+};
+
+export async function findSquarePaymentByReference(options: {
+  referenceId: string;
+  listPage: (cursor?: string) => Promise<SquarePaymentPage>;
+}) {
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  do {
+    const page = await options.listPage(cursor);
+    const matches = (page.payments ?? []).filter((payment) => payment.referenceId === options.referenceId);
+    if (matches.length > 1) throw new Error("Square returned duplicate payment references");
+    if (matches.length === 1) return matches[0];
+    const nextCursor = page.cursor || undefined;
+    if (nextCursor && seenCursors.has(nextCursor)) throw new Error("Square payment pagination repeated a cursor");
+    if (nextCursor) seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  } while (cursor);
+  return null;
 }
 
 /**

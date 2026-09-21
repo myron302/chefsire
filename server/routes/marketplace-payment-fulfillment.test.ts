@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getDefinitiveSquarePaymentFailure, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -40,7 +40,8 @@ test("only the owning seller can update fulfillment and concurrent changes fail"
   assert.match(ordersRoute, /order\.sellerId !== userId/);
   assert.match(ordersRoute, /eq\(orders\.status, order\.status!\)/);
   assert.match(ordersRoute, /FULFILLMENT_STATE_CONFLICT/);
-  assert.match(ordersRoute, /status === "cancelled"[\s\S]*paymentStatus, "unverified"/);
+  assert.match(ordersRoute, /cancellablePaymentStates = \["unverified", "refunded"\]/);
+  assert.match(ordersRoute, /inArray\(orders\.paymentStatus, cancellablePaymentStates\)/);
 });
 
 test("Square capture evidence must match status, amount, currency and timestamp", () => {
@@ -112,17 +113,58 @@ test("capture provider success survives local failure and retries without a seco
 });
 
 test("capture_pending reconciles by provider reference and never replays a new source", () => {
-  assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*listPayments\([\s\S]*payment\.referenceId === order\.captureIdempotencyKey/);
+  assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*findSquarePaymentByReference\([\s\S]*referenceId: order\.captureIdempotencyKey/);
   assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*CAPTURE_OUTCOME_AMBIGUOUS[\s\S]*createPayment\(/);
   assert.match(paymentsRoute, /referenceId: idempotencyKey/);
   assert.doesNotMatch(paymentsRoute, /capture_pending[\s\S]{0,500}createPayment\([\s\S]{0,200}sourceId/);
+});
+
+test("capture reconciliation follows every Square cursor and trusts only its reference", async () => {
+  const target = { id: "target", referenceId: "capture-ref", status: "COMPLETED" };
+  const firstPage = await findSquarePaymentByReference({
+    referenceId: "capture-ref",
+    listPage: async () => ({ payments: [target] }),
+  });
+  assert.equal(firstPage?.id, "target");
+
+  const visited: Array<string | undefined> = [];
+  const laterPage = await findSquarePaymentByReference({
+    referenceId: "capture-ref",
+    listPage: async (cursor) => {
+      visited.push(cursor);
+      return cursor
+        ? { payments: [{ id: "same-amount-2", referenceId: "other-2" }, target] }
+        : { payments: [{ id: "same-amount-1", referenceId: "other-1" }], cursor: "page-2" };
+    },
+  });
+  assert.equal(laterPage?.id, "target");
+  assert.deepEqual(visited, [undefined, "page-2"]);
+
+  const exhausted = await findSquarePaymentByReference({
+    referenceId: "capture-ref",
+    listPage: async (cursor) => cursor
+      ? { payments: [{ id: "unrelated-2", referenceId: "other-2" }] }
+      : { payments: [{ id: "unrelated-1", referenceId: "other-1" }], cursor: "last" },
+  });
+  assert.equal(exhausted, null);
+
+  await assert.rejects(findSquarePaymentByReference({
+    referenceId: "capture-ref",
+    listPage: async (cursor) => {
+      if (cursor) throw new Error("provider pagination failed");
+      return { payments: [{ id: "unrelated", referenceId: "other" }], cursor: "page-2" };
+    },
+  }), /pagination failed/);
 });
 
 test("ambiguous capture remains blocked while definitive decline releases a new attempt", () => {
   const decline = { errors: [{ category: "PAYMENT_METHOD_ERROR", code: "CARD_DECLINED" }] };
   const timeout = { errors: [{ category: "API_ERROR", code: "GATEWAY_TIMEOUT" }] };
   assert.equal(getDefinitiveSquarePaymentFailure(decline), "CARD_DECLINED");
+  assert.equal(getDefinitiveSquarePaymentFailure({ errors: [{ category: "PAYMENT_METHOD_ERROR", code: "CARD_DECLINED_VERIFICATION_REQUIRED" }] }), "CARD_DECLINED_VERIFICATION_REQUIRED");
+  assert.equal(getDefinitiveSquarePaymentFailure({ errors: [{ category: "PAYMENT_METHOD_ERROR", code: "CARD_NOT_SUPPORTED" }] }), "CARD_NOT_SUPPORTED");
   assert.equal(getDefinitiveSquarePaymentFailure(timeout), null);
+  assert.equal(getDefinitiveSquarePaymentFailure(new Error("network reset")), null);
   assert.match(paymentsRoute, /lastPaymentFailureCode: definitiveFailure/);
   assert.match(paymentsRoute, /captureIdempotencyKey: null/);
   assert.match(paymentsRoute, /code: "PAYMENT_DECLINED"/);
@@ -173,6 +215,28 @@ test("terminal failed refunds restore captured and release a new logical attempt
     status: "UNKNOWN",
     amountMoney: { amount: 1234n, currency: "USD" },
   }, 1234n), /ambiguous/);
+});
+
+test("synchronous refund rejection releases only provider-confirmed terminal errors", () => {
+  for (const code of ["PAYMENT_NOT_REFUNDABLE", "REFUND_AMOUNT_INVALID", "REFUND_DECLINED"]) {
+    assert.equal(getDefinitiveSquareRefundFailure({ errors: [{ category: "REFUND_ERROR", code }] }), code);
+  }
+  assert.equal(getDefinitiveSquareRefundFailure({ errors: [{ category: "API_ERROR", code: "GATEWAY_TIMEOUT" }] }), null);
+  assert.equal(getDefinitiveSquareRefundFailure({ errors: [{ category: "REFUND_ERROR", code: "REFUND_ALREADY_PENDING" }] }), null);
+  assert.match(paymentsRoute, /code: "REFUND_REJECTED"/);
+  assert.match(paymentsRoute, /lastRefundFailureStatus: definitiveFailure/);
+});
+
+test("fulfillment cancellation distinguishes unpaid, captured, pending refund and completed refund", () => {
+  assert.match(ordersRoute, /cancellablePaymentStates = \["unverified", "refunded"\]/);
+  assert.doesNotMatch(ordersRoute, /cancellablePaymentStates[^\n]*captured/);
+  assert.doesNotMatch(ordersRoute, /cancellablePaymentStates[^\n]*refund_pending/);
+  const routeStart = ordersRoute.indexOf('router.patch("/:id/status"');
+  const fulfillmentSet = ordersRoute.slice(
+    ordersRoute.indexOf(".set({", routeStart),
+    ordersRoute.indexOf(".where(and(", routeStart),
+  );
+  assert.doesNotMatch(fulfillmentSet, /paymentStatus|providerPaymentStatus|squareRefundId/);
 });
 
 test("database and legacy migration require evidence for captured state", () => {

@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { orders, products, users, stores } from "../../shared/schema";
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
@@ -344,7 +344,8 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     if (status !== order.status && !(transitions[order.status ?? "pending"] ?? []).includes(status)) {
       return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Invalid fulfillment transition" });
     }
-    if (status === "cancelled" && order.paymentStatus !== "unverified") {
+    const cancellablePaymentStates = ["unverified", "refunded"];
+    if (status === "cancelled" && !cancellablePaymentStates.includes(order.paymentStatus)) {
       return res.status(409).json({
         ok: false,
         code: "PAYMENT_RECONCILIATION_REQUIRED",
@@ -364,7 +365,7 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
       .where(and(
         eq(orders.id, orderId),
         eq(orders.status, order.status!),
-        ...(status === "cancelled" ? [eq(orders.paymentStatus, "unverified")] : []),
+        ...(status === "cancelled" ? [inArray(orders.paymentStatus, cancellablePaymentStates)] : []),
       ))
       .returning();
 
