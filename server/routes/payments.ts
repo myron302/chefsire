@@ -7,7 +7,7 @@ import { orders, users, commissions } from "../../shared/schema";
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 // Square is a CommonJS module - import it properly
 import square from "square";
@@ -63,7 +63,7 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     let [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
     if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
     if (order.buyerId !== buyerId) return res.status(403).json({ ok: false, error: "Not authorized" });
-    if (order.paymentStatus === "unverified" && (order.status === "paid" || Boolean(order.squarePaymentId))) {
+    if (order.paymentStatus === "unverified" && hasLegacyPaymentIndicators(order)) {
       return res.status(409).json({
         ok: false,
         code: "LEGACY_PAYMENT_RECONCILIATION_REQUIRED",

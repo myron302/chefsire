@@ -135,7 +135,9 @@ block a new charge. It never substitutes a local or simulated success.
 
 Legacy orders whose old fulfillment status is `paid` or which already contain
 a Square payment ID are not considered verified, but they are also not safe to
-charge again. They fail closed with `LEGACY_PAYMENT_RECONCILIATION_REQUIRED`.
+charge again or cancel as if unpaid. Capture and fulfillment cancellation use
+the same legacy-indicator predicate and fail closed with
+`LEGACY_PAYMENT_RECONCILIATION_REQUIRED`.
 
 #### 3. Mark Order Delivered
 ```javascript

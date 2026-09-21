@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -172,9 +172,19 @@ test("ambiguous capture remains blocked while definitive decline releases a new 
 });
 
 test("legacy possibly-paid orders cannot enter a fresh capture", () => {
-  assert.match(paymentsRoute, /order\.status === "paid" \|\| Boolean\(order\.squarePaymentId\)/);
+  assert.match(paymentsRoute, /hasLegacyPaymentIndicators\(order\)/);
   assert.match(paymentsRoute, /LEGACY_PAYMENT_RECONCILIATION_REQUIRED/);
   assert.equal(isVerifiedMarketplaceEarning({ paymentStatus: "unverified", squarePaymentId: "legacy" }), false);
+});
+
+test("capture and cancellation share one legacy possibly-paid classification", () => {
+  assert.equal(hasLegacyPaymentIndicators({ status: "pending", squarePaymentId: null }), false);
+  assert.equal(hasLegacyPaymentIndicators({ status: "paid", squarePaymentId: null }), true);
+  assert.equal(hasLegacyPaymentIndicators({ status: "pending", squarePaymentId: "square-legacy" }), true);
+  assert.equal(hasLegacyPaymentIndicators({ status: "delivered", squarePaymentId: "  " }), true);
+  assert.match(paymentsRoute, /paymentStatus === "unverified" && hasLegacyPaymentIndicators\(order\)/);
+  assert.match(ordersRoute, /paymentStatus === "unverified" && hasLegacyPaymentIndicators\(order\)/);
+  assert.match(ordersRoute, /LEGACY_PAYMENT_RECONCILIATION_REQUIRED/);
 });
 
 test("refund provider success survives local failure and retries one logical refund", async () => {

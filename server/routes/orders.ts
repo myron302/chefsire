@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
-import { isVerifiedMarketplaceEarning } from "../lib/marketplace-payment";
+import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning } from "../lib/marketplace-payment";
 
 const router = Router();
 
@@ -345,6 +345,13 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
       return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Invalid fulfillment transition" });
     }
     const cancellablePaymentStates = ["unverified", "refunded"];
+    if (status === "cancelled" && order.paymentStatus === "unverified" && hasLegacyPaymentIndicators(order)) {
+      return res.status(409).json({
+        ok: false,
+        code: "LEGACY_PAYMENT_RECONCILIATION_REQUIRED",
+        error: "Historical payment activity must be reconciled before this order can be cancelled",
+      });
+    }
     if (status === "cancelled" && !cancellablePaymentStates.includes(order.paymentStatus)) {
       return res.status(409).json({
         ok: false,

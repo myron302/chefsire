@@ -16,6 +16,18 @@ export type SquareRefundEvidence = {
 
 type SquareApiError = { category?: string; code?: string };
 
+/**
+ * Historical `paid` fulfillment or a pre-P1-03 Square ID signals possible
+ * payment activity, but is not modern provider verification. Callers must
+ * reconcile rather than treating such an `unverified` order as unpaid.
+ */
+export function hasLegacyPaymentIndicators(order: {
+  status?: string | null;
+  squarePaymentId?: string | null;
+}) {
+  return order.status === "paid" || Boolean(order.squarePaymentId);
+}
+
 const DEFINITIVE_REFUND_FAILURE_CODES = new Set([
   "INSUFFICIENT_PERMISSIONS_FOR_REFUND",
   "PAYMENT_NOT_REFUNDABLE",
