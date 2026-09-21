@@ -123,10 +123,16 @@ POST /api/payments/create-payment
 ```
 
 Before calling Square, ChefSire durably records `capture_pending` with one stable
-idempotency key. If Square succeeds but local commission/revenue persistence
-fails, the order remains explicitly pending reconciliation. A retry reuses that
-same key, recovers Square's authoritative result, and cannot create a second
-charge. It never substitutes a local or simulated success.
+idempotency key and unique Square `referenceId`. If Square succeeds but local
+commission/revenue persistence fails, the order remains explicitly pending
+reconciliation. A retry searches Square for that original reference; it never
+combines the old key with a newly tokenized payment source. Definitive card
+declines release the attempt for a new key, while ambiguous outcomes block a
+new charge. It never substitutes a local or simulated success.
+
+Legacy orders whose old fulfillment status is `paid` or which already contain
+a Square payment ID are not considered verified, but they are also not safe to
+charge again. They fail closed with `LEGACY_PAYMENT_RECONCILIATION_REQUIRED`.
 
 #### 3. Mark Order Delivered
 ```javascript
@@ -145,7 +151,10 @@ Full refunds use the same containment pattern: `refund_pending` and a stable
 refund idempotency key are persisted before the Square call. Square `PENDING`
 refund IDs are retained and polled on retry; completed provider refunds whose
 local accounting transaction fails remain non-earning and recoverable rather
-than appearing unquestionably captured. Partial refunds remain unavailable.
+than appearing unquestionably captured. A provider-confirmed `FAILED` or
+`REJECTED` refund restores the captured state, archives the failed refund ID,
+and releases the logical attempt so a later request receives a new idempotency
+key. Ambiguous outcomes stay blocked. Partial refunds remain unavailable.
 
 #### 4. Payout execution (currently unavailable)
 ```javascript

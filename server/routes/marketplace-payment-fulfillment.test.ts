@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { getDefinitiveSquarePaymentFailure, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -111,6 +111,30 @@ test("capture provider success survives local failure and retries without a seco
   assert.match(paymentsRoute, /captureIdempotencyKey/);
 });
 
+test("capture_pending reconciles by provider reference and never replays a new source", () => {
+  assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*listPayments\([\s\S]*payment\.referenceId === order\.captureIdempotencyKey/);
+  assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*CAPTURE_OUTCOME_AMBIGUOUS[\s\S]*createPayment\(/);
+  assert.match(paymentsRoute, /referenceId: idempotencyKey/);
+  assert.doesNotMatch(paymentsRoute, /capture_pending[\s\S]{0,500}createPayment\([\s\S]{0,200}sourceId/);
+});
+
+test("ambiguous capture remains blocked while definitive decline releases a new attempt", () => {
+  const decline = { errors: [{ category: "PAYMENT_METHOD_ERROR", code: "CARD_DECLINED" }] };
+  const timeout = { errors: [{ category: "API_ERROR", code: "GATEWAY_TIMEOUT" }] };
+  assert.equal(getDefinitiveSquarePaymentFailure(decline), "CARD_DECLINED");
+  assert.equal(getDefinitiveSquarePaymentFailure(timeout), null);
+  assert.match(paymentsRoute, /lastPaymentFailureCode: definitiveFailure/);
+  assert.match(paymentsRoute, /captureIdempotencyKey: null/);
+  assert.match(paymentsRoute, /code: "PAYMENT_DECLINED"/);
+  assert.match(paymentsRoute, /original Square capture outcome is ambiguous; a new charge is blocked/);
+});
+
+test("legacy possibly-paid orders cannot enter a fresh capture", () => {
+  assert.match(paymentsRoute, /order\.status === "paid" \|\| Boolean\(order\.squarePaymentId\)/);
+  assert.match(paymentsRoute, /LEGACY_PAYMENT_RECONCILIATION_REQUIRED/);
+  assert.equal(isVerifiedMarketplaceEarning({ paymentStatus: "unverified", squarePaymentId: "legacy" }), false);
+});
+
 test("refund provider success survives local failure and retries one logical refund", async () => {
   await simulateInterruptedOperation("refund");
   assert.match(paymentsRoute, /paymentStatus: "refund_pending"/);
@@ -129,6 +153,26 @@ test("pending Square refunds retain provider evidence and remain non-earning", (
   assert.match(paymentsRoute, /squareRefundId: refundEvidence\.squareRefundId/);
   assert.match(paymentsRoute, /getPaymentRefund\(order\.squareRefundId\)/);
   assert.equal(isVerifiedMarketplaceEarning({ paymentStatus: "refund_pending" }), false);
+});
+
+test("terminal failed refunds restore captured and release a new logical attempt", () => {
+  for (const status of ["FAILED", "REJECTED"] as const) {
+    const evidence = requireSquareRefundEvidence({
+      id: `refund-${status}`,
+      status,
+      amountMoney: { amount: 1234n, currency: "USD" },
+    }, 1234n);
+    assert.equal(evidence.providerRefundStatus, status);
+  }
+  assert.match(paymentsRoute, /paymentStatus: "captured"[\s\S]*providerPaymentStatus: "COMPLETED"/);
+  assert.match(paymentsRoute, /refundIdempotencyKey: null/);
+  assert.match(paymentsRoute, /lastFailedRefundId: refundEvidence\.squareRefundId/);
+  assert.match(paymentsRoute, /code: "REFUND_FAILED"/);
+  assert.throws(() => requireSquareRefundEvidence({
+    id: "unknown-refund",
+    status: "UNKNOWN",
+    amountMoney: { amount: 1234n, currency: "USD" },
+  }, 1234n), /ambiguous/);
 });
 
 test("database and legacy migration require evidence for captured state", () => {

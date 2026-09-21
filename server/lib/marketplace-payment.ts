@@ -13,6 +13,29 @@ export type SquareRefundEvidence = {
   amountMoney?: { amount?: bigint | number | null; currency?: string | null } | null;
 };
 
+type SquareApiError = { category?: string; code?: string };
+
+const DEFINITIVE_PAYMENT_FAILURE_CODES = new Set([
+  "ADDRESS_VERIFICATION_FAILURE", "BAD_EXPIRATION", "BUYER_REFUSED_PAYMENT",
+  "CARD_DECLINED", "CARD_DECLINED_CALL_ISSUER", "CARD_EXPIRED",
+  "CARD_TOKEN_EXPIRED", "CARD_TOKEN_USED", "CVV_FAILURE", "GENERIC_DECLINE",
+  "INSUFFICIENT_FUNDS", "INVALID_ACCOUNT", "INVALID_CARD",
+  "INVALID_EXPIRATION", "INVALID_EXPIRATION_DATE", "INVALID_EXPIRATION_YEAR",
+  "INVALID_PIN", "INVALID_POSTAL_CODE", "SOURCE_EXPIRED", "SOURCE_USED",
+  "VERIFY_AVS_FAILURE", "VERIFY_CVV_FAILURE",
+]);
+
+export function getDefinitiveSquarePaymentFailure(error: unknown) {
+  const errors = (error as { errors?: SquareApiError[] } | undefined)?.errors;
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  const definitive = errors.every((item) =>
+    item.category === "PAYMENT_METHOD_ERROR"
+    && Boolean(item.code)
+    && DEFINITIVE_PAYMENT_FAILURE_CODES.has(item.code!),
+  );
+  return definitive ? errors[0]?.code ?? "PAYMENT_METHOD_ERROR" : null;
+}
+
 /**
  * Accept only evidence returned by Square for this exact order amount/currency.
  * A client token, local order flag, or fulfillment state is never evidence.
@@ -56,7 +79,6 @@ export function requireSquareRefundEvidence(
   const amount = refund?.amountMoney?.amount;
   if (
     !refund?.id ||
-    !["PENDING", "COMPLETED"].includes(refund.status ?? "") ||
     amount === undefined ||
     amount === null ||
     BigInt(amount) !== expectedAmount ||
@@ -66,9 +88,14 @@ export function requireSquareRefundEvidence(
     (error as Error & { code: string }).code = "REFUND_UNVERIFIED";
     throw error;
   }
+  if (!["PENDING", "COMPLETED", "FAILED", "REJECTED"].includes(refund.status ?? "")) {
+    const error = new Error("Square refund outcome is ambiguous");
+    (error as Error & { code: string }).code = "REFUND_OUTCOME_AMBIGUOUS";
+    throw error;
+  }
   return {
     squareRefundId: refund.id,
-    providerRefundStatus: refund.status as "PENDING" | "COMPLETED",
+    providerRefundStatus: refund.status as "PENDING" | "COMPLETED" | "FAILED" | "REJECTED",
   };
 }
 

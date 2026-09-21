@@ -7,7 +7,7 @@ import { orders, users, commissions } from "../../shared/schema";
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { getDefinitiveSquarePaymentFailure, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 // Square is a CommonJS module - import it properly
 import square from "square";
@@ -50,10 +50,11 @@ const getSquareClient = () => {
  * Process payment through Square and create order
  */
 router.post("/create-payment", requireAuth, async (req, res) => {
+  let captureContext: { orderId: string; idempotencyKey: string } | undefined;
   try {
     const schema = z.object({
       orderId: z.string(),
-      sourceId: z.string(),
+      sourceId: z.string().optional(),
       verificationToken: z.string().optional(),
     }).strict();
     const { orderId, sourceId, verificationToken } = schema.parse(req.body);
@@ -62,6 +63,13 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     let [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
     if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
     if (order.buyerId !== buyerId) return res.status(403).json({ ok: false, error: "Not authorized" });
+    if (order.paymentStatus === "unverified" && (order.status === "paid" || Boolean(order.squarePaymentId))) {
+      return res.status(409).json({
+        ok: false,
+        code: "LEGACY_PAYMENT_RECONCILIATION_REQUIRED",
+        error: "Historical payment activity must be reconciled before this order can be charged",
+      });
+    }
     if (["cancelled", "refunded"].includes(order.status ?? "")) {
       return res.status(409).json({ ok: false, code: "ORDER_NOT_PAYABLE", error: "A cancelled order cannot be charged" });
     }
@@ -79,12 +87,17 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     // Persist an explicit recoverable state and stable provider key before the
     // external call. If Square succeeds and local accounting later rolls back,
     // retrying this order recovers the same charge instead of creating another.
+    let isNewCaptureAttempt = false;
     if (order.paymentStatus === "unverified") {
+      if (!sourceId) return res.status(400).json({ ok: false, error: "A payment source is required" });
       const captureIdempotencyKey = randomUUID();
+      const captureAttemptedAt = new Date();
       const [prepared] = await db.update(orders).set({
         paymentStatus: "capture_pending",
         paymentProvider: "square",
         captureIdempotencyKey,
+        captureAttemptedAt,
+        lastPaymentFailureCode: null,
         updatedAt: new Date(),
       }).where(and(
         eq(orders.id, orderId),
@@ -95,10 +108,12 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Order state changed; reload and retry" });
       }
       order = prepared;
+      isNewCaptureAttempt = true;
     }
     if (!order.captureIdempotencyKey) {
       return res.status(409).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Capture is pending without a recoverable provider key" });
     }
+    captureContext = { orderId, idempotencyKey: order.captureIdempotencyKey };
 
     const [seller] = await db.select().from(users).where(eq(users.id, order.sellerId)).limit(1);
     if (!seller) return res.status(404).json({ ok: false, error: "Seller not found" });
@@ -120,13 +135,46 @@ router.post("/create-payment", requireAuth, async (req, res) => {
             createdAt: order.paymentCapturedAt?.toISOString(),
           }, BigInt(amountInCents), "USD");
         }
+        if (!isNewCaptureAttempt) {
+          if (!order.captureAttemptedAt) {
+            const error = new Error("Capture outcome is ambiguous and lacks a reconciliation window");
+            (error as Error & { code: string }).code = "CAPTURE_OUTCOME_AMBIGUOUS";
+            throw error;
+          }
+          const { result } = await squareClient!.paymentsApi.listPayments(
+            order.captureAttemptedAt.toISOString(),
+            undefined,
+            "DESC",
+            undefined,
+            process.env.SQUARE_LOCATION_ID!,
+            BigInt(amountInCents),
+          );
+          const matches = (result.payments ?? []).filter((payment: any) =>
+            payment.referenceId === order.captureIdempotencyKey,
+          );
+          if (matches.length !== 1) {
+            const error = new Error("Original Square capture could not be authoritatively reconciled");
+            (error as Error & { code: string }).code = "CAPTURE_OUTCOME_AMBIGUOUS";
+            throw error;
+          }
+          if (["FAILED", "CANCELED"].includes(matches[0]?.status ?? "")) {
+            const error = new Error("Square definitively rejected the original capture");
+            Object.assign(error, {
+              code: "CAPTURE_DEFINITIVE_FAILURE",
+              providerCode: matches[0]?.status,
+            });
+            throw error;
+          }
+          return requireCompletedSquarePayment(matches[0], BigInt(amountInCents), "USD");
+        }
         const { result } = await squareClient!.paymentsApi.createPayment({
-          sourceId,
+          sourceId: sourceId!,
           idempotencyKey,
           amountMoney: { amount: BigInt(amountInCents), currency: "USD" },
           autocomplete: true,
           locationId: process.env.SQUARE_LOCATION_ID!,
           note: `ChefSire Order ${orderId}`,
+          referenceId: idempotencyKey,
           buyerEmailAddress: req.user!.email,
           ...(verificationToken && { verificationToken }),
         });
@@ -189,6 +237,26 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     });
   } catch (error: any) {
     console.error("Payment processing error:", error);
+    const definitiveFailure = getDefinitiveSquarePaymentFailure(error)
+      ?? (error?.code === "CAPTURE_DEFINITIVE_FAILURE" ? error.providerCode : null);
+    if (definitiveFailure && captureContext) {
+      const [released] = await db.update(orders).set({
+        paymentStatus: "unverified",
+        paymentProvider: null,
+        captureIdempotencyKey: null,
+        captureAttemptedAt: null,
+        lastPaymentFailureCode: definitiveFailure,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(orders.id, captureContext.orderId),
+        eq(orders.paymentStatus, "capture_pending"),
+        eq(orders.captureIdempotencyKey, captureContext.idempotencyKey),
+      )).returning();
+      if (!released) {
+        return res.status(503).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Payment decline could not be safely released" });
+      }
+      return res.status(400).json({ ok: false, code: "PAYMENT_DECLINED", error: "Payment was declined", providerCode: definitiveFailure });
+    }
     if (error instanceof ProviderReconciliationRequiredError) {
       return res.status(503).json({
         ok: false,
@@ -199,8 +267,12 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     if (error?.code === "PAYMENT_CAPTURE_UNVERIFIED") {
       return res.status(502).json({ ok: false, code: error.code, error: error.message });
     }
-    if (error?.errors) {
-      return res.status(400).json({ ok: false, error: "Payment failed", details: error.errors });
+    if (error?.code === "CAPTURE_OUTCOME_AMBIGUOUS" || error?.errors) {
+      return res.status(503).json({
+        ok: false,
+        code: "PAYMENT_RECONCILIATION_REQUIRED",
+        error: "The original Square capture outcome is ambiguous; a new charge is blocked pending reconciliation",
+      });
     }
     res.status(500).json({ ok: false, error: "Failed to process payment" });
   }
@@ -211,6 +283,7 @@ router.post("/create-payment", requireAuth, async (req, res) => {
  * Process refund through Square (admin or seller)
  */
 router.post("/refund", requireAuth, async (req, res) => {
+  let refundInProgress = false;
   try {
     const schema = z.object({
       orderId: z.string(),
@@ -256,6 +329,7 @@ router.post("/refund", requireAuth, async (req, res) => {
     if (!order.refundIdempotencyKey) {
       return res.status(409).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Refund is pending without a recoverable provider key" });
     }
+    refundInProgress = true;
 
     const squareClient = order.paymentStatus === "refund_reconciliation" ? null : getSquareClient();
     const refundEvidence = order.paymentStatus === "refund_reconciliation"
@@ -278,7 +352,7 @@ router.post("/refund", requireAuth, async (req, res) => {
         );
 
     if (refundEvidence.providerRefundStatus === "PENDING") {
-      await db.update(orders).set({
+      const [pendingOrder] = await db.update(orders).set({
         squareRefundId: refundEvidence.squareRefundId,
         providerPaymentStatus: "REFUND_PENDING",
         updatedAt: new Date(),
@@ -286,12 +360,40 @@ router.post("/refund", requireAuth, async (req, res) => {
         eq(orders.id, orderId),
         eq(orders.paymentStatus, "refund_pending"),
         eq(orders.refundIdempotencyKey, order.refundIdempotencyKey),
-      ));
+      )).returning();
+      if (!pendingOrder) {
+        return res.status(503).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Pending Square refund evidence could not be recorded" });
+      }
       return res.status(202).json({
         ok: false,
         code: "REFUND_PENDING",
         error: "Square accepted the refund; provider completion is pending",
         refund: { id: refundEvidence.squareRefundId, status: "pending" },
+      });
+    }
+
+    if (["FAILED", "REJECTED"].includes(refundEvidence.providerRefundStatus)) {
+      const [restored] = await db.update(orders).set({
+        paymentStatus: "captured",
+        providerPaymentStatus: "COMPLETED",
+        squareRefundId: null,
+        refundIdempotencyKey: null,
+        lastFailedRefundId: refundEvidence.squareRefundId,
+        lastRefundFailureStatus: refundEvidence.providerRefundStatus,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(orders.id, orderId),
+        eq(orders.paymentStatus, "refund_pending"),
+        eq(orders.refundIdempotencyKey, order.refundIdempotencyKey),
+      )).returning();
+      if (!restored) {
+        return res.status(503).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Failed Square refund could not be reconciled locally" });
+      }
+      return res.status(409).json({
+        ok: false,
+        code: "REFUND_FAILED",
+        error: "Square definitively rejected the refund; a new refund attempt may be started",
+        refund: { id: refundEvidence.squareRefundId, status: refundEvidence.providerRefundStatus.toLowerCase() },
       });
     }
 
@@ -353,6 +455,13 @@ router.post("/refund", requireAuth, async (req, res) => {
     }
     if (error?.code === "REFUND_UNVERIFIED") {
       return res.status(502).json({ ok: false, code: error.code, error: error.message });
+    }
+    if (refundInProgress && (error?.code === "REFUND_OUTCOME_AMBIGUOUS" || error?.errors)) {
+      return res.status(503).json({
+        ok: false,
+        code: "PAYMENT_RECONCILIATION_REQUIRED",
+        error: "The Square refund outcome is ambiguous; a new refund is blocked pending reconciliation",
+      });
     }
     res.status(500).json({ ok: false, error: "Failed to process refund" });
   }

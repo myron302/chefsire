@@ -11,6 +11,10 @@
 > idempotency key before contacting Square. Provider success followed by local
 > database failure therefore remains explicit and safely retryable without a
 > duplicate charge or refund.
+> Ambiguous captures are reconciled by their Square reference rather than by
+> replaying a new card token under an old key. Historical possibly-paid orders
+> fail closed, and only provider-confirmed terminal refund failure releases a
+> failed refund attempt for a new idempotency identity.
 
 ## Overview
 This document outlines the complete marketplace monetization system implemented for ChefSire. The system enables vendors (chefs, butchers, spice sellers, etc.) to sell physical products through the platform, with automatic commission deduction and seller payouts.
