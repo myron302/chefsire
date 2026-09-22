@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
+import { paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 import {
   NUTRITION_SUBSCRIPTION_TIERS,
   nutritionTierPriceAsString,
@@ -26,36 +27,11 @@ const r = Router();
  * POST /api/nutrition/users/:id/trial
  * Body: { days?: number }  (default 30)
  */
-r.post("/users/:id/trial", async (req, res, next) => {
-  try {
-    const days = Number(req.body?.days ?? 30);
-    const user = await storage.enableNutritionPremium(req.params.id, days);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    // Log trial activation as a nutrition premium event (amount 0.00 for trial)
-    const now = new Date();
-    const endsAt =
-      parseValidDateOrNull((user as any)?.nutritionTrialEndsAt) ??
-      new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-    await logNutritionSubscriptionHistory({
-      userId: req.params.id,
-      tier: "premium",
-      amount: "0.00",
-      startDate: now,
-      endDate: endsAt,
-      status: "active",
-      paymentMethod: "trial",
-    });
-
-    res.json({
-      message: "Nutrition premium trial activated",
-      user,
-      trialEndsAt: (user as any).nutritionTrialEndsAt ?? (user as any).nutritionTrialEnd ?? null,
-    });
-  } catch (error) {
-    next(error);
+r.post("/users/:id/trial", requireAuth, async (req, res) => {
+  if (req.user!.id !== req.params.id) {
+    return res.status(403).json({ message: "You can only change your own nutrition subscription" });
   }
+  return res.status(503).json(paidUpgradeUnavailableResponse);
 });
 
 /**
@@ -188,7 +164,7 @@ r.get("/subscription", requireAuth, async (req, res) => {
 // Body: { tier: "free" | "premium" }
 r.post("/subscription/change", requireAuth, async (req, res) => {
   try {
-    const { tier, paymentMethod } = nutritionSubscriptionChangeSchema.parse(req.body);
+    const { tier } = nutritionSubscriptionChangeSchema.strict().parse(req.body);
     const userId = req.user!.id;
 
     const existingUser = await storage.getUser(userId);
@@ -199,52 +175,10 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
     const currentTier = coerceNutritionTierFromUser(existingUser);
     const now = new Date();
 
-    // no-op protection if already premium and still active
+    // Client input is not billing evidence. Existing legacy entitlement remains readable,
+    // but this endpoint cannot create, renew, or switch a paid entitlement.
     if (tier === "premium") {
-      const existingEndsAtRaw = (existingUser as any).nutritionTrialEndsAt;
-      const existingEndsAt = parseValidDateOrNull(existingEndsAtRaw);
-
-      if (currentTier === "premium" && existingEndsAt && existingEndsAt.getTime() > Date.now()) {
-        return res.json({
-          ok: true,
-          message: "Nutrition Premium is already active.",
-          currentTier: "premium",
-          status: "active",
-          endsAt: existingEndsAt,
-          tierInfo: NUTRITION_SUBSCRIPTION_TIERS.premium,
-        });
-      }
-
-      const endsAt = new Date(now);
-      endsAt.setDate(endsAt.getDate() + 30);
-
-      const updated = await storage.updateUser(userId, {
-        nutritionPremium: true,
-        nutritionTrialEndsAt: endsAt,
-      } as any);
-
-      if (!updated) {
-        return res.status(404).json({ ok: false, error: "User not found" });
-      }
-
-      await logNutritionSubscriptionHistory({
-        userId,
-        tier: "premium",
-        amount: nutritionTierPriceAsString("premium"),
-        startDate: now,
-        endDate: endsAt,
-        status: "active",
-        paymentMethod: paymentMethod || null,
-      });
-
-      return res.json({
-        ok: true,
-        message: "Successfully upgraded to Nutrition Premium",
-        currentTier: "premium",
-        status: "active",
-        endsAt,
-        tierInfo: NUTRITION_SUBSCRIPTION_TIERS.premium,
-      });
+      return res.status(503).json(paidUpgradeUnavailableResponse);
     }
 
     // tier === "free" => immediate downgrade/cancel for nutrition
@@ -312,36 +246,10 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
       });
     }
 
-    const currentEndsAtRaw = (user as any).nutritionTrialEndsAt;
-    const currentEndsAt = parseValidDateOrNull(currentEndsAtRaw) ?? now;
-
-    const updated = await storage.updateUser(userId, {
-      nutritionPremium: false,
-      nutritionTrialEndsAt: currentEndsAt,
-    } as any);
-
-    if (!updated) {
-      return res.status(404).json({ ok: false, error: "User not found" });
-    }
-
-    await logNutritionSubscriptionHistory({
-      userId,
-      tier: "premium",
-      amount: nutritionTierPriceAsString("premium"),
-      startDate: now,
-      endDate: currentEndsAt,
-      status: "cancelled",
-      paymentMethod: null,
-    });
-
-    res.json({
-      ok: true,
-      message: "Nutrition subscription cancelled and downgraded to Free.",
-      currentTier: "free",
-      status: "inactive",
-      endsAt: currentEndsAt,
-      tierInfo: NUTRITION_SUBSCRIPTION_TIERS.free,
-    });
+    // Cancellation cannot claim provider success when no subscription provider
+    // reconciliation/cancellation flow exists. The explicit change-to-Free path
+    // remains available as a local entitlement removal.
+    return res.status(503).json(paidCancellationUnavailableResponse);
   } catch (error) {
     console.error("Error cancelling nutrition subscription:", error);
     res.status(500).json({ ok: false, error: "Failed to cancel nutrition subscription" });

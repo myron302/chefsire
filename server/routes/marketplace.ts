@@ -3,6 +3,7 @@ import { Router } from "express";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
+import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import {
   addDeliveryMethods,
   mapProductsWithDeliveryMethods,
@@ -28,7 +29,7 @@ r.post("/products", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const tierName = (seller as any).subscriptionTier || "free";
+    const tierName = effectiveMarketplaceTier(seller as any);
     const tierInfo = SUBSCRIPTION_TIERS[tierName as keyof typeof SUBSCRIPTION_TIERS];
 
     // Check product limit - get existing products for all tiers
@@ -191,7 +192,7 @@ r.get("/storefront/:username", async (req, res) => {
           followersCount: user.followersCount,
         },
         products: products.map(addDeliveryMethods),
-        subscriptionTier: (user as any).subscriptionTier,
+        subscriptionTier: effectiveMarketplaceTier(user as any),
       },
     });
   } catch (error) {
@@ -226,7 +227,7 @@ r.get("/sellers/:sellerId/analytics", async (req, res) => {
       totalViews: products.reduce((sum: number, p: any) => sum + (p.viewsCount || 0), 0),
       totalSales: products.reduce((sum: number, p: any) => sum + (p.salesCount || 0), 0),
       monthlyRevenue: parseFloat((user as any).monthlyRevenue || "0"),
-      subscriptionTier: (user as any).subscriptionTier || "free",
+      subscriptionTier: effectiveMarketplaceTier(user as any),
     };
     res.json(analytics);
   } catch (error) {

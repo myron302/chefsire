@@ -1,0 +1,48 @@
+# P1-02 subscription authorization architecture
+
+## Audit result
+
+ChefSire has four independent subscription domains persisted on `users`:
+
+* marketplace/creator: `subscription_tier`, `subscription_status`, `subscription_ends_at`;
+* nutrition: `nutrition_premium`, `nutrition_trial_ends_at`;
+* wedding planner: `wedding_tier`, `wedding_status`, `wedding_ends_at`;
+* wedding vendor: `vendor_tier`, `vendor_status`, `vendor_ends_at`.
+
+`subscription_history` is an audit/display table shared by the domains. It is not payment evidence. Store records have a historical `subscription_tier` migration column, but current store creation does not write it. Drink creator memberships and premium collection purchases have separate Square-backed commerce models and are not these subscription tiers.
+
+## Provider evidence
+
+Square checkout-link code exists for marketplace plans, but the repository has no subscription webhook/reconciliation flow that verifies customer ownership, the expected plan variation, payment/subscription status, or that maps verified Square subscription state back to these user columns. The request previously put a client-provided user ID into Square metadata. Therefore a checkout link, `paymentMethod`, plan/tier name, or history row is **not** authoritative subscription evidence.
+
+There is no Stripe subscription implementation and no administrative/manual subscription override route.
+
+## Mutation endpoints and policy
+
+The audited mutation endpoints are:
+
+* `POST /api/subscriptions/upgrade`, `/downgrade`, and `/cancel`;
+* `PUT /api/users/:id/subscription` and generic `PUT /api/users/:id`;
+* `POST /api/nutrition/subscription/change` and `/cancel`;
+* `POST /api/nutrition/users/:id/trial` and `POST /api/users/:id/nutrition/trial`;
+* `POST /api/wedding/subscription/change` and `/cancel`;
+* `POST /api/vendors/subscription/change` and `/cancel`;
+* `POST /api/square/subscription-link` (checkout creation only).
+
+Before P1-02, all four domain change routes wrote paid state directly from `tier`; both nutrition trial routes were unauthenticated; the direct user subscription route was unauthenticated and could target any user; and the generic profile route allowlisted marketplace subscription fields. Paid changes also accepted a client `paymentMethod` and fabricated a 30-day paid-through date. Cancellation mutated local state while claiming external success without provider confirmation.
+
+After P1-02, paid changes and trial grants fail closed with `SUBSCRIPTION_BILLING_NOT_CONFIGURED`. Provider-dependent cancellation fails honestly with `SUBSCRIPTION_CANCELLATION_UNAVAILABLE`. Free-domain changes remain available, are scoped to the authenticated account, create no provider evidence, and remove rather than grant entitlement. Square checkout creation requires authentication and derives account identity from the verified session; checkout still does not grant entitlement.
+
+## Existing and legacy state
+
+This repair does not rewrite historical rows. Existing paid marketplace records are evaluated using tier, status, and paid-through time. An expired, malformed, inactive, or free record resolves to Free; a cancelled record is honored only through a future paid-through date. Active paid records with no end date are conservatively grandfathered as legacy state because the database has no evidence with which to distinguish historical legitimate subscriptions. New ordinary-user HTTP paths cannot create or extend those records. Wedding and nutrition gates likewise retain their existing current/paid-through checks.
+
+This compatibility rule is not a claim that historical client-written values are verified payment evidence. Future billing work must reconcile legacy records explicitly rather than fabricating provider IDs or rewriting financial history.
+
+## Race and replay behavior
+
+No subscription webhook exists, so no event is accepted or replayed. Repeated paid requests are read-only failures and cannot create conflicting tiers, duplicate history, or resurrect cancellation. Repeated Free transitions are idempotent removals. A future provider integration must add authenticated, uniquely identified and monotonic reconciliation before enabling paid mutation.
+
+## Feature gates
+
+Marketplace product limits and commission calculation now resolve the effective current marketplace tier, including status/expiration, rather than trusting the tier string alone. Wedding invitation sending already checks paid tier plus active/paid-through status. Nutrition weekly meal planning checks the persisted premium flag and rejects expired access. No vendor-only backend premium operation was found; vendor tier is presently subscription display/state only.

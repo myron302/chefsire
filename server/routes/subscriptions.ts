@@ -1,11 +1,12 @@
 // server/routes/subscriptions.ts
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { subscriptionHistory } from "../../shared/schema";
+import { effectiveMarketplaceTier, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 
 const router = Router();
 
@@ -119,21 +120,9 @@ export const SUBSCRIPTION_TIERS = {
 
 type TierKey = keyof typeof SUBSCRIPTION_TIERS;
 
-const TIER_ORDER: TierKey[] = ["free", "starter", "professional", "enterprise", "premium_plus"];
-
-function tierRank(tier: string | null | undefined): number {
-  const idx = TIER_ORDER.indexOf((tier || "free") as TierKey);
-  return idx === -1 ? 0 : idx;
-}
-
 function coerceTier(tier: string | null | undefined): TierKey {
   const t = (tier || "free") as TierKey;
   return SUBSCRIPTION_TIERS[t] ? t : "free";
-}
-
-function tierPriceAsString(tier: TierKey): string {
-  const price = SUBSCRIPTION_TIERS[tier]?.price ?? 0;
-  return Number(price).toFixed(2);
 }
 
 async function ensureSubscriptionHistoryTable() {
@@ -162,41 +151,6 @@ async function ensureSubscriptionHistoryTable() {
   `);
 }
 
-async function logSubscriptionHistory(params: {
-  userId: string;
-  tier: TierKey;
-  amount: string;
-  startDate: Date;
-  endDate: Date;
-  status: string;
-  paymentMethod?: string | null;
-}) {
-  await ensureSubscriptionHistoryTable();
-
-  // IMPORTANT: prevent multiple "active" history rows.
-  // If a user upgrades/downgrades, we keep the old row for audit, but it should no longer be active.
-  // This fixes the UI issue where an old tier appears to stay active after switching plans.
-  if (params.status === "active") {
-    await db.execute(sql`
-      UPDATE subscription_history
-      SET status = 'superseded', end_date = NOW()
-      WHERE user_id = ${params.userId}
-        AND status = 'active'
-        AND end_date > NOW()
-    `);
-  }
-
-  await db.insert(subscriptionHistory).values({
-    userId: params.userId,
-    tier: params.tier,
-    amount: params.amount,
-    startDate: params.startDate,
-    endDate: params.endDate,
-    status: params.status,
-    paymentMethod: params.paymentMethod ?? null,
-  } as any);
-}
-
 // GET /api/subscriptions/tiers - Get all available tiers
 router.get("/tiers", async (_req, res) => {
   res.json({
@@ -213,7 +167,7 @@ router.get("/my-tier", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const tierName = coerceTier((user as any).subscriptionTier || "free");
+    const tierName = coerceTier(effectiveMarketplaceTier(user as any));
     const tier = SUBSCRIPTION_TIERS[tierName];
 
     res.json({
@@ -282,218 +236,45 @@ router.get("/history", requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/subscriptions/upgrade - Upgrade OR downgrade to a paid tier
+// POST /api/subscriptions/upgrade
+// No verified provider-to-account reconciliation exists. Client-selected paid tiers fail closed.
 router.post("/upgrade", requireAuth, async (req, res) => {
-  try {
-    const schema = z.object({
-      tier: z.enum(["starter", "professional", "enterprise", "premium_plus"]),
-      paymentMethod: z.string().optional(), // For future Stripe/Square integration
-    });
+  const schema = z.object({
+    tier: z.enum(["starter", "professional", "enterprise", "premium_plus"]),
+  }).strict();
 
-    const { tier, paymentMethod } = schema.parse(req.body);
-    const userId = req.user!.id;
-
-    const existingUser = await storage.getUser(userId);
-    if (!existingUser) {
-      return res.status(404).json({ ok: false, error: "User not found" });
-    }
-
-    const previousTier = coerceTier((existingUser as any).subscriptionTier || "free");
-    const previousStatus = (existingUser as any).subscriptionStatus || "active";
-    const previousEndsAtRaw = (existingUser as any).subscriptionEndsAt;
-    const previousEndsAt = previousEndsAtRaw ? new Date(previousEndsAtRaw) : null;
-
-    // If same tier already active and still current, return a clean response (avoid duplicate history rows)
-    if (
-      previousTier === tier &&
-      previousStatus === "active" &&
-      previousEndsAt &&
-      !Number.isNaN(previousEndsAt.getTime()) &&
-      previousEndsAt.getTime() > Date.now()
-    ) {
-      return res.json({
-        ok: true,
-        message: `You are already on ${SUBSCRIPTION_TIERS[tier].name}.`,
-        tier,
-        tierInfo: SUBSCRIPTION_TIERS[tier],
-        endsAt: previousEndsAt,
-      });
-    }
-
-    // Calculate subscription end date (30 days from now)
-    const now = new Date();
-    const endsAt = new Date(now);
-    endsAt.setDate(endsAt.getDate() + 30);
-
-    // Update user subscription
-    const updated = await storage.updateUser(userId, {
-      subscriptionTier: tier,
-      subscriptionStatus: "active",
-      subscriptionEndsAt: endsAt,
-    } as any);
-
-    if (!updated) {
-      return res.status(404).json({ ok: false, error: "User not found" });
-    }
-
-    // Log history row
-    await logSubscriptionHistory({
-      userId,
-      tier,
-      amount: tierPriceAsString(tier),
-      startDate: now,
-      endDate: endsAt,
-      status: "active",
-      paymentMethod: paymentMethod || null,
-    });
-
-    const action =
-      tierRank(tier) < tierRank(previousTier)
-        ? "downgraded"
-        : tierRank(tier) > tierRank(previousTier)
-        ? "upgraded"
-        : "updated";
-
-    res.json({
-      ok: true,
-      message: `Successfully ${action} to ${SUBSCRIPTION_TIERS[tier].name}`,
-      tier,
-      tierInfo: SUBSCRIPTION_TIERS[tier],
-      previousTier,
-      endsAt,
-    });
-  } catch (error: any) {
-    if (error?.issues) {
-      return res.status(400).json({ ok: false, error: "Invalid tier", errors: error.issues });
-    }
-    console.error("Error updating subscription:", error);
-    res.status(500).json({ ok: false, error: "Failed to update subscription" });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: "Invalid tier", errors: parsed.error.issues });
   }
+
+  return res.status(503).json(paidUpgradeUnavailableResponse);
 });
 
-// POST /api/subscriptions/cancel - Cancel subscription (keeps access until end date)
+// POST /api/subscriptions/cancel
+// Do not claim an external cancellation without provider confirmation.
 router.post("/cancel", requireAuth, async (req, res) => {
-  try {
-    const userId = req.user!.id;
-    const user = await storage.getUser(userId);
+  const user = await storage.getUser(req.user!.id);
+  if (!user) return res.status(404).json({ ok: false, error: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ ok: false, error: "User not found" });
-    }
-
-    const currentTier = coerceTier((user as any).subscriptionTier || "free");
-    const currentEndsAtRaw = (user as any).subscriptionEndsAt;
-    const currentEndsAt =
-      currentEndsAtRaw && !Number.isNaN(new Date(currentEndsAtRaw).getTime())
-        ? new Date(currentEndsAtRaw)
-        : new Date();
-
-    // Update status only (do not force free immediately; user keeps access until period end)
-    const updated = await storage.updateUser(userId, {
-      subscriptionStatus: "cancelled",
-    } as any);
-
-    if (!updated) {
-      return res.status(404).json({ ok: false, error: "User not found" });
-    }
-
-    // Mark any previously-active history rows as cancelled so history doesn't show the prior tier as still active.
-    await ensureSubscriptionHistoryTable();
-    await db.execute(sql`
-      UPDATE subscription_history
-      SET status = 'cancelled'
-      WHERE user_id = ${userId}
-        AND status = 'active'
-        AND end_date > NOW()
-    `);
-
-    // Log cancellation event
-    await logSubscriptionHistory({
-      userId,
-      tier: currentTier,
-      amount: tierPriceAsString(currentTier),
-      startDate: new Date(),
-      endDate: currentEndsAt,
-      status: "cancelled",
-      paymentMethod: null,
-    });
-
-    res.json({
-      ok: true,
-      message: "Subscription cancelled. You'll retain access until the end of your billing period.",
-      tier: currentTier,
-      endsAt: (updated as any).subscriptionEndsAt || currentEndsAt,
-    });
-  } catch (error) {
-    console.error("Error cancelling subscription:", error);
-    res.status(500).json({ ok: false, error: "Failed to cancel subscription" });
+  const currentTier = coerceTier((user as any).subscriptionTier || "free");
+  if (currentTier === "free") {
+    return res.json({ ok: true, message: "Subscription is already Free.", tier: "free" });
   }
+
+  return res.status(503).json(paidCancellationUnavailableResponse);
 });
 
-// Optional explicit downgrade endpoint (routes to same logic as /upgrade expectations)
-// Keeps your API flexible if you want a dedicated client action later.
+// Paid-to-paid changes also require authoritative billing evidence.
 router.post("/downgrade", requireAuth, async (req, res) => {
-  try {
-    const schema = z.object({
-      tier: z.enum(["starter", "professional", "enterprise", "premium_plus"]),
-      paymentMethod: z.string().optional(),
-    });
-
-    const { tier, paymentMethod } = schema.parse(req.body);
-    const userId = req.user!.id;
-
-    const user = await storage.getUser(userId);
-    if (!user) return res.status(404).json({ ok: false, error: "User not found" });
-
-    const currentTier = coerceTier((user as any).subscriptionTier || "free");
-    if (tierRank(tier) >= tierRank(currentTier)) {
-      return res.status(400).json({
-        ok: false,
-        error: "Requested tier is not a downgrade",
-        currentTier,
-      });
-    }
-
-    // Reuse same behavior as update path
-    const now = new Date();
-    const endsAt = new Date(now);
-    endsAt.setDate(endsAt.getDate() + 30);
-
-    const updated = await storage.updateUser(userId, {
-      subscriptionTier: tier,
-      subscriptionStatus: "active",
-      subscriptionEndsAt: endsAt,
-    } as any);
-
-    if (!updated) {
-      return res.status(404).json({ ok: false, error: "User not found" });
-    }
-
-    await logSubscriptionHistory({
-      userId,
-      tier,
-      amount: tierPriceAsString(tier),
-      startDate: now,
-      endDate: endsAt,
-      status: "active",
-      paymentMethod: paymentMethod || null,
-    });
-
-    res.json({
-      ok: true,
-      message: `Successfully downgraded to ${SUBSCRIPTION_TIERS[tier].name}`,
-      tier,
-      tierInfo: SUBSCRIPTION_TIERS[tier],
-      previousTier: currentTier,
-      endsAt,
-    });
-  } catch (error: any) {
-    if (error?.issues) {
-      return res.status(400).json({ ok: false, error: "Invalid tier", errors: error.issues });
-    }
-    console.error("Error downgrading subscription:", error);
-    res.status(500).json({ ok: false, error: "Failed to downgrade subscription" });
+  const schema = z.object({
+    tier: z.enum(["starter", "professional", "enterprise", "premium_plus"]),
+  }).strict();
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: "Invalid tier", errors: parsed.error.issues });
   }
+  return res.status(503).json(paidUpgradeUnavailableResponse);
 });
 
 // GET /api/subscriptions/calculate-commission - Calculate commission for a sale
@@ -511,7 +292,7 @@ router.get("/calculate-commission", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const tierName = coerceTier((user as any).subscriptionTier || "free");
+    const tierName = coerceTier(effectiveMarketplaceTier(user as any));
     const commissionRate = SUBSCRIPTION_TIERS[tierName].commission;
 
     const platformFee = (saleAmount * commissionRate) / 100;

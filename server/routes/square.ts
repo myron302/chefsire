@@ -1,6 +1,8 @@
 // server/routes/square.ts
 import { Router } from "express";
 import { Client, Environment } from "square";
+import { z } from "zod";
+import { requireAuth } from "../middleware";
 
 const router = Router();
 
@@ -45,20 +47,19 @@ const client = new Client({
 
 /**
  * POST /api/square/subscription-link
- * Body: { tier: "pro" | "enterprise", trial?: boolean, userId?: string, email?: string }
+ * Body: { tier: "pro" | "enterprise", trial?: boolean } (account identity comes from auth)
  *
  * Returns: { url: string }
  *
  * Implementation: uses Checkout API -> createPaymentLink with subscription plan variation id.
  */
-router.post("/subscription-link", async (req, res) => {
+router.post("/subscription-link", requireAuth, async (req, res) => {
   try {
-    const { tier, trial = false, userId, email } = req.body as {
-      tier: "pro" | "enterprise";
-      trial?: boolean;
-      userId?: string;
-      email?: string;
-    };
+    const principal = req.user as { id: string; email?: string };
+    const { tier, trial = false } = z.object({
+      tier: z.enum(["pro", "enterprise"]),
+      trial: z.boolean().optional(),
+    }).strict().parse(req.body);
 
     let planVariationId: string | undefined;
 
@@ -76,7 +77,8 @@ router.post("/subscription-link", async (req, res) => {
     }
 
     // Optional prefill metadata you might want back in your webhook
-    const referenceId = `sub_${tier}_${trial ? "trial" : "paid"}_${userId || "anon"}_${Date.now()}`;
+    // Account identity comes from verified authentication, never request JSON.
+    const referenceId = `sub_${tier}_${trial ? "trial" : "paid"}_${principal.id}_${Date.now()}`;
 
     // Square Checkout API – create hosted checkout for a subscription plan
     // Docs: CreatePaymentLink with a "subscription_plan_id" referencing a *plan variation id*.
@@ -94,12 +96,12 @@ router.post("/subscription-link", async (req, res) => {
         allowTipping: false,
       },
       // Optional: prepopulate buyer info
-      prePopulatedData: email ? { buyerEmail: email } : undefined,
+      prePopulatedData: principal.email ? { buyerEmail: principal.email } : undefined,
       // Optional: additional metadata echoed in webhooks
       metadata: {
         tier,
         trial: String(trial),
-        userId: userId || "",
+        userId: principal.id,
       },
       // Required by Square behind the scenes
       // locationId can be omitted when using subscriptionPlanId; but it’s OK to include:

@@ -7,6 +7,7 @@ import { orders, users, commissions } from "../../shared/schema";
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
+import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getCaptureReconciliationWindow, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 // Square is a CommonJS module - import it properly
@@ -94,9 +95,9 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     if (!Number.isSafeInteger(amountInCents) || amountInCents <= 0) {
       return res.status(409).json({ ok: false, code: "PAYMENT_AMOUNT_INVALID", error: "Order amount cannot be submitted safely" });
     }
-    const tier = seller.subscriptionTier || "free";
+    const tier = effectiveMarketplaceTier(seller);
     const tierInfo = SUBSCRIPTION_TIERS[tier];
-    const commissionRate = tierInfo ? tierInfo.commissionRate : 10;
+    const commissionRate = tierInfo?.commission ?? 10;
     const squareClient = order.paymentStatus === "capture_reconciliation" ? null : getSquareClient();
 
     if (order.paymentStatus === "unverified" && order.sellerRevenueStatus !== "uncredited") {

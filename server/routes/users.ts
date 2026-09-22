@@ -116,24 +116,11 @@ r.put("/:id", requireAuth, async (req, res) => {
       isPrivate: z.boolean().optional(),
       specialty: z.string().optional(),
       isChef: z.boolean().optional(),
-      subscription: z.string().optional(),
-      subscriptionTier: z.string().optional(),
-      subscriptionStatus: z.string().optional(),
-      subscriptionEndsAt: z.string().optional().nullable(),
-      trialEndDate: z.string().optional().nullable(),
     });
     const body = schema.parse(req.body);
 
-    // Convert date strings to Date objects for Drizzle timestamp fields
-    const updates: any = { ...body };
-    if (body.subscriptionEndsAt) {
-      updates.subscriptionEndsAt = new Date(body.subscriptionEndsAt);
-    }
-    if (body.trialEndDate) {
-      updates.trialEndDate = new Date(body.trialEndDate);
-    }
-
-    const updated = await storage.updateUser(req.params.id, updates);
+    // Explicit profile allowlist above intentionally excludes every subscription/entitlement field.
+    const updated = await storage.updateUser(req.params.id, body);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Profile updated successfully", user: updated });
   } catch (error: any) {
@@ -260,36 +247,29 @@ r.get("/:id/catering/status", requireAuth, async (req, res) => {
 /* ------------------------------------------------------------------ */
 /* Subscription (simple example)                                      */
 /* ------------------------------------------------------------------ */
-r.put("/:id/subscription", async (req, res) => {
-  try {
-    const schema = z.object({
-      tier: z.enum([
-        "free",
-        "starter",
-        "professional",
-        "enterprise",
-        "premium_plus",
-      ]),
-      paymentMethod: z.string().optional(),
-    });
-    const { tier } = schema.parse(req.body);
-    const ends = new Date();
-    ends.setDate(ends.getDate() + 30);
-    const updated = await storage.updateUser(req.params.id, {
-      subscriptionTier: tier as any,
-      subscriptionStatus: "active" as any,
-      subscriptionEndsAt: ends as any,
-    } as any);
-    if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Subscription updated", user: updated });
-  } catch (error: any) {
-    if (error?.issues)
-      return res
-        .status(400)
-        .json({ message: "Invalid subscription data", errors: error.issues });
-    console.error("PUT /users/:id/subscription error", error);
-    res.status(500).json({ message: "Failed to update subscription" });
+r.put("/:id/subscription", requireAuth, async (req, res) => {
+  const principal = req.user as { id: string };
+  if (principal.id !== req.params.id) {
+    return res.status(403).json({ message: "You can only update your own subscription" });
   }
+
+  const schema = z.object({ tier: z.literal("free") }).strict();
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(503).json({
+      ok: false,
+      code: "SUBSCRIPTION_BILLING_NOT_CONFIGURED",
+      message: "Paid subscription changes require verified billing evidence and are not available yet.",
+    });
+  }
+
+  const updated = await storage.updateUser(principal.id, {
+    subscriptionTier: "free",
+    subscriptionStatus: "active",
+    subscriptionEndsAt: null,
+  } as any);
+  if (!updated) return res.status(404).json({ message: "User not found" });
+  return res.json({ message: "Subscription changed to Free", user: updated });
 });
 
 r.get("/:id/subscription/info", async (req, res) => {
@@ -362,19 +342,15 @@ r.get("/:id/subscription/info", async (req, res) => {
 /* ------------------------------------------------------------------ */
 /* Nutrition (trial + goals + summaries)                               */
 /* ------------------------------------------------------------------ */
-r.post("/:id/nutrition/trial", async (req, res) => {
-  try {
-    const updated = await storage.enableNutritionPremium(req.params.id, 30);
-    if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({
-      message: "Nutrition trial activated",
-      user: updated,
-      trialEndsAt: (updated as any).nutritionTrialEndsAt ?? null,
-    });
-  } catch (error) {
-    console.error("POST /users/:id/nutrition/trial error", error);
-    res.status(500).json({ message: "Failed to start nutrition trial" });
+r.post("/:id/nutrition/trial", requireAuth, async (req, res) => {
+  if ((req.user as { id: string }).id !== req.params.id) {
+    return res.status(403).json({ message: "You can only change your own nutrition subscription" });
   }
+  return res.status(503).json({
+    ok: false,
+    code: "SUBSCRIPTION_BILLING_NOT_CONFIGURED",
+    message: "Nutrition premium trials are unavailable until eligibility can be verified server-side.",
+  });
 });
 
 r.put("/:id/nutrition/goals", async (req, res) => {
