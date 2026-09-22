@@ -3,11 +3,9 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "../db";
-import { orders, users, commissions } from "../../shared/schema";
-import { and, eq, notInArray, sql } from "drizzle-orm";
+import { orders, products, users, commissions } from "../../shared/schema";
+import { and, eq, gt, notInArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
-import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getCaptureReconciliationWindow, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 // Square is a CommonJS module - import it properly
@@ -71,6 +69,13 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         error: "Historical payment activity must be reconciled before this order can be charged",
       });
     }
+    if (order.inventoryStatus !== "reserved") {
+      return res.status(409).json({
+        ok: false,
+        code: order.inventoryStatus === "legacy_unverified" ? "LEGACY_INVENTORY_RECONCILIATION_REQUIRED" : "INVENTORY_NOT_RESERVED",
+        error: "This order does not have a verified inventory reservation",
+      });
+    }
     if (["cancelled", "refunded"].includes(order.status ?? "")) {
       return res.status(409).json({ ok: false, code: "ORDER_NOT_PAYABLE", error: "A cancelled order cannot be charged" });
     }
@@ -95,9 +100,11 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     if (!Number.isSafeInteger(amountInCents) || amountInCents <= 0) {
       return res.status(409).json({ ok: false, code: "PAYMENT_AMOUNT_INVALID", error: "Order amount cannot be submitted safely" });
     }
-    const tier = effectiveMarketplaceTier(seller);
-    const tierInfo = SUBSCRIPTION_TIERS[tier];
-    const commissionRate = tierInfo?.commission ?? 10;
+    if (!order.sellerTierSnapshot || !order.commissionRateSnapshot || !order.checkoutIdempotencyKey) {
+      return res.status(409).json({ ok: false, code: "CHECKOUT_SNAPSHOT_UNVERIFIED", error: "Order accounting snapshot cannot be verified" });
+    }
+    const tier = order.sellerTierSnapshot;
+    const commissionRate = order.commissionRateSnapshot;
     const squareClient = order.paymentStatus === "capture_reconciliation" ? null : getSquareClient();
 
     if (order.paymentStatus === "unverified" && order.sellerRevenueStatus !== "uncredited") {
@@ -137,7 +144,9 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         updatedAt: new Date(),
       }).where(and(
         eq(orders.id, orderId),
-        eq(orders.paymentStatus, "unverified"),
+          eq(orders.paymentStatus, "unverified"),
+          eq(orders.inventoryStatus, "reserved"),
+          gt(orders.inventoryReservationExpiresAt, new Date()),
         notInArray(orders.status, ["cancelled", "refunded"]),
       )).returning();
       if (!prepared) {
@@ -226,12 +235,14 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         const [capturedOrder] = await tx.update(orders).set({
           ...paymentEvidence,
           sellerRevenueStatus: "credited",
+          inventoryStatus: "sold",
           updatedAt: new Date(),
         }).where(and(
           eq(orders.id, orderId),
           eq(orders.paymentStatus, "capture_reconciliation"),
           eq(orders.captureIdempotencyKey, order.captureIdempotencyKey!),
           eq(orders.sellerRevenueStatus, "uncredited"),
+          eq(orders.inventoryStatus, "reserved"),
         )).returning();
         if (!capturedOrder) throw new Error("capture state changed before reconciliation");
 
@@ -248,6 +259,9 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         await tx.update(users).set({
           monthlyRevenue: sql`coalesce(${users.monthlyRevenue}, 0) + ${order.sellerAmount}`,
         }).where(eq(users.id, order.sellerId));
+        await tx.update(products).set({
+          salesCount: sql`coalesce(${products.salesCount}, 0) + 1`,
+        }).where(eq(products.id, order.productId));
         return capturedOrder;
       }),
     });
@@ -270,18 +284,27 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     const definitiveFailure = getDefinitiveSquarePaymentFailure(error)
       ?? (error?.code === "CAPTURE_DEFINITIVE_FAILURE" ? error.providerCode : null);
     if (definitiveFailure && captureContext) {
-      const [released] = await db.update(orders).set({
-        paymentStatus: "unverified",
-        paymentProvider: null,
-        captureIdempotencyKey: null,
-        captureAttemptedAt: null,
-        lastPaymentFailureCode: definitiveFailure,
-        updatedAt: new Date(),
-      }).where(and(
-        eq(orders.id, captureContext.orderId),
-        eq(orders.paymentStatus, "capture_pending"),
-        eq(orders.captureIdempotencyKey, captureContext.idempotencyKey),
-      )).returning();
+      const released = await db.transaction(async (tx: any) => {
+        const [releasedOrder] = await tx.update(orders).set({
+          paymentStatus: "unverified",
+          paymentProvider: null,
+          captureIdempotencyKey: null,
+          captureAttemptedAt: null,
+          lastPaymentFailureCode: definitiveFailure,
+          inventoryStatus: "released",
+          updatedAt: new Date(),
+        }).where(and(
+          eq(orders.id, captureContext!.orderId),
+          eq(orders.paymentStatus, "capture_pending"),
+          eq(orders.captureIdempotencyKey, captureContext!.idempotencyKey),
+          eq(orders.inventoryStatus, "reserved"),
+        )).returning();
+        if (!releasedOrder) return undefined;
+        await tx.update(products).set({
+          inventory: sql`${products.inventory} + ${releasedOrder.quantity}`,
+        }).where(and(eq(products.id, releasedOrder.productId), sql`${products.inventory} IS NOT NULL`));
+        return releasedOrder;
+      });
       if (!released) {
         return res.status(503).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Payment decline could not be safely released" });
       }
