@@ -146,7 +146,10 @@ Each new order also has a durable seller-revenue ledger state. Capture changes
 transaction that decrements it. Historical unverified rows are marked
 `legacy_unverified` because legacy order creation and aggregate revenue updates
 were not atomic. They must be manually reconciled before a new charge rather
-than risking a second credit or inventing historical certainty.
+than risking a second credit or inventing historical certainty. The supported
+`db:push` workflow performs this classification before Drizzle synchronization
+and re-enforces it afterward, so schema push cannot backfill historical rows
+with the new-order `uncredited` default.
 
 Legacy orders whose old fulfillment status is `paid` or which already contain
 a Square payment ID are not considered verified, but they are also not safe to

@@ -1,3 +1,5 @@
+import { and, eq, isNotNull } from "drizzle-orm";
+
 export const VERIFIED_MARKETPLACE_PAYMENT_STATUS = "captured" as const;
 
 // Square timestamps and application-host timestamps are not guaranteed to be
@@ -204,10 +206,24 @@ export function isVerifiedMarketplaceEarning(order: {
   squarePaymentId?: string | null;
   providerPaymentStatus?: string | null;
   paymentCapturedAt?: Date | null;
+  sellerRevenueStatus?: string | null;
 }) {
   return order.paymentStatus === VERIFIED_MARKETPLACE_PAYMENT_STATUS
     && order.paymentProvider === "square"
     && Boolean(order.squarePaymentId?.trim())
     && order.providerPaymentStatus === "COMPLETED"
-    && order.paymentCapturedAt instanceof Date;
+    && order.paymentCapturedAt instanceof Date
+    && order.sellerRevenueStatus === "credited";
+}
+
+/** Shared SQL equivalent of isVerifiedMarketplaceEarning for aggregates. */
+export function verifiedMarketplaceEarningWhere(table: any) {
+  return and(
+    eq(table.paymentStatus, VERIFIED_MARKETPLACE_PAYMENT_STATUS),
+    eq(table.paymentProvider, "square"),
+    isNotNull(table.squarePaymentId),
+    eq(table.providerPaymentStatus, "COMPLETED"),
+    isNotNull(table.paymentCapturedAt),
+    eq(table.sellerRevenueStatus, "credited"),
+  );
 }

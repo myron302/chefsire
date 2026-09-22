@@ -18,6 +18,7 @@ const run = (args: string[]) => {
 // the payout tables are both absent and --allow-missing lets Drizzle bootstrap
 // them. We deliberately do not replay unrelated historical migrations here.
 run(["exec", "--", "tsx", "server/scripts/enforce-payout-integrity.ts", "--allow-missing"]);
+run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-revenue-integrity.ts", "--allow-missing"]);
 
 const pushArgs = ["exec", "--", "drizzle-kit", "push"];
 if (process.argv.includes("--force")) pushArgs.push("--force");
@@ -27,3 +28,4 @@ run(pushArgs);
 // only constraint as drift. Reapply the exact production migration after every
 // push, independently of the one-time migration ledger.
 run(["exec", "--", "tsx", "server/scripts/enforce-payout-integrity.ts"]);
+run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-revenue-integrity.ts"]);

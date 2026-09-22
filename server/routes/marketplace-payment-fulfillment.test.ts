@@ -12,6 +12,8 @@ const paymentsRoute = fs.readFileSync(path.join(root, "server/routes/payments.ts
 const payoutRoute = fs.readFileSync(path.join(root, "server/routes/payouts.ts"), "utf8");
 const schema = fs.readFileSync(path.join(root, "shared/schema/domains/commerce-billing.ts"), "utf8");
 const migration = fs.readFileSync(path.join(root, "server/migrations/20260920_marketplace_payment_fulfillment.sql"), "utf8");
+const pushSchema = fs.readFileSync(path.join(root, "server/scripts/push-schema.ts"), "utf8");
+const revenueEnforcement = fs.readFileSync(path.join(root, "server/scripts/enforce-marketplace-revenue-integrity.ts"), "utf8");
 
 test("delivered without provider evidence is not verified earnings", () => {
   assert.equal(isVerifiedMarketplaceEarning({ paymentStatus: "unverified" }), false);
@@ -21,9 +23,26 @@ test("delivered without provider evidence is not verified earnings", () => {
     squarePaymentId: "payment-1",
     providerPaymentStatus: "COMPLETED",
     paymentCapturedAt: new Date(),
+    sellerRevenueStatus: "credited",
   }), true);
   assert.match(ordersRoute, /verifiedSales = sales\.filter/);
   assert.doesNotMatch(ordersRoute, /status\s*===\s*["']delivered["'][\s\S]{0,80}(?:Revenue|earning|payout)/i);
+});
+
+test("store stats shares the verified marketplace earning boundary", () => {
+  const storesRoute = fs.readFileSync(path.join(root, "server/routes/stores-crud.ts"), "utf8");
+  assert.match(storesRoute, /verifiedMarketplaceEarningWhere\(orders\)/);
+  for (const paymentStatus of ["unverified", "capture_pending", "capture_reconciliation", "refund_pending", "refund_reconciliation", "refunded"]) {
+    assert.equal(isVerifiedMarketplaceEarning({ paymentStatus, sellerRevenueStatus: "credited" }), false);
+  }
+  assert.equal(isVerifiedMarketplaceEarning({
+    paymentStatus: "captured", paymentProvider: "square", squarePaymentId: "p",
+    providerPaymentStatus: "COMPLETED", paymentCapturedAt: new Date(), sellerRevenueStatus: "credited",
+  }), true);
+  assert.equal(isVerifiedMarketplaceEarning({
+    paymentStatus: "captured", paymentProvider: "square", squarePaymentId: "p",
+    providerPaymentStatus: "COMPLETED", paymentCapturedAt: new Date(), sellerRevenueStatus: "legacy_unverified",
+  }), false);
 });
 
 test("fulfillment input is strict and cannot mass-assign payment evidence", () => {
@@ -84,6 +103,18 @@ test("seller revenue accounting is order-scoped and exactly once", () => {
   assert.match(migration, /payment_status IN \('captured', 'refund_pending'\) THEN 'credited'/);
   assert.match(migration, /payment_status = 'refunded' THEN 'reversed'/);
   assert.doesNotMatch(migration, /(?:DELETE|UPDATE)\s+commissions/i);
+});
+
+test("db push classifies legacy revenue before and after Drizzle synchronization", () => {
+  const pre = pushSchema.indexOf('enforce-marketplace-revenue-integrity.ts", "--allow-missing"');
+  const drizzle = pushSchema.indexOf('drizzle-kit", "push"');
+  const post = pushSchema.lastIndexOf('enforce-marketplace-revenue-integrity.ts"');
+  assert.ok(pre >= 0 && pre < drizzle && post > drizzle);
+  assert.match(revenueEnforcement, /ADD COLUMN IF NOT EXISTS seller_revenue_status text/);
+  assert.match(revenueEnforcement, /legacy_unverified/);
+  assert.match(revenueEnforcement, /WHERE seller_revenue_status IS NULL/);
+  assert.match(revenueEnforcement, /SET DEFAULT 'uncredited'/);
+  assert.match(revenueEnforcement, /SET NOT NULL/);
 });
 
 async function simulateInterruptedOperation(operation: "capture" | "refund") {
