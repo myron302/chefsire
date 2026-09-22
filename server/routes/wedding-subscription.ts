@@ -5,6 +5,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { subscriptionHistory } from "../../shared/schema";
+import { effectiveSubscriptionPresentation, hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 
 const r = Router();
 
@@ -162,15 +163,15 @@ r.get("/subscription", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     if (!user) return res.status(404).json({ ok: false, error: "User not found" });
 
-    const currentTier = coerceWeddingTier((user as any).weddingTier);
-    const status = String((user as any).weddingStatus || (currentTier === "free" ? "inactive" : "active"));
-    const endsAt = (user as any).weddingEndsAt ?? null;
+    const recordedTier = coerceWeddingTier((user as any).weddingTier);
+    const currentTier = hasAuthoritativePaidEntitlement() ? recordedTier : "free";
+    const effectiveState = effectiveSubscriptionPresentation(currentTier, (user as any).weddingStatus, (user as any).weddingEndsAt);
 
     res.json({
       ok: true,
       currentTier,
-      status,
-      endsAt,
+      status: effectiveState.status,
+      endsAt: effectiveState.endsAt,
       tierInfo: (WEDDING_SUBSCRIPTION_TIERS as any)[currentTier],
     });
   } catch (error) {
@@ -185,10 +186,9 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       tier: z.enum(["free", "premium", "elite"]),
-      paymentMethod: z.string().optional(),
     });
 
-    const { tier, paymentMethod } = schema.parse(req.body);
+    const { tier } = schema.strict().parse(req.body);
     const userId = req.user!.id;
 
     await ensureWeddingSubscriptionColumns();
@@ -207,6 +207,7 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
     // No-op protection: same paid tier still active
     if (
       previousTier === tier &&
+      hasAuthoritativePaidEntitlement() &&
       String(previousStatus).toLowerCase() === "active" &&
       previousEndsAt &&
       previousEndsAt.getTime() > Date.now()
@@ -253,44 +254,8 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
       });
     }
 
-    // Activate paid tier for 30 days (trial can be handled on client; this sets endsAt so access works).
-    const endsAt = new Date(now);
-    endsAt.setDate(endsAt.getDate() + 30);
-
-    const updated = await storage.updateUser(userId, {
-      weddingTier: tier,
-      weddingStatus: "active",
-      weddingEndsAt: endsAt,
-    } as any);
-
-    if (!updated) return res.status(404).json({ ok: false, error: "User not found" });
-
-    await logWeddingSubscriptionHistory({
-      userId,
-      tier,
-      amount: tierPriceAsString(tier),
-      startDate: now,
-      endDate: endsAt,
-      status: "active",
-      paymentMethod: paymentMethod || null,
-    });
-
-    const action =
-      weddingTierRank(tier) < weddingTierRank(previousTier)
-        ? "downgraded"
-        : weddingTierRank(tier) > weddingTierRank(previousTier)
-        ? "upgraded"
-        : "updated";
-
-    res.json({
-      ok: true,
-      message: `Successfully ${action} to ${(WEDDING_SUBSCRIPTION_TIERS as any)[tier].name}`,
-      currentTier: tier,
-      status: "active",
-      previousTier,
-      endsAt,
-      tierInfo: (WEDDING_SUBSCRIPTION_TIERS as any)[tier],
-    });
+    // Paid changes require verified provider state; a requested tier/payment field is never evidence.
+    return res.status(503).json(paidUpgradeUnavailableResponse);
   } catch (error: any) {
     if (error?.issues) {
       return res.status(400).json({ ok: false, error: "Invalid request", errors: error.issues });
@@ -326,29 +291,8 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
       });
     }
 
-    const updated = await storage.updateUser(userId, {
-      weddingStatus: "cancelled",
-    } as any);
-
-    if (!updated) return res.status(404).json({ ok: false, error: "User not found" });
-
-    await logWeddingSubscriptionHistory({
-      userId,
-      tier: currentTier,
-      amount: tierPriceAsString(currentTier),
-      startDate: new Date(),
-      endDate: endsAt,
-      status: "cancelled",
-      paymentMethod: null,
-    });
-
-    res.json({
-      ok: true,
-      message: "Wedding subscription cancelled. You'll retain access until the end of your billing period.",
-      currentTier,
-      status: "cancelled",
-      endsAt: (updated as any).weddingEndsAt ?? endsAt,
-    });
+    // No provider cancellation/reconciliation exists, so do not fabricate success or mutate legacy access.
+    return res.status(503).json(paidCancellationUnavailableResponse);
   } catch (error) {
     console.error("Error cancelling wedding subscription:", error);
     res.status(500).json({ ok: false, error: "Failed to cancel wedding subscription" });

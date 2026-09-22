@@ -1,11 +1,17 @@
 import type { NutritionTierKey } from "./constants";
+import { hasAuthoritativePaidEntitlement } from "../../lib/subscription-security";
 
 export function coerceNutritionTierFromUser(user: any): NutritionTierKey {
-  return user?.nutritionPremium ? "premium" : "free";
+  return user?.nutritionPremium && hasAuthoritativePaidEntitlement() ? "premium" : "free";
+}
+
+/** Recorded state is only used to decide whether cancellation needs a provider. */
+export function hasRecordedNutritionPremium(user: any): boolean {
+  return user?.nutritionPremium === true;
 }
 
 export function deriveNutritionStatus(user: any): "active" | "inactive" | "expired" {
-  const isPremium = !!user?.nutritionPremium;
+  const isPremium = !!user?.nutritionPremium && hasAuthoritativePaidEntitlement();
   const endsAtRaw = user?.nutritionTrialEndsAt;
   const endsAt = endsAtRaw ? new Date(endsAtRaw) : null;
 

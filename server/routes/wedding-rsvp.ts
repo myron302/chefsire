@@ -1,5 +1,6 @@
 // server/routes/wedding-rsvp.ts
 import { Router } from "express";
+import { hasAuthoritativePaidEntitlement } from "../lib/subscription-security";
 import crypto from "node:crypto";
 import { db } from "../db";
 import { eq, and, gt, isNull } from "drizzle-orm";
@@ -67,7 +68,8 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
         ? new Date(weddingEndsAtRaw)
         : null;
 
-    const hasPaidWeddingPlan = weddingTier === "premium" || weddingTier === "elite";
+    const hasPaidWeddingPlan =
+      (weddingTier === "premium" || weddingTier === "elite") && hasAuthoritativePaidEntitlement();
     const isActive = String(weddingStatus).toLowerCase() === "active";
     const isCancelledButValid =
       String(weddingStatus).toLowerCase() === "cancelled" && weddingEndsAt && weddingEndsAt.getTime() > Date.now();

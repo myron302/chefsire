@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { DollarSign, Eye, Package, ShoppingCart, TrendingUp } from "lucide-react";
+import type { MarketplacePaidTierId } from "@shared/subscription-tiers";
 
 export interface DashboardStats {
   totalProducts: number;
@@ -19,7 +20,7 @@ export interface DashboardStatCard {
 }
 
 export interface SubscriptionPlan {
-  id: string;
+  id: MarketplacePaidTierId;
   name: string;
   price: number;
   commission: string;
@@ -75,13 +76,10 @@ export const calculateTrialDaysLeft = (trialEndDate?: string) => {
 export const buildSubscriptionCheckoutPayload = (
   tierName: string,
   isTrial: boolean,
-  user: { id: string; email: string },
 ) => ({
   tier: tierName,
   trial: isTrial,
-  userId: user.id,
-  email: user.email,
 });
 
-export const isMissingPlanVariationError = (errorMsg: string) =>
-  errorMsg.includes("Missing plan variation");
+export const isSubscriptionBillingUnavailable = (code?: string) =>
+  code === "SUBSCRIPTION_BILLING_UNAVAILABLE" || code === "SUBSCRIPTION_BILLING_NOT_CONFIGURED";

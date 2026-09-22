@@ -34,7 +34,7 @@ import {
   DEFAULT_DASHBOARD_STATS,
   getInitialProductStats,
   getInitialStoreStats,
-  isMissingPlanVariationError,
+  isSubscriptionBillingUnavailable,
   type DashboardStats,
 } from "./lib/storeDashboard";
 
@@ -255,13 +255,13 @@ export default function StoreDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...buildSubscriptionCheckoutPayload(tierName, isTrial, user),
+          ...buildSubscriptionCheckoutPayload(tierName, isTrial),
         }),
       });
       const data = await resp.json();
       if (!resp.ok || !data?.url) {
         const errorMsg = data?.error || "Could not start checkout";
-        if (isMissingPlanVariationError(errorMsg)) {
+        if (isSubscriptionBillingUnavailable(data?.code)) {
           toast({
             title: "Coming soon",
             description:
@@ -308,9 +308,9 @@ export default function StoreDashboard() {
     );
   }
 
-  const currentTier = tier?.currentTier || user?.subscription || "free";
+  const currentTier = tier?.currentTier || "free";
   const tierInfo = tier?.tierInfo;
-  const trialDaysLeft = calculateTrialDaysLeft(user?.trialEndDate);
+  const trialDaysLeft = currentTier === "free" ? 0 : calculateTrialDaysLeft(user?.trialEndDate);
 
   return (
     <div className="min-h-screen bg-gray-50">

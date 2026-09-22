@@ -1,4 +1,5 @@
 import type { User } from "../../shared/schema";
+import { effectiveMarketplaceTier, hasAuthoritativePaidEntitlement } from "../lib/subscription-security";
 
 /** The one non-sensitive user shape used to hydrate authenticated clients. */
 export function serializeAuthenticatedUser(user: User) {
@@ -11,8 +12,8 @@ export function serializeAuthenticatedUser(user: User) {
     avatar: user.avatar,
     bio: user.bio,
     isPrivate: user.isPrivate,
-    subscriptionTier: user.subscriptionTier,
-    nutritionPremium: user.nutritionPremium,
+    subscriptionTier: effectiveMarketplaceTier(user),
+    nutritionPremium: Boolean(user.nutritionPremium) && hasAuthoritativePaidEntitlement(),
     nutritionTrialEndsAt: user.nutritionTrialEndsAt,
     // Explicit null/false values keep these keys present after JSON serialization
     // for ordinary and legacy users while preserving every persisted value exactly.

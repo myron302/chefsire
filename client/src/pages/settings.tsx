@@ -281,7 +281,7 @@ export default function SettingsPage() {
   const updateSubscriptionMutation = useMutation({
   mutationFn: async (tier: string) => {
     const currentTier = String(
-      mySubscriptionQuery.data?.currentTier || user?.subscriptionTier || user?.subscription || "free"
+      mySubscriptionQuery.data?.currentTier || "free"
     );
     const currentIdx = subscriptionTierOrder.indexOf(currentTier as (typeof subscriptionTierOrder)[number]);
     const targetIdx = subscriptionTierOrder.indexOf(tier as (typeof subscriptionTierOrder)[number]);
@@ -528,13 +528,15 @@ function SubscriptionSettingsPanel() {
   >;
 
   const marketplaceCurrentTier =
-    mySubscriptionQuery.data?.currentTier || user?.subscriptionTier || user?.subscription || "free";
+    mySubscriptionQuery.data?.currentTier || "free";
 
-  const marketplaceStatus =
-    mySubscriptionQuery.data?.status || user?.subscriptionStatus || (marketplaceCurrentTier === "free" ? "inactive" : "active");
+  const marketplaceStatus = marketplaceCurrentTier === "free"
+    ? "inactive"
+    : mySubscriptionQuery.data?.status || "active";
 
-  const marketplaceEndsAt =
-    mySubscriptionQuery.data?.endsAt || user?.subscriptionEndsAt || user?.trialEndDate || null;
+  const marketplaceEndsAt = marketplaceCurrentTier === "free"
+    ? null
+    : mySubscriptionQuery.data?.endsAt || null;
 
   const marketplaceTierIndex = subscriptionTierOrder.indexOf(
     marketplaceCurrentTier as (typeof subscriptionTierOrder)[number]
@@ -673,13 +675,15 @@ function SubscriptionSettingsPanel() {
   });
 
   const weddingCurrentTier =
-    myWeddingSubscriptionQuery.data?.currentTier || ((user as any)?.weddingTier as any) || "free";
+    myWeddingSubscriptionQuery.data?.currentTier || "free";
 
-  const weddingStatus =
-    myWeddingSubscriptionQuery.data?.status || ((user as any)?.weddingStatus as any) || (weddingCurrentTier === "free" ? "inactive" : "active");
+  const weddingStatus = weddingCurrentTier === "free"
+    ? "inactive"
+    : myWeddingSubscriptionQuery.data?.status || "active";
 
-  const weddingEndsAt =
-    myWeddingSubscriptionQuery.data?.endsAt || ((user as any)?.weddingEndsAt as any) || null;
+  const weddingEndsAt = weddingCurrentTier === "free"
+    ? null
+    : myWeddingSubscriptionQuery.data?.endsAt || null;
 
   // ---------- Vendors (Wedding Vendors plans) ----------
   const vendorTiersQuery = useQuery({
@@ -807,13 +811,15 @@ function SubscriptionSettingsPanel() {
   });
 
   const vendorCurrentTier =
-    myVendorSubscriptionQuery.data?.currentTier || ((user as any)?.vendorTier as any) || "free";
+    myVendorSubscriptionQuery.data?.currentTier || "free";
 
-  const vendorStatus =
-    myVendorSubscriptionQuery.data?.status || ((user as any)?.vendorStatus as any) || (vendorCurrentTier === "free" ? "inactive" : "active");
+  const vendorStatus = vendorCurrentTier === "free"
+    ? "inactive"
+    : myVendorSubscriptionQuery.data?.status || "active";
 
-  const vendorEndsAt =
-    myVendorSubscriptionQuery.data?.endsAt || ((user as any)?.vendorEndsAt as any) || null;
+  const vendorEndsAt = vendorCurrentTier === "free"
+    ? null
+    : myVendorSubscriptionQuery.data?.endsAt || null;
 
   // ---------- Nutrition ----------
   const nutritionTiersQuery = useQuery({
@@ -940,17 +946,15 @@ function SubscriptionSettingsPanel() {
   });
 
   const nutritionCurrentTier =
-    myNutritionSubscriptionQuery.data?.currentTier ||
-    ((user as any)?.nutritionPremium ? "premium" : "free");
+    myNutritionSubscriptionQuery.data?.currentTier || "free";
 
-  const nutritionStatus =
-    myNutritionSubscriptionQuery.data?.status ||
-    ((user as any)?.nutritionPremium ? "active" : "inactive");
+  const nutritionStatus = nutritionCurrentTier === "free"
+    ? "inactive"
+    : myNutritionSubscriptionQuery.data?.status || "active";
 
-  const nutritionEndsAt =
-    myNutritionSubscriptionQuery.data?.endsAt ||
-    (user as any)?.nutritionTrialEndsAt ||
-    null;
+  const nutritionEndsAt = nutritionCurrentTier === "free"
+    ? null
+    : myNutritionSubscriptionQuery.data?.endsAt || null;
 
   // ---------- Combined History ----------
   const subscriptionHistoryQuery = useQuery({
