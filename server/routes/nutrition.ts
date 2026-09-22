@@ -10,6 +10,7 @@ import {
 import {
   coerceNutritionTierFromUser,
   deriveNutritionStatus,
+  hasRecordedNutritionPremium,
   parseValidDateOrNull,
 } from "./nutrition/helpers";
 import { nutritionSubscriptionChangeSchema } from "./nutrition/schemas";
@@ -235,16 +236,15 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const now = new Date();
-    const currentTier = coerceNutritionTierFromUser(user);
-
-    if (currentTier === "free") {
+    // Recorded state is not authorization, but it determines whether claiming
+    // "already Free" would fabricate cancellation of a historical subscription.
+    if (!hasRecordedNutritionPremium(user)) {
       return res.json({
         ok: true,
         message: "Nutrition subscription is already on the Free plan.",
         currentTier: "free",
         status: "inactive",
-        endsAt: (user as any).nutritionTrialEndsAt ?? null,
+        endsAt: null,
         tierInfo: NUTRITION_SUBSCRIPTION_TIERS.free,
       });
     }

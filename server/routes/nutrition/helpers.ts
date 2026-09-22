@@ -5,6 +5,11 @@ export function coerceNutritionTierFromUser(user: any): NutritionTierKey {
   return user?.nutritionPremium && hasAuthoritativePaidEntitlement() ? "premium" : "free";
 }
 
+/** Recorded state is only used to decide whether cancellation needs a provider. */
+export function hasRecordedNutritionPremium(user: any): boolean {
+  return user?.nutritionPremium === true;
+}
+
 export function deriveNutritionStatus(user: any): "active" | "inactive" | "expired" {
   const isPremium = !!user?.nutritionPremium && hasAuthoritativePaidEntitlement();
   const endsAtRaw = user?.nutritionTrialEndsAt;
