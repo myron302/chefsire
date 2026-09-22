@@ -35,11 +35,11 @@ import { googleRouter } from "./google";
 import competitionsRouter from "./competitions";
 
 // Stores (user storefronts)
-import storesRouter from "./stores-crud";
+import storeRouter from "./stores-crud";
 import storeDropsRouter from "./store-drops";
 
 // Square (subscriptions / checkout links)
-import squareRouter from "./stores";
+import squareRouter from "./square";
 
 // ⚡ Phase 1: Daily Addiction Features
 import notificationsRouter from "./notifications";
@@ -177,7 +177,7 @@ r.use("/google", googleRouter);
 r.use("/competitions", competitionsRouter);
 
 // Stores (public viewer + owner writes)
-r.use("/stores", storesRouter);
+r.use("/stores", storeRouter);
 r.use("/stores", storeDropsRouter);
 
 // Square (payments/subscriptions)
