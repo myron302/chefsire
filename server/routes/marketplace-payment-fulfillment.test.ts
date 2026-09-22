@@ -66,6 +66,26 @@ test("payment capture fails closed without Square and has no simulation fallback
   assert.match(paymentsRoute, /db\.transaction/);
 });
 
+test("all fallible local capture preparation precedes capture_pending", () => {
+  const pendingWrite = paymentsRoute.indexOf('paymentStatus: "capture_pending"');
+  assert.ok(paymentsRoute.indexOf('if (!seller)', paymentsRoute.indexOf('router.post("/create-payment"')) < pendingWrite);
+  assert.ok(paymentsRoute.indexOf('getSquareClient()', paymentsRoute.indexOf('router.post("/create-payment"')) < pendingWrite);
+  assert.ok(paymentsRoute.indexOf('PAYMENT_AMOUNT_INVALID', paymentsRoute.indexOf('router.post("/create-payment"')) < pendingWrite);
+  assert.ok(paymentsRoute.indexOf('LEGACY_REVENUE_RECONCILIATION_REQUIRED') < pendingWrite);
+  assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*CAPTURE_OUTCOME_AMBIGUOUS/);
+  assert.doesNotMatch(paymentsRoute, /CAPTURE_OUTCOME_AMBIGUOUS[\s\S]{0,400}paymentStatus: "unverified"/);
+});
+
+test("seller revenue accounting is order-scoped and exactly once", () => {
+  assert.match(paymentsRoute, /sellerRevenueStatus: "credited"[\s\S]*eq\(orders\.sellerRevenueStatus, "uncredited"\)/);
+  assert.match(paymentsRoute, /sellerRevenueStatus: "reversed"[\s\S]*eq\(orders\.sellerRevenueStatus, "credited"\)/);
+  assert.match(paymentsRoute, /LEGACY_REVENUE_RECONCILIATION_REQUIRED/);
+  assert.match(migration, /seller_revenue_status = CASE[\s\S]*legacy_unverified/);
+  assert.match(migration, /payment_status IN \('captured', 'refund_pending'\) THEN 'credited'/);
+  assert.match(migration, /payment_status = 'refunded' THEN 'reversed'/);
+  assert.doesNotMatch(migration, /(?:DELETE|UPDATE)\s+commissions/i);
+});
+
 async function simulateInterruptedOperation(operation: "capture" | "refund") {
   const providerOperations = new Map<string, { id: string }>();
   let providerSideEffects = 0;
@@ -115,7 +135,7 @@ test("capture provider success survives local failure and retries without a seco
 test("capture_pending reconciles by provider reference and never replays a new source", () => {
   assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*findSquarePaymentByReference\([\s\S]*referenceId: order\.captureIdempotencyKey/);
   assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*CAPTURE_OUTCOME_AMBIGUOUS[\s\S]*createPayment\(/);
-  assert.match(paymentsRoute, /referenceId: idempotencyKey/);
+  assert.match(paymentsRoute, /referenceId: captureIdempotencyKey/);
   assert.doesNotMatch(paymentsRoute, /capture_pending[\s\S]{0,500}createPayment\([\s\S]{0,200}sourceId/);
 });
 
@@ -325,7 +345,8 @@ test("database and legacy migration require evidence for captured state", () => 
   }
   assert.match(migration, /DEFAULT 'unverified'/);
   assert.match(migration, /NOT VALID/);
-  assert.doesNotMatch(migration, /\b(?:DELETE|UPDATE)\s+(?:FROM\s+)?orders\b/i);
+  assert.doesNotMatch(migration, /\bDELETE\s+FROM\s+orders\b/i);
+  assert.doesNotMatch(migration, /\b(?:DELETE|UPDATE)\s+(?:FROM\s+)?(?:commissions|payouts|users)\b/i);
 });
 
 test("PR #1293 payout execution containment remains fail closed", () => {

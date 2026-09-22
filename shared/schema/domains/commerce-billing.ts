@@ -88,6 +88,9 @@ export const orders = pgTable(
     lastPaymentFailureCode: text("last_payment_failure_code"),
     lastFailedRefundId: text("last_failed_refund_id"),
     lastRefundFailureStatus: text("last_refund_failure_status"),
+    // Durable exactly-once ledger marker for this order's contribution to the
+    // aggregate users.monthlyRevenue value.
+    sellerRevenueStatus: text("seller_revenue_status").notNull().default("uncredited"),
     paymentStatus: text("payment_status").notNull().default("unverified"),
     paymentProvider: text("payment_provider"),
     providerPaymentStatus: text("provider_payment_status"),
@@ -111,6 +114,10 @@ export const orders = pgTable(
         AND ${table.providerPaymentStatus} = 'COMPLETED'
         AND ${table.paymentCapturedAt} IS NOT NULL
       )`,
+    ),
+    sellerRevenueStatusValid: check(
+      "orders_seller_revenue_status_check",
+      sql`${table.sellerRevenueStatus} IN ('uncredited', 'credited', 'reversed', 'legacy_unverified')`,
     ),
   })
 );

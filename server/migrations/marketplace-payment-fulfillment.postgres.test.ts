@@ -41,8 +41,13 @@ postgresTest("legacy orders stay unverified and captured state requires provider
     await client.query(`INSERT INTO orders VALUES ('legacy-delivered', 'delivered', NULL)`);
     await client.query(migration);
     assert.deepEqual(
-      (await client.query(`SELECT status, payment_status FROM orders WHERE id = 'legacy-delivered'`)).rows[0],
-      { status: "delivered", payment_status: "unverified" },
+      (await client.query(`SELECT status, payment_status, seller_revenue_status FROM orders WHERE id = 'legacy-delivered'`)).rows[0],
+      { status: "delivered", payment_status: "unverified", seller_revenue_status: "legacy_unverified" },
+    );
+    await client.query(`INSERT INTO orders (id, status) VALUES ('new-order', 'pending')`);
+    assert.equal(
+      (await client.query(`SELECT seller_revenue_status FROM orders WHERE id = 'new-order'`)).rows[0].seller_revenue_status,
+      "uncredited",
     );
     await assert.rejects(
       client.query(`UPDATE orders SET payment_status = 'captured' WHERE id = 'legacy-delivered'`),

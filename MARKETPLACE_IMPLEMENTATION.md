@@ -25,6 +25,10 @@
 > Refund retries are likewise reconstructed only from a persisted immutable
 > request snapshot (key, payment ID, cents, currency, and canonical reason),
 > never from replacement HTTP input.
+> Capture completes all fallible local preparation before entering
+> `capture_pending`. Order-level `uncredited`/`credited`/`reversed` markers make
+> monthly revenue changes idempotent; pre-P1-03 rows remain
+> `legacy_unverified` and require accounting reconciliation before charging.
 
 ## Overview
 This document outlines the complete marketplace monetization system implemented for ChefSire. The system enables vendors (chefs, butchers, spice sellers, etc.) to sell physical products through the platform, with automatic commission deduction and seller payouts.

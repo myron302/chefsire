@@ -84,14 +84,49 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       });
     }
 
+    // Finish every fallible local prerequisite before persisting a state that
+    // means Square may have received a request. A crash after capture_pending
+    // is written remains genuinely ambiguous; seller/config/client failures do
+    // not poison the order because they happen before that boundary.
+    const [seller] = await db.select().from(users).where(eq(users.id, order.sellerId)).limit(1);
+    if (!seller) return res.status(404).json({ ok: false, error: "Seller not found" });
+    const amountInCents = Math.round(parseFloat(order.totalAmount) * 100);
+    if (!Number.isSafeInteger(amountInCents) || amountInCents <= 0) {
+      return res.status(409).json({ ok: false, code: "PAYMENT_AMOUNT_INVALID", error: "Order amount cannot be submitted safely" });
+    }
+    const tier = seller.subscriptionTier || "free";
+    const tierInfo = SUBSCRIPTION_TIERS[tier];
+    const commissionRate = tierInfo ? tierInfo.commissionRate : 10;
+    const squareClient = order.paymentStatus === "capture_reconciliation" ? null : getSquareClient();
+
+    if (order.paymentStatus === "unverified" && order.sellerRevenueStatus !== "uncredited") {
+      return res.status(409).json({
+        ok: false,
+        code: "LEGACY_REVENUE_RECONCILIATION_REQUIRED",
+        error: "Historical seller revenue must be reconciled before this order can be charged",
+      });
+    }
+
     // Persist an explicit recoverable state and stable provider key before the
     // external call. If Square succeeds and local accounting later rolls back,
     // retrying this order recovers the same charge instead of creating another.
     let isNewCaptureAttempt = false;
+    let newCaptureRequest: Parameters<NonNullable<typeof squareClient>["paymentsApi"]["createPayment"]>[0] | undefined;
     if (order.paymentStatus === "unverified") {
       if (!sourceId) return res.status(400).json({ ok: false, error: "A payment source is required" });
       const captureIdempotencyKey = randomUUID();
       const captureAttemptedAt = new Date();
+      newCaptureRequest = {
+        sourceId,
+        idempotencyKey: captureIdempotencyKey,
+        amountMoney: { amount: BigInt(amountInCents), currency: "USD" },
+        autocomplete: true,
+        locationId: process.env.SQUARE_LOCATION_ID!,
+        note: `ChefSire Order ${orderId}`,
+        referenceId: captureIdempotencyKey,
+        buyerEmailAddress: req.user!.email,
+        ...(verificationToken && { verificationToken }),
+      };
       const [prepared] = await db.update(orders).set({
         paymentStatus: "capture_pending",
         paymentProvider: "square",
@@ -114,14 +149,6 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       return res.status(409).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Capture is pending without a recoverable provider key" });
     }
     captureContext = { orderId, idempotencyKey: order.captureIdempotencyKey };
-
-    const [seller] = await db.select().from(users).where(eq(users.id, order.sellerId)).limit(1);
-    if (!seller) return res.status(404).json({ ok: false, error: "Seller not found" });
-    const amountInCents = Math.round(parseFloat(order.totalAmount) * 100);
-    const tier = seller.subscriptionTier || "free";
-    const tierInfo = SUBSCRIPTION_TIERS[tier];
-    const commissionRate = tierInfo ? tierInfo.commissionRate : 10;
-    const squareClient = order.paymentStatus === "capture_reconciliation" ? null : getSquareClient();
 
     const updatedOrder = await executeRecoverableProviderOperation({
       operation: "capture",
@@ -174,17 +201,10 @@ router.post("/create-payment", requireAuth, async (req, res) => {
           }
           return requireCompletedSquarePayment(matchedPayment, BigInt(amountInCents), "USD");
         }
-        const { result } = await squareClient!.paymentsApi.createPayment({
-          sourceId: sourceId!,
-          idempotencyKey,
-          amountMoney: { amount: BigInt(amountInCents), currency: "USD" },
-          autocomplete: true,
-          locationId: process.env.SQUARE_LOCATION_ID!,
-          note: `ChefSire Order ${orderId}`,
-          referenceId: idempotencyKey,
-          buyerEmailAddress: req.user!.email,
-          ...(verificationToken && { verificationToken }),
-        });
+        if (!newCaptureRequest || newCaptureRequest.idempotencyKey !== idempotencyKey) {
+          throw new Error("Prepared capture request does not match its durable identity");
+        }
+        const { result } = await squareClient!.paymentsApi.createPayment(newCaptureRequest);
         return requireCompletedSquarePayment(result.payment, BigInt(amountInCents), "USD");
       },
       persistProviderEvidence: async (paymentEvidence) => {
@@ -204,11 +224,13 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       applyLocally: async (paymentEvidence) => db.transaction(async (tx: any) => {
         const [capturedOrder] = await tx.update(orders).set({
           ...paymentEvidence,
+          sellerRevenueStatus: "credited",
           updatedAt: new Date(),
         }).where(and(
           eq(orders.id, orderId),
           eq(orders.paymentStatus, "capture_reconciliation"),
           eq(orders.captureIdempotencyKey, order.captureIdempotencyKey!),
+          eq(orders.sellerRevenueStatus, "uncredited"),
         )).returning();
         if (!capturedOrder) throw new Error("capture state changed before reconciliation");
 
@@ -434,11 +456,13 @@ router.post("/refund", requireAuth, async (req, res) => {
           paymentStatus: "refunded",
           providerPaymentStatus: "REFUNDED",
           squareRefundId: evidence.squareRefundId,
+          sellerRevenueStatus: "reversed",
           updatedAt: new Date(),
         }).where(and(
           eq(orders.id, orderId),
           eq(orders.paymentStatus, "refund_reconciliation"),
           eq(orders.refundIdempotencyKey, order.refundIdempotencyKey!),
+          eq(orders.sellerRevenueStatus, "credited"),
         )).returning();
         if (!refundedOrder) throw new Error("refund state changed before reconciliation");
         await tx.update(commissions).set({ status: "refunded" }).where(eq(commissions.orderId, orderId));

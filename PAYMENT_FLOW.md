@@ -135,6 +135,19 @@ instrument failures identified by Square's `PAYMENT_METHOD_ERROR` category
 release the attempt for a new key, while mixed, unknown, and transport outcomes
 block a new charge. It never substitutes a local or simulated success.
 
+Seller lookup, amount validation, commission inputs, and Square client setup
+all complete before `capture_pending` is written. Failures in that preparation
+phase therefore leave the order retryable as `unverified`; after the pending
+write, any uncertain submission outcome remains fail-closed and must reconcile.
+
+Each new order also has a durable seller-revenue ledger state. Capture changes
+`uncredited` to `credited` in the same transaction that increments
+`monthlyRevenue`; refund changes `credited` to `reversed` in the same
+transaction that decrements it. Historical unverified rows are marked
+`legacy_unverified` because legacy order creation and aggregate revenue updates
+were not atomic. They must be manually reconciled before a new charge rather
+than risking a second credit or inventing historical certainty.
+
 Legacy orders whose old fulfillment status is `paid` or which already contain
 a Square payment ID are not considered verified, but they are also not safe to
 charge again or cancel as if unpaid. Capture and fulfillment cancellation use
