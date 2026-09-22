@@ -6,6 +6,7 @@ import { orders, products, users, stores } from "../../shared/schema";
 import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
+import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
 import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning } from "../lib/marketplace-payment";
@@ -78,7 +79,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
       .where(eq(stores.userId, product.sellerId))
       .limit(1);
 
-    const sellerTier = (sellerStore as any)?.subscriptionTier || "free";
+    const sellerTier = effectiveMarketplaceTier({ subscriptionTier: (sellerStore as any)?.subscriptionTier });
 
     // Calculate amounts
     const productPrice = parseFloat(product.price);

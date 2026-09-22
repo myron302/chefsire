@@ -1,139 +1,43 @@
 // server/routes/square.ts
 import { Router } from "express";
-import { Client, Environment } from "square";
 import { z } from "zod";
 import { requireAuth } from "../middleware";
+import { subscriptionCheckoutUnavailableResponse } from "../lib/subscription-security";
 
 const router = Router();
 
 /**
- * REQUIRED ENV VARS
- * -----------------
- * SQUARE_ENV=production|sandbox
- * SQUARE_ACCESS_TOKEN=xxx
- * SQUARE_LOCATION_ID=xxx
- *
- * # Subscription plan VARIATION IDs (use Catalog API or Dashboard to get them)
- * SQUARE_PLAN_PRO            = <subscription plan variation id for Pro (no trial)>
- * SQUARE_PLAN_PRO_TRIAL      = <plan variation id for Pro WITH 100% off first period>
- * SQUARE_PLAN_ENTERPRISE     = <subscription plan variation id for Enterprise (no trial)>
- * SQUARE_PLAN_ENTERPRISE_TRIAL = <plan variation id for Enterprise WITH trial>
- *
- * Notes:
- * - Square Checkout API can create a hosted **subscription checkout** using a plan variation id.
- * - Trials are modeled as an initial PHASE with 100% discount on the plan variation itself.
- */
-
-const {
-  SQUARE_ENV = "sandbox",
-  SQUARE_ACCESS_TOKEN,
-  SQUARE_LOCATION_ID,
-  SQUARE_PLAN_PRO,
-  SQUARE_PLAN_PRO_TRIAL,
-  SQUARE_PLAN_ENTERPRISE,
-  SQUARE_PLAN_ENTERPRISE_TRIAL,
-} = process.env;
-
-if (!SQUARE_ACCESS_TOKEN) {
-  // Don't crash the app, but log loudly
-  // eslint-disable-next-line no-console
-  console.warn("[square] Missing SQUARE_ACCESS_TOKEN");
-}
-
-const client = new Client({
-  accessToken: SQUARE_ACCESS_TOKEN,
-  environment: SQUARE_ENV === "production" ? Environment.Production : Environment.Sandbox,
-});
-
-/**
  * POST /api/square/subscription-link
- * Body: { tier: "pro" | "enterprise", trial?: boolean } (account identity comes from auth)
+ * Body: { tier: "pro" | "enterprise", trial?: boolean }
  *
- * Returns: { url: string }
- *
- * Implementation: uses Checkout API -> createPaymentLink with subscription plan variation id.
+ * Subscription checkout is intentionally disabled. ChefSire has no verified
+ * provider-completion path that can safely turn a successful recurring charge
+ * into account-owned entitlement.
  */
 router.post("/subscription-link", requireAuth, async (req, res) => {
-  try {
-    const principal = req.user as { id: string; email?: string };
-    const { tier, trial = false } = z.object({
-      tier: z.enum(["pro", "enterprise"]),
-      trial: z.boolean().optional(),
-    }).strict().parse(req.body);
+  const parsed = z.object({
+    tier: z.enum(["pro", "enterprise"]),
+    trial: z.boolean().optional(),
+  }).strict().safeParse(req.body);
 
-    let planVariationId: string | undefined;
-
-    if (tier === "pro") {
-      planVariationId = trial ? SQUARE_PLAN_PRO_TRIAL : SQUARE_PLAN_PRO;
-    } else if (tier === "enterprise") {
-      planVariationId = trial ? SQUARE_PLAN_ENTERPRISE_TRIAL : SQUARE_PLAN_ENTERPRISE;
-    }
-
-    if (!planVariationId) {
-      return res.status(400).json({
-        ok: false,
-        error: `Missing plan variation id for tier="${tier}" trial=${trial}`,
-      });
-    }
-
-    // Optional prefill metadata you might want back in your webhook
-    // Account identity comes from verified authentication, never request JSON.
-    const referenceId = `sub_${tier}_${trial ? "trial" : "paid"}_${principal.id}_${Date.now()}`;
-
-    // Square Checkout API – create hosted checkout for a subscription plan
-    // Docs: CreatePaymentLink with a "subscription_plan_id" referencing a *plan variation id*.
-    // The name of the field is a little confusing — it expects the variation id.
-    const body: any = {
-      idempotencyKey: referenceId,
-      quickPay: undefined, // not used (that's for one-time)
-      subscriptionPlanId: planVariationId, // 👈 plan variation id here
-      // Optional: redirect after completion
-      checkoutOptions: {
-        redirectUrl: process.env.APP_BASE_URL
-          ? `${process.env.APP_BASE_URL}/store` // send them back to the store dashboard or success page
-          : undefined,
-        askForShippingAddress: false,
-        allowTipping: false,
-      },
-      // Optional: prepopulate buyer info
-      prePopulatedData: principal.email ? { buyerEmail: principal.email } : undefined,
-      // Optional: additional metadata echoed in webhooks
-      metadata: {
-        tier,
-        trial: String(trial),
-        userId: principal.id,
-      },
-      // Required by Square behind the scenes
-      // locationId can be omitted when using subscriptionPlanId; but it’s OK to include:
-      // locationId: SQUARE_LOCATION_ID,
-    };
-
-    const { result } = await client.checkoutApi.createPaymentLink(body);
-    if (!result?.paymentLink?.url) {
-      return res.status(500).json({ ok: false, error: "Failed to create Square payment link." });
-    }
-
-    res.json({ ok: true, url: result.paymentLink.url });
-  } catch (err: any) {
-    // eslint-disable-next-line no-console
-    console.error("[square] create subscription link error", err);
-    res.status(500).json({
+  if (!parsed.success) {
+    return res.status(400).json({
       ok: false,
-      error: err?.body || err?.message || "Square error",
+      code: "INVALID_SUBSCRIPTION_CHECKOUT",
+      error: "Invalid subscription checkout request",
+      errors: parsed.error.issues,
     });
   }
+
+  // Stop before loading/calling Square. Configured credentials must not make a
+  // chargeable checkout reachable while entitlement activation is unavailable.
+  return res.status(503).json(subscriptionCheckoutUnavailableResponse);
 });
 
-/**
- * Optional: expose your Square locations for sanity checks in dev only.
- */
+// This diagnostic used the same subscription Square client. Keep it disabled
+// with the incomplete subscription billing surface rather than initializing it.
 router.get("/locations", async (_req, res) => {
-  try {
-    const { result } = await client.locationsApi.listLocations();
-    res.json({ ok: true, locations: result.locations });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.body || e?.message });
-  }
+  return res.status(503).json(subscriptionCheckoutUnavailableResponse);
 });
 
 export default router;

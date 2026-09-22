@@ -75,13 +75,10 @@ export const calculateTrialDaysLeft = (trialEndDate?: string) => {
 export const buildSubscriptionCheckoutPayload = (
   tierName: string,
   isTrial: boolean,
-  user: { id: string; email: string },
 ) => ({
   tier: tierName,
   trial: isTrial,
-  userId: user.id,
-  email: user.email,
 });
 
-export const isMissingPlanVariationError = (errorMsg: string) =>
-  errorMsg.includes("Missing plan variation");
+export const isSubscriptionBillingUnavailable = (code?: string) =>
+  code === "SUBSCRIPTION_BILLING_UNAVAILABLE" || code === "SUBSCRIPTION_BILLING_NOT_CONFIGURED";

@@ -5,7 +5,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { subscriptionHistory } from "../../shared/schema";
-import { paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+import { hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 
 const r = Router();
 
@@ -163,13 +163,15 @@ r.get("/subscription", requireAuth, async (req, res) => {
     const user = await storage.getUser(req.user!.id);
     if (!user) return res.status(404).json({ ok: false, error: "User not found" });
 
-    const currentTier = coerceWeddingTier((user as any).weddingTier);
+    const recordedTier = coerceWeddingTier((user as any).weddingTier);
+    const currentTier = hasAuthoritativePaidEntitlement() ? recordedTier : "free";
     const status = String((user as any).weddingStatus || (currentTier === "free" ? "inactive" : "active"));
     const endsAt = (user as any).weddingEndsAt ?? null;
 
     res.json({
       ok: true,
       currentTier,
+      recordedTier,
       status,
       endsAt,
       tierInfo: (WEDDING_SUBSCRIPTION_TIERS as any)[currentTier],
@@ -207,6 +209,7 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
     // No-op protection: same paid tier still active
     if (
       previousTier === tier &&
+      hasAuthoritativePaidEntitlement() &&
       String(previousStatus).toLowerCase() === "active" &&
       previousEndsAt &&
       previousEndsAt.getTime() > Date.now()

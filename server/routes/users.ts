@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
 import { serializePublicUser } from "../serializers/public-user";
+import { effectiveMarketplaceTier } from "../lib/subscription-security";
 
 const r = Router();
 
@@ -316,12 +317,12 @@ r.get("/:id/subscription/info", async (req, res) => {
         ? (user as any).monthlyRevenue
         : parseFloat(String((user as any).monthlyRevenue || "0"));
     const rate = getCommissionRate(
-      (user as any).subscriptionTier || "free",
+      effectiveMarketplaceTier(user as any),
       isNaN(mrNum) ? 0 : mrNum
     );
 
     res.json({
-      subscriptionTier: (user as any).subscriptionTier,
+      subscriptionTier: effectiveMarketplaceTier(user as any),
       subscriptionStatus: (user as any).subscriptionStatus,
       subscriptionEndsAt: (user as any).subscriptionEndsAt,
       monthlyRevenue: (user as any).monthlyRevenue,

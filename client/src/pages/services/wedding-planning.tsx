@@ -1971,18 +1971,16 @@ const displaySmartTips = useMemo(() => {
       const plan = (couplePlans as any)[tier];
 
       try {
-        let subscriptionEndsAt: string | null = null;
-        if (tier !== "free" && plan?.trialDays) {
-          const endDate = new Date();
-          endDate.setDate(endDate.getDate() + plan.trialDays);
-          subscriptionEndsAt = endDate.toISOString();
-        }
-
-        await updateUser({
-          subscriptionTier: tier,
-          subscriptionStatus: "active" as any,
-          subscriptionEndsAt: subscriptionEndsAt as any,
+        const response = await fetch("/api/wedding/subscription/change", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ tier }),
         });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error((data as any)?.error || "Wedding subscription billing is unavailable");
+        }
 
         await new Promise((resolve) => setTimeout(resolve, 500));
         setShowTrialSelector(false);
@@ -2002,7 +2000,7 @@ const displaySmartTips = useMemo(() => {
         console.error("[Wedding Planning] Failed to update tier:", error);
         toast({
           title: "Update Failed",
-          description: "Failed to activate trial. Please try again or refresh the page.",
+          description: error instanceof Error ? error.message : "Failed to activate trial.",
           variant: "destructive",
         });
       }

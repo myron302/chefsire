@@ -10,6 +10,9 @@ const wedding = read("./wedding-subscription.ts");
 const vendor = read("./vendor-subscription.ts");
 const square = read("./square.ts");
 const marketplace = read("./marketplace.ts");
+const orders = read("./orders.ts");
+const weddingRsvp = read("./wedding-rsvp.ts");
+const nutritionGate = read("./meal-planner-week/utils.ts");
 
 test("all paid marketplace tier names lead only to the fail-closed upgrade route", () => {
   for (const tier of ["starter", "professional", "enterprise", "premium_plus"]) {
@@ -54,12 +57,16 @@ test("cancellation never fabricates provider confirmation", () => {
   assert.doesNotMatch(subscriptions, /subscriptionStatus: "cancelled"/);
 });
 
-test("Square checkout identity is authenticated and cannot be supplied by JSON", () => {
+test("Square checkout is authenticated, strict, and disabled before provider access", () => {
   assert.match(square, /subscription-link", requireAuth/);
-  assert.match(square, /userId: principal\.id/);
-  assert.doesNotMatch(square, /userId\?: string/);
+  assert.match(square, /\.strict\(\)\.safeParse\(req\.body\)/);
+  assert.match(square, /subscriptionCheckoutUnavailableResponse/);
+  assert.doesNotMatch(square, /createPaymentLink|checkoutApi|userId|buyerEmail/);
 });
 
-test("premium marketplace feature gate uses canonical current entitlement", () => {
+test("premium backend feature gates use canonical authoritative entitlement", () => {
   assert.match(marketplace, /effectiveMarketplaceTier\(seller as any\)/);
+  assert.match(orders, /effectiveMarketplaceTier/);
+  assert.match(weddingRsvp, /hasAuthoritativePaidEntitlement\(\)/);
+  assert.match(nutritionGate, /hasAuthoritativePaidEntitlement\(\)/);
 });

@@ -9,6 +9,7 @@
  */
 
 export const SUBSCRIPTION_BILLING_NOT_CONFIGURED = "SUBSCRIPTION_BILLING_NOT_CONFIGURED";
+export const SUBSCRIPTION_BILLING_UNAVAILABLE = "SUBSCRIPTION_BILLING_UNAVAILABLE";
 export const SUBSCRIPTION_CANCELLATION_UNAVAILABLE = "SUBSCRIPTION_CANCELLATION_UNAVAILABLE";
 
 export const paidUpgradeUnavailableResponse = {
@@ -23,26 +24,29 @@ export const paidCancellationUnavailableResponse = {
   error: "This subscription cannot be cancelled until the billing provider can confirm cancellation.",
 } as const;
 
+export const subscriptionCheckoutUnavailableResponse = {
+  ok: false,
+  code: SUBSCRIPTION_BILLING_UNAVAILABLE,
+  error: "Subscription checkout is unavailable until paid entitlement can be verified.",
+} as const;
+
+/** Paid authorization is unavailable because the current schema has no proof field. */
+export function hasAuthoritativePaidEntitlement(): boolean {
+  return false;
+}
+
 /**
- * Resolve an existing marketplace entitlement without manufacturing evidence.
- * Records with no end date are retained as legacy/grandfathered subscriptions;
- * new HTTP mutation paths cannot create such records after P1-02.
+ * Historical tier/status/end-date columns are preserved as records, but none
+ * is authoritative evidence. The model has no verified provider subscription
+ * identifier/event or authorized administrative grant to prove paid access.
  */
 export function hasCurrentMarketplaceEntitlement(user: {
   subscriptionTier?: string | null;
   subscriptionStatus?: string | null;
   subscriptionEndsAt?: Date | string | null;
-}, now = new Date()): boolean {
-  const tier = String(user.subscriptionTier || "free").toLowerCase();
-  if (tier === "free") return false;
-
-  const status = String(user.subscriptionStatus || "active").toLowerCase();
-  if (status !== "active" && status !== "cancelled") return false;
-
-  if (!user.subscriptionEndsAt) return status === "active"; // conservative legacy compatibility
-  const endsAt = new Date(user.subscriptionEndsAt);
-  if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() <= now.getTime()) return false;
-  return status === "active" || status === "cancelled";
+}, _now = new Date()): boolean {
+  void user;
+  return hasAuthoritativePaidEntitlement();
 }
 
 export type MarketplacePaidTier = "starter" | "professional" | "enterprise" | "premium_plus";
@@ -52,9 +56,7 @@ export function effectiveMarketplaceTier(user: {
   subscriptionStatus?: string | null;
   subscriptionEndsAt?: Date | string | null;
 }, now = new Date()): MarketplacePaidTier | "free" {
-  if (!hasCurrentMarketplaceEntitlement(user, now)) return "free";
-  const tier = String(user.subscriptionTier || "free").toLowerCase();
-  return (["starter", "professional", "enterprise", "premium_plus"] as string[]).includes(tier)
-    ? tier as MarketplacePaidTier
-    : "free";
+  void user;
+  void now;
+  return "free";
 }

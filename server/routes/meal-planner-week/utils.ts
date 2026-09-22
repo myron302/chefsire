@@ -1,3 +1,5 @@
+import { hasAuthoritativePaidEntitlement } from "../../lib/subscription-security";
+
 export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
 export function startOfDay(d: Date) {
@@ -47,7 +49,7 @@ export function toWeekdayName(d: Date) {
 }
 
 export function assertPremiumNutrition(user: any) {
-  const hasAccess = Boolean(user?.nutritionPremium);
+  const hasAccess = Boolean(user?.nutritionPremium) && hasAuthoritativePaidEntitlement();
   if (!hasAccess) return false;
 
   if (user?.nutritionTrialEndsAt) {
