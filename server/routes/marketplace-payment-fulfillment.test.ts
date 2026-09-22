@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, CAPTURE_RECONCILIATION_CLOCK_SKEW_MS, findSquarePaymentByReference, getCaptureReconciliationWindow, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -155,6 +155,39 @@ test("capture reconciliation follows every Square cursor and trusts only its ref
       return { payments: [{ id: "unrelated", referenceId: "other" }], cursor: "page-2" };
     },
   }), /pagination failed/);
+});
+
+test("capture reconciliation uses a bounded clock-skew window without weakening identity", async () => {
+  const attemptedAt = new Date("2026-09-22T12:00:00.000Z");
+  const window = getCaptureReconciliationWindow(attemptedAt);
+  assert.equal(Date.parse(window.beginTime), attemptedAt.getTime() - CAPTURE_RECONCILIATION_CLOCK_SKEW_MS);
+  assert.equal(Date.parse(window.endTime), attemptedAt.getTime() + CAPTURE_RECONCILIATION_CLOCK_SKEW_MS);
+  assert.equal(Date.parse(window.endTime) - Date.parse(window.beginTime), 2 * CAPTURE_RECONCILIATION_CLOCK_SKEW_MS);
+
+  const skewedMatchingPayment = {
+    id: "matching-payment",
+    referenceId: "capture-reference",
+    status: "COMPLETED",
+    createdAt: "2026-09-22T11:59:30.000Z",
+    totalMoney: { amount: 1234n, currency: "USD" },
+  };
+  assert.ok(Date.parse(skewedMatchingPayment.createdAt) < attemptedAt.getTime());
+  const visited: Array<string | undefined> = [];
+  const matched = await findSquarePaymentByReference({
+    referenceId: "capture-reference",
+    listPage: async (cursor) => {
+      visited.push(cursor);
+      return cursor
+        ? { payments: [skewedMatchingPayment] }
+        : { payments: [{ ...skewedMatchingPayment, id: "unrelated", referenceId: "another-reference" }], cursor: "next" };
+    },
+  });
+  assert.equal(matched?.id, "matching-payment");
+  assert.deepEqual(visited, [undefined, "next"]);
+  assert.equal(requireCompletedSquarePayment(matched, 1234n).squarePaymentId, "matching-payment");
+
+  assert.match(paymentsRoute, /getCaptureReconciliationWindow\(order\.captureAttemptedAt\)/);
+  assert.match(paymentsRoute, /reconciliationWindow\.beginTime,[\s\S]*reconciliationWindow\.endTime/);
 });
 
 test("ambiguous capture remains blocked while definitive decline releases a new attempt", () => {

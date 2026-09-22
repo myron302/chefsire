@@ -126,8 +126,10 @@ Before calling Square, ChefSire durably records `capture_pending` with one stabl
 idempotency key and unique Square `referenceId`. If Square succeeds but local
 commission/revenue persistence fails, the order remains explicitly pending
 reconciliation. A retry follows every Square `ListPayments` cursor for the
-applicable window until it finds that original reference or exhausts the
-provider result set; unrelated same-amount payments are ignored. It never
+fixed window from five minutes before through five minutes after the recorded
+capture attempt. This tolerates bounded application/provider clock skew until
+it finds that original reference or exhausts the provider result set;
+unrelated same-amount payments are ignored. It never
 combines the old key with a newly tokenized payment source. Definitive card
 instrument failures identified by Square's `PAYMENT_METHOD_ERROR` category
 release the attempt for a new key, while mixed, unknown, and transport outcomes

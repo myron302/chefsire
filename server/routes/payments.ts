@@ -7,7 +7,7 @@ import { orders, users, commissions } from "../../shared/schema";
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
-import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getCaptureReconciliationWindow, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 // Square is a CommonJS module - import it properly
 import square from "square";
@@ -141,12 +141,13 @@ router.post("/create-payment", requireAuth, async (req, res) => {
             (error as Error & { code: string }).code = "CAPTURE_OUTCOME_AMBIGUOUS";
             throw error;
           }
+          const reconciliationWindow = getCaptureReconciliationWindow(order.captureAttemptedAt);
           const matchedPayment = await findSquarePaymentByReference({
             referenceId: order.captureIdempotencyKey,
             listPage: async (cursor) => {
               const { result } = await squareClient!.paymentsApi.listPayments(
-                order.captureAttemptedAt!.toISOString(),
-                undefined,
+                reconciliationWindow.beginTime,
+                reconciliationWindow.endTime,
                 "DESC",
                 cursor,
                 process.env.SQUARE_LOCATION_ID!,

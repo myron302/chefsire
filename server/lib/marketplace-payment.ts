@@ -1,5 +1,20 @@
 export const VERIFIED_MARKETPLACE_PAYMENT_STATUS = "captured" as const;
 
+// Square timestamps and application-host timestamps are not guaranteed to be
+// perfectly synchronized. Capture is synchronous, so a fixed five-minute
+// window on either side is ample clock-skew tolerance without an unbounded
+// provider search.
+export const CAPTURE_RECONCILIATION_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+export function getCaptureReconciliationWindow(captureAttemptedAt: Date) {
+  const attemptedAt = captureAttemptedAt.getTime();
+  if (Number.isNaN(attemptedAt)) throw new Error("Invalid capture attempt timestamp");
+  return {
+    beginTime: new Date(attemptedAt - CAPTURE_RECONCILIATION_CLOCK_SKEW_MS).toISOString(),
+    endTime: new Date(attemptedAt + CAPTURE_RECONCILIATION_CLOCK_SKEW_MS).toISOString(),
+  };
+}
+
 export type SquarePaymentEvidence = {
   id?: string | null;
   referenceId?: string | null;
