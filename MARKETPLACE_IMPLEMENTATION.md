@@ -1,5 +1,35 @@
 # Marketplace Monetization Implementation
 
+> **Financial trust boundary:** order `status` describes fulfillment only.
+> `delivered` is not customer-payment capture, verified seller earnings, or
+> payout eligibility. Only the authenticated server payment route may persist
+> a Square payment ID, exact `COMPLETED` provider status, matched USD amount,
+> and capture timestamp. If that evidence is unavailable, payment remains
+> `unverified`; no commission is created and financial summaries exclude it.
+> Seller payout transfer remains unavailable and fails closed separately.
+> Capture/refund operations persist a pending reconciliation state and stable
+> idempotency key before contacting Square. Provider success followed by local
+> database failure therefore remains explicit and safely retryable without a
+> duplicate charge or refund.
+> Ambiguous captures are reconciled by their Square reference rather than by
+> replaying a new card token under an old key. Historical possibly-paid orders
+> fail closed, and only provider-confirmed terminal refund failure releases a
+> failed refund attempt for a new idempotency identity.
+> Capture reconciliation follows Square pagination and accepts only the unique
+> stored reference, never an amount-only match. Provider-confirmed refunded
+> orders may subsequently be cancelled in the independent fulfillment state;
+> captured and refund-pending orders may not.
+> An `unverified` legacy order with old `paid` status or a stored Square payment
+> ID is neither verified nor safely unpaid: the shared legacy predicate blocks
+> both a new charge and unpaid-style fulfillment cancellation.
+> Refund retries are likewise reconstructed only from a persisted immutable
+> request snapshot (key, payment ID, cents, currency, and canonical reason),
+> never from replacement HTTP input.
+> Capture completes all fallible local preparation before entering
+> `capture_pending`. Order-level `uncredited`/`credited`/`reversed` markers make
+> monthly revenue changes idempotent; pre-P1-03 rows remain
+> `legacy_unverified` and require accounting reconciliation before charging.
+
 ## Overview
 This document outlines the complete marketplace monetization system implemented for ChefSire. The system enables vendors (chefs, butchers, spice sellers, etc.) to sell physical products through the platform, with automatic commission deduction and seller payouts.
 

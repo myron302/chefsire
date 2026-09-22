@@ -129,7 +129,8 @@ test("unverified orders fail closed for payout eligibility", () => {
   assert.match(route, /PAYOUT_ELIGIBILITY_UNVERIFIABLE/);
   assert.match(route, /pendingBalance: "0\.00"/);
   assert.match(ordersSchema, /squarePaymentId: text\("square_payment_id"\)/);
-  assert.doesNotMatch(ordersSchema.slice(ordersSchema.indexOf("export const orders"), ordersSchema.indexOf("export const subscriptionHistory")), /paymentStatus/);
+  assert.match(ordersSchema, /paymentStatus: text\("payment_status"\)\.notNull\(\)\.default\("unverified"\)/);
+  assert.match(ordersSchema, /orders_captured_payment_evidence_check/);
 });
 
 test("authenticated seller payout history remains available and principal-scoped", () => {

@@ -7,6 +7,7 @@ import { requireAuth, optionalAuth } from "../middleware/auth";
 import { normalizeStoreLayout } from "../../shared/store/storeLayout.js";
 import { competitions, competitionParticipants } from "../db/competitions.js";
 import type { StoreSocialProof } from "../../shared/store/storeSocialProof.js";
+import { verifiedMarketplaceEarningWhere } from "../lib/marketplace-payment";
 
 const router = Router();
 
@@ -353,7 +354,10 @@ router.get("/:id/stats", requireAuth, async (req, res) => {
         totalRevenue: sum(orders.sellerAmount),
       })
       .from(orders)
-      .where(eq(orders.sellerId, store.userId));
+      .where(and(
+        eq(orders.sellerId, store.userId),
+        verifiedMarketplaceEarningWhere(orders),
+      ));
 
     const stats = {
       totalViews: store.viewCount || 0,

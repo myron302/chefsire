@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-ChefSire has buyer-payment code and server-side commission calculations, but it does **not** currently have a provider-confirmed seller-transfer implementation. Seller payouts are unavailable and fail closed.
+ChefSire has buyer-payment code and server-side commission calculations, but it does **not** currently have a provider-confirmed seller-transfer implementation. Seller payouts are unavailable and fail closed. Marketplace fulfillment and customer payment are independent trust domains: **delivered does not mean paid or payout eligible**.
 
 ## 💰 Money Flow
 
@@ -118,8 +118,44 @@ POST /api/payments/create-payment
 }
 
 // ChefSire receives $100 via Square
-// Order status → "paid"
+// Only an exact Square COMPLETED response with matching amount/currency is stored
+// as paymentStatus → "captured". Fulfillment status is unchanged.
 ```
+
+Before calling Square, ChefSire durably records `capture_pending` with one stable
+idempotency key and unique Square `referenceId`. If Square succeeds but local
+commission/revenue persistence fails, the order remains explicitly pending
+reconciliation. A retry follows every Square `ListPayments` cursor for the
+fixed window from five minutes before through five minutes after the recorded
+capture attempt. This tolerates bounded application/provider clock skew until
+it finds that original reference or exhausts the provider result set;
+unrelated same-amount payments are ignored. It never
+combines the old key with a newly tokenized payment source. Definitive card
+instrument failures identified by Square's `PAYMENT_METHOD_ERROR` category
+release the attempt for a new key, while mixed, unknown, and transport outcomes
+block a new charge. It never substitutes a local or simulated success.
+
+Seller lookup, amount validation, commission inputs, and Square client setup
+all complete before `capture_pending` is written. Failures in that preparation
+phase therefore leave the order retryable as `unverified`; after the pending
+write, any uncertain submission outcome remains fail-closed and must reconcile.
+
+Each new order also has a durable seller-revenue ledger state. Capture changes
+`uncredited` to `credited` in the same transaction that increments
+`monthlyRevenue`; refund changes `credited` to `reversed` in the same
+transaction that decrements it. Historical unverified rows are marked
+`legacy_unverified` because legacy order creation and aggregate revenue updates
+were not atomic. They must be manually reconciled before a new charge rather
+than risking a second credit or inventing historical certainty. The supported
+`db:push` workflow performs this classification before Drizzle synchronization
+and re-enforces it afterward, so schema push cannot backfill historical rows
+with the new-order `uncredited` default.
+
+Legacy orders whose old fulfillment status is `paid` or which already contain
+a Square payment ID are not considered verified, but they are also not safe to
+charge again or cancel as if unpaid. Capture and fulfillment cancellation use
+the same legacy-indicator predicate and fail closed with
+`LEGACY_PAYMENT_RECONCILIATION_REQUIRED`.
 
 #### 3. Mark Order Delivered
 ```javascript
@@ -129,6 +165,30 @@ PATCH /api/orders/order_123/status
   "trackingNumber": "USPS123"
 }
 ```
+
+This seller-owned endpoint accepts only `status` and `trackingNumber`. It cannot
+set `paymentStatus`, Square IDs, provider status, or capture time. Delivery is
+fulfillment evidence only and never creates a commission or verified earning.
+
+Full refunds use the same containment pattern: `refund_pending` and a stable
+refund idempotency key are persisted before the Square call. Square `PENDING`
+refund IDs are retained and polled on retry; completed provider refunds whose
+local accounting transaction fails remain non-earning and recoverable rather
+than appearing unquestionably captured. A provider-confirmed `FAILED` or
+`REJECTED` refund restores the captured state, archives the failed refund ID,
+and releases the logical attempt so a later request receives a new idempotency
+key. Ambiguous outcomes stay blocked. Partial refunds remain unavailable.
+Synchronous Square rejections known to mean that no refund was created restore
+the captured state in the same conservative way; unknown provider errors stay
+pending. After a provider-confirmed completed refund, the seller may separately
+move pending/processing/shipped fulfillment to `cancelled` without changing any
+payment evidence.
+
+The pending record snapshots the immutable Square request: idempotency key,
+payment ID, amount in cents, USD currency, and a trimmed canonical reason.
+Retries rebuild the request only from that snapshot, so changed or omitted
+HTTP input cannot alter an operation already in flight. A definitive provider
+failure retires the snapshot before a new logical attempt receives a new key.
 
 #### 4. Payout execution (currently unavailable)
 ```javascript
@@ -202,9 +262,10 @@ const SquarePaymentForm = ({ amount, onPaymentSuccess }) => {
 
 ## 🔄 Payout Scheduling (not implemented)
 
-No immediate, delayed, cron, or batch seller payout path is enabled. Delivery
-alone is not payout eligibility: the system must first gain authoritative
-payment-capture evidence and a provider-confirmed transfer implementation.
+No immediate, delayed, cron, or batch seller payout path is enabled. Any future
+eligibility rule must require both the applicable fulfillment state **and**
+independently verified provider capture. Delivery alone is not payout
+eligibility, and provider capture is not proof of a seller payout transfer.
 
 ## 📊 Commission Tiers
 
