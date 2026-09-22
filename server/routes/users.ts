@@ -6,7 +6,7 @@ import { requireAuth } from "../middleware";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
 import { serializePublicUser } from "../serializers/public-user";
-import { effectiveMarketplaceTier } from "../lib/subscription-security";
+import { effectiveMarketplaceTier, effectiveSubscriptionPresentation } from "../lib/subscription-security";
 
 const r = Router();
 
@@ -321,10 +321,12 @@ r.get("/:id/subscription/info", async (req, res) => {
       isNaN(mrNum) ? 0 : mrNum
     );
 
+    const effectiveTier = effectiveMarketplaceTier(user as any);
+    const effectiveState = effectiveSubscriptionPresentation(effectiveTier, (user as any).subscriptionStatus, (user as any).subscriptionEndsAt);
     res.json({
-      subscriptionTier: effectiveMarketplaceTier(user as any),
-      subscriptionStatus: (user as any).subscriptionStatus,
-      subscriptionEndsAt: (user as any).subscriptionEndsAt,
+      subscriptionTier: effectiveTier,
+      subscriptionStatus: effectiveState.status,
+      subscriptionEndsAt: effectiveState.endsAt,
       monthlyRevenue: (user as any).monthlyRevenue,
       currentCommissionRate: rate,
       tierPricing: {

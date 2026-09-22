@@ -15,9 +15,7 @@ const weddingRsvp = read("./wedding-rsvp.ts");
 const nutritionGate = read("./meal-planner-week/utils.ts");
 
 test("all paid marketplace tier names lead only to the fail-closed upgrade route", () => {
-  for (const tier of ["starter", "professional", "enterprise", "premium_plus"]) {
-    assert.match(subscriptions, new RegExp(`z\\.enum\\(\\[[^\\]]*${tier}`));
-  }
+  assert.match(subscriptions, /z\.enum\(MARKETPLACE_PAID_TIER_IDS\)/);
   assert.match(subscriptions, /router\.post\("\/upgrade", requireAuth/);
   assert.match(subscriptions, /return res\.status\(503\)\.json\(paidUpgradeUnavailableResponse\)/);
   assert.doesNotMatch(subscriptions, /subscriptionTier: tier/);
@@ -59,7 +57,7 @@ test("cancellation never fabricates provider confirmation", () => {
 
 test("Square checkout is authenticated, strict, and disabled before provider access", () => {
   assert.match(square, /subscription-link", requireAuth/);
-  assert.match(square, /\.strict\(\)\.safeParse\(req\.body\)/);
+  assert.match(square, /subscriptionCheckoutRequestSchema\.safeParse\(req\.body\)/);
   assert.match(square, /subscriptionCheckoutUnavailableResponse/);
   assert.doesNotMatch(square, /createPaymentLink|checkoutApi|userId|buyerEmail/);
 });

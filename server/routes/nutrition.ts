@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
-import { paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+import { effectiveSubscriptionPresentation, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 import {
   NUTRITION_SUBSCRIPTION_TIERS,
   nutritionTierPriceAsString,
@@ -144,14 +144,17 @@ r.get("/subscription", requireAuth, async (req, res) => {
     }
 
     const currentTier = coerceNutritionTierFromUser(user);
-    const status = deriveNutritionStatus(user);
-    const endsAt = (user as any).nutritionTrialEndsAt ?? null;
+    const effectiveState = effectiveSubscriptionPresentation(
+      currentTier,
+      deriveNutritionStatus(user),
+      (user as any).nutritionTrialEndsAt,
+    );
 
     res.json({
       ok: true,
       currentTier,
-      status,
-      endsAt,
+      status: effectiveState.status,
+      endsAt: effectiveState.endsAt,
       tierInfo: NUTRITION_SUBSCRIPTION_TIERS[currentTier],
     });
   } catch (error) {

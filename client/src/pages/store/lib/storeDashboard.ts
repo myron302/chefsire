@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { DollarSign, Eye, Package, ShoppingCart, TrendingUp } from "lucide-react";
+import type { MarketplacePaidTierId } from "@shared/subscription-tiers";
 
 export interface DashboardStats {
   totalProducts: number;
@@ -19,7 +20,7 @@ export interface DashboardStatCard {
 }
 
 export interface SubscriptionPlan {
-  id: string;
+  id: MarketplacePaidTierId;
   name: string;
   price: number;
   commission: string;

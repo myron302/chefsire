@@ -6,7 +6,8 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { subscriptionHistory } from "../../shared/schema";
-import { effectiveMarketplaceTier, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+import { effectiveMarketplaceTier, effectiveSubscriptionPresentation, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+import { MARKETPLACE_PAID_TIER_IDS } from "../../shared/subscription-tiers";
 
 const router = Router();
 
@@ -169,13 +170,18 @@ router.get("/my-tier", requireAuth, async (req, res) => {
 
     const tierName = coerceTier(effectiveMarketplaceTier(user as any));
     const tier = SUBSCRIPTION_TIERS[tierName];
+    const effectiveState = effectiveSubscriptionPresentation(
+      tierName,
+      (user as any).subscriptionStatus,
+      (user as any).subscriptionEndsAt,
+    );
 
     res.json({
       ok: true,
       currentTier: tierName,
       tierInfo: tier,
-      status: (user as any).subscriptionStatus || "active",
-      endsAt: (user as any).subscriptionEndsAt || null,
+      status: effectiveState.status,
+      endsAt: effectiveState.endsAt,
       monthlyRevenue: (user as any).monthlyRevenue || 0,
     });
   } catch (error) {
@@ -240,7 +246,7 @@ router.get("/history", requireAuth, async (req, res) => {
 // No verified provider-to-account reconciliation exists. Client-selected paid tiers fail closed.
 router.post("/upgrade", requireAuth, async (req, res) => {
   const schema = z.object({
-    tier: z.enum(["starter", "professional", "enterprise", "premium_plus"]),
+    tier: z.enum(MARKETPLACE_PAID_TIER_IDS),
   }).strict();
 
   const parsed = schema.safeParse(req.body);
@@ -268,7 +274,7 @@ router.post("/cancel", requireAuth, async (req, res) => {
 // Paid-to-paid changes also require authoritative billing evidence.
 router.post("/downgrade", requireAuth, async (req, res) => {
   const schema = z.object({
-    tier: z.enum(["starter", "professional", "enterprise", "premium_plus"]),
+    tier: z.enum(MARKETPLACE_PAID_TIER_IDS),
   }).strict();
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {

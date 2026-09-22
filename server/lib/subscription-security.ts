@@ -1,3 +1,7 @@
+import type { MarketplacePaidTierId } from "../../shared/subscription-tiers";
+import { MARKETPLACE_PAID_TIER_IDS } from "../../shared/subscription-tiers";
+import { z } from "zod";
+
 /**
  * Subscription authorization policy.
  *
@@ -30,6 +34,11 @@ export const subscriptionCheckoutUnavailableResponse = {
   error: "Subscription checkout is unavailable until paid entitlement can be verified.",
 } as const;
 
+export const subscriptionCheckoutRequestSchema = z.object({
+  tier: z.enum(MARKETPLACE_PAID_TIER_IDS),
+  trial: z.boolean().optional(),
+}).strict();
+
 /** Paid authorization is unavailable because the current schema has no proof field. */
 export function hasAuthoritativePaidEntitlement(): boolean {
   return false;
@@ -49,14 +58,26 @@ export function hasCurrentMarketplaceEntitlement(user: {
   return hasAuthoritativePaidEntitlement();
 }
 
-export type MarketplacePaidTier = "starter" | "professional" | "enterprise" | "premium_plus";
+export type MarketplacePaidTier = MarketplacePaidTierId;
 
 export function effectiveMarketplaceTier(user: {
   subscriptionTier?: string | null;
   subscriptionStatus?: string | null;
   subscriptionEndsAt?: Date | string | null;
-}, now = new Date()): MarketplacePaidTier | "free" {
+}, now = new Date()): MarketplacePaidTierId | "free" {
   void user;
   void now;
   return "free";
+}
+
+export function effectiveSubscriptionPresentation(
+  effectiveTier: string,
+  recordedStatus: unknown,
+  recordedEndsAt: unknown,
+): { status: string; endsAt: unknown | null } {
+  if (effectiveTier === "free") return { status: "inactive", endsAt: null };
+  return {
+    status: String(recordedStatus || "active"),
+    endsAt: recordedEndsAt ?? null,
+  };
 }

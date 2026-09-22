@@ -308,9 +308,9 @@ export default function StoreDashboard() {
     );
   }
 
-  const currentTier = tier?.currentTier || user?.subscription || "free";
+  const currentTier = tier?.currentTier || "free";
   const tierInfo = tier?.tierInfo;
-  const trialDaysLeft = calculateTrialDaysLeft(user?.trialEndDate);
+  const trialDaysLeft = currentTier === "free" ? 0 : calculateTrialDaysLeft(user?.trialEndDate);
 
   return (
     <div className="min-h-screen bg-gray-50">

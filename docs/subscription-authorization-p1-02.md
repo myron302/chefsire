@@ -46,3 +46,9 @@ No subscription webhook exists, so no event is accepted or replayed. Repeated pa
 ## Feature gates
 
 Marketplace product limits and commission calculation resolve the canonical effective tier rather than trusting the recorded tier string. Because no authoritative subscription evidence exists, the effective paid tier is currently always Free. Wedding invitation sending and nutrition weekly meal planning now also require the same authoritative-evidence policy and therefore reject historical raw paid flags. No vendor-only backend premium operation was found; vendor tier is presently subscription display/state only.
+
+## Effective subscription read contract
+
+The canonical paid marketplace identifiers are `starter`, `professional`, `enterprise`, and `premium_plus`; StoreDashboard currently displays the first three. Subscription checkout validates this closed set before returning `SUBSCRIPTION_BILLING_UNAVAILABLE`. The historical `pro` checkout alias was not used by the current subscription model and is rejected.
+
+Effective subscription reads return one internally consistent state. When authoritative evidence is absent, marketplace, nutrition, wedding, and vendor reads return the domain's Free tier with `status: "inactive"` and `endsAt: null`. Historical stored tier/status/end-date values remain in the database for reconciliation but are neither returned as effective state nor used for authorization. The settings UI likewise derives status and renewal display from effective tier and never falls back to raw user subscription fields.

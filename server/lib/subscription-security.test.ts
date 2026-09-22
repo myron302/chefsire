@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   effectiveMarketplaceTier,
+  effectiveSubscriptionPresentation,
   hasAuthoritativePaidEntitlement,
   hasCurrentMarketplaceEntitlement,
   SUBSCRIPTION_BILLING_NOT_CONFIGURED,
@@ -39,4 +40,15 @@ test("free users remain free and historical record preservation grants nothing",
 test("no supported authoritative evidence form exists yet", () => {
   // Adding provider/admin evidence must be an explicit future model + reconciliation change.
   assert.equal(hasAuthoritativePaidEntitlement(), false);
+});
+
+test("effective Free presentation never leaks raw active status or renewal date", () => {
+  assert.deepEqual(
+    effectiveSubscriptionPresentation("free", "active", "2099-01-01T00:00:00Z"),
+    { status: "inactive", endsAt: null },
+  );
+  assert.deepEqual(
+    effectiveSubscriptionPresentation("free", "cancelled", "2099-01-01T00:00:00Z"),
+    { status: "inactive", endsAt: null },
+  );
 });

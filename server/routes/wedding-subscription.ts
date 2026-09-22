@@ -5,7 +5,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { subscriptionHistory } from "../../shared/schema";
-import { hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+import { effectiveSubscriptionPresentation, hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 
 const r = Router();
 
@@ -165,15 +165,13 @@ r.get("/subscription", requireAuth, async (req, res) => {
 
     const recordedTier = coerceWeddingTier((user as any).weddingTier);
     const currentTier = hasAuthoritativePaidEntitlement() ? recordedTier : "free";
-    const status = String((user as any).weddingStatus || (currentTier === "free" ? "inactive" : "active"));
-    const endsAt = (user as any).weddingEndsAt ?? null;
+    const effectiveState = effectiveSubscriptionPresentation(currentTier, (user as any).weddingStatus, (user as any).weddingEndsAt);
 
     res.json({
       ok: true,
       currentTier,
-      recordedTier,
-      status,
-      endsAt,
+      status: effectiveState.status,
+      endsAt: effectiveState.endsAt,
       tierInfo: (WEDDING_SUBSCRIPTION_TIERS as any)[currentTier],
     });
   } catch (error) {
