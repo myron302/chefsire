@@ -7,7 +7,6 @@ import {
   checkLowStockItems,
 } from "./services/pantry-cron.service";
 import { reconcileCateringStorageCleanup } from "./services/catering-booking-storage-cleanup";
-import { releaseExpiredMarketplaceInventoryReservations } from "./services/marketplace-inventory-reconciliation";
 
 /**
  * Initialize all cron jobs
@@ -43,19 +42,10 @@ export function initializeCronJobs() {
     }
   });
 
-  cron.schedule("*/5 * * * *", async () => {
-    try {
-      await releaseExpiredMarketplaceInventoryReservations();
-    } catch (error) {
-      console.error("Marketplace inventory reservation cleanup failed", error);
-    }
-  });
-
   console.log("✅ Cron jobs initialized:");
   console.log("   - Pantry expiring items: Daily at 9 AM & 6 PM");
   console.log("   - Low stock items: Daily at 10 AM");
   console.log("   - Catering storage cleanup: Hourly at :30");
-  console.log("   - Marketplace inventory reservation cleanup: Every 5 minutes");
 }
 
 /**
@@ -65,5 +55,4 @@ export async function runAllChecksNow() {
   await checkExpiringPantryItems();
   await checkLowStockItems();
   await reconcileCateringStorageCleanup();
-  await releaseExpiredMarketplaceInventoryReservations();
 }

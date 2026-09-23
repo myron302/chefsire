@@ -72,7 +72,6 @@ export const orders = pgTable(
     // with verified capture, and is released atomically on cancellation/decline.
     // Historical rows are deliberately not guessed into this trusted lifecycle.
     inventoryStatus: text("inventory_status").notNull().default("legacy_unverified"),
-    inventoryReservationExpiresAt: timestamp("inventory_reservation_expires_at"),
     deliveryMethod: text("delivery_method").notNull().default("shipped"),
     shippingAddress: jsonb("shipping_address").$type<{
       street: string;
@@ -119,11 +118,9 @@ export const orders = pgTable(
     checkoutIdempotencyIdx: uniqueIndex("orders_buyer_checkout_idempotency_uidx")
       .on(table.buyerId, table.checkoutIdempotencyKey)
       .where(sql`${table.checkoutIdempotencyKey} IS NOT NULL`),
-    inventoryReservationExpiryIdx: index("orders_inventory_reservation_expiry_idx")
-      .on(table.inventoryStatus, table.paymentStatus, table.inventoryReservationExpiresAt),
     inventoryStatusValid: check(
       "orders_inventory_status_check",
-      sql`${table.inventoryStatus} IN ('reserved', 'sold', 'released', 'legacy_unverified')`,
+      sql`${table.inventoryStatus} IN ('unreserved', 'reserved', 'sold', 'released', 'legacy_unverified')`,
     ),
     trustedCheckoutSnapshot: check(
       "orders_trusted_checkout_snapshot_check",
@@ -131,8 +128,15 @@ export const orders = pgTable(
         ${table.checkoutIdempotencyKey} IS NOT NULL
         AND ${table.sellerTierSnapshot} IS NOT NULL
         AND ${table.commissionRateSnapshot} IS NOT NULL
-        AND (${table.inventoryStatus} <> 'reserved' OR ${table.inventoryReservationExpiresAt} IS NOT NULL)
       )`,
+    ),
+    inventoryPaymentLifecycle: check(
+      "orders_inventory_payment_lifecycle_check",
+      sql`${table.inventoryStatus} = 'legacy_unverified'
+        OR (${table.inventoryStatus} = 'unreserved' AND ${table.paymentStatus} = 'unverified')
+        OR (${table.inventoryStatus} = 'reserved' AND ${table.paymentStatus} IN ('capture_pending', 'capture_reconciliation'))
+        OR (${table.inventoryStatus} = 'released' AND ${table.paymentStatus} = 'unverified')
+        OR (${table.inventoryStatus} = 'sold' AND ${table.paymentStatus} IN ('captured', 'refund_pending', 'refund_reconciliation', 'refunded'))`,
     ),
     soldInventoryPaymentEvidence: check(
       "orders_sold_inventory_payment_evidence_check",

@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { orders, products, users, stores } from "../../shared/schema";
-import { eq, and, desc, inArray, gte, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
@@ -11,7 +11,6 @@ import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../ser
 import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning } from "../lib/marketplace-payment";
 
 const router = Router();
-const INVENTORY_RESERVATION_TTL_MS = 30 * 60 * 1000;
 
 function checkoutInputsMatch(order: typeof orders.$inferSelect, input: {
   productId: string;
@@ -79,8 +78,8 @@ router.post("/checkout", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Product is not available" });
     }
 
-    // This early check is advisory only. The conditional decrement in the
-    // transaction below is the authoritative concurrency boundary.
+    // This check improves checkout feedback. Inventory is not mutated here;
+    // the payment-preparation transaction owns the authoritative reservation.
     if (product.inventory !== null && product.inventory < body.quantity) {
       return res.status(400).json({
         ok: false,
@@ -138,12 +137,12 @@ router.post("/checkout", requireAuth, async (req, res) => {
     const sellerAmount = payout;
     const commissionRate = subtotal > 0 ? (commission / subtotal) * 100 : 0;
 
-    // Reserve finite inventory and create its order in one transaction. The
-    // database predicate prevents two buyers from reserving the final unit.
+    // Creating an order is not a sale and does not mutate inventory. The
+    // checkout identity makes this insert retry safe; payment preparation later
+    // reserves inventory atomically with capture_pending.
     let newOrder: typeof orders.$inferSelect;
     try {
-      newOrder = await db.transaction(async (tx: any) => {
-        const [created] = await tx.insert(orders).values({
+      [newOrder] = await db.insert(orders).values({
         buyerId,
         sellerId: product.sellerId,
         productId: product.id,
@@ -154,25 +153,12 @@ router.post("/checkout", requireAuth, async (req, res) => {
         checkoutIdempotencyKey: body.checkoutIdempotencyKey,
         sellerTierSnapshot: sellerTier,
         commissionRateSnapshot: commissionRate.toFixed(2),
-        inventoryStatus: "reserved",
-        inventoryReservationExpiresAt: new Date(Date.now() + INVENTORY_RESERVATION_TTL_MS),
+        inventoryStatus: "unreserved",
         deliveryMethod,
         shippingAddress: body.shippingAddress || null,
         fulfillmentMethod: body.fulfillmentMethod,
         status: "pending"
         }).returning();
-        if (product.inventory !== null) {
-          const [reserved] = await tx.update(products).set({
-            inventory: sql`${products.inventory} - ${body.quantity}`,
-          }).where(and(
-            eq(products.id, product.id),
-            eq(products.isActive, true),
-            gte(products.inventory, body.quantity),
-          )).returning({ id: products.id });
-          if (!reserved) throw Object.assign(new Error("Inventory is no longer available"), { code: "INSUFFICIENT_INVENTORY" });
-        }
-        return created;
-      });
     } catch (error: any) {
       if (error?.code === "23505") {
         const [replayed] = await db.select().from(orders).where(and(
@@ -185,9 +171,6 @@ router.post("/checkout", requireAuth, async (req, res) => {
         if (replayed) {
           return res.status(409).json({ ok: false, code: "CHECKOUT_IDEMPOTENCY_CONFLICT", error: "Checkout identity was already used for different inputs" });
         }
-      }
-      if (error?.code === "INSUFFICIENT_INVENTORY") {
-        return res.status(409).json({ ok: false, code: error.code, error: error.message });
       }
       throw error;
     }
@@ -403,6 +386,13 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     };
     if (status !== order.status && !(transitions[order.status ?? "pending"] ?? []).includes(status)) {
       return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Invalid fulfillment transition" });
+    }
+    if (["processing", "shipped", "delivered"].includes(status) && !isVerifiedMarketplaceEarning(order)) {
+      return res.status(409).json({
+        ok: false,
+        code: "PAYMENT_CAPTURE_UNVERIFIED",
+        error: "Order cannot enter fulfillment without verified captured payment",
+      });
     }
     const cancellablePaymentStates = ["unverified", "refunded"];
     if (status === "cancelled" && order.paymentStatus === "unverified" && hasLegacyPaymentIndicators(order)) {

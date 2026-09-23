@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "../db";
 import { orders, products, users, commissions } from "../../shared/schema";
-import { and, eq, gt, notInArray, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, notInArray, or, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getCaptureReconciliationWindow, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
@@ -69,11 +69,12 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         error: "Historical payment activity must be reconciled before this order can be charged",
       });
     }
-    if (order.inventoryStatus !== "reserved") {
+    const expectedInventoryStatus = order.paymentStatus === "unverified" ? "unreserved" : "reserved";
+    if (order.inventoryStatus !== expectedInventoryStatus) {
       return res.status(409).json({
         ok: false,
         code: order.inventoryStatus === "legacy_unverified" ? "LEGACY_INVENTORY_RECONCILIATION_REQUIRED" : "INVENTORY_NOT_RESERVED",
-        error: "This order does not have a verified inventory reservation",
+        error: "This order is outside the trusted inventory lifecycle",
       });
     }
     if (["cancelled", "refunded"].includes(order.status ?? "")) {
@@ -135,20 +136,40 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         buyerEmailAddress: req.user!.email,
         ...(verificationToken && { verificationToken }),
       };
-      const [prepared] = await db.update(orders).set({
-        paymentStatus: "capture_pending",
-        paymentProvider: "square",
-        captureIdempotencyKey,
-        captureAttemptedAt,
-        lastPaymentFailureCode: null,
-        updatedAt: new Date(),
-      }).where(and(
-        eq(orders.id, orderId),
+      const prepared = await db.transaction(async (tx: any) => {
+        // One conditional UPDATE is the stock check and reservation. It locks
+        // this product row, so concurrent attempts cannot both claim the last
+        // unit. NULL inventory remains the existing unlimited-stock sentinel.
+        const [reservedProduct] = await tx.update(products).set({
+          inventory: sql`CASE WHEN ${products.inventory} IS NULL THEN NULL ELSE ${products.inventory} - ${order.quantity} END`,
+        }).where(and(
+          eq(products.id, order.productId),
+          eq(products.isActive, true),
+          or(isNull(products.inventory), gte(products.inventory, order.quantity)),
+        )).returning({ id: products.id });
+        if (!reservedProduct) {
+          throw Object.assign(new Error("Inventory is no longer available"), { code: "INSUFFICIENT_INVENTORY" });
+        }
+
+        const [preparedOrder] = await tx.update(orders).set({
+          paymentStatus: "capture_pending",
+          paymentProvider: "square",
+          captureIdempotencyKey,
+          captureAttemptedAt,
+          lastPaymentFailureCode: null,
+          inventoryStatus: "reserved",
+          updatedAt: new Date(),
+        }).where(and(
+          eq(orders.id, orderId),
           eq(orders.paymentStatus, "unverified"),
-          eq(orders.inventoryStatus, "reserved"),
-          gt(orders.inventoryReservationExpiresAt, new Date()),
-        notInArray(orders.status, ["cancelled", "refunded"]),
-      )).returning();
+          eq(orders.inventoryStatus, "unreserved"),
+          notInArray(orders.status, ["cancelled", "refunded"]),
+        )).returning();
+        if (!preparedOrder) {
+          throw Object.assign(new Error("Order state changed; reload and retry"), { code: "PAYMENT_STATE_CONFLICT" });
+        }
+        return preparedOrder;
+      });
       if (!prepared) {
         return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Order state changed; reload and retry" });
       }
@@ -281,6 +302,12 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     });
   } catch (error: any) {
     console.error("Payment processing error:", error);
+    if (error?.code === "INSUFFICIENT_INVENTORY") {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
+    if (error?.code === "PAYMENT_STATE_CONFLICT" && !captureContext) {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
     const definitiveFailure = getDefinitiveSquarePaymentFailure(error)
       ?? (error?.code === "CAPTURE_DEFINITIVE_FAILURE" ? error.providerCode : null);
     if (definitiveFailure && captureContext) {
