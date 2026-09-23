@@ -19,6 +19,11 @@ const run = (args: string[]) => {
 // them. We deliberately do not replay unrelated historical migrations here.
 run(["exec", "--", "tsx", "server/scripts/enforce-payout-integrity.ts", "--allow-missing"]);
 run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-revenue-integrity.ts", "--allow-missing"]);
+// Depends on seller_revenue_status above. Must run before Drizzle adds
+// inventory_status itself: Drizzle's NOT NULL DEFAULT would otherwise stamp
+// every existing order 'legacy_unverified' before this evidence-based
+// backfill ever runs, stranding already-attempted captures (see P1-05).
+run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-checkout-atomicity.ts", "--allow-missing"]);
 
 const pushArgs = ["exec", "--", "drizzle-kit", "push"];
 if (process.argv.includes("--force")) pushArgs.push("--force");
@@ -29,3 +34,4 @@ run(pushArgs);
 // push, independently of the one-time migration ledger.
 run(["exec", "--", "tsx", "server/scripts/enforce-payout-integrity.ts"]);
 run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-revenue-integrity.ts"]);
+run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-checkout-atomicity.ts"]);

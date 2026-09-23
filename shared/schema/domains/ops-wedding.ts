@@ -119,6 +119,7 @@ export const commissions = pgTable(
   },
   (t) => ({
     orderIdx: index("commissions_order_idx").on(t.orderId),
+    orderUniqueIdx: uniqueIndex("commissions_order_uidx").on(t.orderId),
     sellerIdx: index("commissions_seller_idx").on(t.sellerId),
     payoutIdx: index("commissions_payout_idx").on(t.payoutId),
     activePayoutClaimIdx: uniqueIndex("commissions_active_payout_order_uidx")

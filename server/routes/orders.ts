@@ -3,15 +3,26 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { orders, products, users, stores } from "../../shared/schema";
-import { eq, and, or, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
-import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
 import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning } from "../lib/marketplace-payment";
 
 const router = Router();
+
+function checkoutInputsMatch(order: typeof orders.$inferSelect, input: {
+  productId: string;
+  quantity: number;
+  fulfillmentMethod: string;
+  shippingAddress?: unknown;
+}) {
+  return order.productId === input.productId
+    && order.quantity === input.quantity
+    && order.fulfillmentMethod === input.fulfillmentMethod
+    && JSON.stringify(order.shippingAddress ?? null) === JSON.stringify(input.shippingAddress ?? null);
+}
 
 /**
  * ORDER PROCESSING SYSTEM
@@ -24,23 +35,35 @@ router.post("/checkout", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       productId: z.string(),
-      quantity: z.number().min(1).max(100),
-      deliveryMethod: z.enum(["shipped", "pickup", "in_store", "digital"]).default("shipped"),
+      quantity: z.number().int().min(1).max(100),
+      checkoutIdempotencyKey: z.string().uuid(),
       shippingAddress: z.object({
-        street: z.string(),
-        city: z.string(),
-        state: z.string(),
-        zipCode: z.string(),
+        street: z.string().trim().min(1).max(200),
+        city: z.string().trim().min(1).max(100),
+        state: z.string().trim().min(1).max(100),
+        zipCode: z.string().trim().min(1).max(24),
         country: z.string().default("USA")
       }).optional(),
       fulfillmentMethod: z.enum(["shipping", "local_pickup"]),
-      pickupNotes: z.string().optional()
-    });
+    }).strict();
 
     const body = schema.parse(req.body);
     const buyerId = req.user!.id;
 
-    // Get product details
+    // A retry returns the original immutable order instead of creating another
+    // reservation. Reusing the identity for different inputs fails closed.
+    const [existingOrder] = await db.select().from(orders).where(and(
+      eq(orders.buyerId, buyerId),
+      eq(orders.checkoutIdempotencyKey, body.checkoutIdempotencyKey),
+    )).limit(1);
+    if (existingOrder) {
+      if (!checkoutInputsMatch(existingOrder, body)) {
+        return res.status(409).json({ ok: false, code: "CHECKOUT_IDEMPOTENCY_CONFLICT", error: "Checkout identity was already used for different inputs" });
+      }
+      return res.json({ ok: true, message: "Order already created", order: existingOrder });
+    }
+
+    // Load every price, seller, availability and commission input from the DB.
     const [product] = await db
       .select()
       .from(products)
@@ -55,7 +78,8 @@ router.post("/checkout", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Product is not available" });
     }
 
-    // Check inventory
+    // This check improves checkout feedback. Inventory is not mutated here;
+    // the payment-preparation transaction owns the authoritative reservation.
     if (product.inventory !== null && product.inventory < body.quantity) {
       return res.status(400).json({
         ok: false,
@@ -63,12 +87,18 @@ router.post("/checkout", requireAuth, async (req, res) => {
       });
     }
 
-    // Validate fulfillment method
-    if (body.fulfillmentMethod === "shipping" && !product.shippingEnabled) {
+    const productCategory = (product as any).productCategory || "physical";
+    const isDigital = product.isDigital || ["digital", "cookbook", "course"].includes(productCategory);
+
+    // Validate fulfillment method against server-owned product capabilities.
+    if (!isDigital && body.fulfillmentMethod === "shipping" && !product.shippingEnabled) {
       return res.status(400).json({ ok: false, error: "Shipping not available for this product" });
     }
+    if (!isDigital && body.fulfillmentMethod === "shipping" && !body.shippingAddress) {
+      return res.status(400).json({ ok: false, error: "Shipping address is required" });
+    }
 
-    if (body.fulfillmentMethod === "local_pickup" && !product.localPickupEnabled) {
+    if (!isDigital && body.fulfillmentMethod === "local_pickup" && !product.localPickupEnabled) {
       return res.status(400).json({ ok: false, error: "Local pickup not available for this product" });
     }
 
@@ -83,31 +113,36 @@ router.post("/checkout", requireAuth, async (req, res) => {
 
     // Calculate amounts
     const productPrice = parseFloat(product.price);
-    const shippingCost = body.deliveryMethod === "shipped" && product.shippingCost
+    const deliveryMethod = isDigital
+      ? DeliveryMethod.DIGITAL
+      : body.fulfillmentMethod === "local_pickup"
+        ? DeliveryMethod.PICKUP
+        : DeliveryMethod.SHIPPED;
+    const shippingCost = deliveryMethod === DeliveryMethod.SHIPPED && product.shippingCost
       ? parseFloat(product.shippingCost)
       : 0;
 
     const subtotal = productPrice * body.quantity;
     const totalAmount = subtotal + shippingCost;
 
-    // Get product category for commission calculation
-    const productCategory = (product as any).productCategory || "physical";
-
     // Calculate commission based on tier, delivery method, and product category
     const { commission, payout } = calculateSellerPayout(
       subtotal,
       sellerTier,
-      body.deliveryMethod as DeliveryMethod,
+      deliveryMethod,
       productCategory as ProductCategory
     );
 
     const platformFee = commission;
     const sellerAmount = payout;
+    const commissionRate = subtotal > 0 ? (commission / subtotal) * 100 : 0;
 
-    // Create order
-    const [newOrder] = await db
-      .insert(orders)
-      .values({
+    // Creating an order is not a sale and does not mutate inventory. The
+    // checkout identity makes this insert retry safe; payment preparation later
+    // reserves inventory atomically with capture_pending.
+    let newOrder: typeof orders.$inferSelect;
+    try {
+      [newOrder] = await db.insert(orders).values({
         buyerId,
         sellerId: product.sellerId,
         productId: product.id,
@@ -115,22 +150,29 @@ router.post("/checkout", requireAuth, async (req, res) => {
         totalAmount: totalAmount.toFixed(2),
         platformFee: platformFee.toFixed(2),
         sellerAmount: sellerAmount.toFixed(2),
-        deliveryMethod: body.deliveryMethod,
+        checkoutIdempotencyKey: body.checkoutIdempotencyKey,
+        sellerTierSnapshot: sellerTier,
+        commissionRateSnapshot: commissionRate.toFixed(2),
+        inventoryStatus: "unreserved",
+        deliveryMethod,
         shippingAddress: body.shippingAddress || null,
         fulfillmentMethod: body.fulfillmentMethod,
         status: "pending"
-      })
-      .returning();
-
-    // Update product inventory
-    if (product.inventory !== null) {
-      await db
-        .update(products)
-        .set({
-          inventory: product.inventory - body.quantity,
-          salesCount: (product.salesCount || 0) + 1
-        })
-        .where(eq(products.id, product.id));
+        }).returning();
+    } catch (error: any) {
+      if (error?.code === "23505") {
+        const [replayed] = await db.select().from(orders).where(and(
+          eq(orders.buyerId, buyerId),
+          eq(orders.checkoutIdempotencyKey, body.checkoutIdempotencyKey),
+        )).limit(1);
+        if (replayed && checkoutInputsMatch(replayed, body)) {
+          return res.json({ ok: true, message: "Order already created", order: replayed });
+        }
+        if (replayed) {
+          return res.status(409).json({ ok: false, code: "CHECKOUT_IDEMPOTENCY_CONFLICT", error: "Checkout identity was already used for different inputs" });
+        }
+      }
+      throw error;
     }
 
     // Send notification to seller
@@ -167,8 +209,8 @@ router.post("/checkout", requireAuth, async (req, res) => {
           shippingCost: shippingCost.toFixed(2),
           totalAmount: totalAmount.toFixed(2),
           platformFee: platformFee.toFixed(2),
-          commissionRate: `${((commission / subtotal) * 100).toFixed(1)}%`,
-          deliveryMethod: body.deliveryMethod,
+          commissionRate: `${commissionRate.toFixed(1)}%`,
+          deliveryMethod,
           sellerTier,
           sellerGets: sellerAmount.toFixed(2)
         }
@@ -345,12 +387,26 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     if (status !== order.status && !(transitions[order.status ?? "pending"] ?? []).includes(status)) {
       return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Invalid fulfillment transition" });
     }
+    if (["processing", "shipped", "delivered"].includes(status) && !isVerifiedMarketplaceEarning(order)) {
+      return res.status(409).json({
+        ok: false,
+        code: "PAYMENT_CAPTURE_UNVERIFIED",
+        error: "Order cannot enter fulfillment without verified captured payment",
+      });
+    }
     const cancellablePaymentStates = ["unverified", "refunded"];
     if (status === "cancelled" && order.paymentStatus === "unverified" && hasLegacyPaymentIndicators(order)) {
       return res.status(409).json({
         ok: false,
         code: "LEGACY_PAYMENT_RECONCILIATION_REQUIRED",
         error: "Historical payment activity must be reconciled before this order can be cancelled",
+      });
+    }
+    if (status === "cancelled" && order.inventoryStatus === "legacy_unverified") {
+      return res.status(409).json({
+        ok: false,
+        code: "LEGACY_INVENTORY_RECONCILIATION_REQUIRED",
+        error: "Historical inventory state must be reconciled before this order can be cancelled",
       });
     }
     if (status === "cancelled" && !cancellablePaymentStates.includes(order.paymentStatus)) {
@@ -363,19 +419,26 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
 
     // Compare-and-set prevents delivery racing cancellation (or another update).
     // No payment evidence is accepted by the strict request schema or changed here.
-    const [updated] = await db
-      .update(orders)
-      .set({
-        status,
-        trackingNumber: trackingNumber || order.trackingNumber,
-        updatedAt: new Date()
-      })
-      .where(and(
-        eq(orders.id, orderId),
-        eq(orders.status, order.status!),
-        ...(status === "cancelled" ? [inArray(orders.paymentStatus, cancellablePaymentStates)] : []),
-      ))
-      .returning();
+    const updated = await db.transaction(async (tx: any) => {
+      const [next] = await tx.update(orders).set({
+          status,
+          trackingNumber: trackingNumber || order.trackingNumber,
+          ...(status === "cancelled" && order.inventoryStatus === "reserved" ? { inventoryStatus: "released" } : {}),
+          updatedAt: new Date()
+        }).where(and(
+          eq(orders.id, orderId),
+          eq(orders.status, order.status!),
+          ...(status === "cancelled" ? [inArray(orders.paymentStatus, cancellablePaymentStates)] : []),
+          ...(status === "cancelled" ? [eq(orders.inventoryStatus, order.inventoryStatus)] : []),
+        )).returning();
+      if (!next) return undefined;
+      if (status === "cancelled" && order.inventoryStatus === "reserved") {
+        await tx.update(products).set({
+          inventory: sql`${products.inventory} + ${order.quantity}`,
+        }).where(and(eq(products.id, order.productId), sql`${products.inventory} IS NOT NULL`));
+      }
+      return next;
+    });
 
     if (!updated) {
       return res.status(409).json({ ok: false, code: "FULFILLMENT_STATE_CONFLICT", error: "Order status changed; reload and retry" });

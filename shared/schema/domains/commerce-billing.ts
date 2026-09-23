@@ -9,6 +9,7 @@ import {
   decimal,
   boolean,
   index,
+  uniqueIndex,
   check,
 } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
@@ -46,6 +47,10 @@ export const products = pgTable(
     productCategoryIdx: index("products_product_category_idx").on(table.productCategory),
     sellerIdx: index("products_seller_idx").on(table.sellerId),
     pickupLocationIdx: index("products_pickup_location_idx").on(table.pickupLocation),
+    inventoryNonnegative: check(
+      "products_inventory_nonnegative_check",
+      sql`${table.inventory} IS NULL OR ${table.inventory} >= 0`,
+    ),
   })
 );
 
@@ -60,6 +65,13 @@ export const orders = pgTable(
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
     platformFee: decimal("platform_fee", { precision: 8, scale: 2 }).notNull(),
     sellerAmount: decimal("seller_amount", { precision: 10, scale: 2 }).notNull(),
+    checkoutIdempotencyKey: varchar("checkout_idempotency_key", { length: 64 }),
+    sellerTierSnapshot: text("seller_tier_snapshot"),
+    commissionRateSnapshot: decimal("commission_rate_snapshot", { precision: 5, scale: 2 }),
+    // Inventory is reserved atomically with order creation, becomes sold only
+    // with verified capture, and is released atomically on cancellation/decline.
+    // Historical rows are deliberately not guessed into this trusted lifecycle.
+    inventoryStatus: text("inventory_status").notNull().default("legacy_unverified"),
     deliveryMethod: text("delivery_method").notNull().default("shipped"),
     shippingAddress: jsonb("shipping_address").$type<{
       street: string;
@@ -103,6 +115,39 @@ export const orders = pgTable(
     sellerIdx: index("orders_seller_idx").on(table.sellerId),
     statusIdx: index("orders_status_idx").on(table.status),
     paymentStatusIdx: index("orders_payment_status_idx").on(table.paymentStatus),
+    checkoutIdempotencyIdx: uniqueIndex("orders_buyer_checkout_idempotency_uidx")
+      .on(table.buyerId, table.checkoutIdempotencyKey)
+      .where(sql`${table.checkoutIdempotencyKey} IS NOT NULL`),
+    inventoryStatusValid: check(
+      "orders_inventory_status_check",
+      sql`${table.inventoryStatus} IN ('unreserved', 'reserved', 'sold', 'released', 'legacy_unverified')`,
+    ),
+    trustedCheckoutSnapshot: check(
+      "orders_trusted_checkout_snapshot_check",
+      sql`${table.inventoryStatus} = 'legacy_unverified' OR (
+        ${table.checkoutIdempotencyKey} IS NOT NULL
+        AND ${table.sellerTierSnapshot} IS NOT NULL
+        AND ${table.commissionRateSnapshot} IS NOT NULL
+      )`,
+    ),
+    inventoryPaymentLifecycle: check(
+      "orders_inventory_payment_lifecycle_check",
+      sql`${table.inventoryStatus} = 'legacy_unverified'
+        OR (${table.inventoryStatus} = 'unreserved' AND ${table.paymentStatus} = 'unverified')
+        OR (${table.inventoryStatus} = 'reserved' AND ${table.paymentStatus} IN ('capture_pending', 'capture_reconciliation'))
+        OR (${table.inventoryStatus} = 'released' AND ${table.paymentStatus} = 'unverified')
+        OR (${table.inventoryStatus} = 'sold' AND ${table.paymentStatus} IN ('captured', 'refund_pending', 'refund_reconciliation', 'refunded'))`,
+    ),
+    soldInventoryPaymentEvidence: check(
+      "orders_sold_inventory_payment_evidence_check",
+      sql`${table.inventoryStatus} <> 'sold' OR (
+        ${table.paymentStatus} IN ('captured', 'refund_pending', 'refund_reconciliation', 'refunded')
+        AND ${table.paymentProvider} = 'square'
+        AND ${table.squarePaymentId} IS NOT NULL
+        AND ${table.providerPaymentStatus} IS NOT NULL
+        AND ${table.paymentCapturedAt} IS NOT NULL
+      )`,
+    ),
     capturedPaymentEvidence: check(
       "orders_captured_payment_evidence_check",
       sql`${table.paymentStatus} <> 'captured' OR (

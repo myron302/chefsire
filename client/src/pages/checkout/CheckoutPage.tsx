@@ -30,6 +30,10 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<"details" | "payment" | "success">("details");
   const [orderId, setOrderId] = useState<string | null>(null);
+  // One browser checkout action keeps one durable identity across HTTP retries.
+  // The server binds this identity to the immutable order inputs and rejects
+  // reuse for a different purchase.
+  const [checkoutIdempotencyKey] = useState(() => crypto.randomUUID());
 
   // Form state
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"shipping" | "local_pickup">("shipping");
@@ -102,6 +106,7 @@ export default function CheckoutPage() {
         productId,
         quantity,
         fulfillmentMethod,
+        checkoutIdempotencyKey,
       };
 
       if (fulfillmentMethod === "shipping") {
