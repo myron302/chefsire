@@ -67,7 +67,13 @@ SET
       THEN round((platform_fee / (platform_fee + seller_amount)) * 100, 2)
     ELSE commission_rate_snapshot
   END
-WHERE inventory_status IS NULL;
+-- Match both a column that has never been backfilled (IS NULL) and one a
+-- schema push already defaulted to 'legacy_unverified' before this backfill
+-- ran. The CASE above only ever promotes a row when its own immutable
+-- payment/capture columns already prove reserved or sold; a row with no such
+-- evidence re-evaluates to 'legacy_unverified' and is left exactly as is, so
+-- this is safe to (re)run on every push, not a blind reclassification.
+WHERE inventory_status IS NULL OR inventory_status = 'legacy_unverified';
 
 ALTER TABLE orders ALTER COLUMN inventory_status SET DEFAULT 'legacy_unverified';
 ALTER TABLE orders ALTER COLUMN inventory_status SET NOT NULL;

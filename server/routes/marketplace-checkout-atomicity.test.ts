@@ -75,3 +75,22 @@ test("an unpaid order cannot enter processing, shipment, or delivery", () => {
   assert.match(orders, /!isVerifiedMarketplaceEarning\(order\)/);
   assert.match(orders, /PAYMENT_CAPTURE_UNVERIFIED/);
 });
+
+test("db:push classifies existing orders from their own evidence before Drizzle can default them", () => {
+  const pushSchema = read("server/scripts/push-schema.ts");
+  // The checkout-atomicity backfill depends on seller_revenue_status already
+  // being backfilled, and must run before drizzle-kit push ever gets a chance
+  // to stamp every existing row 'legacy_unverified' via its own NOT NULL
+  // DEFAULT -- otherwise the evidence those rows carry is never consulted.
+  assert.match(
+    pushSchema,
+    /enforce-marketplace-revenue-integrity\.ts", "--allow-missing"\][\s\S]*enforce-marketplace-checkout-atomicity\.ts", "--allow-missing"\][\s\S]*drizzle-kit[\s\S]*enforce-marketplace-revenue-integrity[\s\S]*enforce-marketplace-checkout-atomicity/
+  );
+  const enforcement = read("server/scripts/marketplace-checkout-atomicity-enforcement.ts");
+  assert.match(enforcement, /WHERE inventory_status IS NULL OR inventory_status = 'legacy_unverified'|splitPostgresStatements/);
+  assert.match(migration, /WHERE inventory_status IS NULL OR inventory_status = 'legacy_unverified'/);
+  // The broadened WHERE clause must still be evidence-gated by the same CASE,
+  // never a blind rewrite of every legacy_unverified row.
+  assert.doesNotMatch(migration, /SET inventory_status = 'reserved' WHERE inventory_status = 'legacy_unverified'/);
+  assert.doesNotMatch(migration, /SET inventory_status = 'sold' WHERE inventory_status = 'legacy_unverified'/);
+});
