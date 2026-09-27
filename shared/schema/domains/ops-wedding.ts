@@ -75,6 +75,29 @@ export const paymentMethods = pgTable(
   })
 );
 
+/**
+ * One-time, server-side binding for a Square seller OAuth authorization.
+ * Only a SHA-256 digest is retained; the browser receives the random nonce.
+ */
+export const squareOauthTransactions = pgTable(
+  "square_oauth_transactions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    nonceHash: varchar("nonce_hash", { length: 64 }).notNull().unique(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    claimId: varchar("claim_id", { length: 64 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    claimedAt: timestamp("claimed_at"),
+    consumedAt: timestamp("consumed_at"),
+    supersededAt: timestamp("superseded_at"),
+  },
+  (t) => ({
+    userIdx: index("square_oauth_transactions_user_idx").on(t.userId),
+    expiryIdx: index("square_oauth_transactions_expiry_idx").on(t.expiresAt),
+  })
+);
+
 type PayoutAccountDetailsSnapshot = Pick<PaymentMethodAccountDetails, "merchantId" | "locationId">;
 
 /**

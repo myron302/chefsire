@@ -2,10 +2,17 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
-import { payouts, paymentMethods } from "../../shared/schema";
-import { eq, and } from "drizzle-orm";
+import { pool } from "../db";
+import { payouts } from "../../shared/schema";
+import { eq } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middleware";
 import { PAYOUTS_UNAVAILABLE_ERROR, rejectUnavailablePayout } from "../lib/payout-safety";
+import {
+  createSquareOauthClaimId,
+  createSquareOauthState,
+  hashSquareOauthState,
+  SQUARE_OAUTH_STATE_TTL_MS,
+} from "../lib/square-oauth-state";
 // Square is a CommonJS module - import it properly
 import square from "square";
 const { Client, Environment } = square;
@@ -133,15 +140,46 @@ router.get("/connect-square", requireAuth, async (req, res) => {
   try {
     const sellerId = req.user!.id;
 
-    if (!process.env.SQUARE_APPLICATION_ID) {
+    if (!process.env.SQUARE_APPLICATION_ID || !pool) {
       return res.status(503).json({ ok: false, error: "Square not configured" });
     }
 
-    const authUrl = `https://connect.squareup.com/oauth2/authorize?client_id=${
-      encodeURIComponent(process.env.SQUARE_APPLICATION_ID)
-    }&scope=MERCHANT_PROFILE_READ+PAYMENTS_WRITE&session=false&state=${encodeURIComponent(sellerId)}`;
+    const state = createSquareOauthState();
+    const nonceHash = hashSquareOauthState(state)!;
+    const expiresAt = new Date(Date.now() + SQUARE_OAUTH_STATE_TTL_MS);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Serializing on the authenticated principal makes concurrent initiations
+      // deterministic and prevents an older callback from replacing a newer link.
+      const seller = await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [sellerId]);
+      if (seller.rowCount !== 1) throw new Error("Authenticated seller no longer exists");
+      await client.query(
+        `UPDATE square_oauth_transactions
+         SET superseded_at = now()
+         WHERE user_id = $1 AND consumed_at IS NULL AND superseded_at IS NULL`,
+        [sellerId],
+      );
+      await client.query(
+        `INSERT INTO square_oauth_transactions (nonce_hash, user_id, expires_at)
+         VALUES ($1, $2, $3)`,
+        [nonceHash, sellerId, expiresAt],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
 
-    res.json({ ok: true, authUrl });
+    const authUrl = new URL("https://connect.squareup.com/oauth2/authorize");
+    authUrl.searchParams.set("client_id", process.env.SQUARE_APPLICATION_ID);
+    authUrl.searchParams.set("scope", "MERCHANT_PROFILE_READ PAYMENTS_WRITE");
+    authUrl.searchParams.set("session", "false");
+    authUrl.searchParams.set("state", state);
+
+    res.json({ ok: true, authUrl: authUrl.toString(), expiresAt: expiresAt.toISOString() });
   } catch (error) {
     console.error("Square connect error:", error);
     res.status(500).json({ ok: false, error: "Failed to initiate Square connection" });
@@ -154,14 +192,38 @@ router.get("/connect-square", requireAuth, async (req, res) => {
  */
 router.get("/square-callback", async (req, res) => {
   try {
-    const { code, state: sellerId, error: oauthError } = req.query as Record<string, string>;
-
-    if (oauthError) {
-      return res.redirect(`/settings/payouts?error=${encodeURIComponent(oauthError)}`);
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+    const nonceHash = typeof state === "string" ? hashSquareOauthState(state) : null;
+    if (!nonceHash || !pool) {
+      return res.status(400).json({ ok: false, error: "Missing code or state" });
     }
 
-    if (!code || !sellerId) {
-      return res.status(400).json({ ok: false, error: "Missing code or state" });
+    // Claim is a single conditional write. Exactly one callback can cross this
+    // boundary; failures intentionally require the seller to start again.
+    const claimId = createSquareOauthClaimId();
+    const claim = await pool.query(
+      `UPDATE square_oauth_transactions
+       SET claim_id = $2, claimed_at = now()
+       WHERE nonce_hash = $1
+         AND claimed_at IS NULL
+         AND consumed_at IS NULL
+         AND superseded_at IS NULL
+         AND expires_at > now()
+       RETURNING user_id`,
+      [nonceHash, claimId],
+    ) as { rowCount: number; rows: Array<{ user_id: string }> };
+    if (claim.rowCount !== 1) {
+      return res.status(400).json({ ok: false, error: "Invalid or expired OAuth state" });
+    }
+    const sellerId = claim.rows[0].user_id;
+
+    if (oauthError || !code) {
+      await pool.query(
+        `UPDATE square_oauth_transactions SET consumed_at = now()
+         WHERE nonce_hash = $1 AND claim_id = $2 AND consumed_at IS NULL`,
+        [nonceHash, claimId],
+      );
+      return res.redirect("/settings/payouts?error=square_auth_failed");
     }
 
     if (!process.env.SQUARE_APPLICATION_ID || !process.env.SQUARE_APPLICATION_SECRET) {
@@ -181,8 +243,8 @@ router.get("/square-callback", async (req, res) => {
     });
 
     if (!tokenResponse.ok) {
-      const tokenError = await tokenResponse.text();
-      console.error("Square token exchange failed:", tokenError);
+      // Do not log Square's response: it can contain authorization material.
+      console.error("Square token exchange failed with status", tokenResponse.status);
       return res.redirect("/settings/payouts?error=square_auth_failed");
     }
 
@@ -200,13 +262,11 @@ router.get("/square-callback", async (req, res) => {
     });
     const { result: merchantResult } = await squareClient.merchantsApi.retrieveMerchant("me");
     const locationId = merchantResult.merchant?.mainLocationId || undefined;
-
-    // Upsert payment method record for this seller
-    const existing = await db
-      .select()
-      .from(paymentMethods)
-      .where(and(eq(paymentMethods.userId, sellerId), eq(paymentMethods.provider, "square")))
-      .limit(1);
+    const profileMerchantId = merchantResult.merchant?.id;
+    if (!tokenData.access_token || !tokenData.refresh_token || !tokenData.merchant_id ||
+        (profileMerchantId && profileMerchantId !== tokenData.merchant_id)) {
+      return res.redirect("/settings/payouts?error=square_auth_failed");
+    }
 
     const accountDetails = {
       merchantId: tokenData.merchant_id,
@@ -216,29 +276,54 @@ router.get("/square-callback", async (req, res) => {
       tokenExpiresAt: tokenData.expires_at,
     };
 
-    if (existing.length > 0) {
-      await db
-        .update(paymentMethods)
-        .set({
-          accountStatus: "active",
-          accountDetails,
-          providerId: tokenData.merchant_id,
-          verifiedAt: new Date(),
-          lastVerifiedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(paymentMethods.id, existing[0].id));
-    } else {
-      await db.insert(paymentMethods).values({
-        userId: sellerId,
-        provider: "square",
-        providerId: tokenData.merchant_id,
-        accountStatus: "active",
-        accountDetails,
-        isDefault: true,
-        verifiedAt: new Date(),
-        lastVerifiedAt: new Date(),
-      });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [sellerId]);
+      const transaction = await client.query(
+        `SELECT id FROM square_oauth_transactions
+         WHERE nonce_hash = $1 AND user_id = $2 AND claim_id = $3
+           AND consumed_at IS NULL AND superseded_at IS NULL AND expires_at > now()
+         FOR UPDATE`,
+        [nonceHash, sellerId, claimId],
+      );
+      if (transaction.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ ok: false, error: "OAuth transaction is no longer current" });
+      }
+
+      const existing = await client.query(
+        `SELECT id FROM payment_methods
+         WHERE user_id = $1 AND provider = 'square'
+         ORDER BY created_at ASC LIMIT 1 FOR UPDATE`,
+        [sellerId],
+      );
+      if (existing.rowCount) {
+        await client.query(
+          `UPDATE payment_methods SET provider_id = $2, account_status = 'active',
+             account_details = $3::jsonb, verified_at = now(), last_verified_at = now(), updated_at = now()
+           WHERE id = $1`,
+          [existing.rows[0].id, tokenData.merchant_id, JSON.stringify(accountDetails)],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO payment_methods
+             (user_id, provider, provider_id, account_status, account_details, is_default, verified_at, last_verified_at)
+           VALUES ($1, 'square', $2, 'active', $3::jsonb, true, now(), now())`,
+          [sellerId, tokenData.merchant_id, JSON.stringify(accountDetails)],
+        );
+      }
+      await client.query(
+        `UPDATE square_oauth_transactions SET consumed_at = now()
+         WHERE nonce_hash = $1 AND claim_id = $2`,
+        [nonceHash, claimId],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
 
     res.redirect("/settings/payouts?connected=true");
