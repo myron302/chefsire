@@ -9,6 +9,7 @@ import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
 import SquarePaymentForm from "@/components/SquarePaymentForm";
 import { Package, MapPin, Truck, ShoppingBag, CheckCircle } from "lucide-react";
+import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "@shared/marketplace-fulfillment";
 
 interface CheckoutPageProps {
   // Product details passed via route state
@@ -30,6 +31,14 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<"details" | "payment" | "success">("details");
   const [orderId, setOrderId] = useState<string | null>(null);
+  // The authoritative total the server persisted on the order and will
+  // actually submit to Square -- never recomputed client-side once known, so
+  // the displayed Pay amount can never drift from what is actually charged.
+  const [orderTotal, setOrderTotal] = useState<number | null>(null);
+  // One browser checkout action keeps one durable identity across HTTP retries.
+  // The server binds this identity to the immutable order inputs and rejects
+  // reuse for a different purchase.
+  const [checkoutIdempotencyKey] = useState(() => crypto.randomUUID());
 
   // Form state
   const [fulfillmentMethod, setFulfillmentMethod] = useState<"shipping" | "local_pickup">("shipping");
@@ -76,13 +85,14 @@ export default function CheckoutPage() {
     }
   };
 
+  const isDigital = product ? isDigitalMarketplaceProduct(product) : false;
+
+  // A pre-order preview only; once an order exists, orderTotal (the amount
+  // the server persisted and will submit to Square) is authoritative instead.
   const calculateTotal = () => {
     if (!product) return 0;
     const subtotal = parseFloat(product.price) * quantity;
-    const shipping =
-      fulfillmentMethod === "shipping" && product.shippingCost
-        ? parseFloat(product.shippingCost)
-        : 0;
+    const shipping = resolveMarketplaceShippingCost(product, fulfillmentMethod);
     return subtotal + shipping;
   };
 
@@ -102,6 +112,7 @@ export default function CheckoutPage() {
         productId,
         quantity,
         fulfillmentMethod,
+        checkoutIdempotencyKey,
       };
 
       if (fulfillmentMethod === "shipping") {
@@ -127,6 +138,7 @@ export default function CheckoutPage() {
 
       if (response.ok && data.ok) {
         setOrderId(data.order.id);
+        setOrderTotal(parseFloat(data.order.totalAmount));
         setStep("payment");
         toast({
           title: "Order created",
@@ -236,7 +248,7 @@ export default function CheckoutPage() {
                     <span>Subtotal</span>
                     <span>${(parseFloat(product.price) * quantity).toFixed(2)}</span>
                   </div>
-                  {fulfillmentMethod === "shipping" && product.shippingCost && (
+                  {!isDigital && fulfillmentMethod === "shipping" && product.shippingCost && (
                     <div className="flex justify-between text-sm">
                       <span>Shipping</span>
                       <span>${parseFloat(product.shippingCost).toFixed(2)}</span>
@@ -244,7 +256,7 @@ export default function CheckoutPage() {
                   )}
                   <div className="flex justify-between font-bold text-lg border-t pt-2">
                     <span>Total</span>
-                    <span>${calculateTotal().toFixed(2)}</span>
+                    <span>${(orderTotal ?? calculateTotal()).toFixed(2)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -253,7 +265,7 @@ export default function CheckoutPage() {
             {/* Payment Form */}
             <div className="flex justify-center">
               <SquarePaymentForm
-                amount={calculateTotal()}
+                amount={orderTotal ?? calculateTotal()}
                 orderId={orderId!}
                 onPaymentSuccess={handlePaymentSuccess}
               />
@@ -438,7 +450,7 @@ export default function CheckoutPage() {
                     <span>${(parseFloat(product.price) * quantity).toFixed(2)}</span>
                   </div>
 
-                  {fulfillmentMethod === "shipping" && product.shippingCost && (
+                  {!isDigital && fulfillmentMethod === "shipping" && product.shippingCost && (
                     <div className="flex justify-between text-sm">
                       <span>Shipping</span>
                       <span>${parseFloat(product.shippingCost).toFixed(2)}</span>

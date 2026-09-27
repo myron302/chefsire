@@ -1,4 +1,7 @@
 import { and, eq, isNotNull } from "drizzle-orm";
+import type { CaptureRequestSnapshot } from "../../shared/schema/domains/commerce-billing";
+
+export type { CaptureRequestSnapshot };
 
 export const VERIFIED_MARKETPLACE_PAYMENT_STATUS = "captured" as const;
 
@@ -70,6 +73,97 @@ export function buildSquareRefundRequest(attempt: {
     amountMoney: { amount: BigInt(attempt.refundAttemptAmountCents!), currency: "USD" as const },
     reason: attempt.refundAttemptReason,
   };
+}
+
+/**
+ * The snapshot is persisted in the same transaction that reserves inventory,
+ * before anything is sent, so every dispatch and every recovery replays the
+ * identical request under the identical key. Nothing is ever rebuilt from
+ * later HTTP input.
+ */
+export function createCaptureRequestSnapshot(input: {
+  idempotencyKey: string;
+  referenceId: string;
+  sourceId: string;
+  verificationToken?: string | null;
+  amountCents: number;
+  locationId: string;
+  orderId: string;
+  buyerEmailAddress?: string | null;
+}): CaptureRequestSnapshot {
+  return {
+    idempotencyKey: input.idempotencyKey,
+    sourceId: input.sourceId,
+    verificationToken: input.verificationToken || null,
+    amountCents: input.amountCents,
+    currency: "USD",
+    locationId: input.locationId,
+    note: `ChefSire Order ${input.orderId}`,
+    referenceId: input.referenceId,
+    buyerEmailAddress: input.buyerEmailAddress || null,
+  };
+}
+
+/**
+ * The stored capture request carries the buyer's single-use payment token,
+ * verification token and email. It is server-only: every order returned to a
+ * buyer or seller goes through this redaction.
+ */
+export function toClientOrder<T extends { captureRequestSnapshot?: unknown }>(order: T): Omit<T, "captureRequestSnapshot"> {
+  const { captureRequestSnapshot: _serverOnly, ...clientOrder } = order;
+  return clientOrder;
+}
+
+/** Rebuild a dispatch or recovery exclusively from the durable request snapshot. */
+export function buildSquareCaptureRequest(attempt: {
+  captureIdempotencyKey?: string | null;
+  captureRequestSnapshot?: CaptureRequestSnapshot | null;
+  totalAmount: string;
+}) {
+  const snapshot = attempt.captureRequestSnapshot;
+  const expectedAmountCents = Math.round(parseFloat(attempt.totalAmount) * 100);
+  if (
+    !snapshot ||
+    !attempt.captureIdempotencyKey ||
+    snapshot.idempotencyKey !== attempt.captureIdempotencyKey ||
+    snapshot.referenceId !== attempt.captureIdempotencyKey ||
+    !snapshot.sourceId ||
+    !Number.isSafeInteger(snapshot.amountCents) ||
+    snapshot.amountCents <= 0 ||
+    snapshot.amountCents !== expectedAmountCents ||
+    snapshot.currency !== "USD" ||
+    !snapshot.locationId ||
+    !snapshot.note
+  ) {
+    const error = new Error("Capture attempt lacks an immutable provider request snapshot");
+    (error as Error & { code: string }).code = "PAYMENT_RECONCILIATION_REQUIRED";
+    throw error;
+  }
+  return {
+    sourceId: snapshot.sourceId,
+    idempotencyKey: snapshot.idempotencyKey,
+    amountMoney: { amount: BigInt(snapshot.amountCents), currency: "USD" as const },
+    autocomplete: true,
+    locationId: snapshot.locationId,
+    note: snapshot.note,
+    referenceId: snapshot.referenceId,
+    ...(snapshot.buyerEmailAddress && { buyerEmailAddress: snapshot.buyerEmailAddress }),
+    ...(snapshot.verificationToken && { verificationToken: snapshot.verificationToken }),
+  };
+}
+
+/**
+ * Classify a payment Square returned for this capture identity: a terminal
+ * FAILED/CANCELED payment is a definitive failure; anything else must be
+ * complete, verifiable evidence for the exact amount or it is rejected.
+ */
+export function evaluateSquareCapturePayment(payment: SquarePaymentEvidence | null | undefined, expectedAmount: bigint) {
+  if (payment && ["FAILED", "CANCELED"].includes(payment.status ?? "")) {
+    const error = new Error("Square definitively rejected this capture");
+    Object.assign(error, { code: "CAPTURE_DEFINITIVE_FAILURE", providerCode: payment.status });
+    throw error;
+  }
+  return requireCompletedSquarePayment(payment ?? undefined, expectedAmount, "USD");
 }
 
 /**

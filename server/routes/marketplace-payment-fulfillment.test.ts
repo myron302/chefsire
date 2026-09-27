@@ -8,7 +8,12 @@ import { executeRecoverableProviderOperation, ProviderReconciliationRequiredErro
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const ordersRoute = fs.readFileSync(path.join(root, "server/routes/orders.ts"), "utf8");
-const paymentsRoute = fs.readFileSync(path.join(root, "server/routes/payments.ts"), "utf8");
+const paymentsRouteOnly = fs.readFileSync(path.join(root, "server/routes/payments.ts"), "utf8");
+// The capture half of POST /create-payment lives in the shared lifecycle
+// service (also used by the background reconciler); every capture invariant
+// below is asserted against the route and that service together.
+const captureService = fs.readFileSync(path.join(root, "server/services/marketplace-checkout-reconciliation.ts"), "utf8");
+const paymentsRoute = `${paymentsRouteOnly}\n${captureService}`;
 const payoutRoute = fs.readFileSync(path.join(root, "server/routes/payouts.ts"), "utf8");
 const schema = fs.readFileSync(path.join(root, "shared/schema/domains/commerce-billing.ts"), "utf8");
 const migration = fs.readFileSync(path.join(root, "server/migrations/20260920_marketplace_payment_fulfillment.sql"), "utf8");
@@ -86,11 +91,17 @@ test("payment capture fails closed without Square and has no simulation fallback
 });
 
 test("all fallible local capture preparation precedes capture_pending", () => {
-  const pendingWrite = paymentsRoute.indexOf('paymentStatus: "capture_pending"');
-  assert.ok(paymentsRoute.indexOf('if (!seller)', paymentsRoute.indexOf('router.post("/create-payment"')) < pendingWrite);
-  assert.ok(paymentsRoute.indexOf('getSquareClient()', paymentsRoute.indexOf('router.post("/create-payment"')) < pendingWrite);
-  assert.ok(paymentsRoute.indexOf('PAYMENT_AMOUNT_INVALID', paymentsRoute.indexOf('router.post("/create-payment"')) < pendingWrite);
-  assert.ok(paymentsRoute.indexOf('LEGACY_REVENUE_RECONCILIATION_REQUIRED') < pendingWrite);
+  // capture_pending is written only inside reserveMarketplaceCapture, so the
+  // route's single call to it is the boundary every prerequisite must precede.
+  const route = paymentsRouteOnly;
+  const pendingWrite = route.indexOf("reserveMarketplaceCapture(", route.indexOf('router.post("/create-payment"'));
+  assert.ok(pendingWrite > 0);
+  assert.doesNotMatch(route, /paymentStatus: "capture_pending"/);
+  assert.match(captureService.slice(captureService.indexOf("export async function reserveMarketplaceCapture")), /paymentStatus: "capture_pending"/);
+  assert.ok(route.indexOf('if (!seller)', route.indexOf('router.post("/create-payment"')) < pendingWrite);
+  assert.ok(route.indexOf('getSquareClient()', route.indexOf('router.post("/create-payment"')) < pendingWrite);
+  assert.ok(route.indexOf('PAYMENT_AMOUNT_INVALID', route.indexOf('router.post("/create-payment"')) < pendingWrite);
+  assert.ok(route.indexOf('LEGACY_REVENUE_RECONCILIATION_REQUIRED') < pendingWrite);
   assert.match(paymentsRoute, /if \(!isNewCaptureAttempt\)[\s\S]*CAPTURE_OUTCOME_AMBIGUOUS/);
   assert.doesNotMatch(paymentsRoute, /CAPTURE_OUTCOME_AMBIGUOUS[\s\S]{0,400}paymentStatus: "unverified"/);
 });
