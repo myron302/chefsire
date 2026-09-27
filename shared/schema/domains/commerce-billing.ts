@@ -14,6 +14,19 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 
+/** Immutable Square CreatePayment request bound to one capture idempotency key. */
+export type CaptureRequestSnapshot = {
+  idempotencyKey: string;
+  sourceId: string;
+  verificationToken: string | null;
+  amountCents: number;
+  currency: "USD";
+  locationId: string;
+  note: string;
+  referenceId: string;
+  buyerEmailAddress: string | null;
+};
+
 export const products = pgTable(
   "products",
   {
@@ -90,13 +103,18 @@ export const orders = pgTable(
     squareRefundId: text("square_refund_id"),
     captureIdempotencyKey: text("capture_idempotency_key"),
     captureAttemptedAt: timestamp("capture_attempted_at"),
-    // Set durably, in its own statement, strictly after the reservation
-    // transaction commits and strictly before the outbound Square call is
-    // dispatched. NULL is then unambiguous proof no provider request could
-    // have been submitted under this idempotency key -- a crash before this
-    // point is safely releasable without any provider evidence at all, while
-    // a crash after it must still be reconciled from Square's own evidence.
-    captureRequestSubmittedAt: timestamp("capture_request_submitted_at"),
+    // Immutable snapshot of the Square CreatePayment request bound to
+    // captureIdempotencyKey, written atomically with the inventory reservation.
+    // Dispatch and every recovery replay it verbatim under the same key, so a
+    // crash anywhere around the provider call converges through Square's own
+    // idempotency instead of a local guess. Cleared once provider evidence is
+    // durable or the reservation is released. NULL on a capture_pending row
+    // means a legacy P1-03 attempt that can only be reconciled by search.
+    captureRequestSnapshot: jsonb("capture_request_snapshot").$type<CaptureRequestSnapshot>(),
+    // Last time the background reconciler claimed this order. Least-recently
+    // attempted rows are claimed first, so rows that stay ambiguous rotate to
+    // the back of the queue instead of monopolizing every bounded batch.
+    reconciliationAttemptedAt: timestamp("reconciliation_attempted_at"),
     refundIdempotencyKey: text("refund_idempotency_key"),
     // Immutable snapshot of the Square RefundPayment request associated with
     // refundIdempotencyKey. Retries never rebuild these fields from HTTP input.

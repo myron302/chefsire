@@ -43,19 +43,18 @@ export function initializeCronJobs() {
     }
   });
 
-  // Reconcile or expire abandoned marketplace checkout reservations. Bounded
-  // per run and driven entirely by durable provider evidence or this
-  // server's own claim record -- never a bare timeout -- so a crash between
-  // reserving stock and calling Square cannot strand it forever. Every five
-  // minutes is frequent enough to keep the backlog small without contending
-  // with ordinary in-flight checkouts.
+  // Recover abandoned marketplace checkout reservations by replaying each
+  // order's immutable Square request under its original idempotency key, and
+  // release stock only on a definitive provider failure -- never on a bare
+  // timeout or a search no-match. Bounded, rotating batches so rows that stay
+  // ambiguous cannot starve the rest of the backlog.
   cron.schedule("*/5 * * * *", async () => {
     try {
       const outcome = await reconcileAbandonedCheckoutReservations();
       if (outcome.scanned > 0) {
         console.log(
           `🧾 Marketplace checkout reconciliation: scanned ${outcome.scanned}, finalized ${outcome.finalized}, ` +
-          `released ${outcome.released}, declined ${outcome.declined}, ambiguous ${outcome.ambiguous}, ` +
+          `declined ${outcome.declined}, ambiguous ${outcome.ambiguous}, ` +
           `skipped ${outcome.skipped}, errors ${outcome.errors}`
         );
       }

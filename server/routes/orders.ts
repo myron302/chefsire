@@ -3,15 +3,20 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { orders, products, users, stores } from "../../shared/schema";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, getTableColumns, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
-import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning } from "../lib/marketplace-payment";
+import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, toClientOrder } from "../lib/marketplace-payment";
 import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../../shared/marketplace-fulfillment";
 
 const router = Router();
+
+// Every order column a buyer or seller may see. The stored Square capture
+// request (single-use payment token, verification token, buyer email) is
+// server-only and is never selected into a client response.
+const { captureRequestSnapshot: _serverOnlyCaptureRequest, ...clientOrderColumns } = getTableColumns(orders);
 
 function checkoutInputsMatch(order: typeof orders.$inferSelect, input: {
   productId: string;
@@ -61,7 +66,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
       if (!checkoutInputsMatch(existingOrder, body)) {
         return res.status(409).json({ ok: false, code: "CHECKOUT_IDEMPOTENCY_CONFLICT", error: "Checkout identity was already used for different inputs" });
       }
-      return res.json({ ok: true, message: "Order already created", order: existingOrder });
+      return res.json({ ok: true, message: "Order already created", order: toClientOrder(existingOrder) });
     }
 
     // Load every price, seller, availability and commission input from the DB.
@@ -168,7 +173,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
           eq(orders.checkoutIdempotencyKey, body.checkoutIdempotencyKey),
         )).limit(1);
         if (replayed && checkoutInputsMatch(replayed, body)) {
-          return res.json({ ok: true, message: "Order already created", order: replayed });
+          return res.json({ ok: true, message: "Order already created", order: toClientOrder(replayed) });
         }
         if (replayed) {
           return res.status(409).json({ ok: false, code: "CHECKOUT_IDEMPOTENCY_CONFLICT", error: "Checkout identity was already used for different inputs" });
@@ -199,7 +204,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
       ok: true,
       message: "Order created successfully",
       order: {
-        ...newOrder,
+        ...toClientOrder(newOrder),
         product: {
           name: product.name,
           price: product.price,
@@ -236,7 +241,7 @@ router.get("/my-purchases", requireAuth, async (req, res) => {
 
     const userOrders = await db
       .select({
-        order: orders,
+        order: clientOrderColumns,
         product: products,
         seller: {
           id: users.id,
@@ -274,7 +279,7 @@ router.get("/my-sales", requireAuth, async (req, res) => {
 
     let query = db
       .select({
-        order: orders,
+        order: clientOrderColumns,
         product: products,
         buyer: {
           id: users.id,
@@ -294,7 +299,7 @@ router.get("/my-sales", requireAuth, async (req, res) => {
     if (status) {
       query = db
         .select({
-          order: orders,
+          order: clientOrderColumns,
           product: products,
           buyer: {
             id: users.id,
@@ -465,7 +470,7 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     res.json({
       ok: true,
       message: "Order status updated",
-      order: updated
+      order: toClientOrder(updated)
     });
   } catch (error: any) {
     if (error?.issues) {
@@ -484,7 +489,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     const [orderDetails] = await db
       .select({
-        order: orders,
+        order: clientOrderColumns,
         product: products,
         seller: {
           id: users.id,

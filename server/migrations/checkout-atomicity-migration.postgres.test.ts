@@ -320,35 +320,35 @@ postgresTest("post-push reapplication restores a NOT VALID constraint Drizzle dr
   }
 });
 
-postgresTest("capture_request_submitted_at backfill runs exactly once and never poisons a live unclaimed reservation", async () => {
+postgresTest("capture request snapshot and reconciliation rotation columns need no backfill and never rewrite live rows", async () => {
   const { client, schema } = await setup();
   try {
-    // Pre-existing rows at the moment this column is introduced: their
-    // submission state is genuinely unknown, so the one-time backfill must
-    // conservatively mark them "submitted" (non-null).
     await client.query(`INSERT INTO orders (id, payment_status, capture_idempotency_key, capture_attempted_at, seller_revenue_status)
       VALUES ('legacy-pending', 'capture_pending', 'idem-legacy', now() - interval '1 hour', 'uncredited')`);
-    await client.query(`INSERT INTO orders (id, payment_status, capture_idempotency_key, capture_attempted_at, seller_revenue_status)
-      VALUES ('legacy-reconciliation', 'capture_reconciliation', 'idem-legacy-2', now() - interval '1 hour', 'uncredited')`);
-
     await applyMigration(client, "20260922_atomic_marketplace_checkout.sql", migration, { error() {} });
 
-    const legacyRows = await client.query(`SELECT id, capture_request_submitted_at FROM orders WHERE id IN ('legacy-pending', 'legacy-reconciliation') ORDER BY id`);
-    assert.ok(legacyRows.rows[0].capture_request_submitted_at, "legacy capture_pending row must be conservatively marked submitted");
-    assert.ok(legacyRows.rows[1].capture_request_submitted_at, "legacy capture_reconciliation row must be conservatively marked submitted");
+    // A pre-existing attempt has no request snapshot: it is never replayable
+    // and stays on the provider-search reconciliation path.
+    const legacy = (await client.query(`SELECT capture_request_snapshot, reconciliation_attempted_at FROM orders WHERE id = 'legacy-pending'`)).rows[0];
+    assert.equal(legacy.capture_request_snapshot, null);
+    assert.equal(legacy.reconciliation_attempted_at, null);
 
-    // A reservation created AFTER the column exists, still waiting on its own
-    // claim step (the live application's genuine "never submitted" state).
-    await client.query(`INSERT INTO orders (id, payment_status, capture_idempotency_key, capture_attempted_at, seller_revenue_status, inventory_status, checkout_idempotency_key, seller_tier_snapshot, commission_rate_snapshot)
-      VALUES ('fresh-unclaimed', 'capture_pending', 'idem-fresh', now(), 'uncredited', 'reserved', 'fresh-key', 'free', 10)`);
-    assert.equal((await client.query(`SELECT capture_request_submitted_at FROM orders WHERE id = 'fresh-unclaimed'`)).rows[0].capture_request_submitted_at, null);
-
-    // Rerunning db:push (payout/revenue/checkout-atomicity enforcement all
-    // rerun on every push) must never retroactively "submit" that live,
-    // still-unclaimed reservation.
+    // A live reservation written after the columns exist must survive every
+    // later push byte-for-byte: no backfill ever touches these columns.
+    const snapshot = { idempotencyKey: "idem-live", sourceId: "cnon:live", verificationToken: null, amountCents: 10000,
+      currency: "USD", locationId: "L1", note: "ChefSire Order live", referenceId: "idem-live", buyerEmailAddress: null };
+    await client.query(`INSERT INTO orders (id, payment_status, capture_idempotency_key, capture_attempted_at, seller_revenue_status,
+        inventory_status, checkout_idempotency_key, seller_tier_snapshot, commission_rate_snapshot, capture_request_snapshot, reconciliation_attempted_at)
+      VALUES ('live', 'capture_pending', 'idem-live', now(), 'uncredited', 'reserved', 'live-key', 'free', 10, $1, '2026-09-27T00:00:00')`,
+      [JSON.stringify(snapshot)]);
     await enforceMarketplaceCheckoutAtomicity(client, migration, false);
     await enforceMarketplaceCheckoutAtomicity(client, migration, false);
-    assert.equal((await client.query(`SELECT capture_request_submitted_at FROM orders WHERE id = 'fresh-unclaimed'`)).rows[0].capture_request_submitted_at, null);
+    const live = (await client.query(`SELECT capture_request_snapshot, reconciliation_attempted_at::text AS attempted FROM orders WHERE id = 'live'`)).rows[0];
+    assert.deepEqual(live.capture_request_snapshot, snapshot);
+    assert.equal(live.attempted, "2026-09-27 00:00:00");
+    assert.equal((await client.query(`SELECT count(*)::int AS n FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = 'orders' AND column_name = 'capture_request_submitted_at'`)).rows[0].n, 0,
+      "the unsound pre-dispatch marker column must not be reintroduced");
   } finally {
     await teardown(client, schema);
   }

@@ -18,9 +18,15 @@ compare-and-set changes that same order from `unverified/unreserved` to
 `capture_pending/reserved`. Both changes commit or roll back together. No
 database transaction spans the Square network request.
 
-P1-03's evidence-first Square boundary is unchanged. A retry of
-`capture_pending` reconciles the durable provider reference rather than issuing
-a new request. Only `COMPLETED` Square evidence for the exact server-authored
+P1-03's evidence-first Square boundary is unchanged. The reservation
+transaction also stores the complete, immutable Square `CreatePayment` request
+(`capture_request_snapshot`) under its idempotency key. A retry of
+`capture_pending` first searches the durable provider reference and, if Square
+does not yet list it, replays that identical stored request under the same key
+-- never a new request, source, or key. Square's idempotency then returns the
+original payment if the earlier dispatch was processed, or processes it now if
+it never arrived, so a crash anywhere around the network call converges on one
+charge. Only `COMPLETED` Square evidence for the exact server-authored
 amount reaches the local capture transaction. That transaction changes
 inventory from `reserved` to `sold`, credits seller revenue once, inserts one
 commission, and increments sales count. A definitive Square decline atomically
@@ -85,6 +91,35 @@ reversing financial accounting through P1-03.
     provider-evidenced capture/refund states are preserved using their stored
     order economics and stable capture identity, so deployment does not break
     an already-required reconciliation.
+
+## Abandoned reservation recovery
+
+A database write before or after a network call can never prove whether the
+call reached Square, so no "dispatch started/submitted" marker is used as
+evidence. Instead, every `capture_pending` order that has a stored request is
+driven to a terminal state by replaying that request under its original key:
+
+| Crash boundary | Recovery |
+| --- | --- |
+| Before the reservation commits | Nothing was reserved or sent. |
+| After the reservation commits, before the Square call | Replay: Square processes the stored request once. |
+| Request in flight / processed, response lost | Replay: Square returns the original payment. |
+| Response received, evidence not yet persisted | Search or replay returns the original payment; accounting applies once. |
+| Evidence persisted, accounting not applied | `capture_reconciliation` finalizes from stored evidence, no Square call. |
+| Definitive decline (`PAYMENT_METHOD_ERROR`, `FAILED`/`CANCELED`) | Stock released exactly once. |
+| Provider unavailable / unverifiable response | Reservation kept; retried later. |
+| Legacy P1-03 attempt (no stored request), search no-match | Reservation kept; never re-charged. |
+
+The background reconciler (`server/services/marketplace-checkout-reconciliation.ts`,
+every five minutes) claims bounded batches with `FOR UPDATE SKIP LOCKED`,
+least-recently-attempted first (`reconciliation_attempted_at`), so concurrent
+workers never claim the same order and permanently ambiguous rows rotate
+behind the rest of the backlog. `capture_reconciliation` orders, which already
+hold provider evidence, have a separate budget and are never starved.
+Correctness never depends on the claim: exactly-once capture accounting and
+release are enforced by compare-and-set predicates and `commissions_order_uidx`.
+The stored request holds a single-use payment token and is cleared as soon as
+provider evidence is durable or the reservation is released.
 
 ## Adversarial review and deferred scope
 

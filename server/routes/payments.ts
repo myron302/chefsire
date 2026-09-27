@@ -3,12 +3,19 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "../db";
-import { orders, products, users, commissions } from "../../shared/schema";
-import { and, eq, gte, isNull, notInArray, or, sql } from "drizzle-orm";
+import { orders, users, commissions } from "../../shared/schema";
+import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
-import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getCaptureReconciliationWindow, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
+import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireSquareRefundEvidence, toClientOrder } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 import { getSquareClient } from "../lib/square-client";
+import {
+  completeMarketplaceCapture,
+  productionCheckoutDeps,
+  reserveMarketplaceCapture,
+  settleMarketplaceCaptureFailure,
+  type SquarePaymentsClient,
+} from "../services/marketplace-checkout-reconciliation";
 
 const router = Router();
 /**
@@ -32,7 +39,7 @@ const router = Router();
  * Process payment through Square and create order
  */
 router.post("/create-payment", requireAuth, async (req, res) => {
-  let captureContext: { orderId: string; idempotencyKey: string } | undefined;
+  let captureContext: typeof orders.$inferSelect | undefined;
   try {
     const schema = z.object({
       orderId: z.string(),
@@ -87,9 +94,8 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     if (!order.sellerTierSnapshot || !order.commissionRateSnapshot || !order.checkoutIdempotencyKey) {
       return res.status(409).json({ ok: false, code: "CHECKOUT_SNAPSHOT_UNVERIFIED", error: "Order accounting snapshot cannot be verified" });
     }
-    const tier = order.sellerTierSnapshot;
     const commissionRate = order.commissionRateSnapshot;
-    const squareClient = order.paymentStatus === "capture_reconciliation" ? null : getSquareClient();
+    const squareClient = order.paymentStatus === "capture_reconciliation" ? null : getSquareClient() as unknown as SquarePaymentsClient;
 
     if (order.paymentStatus === "unverified" && order.sellerRevenueStatus !== "uncredited") {
       return res.status(409).json({
@@ -99,212 +105,28 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       });
     }
 
-    // Persist an explicit recoverable state and stable provider key before the
-    // external call. If Square succeeds and local accounting later rolls back,
-    // retrying this order recovers the same charge instead of creating another.
+    // Reserve stock and persist the capture identity together with the full,
+    // immutable CreatePayment request before anything is sent. From then on
+    // the order is always recoverable by replaying that one request under that
+    // one key -- whether the process dies before, during, or after the Square
+    // call -- and a retry never rebuilds the request from new HTTP input.
     let isNewCaptureAttempt = false;
-    let newCaptureRequest: Parameters<NonNullable<typeof squareClient>["paymentsApi"]["createPayment"]>[0] | undefined;
     if (order.paymentStatus === "unverified") {
       if (!sourceId) return res.status(400).json({ ok: false, error: "A payment source is required" });
-      const captureIdempotencyKey = randomUUID();
-      const captureAttemptedAt = new Date();
-      newCaptureRequest = {
+      order = await reserveMarketplaceCapture(productionCheckoutDeps, order, {
         sourceId,
-        idempotencyKey: captureIdempotencyKey,
-        amountMoney: { amount: BigInt(amountInCents), currency: "USD" },
-        autocomplete: true,
+        verificationToken: verificationToken ?? null,
+        buyerEmailAddress: req.user!.email ?? null,
         locationId: process.env.SQUARE_LOCATION_ID!,
-        note: `ChefSire Order ${orderId}`,
-        referenceId: captureIdempotencyKey,
-        buyerEmailAddress: req.user!.email,
-        ...(verificationToken && { verificationToken }),
-      };
-      const prepared = await db.transaction(async (tx: any) => {
-        // One conditional UPDATE is the stock check and reservation. It locks
-        // this product row, so concurrent attempts cannot both claim the last
-        // unit. NULL inventory remains the existing unlimited-stock sentinel.
-        const [reservedProduct] = await tx.update(products).set({
-          inventory: sql`CASE WHEN ${products.inventory} IS NULL THEN NULL ELSE ${products.inventory} - ${order.quantity} END`,
-        }).where(and(
-          eq(products.id, order.productId),
-          eq(products.isActive, true),
-          or(isNull(products.inventory), gte(products.inventory, order.quantity)),
-        )).returning({ id: products.id });
-        if (!reservedProduct) {
-          throw Object.assign(new Error("Inventory is no longer available"), { code: "INSUFFICIENT_INVENTORY" });
-        }
-
-        const [preparedOrder] = await tx.update(orders).set({
-          paymentStatus: "capture_pending",
-          paymentProvider: "square",
-          captureIdempotencyKey,
-          captureAttemptedAt,
-          captureRequestSubmittedAt: null,
-          lastPaymentFailureCode: null,
-          inventoryStatus: "reserved",
-          updatedAt: new Date(),
-        }).where(and(
-          eq(orders.id, orderId),
-          eq(orders.paymentStatus, "unverified"),
-          eq(orders.inventoryStatus, "unreserved"),
-          notInArray(orders.status, ["cancelled", "refunded"]),
-        )).returning();
-        if (!preparedOrder) {
-          throw Object.assign(new Error("Order state changed; reload and retry"), { code: "PAYMENT_STATE_CONFLICT" });
-        }
-        return preparedOrder;
       });
-      if (!prepared) {
-        return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Order state changed; reload and retry" });
-      }
-      order = prepared;
       isNewCaptureAttempt = true;
-
-      // Claim the outbound-dispatch boundary in its own statement, strictly
-      // after the reservation above commits and strictly before Square is
-      // ever called below. From here on, captureRequestSubmittedAt being NULL
-      // always means Square was never contacted for this idempotency key: a
-      // crash before this line leaves a reservation that is safely releasable
-      // without any provider evidence at all (see marketplace-checkout-
-      // reconciliation), never a false ambiguous-forever state.
-      const [claimed] = await db.update(orders).set({
-        captureRequestSubmittedAt: new Date(),
-      }).where(and(
-        eq(orders.id, orderId),
-        eq(orders.paymentStatus, "capture_pending"),
-        eq(orders.captureIdempotencyKey, order.captureIdempotencyKey!),
-        isNull(orders.captureRequestSubmittedAt),
-      )).returning();
-      if (!claimed) {
-        return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Order state changed; reload and retry" });
-      }
-      order = claimed;
     }
     if (!order.captureIdempotencyKey) {
       return res.status(409).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Capture is pending without a recoverable provider key" });
     }
-    captureContext = { orderId, idempotencyKey: order.captureIdempotencyKey };
+    captureContext = order;
 
-    const updatedOrder = await executeRecoverableProviderOperation({
-      operation: "capture",
-      idempotencyKey: order.captureIdempotencyKey,
-      invokeProvider: async (idempotencyKey) => {
-        if (order.paymentStatus === "capture_reconciliation") {
-          return requireCompletedSquarePayment({
-            id: order.squarePaymentId,
-            status: order.providerPaymentStatus,
-            totalMoney: { amount: BigInt(amountInCents), currency: "USD" },
-            createdAt: order.paymentCapturedAt?.toISOString(),
-          }, BigInt(amountInCents), "USD");
-        }
-        if (!isNewCaptureAttempt) {
-          if (!order.captureAttemptedAt) {
-            const error = new Error("Capture outcome is ambiguous and lacks a reconciliation window");
-            (error as Error & { code: string }).code = "CAPTURE_OUTCOME_AMBIGUOUS";
-            throw error;
-          }
-          if (!order.captureRequestSubmittedAt) {
-            // Our own durable claim record proves Square was never contacted
-            // under this idempotency key. No provider evidence could exist
-            // either way; this is a "never submitted" reservation, not an
-            // ambiguous one, so it is safely released below without a search.
-            const error = new Error("Capture reservation exists but was never submitted to the provider");
-            (error as Error & { code: string }).code = "CAPTURE_NEVER_SUBMITTED";
-            throw error;
-          }
-          const reconciliationWindow = getCaptureReconciliationWindow(order.captureAttemptedAt);
-          const matchedPayment = await findSquarePaymentByReference({
-            referenceId: order.captureIdempotencyKey,
-            listPage: async (cursor) => {
-              const { result } = await squareClient!.paymentsApi.listPayments(
-                reconciliationWindow.beginTime,
-                reconciliationWindow.endTime,
-                "DESC",
-                cursor,
-                process.env.SQUARE_LOCATION_ID!,
-                BigInt(amountInCents),
-                undefined,
-                undefined,
-                100,
-              );
-              return { payments: result.payments as any, cursor: result.cursor };
-            },
-          });
-          if (!matchedPayment) {
-            const error = new Error("Original Square capture could not be authoritatively reconciled");
-            (error as Error & { code: string }).code = "CAPTURE_OUTCOME_AMBIGUOUS";
-            throw error;
-          }
-          if (["FAILED", "CANCELED"].includes(matchedPayment.status ?? "")) {
-            const error = new Error("Square definitively rejected the original capture");
-            Object.assign(error, {
-              code: "CAPTURE_DEFINITIVE_FAILURE",
-              providerCode: matchedPayment.status,
-            });
-            throw error;
-          }
-          return requireCompletedSquarePayment(matchedPayment, BigInt(amountInCents), "USD");
-        }
-        if (!newCaptureRequest || newCaptureRequest.idempotencyKey !== idempotencyKey) {
-          throw new Error("Prepared capture request does not match its durable identity");
-        }
-        const { result } = await squareClient!.paymentsApi.createPayment(newCaptureRequest);
-        return requireCompletedSquarePayment(result.payment, BigInt(amountInCents), "USD");
-      },
-      persistProviderEvidence: async (paymentEvidence) => {
-        if (order.paymentStatus === "capture_reconciliation") return paymentEvidence;
-        const [evidenceOrder] = await db.update(orders).set({
-          ...paymentEvidence,
-          paymentStatus: "capture_reconciliation",
-          updatedAt: new Date(),
-        }).where(and(
-          eq(orders.id, orderId),
-          eq(orders.paymentStatus, "capture_pending"),
-          eq(orders.captureIdempotencyKey, order.captureIdempotencyKey!),
-        )).returning();
-        if (!evidenceOrder) throw new Error("capture evidence could not be recorded for reconciliation");
-        return paymentEvidence;
-      },
-      applyLocally: async (paymentEvidence) => db.transaction(async (tx: any) => {
-        const [capturedOrder] = await tx.update(orders).set({
-          ...paymentEvidence,
-          sellerRevenueStatus: "credited",
-          inventoryStatus: "sold",
-          updatedAt: new Date(),
-        }).where(and(
-          eq(orders.id, orderId),
-          eq(orders.paymentStatus, "capture_reconciliation"),
-          eq(orders.captureIdempotencyKey, order.captureIdempotencyKey!),
-          eq(orders.sellerRevenueStatus, "uncredited"),
-          eq(orders.inventoryStatus, "reserved"),
-        )).returning();
-        if (!capturedOrder) throw new Error("capture state changed before reconciliation");
-
-        await tx.insert(commissions).values({
-          orderId: order.id,
-          sellerId: order.sellerId,
-          subscriptionTier: tier,
-          commissionRate: commissionRate.toString(),
-          orderTotal: order.totalAmount,
-          commissionAmount: order.platformFee,
-          sellerAmount: order.sellerAmount,
-          status: "pending",
-        });
-        await tx.update(users).set({
-          monthlyRevenue: sql`coalesce(${users.monthlyRevenue}, 0) + ${order.sellerAmount}`,
-        }).where(eq(users.id, order.sellerId));
-        // The pre-P1-05 checkout path already incremented sales_count for a
-        // migrated P1-03 order at its original (pre-atomicity) checkout time.
-        // Only a genuinely new atomic-checkout order -- never marked with the
-        // migration's legacy-provenance sentinel -- counts as a sale here.
-        if (order.sellerTierSnapshot !== "legacy_p1_03") {
-          await tx.update(products).set({
-            salesCount: sql`coalesce(${products.salesCount}, 0) + 1`,
-          }).where(eq(products.id, order.productId));
-        }
-        return capturedOrder;
-      }),
-    });
+    const updatedOrder = await completeMarketplaceCapture(productionCheckoutDeps, order, { isNewCaptureAttempt, squareClient });
 
     res.json({
       ok: true,
@@ -317,7 +139,7 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         sellerReceives: order.sellerAmount,
         commissionRate: `${commissionRate}%`,
       },
-      order: updatedOrder,
+      order: toClientOrder(updatedOrder),
     });
   } catch (error: any) {
     console.error("Payment processing error:", error);
@@ -327,65 +149,33 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     if (error?.code === "PAYMENT_STATE_CONFLICT" && !captureContext) {
       return res.status(409).json({ ok: false, code: error.code, error: error.message });
     }
-    const neverSubmitted = error?.code === "CAPTURE_NEVER_SUBMITTED";
-    const definitiveFailure = getDefinitiveSquarePaymentFailure(error)
-      ?? (error?.code === "CAPTURE_DEFINITIVE_FAILURE" ? error.providerCode : null)
-      ?? (neverSubmitted ? "CAPTURE_NEVER_SUBMITTED" : null);
-    if (definitiveFailure && captureContext) {
-      const released = await db.transaction(async (tx: any) => {
-        const [releasedOrder] = await tx.update(orders).set({
-          paymentStatus: "unverified",
-          paymentProvider: null,
-          captureIdempotencyKey: null,
-          captureAttemptedAt: null,
-          captureRequestSubmittedAt: null,
-          lastPaymentFailureCode: definitiveFailure,
-          inventoryStatus: "released",
-          updatedAt: new Date(),
-        }).where(and(
-          eq(orders.id, captureContext!.orderId),
-          eq(orders.paymentStatus, "capture_pending"),
-          eq(orders.captureIdempotencyKey, captureContext!.idempotencyKey),
-          eq(orders.inventoryStatus, "reserved"),
-          // Only a "never submitted" release requires the durable proof that
-          // no request was dispatched; a definitive Square decline legitimately
-          // has captureRequestSubmittedAt set, since a request was sent.
-          ...(neverSubmitted ? [isNull(orders.captureRequestSubmittedAt)] : []),
-        )).returning();
-        if (!releasedOrder) return undefined;
-        await tx.update(products).set({
-          inventory: sql`${products.inventory} + ${releasedOrder.quantity}`,
-        }).where(and(eq(products.id, releasedOrder.productId), sql`${products.inventory} IS NOT NULL`));
-        return releasedOrder;
-      });
-      if (!released) {
-        return res.status(503).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Payment decline could not be safely released" });
+    if (captureContext) {
+      // Only a definitive provider failure releases the reservation; every
+      // other outcome leaves it for replay under the same idempotency key.
+      const settled = await settleMarketplaceCaptureFailure(productionCheckoutDeps, captureContext, error);
+      if (settled.kind === "declined") {
+        if (!settled.released) {
+          return res.status(503).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Payment decline could not be safely released" });
+        }
+        return res.status(400).json({ ok: false, code: "PAYMENT_DECLINED", error: "Payment was declined", providerCode: settled.providerCode });
       }
-      if (neverSubmitted) {
-        return res.status(409).json({
+      if (settled.kind === "reconciliation_required") {
+        return res.status(503).json({
           ok: false,
-          code: "CAPTURE_NEVER_SUBMITTED",
-          error: "This reservation was abandoned before payment was ever attempted; please check out again",
+          code: settled.code,
+          error: "Square returned provider evidence; local reconciliation is still required. Retry this order safely.",
         });
       }
-      return res.status(400).json({ ok: false, code: "PAYMENT_DECLINED", error: "Payment was declined", providerCode: definitiveFailure });
-    }
-    if (error instanceof ProviderReconciliationRequiredError) {
-      return res.status(503).json({
-        ok: false,
-        code: error.code,
-        error: "Square returned provider evidence; local reconciliation is still required. Retry this order safely.",
-      });
-    }
-    if (error?.code === "PAYMENT_CAPTURE_UNVERIFIED") {
-      return res.status(502).json({ ok: false, code: error.code, error: error.message });
-    }
-    if (error?.code === "CAPTURE_OUTCOME_AMBIGUOUS" || error?.errors) {
-      return res.status(503).json({
-        ok: false,
-        code: "PAYMENT_RECONCILIATION_REQUIRED",
-        error: "The original Square capture outcome is ambiguous; a new charge is blocked pending reconciliation",
-      });
+      if (settled.kind === "unverified") {
+        return res.status(502).json({ ok: false, code: "PAYMENT_CAPTURE_UNVERIFIED", error: settled.message });
+      }
+      if (settled.kind === "ambiguous") {
+        return res.status(503).json({
+          ok: false,
+          code: "PAYMENT_RECONCILIATION_REQUIRED",
+          error: "The original Square capture outcome is ambiguous; a new charge is blocked pending reconciliation",
+        });
+      }
     }
     res.status(500).json({ ok: false, error: "Failed to process payment" });
   }
@@ -561,7 +351,7 @@ router.post("/refund", requireAuth, async (req, res) => {
       ok: true,
       message: "Refund processed successfully",
       refund: { amount: Number(refundRequest.amountMoney.amount) / 100, id: refundEvidence.squareRefundId, status: "completed" },
-      order: updatedOrder,
+      order: toClientOrder(updatedOrder),
     });
   } catch (error: any) {
     console.error("Refund error:", error);
