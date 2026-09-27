@@ -155,3 +155,37 @@ ALTER TABLE orders VALIDATE CONSTRAINT orders_trusted_checkout_snapshot_check;
 ALTER TABLE orders VALIDATE CONSTRAINT orders_inventory_payment_lifecycle_check;
 ALTER TABLE products VALIDATE CONSTRAINT products_inventory_nonnegative_check;
 ALTER TABLE orders VALIDATE CONSTRAINT orders_sold_inventory_payment_evidence_check;
+
+-- Crash-window reservation reconciliation: distinguish "a capture attempt was
+-- dispatched to Square" from "a reservation exists but nothing was ever
+-- sent", so an abandoned capture_pending reservation from a crash before the
+-- provider call can be released without ever inventing provider evidence.
+--
+-- This column is intentionally nullable with no default: after it is added,
+-- application code sets it only in a dedicated claim step, strictly after a
+-- fresh reservation commits and strictly before the provider is called, so a
+-- brand-new in-flight reservation is legitimately (and only briefly) NULL.
+-- That means this backfill must run exactly once, the moment the column is
+-- introduced, and never again -- a `WHERE ... IS NULL` guard would be unsafe
+-- to rerun, since it would just as happily "backfill" (and thereby poison)
+-- every live reservation currently between those two steps on every later
+-- db:push. The one-time IF NOT EXISTS gate below is what makes it safe to
+-- run on every push: after the first successful run the column always
+-- exists, so this entire block becomes a permanent no-op.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'orders' AND column_name = 'capture_request_submitted_at'
+  ) THEN
+    ALTER TABLE orders ADD COLUMN capture_request_submitted_at timestamp;
+    -- Every row already at capture_pending/capture_reconciliation at this
+    -- exact moment predates the concept entirely; it may already have had a
+    -- request dispatched to Square and there is no way to prove otherwise,
+    -- so it is conservatively marked "submitted" and must still be
+    -- reconciled from Square's own evidence, exactly like today.
+    UPDATE orders
+    SET capture_request_submitted_at = COALESCE(capture_attempted_at, now())
+    WHERE payment_status IN ('capture_pending', 'capture_reconciliation');
+  END IF;
+END $$;

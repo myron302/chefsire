@@ -8,26 +8,9 @@ import { and, eq, gte, isNull, notInArray, or, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, findSquarePaymentByReference, getCaptureReconciliationWindow, getDefinitiveSquarePaymentFailure, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireCompletedSquarePayment, requireSquareRefundEvidence } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
-// Square is a CommonJS module - import it properly
-import square from "square";
-const { Client, Environment } = square;
+import { getSquareClient } from "../lib/square-client";
 
 const router = Router();
-
-// Initialize Square client
-const getSquareClient = () => {
-  const accessToken = process.env.SQUARE_ACCESS_TOKEN;
-  if (!accessToken) {
-    throw new Error("SQUARE_ACCESS_TOKEN not configured");
-  }
-
-  return new Client({
-    accessToken,
-    environment: process.env.NODE_ENV === 'production'
-      ? Environment.Production
-      : Environment.Sandbox
-  });
-};
 /**
  * SQUARE PAYMENT PROCESSING
  * -------------------------
@@ -156,6 +139,7 @@ router.post("/create-payment", requireAuth, async (req, res) => {
           paymentProvider: "square",
           captureIdempotencyKey,
           captureAttemptedAt,
+          captureRequestSubmittedAt: null,
           lastPaymentFailureCode: null,
           inventoryStatus: "reserved",
           updatedAt: new Date(),
@@ -175,6 +159,26 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       }
       order = prepared;
       isNewCaptureAttempt = true;
+
+      // Claim the outbound-dispatch boundary in its own statement, strictly
+      // after the reservation above commits and strictly before Square is
+      // ever called below. From here on, captureRequestSubmittedAt being NULL
+      // always means Square was never contacted for this idempotency key: a
+      // crash before this line leaves a reservation that is safely releasable
+      // without any provider evidence at all (see marketplace-checkout-
+      // reconciliation), never a false ambiguous-forever state.
+      const [claimed] = await db.update(orders).set({
+        captureRequestSubmittedAt: new Date(),
+      }).where(and(
+        eq(orders.id, orderId),
+        eq(orders.paymentStatus, "capture_pending"),
+        eq(orders.captureIdempotencyKey, order.captureIdempotencyKey!),
+        isNull(orders.captureRequestSubmittedAt),
+      )).returning();
+      if (!claimed) {
+        return res.status(409).json({ ok: false, code: "PAYMENT_STATE_CONFLICT", error: "Order state changed; reload and retry" });
+      }
+      order = claimed;
     }
     if (!order.captureIdempotencyKey) {
       return res.status(409).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Capture is pending without a recoverable provider key" });
@@ -197,6 +201,15 @@ router.post("/create-payment", requireAuth, async (req, res) => {
           if (!order.captureAttemptedAt) {
             const error = new Error("Capture outcome is ambiguous and lacks a reconciliation window");
             (error as Error & { code: string }).code = "CAPTURE_OUTCOME_AMBIGUOUS";
+            throw error;
+          }
+          if (!order.captureRequestSubmittedAt) {
+            // Our own durable claim record proves Square was never contacted
+            // under this idempotency key. No provider evidence could exist
+            // either way; this is a "never submitted" reservation, not an
+            // ambiguous one, so it is safely released below without a search.
+            const error = new Error("Capture reservation exists but was never submitted to the provider");
+            (error as Error & { code: string }).code = "CAPTURE_NEVER_SUBMITTED";
             throw error;
           }
           const reconciliationWindow = getCaptureReconciliationWindow(order.captureAttemptedAt);
@@ -280,9 +293,15 @@ router.post("/create-payment", requireAuth, async (req, res) => {
         await tx.update(users).set({
           monthlyRevenue: sql`coalesce(${users.monthlyRevenue}, 0) + ${order.sellerAmount}`,
         }).where(eq(users.id, order.sellerId));
-        await tx.update(products).set({
-          salesCount: sql`coalesce(${products.salesCount}, 0) + 1`,
-        }).where(eq(products.id, order.productId));
+        // The pre-P1-05 checkout path already incremented sales_count for a
+        // migrated P1-03 order at its original (pre-atomicity) checkout time.
+        // Only a genuinely new atomic-checkout order -- never marked with the
+        // migration's legacy-provenance sentinel -- counts as a sale here.
+        if (order.sellerTierSnapshot !== "legacy_p1_03") {
+          await tx.update(products).set({
+            salesCount: sql`coalesce(${products.salesCount}, 0) + 1`,
+          }).where(eq(products.id, order.productId));
+        }
         return capturedOrder;
       }),
     });
@@ -308,8 +327,10 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     if (error?.code === "PAYMENT_STATE_CONFLICT" && !captureContext) {
       return res.status(409).json({ ok: false, code: error.code, error: error.message });
     }
+    const neverSubmitted = error?.code === "CAPTURE_NEVER_SUBMITTED";
     const definitiveFailure = getDefinitiveSquarePaymentFailure(error)
-      ?? (error?.code === "CAPTURE_DEFINITIVE_FAILURE" ? error.providerCode : null);
+      ?? (error?.code === "CAPTURE_DEFINITIVE_FAILURE" ? error.providerCode : null)
+      ?? (neverSubmitted ? "CAPTURE_NEVER_SUBMITTED" : null);
     if (definitiveFailure && captureContext) {
       const released = await db.transaction(async (tx: any) => {
         const [releasedOrder] = await tx.update(orders).set({
@@ -317,6 +338,7 @@ router.post("/create-payment", requireAuth, async (req, res) => {
           paymentProvider: null,
           captureIdempotencyKey: null,
           captureAttemptedAt: null,
+          captureRequestSubmittedAt: null,
           lastPaymentFailureCode: definitiveFailure,
           inventoryStatus: "released",
           updatedAt: new Date(),
@@ -325,6 +347,10 @@ router.post("/create-payment", requireAuth, async (req, res) => {
           eq(orders.paymentStatus, "capture_pending"),
           eq(orders.captureIdempotencyKey, captureContext!.idempotencyKey),
           eq(orders.inventoryStatus, "reserved"),
+          // Only a "never submitted" release requires the durable proof that
+          // no request was dispatched; a definitive Square decline legitimately
+          // has captureRequestSubmittedAt set, since a request was sent.
+          ...(neverSubmitted ? [isNull(orders.captureRequestSubmittedAt)] : []),
         )).returning();
         if (!releasedOrder) return undefined;
         await tx.update(products).set({
@@ -334,6 +360,13 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       });
       if (!released) {
         return res.status(503).json({ ok: false, code: "PAYMENT_RECONCILIATION_REQUIRED", error: "Payment decline could not be safely released" });
+      }
+      if (neverSubmitted) {
+        return res.status(409).json({
+          ok: false,
+          code: "CAPTURE_NEVER_SUBMITTED",
+          error: "This reservation was abandoned before payment was ever attempted; please check out again",
+        });
       }
       return res.status(400).json({ ok: false, code: "PAYMENT_DECLINED", error: "Payment was declined", providerCode: definitiveFailure });
     }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../../shared/marketplace-fulfillment";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
@@ -12,6 +13,8 @@ const schema = read("shared/schema/domains/commerce-billing.ts");
 const commissionSchema = read("shared/schema/domains/ops-wedding.ts");
 const migration = read("server/migrations/20260922_atomic_marketplace_checkout.sql");
 const client = read("client/src/pages/checkout/CheckoutPage.tsx");
+const reconciliationService = read("server/services/marketplace-checkout-reconciliation.ts");
+const cronFile = read("server/cron.ts");
 
 test("order checkout never mutates inventory or creates financial accounting", () => {
   const checkout = orders.slice(orders.indexOf('router.post("/checkout"'), orders.indexOf('router.get("/my-purchases"'));
@@ -51,6 +54,16 @@ test("only verified capture sells inventory and applies accounting atomically on
   assert.match(commissionSchema, /commissions_order_uidx/);
 });
 
+test("migrated P1-03 orders do not double-count a sale the legacy checkout already counted", () => {
+  const localCapture = payments.slice(payments.indexOf("applyLocally: async (paymentEvidence)"), payments.indexOf("res.json({", payments.indexOf("applyLocally: async (paymentEvidence)")));
+  // The salesCount increment must be conditioned on NOT being the migration's
+  // legacy-provenance sentinel, and the monthlyRevenue/commission credit above
+  // it must remain unconditional -- only the count, never the accounting, is skipped.
+  assert.match(localCapture, /sellerTierSnapshot\s*!==\s*["']legacy_p1_03["'][\s\S]{0,200}salesCount/);
+  assert.match(localCapture, /monthlyRevenue[\s\S]*sellerTierSnapshot\s*!==\s*["']legacy_p1_03["']/);
+  assert.match(migration, /THEN 'legacy_p1_03'/);
+});
+
 test("definitive failure releases stock while ambiguous capture remains reserved", () => {
   assert.match(payments, /definitiveFailure[\s\S]*db\.transaction[\s\S]*inventoryStatus: "released"/);
   assert.match(payments, /CAPTURE_OUTCOME_AMBIGUOUS/);
@@ -74,6 +87,71 @@ test("an unpaid order cannot enter processing, shipment, or delivery", () => {
   assert.match(orders, /\["processing", "shipped", "delivered"\]\.includes\(status\)/);
   assert.match(orders, /!isVerifiedMarketplaceEarning\(order\)/);
   assert.match(orders, /PAYMENT_CAPTURE_UNVERIFIED/);
+});
+
+test("a crash between reservation commit and the Square call is durably distinguishable from an ambiguous attempt", () => {
+  // The claim happens as its own statement, strictly after the reservation
+  // transaction and strictly before the createPayment call it guards.
+  const reservation = payments.slice(payments.indexOf('if (order.paymentStatus === "unverified") {'), payments.indexOf("createPayment(newCaptureRequest)"));
+  assert.match(reservation, /captureRequestSubmittedAt: null/);
+  assert.match(reservation, /captureRequestSubmittedAt: new Date\(\)/);
+  assert.match(reservation, /isNull\(orders\.captureRequestSubmittedAt\)/);
+  assert.match(schema, /captureRequestSubmittedAt: timestamp\("capture_request_submitted_at"\)/);
+
+  // The retry/reconciliation branch must check the claim before ever
+  // searching Square, and treat "never submitted" as distinct from ambiguous.
+  const retryBranch = payments.slice(payments.indexOf("if (!isNewCaptureAttempt) {"), payments.indexOf("if (!newCaptureRequest"));
+  assert.match(retryBranch, /CAPTURE_NEVER_SUBMITTED/);
+  assert.match(retryBranch, /if \(!order\.captureRequestSubmittedAt\)/);
+
+  // A "never submitted" release requires the same durable proof at release
+  // time; a definitive Square decline (a real request was sent) must not.
+  const catchBlock = payments.slice(payments.indexOf("const neverSubmitted"), payments.indexOf("if (error instanceof ProviderReconciliationRequiredError)"));
+  assert.match(catchBlock, /neverSubmitted \? \[isNull\(orders\.captureRequestSubmittedAt\)\] : \[\]/);
+  assert.match(catchBlock, /inventoryStatus: "released"/);
+});
+
+test("abandoned reservations are reconciled automatically, not left for a manual retry alone", () => {
+  assert.match(cronFile, /reconcileAbandonedCheckoutReservations/);
+  assert.match(cronFile, /cron\.schedule\([^,]+,\s*async \(\) => \{[\s\S]{0,200}reconcileAbandonedCheckoutReservations/);
+
+  // The background job must reuse the exact same evidence primitives as the
+  // manual retry path in payments.ts -- never a second, drifted copy of the
+  // capture-evidence or idempotency logic.
+  for (const shared of [
+    "executeRecoverableProviderOperation",
+    "requireCompletedSquarePayment",
+    "findSquarePaymentByReference",
+    "getCaptureReconciliationWindow",
+    "getDefinitiveSquarePaymentFailure",
+  ]) {
+    assert.ok(payments.includes(shared), `payments.ts must use ${shared}`);
+    assert.ok(reconciliationService.includes(shared), `reconciliation service must reuse ${shared}`);
+  }
+  assert.match(reconciliationService, /CAPTURE_NEVER_SUBMITTED/);
+  assert.match(reconciliationService, /isNull\(orders\.captureRequestSubmittedAt\)/);
+  // The reconciliation job's own accounting transaction must carry the same
+  // legacy-provenance guard as the manual path -- no drift, no double count.
+  assert.match(reconciliationService, /sellerTierSnapshot !== "legacy_p1_03"[\s\S]{0,200}salesCount/);
+});
+
+test("digital checkout total agrees with the server-authoritative amount Square is charged", () => {
+  // Server and client must derive shipping from the exact same shared rule --
+  // never their own inline copy that can silently diverge.
+  assert.match(orders, /isDigitalMarketplaceProduct\(/);
+  assert.match(orders, /resolveMarketplaceShippingCost\(/);
+  assert.doesNotMatch(orders, /\["digital", "cookbook", "course"\]\.includes/);
+  assert.match(client, /isDigitalMarketplaceProduct\(/);
+  assert.match(client, /resolveMarketplaceShippingCost\(/);
+  // Once an order exists, the payment step must render/charge the server's
+  // persisted totalAmount, never a client recomputation that could diverge.
+  assert.match(client, /setOrderTotal\(parseFloat\(data\.order\.totalAmount\)\)/);
+  assert.match(client, /amount=\{orderTotal \?\? calculateTotal\(\)\}/);
+  assert.doesNotMatch(client.slice(client.indexOf('step === "payment"')), /amount=\{calculateTotal\(\)\}/);
+
+  const digitalProduct = { isDigital: false, productCategory: "cookbook", shippingCost: "6.00" };
+  assert.equal(isDigitalMarketplaceProduct(digitalProduct), true);
+  assert.equal(resolveMarketplaceShippingCost(digitalProduct, "shipping"), 0);
 });
 
 test("db:push classifies existing orders from their own evidence before Drizzle can default them", () => {

@@ -20,6 +20,10 @@ async function main() {
       console.log("Partial marketplace checkout schema detected; existing-table invariants verified and schema repair may proceed.");
       return;
     }
+    if (!state.paymentColumnsReady) {
+      console.log("Pre-P1-03 orders schema detected; deferring checkout-atomicity backfill until schema repair adds payment/capture columns.");
+      return;
+    }
     console.log("Marketplace checkout atomicity invariants verified.");
   } finally {
     await client.end();

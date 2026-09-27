@@ -43,6 +43,7 @@ const schemaSql = `
     payment_provider text,
     square_payment_id text,
     capture_idempotency_key text,
+    capture_attempted_at timestamp,
     provider_payment_status text,
     payment_captured_at timestamp,
     seller_revenue_status text NOT NULL DEFAULT 'uncredited',
@@ -230,12 +231,70 @@ postgresTest("partial bootstrap permits Drizzle to create fresh tables and fails
     await client.query(`SET search_path TO ${root}_none`);
     assert.deepEqual(
       await enforceMarketplaceCheckoutAtomicity(client, migration, true),
-      { orders: false, products: false, commissions: false }
+      { orders: false, products: false, commissions: false, paymentColumnsReady: false }
     );
     await assert.rejects(enforceMarketplaceCheckoutAtomicity(client, migration, false), /must all exist/);
   } finally {
     await client.query("RESET search_path");
     await client.query(`DROP SCHEMA IF EXISTS ${root}_none CASCADE`);
+    await client.end();
+  }
+});
+
+postgresTest("pre-P1-03 orders schema defers the backfill instead of crashing db:push", async () => {
+  const client = new pg.Client({ connectionString: connectionString! });
+  await client.connect();
+  const schema = `checkout_prep103_${process.pid}_${Date.now()}_${sequence++}`;
+  try {
+    await client.query(`CREATE SCHEMA ${schema}`);
+    await client.query(`SET search_path TO ${schema}`);
+    // A genuinely pre-P1-03 orders table: no payment_status, capture_idempotency_key,
+    // provider_payment_status, payment_captured_at, square_payment_id or
+    // seller_revenue_status at all -- only what predates P1-03/P1-05 entirely.
+    await client.query(`
+      CREATE TABLE orders (id varchar PRIMARY KEY, buyer_id varchar NOT NULL DEFAULT 'buyer',
+        status text DEFAULT 'pending', platform_fee numeric(8,2) NOT NULL DEFAULT 1, seller_amount numeric(10,2) NOT NULL DEFAULT 9);
+      CREATE TABLE products (id varchar PRIMARY KEY, inventory integer);
+      CREATE TABLE commissions (id varchar PRIMARY KEY, order_id varchar NOT NULL);
+    `);
+    await client.query(`INSERT INTO orders (id, status) VALUES ('ancient-paid', 'paid'), ('ancient-pending', 'pending')`);
+
+    // Pre-push: must not crash trying to read columns that do not exist yet,
+    // and must not modify the pre-P1-03 rows at all.
+    const prePush = await enforceMarketplaceCheckoutAtomicity(client, migration, true);
+    assert.deepEqual(prePush, { orders: true, products: true, commissions: true, paymentColumnsReady: false });
+    assert.equal((await client.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'orders' AND column_name = 'inventory_status'`)).rowCount, 0);
+
+    // Still missing post-push (Drizzle should have added them by now in a
+    // real run) must fail closed rather than silently proceed.
+    await assert.rejects(enforceMarketplaceCheckoutAtomicity(client, migration, false), /payment\/capture columns/);
+
+    // Simulate drizzle-kit push adding both the P1-03 payment/capture columns
+    // and this migration's own columns in the same pass, each via its own
+    // NOT NULL DEFAULT, exactly as an ordinary `db:push` would.
+    await client.query(`ALTER TABLE orders
+      ADD COLUMN payment_status text NOT NULL DEFAULT 'unverified',
+      ADD COLUMN capture_idempotency_key text,
+      ADD COLUMN capture_attempted_at timestamp,
+      ADD COLUMN provider_payment_status text,
+      ADD COLUMN payment_captured_at timestamp,
+      ADD COLUMN payment_provider text,
+      ADD COLUMN square_payment_id text,
+      ADD COLUMN seller_revenue_status text NOT NULL DEFAULT 'uncredited',
+      ADD COLUMN checkout_idempotency_key varchar(64),
+      ADD COLUMN seller_tier_snapshot text,
+      ADD COLUMN commission_rate_snapshot numeric(5,2),
+      ADD COLUMN inventory_status text NOT NULL DEFAULT 'legacy_unverified'`);
+
+    const postPush = await enforceMarketplaceCheckoutAtomicity(client, migration, false);
+    assert.deepEqual(postPush, { orders: true, products: true, commissions: true, paymentColumnsReady: true });
+    // Every pre-P1-03 row is genuinely legacy -- no capture_pending/capture_reconciliation
+    // concept could have existed for it, so the uniform default is correct, not a stranding bug.
+    assert.equal((await client.query(`SELECT inventory_status FROM orders WHERE id = 'ancient-paid'`)).rows[0].inventory_status, "legacy_unverified");
+    assert.equal((await client.query(`SELECT inventory_status FROM orders WHERE id = 'ancient-pending'`)).rows[0].inventory_status, "legacy_unverified");
+  } finally {
+    await client.query("RESET search_path").catch(() => undefined);
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`).catch(() => undefined);
     await client.end();
   }
 });
@@ -256,6 +315,40 @@ postgresTest("post-push reapplication restores a NOT VALID constraint Drizzle dr
     await enforceMarketplaceCheckoutAtomicity(client, migration, false);
 
     await assert.rejects(insertSoldMissingEvidence("post-push-invalid"), (error: any) => error.code === "23514");
+  } finally {
+    await teardown(client, schema);
+  }
+});
+
+postgresTest("capture_request_submitted_at backfill runs exactly once and never poisons a live unclaimed reservation", async () => {
+  const { client, schema } = await setup();
+  try {
+    // Pre-existing rows at the moment this column is introduced: their
+    // submission state is genuinely unknown, so the one-time backfill must
+    // conservatively mark them "submitted" (non-null).
+    await client.query(`INSERT INTO orders (id, payment_status, capture_idempotency_key, capture_attempted_at, seller_revenue_status)
+      VALUES ('legacy-pending', 'capture_pending', 'idem-legacy', now() - interval '1 hour', 'uncredited')`);
+    await client.query(`INSERT INTO orders (id, payment_status, capture_idempotency_key, capture_attempted_at, seller_revenue_status)
+      VALUES ('legacy-reconciliation', 'capture_reconciliation', 'idem-legacy-2', now() - interval '1 hour', 'uncredited')`);
+
+    await applyMigration(client, "20260922_atomic_marketplace_checkout.sql", migration, { error() {} });
+
+    const legacyRows = await client.query(`SELECT id, capture_request_submitted_at FROM orders WHERE id IN ('legacy-pending', 'legacy-reconciliation') ORDER BY id`);
+    assert.ok(legacyRows.rows[0].capture_request_submitted_at, "legacy capture_pending row must be conservatively marked submitted");
+    assert.ok(legacyRows.rows[1].capture_request_submitted_at, "legacy capture_reconciliation row must be conservatively marked submitted");
+
+    // A reservation created AFTER the column exists, still waiting on its own
+    // claim step (the live application's genuine "never submitted" state).
+    await client.query(`INSERT INTO orders (id, payment_status, capture_idempotency_key, capture_attempted_at, seller_revenue_status, inventory_status, checkout_idempotency_key, seller_tier_snapshot, commission_rate_snapshot)
+      VALUES ('fresh-unclaimed', 'capture_pending', 'idem-fresh', now(), 'uncredited', 'reserved', 'fresh-key', 'free', 10)`);
+    assert.equal((await client.query(`SELECT capture_request_submitted_at FROM orders WHERE id = 'fresh-unclaimed'`)).rows[0].capture_request_submitted_at, null);
+
+    // Rerunning db:push (payout/revenue/checkout-atomicity enforcement all
+    // rerun on every push) must never retroactively "submit" that live,
+    // still-unclaimed reservation.
+    await enforceMarketplaceCheckoutAtomicity(client, migration, false);
+    await enforceMarketplaceCheckoutAtomicity(client, migration, false);
+    assert.equal((await client.query(`SELECT capture_request_submitted_at FROM orders WHERE id = 'fresh-unclaimed'`)).rows[0].capture_request_submitted_at, null);
   } finally {
     await teardown(client, schema);
   }

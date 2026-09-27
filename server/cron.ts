@@ -7,6 +7,7 @@ import {
   checkLowStockItems,
 } from "./services/pantry-cron.service";
 import { reconcileCateringStorageCleanup } from "./services/catering-booking-storage-cleanup";
+import { reconcileAbandonedCheckoutReservations } from "./services/marketplace-checkout-reconciliation";
 
 /**
  * Initialize all cron jobs
@@ -42,10 +43,32 @@ export function initializeCronJobs() {
     }
   });
 
+  // Reconcile or expire abandoned marketplace checkout reservations. Bounded
+  // per run and driven entirely by durable provider evidence or this
+  // server's own claim record -- never a bare timeout -- so a crash between
+  // reserving stock and calling Square cannot strand it forever. Every five
+  // minutes is frequent enough to keep the backlog small without contending
+  // with ordinary in-flight checkouts.
+  cron.schedule("*/5 * * * *", async () => {
+    try {
+      const outcome = await reconcileAbandonedCheckoutReservations();
+      if (outcome.scanned > 0) {
+        console.log(
+          `🧾 Marketplace checkout reconciliation: scanned ${outcome.scanned}, finalized ${outcome.finalized}, ` +
+          `released ${outcome.released}, declined ${outcome.declined}, ambiguous ${outcome.ambiguous}, ` +
+          `skipped ${outcome.skipped}, errors ${outcome.errors}`
+        );
+      }
+    } catch (error) {
+      console.error("Marketplace checkout reconciliation failed", error);
+    }
+  });
+
   console.log("✅ Cron jobs initialized:");
   console.log("   - Pantry expiring items: Daily at 9 AM & 6 PM");
   console.log("   - Low stock items: Daily at 10 AM");
   console.log("   - Catering storage cleanup: Hourly at :30");
+  console.log("   - Marketplace checkout reconciliation: Every 5 minutes");
 }
 
 /**

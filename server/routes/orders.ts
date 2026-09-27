@@ -9,6 +9,7 @@ import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
 import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning } from "../lib/marketplace-payment";
+import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../../shared/marketplace-fulfillment";
 
 const router = Router();
 
@@ -88,7 +89,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
     }
 
     const productCategory = (product as any).productCategory || "physical";
-    const isDigital = product.isDigital || ["digital", "cookbook", "course"].includes(productCategory);
+    const isDigital = isDigitalMarketplaceProduct({ isDigital: product.isDigital, productCategory });
 
     // Validate fulfillment method against server-owned product capabilities.
     if (!isDigital && body.fulfillmentMethod === "shipping" && !product.shippingEnabled) {
@@ -118,9 +119,10 @@ router.post("/checkout", requireAuth, async (req, res) => {
       : body.fulfillmentMethod === "local_pickup"
         ? DeliveryMethod.PICKUP
         : DeliveryMethod.SHIPPED;
-    const shippingCost = deliveryMethod === DeliveryMethod.SHIPPED && product.shippingCost
-      ? parseFloat(product.shippingCost)
-      : 0;
+    const shippingCost = resolveMarketplaceShippingCost(
+      { isDigital: product.isDigital, productCategory, shippingCost: product.shippingCost },
+      body.fulfillmentMethod,
+    );
 
     const subtotal = productPrice * body.quantity;
     const totalAmount = subtotal + shippingCost;

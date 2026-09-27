@@ -90,6 +90,13 @@ export const orders = pgTable(
     squareRefundId: text("square_refund_id"),
     captureIdempotencyKey: text("capture_idempotency_key"),
     captureAttemptedAt: timestamp("capture_attempted_at"),
+    // Set durably, in its own statement, strictly after the reservation
+    // transaction commits and strictly before the outbound Square call is
+    // dispatched. NULL is then unambiguous proof no provider request could
+    // have been submitted under this idempotency key -- a crash before this
+    // point is safely releasable without any provider evidence at all, while
+    // a crash after it must still be reconciled from Square's own evidence.
+    captureRequestSubmittedAt: timestamp("capture_request_submitted_at"),
     refundIdempotencyKey: text("refund_idempotency_key"),
     // Immutable snapshot of the Square RefundPayment request associated with
     // refundIdempotencyKey. Retries never rebuild these fields from HTTP input.

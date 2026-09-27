@@ -50,7 +50,7 @@ postgresTest("P1-05 migration enforces checkout, inventory, capture, and commiss
         quantity integer NOT NULL, total_amount numeric(10,2) NOT NULL, platform_fee numeric(8,2) NOT NULL,
         seller_amount numeric(10,2) NOT NULL, status text DEFAULT 'pending', payment_status text NOT NULL DEFAULT 'unverified',
         seller_revenue_status text NOT NULL DEFAULT 'uncredited', payment_provider text, square_payment_id text,
-        capture_idempotency_key text, provider_payment_status text, payment_captured_at timestamp
+        capture_idempotency_key text, capture_attempted_at timestamp, provider_payment_status text, payment_captured_at timestamp
       );
       CREATE TABLE commissions (id text PRIMARY KEY, order_id text NOT NULL);
     `);
