@@ -2,10 +2,23 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
-import { payouts, paymentMethods } from "../../shared/schema";
-import { eq, and } from "drizzle-orm";
+import { pool } from "../db";
+import { payouts } from "../../shared/schema";
+import { eq } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middleware";
 import { PAYOUTS_UNAVAILABLE_ERROR, rejectUnavailablePayout } from "../lib/payout-safety";
+import { squareOauthInitiationLimiter } from "../middleware/rate-limit";
+import {
+  createSquareOauthBrowserBinding,
+  createSquareOauthClaimId,
+  createSquareOauthState,
+  hashSquareOauthBrowserBinding,
+  hashSquareOauthState,
+  SQUARE_OAUTH_BROWSER_BINDING_COOKIE,
+  SQUARE_OAUTH_BROWSER_BINDING_COOKIE_PATH,
+  SQUARE_OAUTH_STATE_TTL_MS,
+  squareOauthBrowserBindingCookieOptions,
+} from "../lib/square-oauth-state";
 // Square is a CommonJS module - import it properly
 import square from "square";
 const { Client, Environment } = square;
@@ -127,21 +140,57 @@ router.get("/pending-balance", requireAuth, async (req, res) => {
 
 /**
  * GET /api/payouts/connect-square
- * Initiate Square OAuth flow — returns the auth URL for the seller to visit
+ * Initiate Square OAuth flow — returns the auth URL for the seller to visit.
+ *
+ * Two independent 256-bit CSPRNG secrets are minted: the OAuth `state` nonce
+ * (round-tripped through Square) and a browser-binding secret (held only in a
+ * host-only, path-scoped cookie on this browser). Only their SHA-256 digests
+ * are persisted. Binding the callback to the initiating browser prevents a
+ * forwarded authorization URL from letting a different browser's Square
+ * authorization complete this ChefSire account's connection.
+ *
+ * Exactly one transaction row is kept per authenticated user (upsert on
+ * user_id), so repeated initiations cannot grow the table, and a stale nonce
+ * from an earlier attempt stops matching as soon as a newer one replaces it.
  */
-router.get("/connect-square", requireAuth, async (req, res) => {
+router.get("/connect-square", squareOauthInitiationLimiter, requireAuth, async (req, res) => {
   try {
     const sellerId = req.user!.id;
 
-    if (!process.env.SQUARE_APPLICATION_ID) {
+    if (!process.env.SQUARE_APPLICATION_ID || !pool) {
       return res.status(503).json({ ok: false, error: "Square not configured" });
     }
 
-    const authUrl = `https://connect.squareup.com/oauth2/authorize?client_id=${
-      encodeURIComponent(process.env.SQUARE_APPLICATION_ID)
-    }&scope=MERCHANT_PROFILE_READ+PAYMENTS_WRITE&session=false&state=${encodeURIComponent(sellerId)}`;
+    const state = createSquareOauthState();
+    const nonceHash = hashSquareOauthState(state)!;
+    const browserBinding = createSquareOauthBrowserBinding();
+    const browserBindingHash = hashSquareOauthBrowserBinding(browserBinding)!;
+    const expiresAt = new Date(Date.now() + SQUARE_OAUTH_STATE_TTL_MS);
 
-    res.json({ ok: true, authUrl });
+    await pool.query(
+      `INSERT INTO square_oauth_transactions
+         (user_id, nonce_hash, browser_binding_hash, expires_at, claim_id, claimed_at, consumed_at)
+       VALUES ($1, $2, $3, $4, NULL, NULL, NULL)
+       ON CONFLICT (user_id) DO UPDATE
+       SET nonce_hash = EXCLUDED.nonce_hash,
+           browser_binding_hash = EXCLUDED.browser_binding_hash,
+           expires_at = EXCLUDED.expires_at,
+           claim_id = NULL,
+           claimed_at = NULL,
+           consumed_at = NULL,
+           created_at = now()`,
+      [sellerId, nonceHash, browserBindingHash, expiresAt],
+    );
+
+    res.cookie(SQUARE_OAUTH_BROWSER_BINDING_COOKIE, browserBinding, squareOauthBrowserBindingCookieOptions());
+
+    const authUrl = new URL("https://connect.squareup.com/oauth2/authorize");
+    authUrl.searchParams.set("client_id", process.env.SQUARE_APPLICATION_ID);
+    authUrl.searchParams.set("scope", "MERCHANT_PROFILE_READ PAYMENTS_WRITE");
+    authUrl.searchParams.set("session", "false");
+    authUrl.searchParams.set("state", state);
+
+    res.json({ ok: true, authUrl: authUrl.toString(), expiresAt: expiresAt.toISOString() });
   } catch (error) {
     console.error("Square connect error:", error);
     res.status(500).json({ ok: false, error: "Failed to initiate Square connection" });
@@ -150,18 +199,81 @@ router.get("/connect-square", requireAuth, async (req, res) => {
 
 /**
  * GET /api/payouts/square-callback
- * Square OAuth callback — exchanges auth code for access token and stores it
+ * Square OAuth callback — exchanges auth code for access token and stores it.
+ *
+ * The claim below requires BOTH the state digest and the browser-binding
+ * digest to match, in the same conditional write. A forwarded authorization
+ * URL opened in a different browser carries the correct `state` but that
+ * browser never received this session's binding cookie (host-only, scoped to
+ * this path), so its binding digest cannot match and the WHERE clause simply
+ * excludes the legitimate row: zero rows are claimed, nothing is consumed,
+ * and the attacker's own initiation remains usable. A wrong or missing
+ * binding therefore fails before any authorization-code exchange, merchant
+ * lookup, or credential persistence — and never destroys another seller's
+ * valid in-flight OAuth attempt.
+ *
+ * The browser-binding cookie is cleared only once a claim on THIS exact
+ * cookie's digest has succeeded (see below). A different/newer OAuth attempt
+ * in the same browser may already own the current cookie; clearing it before
+ * a matching claim would let a stale, forged, or otherwise invalid callback
+ * silently break that other, still-legitimate in-flight attempt.
  */
 router.get("/square-callback", async (req, res) => {
   try {
-    const { code, state: sellerId, error: oauthError } = req.query as Record<string, string>;
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+    const nonceHash = typeof state === "string" ? hashSquareOauthState(state) : null;
+    const browserBindingCookie = req.cookies?.[SQUARE_OAUTH_BROWSER_BINDING_COOKIE];
+    const browserBindingHash =
+      typeof browserBindingCookie === "string" ? hashSquareOauthBrowserBinding(browserBindingCookie) : null;
 
-    if (oauthError) {
-      return res.redirect(`/settings/payouts?error=${encodeURIComponent(oauthError)}`);
+    if (!nonceHash || !browserBindingHash || !pool) {
+      // Do not clear the cookie: it may belong to a different, still-active
+      // transaction in this browser (e.g. an older tab whose flow was
+      // replaced by a newer initiation).
+      return res.status(400).json({ ok: false, error: "Missing or invalid OAuth state" });
     }
 
-    if (!code || !sellerId) {
-      return res.status(400).json({ ok: false, error: "Missing code or state" });
+    // Claim is a single conditional write requiring both digests together.
+    // Exactly one callback can cross this boundary; failures intentionally
+    // require the seller to start again. `expires_at > now()` is enforced
+    // here, at the point the callback is allowed to start/claim — not below,
+    // after provider round-trips, where ordinary Square latency crossing the
+    // deadline must not retroactively invalidate an already-valid claim.
+    const claimId = createSquareOauthClaimId();
+    const claim = await pool.query(
+      `UPDATE square_oauth_transactions
+       SET claim_id = $3, claimed_at = now()
+       WHERE nonce_hash = $1
+         AND browser_binding_hash = $2
+         AND claimed_at IS NULL
+         AND consumed_at IS NULL
+         AND expires_at > now()
+       RETURNING user_id`,
+      [nonceHash, browserBindingHash, claimId],
+    ) as { rowCount: number; rows: Array<{ user_id: string }> };
+    if (claim.rowCount !== 1) {
+      // Same reasoning: an invalid, stale, forged, wrong-binding, or expired
+      // claim attempt must not delete the browser-binding cookie for a
+      // different, still-valid transaction that may share this browser.
+      return res.status(400).json({ ok: false, error: "Invalid or expired OAuth state" });
+    }
+    const sellerId = claim.rows[0].user_id;
+
+    // The claim above matched this exact cookie's digest, so we now know it
+    // belongs to the transaction being terminated. Clear it here regardless
+    // of how the rest of this callback resolves (provider denial, exchange
+    // failure, merchant mismatch, or success) — a later reconnect mints a
+    // fresh cookie of its own, and this transaction can never be reclaimed
+    // once claimed_at is set.
+    res.clearCookie(SQUARE_OAUTH_BROWSER_BINDING_COOKIE, { path: SQUARE_OAUTH_BROWSER_BINDING_COOKIE_PATH });
+
+    if (oauthError || !code) {
+      await pool.query(
+        `UPDATE square_oauth_transactions SET consumed_at = now()
+         WHERE nonce_hash = $1 AND claim_id = $2 AND consumed_at IS NULL`,
+        [nonceHash, claimId],
+      );
+      return res.redirect("/settings/payouts?error=square_auth_failed");
     }
 
     if (!process.env.SQUARE_APPLICATION_ID || !process.env.SQUARE_APPLICATION_SECRET) {
@@ -181,8 +293,8 @@ router.get("/square-callback", async (req, res) => {
     });
 
     if (!tokenResponse.ok) {
-      const tokenError = await tokenResponse.text();
-      console.error("Square token exchange failed:", tokenError);
+      // Do not log Square's response: it can contain authorization material.
+      console.error("Square token exchange failed with status", tokenResponse.status);
       return res.redirect("/settings/payouts?error=square_auth_failed");
     }
 
@@ -193,20 +305,39 @@ router.get("/square-callback", async (req, res) => {
       merchant_id: string;
     };
 
-    // Fetch merchant profile to get location ID
+    // Fetch merchant profile to get location ID and the authoritative merchant
+    // identity. Every step below fails closed: a missing token merchant id, a
+    // failed lookup, a missing merchant/profile id, or any mismatch between
+    // the authoritative profile id and the token-response merchant id must
+    // all prevent activation. A merely-missing profileMerchantId must never
+    // bypass verification, so this never uses `profileMerchantId && ...`.
     const squareClient = new Client({
       accessToken: tokenData.access_token,
       environment: process.env.NODE_ENV === "production" ? Environment.Production : Environment.Sandbox,
     });
-    const { result: merchantResult } = await squareClient.merchantsApi.retrieveMerchant("me");
-    const locationId = merchantResult.merchant?.mainLocationId || undefined;
 
-    // Upsert payment method record for this seller
-    const existing = await db
-      .select()
-      .from(paymentMethods)
-      .where(and(eq(paymentMethods.userId, sellerId), eq(paymentMethods.provider, "square")))
-      .limit(1);
+    let merchant: { id?: string; mainLocationId?: string } | undefined;
+    try {
+      const { result: merchantResult } = await squareClient.merchantsApi.retrieveMerchant("me");
+      merchant = merchantResult?.merchant;
+    } catch (_merchantError) {
+      // Do not log the provider exception: it can contain authorization material.
+      console.error("Square merchant lookup failed");
+      return res.redirect("/settings/payouts?error=square_auth_failed");
+    }
+
+    const locationId = merchant?.mainLocationId || undefined;
+    const profileMerchantId = merchant?.id;
+    if (
+      !tokenData.access_token ||
+      !tokenData.refresh_token ||
+      !tokenData.merchant_id ||
+      !merchant ||
+      !profileMerchantId ||
+      profileMerchantId !== tokenData.merchant_id
+    ) {
+      return res.redirect("/settings/payouts?error=square_auth_failed");
+    }
 
     const accountDetails = {
       merchantId: tokenData.merchant_id,
@@ -216,29 +347,61 @@ router.get("/square-callback", async (req, res) => {
       tokenExpiresAt: tokenData.expires_at,
     };
 
-    if (existing.length > 0) {
-      await db
-        .update(paymentMethods)
-        .set({
-          accountStatus: "active",
-          accountDetails,
-          providerId: tokenData.merchant_id,
-          verifiedAt: new Date(),
-          lastVerifiedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(paymentMethods.id, existing[0].id));
-    } else {
-      await db.insert(paymentMethods).values({
-        userId: sellerId,
-        provider: "square",
-        providerId: tokenData.merchant_id,
-        accountStatus: "active",
-        accountDetails,
-        isDefault: true,
-        verifiedAt: new Date(),
-        lastVerifiedAt: new Date(),
-      });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [sellerId]);
+      // Ownership of the exact claimed attempt is verified by immutable
+      // identifiers (nonce digest, user, claim id) plus consumed_at IS NULL.
+      // expires_at is intentionally NOT re-checked here: expiration gates
+      // whether a callback may START/CLAIM (enforced above), not whether an
+      // already-claimed attempt may finish after ordinary Square round-trip
+      // latency. claim_id is only ever set by the atomic claim UPDATE above,
+      // so a match here already proves this row was validly claimed.
+      const transaction = await client.query(
+        `SELECT id FROM square_oauth_transactions
+         WHERE nonce_hash = $1 AND user_id = $2 AND claim_id = $3
+           AND claimed_at IS NOT NULL AND consumed_at IS NULL
+         FOR UPDATE`,
+        [nonceHash, sellerId, claimId],
+      );
+      if (transaction.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ ok: false, error: "OAuth transaction is no longer current" });
+      }
+
+      const existing = await client.query(
+        `SELECT id FROM payment_methods
+         WHERE user_id = $1 AND provider = 'square'
+         ORDER BY created_at ASC LIMIT 1 FOR UPDATE`,
+        [sellerId],
+      );
+      if (existing.rowCount) {
+        await client.query(
+          `UPDATE payment_methods SET provider_id = $2, account_status = 'active',
+             account_details = $3::jsonb, verified_at = now(), last_verified_at = now(), updated_at = now()
+           WHERE id = $1`,
+          [existing.rows[0].id, tokenData.merchant_id, JSON.stringify(accountDetails)],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO payment_methods
+             (user_id, provider, provider_id, account_status, account_details, is_default, verified_at, last_verified_at)
+           VALUES ($1, 'square', $2, 'active', $3::jsonb, true, now(), now())`,
+          [sellerId, tokenData.merchant_id, JSON.stringify(accountDetails)],
+        );
+      }
+      await client.query(
+        `UPDATE square_oauth_transactions SET consumed_at = now()
+         WHERE nonce_hash = $1 AND claim_id = $2`,
+        [nonceHash, claimId],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
 
     res.redirect("/settings/payouts?connected=true");

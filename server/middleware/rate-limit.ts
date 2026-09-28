@@ -64,3 +64,15 @@ export const verifyEmailLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many verification attempts. Please try again later." },
 });
+
+/**
+ * Limiter for Square OAuth initiation.
+ * 20 requests per 15 minutes per IP.
+ */
+export const squareOauthInitiationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { ok: false, error: "Too many Square connection attempts. Please try again later." },
+});
