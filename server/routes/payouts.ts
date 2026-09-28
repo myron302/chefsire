@@ -211,6 +211,12 @@ router.get("/connect-square", squareOauthInitiationLimiter, requireAuth, async (
  * binding therefore fails before any authorization-code exchange, merchant
  * lookup, or credential persistence — and never destroys another seller's
  * valid in-flight OAuth attempt.
+ *
+ * The browser-binding cookie is cleared only once a claim on THIS exact
+ * cookie's digest has succeeded (see below). A different/newer OAuth attempt
+ * in the same browser may already own the current cookie; clearing it before
+ * a matching claim would let a stale, forged, or otherwise invalid callback
+ * silently break that other, still-legitimate in-flight attempt.
  */
 router.get("/square-callback", async (req, res) => {
   try {
@@ -219,15 +225,20 @@ router.get("/square-callback", async (req, res) => {
     const browserBindingCookie = req.cookies?.[SQUARE_OAUTH_BROWSER_BINDING_COOKIE];
     const browserBindingHash =
       typeof browserBindingCookie === "string" ? hashSquareOauthBrowserBinding(browserBindingCookie) : null;
-    res.clearCookie(SQUARE_OAUTH_BROWSER_BINDING_COOKIE, { path: SQUARE_OAUTH_BROWSER_BINDING_COOKIE_PATH });
 
     if (!nonceHash || !browserBindingHash || !pool) {
+      // Do not clear the cookie: it may belong to a different, still-active
+      // transaction in this browser (e.g. an older tab whose flow was
+      // replaced by a newer initiation).
       return res.status(400).json({ ok: false, error: "Missing or invalid OAuth state" });
     }
 
     // Claim is a single conditional write requiring both digests together.
     // Exactly one callback can cross this boundary; failures intentionally
-    // require the seller to start again.
+    // require the seller to start again. `expires_at > now()` is enforced
+    // here, at the point the callback is allowed to start/claim — not below,
+    // after provider round-trips, where ordinary Square latency crossing the
+    // deadline must not retroactively invalidate an already-valid claim.
     const claimId = createSquareOauthClaimId();
     const claim = await pool.query(
       `UPDATE square_oauth_transactions
@@ -241,9 +252,20 @@ router.get("/square-callback", async (req, res) => {
       [nonceHash, browserBindingHash, claimId],
     ) as { rowCount: number; rows: Array<{ user_id: string }> };
     if (claim.rowCount !== 1) {
+      // Same reasoning: an invalid, stale, forged, wrong-binding, or expired
+      // claim attempt must not delete the browser-binding cookie for a
+      // different, still-valid transaction that may share this browser.
       return res.status(400).json({ ok: false, error: "Invalid or expired OAuth state" });
     }
     const sellerId = claim.rows[0].user_id;
+
+    // The claim above matched this exact cookie's digest, so we now know it
+    // belongs to the transaction being terminated. Clear it here regardless
+    // of how the rest of this callback resolves (provider denial, exchange
+    // failure, merchant mismatch, or success) — a later reconnect mints a
+    // fresh cookie of its own, and this transaction can never be reclaimed
+    // once claimed_at is set.
+    res.clearCookie(SQUARE_OAUTH_BROWSER_BINDING_COOKIE, { path: SQUARE_OAUTH_BROWSER_BINDING_COOKIE_PATH });
 
     if (oauthError || !code) {
       await pool.query(
@@ -329,10 +351,17 @@ router.get("/square-callback", async (req, res) => {
     try {
       await client.query("BEGIN");
       await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [sellerId]);
+      // Ownership of the exact claimed attempt is verified by immutable
+      // identifiers (nonce digest, user, claim id) plus consumed_at IS NULL.
+      // expires_at is intentionally NOT re-checked here: expiration gates
+      // whether a callback may START/CLAIM (enforced above), not whether an
+      // already-claimed attempt may finish after ordinary Square round-trip
+      // latency. claim_id is only ever set by the atomic claim UPDATE above,
+      // so a match here already proves this row was validly claimed.
       const transaction = await client.query(
         `SELECT id FROM square_oauth_transactions
          WHERE nonce_hash = $1 AND user_id = $2 AND claim_id = $3
-           AND consumed_at IS NULL AND expires_at > now()
+           AND claimed_at IS NOT NULL AND consumed_at IS NULL
          FOR UPDATE`,
         [nonceHash, sellerId, claimId],
       );

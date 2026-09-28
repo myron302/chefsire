@@ -40,10 +40,19 @@ ALTER TABLE square_oauth_transactions
   DROP COLUMN IF EXISTS superseded_at;
 
 -- 6. Replace per-request nonce uniqueness with one-row-per-user enforcement,
---    which is what actually bounds table growth.
+--    which is what actually bounds table growth. Drop-then-add makes this
+--    idempotent whether or not the constraint already exists: on a fresh
+--    install, 20260927_square_oauth_transactions.sql already declares
+--    user_id UNIQUE, which Postgres names square_oauth_transactions_user_id_key
+--    by its default convention, so an unconditional ADD CONSTRAINT here would
+--    fail with "constraint already exists" when this file runs immediately
+--    after it. The table is unconditionally emptied in step 2 above, so no
+--    duplicate user_id row can ever make the ADD CONSTRAINT fail.
 ALTER TABLE square_oauth_transactions
   DROP CONSTRAINT IF EXISTS square_oauth_transactions_nonce_hash_key;
 DROP INDEX IF EXISTS square_oauth_transactions_user_idx;
+ALTER TABLE square_oauth_transactions
+  DROP CONSTRAINT IF EXISTS square_oauth_transactions_user_id_key;
 ALTER TABLE square_oauth_transactions
   ADD CONSTRAINT square_oauth_transactions_user_id_key UNIQUE (user_id);
 

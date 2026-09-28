@@ -136,14 +136,14 @@ test("forwarded authorization URL opened in another browser fails: correct state
   const claim = route.indexOf("SET claim_id = $3, claimed_at = now()", callback);
   const exchange = route.indexOf('fetch("https://connect.squareup.com/oauth2/token"', callback);
   assert.ok(initiation > 0 && callback > initiation && claim > callback && exchange > claim);
-  assert.match(route, /if \(claim\.rowCount !== 1\)[\s\S]{0,80}return res\.status\(400\)/);
+  assert.match(route, /if \(claim\.rowCount !== 1\)[\s\S]{0,260}return res\.status\(400\)/);
 });
 
 test("missing browser binding cookie fails closed before the claim", () => {
   assert.match(route, /const browserBindingCookie = req\.cookies\?\.\[SQUARE_OAUTH_BROWSER_BINDING_COOKIE\]/);
   assert.match(
     route,
-    /if \(!nonceHash \|\| !browserBindingHash \|\| !pool\)[\s\S]{0,60}return res\.status\(400\)/,
+    /if \(!nonceHash \|\| !browserBindingHash \|\| !pool\)[\s\S]{0,260}return res\.status\(400\)/,
   );
   const guardIdx = route.indexOf("if (!nonceHash || !browserBindingHash || !pool)");
   const claimIdx = route.indexOf("SET claim_id = $3, claimed_at = now()");
@@ -172,11 +172,55 @@ test("invalid binding does not consume or claim the legitimate transaction (no d
   assert.doesNotMatch(route.slice(0, route.indexOf("const claim = await pool.query(")), /consumed_at = now\(\)/);
 });
 
-test("browser binding cookie is cleared on every callback outcome", () => {
+test("browser binding cookie is cleared only after a successful matching claim, never before", () => {
+  // Round 2 / Finding 2: clearing the cookie before the claim succeeds is a
+  // denial-of-service against a different, still-legitimate OAuth attempt
+  // sharing this browser (e.g. an older tab whose flow was replaced by a
+  // newer initiation). The cookie must be cleared only once the atomic claim
+  // has proven it belongs to the transaction being terminated.
   const callback = route.indexOf('router.get("/square-callback"');
+  const guard = route.indexOf("if (!nonceHash || !browserBindingHash || !pool)", callback);
+  const claimCall = route.indexOf("const claim = await pool.query(", callback);
+  const claimFailureGuard = route.indexOf("if (claim.rowCount !== 1)", callback);
+  const sellerIdAssignment = route.indexOf("const sellerId = claim.rows[0].user_id;", callback);
   const clearCall = route.indexOf("res.clearCookie(SQUARE_OAUTH_BROWSER_BINDING_COOKIE", callback);
-  const claim = route.indexOf("const claim = await pool.query(", callback);
-  assert.ok(clearCall > callback && clearCall < claim);
+  const oauthDenialCheck = route.indexOf("if (oauthError || !code)", callback);
+
+  assert.ok(guard > 0 && guard < claimCall, "missing-state guard must run before the claim");
+  assert.ok(claimCall > 0 && claimCall < claimFailureGuard, "claim must run before its failure guard");
+  assert.ok(
+    claimFailureGuard > 0 && claimFailureGuard < sellerIdAssignment,
+    "claim failure guard must run before sellerId is read",
+  );
+  assert.ok(
+    clearCall > sellerIdAssignment && clearCall < oauthDenialCheck,
+    "cookie must be cleared only after a successful claim, before any provider round-trip",
+  );
+
+  // No clearCookie call anywhere before the claim failure guard: an invalid,
+  // stale, forged, or wrong-binding attempt must never reach it.
+  const preClaimSource = route.slice(callback, claimFailureGuard);
+  assert.doesNotMatch(preClaimSource, /res\.clearCookie/);
+});
+
+test("a claim failure (invalid, stale, forged, or wrong-binding) returns before any cookie mutation", () => {
+  const callback = route.indexOf('router.get("/square-callback"');
+  const claimFailureGuard = route.indexOf("if (claim.rowCount !== 1)", callback);
+  const failureBlock = route.slice(claimFailureGuard, route.indexOf("}", route.indexOf("return res.status(400)", claimFailureGuard)) + 1);
+  assert.match(failureBlock, /return res\.status\(400\)/);
+  assert.doesNotMatch(failureBlock, /res\.clearCookie/);
+});
+
+test("a DB error thrown before a successful claim is caught by the outer handler without clearing the cookie", () => {
+  // Any exception thrown by pool.query during the claim (e.g. a transient DB
+  // failure) propagates to the outer try/catch, which redirects without ever
+  // reaching the clearCookie call that only exists after a successful claim.
+  const callback = route.indexOf('router.get("/square-callback"');
+  const outerCatch = route.indexOf("} catch (error) {\n    console.error(\"Square callback error:\"", callback);
+  const clearCall = route.indexOf("res.clearCookie(SQUARE_OAUTH_BROWSER_BINDING_COOKIE", callback);
+  const claimCall = route.indexOf("const claim = await pool.query(", callback);
+  assert.ok(outerCatch > clearCall, "outer catch must be positioned after the success-path cookie clear");
+  assert.ok(claimCall < clearCall, "claim must run before the cookie is ever cleared");
 });
 
 // ---------------------------------------------------------------------------
@@ -202,6 +246,27 @@ test("provider exchange failures log neither code nor provider response body and
   assert.doesNotMatch(route, /tokenResponse\.text\(\)/);
   assert.match(route, /tokenResponse\.status/);
   assert.ok(route.indexOf("if (!tokenResponse.ok)") < route.indexOf("UPDATE payment_methods"));
+});
+
+test("final persistence lookup verifies claimed ownership by immutable identifiers, not a second expiration check", () => {
+  // Round 2 / Finding 3: expires_at gates whether a callback may START/CLAIM
+  // (enforced once, in the initial atomic claim). It must not be re-checked
+  // after Square's token exchange and merchant lookup, where ordinary
+  // provider latency crossing expires_at would otherwise invalidate an
+  // already-legitimately-claimed transaction.
+  const finalLookupStart = route.indexOf("const transaction = await client.query(");
+  const finalLookupEnd = route.indexOf("FOR UPDATE`", finalLookupStart);
+  const finalLookup = route.slice(finalLookupStart, finalLookupEnd);
+  assert.match(finalLookup, /WHERE nonce_hash = \$1 AND user_id = \$2 AND claim_id = \$3/);
+  assert.match(finalLookup, /AND claimed_at IS NOT NULL AND consumed_at IS NULL/);
+  assert.doesNotMatch(finalLookup, /expires_at/);
+
+  // The initial claim (which alone gates whether a callback may begin at
+  // all) still enforces expiration.
+  const initialClaimStart = route.indexOf("const claim = await pool.query(");
+  const initialClaimEnd = route.indexOf("RETURNING user_id", initialClaimStart);
+  const initialClaim = route.slice(initialClaimStart, initialClaimEnd);
+  assert.match(initialClaim, /AND expires_at > now\(\)/);
 });
 
 test("credential write and state consumption commit atomically", () => {
@@ -241,6 +306,30 @@ test("schema and migrations enforce one transaction row per user", () => {
   assert.match(schema, /userId: varchar\("user_id"\)[\s\S]*\.notNull\(\)\.unique\(\)/);
   assert.match(freshMigration, /user_id varchar NOT NULL UNIQUE REFERENCES users\(id\)/);
   assert.match(hardeningMigration, /ADD CONSTRAINT square_oauth_transactions_user_id_key UNIQUE \(user_id\)/);
+});
+
+test("hardening migration's uniqueness constraint installation is idempotent against a fresh 20260927", () => {
+  // Round 2 / Finding 1: on a fresh database, 20260927 already creates
+  // user_id UNIQUE, which Postgres names square_oauth_transactions_user_id_key
+  // by its default naming convention. Since run-migrations.ts applies every
+  // *.sql file it finds (ledger permitting), 20260928 runs immediately after
+  // 20260927 on a brand-new database. An unconditional ADD CONSTRAINT with
+  // that same name would fail with "constraint already exists" there, so the
+  // migration must drop it first (a no-op if it never existed) before adding
+  // it back -- safe in both the fresh and upgrade scenarios because step 2
+  // above unconditionally empties the table first, so no duplicate user_id
+  // row can ever make the ADD CONSTRAINT fail.
+  assert.match(
+    hardeningMigration,
+    /DROP CONSTRAINT IF EXISTS square_oauth_transactions_user_id_key;\s*\nALTER TABLE square_oauth_transactions\s*\n\s*ADD CONSTRAINT square_oauth_transactions_user_id_key UNIQUE \(user_id\);/,
+  );
+  // The unconditional DELETE FROM must precede the constraint installation,
+  // so the table is always empty by the time uniqueness is (re)installed.
+  const deleteIdx = hardeningMigration.indexOf("DELETE FROM square_oauth_transactions");
+  const dropAddIdx = hardeningMigration.indexOf(
+    "DROP CONSTRAINT IF EXISTS square_oauth_transactions_user_id_key",
+  );
+  assert.ok(deleteIdx > 0 && dropAddIdx > deleteIdx);
 });
 
 test("Square OAuth initiation is rate limited to 20 requests per 15 minutes per IP", () => {
