@@ -76,24 +76,28 @@ export const paymentMethods = pgTable(
 );
 
 /**
- * One-time, server-side binding for a Square seller OAuth authorization.
- * Only a SHA-256 digest is retained; the browser receives the random nonce.
+ * One-time, browser-bound, server-side binding for a Square seller OAuth
+ * authorization. Only SHA-256 digests of the state nonce and the
+ * browser-binding secret are retained server-side; the browser holds the raw
+ * nonce (via Square's `state`) and the raw binding secret (via a host-only
+ * cookie scoped to the callback path). Exactly one row is kept per user, so
+ * table growth is bounded by users rather than by OAuth requests.
  */
 export const squareOauthTransactions = pgTable(
   "square_oauth_transactions",
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-    nonceHash: varchar("nonce_hash", { length: 64 }).notNull().unique(),
-    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+    nonceHash: varchar("nonce_hash", { length: 64 }).notNull(),
+    browserBindingHash: varchar("browser_binding_hash", { length: 64 }).notNull(),
     claimId: varchar("claim_id", { length: 64 }),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    expiresAt: timestamp("expires_at").notNull(),
-    claimedAt: timestamp("claimed_at"),
-    consumedAt: timestamp("consumed_at"),
-    supersededAt: timestamp("superseded_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
   },
   (t) => ({
-    userIdx: index("square_oauth_transactions_user_idx").on(t.userId),
+    nonceIdx: index("square_oauth_transactions_nonce_idx").on(t.nonceHash),
     expiryIdx: index("square_oauth_transactions_expiry_idx").on(t.expiresAt),
   })
 );
