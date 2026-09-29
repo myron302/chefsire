@@ -27,12 +27,24 @@ user could therefore obtain a paid plan for free, and retries/concurrency could
 also duplicate non-transactional accounting. The marketplace and subscription
 protections in #1294–#1296 do not cover this separate table and route.
 
-The smallest safe remediation is fail-closed operation until a real provider
-integration can durably claim a logical purchase before dispatch, persist an
-immutable provider idempotency identity, verify capture, and atomically apply
-entitlement/accounting. The route now returns 503 before any purchase or
-accounting mutation. The schema default is `unverified`; the migration retains
-historical rows while relabeling former `completed` rows `legacy_unverified`.
+Paid operation fails closed until a real provider integration can durably claim
+a logical purchase before dispatch, persist an immutable provider idempotency
+identity, verify capture, and atomically apply entitlement/accounting. A
+published plan whose server-held price is exactly zero instead receives an
+explicit `free_acquired` entitlement through an idempotent insert; it has no
+provider evidence and creates no sale or revenue. Paid checkout still returns
+503. The schema default is `unverified`; the migration retains historical rows
+while relabeling former `completed` rows `legacy_unverified`.
+
+Entitlement is centralized to exactly two states: `verified_paid` with the full
+provider evidence tuple, or `free_acquired` with zero price and no provider
+tuple. The library and purchaser-only review check both use that boundary. A
+database CHECK enforces both shapes on INSERT and UPDATE and rejects the old
+`completed` state, including writes from a stale server after migration.
+
+The migration deterministically rebuilds blueprint paid `sales_count` and the
+existing daily creator sales/revenue buckets from `verified_paid` rows. Legacy
+rows and free acquisitions therefore contribute neither paid sales nor revenue.
 
 ## Boundary, refund, webhook, and legacy conclusions
 
