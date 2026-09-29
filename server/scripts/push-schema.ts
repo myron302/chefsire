@@ -24,6 +24,10 @@ run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-revenue-integrity.
 // every existing order 'legacy_unverified' before this evidence-based
 // backfill ever runs, stranding already-attempted captures (see P1-05).
 run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-checkout-atomicity.ts", "--allow-missing"]);
+// Must precede Drizzle: existing rows may still carry the obsolete explicit
+// `completed` value, which would violate the immediately validated schema
+// CHECK as soon as Drizzle adds acquisition_type with its default.
+run(["exec", "--", "tsx", "server/scripts/enforce-meal-plan-payment-integrity.ts", "--allow-missing"]);
 
 const pushArgs = ["exec", "--", "drizzle-kit", "push"];
 if (process.argv.includes("--force")) pushArgs.push("--force");
@@ -35,3 +39,6 @@ run(pushArgs);
 run(["exec", "--", "tsx", "server/scripts/enforce-payout-integrity.ts"]);
 run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-revenue-integrity.ts"]);
 run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-checkout-atomicity.ts"]);
+// Reassert the database invariant in case a Drizzle version treats CHECK
+// constraints as drift, matching the payout/marketplace defense-in-depth path.
+run(["exec", "--", "tsx", "server/scripts/enforce-meal-plan-payment-integrity.ts"]);

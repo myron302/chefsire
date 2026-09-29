@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql, type SQLWrapper } from "drizzle-orm";
 import { mealPlanPurchases } from "../../shared/schema";
 
 export const VERIFIED_PAID_MEAL_PLAN_STATUS = "verified_paid" as const;
@@ -27,6 +27,19 @@ export const verifiedPaidMealPlanPredicate = and(
   eq(mealPlanPurchases.providerPaymentStatus, "COMPLETED"),
   isNotNull(mealPlanPurchases.paymentVerifiedAt),
 );
+
+/** Correlate a review to the same centralized entitlement state boundary. */
+export function mealPlanReviewEntitlementPredicate(
+  reviewUserId: SQLWrapper,
+  reviewBlueprintId: SQLWrapper,
+) {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM meal_plan_purchases entitlement
+    WHERE entitlement.user_id = ${reviewUserId}
+      AND entitlement.blueprint_id = ${reviewBlueprintId}
+      AND entitlement.payment_status IN (${VERIFIED_PAID_MEAL_PLAN_STATUS}, ${FREE_MEAL_PLAN_ACQUISITION_STATUS})
+  )`;
+}
 
 export function isMealPlanEntitlement(row: {
   paymentStatus?: string | null;

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { enforceMealPlanPaymentIntegrity } from "../scripts/meal-plan-payment-enforcement";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const migration = fs.readFileSync(path.join(here, "20260928_meal_plan_payment_fail_closed.sql"), "utf8");
@@ -64,6 +65,23 @@ postgresTest("meal-plan migration revokes simulated accounting and enforces auth
         (id, creator_id, date, total_sales, total_revenue_cents)
         VALUES ('daily', 'creator', CURRENT_DATE::text, 7, 17500);
     `);
+
+    await enforceMealPlanPaymentIntegrity(client, true);
+    assert.equal((await client.query(`SELECT payment_status FROM meal_plan_purchases WHERE id='legacy'`)).rows[0].payment_status, "legacy_unverified");
+
+    await client.query(`INSERT INTO meal_plan_purchases
+      (user_id, blueprint_id, price_paid_cents, payment_status, acquisition_type)
+      VALUES ('preflight-free', 'plan', 0, 'free_acquired', 'free')`);
+    await client.query(`INSERT INTO meal_plan_purchases
+      (user_id, blueprint_id, price_paid_cents, payment_status, acquisition_type,
+       payment_provider, provider_payment_id, provider_payment_status, payment_verified_at)
+      VALUES ('preflight-paid', 'plan', 2500, 'verified_paid', 'paid',
+       'square', 'preflight-payment', 'COMPLETED', now())`);
+    await enforceMealPlanPaymentIntegrity(client, true);
+    assert.deepEqual(
+      (await client.query(`SELECT payment_status FROM meal_plan_purchases WHERE user_id LIKE 'preflight-%' ORDER BY user_id`)).rows,
+      [{ payment_status: "free_acquired" }, { payment_status: "verified_paid" }],
+    );
 
     await client.query(migration);
     assert.equal((await client.query(`SELECT payment_status FROM meal_plan_purchases WHERE id='legacy'`)).rows[0].payment_status, "legacy_unverified");

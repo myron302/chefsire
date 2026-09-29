@@ -67,3 +67,20 @@ No provider boundary existed for meal plans, so retrying it could never be made
 safe by adding a random ID. It is disabled rather than simulating success. Old
 rows are neither deleted nor promoted to verified, and are not automatically
 charged or refunded.
+
+## Follow-up: schema push and purchaser reviews
+
+`db:push` now runs a focused meal-plan payment preflight before Drizzle. It adds
+only the payment-evidence columns needed by the CHECK, downgrades invalid claimed
+authoritative states without deleting their rows, and installs the evidence
+constraint. Missing purchase tables are allowed during fresh bootstrap. The same
+enforcement runs after Drizzle to restore the database-only invariant if schema
+synchronization treats it as drift. Both phases preserve already-valid
+`verified_paid` and `free_acquired` rows and are idempotent.
+
+Historical review rows are preserved for auditability. Every public review list,
+rating/count aggregate, discovery/recommendation sort, creator storefront
+metric, and creator analytics join now correlates the review to the centralized
+meal-plan entitlement predicate. Reviews backed only by legacy, pending, failed,
+cancelled, or unverified purchases are invisible and contribute nothing; valid
+paid and free acquisitions continue to qualify.
