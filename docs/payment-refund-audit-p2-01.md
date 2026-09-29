@@ -70,10 +70,25 @@ charged or refunded.
 
 ## Follow-up: schema push and purchaser reviews
 
-`db:push` now runs a focused meal-plan payment preflight before Drizzle. It adds
-only the payment-evidence columns needed by the CHECK, downgrades invalid claimed
-authoritative states without deleting their rows, and installs the evidence
-constraint. Missing purchase tables are allowed during fresh bootstrap. The same
+`db:push` now runs a focused meal-plan payment preflight before Drizzle. In ONE
+transaction (holding a SHARE ROW EXCLUSIVE lock so writers cannot introduce a
+conflict mid-check) it: adds only the payment-evidence columns needed by the
+CHECK; downgrades invalid claimed authoritative states to `legacy_unverified`
+without deleting rows; detects collective conflicts; recreates the
+`meal_plan_purchases_entitlement_identity_uidx` and
+`meal_plan_purchases_provider_payment_uidx` unique indexes; and reinstalls the
+evidence CHECK.
+
+Conflict detection runs after normalization, so malformed claims never produce
+false conflicts. It fails closed with a `MealPlanPaymentIntegrityConflictError`
+(and rolls back everything, including normalization, before any index DDL) when
+(a) more than one `verified_paid`/`free_acquired` row exists for one
+`(user_id, blueprint_id)`, or (b) one non-null `(payment_provider,
+provider_payment_id)` identity is attached to more than one row (the index
+semantics: the same payment id under different providers, and NULL providers,
+do not conflict). Diagnostics list user/blueprint or provider/payment id and the
+purchase ids. Nothing is deleted, merged, re-priced, or downgraded to resolve a
+conflict; an operator must reconcile financial history manually. Missing purchase tables are allowed during fresh bootstrap. The same
 enforcement runs after Drizzle to restore the database-only invariant if schema
 synchronization treats it as drift. Both phases preserve already-valid
 `verified_paid` and `free_acquired` rows and are idempotent.

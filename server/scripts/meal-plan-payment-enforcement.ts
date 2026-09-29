@@ -37,8 +37,9 @@ WHERE NOT (
     AND provider_payment_status IS NULL
     AND payment_verified_at IS NULL
     AND transaction_id IS NULL
-  );
+  );`;
 
+const REASSERT_SQL = `
 ALTER TABLE meal_plan_purchases
   DROP CONSTRAINT IF EXISTS meal_plan_purchases_authoritative_evidence_chk;
 ALTER TABLE meal_plan_purchases
@@ -58,10 +59,82 @@ ALTER TABLE meal_plan_purchases
       AND acquisition_type = 'legacy_unverified' AND payment_verified_at IS NULL)
   );`;
 
+const LOCK_SQL = `LOCK TABLE meal_plan_purchases IN SHARE ROW EXCLUSIVE MODE`;
+
+// Trusted rows are those the partial entitlement index covers. This runs after
+// normalization, so malformed claims already became legacy_unverified.
+const ENTITLEMENT_CONFLICT_SQL = `
+SELECT user_id, blueprint_id, array_agg(id::text ORDER BY id::text) AS purchase_ids
+FROM meal_plan_purchases
+WHERE payment_status IN ('free_acquired', 'verified_paid')
+GROUP BY user_id, blueprint_id
+HAVING COUNT(*) > 1
+ORDER BY user_id, blueprint_id
+LIMIT 20`;
+
+// Mirrors the (payment_provider, provider_payment_id) unique index: NULLs are
+// distinct in PostgreSQL, so only fully non-null identities can collide.
+const PROVIDER_CONFLICT_SQL = `
+SELECT payment_provider, provider_payment_id, array_agg(id::text ORDER BY id::text) AS purchase_ids
+FROM meal_plan_purchases
+WHERE provider_payment_id IS NOT NULL AND payment_provider IS NOT NULL
+GROUP BY payment_provider, provider_payment_id
+HAVING COUNT(*) > 1
+ORDER BY payment_provider, provider_payment_id
+LIMIT 20`;
+
+// Dropped and recreated (same transaction) so a drifted definition is
+// replaced rather than left behind by IF NOT EXISTS.
+const INDEX_SQL = `
+DROP INDEX IF EXISTS meal_plan_purchases_entitlement_identity_uidx;
+CREATE UNIQUE INDEX meal_plan_purchases_entitlement_identity_uidx
+  ON meal_plan_purchases(user_id, blueprint_id)
+  WHERE payment_status IN ('free_acquired', 'verified_paid');
+DROP INDEX IF EXISTS meal_plan_purchases_provider_payment_uidx;
+CREATE UNIQUE INDEX meal_plan_purchases_provider_payment_uidx
+  ON meal_plan_purchases(payment_provider, provider_payment_id)
+  WHERE provider_payment_id IS NOT NULL;`;
+
+export class MealPlanPaymentIntegrityConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MealPlanPaymentIntegrityConflictError";
+  }
+}
+
+type ConflictRows = { rows: Array<Record<string, unknown>> };
+
+const ids = (row: Record<string, unknown>) =>
+  (Array.isArray(row.purchase_ids) ? row.purchase_ids : []).map(String).join(",");
+
+async function assertNoConflicts(client: MigrationClient) {
+  const entitlement = await client.query(ENTITLEMENT_CONFLICT_SQL) as ConflictRows;
+  if (entitlement.rows.length > 0) {
+    const detail = entitlement.rows
+      .map((r) => `user_id=${String(r.user_id)} blueprint_id=${String(r.blueprint_id)} purchase_ids=[${ids(r)}]`)
+      .join("; ");
+    throw new MealPlanPaymentIntegrityConflictError(
+      `Meal-plan entitlement conflict: multiple authoritative purchases for one user/blueprint (${detail}). ` +
+        "Manual reconciliation is required; no rows were changed.",
+    );
+  }
+  const provider = await client.query(PROVIDER_CONFLICT_SQL) as ConflictRows;
+  if (provider.rows.length > 0) {
+    const detail = provider.rows
+      .map((r) => `payment_provider=${String(r.payment_provider)} provider_payment_id=${String(r.provider_payment_id)} purchase_ids=[${ids(r)}]`)
+      .join("; ");
+    throw new MealPlanPaymentIntegrityConflictError(
+      `Meal-plan provider-payment conflict: a provider payment is attached to multiple purchases (${detail}). ` +
+        "Manual reconciliation is required; no rows were changed.",
+    );
+  }
+}
+
 /**
- * Prepare old rows before Drizzle validates its CHECK, and reassert the same
- * database invariant after push. Invalid claimed-authoritative rows are
- * downgraded without deletion; already-valid paid/free rows are untouched.
+ * One transaction: normalize malformed authoritative claims (never deleting),
+ * fail closed on collective duplicates that would violate the unique indexes,
+ * then reassert the indexes and evidence CHECK. Any error rolls everything back.
+ * Already-valid paid/free rows are untouched.
  */
 export async function enforceMealPlanPaymentIntegrity(
   client: MigrationClient,
@@ -78,7 +151,11 @@ export async function enforceMealPlanPaymentIntegrity(
 
   await client.query("BEGIN");
   try {
+    await client.query(LOCK_SQL);
     await client.query(PREPARE_SQL);
+    await assertNoConflicts(client);
+    await client.query(INDEX_SQL);
+    await client.query(REASSERT_SQL);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
