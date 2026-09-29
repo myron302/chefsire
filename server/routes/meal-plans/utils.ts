@@ -114,10 +114,6 @@ export function normalizeAnalyticsTotals(totals: any): {
   };
 }
 
-export function buildSimulatedTransactionId(now = Date.now(), randomValue = Math.random()): string {
-  return `sim_${now}_${randomValue.toString(36).substring(7)}`;
-}
-
 export function toIsoDateString(date = new Date()): string {
   return date.toISOString().split("T")[0];
 }

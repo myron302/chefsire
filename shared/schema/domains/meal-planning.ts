@@ -113,7 +113,9 @@ export const mealPlanPurchases = pgTable("meal_plan_purchases", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id).notNull(),
   pricePaidCents: integer("price_paid_cents").notNull(),
-  paymentStatus: text("payment_status").notNull().default("completed"),
+  // A row is not proof of provider capture. Provider-backed flows must promote
+  // this only after persisting authoritative evidence.
+  paymentStatus: text("payment_status").notNull().default("unverified"),
   paymentMethod: text("payment_method"),
   transactionId: text("transaction_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

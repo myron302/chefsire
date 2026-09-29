@@ -13,7 +13,6 @@ import {
 } from "../../shared/schema.js";
 import { optionalAuth, requireAuth } from "../middleware";
 import {
-  buildSimulatedTransactionId,
   filterBrowsePlans,
   normalizeAnalyticsTotals,
   normalizeRatingStats,
@@ -474,9 +473,7 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
 // Purchase meal plan
 router.post("/meal-plans/:id/purchase", requireAuth, async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
     const planId = req.params.id;
-    const { paymentMethod } = req.body;
 
     const [plan] = await db
       .select()
@@ -492,50 +489,15 @@ router.post("/meal-plans/:id/purchase", requireAuth, async (req: Request, res: R
       return res.status(400).json({ message: "Meal plan is not available for purchase" });
     }
 
-    const [existingPurchase] = await db
-      .select()
-      .from(mealPlanPurchases)
-      .where(and(eq(mealPlanPurchases.userId, userId), eq(mealPlanPurchases.blueprintId, planId)))
-      .limit(1);
-
-    if (existingPurchase) {
-      return res.status(400).json({ message: "You already own this meal plan" });
-    }
-
-    const [purchase] = await db
-      .insert(mealPlanPurchases)
-      .values({
-        userId,
-        blueprintId: planId,
-        pricePaidCents: plan.priceInCents,
-        paymentStatus: "completed",
-        paymentMethod: paymentMethod || "stripe",
-        transactionId: buildSimulatedTransactionId(),
-      })
-      .returning();
-
-    await db
-      .update(mealPlanBlueprints)
-      .set({ salesCount: sql`${mealPlanBlueprints.salesCount} + 1` })
-      .where(eq(mealPlanBlueprints.id, planId));
-
-    await db
-      .insert(creatorAnalytics)
-      .values({
-        creatorId: plan.creatorId,
-        date: toIsoDateString(),
-        totalSales: 1,
-        totalRevenueCents: plan.priceInCents,
-      })
-      .onConflictDoUpdate({
-        target: [creatorAnalytics.creatorId, creatorAnalytics.date],
-        set: {
-          totalSales: sql`${creatorAnalytics.totalSales} + 1`,
-          totalRevenueCents: sql`${creatorAnalytics.totalRevenueCents} + ${plan.priceInCents}`,
-        },
-      });
-
-    res.json({ purchase, message: "Purchase successful!" });
+    // This product has no provider-backed checkout or reconciliation flow. A
+    // client-selected payment method is not payment evidence, so fail closed
+    // before creating entitlement or financial/accounting state. Historical
+    // rows are retained as legacy_unverified by the P2-01 migration.
+    return res.status(503).json({
+      ok: false,
+      code: "MEAL_PLAN_CHECKOUT_UNAVAILABLE",
+      message: "Meal plan checkout is unavailable until payment can be verified with the provider.",
+    });
   } catch (error) {
     console.error("Error purchasing meal plan:", error);
     res.status(500).json({ message: "Failed to purchase meal plan" });
