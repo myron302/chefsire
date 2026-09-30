@@ -21,6 +21,7 @@ import { and, eq } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { db } from "../db";
 import { recipes } from "../../shared/schema";
+import { SafeFetchError, parseImportUrl, safeFetchPublicHtml } from "../lib/safe-public-fetch";
 
 const gunzip = promisify(zlib.gunzip);
 const inflateRaw = promisify(zlib.inflateRaw);
@@ -719,40 +720,9 @@ async function parsePlanToEatFile(file: Express.Multer.File): Promise<Normalized
 // URL import (public recipe page scraper via JSON-LD)
 // --------------------------------------------------------------------------------------
 
-function isLikelyPrivateHost(hostname: string): boolean {
-  const h = hostname.trim().toLowerCase();
-
-  if (!h) return true;
-  if (h === "localhost" || h.endsWith(".localhost")) return true;
-  if (h === "0.0.0.0") return true;
-  if (h === "::1") return true;
-
-  // IPv4 private/local ranges
-  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const [a, b] = [parseInt(m[1], 10), parseInt(m[2], 10)];
-    if (a === 10) return true;
-    if (a === 127) return true;
-    if (a === 0) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a >= 224) return true; // multicast/reserved
-  }
-
-  return false;
-}
-
 function normalizeImportUrl(raw: string): string {
-  const url = new URL(raw);
-  if (!/^https?:$/i.test(url.protocol)) {
-    throw new Error("Only http(s) URLs are supported.");
-  }
-  if (isLikelyPrivateHost(url.hostname)) {
-    throw new Error("That URL host is not allowed.");
-  }
-  url.hash = ""; // avoid duplicate imports by fragment
-  return url.toString();
+  // Shape checks only (scheme, credentials, port); host/IP safety is enforced per hop in safeFetchPublicHtml.
+  return parseImportUrl(raw).toString();
 }
 
 function extractLdJsonBlocks(html: string): string[] {
@@ -994,43 +964,9 @@ function mapJsonLdRecipeToNormalized(recipeObj: JsonLdRecipe, url: string): Norm
 }
 
 async function fetchPublicRecipeHtml(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
-
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "user-agent": "ChefSireRecipeImporter/1.0 (+https://chefsire.com)",
-        "accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-      },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Failed to fetch page (HTTP ${res.status}).`);
-    }
-
-    const contentType = (res.headers.get("content-type") || "").toLowerCase();
-    if (!contentType.includes("text/html") && !contentType.includes("application/xhtml")) {
-      throw new Error("URL did not return an HTML page.");
-    }
-
-    const contentLength = parseInteger(res.headers.get("content-length"));
-    if (contentLength && contentLength > 4 * 1024 * 1024) {
-      throw new Error("Page is too large to import.");
-    }
-
-    const html = await res.text();
-    if (html.length > 4_500_000) {
-      throw new Error("Page is too large to import.");
-    }
-
-    return html;
-  } finally {
-    clearTimeout(timeout);
-  }
+  // SSRF boundary (CS-CL-02): DNS-validated, address-pinned, manually-redirected fetch.
+  const { html } = await safeFetchPublicHtml(url);
+  return html;
 }
 
 // --------------------------------------------------------------------------------------
@@ -1125,6 +1061,11 @@ async function handleUrlImport(req: any, res: any) {
     const result = await importNormalizedRecipes([item]);
     return res.json(result);
   } catch (err: any) {
+    if (err instanceof SafeFetchError) {
+      // Internal detail stays in logs only; clients get the generic, policy-safe message.
+      console.error("[Recipe Import] URL import blocked/failed:", err.message);
+      return res.status(400).json({ ok: false, error: err.clientMessage } satisfies ImportFailure);
+    }
     console.error("[Recipe Import] URL import error:", err);
     const msg = err?.message || "URL import failed";
     const status = /auth/i.test(msg) ? 401 : 400;
