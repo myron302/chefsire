@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { requireAuth, optionalAuth } from "../middleware";
+import { mealPlanReviewEntitlementPredicate } from "../lib/meal-plan-entitlement.js";
 
 const router = Router();
 const SHARED_WEEK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
@@ -401,7 +402,7 @@ router.get("/meal-plan-creators/:creatorId", optionalAuth, async (req, res) => {
       COUNT(DISTINCT b.id)::int AS plans_published,
       COALESCE(SUM((SELECT COUNT(*) FROM meal_plan_likes l WHERE l.blueprint_id = b.id)), 0)::int AS total_likes,
       COALESCE(SUM((SELECT COUNT(*) FROM meal_plan_saves s WHERE s.blueprint_id = b.id)), 0)::int AS total_saves,
-      COALESCE(SUM((SELECT COUNT(*) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id)), 0)::int AS total_reviews,
+      COALESCE(SUM((SELECT COUNT(*) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))})), 0)::int AS total_reviews,
       COALESCE(SUM(b.sales_count), 0)::int AS total_sales
     FROM meal_plan_blueprints b
     WHERE b.creator_id = ${creatorId} AND b.status = 'published'
@@ -433,8 +434,8 @@ router.get("/meal-plan-creators/:creatorId/plans", optionalAuth, async (req, res
   const creatorId = req.params.creatorId;
   const result = await db.execute(sql`
     SELECT b.*, u.id AS creator_id, u.username, u.display_name,
-      (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
-      (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+      (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS avg_rating,
+      (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS review_count,
       (SELECT COUNT(*)::int FROM meal_plan_likes l WHERE l.blueprint_id = b.id) AS like_count,
       (SELECT COUNT(*)::int FROM meal_plan_saves s WHERE s.blueprint_id = b.id) AS save_count,
       (SELECT COUNT(*)::int FROM meal_plan_comments c WHERE c.blueprint_id = b.id AND c.deleted_at IS NULL) AS comment_count,
@@ -470,8 +471,8 @@ router.put("/meal-plan-creators/me", requireAuth, async (req, res) => {
 router.get("/me/saved-meal-planner-items", requireAuth, async (req, res) => {
   const plansResult = await db.execute(sql`
     SELECT b.*, u.id AS creator_id, u.username, u.display_name, s.created_at AS saved_at,
-      (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
-      (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+      (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS avg_rating,
+      (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS review_count,
       (SELECT COUNT(*)::int FROM meal_plan_likes l WHERE l.blueprint_id = b.id) AS like_count,
       (SELECT COUNT(*)::int FROM meal_plan_saves ms WHERE ms.blueprint_id = b.id) AS save_count,
       (SELECT COUNT(*)::int FROM meal_plan_comments c WHERE c.blueprint_id = b.id AND c.deleted_at IS NULL) AS comment_count,

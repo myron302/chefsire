@@ -13,7 +13,6 @@ import {
 } from "../../shared/schema.js";
 import { optionalAuth, requireAuth } from "../middleware";
 import {
-  buildSimulatedTransactionId,
   filterBrowsePlans,
   normalizeAnalyticsTotals,
   normalizeRatingStats,
@@ -23,6 +22,11 @@ import {
 } from "./meal-plans/utils.js";
 import { ensureMealSocialSchema, getMealPlanSocialStats } from "./meal-social.js";
 import { MEAL_PLANNER_EVENT_TYPES, ensureMealPlannerEventsSchema, recordMealPlannerEvent } from "./meal-planner-events.js";
+import {
+  FREE_MEAL_PLAN_ACQUISITION_STATUS,
+  mealPlanEntitlementPredicate,
+  mealPlanReviewEntitlementPredicate,
+} from "../lib/meal-plan-entitlement.js";
 
 const router = express.Router();
 
@@ -100,7 +104,7 @@ router.post("/meal-plans", requireAuth, async (req: Request, res: Response) => {
       tags,
     } = req.body;
 
-    if (!title || !priceInCents || !mealStructure) {
+    if (!title || !Number.isInteger(priceInCents) || priceInCents < 0 || !mealStructure) {
       return res.status(400).json({ message: "Title, price, and meal structure are required" });
     }
 
@@ -162,7 +166,10 @@ router.get("/my-plans", requireAuth, async (req: Request, res: Response) => {
         viewerIsFollowingCreator: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM follows WHERE follower_id = ${viewerId} AND following_id = ${mealPlanBlueprints.creatorId})` : sql`FALSE`}`,
       })
       .from(mealPlanBlueprints)
-      .leftJoin(mealPlanReviews, eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId))
+      .leftJoin(mealPlanReviews, and(
+        eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId),
+        mealPlanReviewEntitlementPredicate(mealPlanReviews.userId, mealPlanReviews.blueprintId),
+      ))
       .where(eq(mealPlanBlueprints.creatorId, userId))
       .groupBy(mealPlanBlueprints.id)
       .orderBy(desc(mealPlanBlueprints.createdAt));
@@ -253,7 +260,7 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
         },
         creatorStats: {
           publishedPlans: sql`(SELECT COUNT(*)::int FROM meal_plan_blueprints cb WHERE cb.creator_id = ${mealPlanBlueprints.creatorId} AND cb.status = 'published')`,
-          avgRating: sql`(SELECT COALESCE(AVG(cr.rating), 0) FROM meal_plan_reviews cr INNER JOIN meal_plan_blueprints cb ON cb.id = cr.blueprint_id WHERE cb.creator_id = ${mealPlanBlueprints.creatorId} AND cb.status = 'published')`,
+          avgRating: sql`(SELECT COALESCE(AVG(cr.rating), 0) FROM meal_plan_reviews cr INNER JOIN meal_plan_blueprints cb ON cb.id = cr.blueprint_id WHERE ${mealPlanReviewEntitlementPredicate(sql.raw("cr.user_id"), sql.raw("cr.blueprint_id"))} AND cb.creator_id = ${mealPlanBlueprints.creatorId} AND cb.status = 'published')`,
           totalSaves: sql`(SELECT COUNT(*)::int FROM meal_plan_saves cs INNER JOIN meal_plan_blueprints cb ON cb.id = cs.blueprint_id WHERE cb.creator_id = ${mealPlanBlueprints.creatorId} AND cb.status = 'published')`,
           totalFollowers: sql`(SELECT COALESCE(followers_count, 0)::int FROM users cu WHERE cu.id = ${mealPlanBlueprints.creatorId})`,
         },
@@ -269,7 +276,10 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
       })
       .from(mealPlanBlueprints)
       .innerJoin(users, eq(mealPlanBlueprints.creatorId, users.id))
-      .leftJoin(mealPlanReviews, eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId))
+      .leftJoin(mealPlanReviews, and(
+        eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId),
+        mealPlanReviewEntitlementPredicate(mealPlanReviews.userId, mealPlanReviews.blueprintId),
+      ))
       .where(eq(mealPlanBlueprints.status, "published"))
       .groupBy(mealPlanBlueprints.id, users.id)
       .$dynamic();
@@ -328,8 +338,8 @@ router.get("/meal-plans/discovery/sections", optionalAuth, async (req: Request, 
     const viewerId = (req.user as any)?.id || "";
     const base = (orderSql: any) => db.execute(sql`
       SELECT b.*, u.id AS creator_id, u.username, u.display_name,
-        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
-        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS avg_rating,
+        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS review_count,
         (SELECT COUNT(*)::int FROM meal_plan_likes l WHERE l.blueprint_id = b.id) AS like_count,
         (SELECT COUNT(*)::int FROM meal_plan_saves s WHERE s.blueprint_id = b.id) AS save_count,
         (SELECT COUNT(*)::int FROM meal_plan_comments c WHERE c.blueprint_id = b.id AND c.deleted_at IS NULL) AS comment_count,
@@ -342,9 +352,9 @@ router.get("/meal-plans/discovery/sections", optionalAuth, async (req: Request, 
     `);
     const weekStart = sql`date_trunc('week', NOW())`;
     const [trending, saved, rated, newest, updated] = await Promise.all([
-      base(sql`((SELECT COUNT(*) FROM meal_plan_saves s WHERE s.blueprint_id = b.id AND s.created_at >= ${weekStart}) * 4 + (SELECT COUNT(*) FROM meal_plan_likes l WHERE l.blueprint_id = b.id AND l.created_at >= ${weekStart}) * 3 + (SELECT COUNT(*) FROM meal_plan_purchases p WHERE p.blueprint_id = b.id AND p.payment_status = 'completed' AND p.created_at >= ${weekStart}) * 6) DESC, b.created_at DESC`),
+      base(sql`((SELECT COUNT(*) FROM meal_plan_saves s WHERE s.blueprint_id = b.id AND s.created_at >= ${weekStart}) * 4 + (SELECT COUNT(*) FROM meal_plan_likes l WHERE l.blueprint_id = b.id AND l.created_at >= ${weekStart}) * 3 + (SELECT COUNT(*) FROM meal_plan_purchases p WHERE p.blueprint_id = b.id AND p.payment_status = 'verified_paid' AND p.created_at >= ${weekStart}) * 6) DESC, b.created_at DESC`),
       base(sql`(SELECT COUNT(*) FROM meal_plan_saves s WHERE s.blueprint_id = b.id) DESC, b.created_at DESC`),
-      base(sql`(SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) DESC NULLS LAST, (SELECT COUNT(*) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) DESC, b.created_at DESC`),
+      base(sql`(SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) DESC NULLS LAST, (SELECT COUNT(*) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) DESC, b.created_at DESC`),
       base(sql`b.created_at DESC`),
       base(sql`b.updated_at DESC`),
     ]);
@@ -408,7 +418,10 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
       })
       .from(mealPlanReviews)
       .innerJoin(users, eq(mealPlanReviews.userId, users.id))
-      .where(eq(mealPlanReviews.blueprintId, planId))
+      .where(and(
+        eq(mealPlanReviews.blueprintId, planId),
+        mealPlanReviewEntitlementPredicate(mealPlanReviews.userId, mealPlanReviews.blueprintId),
+      ))
       .orderBy(desc(mealPlanReviews.createdAt))
       .limit(20);
 
@@ -419,13 +432,16 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
         totalReviews: sql`count(*)`,
       })
       .from(mealPlanReviews)
-      .where(eq(mealPlanReviews.blueprintId, planId));
+      .where(and(
+        eq(mealPlanReviews.blueprintId, planId),
+        mealPlanReviewEntitlementPredicate(mealPlanReviews.userId, mealPlanReviews.blueprintId),
+      ));
 
     const recommendationResult = await db.execute(sql`
       WITH current_plan AS (SELECT creator_id, category, dietary_labels, difficulty FROM meal_plan_blueprints WHERE id = ${planId})
       SELECT 'more_from_creator' AS rail, b.*, u.id AS creator_id, u.username, u.display_name,
-        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
-        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS avg_rating,
+        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS review_count,
         (SELECT COUNT(*)::int FROM meal_plan_saves s WHERE s.blueprint_id = b.id) AS save_count
       FROM meal_plan_blueprints b INNER JOIN current_plan cp ON cp.creator_id = b.creator_id INNER JOIN users u ON u.id = b.creator_id
       WHERE b.status = 'published' AND b.id <> ${planId}
@@ -434,8 +450,8 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
     const similarResult = await db.execute(sql`
       WITH current_plan AS (SELECT creator_id, category, dietary_labels, difficulty FROM meal_plan_blueprints WHERE id = ${planId})
       SELECT b.*, u.id AS creator_id, u.username, u.display_name,
-        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
-        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS avg_rating,
+        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS review_count,
         (SELECT COUNT(*)::int FROM meal_plan_saves s WHERE s.blueprint_id = b.id) AS save_count
       FROM meal_plan_blueprints b INNER JOIN current_plan cp ON true INNER JOIN users u ON u.id = b.creator_id
       WHERE b.status = 'published' AND b.id <> ${planId} AND (b.category = cp.category OR b.difficulty = cp.difficulty OR b.dietary_labels && cp.dietary_labels)
@@ -443,8 +459,8 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
     `);
     const alsoSavedResult = await db.execute(sql`
       SELECT b.*, u.id AS creator_id, u.username, u.display_name,
-        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
-        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS avg_rating,
+        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS review_count,
         COUNT(DISTINCT s2.user_id)::int AS save_count
       FROM meal_plan_saves s1 INNER JOIN meal_plan_saves s2 ON s2.user_id = s1.user_id AND s2.blueprint_id <> ${planId}
       INNER JOIN meal_plan_blueprints b ON b.id = s2.blueprint_id INNER JOIN users u ON u.id = b.creator_id
@@ -474,9 +490,7 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
 // Purchase meal plan
 router.post("/meal-plans/:id/purchase", requireAuth, async (req: Request, res: Response) => {
   try {
-    const userId = req.user!.id;
     const planId = req.params.id;
-    const { paymentMethod } = req.body;
 
     const [plan] = await db
       .select()
@@ -492,50 +506,50 @@ router.post("/meal-plans/:id/purchase", requireAuth, async (req: Request, res: R
       return res.status(400).json({ message: "Meal plan is not available for purchase" });
     }
 
-    const [existingPurchase] = await db
-      .select()
-      .from(mealPlanPurchases)
-      .where(and(eq(mealPlanPurchases.userId, userId), eq(mealPlanPurchases.blueprintId, planId)))
-      .limit(1);
+    if (plan.priceInCents === 0) {
+      // INSERT .. SELECT rechecks the authoritative plan state and price in the
+      // same statement that creates the entitlement. The partial unique index
+      // makes simultaneous/replayed acquisitions converge on one row.
+      await db.execute(sql`
+        INSERT INTO meal_plan_purchases (
+          user_id, blueprint_id, price_paid_cents, payment_status,
+          acquisition_type, payment_method, transaction_id,
+          payment_provider, provider_payment_id, provider_payment_status,
+          payment_verified_at
+        )
+        SELECT ${req.user!.id}, b.id, 0, ${FREE_MEAL_PLAN_ACQUISITION_STATUS},
+          'free', NULL, NULL, NULL, NULL, NULL, NULL
+        FROM meal_plan_blueprints b
+        WHERE b.id = ${planId} AND b.status = 'published' AND b.price_in_cents = 0
+        ON CONFLICT DO NOTHING
+      `);
 
-    if (existingPurchase) {
-      return res.status(400).json({ message: "You already own this meal plan" });
+      const [purchase] = await db
+        .select()
+        .from(mealPlanPurchases)
+        .where(and(
+          eq(mealPlanPurchases.userId, req.user!.id),
+          eq(mealPlanPurchases.blueprintId, planId),
+          eq(mealPlanPurchases.paymentStatus, FREE_MEAL_PLAN_ACQUISITION_STATUS),
+          mealPlanEntitlementPredicate,
+        ))
+        .limit(1);
+
+      if (!purchase) {
+        return res.status(409).json({ ok: false, code: "FREE_ACQUISITION_CONFLICT", message: "The plan is no longer available for free acquisition." });
+      }
+      return res.json({ ok: true, purchase, acquired: true });
     }
 
-    const [purchase] = await db
-      .insert(mealPlanPurchases)
-      .values({
-        userId,
-        blueprintId: planId,
-        pricePaidCents: plan.priceInCents,
-        paymentStatus: "completed",
-        paymentMethod: paymentMethod || "stripe",
-        transactionId: buildSimulatedTransactionId(),
-      })
-      .returning();
-
-    await db
-      .update(mealPlanBlueprints)
-      .set({ salesCount: sql`${mealPlanBlueprints.salesCount} + 1` })
-      .where(eq(mealPlanBlueprints.id, planId));
-
-    await db
-      .insert(creatorAnalytics)
-      .values({
-        creatorId: plan.creatorId,
-        date: toIsoDateString(),
-        totalSales: 1,
-        totalRevenueCents: plan.priceInCents,
-      })
-      .onConflictDoUpdate({
-        target: [creatorAnalytics.creatorId, creatorAnalytics.date],
-        set: {
-          totalSales: sql`${creatorAnalytics.totalSales} + 1`,
-          totalRevenueCents: sql`${creatorAnalytics.totalRevenueCents} + ${plan.priceInCents}`,
-        },
-      });
-
-    res.json({ purchase, message: "Purchase successful!" });
+    // This product has no provider-backed checkout or reconciliation flow. A
+    // client-selected payment method is not payment evidence, so fail closed
+    // before creating entitlement or financial/accounting state. Historical
+    // rows are retained as legacy_unverified by the P2-01 migration.
+    return res.status(503).json({
+      ok: false,
+      code: "MEAL_PLAN_CHECKOUT_UNAVAILABLE",
+      message: "Meal plan checkout is unavailable until payment can be verified with the provider.",
+    });
   } catch (error) {
     console.error("Error purchasing meal plan:", error);
     res.status(500).json({ message: "Failed to purchase meal plan" });
@@ -560,7 +574,7 @@ router.get("/my-purchases", requireAuth, async (req: Request, res: Response) => 
       .from(mealPlanPurchases)
       .innerJoin(mealPlanBlueprints, eq(mealPlanPurchases.blueprintId, mealPlanBlueprints.id))
       .innerJoin(users, eq(mealPlanBlueprints.creatorId, users.id))
-      .where(eq(mealPlanPurchases.userId, userId))
+      .where(and(eq(mealPlanPurchases.userId, userId), mealPlanEntitlementPredicate))
       .orderBy(desc(mealPlanPurchases.createdAt));
 
     res.json({ purchases });
@@ -584,7 +598,11 @@ router.post("/meal-plans/:id/review", requireAuth, async (req: Request, res: Res
     const [purchase] = await db
       .select()
       .from(mealPlanPurchases)
-      .where(and(eq(mealPlanPurchases.userId, userId), eq(mealPlanPurchases.blueprintId, planId)))
+      .where(and(
+        eq(mealPlanPurchases.userId, userId),
+        eq(mealPlanPurchases.blueprintId, planId),
+        mealPlanEntitlementPredicate,
+      ))
       .limit(1);
 
     if (!purchase) {
@@ -721,8 +739,8 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
           COALESCE(u.followers_count, 0)::int AS total_followers,
           (SELECT COUNT(*)::int FROM meal_plan_saves s INNER JOIN meal_plan_blueprints b ON b.id = s.blueprint_id WHERE b.creator_id = ${userId}) AS total_plan_saves,
           (SELECT COUNT(*)::int FROM shared_week_saves s INNER JOIN meal_plan_week_shares sh ON sh.public_share_token = s.public_share_token WHERE sh.user_id = ${userId} AND sh.visibility = 'public') AS total_shared_week_saves,
-          (SELECT COUNT(*)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'completed') AS total_marketplace_purchases,
-          (SELECT COALESCE(SUM(price_paid_cents), 0)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'completed') AS total_revenue_cents,
+          (SELECT COUNT(*)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'verified_paid') AS total_marketplace_purchases,
+          (SELECT COALESCE(SUM(price_paid_cents), 0)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'verified_paid') AS total_revenue_cents,
           (SELECT COUNT(*)::int FROM meal_plan_blueprints b WHERE b.creator_id = ${userId} AND b.status = 'published') AS plans_published,
           (SELECT COUNT(*)::int FROM meal_plan_week_shares sh WHERE sh.user_id = ${userId} AND sh.visibility = 'public' AND sh.public_share_token IS NOT NULL) AS shared_weeks_published
         FROM users u
@@ -734,7 +752,7 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
           (SELECT COUNT(*)::int FROM follows f WHERE f.following_id = ${userId} AND f.created_at >= ${weekStart}) AS followers_this_week,
           (SELECT COUNT(*)::int FROM meal_plan_saves s INNER JOIN meal_plan_blueprints b ON b.id = s.blueprint_id WHERE b.creator_id = ${userId} AND s.created_at >= ${weekStart}) AS plan_saves_this_week,
           (SELECT COUNT(*)::int FROM shared_week_saves s INNER JOIN meal_plan_week_shares sh ON sh.public_share_token = s.public_share_token WHERE sh.user_id = ${userId} AND sh.visibility = 'public' AND s.created_at >= ${weekStart}) AS shared_week_saves_this_week,
-          (SELECT COUNT(*)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'completed' AND p.created_at >= ${weekStart}) AS purchases_this_week
+          (SELECT COUNT(*)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'verified_paid' AND p.created_at >= ${weekStart}) AS purchases_this_week
       `),
       db.execute(sql`
         SELECT b.id, b.title, b.sales_count,
@@ -746,7 +764,8 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
         LEFT JOIN meal_plan_saves s ON s.blueprint_id = b.id
         LEFT JOIN meal_plan_likes l ON l.blueprint_id = b.id
         LEFT JOIN meal_plan_reviews r ON r.blueprint_id = b.id
-        LEFT JOIN meal_plan_purchases p ON p.blueprint_id = b.id AND p.payment_status = 'completed'
+          AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}
+        LEFT JOIN meal_plan_purchases p ON p.blueprint_id = b.id AND p.payment_status = 'verified_paid'
         WHERE b.creator_id = ${userId} AND b.status = 'published'
         GROUP BY b.id, b.title, b.sales_count
         ORDER BY save_count DESC, purchase_count DESC, b.created_at DESC
@@ -778,7 +797,7 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
         FROM meal_planner_analytics_events WHERE creator_id = ${userId}`),
       db.execute(sql`SELECT e.meal_plan_id AS id, b.title, COUNT(*)::int AS view_count FROM meal_planner_analytics_events e INNER JOIN meal_plan_blueprints b ON b.id = e.meal_plan_id WHERE e.creator_id = ${userId} AND e.event_type = 'plan_view' GROUP BY e.meal_plan_id, b.title ORDER BY view_count DESC LIMIT 1`),
       db.execute(sql`SELECT e.shared_week_token AS token, sh.week_anchor, COUNT(*)::int AS copy_count FROM meal_planner_analytics_events e LEFT JOIN meal_plan_week_shares sh ON sh.public_share_token = e.shared_week_token WHERE e.creator_id = ${userId} AND e.event_type = 'shared_week_copy' GROUP BY e.shared_week_token, sh.week_anchor ORDER BY copy_count DESC LIMIT 1`),
-      db.execute(sql`SELECT b.id, b.title, COUNT(e.id)::int AS view_count, COUNT(DISTINCT p.id)::int AS purchase_count FROM meal_plan_blueprints b LEFT JOIN meal_planner_analytics_events e ON e.meal_plan_id = b.id AND e.event_type = 'plan_view' LEFT JOIN meal_plan_purchases p ON p.blueprint_id = b.id AND p.payment_status = 'completed' WHERE b.creator_id = ${userId} GROUP BY b.id, b.title HAVING COUNT(e.id) > 0 ORDER BY (COUNT(DISTINCT p.id)::float / NULLIF(COUNT(e.id), 0)) DESC, purchase_count DESC LIMIT 1`),
+      db.execute(sql`SELECT b.id, b.title, COUNT(e.id)::int AS view_count, COUNT(DISTINCT p.id)::int AS purchase_count FROM meal_plan_blueprints b LEFT JOIN meal_planner_analytics_events e ON e.meal_plan_id = b.id AND e.event_type = 'plan_view' LEFT JOIN meal_plan_purchases p ON p.blueprint_id = b.id AND p.payment_status = 'verified_paid' WHERE b.creator_id = ${userId} GROUP BY b.id, b.title HAVING COUNT(e.id) > 0 ORDER BY (COUNT(DISTINCT p.id)::float / NULLIF(COUNT(e.id), 0)) DESC, purchase_count DESC LIMIT 1`),
     ]);
 
     const totalsRow = (totalsResult as any).rows?.[0] || {};

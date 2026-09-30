@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, date, decimal, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, date, decimal, jsonb, index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { recipes } from "./social-content";
 
@@ -113,11 +113,49 @@ export const mealPlanPurchases = pgTable("meal_plan_purchases", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   blueprintId: varchar("blueprint_id").references(() => mealPlanBlueprints.id).notNull(),
   pricePaidCents: integer("price_paid_cents").notNull(),
-  paymentStatus: text("payment_status").notNull().default("completed"),
+  // A row is not proof of provider capture. Provider-backed flows must promote
+  // this only after persisting authoritative evidence.
+  paymentStatus: text("payment_status").notNull().default("unverified"),
+  acquisitionType: text("acquisition_type").notNull().default("legacy_unverified"),
+  paymentProvider: text("payment_provider"),
+  providerPaymentId: text("provider_payment_id"),
+  providerPaymentStatus: text("provider_payment_status"),
+  paymentVerifiedAt: timestamp("payment_verified_at", { withTimezone: true }),
   paymentMethod: text("payment_method"),
   transactionId: text("transaction_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  entitlementIdentityIdx: uniqueIndex("meal_plan_purchases_entitlement_identity_uidx")
+    .on(table.userId, table.blueprintId)
+    .where(sql`${table.paymentStatus} IN ('free_acquired', 'verified_paid')`),
+  providerPaymentIdx: uniqueIndex("meal_plan_purchases_provider_payment_uidx")
+    .on(table.paymentProvider, table.providerPaymentId)
+    .where(sql`${table.providerPaymentId} IS NOT NULL`),
+  authoritativeEvidenceCheck: check("meal_plan_purchases_authoritative_evidence_chk", sql`
+    (
+      ${table.paymentStatus} = 'verified_paid'
+      AND ${table.acquisitionType} = 'paid'
+      AND ${table.pricePaidCents} > 0
+      AND ${table.paymentProvider} IS NOT NULL AND btrim(${table.paymentProvider}) <> ''
+      AND ${table.providerPaymentId} IS NOT NULL AND btrim(${table.providerPaymentId}) <> ''
+      AND ${table.providerPaymentStatus} = 'COMPLETED'
+      AND ${table.paymentVerifiedAt} IS NOT NULL
+    ) OR (
+      ${table.paymentStatus} = 'free_acquired'
+      AND ${table.acquisitionType} = 'free'
+      AND ${table.pricePaidCents} = 0
+      AND ${table.paymentProvider} IS NULL
+      AND ${table.providerPaymentId} IS NULL
+      AND ${table.providerPaymentStatus} IS NULL
+      AND ${table.paymentVerifiedAt} IS NULL
+      AND ${table.transactionId} IS NULL
+    ) OR (
+      ${table.paymentStatus} NOT IN ('completed', 'verified_paid', 'free_acquired')
+      AND ${table.acquisitionType} = 'legacy_unverified'
+      AND ${table.paymentVerifiedAt} IS NULL
+    )
+  `),
+}));
 
 export const mealPlanReviews = pgTable("meal_plan_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
