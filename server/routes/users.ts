@@ -343,7 +343,7 @@ r.get("/:id/subscription/info", async (req, res) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Nutrition (trial + goals + summaries)                               */
+/* Nutrition (trial only)                                             */
 /* ------------------------------------------------------------------ */
 r.post("/:id/nutrition/trial", requireAuth, async (req, res) => {
   if ((req.user as { id: string }).id !== req.params.id) {
@@ -356,92 +356,8 @@ r.post("/:id/nutrition/trial", requireAuth, async (req, res) => {
   });
 });
 
-r.put("/:id/nutrition/goals", async (req, res) => {
-  try {
-    const schema = z.object({
-      dailyCalorieGoal: z.number().min(800).max(5000).optional(),
-      macroGoals: z
-        .object({
-          protein: z.number().min(0).max(100),
-          carbs: z.number().min(0).max(100),
-          fat: z.number().min(0).max(100),
-        })
-        .optional(),
-      dietaryRestrictions: z.array(z.string()).optional(),
-    });
-    const goals = schema.parse(req.body);
-    const updated = await storage.updateNutritionGoals(
-      req.params.id,
-      goals as any
-    );
-    if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Nutrition goals updated", user: updated });
-  } catch (error: any) {
-    if (error?.issues)
-      return res
-        .status(400)
-        .json({ message: "Invalid goals data", errors: error.issues });
-    console.error("PUT /users/:id/nutrition/goals error", error);
-    res.status(500).json({ message: "Failed to update goals" });
-  }
-});
-
-r.get("/:id/nutrition/daily/:date", async (req, res) => {
-  try {
-    const d = new Date(req.params.date);
-    if (isNaN(d.getTime()))
-      return res.status(400).json({ message: "Invalid date" });
-
-    const summary = await storage.getDailyNutritionSummary(req.params.id, d);
-    const user = await storage.getUser(req.params.id);
-
-    res.json({
-      date: req.params.date,
-      summary,
-      goals: user
-        ? {
-            dailyCalorieGoal: (user as any).dailyCalorieGoal,
-            macroGoals: (user as any).macroGoals,
-          }
-        : null,
-      progress:
-        (user as any)?.dailyCalorieGoal
-          ? {
-              calorieProgress: Math.round(
-                (((summary as any).totalCalories || 0) /
-                  ((user as any).dailyCalorieGoal || 1)) *
-                  100
-              ),
-            }
-          : null,
-    });
-  } catch (error) {
-    console.error("GET /users/:id/nutrition/daily/:date error", error);
-    res.status(500).json({ message: "Failed to fetch daily nutrition" });
-  }
-});
-
-r.get("/:id/nutrition/logs", async (req, res) => {
-  try {
-    const start = new Date(String(req.query.startDate));
-    const end = new Date(String(req.query.endDate));
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return res.status(400).json({ message: "Invalid date range" });
-    }
-    const logs = await storage.getNutritionLogs(req.params.id, start, end);
-    res.json({
-      logs,
-      dateRange: {
-        startDate: start.toISOString().split("T")[0],
-        endDate: end.toISOString().split("T")[0],
-      },
-      total: logs.length,
-    });
-  } catch (error) {
-    console.error("GET /users/:id/nutrition/logs error", error);
-    res.status(500).json({ message: "Failed to fetch logs" });
-  }
-});
+// Goals, daily summaries, and logs are served only by the authenticated
+// /api/nutrition router (CS-CL-01). No duplicate aliases are kept here.
 
 /* ------------------------------------------------------------------ */
 /* Account deletion                                                    */
