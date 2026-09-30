@@ -20,19 +20,52 @@ export const nutritionGoalsUpdateSchema = z.object({
   message: "At least one nutrition goal is required",
 });
 
-// Dates must be explicit strings (YYYY-MM-DD or ISO-8601 date-time). Unlike
-// z.coerce.date(), null/""/0 are rejected instead of becoming 1970-01-01.
-const nutritionLogDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/, "Invalid date")
-  .transform((value, ctx) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid date" });
-      return z.NEVER;
-    }
+// Dates must be explicit strings. z.coerce.date() would turn null into the epoch,
+// and Date parsing silently normalizes impossible calendar dates (2026-02-30 ->
+// 2026-03-02), so components are validated explicitly:
+//   - YYYY-MM-DD        -> UTC midnight of that exact, real calendar date
+//   - date-time         -> requires an explicit Z or numeric UTC offset, so the
+//                          stored instant never depends on the server timezone
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
+
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  utc.setUTCFullYear(year); // Date.UTC maps years 0-99 to 1900-1999
+  return utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
+}
+
+export function parseNutritionLogDate(value: string): Date | null {
+  const dateOnly = DATE_ONLY.exec(value);
+  if (dateOnly) {
+    const [year, month, day] = [Number(dateOnly[1]), Number(dateOnly[2]), Number(dateOnly[3])];
+    if (!isRealCalendarDate(year, month, day)) return null;
+    const date = new Date(Date.UTC(year, month - 1, day));
+    date.setUTCFullYear(year);
     return date;
-  });
+  }
+  const dateTime = DATE_TIME.exec(value);
+  if (!dateTime) return null;
+  const [year, month, day, hour, minute] = dateTime.slice(1, 6).map(Number);
+  const second = dateTime[6] === undefined ? 0 : Number(dateTime[6]);
+  if (!isRealCalendarDate(year, month, day) || hour > 23 || minute > 59 || second > 59) return null;
+  const offset = dateTime[7];
+  if (offset !== "Z") {
+    const [offsetHour, offsetMinute] = offset.slice(1).split(":").map(Number);
+    if (offsetHour > 23 || offsetMinute > 59) return null;
+  }
+  const parsed = new Date(value.replace(" ", "T"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+const nutritionLogDate = z.string().transform((value, ctx) => {
+  const date = parseNutritionLogDate(value);
+  if (!date) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid date" });
+    return z.NEVER;
+  }
+  return date;
+});
 
 export const nutritionLogCreateSchema = z.object({
   date: nutritionLogDate,

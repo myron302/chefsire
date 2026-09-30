@@ -185,8 +185,14 @@ test("User A can read User A's daily summary and logs with authenticated storage
   assert.deepEqual(callsTo("getUser").map((entry) => entry.args[0]), ["A"]);
 });
 
-test("null, empty, numeric, and invalid log dates are rejected without inserting", async () => {
-  for (const date of [null, "", 0, "not-a-date", "2026-13-45", undefined]) {
+test("null, empty, numeric, malformed, and impossible calendar log dates are rejected without inserting", async () => {
+  const bad = [
+    null, "", 0, "not-a-date", undefined,
+    "2026-02-29", "2026-02-30", "2026-04-31", "2026-09-31", "2026-13-01", "2026-00-10", "2026-01-00", "2026-13-45",
+    "2026-02-30T12:00:00Z", "2026-09-30T25:00:00Z", "2026-09-30T12:60:00Z",
+    "2026-09-30T12:00", "2026-09-30T12:00:00", "2026-09-30 12:00", "2026-09-30 12:00:00",
+  ];
+  for (const date of bad) {
     const response = await call("POST", "/api/nutrition/log", { as: "A", body: { ...validLog, date } });
     assert.equal(response.status, 400, `date ${String(date)}`);
   }
@@ -194,13 +200,25 @@ test("null, empty, numeric, and invalid log dates are rejected without inserting
   assert.equal(world.logs.length, 0);
 });
 
-test("valid date-only and ISO log dates succeed without shifting", async () => {
-  const dateOnly = await call("POST", "/api/nutrition/log", { as: "A", body: { ...validLog, date: "2026-09-30" } });
-  assert.equal(dateOnly.status, 201);
-  assert.equal(callsTo("logNutrition")[0].args[1].date.toISOString(), "2026-09-30T00:00:00.000Z");
-  const iso = await call("POST", "/api/nutrition/log", { as: "A", body: validLog });
-  assert.equal(iso.status, 201);
-  assert.equal(callsTo("logNutrition")[1].args[1].date.toISOString(), validLog.date);
+test("valid date-only and explicit-timezone log dates reach storage as the intended instant", async () => {
+  const cases: Array<[string, string]> = [
+    ["2026-09-30", "2026-09-30T00:00:00.000Z"],
+    ["2024-02-29", "2024-02-29T00:00:00.000Z"],
+    ["2026-09-30T12:00:00.000Z", "2026-09-30T12:00:00.000Z"],
+    ["2026-09-30T12:00:00Z", "2026-09-30T12:00:00.000Z"],
+    ["2026-09-30T12:00:00-04:00", "2026-09-30T16:00:00.000Z"],
+    ["2026-09-30T12:00:00+00:00", "2026-09-30T12:00:00.000Z"],
+  ];
+  for (const [input] of cases) {
+    const response = await call("POST", "/api/nutrition/log", { as: "A", body: { ...validLog, date: input } });
+    assert.equal(response.status, 201, input);
+  }
+  const logged = callsTo("logNutrition");
+  assert.equal(logged.length, cases.length);
+  cases.forEach(([, expected], index) => {
+    assert.equal(logged[index].args[0], "A");
+    assert.equal(logged[index].args[1].date.toISOString(), expected);
+  });
 });
 
 test("sodium and sugar are accepted; invalid values and recognitionConfidence are rejected", async () => {
