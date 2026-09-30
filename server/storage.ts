@@ -74,6 +74,7 @@ import {
 } from "@shared/schema";
 import { isProviderInRange, milesBetween, type Coordinates } from "./services/catering-geo";
 import { visiblePostsCondition } from "./lib/post-visibility";
+import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
 import { purgeRemixEngagementForUser } from "./lib/remix-engagement-cleanup";
 
 // Reuse the shared pool so there's only one connection pool in the process
@@ -294,7 +295,8 @@ export interface IStorage {
   getUserCustomDrinks(userId: string, category?: string): Promise<CustomDrink[]>;
   getPublicCustomDrinks(category?: string, limit?: number): Promise<CustomDrinkWithUser[]>;
   createCustomDrink(drink: InsertCustomDrink): Promise<CustomDrink>;
-  updateCustomDrink(id: string, updates: Partial<CustomDrink>): Promise<CustomDrink | undefined>;
+  /** Owner-scoped: the UPDATE is constrained by id AND user_id; returns undefined when no owned row matched. */
+  updateOwnedCustomDrink(id: string, ownerId: string, patch: CustomDrinkOwnerPatch): Promise<CustomDrink | undefined>;
   deleteCustomDrink(id: string): Promise<boolean>;
   
   // Drink Photos
@@ -1954,12 +1956,18 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async updateCustomDrink(id: string, updates: Partial<CustomDrink>): Promise<CustomDrink | undefined> {
+  async updateOwnedCustomDrink(id: string, ownerId: string, patch: CustomDrinkOwnerPatch): Promise<CustomDrink | undefined> {
     const db = getDb();
+    // Positive selection: only allowlisted columns can reach .set(), whatever the caller passed.
+    const set: Record<string, unknown> = {};
+    for (const key of CUSTOM_DRINK_OWNER_EDITABLE_FIELDS) {
+      if (patch[key] !== undefined) set[key] = patch[key];
+    }
+    if (Object.keys(set).length === 0) return undefined;
     const result = await db
       .update(customDrinks)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(customDrinks.id, id))
+      .set({ ...set, updatedAt: new Date() })
+      .where(and(eq(customDrinks.id, id), eq(customDrinks.userId, ownerId)))
       .returning();
     return result[0];
   }
