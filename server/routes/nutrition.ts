@@ -13,7 +13,11 @@ import {
   hasRecordedNutritionPremium,
   parseValidDateOrNull,
 } from "./nutrition/helpers";
-import { nutritionSubscriptionChangeSchema } from "./nutrition/schemas";
+import {
+  nutritionGoalsUpdateSchema,
+  nutritionLogCreateSchema,
+  nutritionSubscriptionChangeSchema,
+} from "./nutrition/schemas";
 import { logNutritionSubscriptionHistory } from "./nutrition/subscription-history";
 
 const r = Router();
@@ -39,27 +43,45 @@ r.post("/users/:id/trial", requireAuth, async (req, res) => {
  * PUT /api/nutrition/users/:id/goals
  * Body: { dailyCalorieGoal?, macroGoals?, dietaryRestrictions? }
  */
-r.put("/users/:id/goals", async (req, res, next) => {
+r.put("/users/:id/goals", requireAuth, async (req, res, next) => {
   try {
-    const updated = await storage.updateNutritionGoals(req.params.id, req.body || {});
+    const userId = (req.user as { id: string }).id;
+    if (userId !== req.params.id) {
+      return res.status(403).json({ message: "You can only access your own nutrition data" });
+    }
+
+    const goals = nutritionGoalsUpdateSchema.parse(req.body);
+    const updated = await storage.updateNutritionGoals(userId, goals);
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Nutrition goals updated", user: updated });
-  } catch (error) {
+    res.json({
+      message: "Nutrition goals updated",
+      goals: {
+        dailyCalorieGoal: updated.dailyCalorieGoal,
+        macroGoals: updated.macroGoals,
+        dietaryRestrictions: updated.dietaryRestrictions,
+      },
+    });
+  } catch (error: any) {
+    if (error?.issues) {
+      return res.status(400).json({ message: "Invalid nutrition goals", errors: error.issues });
+    }
     next(error);
   }
 });
 
 /**
  * POST /api/nutrition/log
- * Body: { userId, date, mealType, recipeId?, customFoodName?, servings, calories, protein?, carbs?, fat?, fiber?, imageUrl? }
+ * Body: { date, mealType, recipeId?, customFoodName?, servings, calories, protein?, carbs?, fat?, fiber?, imageUrl? }
  */
-r.post("/log", async (req, res, next) => {
+r.post("/log", requireAuth, async (req, res, next) => {
   try {
-    const { userId, ...log } = req.body || {};
-    if (!userId) return res.status(400).json({ message: "userId is required" });
-    const entry = await storage.logNutrition(String(userId), log);
+    const log = nutritionLogCreateSchema.parse(req.body);
+    const entry = await storage.logNutrition((req.user as { id: string }).id, log);
     res.status(201).json({ message: "Nutrition logged successfully", log: entry });
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.issues) {
+      return res.status(400).json({ message: "Invalid nutrition log", errors: error.issues });
+    }
     next(error);
   }
 });
@@ -68,13 +90,18 @@ r.post("/log", async (req, res, next) => {
  * GET /api/nutrition/users/:id/daily/:date
  * :date format YYYY-MM-DD
  */
-r.get("/users/:id/daily/:date", async (req, res, next) => {
+r.get("/users/:id/daily/:date", requireAuth, async (req, res, next) => {
   try {
+    const userId = (req.user as { id: string }).id;
+    if (userId !== req.params.id) {
+      return res.status(403).json({ message: "You can only access your own nutrition data" });
+    }
+
     const date = new Date(req.params.date);
     if (isNaN(date.getTime())) return res.status(400).json({ message: "Invalid date format" });
 
-    const summary = await storage.getDailyNutritionSummary(req.params.id, date);
-    const user = await storage.getUser(req.params.id);
+    const summary = await storage.getDailyNutritionSummary(userId, date);
+    const user = await storage.getUser(userId);
 
     res.json({
       date: req.params.date,
@@ -99,14 +126,19 @@ r.get("/users/:id/daily/:date", async (req, res, next) => {
 /**
  * GET /api/nutrition/users/:id/logs?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD
  */
-r.get("/users/:id/logs", async (req, res, next) => {
+r.get("/users/:id/logs", requireAuth, async (req, res, next) => {
   try {
+    const userId = (req.user as { id: string }).id;
+    if (userId !== req.params.id) {
+      return res.status(403).json({ message: "You can only access your own nutrition data" });
+    }
+
     const startDate = new Date(String(req.query.startDate || ""));
     const endDate = new Date(String(req.query.endDate || ""));
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ message: "Invalid date format" });
     }
-    const logs = await storage.getNutritionLogs(req.params.id, startDate, endDate);
+    const logs = await storage.getNutritionLogs(userId, startDate, endDate);
     res.json({
       logs,
       dateRange: {
