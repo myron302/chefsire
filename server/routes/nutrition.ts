@@ -71,7 +71,7 @@ r.put("/users/:id/goals", requireAuth, async (req, res, next) => {
 
 /**
  * POST /api/nutrition/log
- * Body: { date, mealType, recipeId?, customFoodName?, servings, calories, protein?, carbs?, fat?, fiber?, imageUrl? }
+ * Body: { date, mealType, recipeId?, customFoodName?, servings, calories, protein?, carbs?, fat?, fiber?, sodium?, sugar?, imageUrl? }
  */
 r.post("/log", requireAuth, async (req, res, next) => {
   try {

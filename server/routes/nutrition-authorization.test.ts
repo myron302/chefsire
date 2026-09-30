@@ -7,6 +7,7 @@ import express from "express";
 import { testAuthHeader } from "../test-support/auth-test-env";
 import { storage } from "../storage";
 import nutritionRouter from "./nutrition";
+import usersRouter from "./users";
 
 type Call = { method: string; args: any[] };
 
@@ -56,6 +57,7 @@ Object.assign(storage as any, {
 const app = express();
 app.use(express.json());
 app.use("/api/nutrition", nutritionRouter);
+app.use("/api/users", usersRouter);
 const server = app.listen(0);
 const base = `http://127.0.0.1:${(server.address() as any).port}`;
 
@@ -74,7 +76,7 @@ async function call(method: string, path: string, options: { as?: string; body?:
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
   const text = await response.text();
-  return { status: response.status, body: text ? JSON.parse(text) : null };
+  return { status: response.status, body: text ? (() => { try { return JSON.parse(text); } catch { return { raw: text }; } })() : null };
 }
 
 const validLog = {
@@ -181,4 +183,71 @@ test("User A can read User A's daily summary and logs with authenticated storage
   assert.equal(callsTo("getDailyNutritionSummary")[0].args[0], "A");
   assert.equal(callsTo("getNutritionLogs")[0].args[0], "A");
   assert.deepEqual(callsTo("getUser").map((entry) => entry.args[0]), ["A"]);
+});
+
+test("null, empty, numeric, and invalid log dates are rejected without inserting", async () => {
+  for (const date of [null, "", 0, "not-a-date", "2026-13-45", undefined]) {
+    const response = await call("POST", "/api/nutrition/log", { as: "A", body: { ...validLog, date } });
+    assert.equal(response.status, 400, `date ${String(date)}`);
+  }
+  assert.equal(callsTo("logNutrition").length, 0);
+  assert.equal(world.logs.length, 0);
+});
+
+test("valid date-only and ISO log dates succeed without shifting", async () => {
+  const dateOnly = await call("POST", "/api/nutrition/log", { as: "A", body: { ...validLog, date: "2026-09-30" } });
+  assert.equal(dateOnly.status, 201);
+  assert.equal(callsTo("logNutrition")[0].args[1].date.toISOString(), "2026-09-30T00:00:00.000Z");
+  const iso = await call("POST", "/api/nutrition/log", { as: "A", body: validLog });
+  assert.equal(iso.status, 201);
+  assert.equal(callsTo("logNutrition")[1].args[1].date.toISOString(), validLog.date);
+});
+
+test("sodium and sugar are accepted; invalid values and recognitionConfidence are rejected", async () => {
+  for (const extra of [{ sodium: 400 }, { sugar: 12.5 }, { sodium: 400, sugar: 12.5 }]) {
+    const response = await call("POST", "/api/nutrition/log", { as: "A", body: { ...validLog, ...extra } });
+    assert.equal(response.status, 201);
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(callsTo("logNutrition").at(-1)!.args[1]).filter(([k]) => k === "sodium" || k === "sugar")),
+      extra,
+    );
+  }
+  const before = callsTo("logNutrition").length;
+  for (const extra of [{ sodium: -1 }, { sugar: -0.1 }, { sodium: "400" }, { sugar: null }, { recognitionConfidence: 0.9 }]) {
+    const response = await call("POST", "/api/nutrition/log", { as: "A", body: { ...validLog, ...extra } });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(callsTo("logNutrition").length, before);
+});
+
+test("goal update response never includes credential-bearing user fields", async () => {
+  Object.assign(world.users.A, {
+    password: "hash", passwordHash: "hash", verificationToken: "tok", googleAccessToken: "oauth", email: "a@example.com",
+  });
+  const response = await call("PUT", "/api/nutrition/users/A/goals", { as: "A", body: { dailyCalorieGoal: 2100 } });
+  assert.equal(response.status, 200);
+  assert.deepEqual(Object.keys(response.body.goals).sort(), ["dailyCalorieGoal", "dietaryRestrictions", "macroGoals"]);
+  assert.doesNotMatch(JSON.stringify(response.body), /password|hash|verification|oauth|googleAccessToken|a@example/i);
+});
+
+test("duplicate /api/users nutrition aliases were removed and are not functioning endpoints", async () => {
+  const usersSource = readFileSync(new URL("./users.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(usersSource, /nutrition\/(goals|daily|logs)/);
+  const attempts = [
+    ["PUT", "/api/users/A/nutrition/goals", { dailyCalorieGoal: 2100 }],
+    ["GET", "/api/users/A/nutrition/daily/2026-09-30", undefined],
+    ["GET", "/api/users/A/nutrition/logs?startDate=2026-09-01&endDate=2026-10-01", undefined],
+  ] as const;
+  for (const [method, path, body] of attempts) {
+    for (const as of [undefined, "A", "B"]) {
+      const response = await call(method, path, { as, body });
+      assert.ok(response.status === 401 || response.status === 404, `${method} ${path} as ${as}: ${response.status}`);
+      assert.equal(JSON.stringify(response.body ?? {}).includes("Nutrition goals updated"), false);
+    }
+  }
+  assert.equal(world.calls.length, 0);
+  assert.equal(world.users.A.dailyCalorieGoal, 2000);
+  // Canonical authenticated route still works.
+  const canonical = await call("PUT", "/api/nutrition/users/A/goals", { as: "A", body: { dailyCalorieGoal: 2100 } });
+  assert.equal(canonical.status, 200);
 });

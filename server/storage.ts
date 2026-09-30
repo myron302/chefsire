@@ -226,6 +226,8 @@ export interface IStorage {
     carbs?: number;
     fat?: number;
     fiber?: number;
+    sodium?: number;
+    sugar?: number;
     imageUrl?: string;
   }): Promise<any>;
   getDailyNutritionSummary(userId: string, date: Date): Promise<any>;
@@ -1433,6 +1435,8 @@ export class DrizzleStorage implements IStorage {
       carbs?: number;
       fat?: number;
       fiber?: number;
+      sodium?: number;
+      sugar?: number;
       imageUrl?: string;
     }
   ): Promise<any> {
