@@ -28266,14 +28266,19 @@ r.delete("/collections/:id/items/:slug", optionalAuth, async (req, res) => {
 // CUSTOM DRINKS API ROUTES (NEW)
 // ========================================
 
-// Get user's custom drinks
+/** Authenticated identity only (from req.user, never from the path/body); null when anonymous. */
+const customDrinkViewerId = (req: { user?: unknown }): string | null =>
+  (req.user as { id?: string } | undefined)?.id ?? null;
+
+// Get user's custom drinks (owner sees all; anyone else sees only public ones)
 r.get("/custom-drinks/user/:userId", requireAuth, async (req, res) => {
   try {
     const { userId } = req.params;
     const { category } = req.query;
     
-    const drinks = await storage.getUserCustomDrinks(
-      userId, 
+    const drinks = await storage.getUserCustomDrinksForViewer(
+      userId,
+      customDrinkViewerId(req),
       category as string | undefined
     );
     res.json({ ok: true, drinks });
@@ -28283,21 +28288,7 @@ r.get("/custom-drinks/user/:userId", requireAuth, async (req, res) => {
   }
 });
 
-// Get single custom drink
-r.get("/custom-drinks/:id", async (req, res) => {
-  try {
-    const drink = await storage.getCustomDrinkWithUser(req.params.id);
-    if (!drink) {
-      return res.status(404).json({ ok: false, error: "Drink not found" });
-    }
-    res.json({ ok: true, drink });
-  } catch (error: any) {
-    console.error("Error fetching drink:", error);
-    res.status(500).json({ ok: false, error: "Failed to fetch drink" });
-  }
-});
-
-// Get public/community drinks
+// Get public/community drinks (static route: must be declared before /custom-drinks/:id)
 r.get("/custom-drinks/public", async (req, res) => {
   try {
     const { category, limit } = req.query;
@@ -28309,6 +28300,20 @@ r.get("/custom-drinks/public", async (req, res) => {
   } catch (error: any) {
     console.error("Error fetching public drinks:", error);
     res.status(500).json({ ok: false, error: "Failed to fetch public drinks" });
+  }
+});
+
+// Get single custom drink (private drinks resolve as 404 for anyone but the owner)
+r.get("/custom-drinks/:id", optionalAuth, async (req, res) => {
+  try {
+    const drink = await storage.getCustomDrinkForViewer(req.params.id, customDrinkViewerId(req));
+    if (!drink) {
+      return res.status(404).json({ ok: false, error: "Drink not found" });
+    }
+    res.json({ ok: true, drink });
+  } catch (error: any) {
+    console.error("Error fetching drink:", error);
+    res.status(500).json({ ok: false, error: "Failed to fetch drink" });
   }
 });
 
@@ -28439,9 +28444,9 @@ r.post("/custom-drinks/:id/photo", requireAuth, async (req, res) => {
 });
 
 // Get drink photos
-r.get("/custom-drinks/:id/photos", async (req, res) => {
+r.get("/custom-drinks/:id/photos", optionalAuth, async (req, res) => {
   try {
-    const photos = await storage.getDrinkPhotos(req.params.id);
+    const photos = await storage.getDrinkPhotosForViewer(req.params.id, customDrinkViewerId(req));
     res.json({ ok: true, photos });
   } catch (error: any) {
     console.error("Error fetching photos:", error);
@@ -28559,6 +28564,7 @@ r.get("/custom-drinks/saved/:userId", requireAuth, async (req, res) => {
     const { category } = req.query;
     const drinks = await storage.getUserSavedDrinks(
       userId,
+      customDrinkViewerId(req),
       category as string | undefined
     );
     res.json({ ok: true, drinks });

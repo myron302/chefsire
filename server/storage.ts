@@ -297,9 +297,13 @@ export interface IStorage {
   }>;
 
   // Custom Drinks
+  /** UNSCOPED by visibility: for owner-check/mutation paths only. Never serialize its result to a non-owner. */
   getCustomDrink(id: string): Promise<CustomDrink | undefined>;
-  getCustomDrinkWithUser(id: string): Promise<CustomDrinkWithUser | undefined>;
-  getUserCustomDrinks(userId: string, category?: string): Promise<CustomDrink[]>;
+  /** Visibility-scoped read: public drink, or any drink owned by viewerId. Anonymous viewer => null. */
+  getCustomDrinkForViewer(id: string, viewerId: string | null): Promise<CustomDrinkWithUser | undefined>;
+  /** Visibility-scoped list of ownerId's drinks: private rows only when viewerId === ownerId. */
+  getUserCustomDrinksForViewer(ownerId: string, viewerId: string | null, category?: string): Promise<CustomDrink[]>;
+  getDrinkPhotosForViewer(drinkId: string, viewerId: string | null): Promise<DrinkPhoto[]>;
   getPublicCustomDrinks(category?: string, limit?: number): Promise<CustomDrinkWithUser[]>;
   createCustomDrink(drink: InsertCustomDrink): Promise<CustomDrink>;
   /** Owner-scoped: the UPDATE is constrained by id AND user_id; returns undefined when no owned row matched. */
@@ -320,7 +324,7 @@ export interface IStorage {
   saveDrink(userId: string, drinkId: string): Promise<DrinkSave>;
   unsaveDrink(userId: string, drinkId: string): Promise<boolean>;
   isDrinkSaved(userId: string, drinkId: string): Promise<boolean>;
-  getUserSavedDrinks(userId: string, category?: string): Promise<CustomDrinkWithUser[]>;
+  getUserSavedDrinks(userId: string, viewerId: string | null, category?: string): Promise<CustomDrinkWithUser[]>;
   
   // Recipe Saves
   saveRecipe(userId: string, recipeId: string): Promise<RecipeSave>;
@@ -1900,13 +1904,20 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async getCustomDrinkWithUser(id: string): Promise<CustomDrinkWithUser | undefined> {
+  /** Fail closed: only an explicit `true` is public (NULL/legacy rows are not); owner always sees own rows. */
+  private customDrinkVisibleTo(viewerId: string | null) {
+    return viewerId
+      ? or(eq(customDrinks.isPublic, true), eq(customDrinks.userId, viewerId))!
+      : eq(customDrinks.isPublic, true);
+  }
+
+  async getCustomDrinkForViewer(id: string, viewerId: string | null): Promise<CustomDrinkWithUser | undefined> {
     const db = getDb();
     const result = await db
       .select({ drink: customDrinks, user: users })
       .from(customDrinks)
       .innerJoin(users, eq(customDrinks.userId, users.id))
-      .where(eq(customDrinks.id, id))
+      .where(and(eq(customDrinks.id, id), this.customDrinkVisibleTo(viewerId)))
       .limit(1);
 
     if (!result[0]) return undefined;
@@ -1919,9 +1930,12 @@ export class DrizzleStorage implements IStorage {
     };
   }
 
-  async getUserCustomDrinks(userId: string, category?: string): Promise<CustomDrink[]> {
+  async getUserCustomDrinksForViewer(ownerId: string, viewerId: string | null, category?: string): Promise<CustomDrink[]> {
     const db = getDb();
-    const conditions = [eq(customDrinks.userId, userId)];
+    const conditions = [eq(customDrinks.userId, ownerId)];
+    if (viewerId !== ownerId) {
+      conditions.push(eq(customDrinks.isPublic, true));
+    }
     if (category) {
       conditions.push(eq(customDrinks.category, category));
     }
@@ -1932,6 +1946,17 @@ export class DrizzleStorage implements IStorage {
       // @ts-expect-error drizzle typing
       .where(and(...conditions))
       .orderBy(desc(customDrinks.createdAt));
+  }
+
+  async getDrinkPhotosForViewer(drinkId: string, viewerId: string | null): Promise<DrinkPhoto[]> {
+    const db = getDb();
+    const rows = await db
+      .select({ photo: drinkPhotos })
+      .from(drinkPhotos)
+      .innerJoin(customDrinks, eq(drinkPhotos.drinkId, customDrinks.id))
+      .where(and(eq(drinkPhotos.drinkId, drinkId), this.customDrinkVisibleTo(viewerId)))
+      .orderBy(desc(drinkPhotos.createdAt));
+    return rows.map((r) => r.photo);
   }
 
   async getPublicCustomDrinks(category?: string, limit = 20): Promise<CustomDrinkWithUser[]> {
@@ -2087,9 +2112,9 @@ export class DrizzleStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getUserSavedDrinks(userId: string, category?: string): Promise<CustomDrinkWithUser[]> {
+  async getUserSavedDrinks(userId: string, viewerId: string | null, category?: string): Promise<CustomDrinkWithUser[]> {
     const db = getDb();
-    const conditions = [eq(drinkSaves.userId, userId)];
+    const conditions = [eq(drinkSaves.userId, userId), this.customDrinkVisibleTo(viewerId)];
     
     if (category) {
       conditions.push(eq(customDrinks.category, category));
