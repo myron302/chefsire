@@ -15,6 +15,7 @@ import {
 } from "../middleware/rate-limit";
 import { UnsupportedMediaError, storeVerifiedImage } from "../services/image-upload";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
+import { hashPassword } from "../lib/password-hash";
 import { signAuthToken, verifyAuthToken } from "../lib/jwt-config";
 
 const router = Router();
@@ -122,7 +123,7 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
     const displayName = finalUsername; // Display the username they chose
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
 
     // Handle avatar URL (if file was uploaded, it will be in /uploads locally or R2 in production).
     // One call, one rule: the bytes are verified, and the key, the extension and the stored content type are all

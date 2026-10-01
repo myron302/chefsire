@@ -75,32 +75,11 @@ r.get("/username/:username", async (req, res) => {
   }
 });
 
-r.post("/", async (req, res) => {
-  try {
-    const schema = z.object({
-      id: z.string().optional(),
-      username: z.string(),
-      email: z.string().email(),
-      password: z.string(),
-      displayName: z.string().optional(),
-      bio: z.string().optional(),
-      avatar: z.string().url().optional(),
-      specialty: z.string().optional(),
-      isChef: z.boolean().optional(),
-    });
-    const body = schema.parse(req.body);
-    const created = await storage.createUser(body as any);
-    res.status(201).json(created);
-  } catch (error: any) {
-    if (error?.issues) {
-      return res
-        .status(400)
-        .json({ message: "Invalid user data", errors: error.issues });
-    }
-    console.error("POST /users error", error);
-    res.status(500).json({ message: "Failed to create user" });
-  }
-});
+/*
+ * There is deliberately no `POST /` here. Account creation is `POST /api/auth/signup` (routes/auth.ts) and the OAuth
+ * strategies only -- an unauthenticated create on this router stored the caller's password unhashed, returned the whole
+ * row, and skipped verification and the signup limiter (CS-CL-04). Do not add one back.
+ */
 
 r.put("/:id", requireAuth, async (req, res) => {
   try {
