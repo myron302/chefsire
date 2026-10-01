@@ -1,7 +1,7 @@
 // server/storage.ts — COMPLETE FILE WITH DRINKS
 import "./lib/load-env";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { eq, desc, and, or, sql, asc, ilike, inArray } from "drizzle-orm";
+import { eq, desc, and, or, sql, asc, ilike, inArray, exists } from "drizzle-orm";
 import { pool as sharedPool } from "./db/index";
 
 import {
@@ -313,7 +313,12 @@ export interface IStorage {
   createDrinkPhoto(photo: InsertDrinkPhoto): Promise<DrinkPhoto>;
   /** Photos of a custom drink, only if the drink is visible to `viewerId` (null = anonymous). */
   getDrinkPhotosVisibleTo(drinkId: string, viewerId: string | null): Promise<DrinkPhoto[]>;
-  deleteDrinkPhoto(id: string): Promise<boolean>;
+  /**
+   * Atomic owner-scoped delete: the row is removed only if its parent custom drink belongs to `ownerId`
+   * (one DELETE ... WHERE id = ? AND EXISTS(parent owned by ownerId)). Returns false for both "no such photo" and
+   * "not yours" so callers cannot distinguish them. There is intentionally no unscoped photo delete.
+   */
+  deleteOwnedDrinkPhoto(photoId: string, ownerId: string): Promise<boolean>;
   
   // Drink Likes
   /**
@@ -2029,9 +2034,22 @@ export class DrizzleStorage implements IStorage {
     return rows.map((r) => r.photo);
   }
 
-  async deleteDrinkPhoto(id: string): Promise<boolean> {
+  async deleteOwnedDrinkPhoto(photoId: string, ownerId: string): Promise<boolean> {
     const db = getDb();
-    const result = await db.delete(drinkPhotos).where(eq(drinkPhotos.id, id)).returning();
+    const result = await db
+      .delete(drinkPhotos)
+      .where(
+        and(
+          eq(drinkPhotos.id, photoId),
+          exists(
+            db
+              .select({ one: sql`1` })
+              .from(customDrinks)
+              .where(and(eq(customDrinks.id, drinkPhotos.drinkId), eq(customDrinks.userId, ownerId))),
+          ),
+        ),
+      )
+      .returning({ id: drinkPhotos.id });
     return result.length > 0;
   }
 
