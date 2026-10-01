@@ -29,6 +29,8 @@ if (!PG_URL) {
   const DB = parseLocalTestDatabaseUrl(PG_URL); // throws (fail closed) before any connection or DDL
   const local = new pg.Pool(DB);
   const { pool } = await import("../db/index");
+  // db.transaction() checks out a client from the pool: hand it a real local connection, never a Neon one.
+  (pool as any).connect = () => local.connect();
   (pool as any).query = (q: any, params?: any[]) => (typeof q === "string" ? local.query(q, params) : local.query(params ? { ...q, values: params } : q));
 
   await local.query(`
@@ -277,6 +279,77 @@ if (!PG_URL) {
         assert.equal((await call("POST", "A-public", kind, tok(MANY[0]))).status, 404);
         assert.equal(await synced("A-public", kind), 1);
       } finally { await holder.query("SELECT pg_advisory_unlock_all()").catch(() => {}); await holder.end(); }
+    });
+  }
+
+  /* -------- duplicate POST racing DELETE by the SAME user (the "second, unlocked lookup" race) -------- */
+  const parkedStatement = `SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted`;
+  const queuedBehindRowLock = (needle: string) =>
+    `SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND wait_event <> 'advisory' AND query ILIKE '%${needle}%' AND pid <> pg_backend_pid()`;
+  for (const kind of ["like", "save"] as const) {
+    const rowsOf = kind === "like" ? "likes" : "saves";
+
+    test(`${kind}: duplicate POST holds the drink lock, DELETE queues behind it -> POST returns the EXISTING row (200), then DELETE removes it`, async () => {
+      await reset();
+      const first = await call("POST", "A-public", kind, tok(B));
+      assert.equal(first.status, 201);
+      const existingId = first.body[kind].id;
+      const holder = await session();
+      try {
+        await holder.query("SELECT pg_advisory_lock(777)"); // parks the next engagement INSERT after it took the drink lock
+        const dup = call("POST", "A-public", kind, tok(B));
+        await waitFor(parkedStatement, "duplicate POST parked while holding the drink lock");
+        const del = call("DELETE", "A-public", kind, tok(B));
+        await waitFor(queuedBehindRowLock("FOR UPDATE"), "DELETE queued behind the duplicate POST's drink lock");
+        await holder.query("SELECT pg_advisory_unlock(777)");
+        const [d, r] = await Promise.all([dup, del]);
+        assert.equal(d.status, 200, "duplicate POST must not turn into 404/500");
+        assert.equal(d.body[kind].id, existingId, "returns the engagement as it existed at its serialization point");
+        assert.equal(r.status, 200, "DELETE serialized after the POST removes it");
+        const s: any = await state("A-public");
+        assert.deepEqual(s[rowsOf], []);
+        assert.equal(await synced("A-public", kind), 0);
+      } finally { await holder.query("SELECT pg_advisory_unlock_all()").catch(() => {}); await holder.end(); }
+    });
+
+    test(`${kind}: DELETE holds the drink lock, duplicate POST queues behind it -> POST creates a fresh row (201), never a false 404`, async () => {
+      await reset();
+      await call("POST", "A-public", kind, tok(B));
+      const holder = await session();
+      try {
+        await holder.query("SELECT pg_advisory_lock(777)");
+        const del = call("DELETE", "A-public", kind, tok(B));
+        await waitFor(parkedStatement, "DELETE parked while holding the drink lock");
+        const dup = call("POST", "A-public", kind, tok(B));
+        await waitFor(queuedBehindRowLock("FOR UPDATE"), "duplicate POST queued behind the DELETE's drink lock");
+        await holder.query("SELECT pg_advisory_unlock(777)");
+        const [r, d] = await Promise.all([del, dup]);
+        assert.equal(r.status, 200);
+        assert.equal(d.status, 201, "engagement did not exist at the POST's serialization point -> created, not 404");
+        const s: any = await state("A-public");
+        assert.deepEqual(s[rowsOf], [B]);
+        assert.equal(await synced("A-public", kind), 1);
+      } finally { await holder.query("SELECT pg_advisory_unlock_all()").catch(() => {}); await holder.end(); }
+    });
+
+    test(`${kind}: duplicate POSTs racing DELETEs (same user, repeated): POST is always 200/201, DELETE 200/404, counter == rows`, async () => {
+      for (let round = 0; round < 25; round++) {
+        await reset();
+        await call("POST", "A-public", kind, tok(B));
+        const reqs = [
+          ...Array.from({ length: 4 }, () => call("POST", "A-public", kind, tok(B))),
+          ...Array.from({ length: 4 }, () => call("DELETE", "A-public", kind, tok(B))),
+        ];
+        const rs = await Promise.all(reqs);
+        const posts = rs.slice(0, 4);
+        const dels = rs.slice(4);
+        assert.ok(posts.every((r) => r.status === 200 || r.status === 201), `round ${round}: POST ${JSON.stringify(posts.map((r) => r.status))}`);
+        assert.ok(dels.every((r) => r.status === 200 || r.status === 404), `round ${round}: DELETE ${JSON.stringify(dels.map((r) => r.status))}`);
+        // the count of successful removals must equal the count of creations (initial row + 201s) minus what is left
+        const created = 1 + posts.filter((r) => r.status === 201).length;
+        const removed = dels.filter((r) => r.status === 200).length;
+        assert.equal(await synced("A-public", kind), created - removed, `round ${round}: rows == creations - removals`);
+      }
     });
   }
 }
