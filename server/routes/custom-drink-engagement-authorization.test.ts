@@ -1,7 +1,12 @@
 /**
  * CS-CL-06: like/unlike/save/unsave of custom drinks as real HTTP against the real router and storage layer,
  * with the rendered SQL executed by a REAL PostgreSQL (set CS_TEST_PG_URL; the suite is skipped otherwise).
- * Only the pool transport is redirected from Neon to a local pg connection. Never point this at production.
+ * Only the pool transport is redirected from Neon to a local pg connection.
+ *
+ * This suite DROPs/TRUNCATEs tables, so CS_TEST_PG_URL is validated structurally BEFORE any client exists
+ * (see server/test-support/local-test-database.ts): loopback host only (localhost, 127.0.0.1, [::1]), no query
+ * string, no Unix sockets, and the database name must contain "test" (e.g. postgres://127.0.0.1:5432/chefsire_test).
+ * An invalid URL throws here and the suite refuses to run.
  */
 import "../test-support/auth-test-env";
 import test from "node:test";
@@ -10,6 +15,7 @@ import express from "express";
 import pg from "pg";
 import type { AddressInfo } from "node:net";
 import { signAuthToken } from "../lib/jwt-config";
+import { parseLocalTestDatabaseUrl } from "../test-support/local-test-database";
 
 process.env.DATABASE_URL ||= "postgres://u:p@custom-drink-tests.invalid/none";
 const PG_URL = process.env.CS_TEST_PG_URL;
@@ -20,8 +26,8 @@ const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id } as 
 if (!PG_URL) {
   test("custom-drink engagement authorization (skipped: CS_TEST_PG_URL not set)", { skip: true }, () => {});
 } else {
-  assert.ok(/localhost|127\.0\.0\.1|^postgres:\/\/[^@]*@?\/|host=\/|\/tmp/.test(PG_URL) && !/neon\.tech/.test(PG_URL), "refusing non-local database");
-  const local = new pg.Pool({ connectionString: PG_URL });
+  const DB = parseLocalTestDatabaseUrl(PG_URL); // throws (fail closed) before any connection or DDL
+  const local = new pg.Pool(DB);
   const { pool } = await import("../db/index");
   (pool as any).query = (q: any, params?: any[]) => (typeof q === "string" ? local.query(q, params) : local.query(params ? { ...q, values: params } : q));
 
@@ -166,7 +172,7 @@ if (!PG_URL) {
   };
   const waitingOn = (needle: string) =>
     `SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%${needle}%' AND pid <> pg_backend_pid()`;
-  const session = async () => { const c = new pg.Client({ connectionString: PG_URL }); await c.connect(); return c; };
+  const session = async () => { const c = new pg.Client(DB); await c.connect(); return c; };
 
   for (const kind of ["like", "save"] as const) {
     const rowsOf = kind === "like" ? "likes" : "saves";
