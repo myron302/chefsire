@@ -2040,7 +2040,15 @@ export class DrizzleStorage implements IStorage {
    * Engagement writes (like/save) are single SQL statements whose first CTE is the visibility predicate
    * (is_public = true OR owner = actor; NULL is_public is not public). Nothing is inserted/deleted/counted unless
    * that CTE returns the drink, so authorization and mutation cannot be separated by a caller or by a concurrent
-   * privacy change (FOR SHARE makes a concurrent visibility UPDATE wait until this statement commits).
+   * privacy change.
+   *
+   * Locking: the CTE takes `FOR UPDATE` (exclusive) on the target custom_drinks row, BEFORE the engagement
+   * insert/delete and the counter UPDATE, which need that same exclusive lock anyway. Taking it up front means there
+   * is never a shared->exclusive upgrade (two sessions holding FOR SHARE and both waiting to UPDATE deadlock), and
+   * every engagement statement takes locks in the same order (drink row, then its engagement row), so concurrent
+   * like/save/unlike/unsave on one drink simply queue. Under READ COMMITTED a statement that waited on a concurrent
+   * is_public change re-evaluates the predicate on the committed row, so a revoked viewer gets no row (404);
+   * an in-flight authorized statement makes a privacy flip wait until it commits.
    */
   private static readonly ENGAGEMENT = {
     like: { table: "drink_likes", counter: "likes_count" },
@@ -2056,7 +2064,7 @@ export class DrizzleStorage implements IStorage {
       WITH target AS (
         SELECT id FROM custom_drinks
         WHERE id = ${drinkId} AND (is_public = true OR user_id = ${userId})
-        FOR SHARE
+        FOR UPDATE
       ),
       ins AS (
         INSERT INTO ${t} (user_id, drink_id)
@@ -2093,7 +2101,7 @@ export class DrizzleStorage implements IStorage {
       WITH target AS (
         SELECT id FROM custom_drinks
         WHERE id = ${drinkId} AND (is_public = true OR user_id = ${userId})
-        FOR SHARE
+        FOR UPDATE
       ),
       del AS (
         DELETE FROM ${t}

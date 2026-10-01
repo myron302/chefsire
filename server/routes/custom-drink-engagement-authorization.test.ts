@@ -26,7 +26,7 @@ if (!PG_URL) {
   (pool as any).query = (q: any, params?: any[]) => (typeof q === "string" ? local.query(q, params) : local.query(params ? { ...q, values: params } : q));
 
   await local.query(`
-    DROP TABLE IF EXISTS drink_likes, drink_saves, custom_drinks, users CASCADE;
+    DROP TABLE IF EXISTS drink_likes, drink_saves, custom_drinks, users CASCADE; DROP FUNCTION IF EXISTS park();
     CREATE TABLE users (id varchar PRIMARY KEY, username text);
     CREATE TABLE custom_drinks (id varchar PRIMARY KEY, user_id varchar NOT NULL REFERENCES users(id), is_public boolean DEFAULT false,
       likes_count integer DEFAULT 0, saves_count integer DEFAULT 0);
@@ -36,10 +36,16 @@ if (!PG_URL) {
     CREATE TABLE drink_saves (id varchar PRIMARY KEY DEFAULT gen_random_uuid(), user_id varchar NOT NULL REFERENCES users(id),
       drink_id varchar NOT NULL REFERENCES custom_drinks(id) ON DELETE CASCADE, created_at timestamp NOT NULL DEFAULT now());
     CREATE UNIQUE INDEX ON drink_saves (user_id, drink_id);
+    -- Test-only hook: lets a test park an engagement statement AFTER it has taken its custom_drinks row lock
+    -- (the statement blocks on advisory lock 777 inside the INSERT/DELETE) to prove ordering vs a privacy flip.
+    CREATE FUNCTION park() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_advisory_xact_lock(777); RETURN COALESCE(NEW, OLD); END $$;
+    CREATE TRIGGER park_likes BEFORE INSERT OR DELETE ON drink_likes FOR EACH ROW EXECUTE FUNCTION park();
+    CREATE TRIGGER park_saves BEFORE INSERT OR DELETE ON drink_saves FOR EACH ROW EXECUTE FUNCTION park();
   `);
+  const MANY = Array.from({ length: 10 }, (_, i) => `user-${i}`);
   const reset = async () => {
     await local.query(`TRUNCATE drink_likes, drink_saves, custom_drinks, users CASCADE`);
-    await local.query(`INSERT INTO users VALUES ('${A}'), ('${B}')`);
+    await local.query(`INSERT INTO users VALUES ('${A}'), ('${B}')` + MANY.map((u) => `, ('${u}')`).join(""));
     await local.query(`INSERT INTO custom_drinks (id, user_id, is_public) VALUES
       ('A-public','${A}',true), ('A-private','${A}',false), ('A-null','${A}',NULL), ('B-private','${B}',false)`);
   };
@@ -137,6 +143,134 @@ if (!PG_URL) {
       assert.equal((await call("POST", "A-public", action, tok(B))).status, 404);
       assert.equal((await call("DELETE", "A-public", action, tok(B))).status, 404);
       assert.deepEqual(await state("A-public"), before);
+    });
+  }
+
+  /* ---------------- real multi-session concurrency (separate connections) ---------------- */
+  const synced = async (id: string, kind: "like" | "save") => {
+    const t = kind === "like" ? "drink_likes" : "drink_saves";
+    const col = kind === "like" ? "likes_count" : "saves_count";
+    const rows = Number((await local.query(`SELECT count(*) FROM ${t} WHERE drink_id=$1`, [id])).rows[0].count);
+    const cnt = (await local.query(`SELECT ${col} AS c FROM custom_drinks WHERE id=$1`, [id])).rows[0].c;
+    assert.ok(cnt >= 0, "counter never negative");
+    assert.equal(cnt, rows, `${col} == number of ${t} rows`);
+    return rows;
+  };
+  const ok2xx = (rs: Array<{ status: number }>) => rs.every((r) => r.status === 200 || r.status === 201);
+  const waitFor = async (sqlText: string, what: string) => {
+    for (let i = 0; i < 100; i++) {
+      if ((await local.query(sqlText)).rowCount) return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.fail(`timed out waiting for ${what}`);
+  };
+  const waitingOn = (needle: string) =>
+    `SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%${needle}%' AND pid <> pg_backend_pid()`;
+  const session = async () => { const c = new pg.Client({ connectionString: PG_URL }); await c.connect(); return c; };
+
+  for (const kind of ["like", "save"] as const) {
+    const rowsOf = kind === "like" ? "likes" : "saves";
+    test(`${kind}: many users engage the SAME public drink simultaneously, repeatedly: no deadlock/500, exact counter`, async () => {
+      for (let round = 0; round < 15; round++) {
+        await reset();
+        const rs = await Promise.all(MANY.map((u) => call("POST", "A-public", kind, tok(u))));
+        assert.ok(ok2xx(rs), `round ${round}: ${JSON.stringify(rs.map((r) => r.status))}`);
+        assert.equal(await synced("A-public", kind), MANY.length);
+      }
+    });
+
+    test(`${kind}: duplicate simultaneous requests from mixed users: exactly one row per user, counter exact, no 500`, async () => {
+      for (let round = 0; round < 10; round++) {
+        await reset();
+        const users = [...MANY, ...MANY.slice(0, 5), B, B];
+        const rs = await Promise.all(users.map((u) => call("POST", "A-public", kind, tok(u))));
+        assert.ok(ok2xx(rs), `round ${round}: ${JSON.stringify(rs.map((r) => r.status))}`);
+        assert.equal(rs.filter((r) => r.status === 201).length, MANY.length + 1);
+        assert.equal(await synced("A-public", kind), MANY.length + 1);
+      }
+    });
+
+    test(`${kind}: simultaneous removals by many users, and duplicate removals by one user: no deadlock/500, never negative, final 0`, async () => {
+      for (let round = 0; round < 10; round++) {
+        await reset();
+        await Promise.all(MANY.map((u) => call("POST", "A-public", kind, tok(u))));
+        await call("POST", "A-public", kind, tok(B));
+        assert.equal(await synced("A-public", kind), MANY.length + 1);
+        const reqs = [...MANY, ...MANY, B, B, B].map((u) => call("DELETE", "A-public", kind, tok(u)));
+        const rs = await Promise.all(reqs);
+        assert.ok(rs.every((r) => r.status === 200 || r.status === 404), `round ${round}: ${JSON.stringify(rs.map((r) => r.status))}`);
+        assert.equal(rs.filter((r) => r.status === 200).length, MANY.length + 1, "each engagement removed exactly once");
+        assert.equal(await synced("A-public", kind), 0);
+      }
+    });
+
+    test(`${kind}: simultaneous engage + remove by the same and different users: no deadlock/500, counter == rows`, async () => {
+      for (let round = 0; round < 10; round++) {
+        await reset();
+        await Promise.all(MANY.slice(0, 5).map((u) => call("POST", "A-public", kind, tok(u))));
+        const reqs = [
+          ...MANY.slice(0, 5).map((u) => call("DELETE", "A-public", kind, tok(u))),
+          ...MANY.map((u) => call("POST", "A-public", kind, tok(u))),
+        ];
+        const rs = await Promise.all(reqs);
+        assert.ok(rs.every((r) => [200, 201, 404].includes(r.status)), `round ${round}: ${JSON.stringify(rs.map((r) => r.status))}`);
+        await synced("A-public", kind);
+      }
+    });
+
+    test(`${kind}: privacy flip COMMITS first -> in-flight engagement re-checks visibility and fails closed (404, no row, no count)`, async () => {
+      await reset();
+      const flip = await session();
+      try {
+        await flip.query("BEGIN");
+        await flip.query(`UPDATE custom_drinks SET is_public=false WHERE id='A-public'`); // holds the row lock, uncommitted
+        const inflight = call("POST", "A-public", kind, tok(B)); // blocks at the visibility CTE (row lock)
+        await waitFor(waitingOn("custom_drinks"), "engagement blocked behind privacy flip");
+        await flip.query("COMMIT");
+        const r = await inflight;
+        assert.equal(r.status, 404);
+        assert.deepEqual(await state("A-public"), { drink: { likes_count: 0, saves_count: 0 }, likes: [], saves: [] });
+        assert.equal((await call("POST", "A-public", kind, tok(B))).status, 404);
+      } finally { await flip.query("ROLLBACK").catch(() => {}); await flip.end(); }
+    });
+
+    test(`${kind}: privacy flip COMMITS first -> in-flight REMOVAL by non-owner fails closed (404, existing row kept)`, async () => {
+      await reset();
+      await call("POST", "A-public", kind, tok(B));
+      const flip = await session();
+      try {
+        await flip.query("BEGIN");
+        await flip.query(`UPDATE custom_drinks SET is_public=false WHERE id='A-public'`);
+        const inflight = call("DELETE", "A-public", kind, tok(B));
+        await waitFor(waitingOn("custom_drinks"), "removal blocked behind privacy flip");
+        await flip.query("COMMIT");
+        assert.equal((await inflight).status, 404);
+        const s: any = await state("A-public");
+        assert.deepEqual(s[rowsOf], [B]);
+        assert.equal(await synced("A-public", kind), 1);
+      } finally { await flip.query("ROLLBACK").catch(() => {}); await flip.end(); }
+    });
+
+    test(`${kind}: engagement statement already past authorization -> privacy flip waits for it (no mid-statement revoke), later attempts denied`, async () => {
+      await reset();
+      const holder = await session();
+      let flipDone = false;
+      try {
+        await holder.query("SELECT pg_advisory_lock(777)"); // parks the engagement statement inside its INSERT, after its row lock
+        const inflight = call("POST", "A-public", kind, tok(B));
+        await waitFor(`SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted`, "engagement parked after authorization");
+        const flip = local.query(`UPDATE custom_drinks SET is_public=false WHERE id='A-public'`).then(() => { flipDone = true; });
+        await waitFor(waitingOn("is_public"), "privacy flip queued behind the authorized statement");
+        assert.equal(flipDone, false, "flip must not slip in between authorization and mutation");
+        await holder.query("SELECT pg_advisory_unlock(777)");
+        const r = await inflight;
+        await flip;
+        assert.equal(r.status, 201, "authorized while public: serialized BEFORE the flip");
+        assert.equal(await synced("A-public", kind), 1);
+        // after the flip committed: no further engagement for another viewer
+        assert.equal((await call("POST", "A-public", kind, tok(MANY[0]))).status, 404);
+        assert.equal(await synced("A-public", kind), 1);
+      } finally { await holder.query("SELECT pg_advisory_unlock_all()").catch(() => {}); await holder.end(); }
     });
   }
 }
