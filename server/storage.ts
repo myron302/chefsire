@@ -76,6 +76,13 @@ import { isProviderInRange, milesBetween, type Coordinates } from "./services/ca
 import { visiblePostsCondition } from "./lib/post-visibility";
 import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
 import { purgeRemixEngagementForUser } from "./lib/remix-engagement-cleanup";
+import type { PasswordHash } from "./lib/password-hash";
+
+/**
+ * Database-ready user data. `password` can only be a `PasswordHash` (from `hashPassword`) or null/absent for
+ * OAuth/passwordless accounts, so a raw registration string cannot be handed to persistence by accident.
+ */
+export type NewUserRecord = Omit<InsertUser, "password"> & { password?: PasswordHash | null };
 
 // Reuse the shared pool so there's only one connection pool in the process
 const _db = sharedPool ? drizzle(sharedPool) : null;
@@ -94,7 +101,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createUser(user: NewUserRecord): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
   getSuggestedUsers(userId: string, limit?: number): Promise<User[]>;
   searchUsers(query: string, limit?: number): Promise<User[]>;
@@ -366,7 +373,7 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(insertUser: NewUserRecord): Promise<User> {
     const db = getDb();
     const result = await db.insert(users).values(insertUser).returning();
     return result[0];
