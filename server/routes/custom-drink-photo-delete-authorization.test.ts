@@ -133,11 +133,11 @@ if (!PG_URL) {
     assert.equal(await rowExists("2"), true);
   });
 
-  test("POST photo existence-disclosure audit (reported, not changed here): non-owned existing vs nonexistent drink", async () => {
+  test("POST photo (CS-CL-08): non-owned existing vs nonexistent drink are identical 404s", async () => {
     const existing = await post("A-private", tok(B));
     const ghost = await post("does-not-exist", tok(B));
-    // Documents the current observable behavior: 403 vs 404 differs (separate finding).
-    assert.equal(existing.status, 403);
-    assert.equal(ghost.status, 404);
+    assert.equal(existing.status, 404);
+    assert.equal(existing.status, ghost.status);
+    assert.equal(existing.text, ghost.text);
   });
 }
