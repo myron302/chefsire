@@ -104,6 +104,7 @@ import {
   type CreatorCampaignPlaybookPreferredAudienceFit,
 } from "@shared/schema";
 import { z } from "zod";
+import { customDrinkOwnerPatchSchema, toCustomDrinkOwnerPatch } from "../../shared/custom-drink-mutations";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
 import { optionalAuth, requireAuth } from "../middleware";
 import { WebhooksHelper } from "square";
@@ -28348,7 +28349,16 @@ r.patch("/custom-drinks/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
     
-    const updated = await storage.updateCustomDrink(id, req.body);
+    const parsed = customDrinkOwnerPatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid drink data", details: parsed.error.errors });
+    }
+
+    // Owner-scoped UPDATE (id AND user_id): a stale check above cannot be exploited.
+    const updated = await storage.updateOwnedCustomDrink(id, req.user!.id, toCustomDrinkOwnerPatch(parsed.data));
+    if (!updated || updated.userId !== req.user!.id) {
+      return res.status(404).json({ ok: false, error: "Drink not found" });
+    }
     res.json({ ok: true, drink: updated });
   } catch (error: any) {
     console.error("Error updating drink:", error);
@@ -28411,7 +28421,7 @@ r.post("/custom-drinks/:id/photo", requireAuth, async (req, res) => {
     
     // Also update the drink's imageUrl if it doesn't have one
     if (!drink.imageUrl) {
-      await storage.updateCustomDrink(id, { imageUrl: photo.imageUrl });
+      await storage.updateOwnedCustomDrink(id, req.user!.id, { imageUrl: photo.imageUrl });
     }
     
     res.status(201).json({ ok: true, photo });
