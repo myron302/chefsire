@@ -162,11 +162,29 @@ test("storage ignores non-allowlisted keys even if a caller passes them", async 
 
 test("legitimate like/save still use server-side atomic increments", async () => {
   const { storage } = await import("../storage");
-  await storage.likeDrink(ATTACKER, DRINK);
-  await storage.saveDrink(ATTACKER, DRINK);
-  const raw = rawQueries.join("\n");
-  assert.match(raw, /"likes_count" = "custom_drinks"\."likes_count" \+ 1/);
-  assert.match(raw, /"saves_count" = "custom_drinks"\."saves_count" \+ 1/);
+  // CS-CL-06: engagement is a short transaction (lock+visibility, write, counter); answer each statement minimally.
+  const log: string[] = [];
+  const answer = async (q: any) => {
+    const text: string = typeof q === "string" ? q : q.text;
+    log.push(text);
+    if (/^select id from custom_drinks/i.test(text.trim())) return { rows: [{ id: DRINK }], rowCount: 1, fields: [] };
+    if (/^insert into "drink_(likes|saves)"/i.test(text.trim())) return { rows: [{ id: "e1", user_id: ATTACKER, drink_id: DRINK, created_at: new Date() }], rowCount: 1, fields: [] };
+    return { rows: [], rowCount: 1, fields: [] };
+  };
+  const origQuery = (pool as any).query;
+  const origConnect = (pool as any).connect;
+  (pool as any).query = answer;
+  (pool as any).connect = async () => ({ query: answer, release() {} });
+  try {
+    await storage.likeDrink(ATTACKER, DRINK);
+    await storage.saveDrink(ATTACKER, DRINK);
+  } finally {
+    (pool as any).query = origQuery;
+    (pool as any).connect = origConnect;
+  }
+  const raw = log.join("\n");
+  assert.match(raw, /"likes_count" = COALESCE\("likes_count", 0\) \+ 1/);
+  assert.match(raw, /"saves_count" = COALESCE\("saves_count", 0\) \+ 1/);
 });
 
 /* ---- ingredient-shape compatibility: what the real creators send ---- */
