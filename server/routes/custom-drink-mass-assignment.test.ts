@@ -8,6 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
 import type { AddressInfo } from "node:net";
+import { insertCustomDrinkSchema } from "../../shared/schema";
 import { signAuthToken } from "../lib/jwt-config";
 
 process.env.DATABASE_URL ||= "postgres://u:p@custom-drink-tests.invalid/none";
@@ -167,3 +168,49 @@ test("legitimate like/save still use server-side atomic increments", async () =>
   assert.match(raw, /"likes_count" = "custom_drinks"\."likes_count" \+ 1/);
   assert.match(raw, /"saves_count" = "custom_drinks"\."saves_count" \+ 1/);
 });
+
+/* ---- ingredient-shape compatibility: what the real creators send ---- */
+const smoothieRow = { id: 1727000000000, name: "Banana", category: "fruits", calories: 89, protein: 1.1, carbs: 22.8, fiber: 2.6, icon: "🍌", boost: "potassium" };
+const caffeinatedRow = { id: 1727000000001, name: "Espresso", category: "base", calories: 3, caffeine: 64, carbs: 0, sugar: 0, icon: "☕", boost: "focus" };
+const shapes: Record<string, unknown[]> = {
+  "smoothies (catalog row with client id)": [smoothieRow],
+  "smoothies (premade row)": [{ name: "Kale", category: "ingredient", calories: 0, protein: 0, carbs: 0, fiber: 0, icon: "🥤" }],
+  "caffeinated (caffeine/sugar/id, no protein/fiber)": [caffeinatedRow],
+  "caffeinated (premade row)": [{ name: "Matcha", category: "ingredient", calories: 0, caffeine: 0, carbs: 0, sugar: 0, icon: "☕" }],
+  "string id and name only": [{ id: "row-1", name: "Gin" }],
+  "empty list": [],
+};
+for (const [label, ingredients] of Object.entries(shapes)) {
+  test(`PATCH accepts ingredient shape: ${label}`, async () => {
+    const r = await patch({ ingredients });
+    assert.equal(r.status, 200);
+    assert.equal(sets.length, 1);
+    assert.match(sets[0].sql, /"user_id" = \$\d+/);
+    assert.deepEqual(sets[0].params.sort(), [DRINK, OWNER].sort());
+    assert.deepEqual(JSON.parse(String(sets[0].value.ingredients)), ingredients);
+    assert.equal(row.userId, OWNER);
+    // and creation accepts the same rows
+    const created = insertCustomDrinkSchema.safeParse({
+      userId: OWNER, name: "n", category: "c", ingredients, calories: 1, protein: "1", carbs: "1", fiber: "1", fat: "1",
+    });
+    assert.equal(created.success, true);
+  });
+}
+
+test("nested ingredient id is row metadata; top-level id stays forbidden", async () => {
+  assert.equal((await patch({ ingredients: [caffeinatedRow] })).status, 200);
+  assert.equal(row.id, DRINK);
+  sets = [];
+  assert.equal((await patch({ id: "x", ingredients: [caffeinatedRow] })).status, 400);
+  assert.equal(sets.length, 0);
+});
+
+for (const bad of [{ userId: VICTIM }, { likesCount: 5 }, { nested: { a: 1 } }, { caffeine: "lots" }, {}]) {
+  test(`unsupported ingredient content rejected: ${JSON.stringify(bad)}`, async () => {
+    const r = await patch({ ingredients: [{ ...caffeinatedRow, ...bad }] });
+    if (Object.keys(bad).length === 0) return assert.equal(r.status, 200);
+    assert.equal(r.status, 400);
+    assert.equal(sets.length, 0);
+    assert.deepEqual(row, fresh());
+  });
+}

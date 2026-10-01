@@ -47,16 +47,35 @@ export const CUSTOM_DRINK_PROTECTED_FIELDS = [
   "updatedAt",
 ] as const;
 
+/**
+ * One ingredient row inside the `ingredients` JSON. There is no single ingredient model: the two
+ * client creators that POST to /custom-drinks build different rows from the same pattern
+ * (`{ ...catalogItem, category, id: Date.now() }`, plus the premade-recipe rows):
+ *   smoothies    name, category, calories, protein, carbs, fiber, icon, boost, id
+ *   caffeinated  name, category, calories, caffeine, carbs, sugar, icon, boost, id
+ * so every field except `name` is optional and macro fields are not tied to a category. `id` is a
+ * client-generated row key (a number from Date.now()) living inside the JSON; it is unrelated to the
+ * protected top-level drink `id`, which is not in the patch schema. The row stays `.strict()`: a key
+ * nobody produces (userId, likesCount, ...) is rejected rather than persisted.
+ */
+const macro = z.number().finite();
 const ingredientSchema = z
   .object({
+    id: z.union([z.string(), z.number().finite()]),
     name: z.string(),
     category: z.string(),
-    calories: z.number().finite(),
-    protein: z.number().finite(),
-    carbs: z.number().finite(),
-    fiber: z.number().finite(),
     icon: z.string(),
+    boost: z.string(),
+    calories: macro,
+    protein: macro,
+    carbs: macro,
+    fiber: macro,
+    fat: macro,
+    caffeine: macro,
+    sugar: macro,
   })
+  .partial()
+  .required({ name: true })
   .strict();
 
 // numeric(5,2) columns; accepted as number or decimal string, stored as a string like drizzle expects.

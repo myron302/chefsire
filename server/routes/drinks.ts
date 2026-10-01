@@ -28355,8 +28355,8 @@ r.patch("/custom-drinks/:id", requireAuth, async (req, res) => {
     }
 
     // Owner-scoped UPDATE (id AND user_id): a stale check above cannot be exploited.
-    const updated = await storage.updateOwnedCustomDrink(id, req.user.id, toCustomDrinkOwnerPatch(parsed.data));
-    if (!updated || updated.userId !== req.user.id) {
+    const updated = await storage.updateOwnedCustomDrink(id, req.user!.id, toCustomDrinkOwnerPatch(parsed.data));
+    if (!updated || updated.userId !== req.user!.id) {
       return res.status(404).json({ ok: false, error: "Drink not found" });
     }
     res.json({ ok: true, drink: updated });
@@ -28421,7 +28421,7 @@ r.post("/custom-drinks/:id/photo", requireAuth, async (req, res) => {
     
     // Also update the drink's imageUrl if it doesn't have one
     if (!drink.imageUrl) {
-      await storage.updateOwnedCustomDrink(id, req.user.id, { imageUrl: photo.imageUrl });
+      await storage.updateOwnedCustomDrink(id, req.user!.id, { imageUrl: photo.imageUrl });
     }
     
     res.status(201).json({ ok: true, photo });
