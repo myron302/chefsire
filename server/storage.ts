@@ -69,6 +69,7 @@ import {
   type UserDrinkStats,
   type InsertUserDrinkStats,
   type CustomDrinkWithUser,
+  type DrinkAuthor,
   type CommentLike,
   type InsertCommentLike,
 } from "@shared/schema";
@@ -298,8 +299,10 @@ export interface IStorage {
 
   // Custom Drinks
   getCustomDrink(id: string): Promise<CustomDrink | undefined>;
-  getCustomDrinkWithUser(id: string): Promise<CustomDrinkWithUser | undefined>;
-  getUserCustomDrinks(userId: string, category?: string): Promise<CustomDrink[]>;
+  /** Visibility-scoped read: returns the drink only if it is public or owned by `viewerId` (null = anonymous). */
+  getCustomDrinkWithUserVisibleTo(id: string, viewerId: string | null): Promise<CustomDrinkWithUser | undefined>;
+  /** Visibility-scoped list of `ownerId`'s drinks: private rows only when `viewerId === ownerId`. */
+  getUserCustomDrinksVisibleTo(ownerId: string, viewerId: string | null, category?: string): Promise<CustomDrink[]>;
   getPublicCustomDrinks(category?: string, limit?: number): Promise<CustomDrinkWithUser[]>;
   createCustomDrink(drink: InsertCustomDrink): Promise<CustomDrink>;
   /** Owner-scoped: the UPDATE is constrained by id AND user_id; returns undefined when no owned row matched. */
@@ -308,7 +311,8 @@ export interface IStorage {
   
   // Drink Photos
   createDrinkPhoto(photo: InsertDrinkPhoto): Promise<DrinkPhoto>;
-  getDrinkPhotos(drinkId: string): Promise<DrinkPhoto[]>;
+  /** Photos of a custom drink, only if the drink is visible to `viewerId` (null = anonymous). */
+  getDrinkPhotosVisibleTo(drinkId: string, viewerId: string | null): Promise<DrinkPhoto[]>;
   deleteDrinkPhoto(id: string): Promise<boolean>;
   
   // Drink Likes
@@ -320,7 +324,7 @@ export interface IStorage {
   saveDrink(userId: string, drinkId: string): Promise<DrinkSave>;
   unsaveDrink(userId: string, drinkId: string): Promise<boolean>;
   isDrinkSaved(userId: string, drinkId: string): Promise<boolean>;
-  getUserSavedDrinks(userId: string, category?: string): Promise<CustomDrinkWithUser[]>;
+  getUserSavedDrinks(userId: string, viewerId: string | null, category?: string): Promise<CustomDrinkWithUser[]>;
   
   // Recipe Saves
   saveRecipe(userId: string, recipeId: string): Promise<RecipeSave>;
@@ -1900,28 +1904,42 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async getCustomDrinkWithUser(id: string): Promise<CustomDrinkWithUser | undefined> {
+  private toDrinkAuthor(u: User): DrinkAuthor {
+    return { id: u.id, username: u.username, displayName: u.displayName, avatar: u.avatar, royalTitle: u.royalTitle };
+  }
+
+  /**
+   * Visibility predicate applied inside the SQL. Only an explicit `is_public = true` grants public
+   * access (NULL/legacy rows evaluate to NULL and are excluded); the owner may always see their own.
+   */
+  private customDrinkVisibleTo(viewerId: string | null) {
+    return viewerId
+      ? or(eq(customDrinks.isPublic, true), eq(customDrinks.userId, viewerId))!
+      : eq(customDrinks.isPublic, true);
+  }
+
+  async getCustomDrinkWithUserVisibleTo(id: string, viewerId: string | null): Promise<CustomDrinkWithUser | undefined> {
     const db = getDb();
     const result = await db
       .select({ drink: customDrinks, user: users })
       .from(customDrinks)
       .innerJoin(users, eq(customDrinks.userId, users.id))
-      .where(eq(customDrinks.id, id))
+      .where(and(eq(customDrinks.id, id), this.customDrinkVisibleTo(viewerId)))
       .limit(1);
 
     if (!result[0]) return undefined;
 
-    const photos = await this.getDrinkPhotos(id);
+    const photos = await this.getDrinkPhotosVisibleTo(id, viewerId);
     return { 
       ...result[0].drink, 
-      user: result[0].user,
+      user: this.toDrinkAuthor(result[0].user),
       photos 
     };
   }
 
-  async getUserCustomDrinks(userId: string, category?: string): Promise<CustomDrink[]> {
+  async getUserCustomDrinksVisibleTo(ownerId: string, viewerId: string | null, category?: string): Promise<CustomDrink[]> {
     const db = getDb();
-    const conditions = [eq(customDrinks.userId, userId)];
+    const conditions = [eq(customDrinks.userId, ownerId), this.customDrinkVisibleTo(viewerId)];
     if (category) {
       conditions.push(eq(customDrinks.category, category));
     }
@@ -1950,7 +1968,7 @@ export class DrizzleStorage implements IStorage {
       .orderBy(desc(customDrinks.likesCount), desc(customDrinks.createdAt))
       .limit(limit);
 
-    return result.map((row) => ({ ...row.drink, user: row.user }));
+    return result.map((row) => ({ ...row.drink, user: this.toDrinkAuthor(row.user) }));
   }
 
   async createCustomDrink(drink: InsertCustomDrink): Promise<CustomDrink> {
@@ -1992,13 +2010,15 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async getDrinkPhotos(drinkId: string): Promise<DrinkPhoto[]> {
+  async getDrinkPhotosVisibleTo(drinkId: string, viewerId: string | null): Promise<DrinkPhoto[]> {
     const db = getDb();
-    return db
-      .select()
+    const rows = await db
+      .select({ photo: drinkPhotos })
       .from(drinkPhotos)
-      .where(eq(drinkPhotos.drinkId, drinkId))
+      .innerJoin(customDrinks, eq(drinkPhotos.drinkId, customDrinks.id))
+      .where(and(eq(drinkPhotos.drinkId, drinkId), this.customDrinkVisibleTo(viewerId)))
       .orderBy(desc(drinkPhotos.createdAt));
+    return rows.map((r) => r.photo);
   }
 
   async deleteDrinkPhoto(id: string): Promise<boolean> {
@@ -2087,9 +2107,9 @@ export class DrizzleStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getUserSavedDrinks(userId: string, category?: string): Promise<CustomDrinkWithUser[]> {
+  async getUserSavedDrinks(userId: string, viewerId: string | null, category?: string): Promise<CustomDrinkWithUser[]> {
     const db = getDb();
-    const conditions = [eq(drinkSaves.userId, userId)];
+    const conditions = [eq(drinkSaves.userId, userId), this.customDrinkVisibleTo(viewerId)];
     
     if (category) {
       conditions.push(eq(customDrinks.category, category));
@@ -2106,7 +2126,7 @@ export class DrizzleStorage implements IStorage {
 
     return result.map((row) => ({ 
       ...row.drink, 
-      user: row.user,
+      user: this.toDrinkAuthor(row.user),
       isSaved: true 
     }));
   }
