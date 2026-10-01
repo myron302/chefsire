@@ -28291,10 +28291,12 @@ r.get("/custom-drinks/user/:userId", requireAuth, async (req, res) => {
 // Get public/community drinks (declared before "/custom-drinks/:id" so "public" is not read as an id)
 r.get("/custom-drinks/public", async (req, res) => {
   try {
-    const { category, limit } = req.query;
+    const { category } = req.query;
+    // Always bounded: malformed/negative/zero/huge values clamp (shared pagination policy); never an unbounded SELECT.
+    const { limit } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
     const drinks = await storage.getPublicCustomDrinks(
-      category as string | undefined,
-      limit ? parseInt(limit as string) : undefined
+      typeof category === "string" ? category : undefined,
+      Math.floor(limit)
     );
     res.json({ ok: true, drinks });
   } catch (error: any) {

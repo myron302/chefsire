@@ -41,6 +41,7 @@ const saves = [
 ];
 const camel = (c: string) => c.replace(/_([a-z])/g, (_, l) => l.toUpperCase());
 const sqlLog: string[] = [];
+const limitLog: unknown[] = [];
 
 const { pool } = await import("../db/index");
 (pool as any).query = async (q: any, maybeParams?: any[]) => {
@@ -66,6 +67,9 @@ const { pool } = await import("../db/index");
   // drizzle drops the table qualifier when there is no join
   const cols = qualified.length ? qualified : [...selectList.matchAll(/"([a-z_]+)"/g)].map((m) => [from, m[1]]);
   const rowsOut: any[] = [];
+  const lim = text.match(/ limit \$(\d+)/i);
+  const limitParam = lim ? params[Number(lim[1]) - 1] : undefined;
+  if (/^select/i.test(text) && / from "custom_drinks"/i.test(text) && /inner join "users"/i.test(text)) limitLog.push(lim ? limitParam : "NONE");
   const emit = (ctx: Record<string, any>) => rowsOut.push(cols.map(([t, c]) => ctx[t]?.[camel(c)]));
   if (from === "custom_drinks") {
     for (const d of drinks) {
@@ -85,7 +89,8 @@ const { pool } = await import("../db/index");
       if (visible(d) && (saver === undefined || s.userId === saver)) emit({ drink_saves: s, custom_drinks: d, users: users[d.userId] });
     }
   }
-  return { rows: rowsOut, rowCount: rowsOut.length, fields: [] };
+  const capped = limitParam === undefined ? rowsOut : rowsOut.slice(0, Number(limitParam));
+  return { rows: capped, rowCount: capped.length, fields: [] };
 };
 
 const { default: drinksRouter } = await import("./drinks");
@@ -194,4 +199,30 @@ test("creation: insert schema preserves isPublic true/false and does not default
   assert.equal(insertCustomDrinkSchema.parse({ ...base, isPublic: false }).isPublic, false);
   // omitted -> left to the column default (false); the route never injects a public value
   assert.notEqual(insertCustomDrinkSchema.parse(base).isPublic, true);
+});
+
+test("/public limit: always a bounded, validated LIMIT in the real SQL; private/NULL rows stay excluded", async () => {
+  // [query string, expected bound LIMIT param]; max=100 and default=20 come from parseLimitOffset({limit:20,maxLimit:100})
+  const cases: Array<[string, number]> = [
+    ["", 20], ["?limit=1", 1], ["?limit=5", 5], ["?limit=abc", 20], ["?limit=-1", 1], ["?limit=0", 1],
+    ["?limit=99999999999", 100], ["?limit=1e400", 20], ["?limit=Infinity", 20], ["?limit=2.7", 2],
+    ["?limit=", 1], ["?limit=1&limit=2", 20], ["?limit[a]=1", 20], ["?limit=%00", 20],
+  ];
+  for (const [qs, expected] of cases) {
+    limitLog.length = 0;
+    const r = await get(`/public${qs}`, {});
+    assert.equal(r.status, 200, qs);
+    assert.deepEqual(limitLog, [expected], `limit for "${qs}"`);
+    assert.ok(Number.isInteger(limitLog[0]) && (limitLog[0] as number) >= 1 && (limitLog[0] as number) <= 100, qs);
+    for (const d of r.body.drinks) assert.ok(["A-public", "B-public"].includes(d.id), `${qs}: ${d.id}`);
+    assert.ok(!/A-private|A-null|B-private|secret-desc-A-private|HASH-|@example/.test(r.text.replace(/"A-public"|"B-public"/g, "")), qs);
+  }
+  // the bound is actually applied: limit=1 yields exactly one row, limit=5 yields both public rows
+  assert.equal((await get("/public?limit=1")).body.drinks.length, 1);
+  assert.deepEqual(ids((await get("/public?limit=5")).body), ["A-public", "B-public"]);
+  // SQL text carries a parameterised LIMIT and the explicit-public predicate
+  const sql = sqlLog.filter((q) => / from "custom_drinks"/i.test(q) && /order by "custom_drinks"\."likes_count"/i.test(q)).at(-1)!;
+  assert.match(sql, / limit \$\d+/i);
+  assert.match(sql, /"custom_drinks"\."is_public" = \$\d+/);
+  assert.ok(!/ or "custom_drinks"\."user_id"/.test(sql), "anonymous public list has no owner branch");
 });
