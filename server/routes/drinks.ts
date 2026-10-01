@@ -28456,10 +28456,13 @@ r.get("/custom-drinks/:id/photos", optionalAuth, async (req, res) => {
   }
 });
 
-// Delete drink photo
+// Delete drink photo. Authorization is enforced inside the single DELETE (parent drink must be owned by req.user);
+// a non-owner and a nonexistent id get the identical 404 so photo existence is not disclosed.
 r.delete("/drink-photos/:id", requireAuth, async (req, res) => {
   try {
-    const success = await storage.deleteDrinkPhoto(req.params.id);
+    const actorId = viewerIdOf(req);
+    if (!actorId) return res.status(401).json({ ok: false, error: "Authentication required" });
+    const success = await storage.deleteOwnedDrinkPhoto(req.params.id, actorId);
     if (success) {
       res.json({ ok: true, message: "Photo deleted successfully" });
     } else {
