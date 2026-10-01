@@ -188,7 +188,8 @@ test("/public: reaches the public handler (not /:id) and returns only explicit-p
 
 test("creation: insert schema preserves isPublic true/false and does not default it to public", async () => {
   const { insertCustomDrinkSchema } = await import("../../shared/schema");
-  const base = { userId: A, name: "n", category: "smoothies", calories: 1 } as any;
+  const { id: _id, createdAt: _c, updatedAt: _u, likesCount: _l, savesCount: _s, sharesCount: _sh, isPublic: _p, ...rest } = drink("x", A, null);
+  const base = rest as any;
   assert.equal(insertCustomDrinkSchema.parse({ ...base, isPublic: true }).isPublic, true);
   assert.equal(insertCustomDrinkSchema.parse({ ...base, isPublic: false }).isPublic, false);
   // omitted -> left to the column default (false); the route never injects a public value
