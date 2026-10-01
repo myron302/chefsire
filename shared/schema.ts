@@ -1036,8 +1036,10 @@ export type SubstitutionIngredient = typeof substitutionIngredients.$inferSelect
 export type Substitution = typeof substitutions.$inferSelect;
 export type InsertSubstitutionIngredient = z.infer<typeof insertSubstitutionIngredientSchema>;
 export type InsertSubstitution = z.infer<typeof insertSubstitutionSchema>;
+/** The only user fields a custom-drink response may carry (never email, password hash, etc.). */
+export type DrinkAuthor = Pick<User, "id" | "username" | "displayName" | "avatar" | "royalTitle">;
 export type CustomDrinkWithUser = CustomDrink & {
-  user: User;
+  user: DrinkAuthor;
   isLiked?: boolean;
   isSaved?: boolean;
   photos?: DrinkPhoto[];
