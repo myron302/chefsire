@@ -316,12 +316,20 @@ export interface IStorage {
   deleteDrinkPhoto(id: string): Promise<boolean>;
   
   // Drink Likes
-  likeDrink(userId: string, drinkId: string): Promise<DrinkLike>;
+  /**
+   * Visibility-gated and atomic: the like row + likes_count bump happen in ONE statement that only fires when the
+   * drink is public or owned by `userId`. Returns undefined (no write) when the drink is missing or not visible.
+   * `created` is false when the like already existed (idempotent; counter untouched).
+   */
+  likeDrink(userId: string, drinkId: string): Promise<{ like: DrinkLike; created: boolean } | undefined>;
+  /** Visibility-gated: false (no write) when the drink is missing, not visible, or not liked by `userId`. */
   unlikeDrink(userId: string, drinkId: string): Promise<boolean>;
   isDrinkLiked(userId: string, drinkId: string): Promise<boolean>;
   
   // Drink Saves
-  saveDrink(userId: string, drinkId: string): Promise<DrinkSave>;
+  /** Same contract as likeDrink, for saves / saves_count. */
+  saveDrink(userId: string, drinkId: string): Promise<{ save: DrinkSave; created: boolean } | undefined>;
+  /** Same contract as unlikeDrink, for saves / saves_count. */
   unsaveDrink(userId: string, drinkId: string): Promise<boolean>;
   isDrinkSaved(userId: string, drinkId: string): Promise<boolean>;
   getUserSavedDrinks(userId: string, viewerId: string | null, category?: string): Promise<CustomDrinkWithUser[]>;
@@ -2028,33 +2036,91 @@ export class DrizzleStorage implements IStorage {
   }
 
   // ---------- Drink Likes ----------
-  async likeDrink(userId: string, drinkId: string): Promise<DrinkLike> {
+  /**
+   * Engagement writes (like/save) are single SQL statements whose first CTE is the visibility predicate
+   * (is_public = true OR owner = actor; NULL is_public is not public). Nothing is inserted/deleted/counted unless
+   * that CTE returns the drink, so authorization and mutation cannot be separated by a caller or by a concurrent
+   * privacy change (FOR SHARE makes a concurrent visibility UPDATE wait until this statement commits).
+   */
+  private static readonly ENGAGEMENT = {
+    like: { table: "drink_likes", counter: "likes_count" },
+    save: { table: "drink_saves", counter: "saves_count" },
+  } as const;
+
+  private async addEngagement(kind: "like" | "save", userId: string, drinkId: string) {
     const db = getDb();
-    const result = await db.insert(drinkLikes).values({ userId, drinkId }).returning();
-    
-    await db
-      .update(customDrinks)
-      .set({ likesCount: sql`${customDrinks.likesCount} + 1` })
-      .where(eq(customDrinks.id, drinkId));
-    
-    return result[0];
+    const { table, counter } = DrizzleStorage.ENGAGEMENT[kind];
+    const t = sql.raw(`"${table}"`);
+    const c = sql.raw(`"${counter}"`);
+    const res: any = await db.execute(sql`
+      WITH target AS (
+        SELECT id FROM custom_drinks
+        WHERE id = ${drinkId} AND (is_public = true OR user_id = ${userId})
+        FOR SHARE
+      ),
+      ins AS (
+        INSERT INTO ${t} (user_id, drink_id)
+        SELECT ${userId}, id FROM target
+        ON CONFLICT (user_id, drink_id) DO NOTHING
+        RETURNING id, user_id, drink_id, created_at
+      ),
+      bump AS (
+        UPDATE custom_drinks SET ${c} = COALESCE(${c}, 0) + 1
+        WHERE id IN (SELECT drink_id FROM ins)
+        RETURNING id
+      )
+      SELECT (SELECT count(*) FROM target)::int AS visible,
+             (SELECT id FROM ins) AS id, (SELECT user_id FROM ins) AS user_id,
+             (SELECT drink_id FROM ins) AS drink_id, (SELECT created_at FROM ins) AS created_at
+    `);
+    const row = (res.rows ?? res)[0];
+    if (!row || !row.visible) return undefined;
+    if (row.id) return { row, created: true };
+    // Already engaged (also covers losing a concurrent-duplicate race): return the existing row, counter untouched.
+    const existing: any = await db.execute(
+      sql`SELECT id, user_id, drink_id, created_at FROM ${t} WHERE user_id = ${userId} AND drink_id = ${drinkId} LIMIT 1`
+    );
+    const ex = (existing.rows ?? existing)[0];
+    return ex ? { row: ex, created: false } : undefined;
+  }
+
+  private async removeEngagement(kind: "like" | "save", userId: string, drinkId: string): Promise<boolean> {
+    const db = getDb();
+    const { table, counter } = DrizzleStorage.ENGAGEMENT[kind];
+    const t = sql.raw(`"${table}"`);
+    const c = sql.raw(`"${counter}"`);
+    const res: any = await db.execute(sql`
+      WITH target AS (
+        SELECT id FROM custom_drinks
+        WHERE id = ${drinkId} AND (is_public = true OR user_id = ${userId})
+        FOR SHARE
+      ),
+      del AS (
+        DELETE FROM ${t}
+        WHERE user_id = ${userId} AND drink_id IN (SELECT id FROM target)
+        RETURNING drink_id
+      ),
+      bump AS (
+        UPDATE custom_drinks SET ${c} = GREATEST(COALESCE(${c}, 0) - 1, 0)
+        WHERE id IN (SELECT drink_id FROM del)
+        RETURNING id
+      )
+      SELECT (SELECT count(*) FROM del)::int AS removed
+    `);
+    return ((res.rows ?? res)[0]?.removed ?? 0) > 0;
+  }
+
+  private toEngagement(row: any) {
+    return { id: row.id, userId: row.user_id, drinkId: row.drink_id, createdAt: new Date(row.created_at) };
+  }
+
+  async likeDrink(userId: string, drinkId: string): Promise<{ like: DrinkLike; created: boolean } | undefined> {
+    const r = await this.addEngagement("like", userId, drinkId);
+    return r && { like: this.toEngagement(r.row) as DrinkLike, created: r.created };
   }
 
   async unlikeDrink(userId: string, drinkId: string): Promise<boolean> {
-    const db = getDb();
-    const result = await db
-      .delete(drinkLikes)
-      .where(and(eq(drinkLikes.userId, userId), eq(drinkLikes.drinkId, drinkId)))
-      .returning();
-    
-    if (result[0]) {
-      await db
-        .update(customDrinks)
-        .set({ likesCount: sql`${customDrinks.likesCount} - 1` })
-        .where(eq(customDrinks.id, drinkId));
-      return true;
-    }
-    return false;
+    return this.removeEngagement("like", userId, drinkId);
   }
 
   async isDrinkLiked(userId: string, drinkId: string): Promise<boolean> {
@@ -2068,33 +2134,13 @@ export class DrizzleStorage implements IStorage {
   }
 
   // ---------- Drink Saves ----------
-  async saveDrink(userId: string, drinkId: string): Promise<DrinkSave> {
-    const db = getDb();
-    const result = await db.insert(drinkSaves).values({ userId, drinkId }).returning();
-    
-    await db
-      .update(customDrinks)
-      .set({ savesCount: sql`${customDrinks.savesCount} + 1` })
-      .where(eq(customDrinks.id, drinkId));
-    
-    return result[0];
+  async saveDrink(userId: string, drinkId: string): Promise<{ save: DrinkSave; created: boolean } | undefined> {
+    const r = await this.addEngagement("save", userId, drinkId);
+    return r && { save: this.toEngagement(r.row) as DrinkSave, created: r.created };
   }
 
   async unsaveDrink(userId: string, drinkId: string): Promise<boolean> {
-    const db = getDb();
-    const result = await db
-      .delete(drinkSaves)
-      .where(and(eq(drinkSaves.userId, userId), eq(drinkSaves.drinkId, drinkId)))
-      .returning();
-    
-    if (result[0]) {
-      await db
-        .update(customDrinks)
-        .set({ savesCount: sql`${customDrinks.savesCount} - 1` })
-        .where(eq(customDrinks.id, drinkId));
-      return true;
-    }
-    return false;
+    return this.removeEngagement("save", userId, drinkId);
   }
 
   async isDrinkSaved(userId: string, drinkId: string): Promise<boolean> {

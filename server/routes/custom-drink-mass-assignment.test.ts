@@ -165,8 +165,9 @@ test("legitimate like/save still use server-side atomic increments", async () =>
   await storage.likeDrink(ATTACKER, DRINK);
   await storage.saveDrink(ATTACKER, DRINK);
   const raw = rawQueries.join("\n");
-  assert.match(raw, /"likes_count" = "custom_drinks"\."likes_count" \+ 1/);
-  assert.match(raw, /"saves_count" = "custom_drinks"\."saves_count" \+ 1/);
+  // CS-CL-06: the increment is now one visibility-gated statement, still a server-side SQL increment.
+  assert.match(raw, /"likes_count" = COALESCE\("likes_count", 0\) \+ 1/);
+  assert.match(raw, /"saves_count" = COALESCE\("saves_count", 0\) \+ 1/);
 });
 
 /* ---- ingredient-shape compatibility: what the real creators send ---- */

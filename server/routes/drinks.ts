@@ -28479,8 +28479,10 @@ r.delete("/drink-photos/:id", requireAuth, async (req, res) => {
 r.post("/custom-drinks/:id/like", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const like = await storage.likeDrink(req.user.id, id);
-    res.status(201).json({ ok: true, like });
+    // Visibility is enforced inside the storage statement; missing and not-visible drinks are indistinguishable.
+    const result = await storage.likeDrink(req.user.id, id);
+    if (!result) return res.status(404).json({ ok: false, error: "Drink not found" });
+    res.status(result.created ? 201 : 200).json({ ok: true, like: result.like });
   } catch (error: any) {
     console.error("Error liking drink:", error);
     res.status(500).json({ ok: false, error: "Failed to like drink" });
@@ -28523,8 +28525,9 @@ r.get("/custom-drinks/:id/liked", requireAuth, async (req, res) => {
 r.post("/custom-drinks/:id/save", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const save = await storage.saveDrink(req.user.id, id);
-    res.status(201).json({ ok: true, save });
+    const result = await storage.saveDrink(req.user.id, id);
+    if (!result) return res.status(404).json({ ok: false, error: "Drink not found" });
+    res.status(result.created ? 201 : 200).json({ ok: true, save: result.save });
   } catch (error: any) {
     console.error("Error saving drink:", error);
     res.status(500).json({ ok: false, error: "Failed to save drink" });
