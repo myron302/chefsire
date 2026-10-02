@@ -30,7 +30,8 @@ export const TEST_JWT_SECRET = getJwtConfig().secret;
 
 /** Mint a token the way the application does. */
 export function signTestAuthToken(claims: AuthTokenClaims): string {
-  return signAuthToken(claims);
+  // Tokens carry the account auth version; fixtures default to the schema default (1).
+  return signAuthToken({ av: 1, ...claims });
 }
 
 /** `Authorization` header for a user id, matching how the app's clients send credentials. */

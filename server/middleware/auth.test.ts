@@ -1,3 +1,4 @@
+import "../test-support/accept-test-sessions";
 import { TEST_JWT_SECRET as secret } from "../test-support/auth-test-env";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -18,7 +19,7 @@ test("optional auth leaves an anonymous public request readable", async () => {
 });
 
 test("optional auth hydrates only verified token identity", async () => {
-  const token = jwt.sign({ id: "customer", email: "private@example.com" }, secret, { expiresIn: "5m" });
+  const token = jwt.sign({ id: "customer", av: 1, email: "private@example.com" }, secret, { expiresIn: "5m" });
   const result = await run({ headers: { authorization: `Bearer ${token}` }, cookies: {} });
   assert.equal(result.continued, true);
   assert.equal(result.request.user?.id, "customer");

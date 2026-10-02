@@ -23,20 +23,20 @@ const NORMAL_EMAIL = "cook@chefsire.test";
 
 /* ------------------------------------------------------------------ the world */
 
-type UserRecord = { id: string; email: string; username: string; emailVerifiedAt: Date | null; emailVerifiedVia: string | null };
+type UserRecord = { id: string; email: string; username: string; emailVerifiedAt: Date | null; emailVerifiedVia: string | null; authVersion: number };
 
 let world: Record<string, UserRecord> = {};
 
 function seedWorld() {
   world = {
     // A: an ordinary account.
-    A: { id: "A", email: NORMAL_EMAIL, username: "a", emailVerifiedAt: new Date(), emailVerifiedVia: "email_link" },
+    A: { id: "A", email: NORMAL_EMAIL, username: "a", emailVerifiedAt: new Date(), emailVerifiedVia: "email_link", authVersion: 1 },
     // UNV: claims the allowlisted address but never proved ownership of it (P2-1).
-    UNV: { id: "UNV", email: ADMIN_EMAIL, username: "unv", emailVerifiedAt: null, emailVerifiedVia: null },
+    UNV: { id: "UNV", email: ADMIN_EMAIL, username: "unv", emailVerifiedAt: null, emailVerifiedVia: null, authVersion: 1 },
     // LEG: legacy provider row -- historical timestamp, provenance unproven.
-    LEG: { id: "LEG", email: ADMIN_EMAIL, username: "leg", emailVerifiedAt: new Date(), emailVerifiedVia: null },
+    LEG: { id: "LEG", email: ADMIN_EMAIL, username: "leg", emailVerifiedAt: new Date(), emailVerifiedVia: null, authVersion: 1 },
     // ADM: an account whose *current stored* address is on the allowlist.
-    ADM: { id: "ADM", email: ADMIN_EMAIL, username: "adm", emailVerifiedAt: new Date(), emailVerifiedVia: "email_link" },
+    ADM: { id: "ADM", email: ADMIN_EMAIL, username: "adm", emailVerifiedAt: new Date(), emailVerifiedVia: "email_link", authVersion: 1 },
   };
 }
 
@@ -92,7 +92,7 @@ async function withAdminAllowlist<T>(value: string | undefined, body: () => Prom
 }
 
 const token = (claims: Record<string, unknown>, options: jwt.SignOptions = { expiresIn: "5m" }) =>
-  jwt.sign(claims, TEST_JWT_SECRET, { algorithm: "HS256", ...options });
+  jwt.sign({ av: 1, ...claims }, TEST_JWT_SECRET, { algorithm: "HS256", ...options });
 
 async function callAdminRoute(bearer: string | null) {
   await listen();
@@ -148,6 +148,13 @@ test("a Google-verified admin is allowed", async () => {
   assert.equal(response.status, 200);
 });
 
+test("a current admin's token from an older auth version is rejected (revoked session)", async () => {
+  const response = await withAdminAllowlist(ADMIN_EMAIL, () =>
+    callAdminRoute(token({ id: "ADM", email: ADMIN_EMAIL, username: "adm", av: 0 })),
+  );
+  assert.equal(response.status, 401);
+});
+
 test("a forged admin email claim does not grant authority to a normal account", async () => {
   // Correctly signed — this is the post-repair world where the attacker has a valid token for
   // their own account — but the payload lies about who they are.
@@ -188,14 +195,15 @@ test("a token for a deleted account is denied", async () => {
       headers: { authorization: `Bearer ${token({ id: "ADM", email: ADMIN_EMAIL })}` },
     });
   });
-  assert.equal(response.status, 403);
+  // Denied at authentication now: a session for an account that no longer exists is not a session.
+  assert.equal(response.status, 401);
 });
 
 test("a token signed with the publicly known fallback is not accepted when a real secret is configured", async () => {
   // The historical attack: mint a token with the committed fallback secret. It only works here if
   // the run's own secret happens to be that fallback, so assert against a *different* secret to
   // stand in for a production deployment with a real one.
-  const forged = jwt.sign({ id: "ADM", email: ADMIN_EMAIL }, "a-different-production-secret-0123456789", {
+  const forged = jwt.sign({ id: "ADM", av: 1, email: ADMIN_EMAIL }, "a-different-production-secret-0123456789", {
     algorithm: "HS256",
     expiresIn: "5m",
   });

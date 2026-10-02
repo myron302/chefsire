@@ -2,6 +2,7 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { emailVerificationTokens, users } from "../../shared/schema";
+import { disconnectUserSockets } from "../realtime/socket-auth";
 import { EMAIL_VERIFIED_VIA_GOOGLE } from "../lib/email-verification-provenance";
 
 /**
@@ -55,6 +56,8 @@ export async function linkVerifiedProviderIdentity(
       emailVerifiedVia: sql`COALESCE(${users.emailVerifiedVia}, ${EMAIL_VERIFIED_VIA_GOOGLE})`,
       // Unverified account: the password and every other provider identity were set by someone who
       // had not proven the address. Verified account: left exactly as it was.
+      // Credentials were reclaimed: invalidate every token issued before now, in the same statement.
+      authVersion: sql`CASE WHEN ${unverified} THEN ${users.authVersion} + 1 ELSE ${users.authVersion} END`,
       password: sql`CASE WHEN ${unverified} THEN NULL ELSE ${users.password} END`,
       facebookId: sql`CASE WHEN ${unverified} THEN NULL ELSE ${users.facebookId} END`,
       tiktokId: sql`CASE WHEN ${unverified} THEN NULL ELSE ${users.tiktokId} END`,
@@ -72,6 +75,7 @@ export async function linkVerifiedProviderIdentity(
     .returning();
 
   if (updated) {
+    disconnectUserSockets(userId);
     // Any link still in flight was issued before the account was proven; it must not outlive this.
     await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId));
   }

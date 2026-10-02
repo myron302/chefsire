@@ -245,6 +245,8 @@ export type AuthTokenClaims = {
   id: string;
   email?: string;
   username?: string;
+  /** Account auth version at issuance (`users.auth_version`). Checked against the database on every request. */
+  av?: number;
 };
 
 /**

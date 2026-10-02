@@ -8,6 +8,7 @@
  * "A acting as B" case sends B's id exactly the way a hand-written request would, and asserts on what the
  * server actually persisted, not merely on the status code.
  */
+import "../test-support/accept-test-sessions";
 import { TEST_JWT_SECRET } from "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -19,7 +20,7 @@ import { storage } from "../storage";
 // The exact secret the middleware will verify with, resolved through the shared auth configuration.
 const SECRET = TEST_JWT_SECRET;
 
-const auth = (userId: string) => ({ authorization: `Bearer ${jwt.sign({ id: userId }, SECRET)}` });
+const auth = (userId: string) => ({ authorization: `Bearer ${jwt.sign({ id: userId, av: 1 }, SECRET)}` });
 
 /* ------------------------------------------------------------------ the world */
 

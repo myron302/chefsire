@@ -10,6 +10,7 @@
  * received an emit. No database is needed — the room join happens on connection, before any
  * handler touches storage.
  */
+import "../test-support/accept-test-sessions";
 import { TEST_JWT_SECRET } from "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -24,7 +25,7 @@ const A = "user-A";
 const B = "user-B";
 
 const tokenFor = (id: string, options: jwt.SignOptions = { expiresIn: "5m" }) =>
-  jwt.sign({ id, email: `${id}@chefsire.test` }, TEST_JWT_SECRET, { algorithm: "HS256", ...options });
+  jwt.sign({ id, av: 1, email: `${id}@chefsire.test` }, TEST_JWT_SECRET, { algorithm: "HS256", ...options });
 
 let httpServer: http.Server;
 let realtime: ReturnType<typeof attachNotificationRealtime>;

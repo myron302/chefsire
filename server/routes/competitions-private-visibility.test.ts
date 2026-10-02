@@ -24,6 +24,7 @@
  * repository's own `signAuthToken`, and a request that forges an identity by any other means is
  * expected to be treated as anonymous.
  */
+import "../test-support/accept-test-sessions";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -213,7 +214,7 @@ await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 test.after(() => server.close());
 
-const tokenFor = (id: string) => signAuthToken({ id });
+const tokenFor = (id: string) => signAuthToken({ id, av: 1 });
 
 /** A viewer: a set of request headers. `anonymous` sends none. */
 const anonymous: Record<string, string> = {};

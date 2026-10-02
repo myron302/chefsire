@@ -1,4 +1,5 @@
 /** CS-CL-02: the import-url route stays authenticated and never echoes network internals. */
+import "../test-support/accept-test-sessions";
 import "../test-support/auth-test-env";
 import assert from "node:assert/strict";
 import test from "node:test";

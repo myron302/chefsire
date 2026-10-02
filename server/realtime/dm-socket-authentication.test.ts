@@ -12,6 +12,7 @@
  * refused, but that the server asked about the authenticated user and never about the id the
  * payload named.
  */
+import "../test-support/accept-test-sessions";
 import { TEST_JWT_SECRET } from "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -37,7 +38,7 @@ const PARTICIPANTS: Record<string, string[]> = {
 let asked: { threadId: string; userId: string }[] = [];
 
 const tokenFor = (id: string, options: jwt.SignOptions = { expiresIn: "5m" }) =>
-  jwt.sign({ id, email: `${id}@chefsire.test` }, TEST_JWT_SECRET, { algorithm: "HS256", ...options });
+  jwt.sign({ id, av: 1, email: `${id}@chefsire.test` }, TEST_JWT_SECRET, { algorithm: "HS256", ...options });
 
 let httpServer: http.Server;
 let realtime: ReturnType<typeof attachDmRealtime>;

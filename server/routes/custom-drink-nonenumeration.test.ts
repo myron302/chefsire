@@ -3,6 +3,7 @@
  * with the rendered SQL executed by a REAL PostgreSQL (set CS_TEST_PG_URL; skipped otherwise).
  * CS_TEST_PG_URL is validated by the hardened loopback-only guard before any client exists.
  */
+import "../test-support/accept-test-sessions";
 import "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +17,7 @@ process.env.DATABASE_URL ||= "postgres://u:p@custom-drink-tests.invalid/none";
 const PG_URL = process.env.CS_TEST_PG_URL;
 const A = "user-a";
 const B = "user-b";
-const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id } as any)}` });
+const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id, av: 1 } as any)}` });
 
 if (!PG_URL) {
   test("custom-drink existence non-enumeration (skipped: CS_TEST_PG_URL not set)", { skip: true }, () => {});

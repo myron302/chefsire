@@ -14,6 +14,7 @@
  * There is no Postgres here; `db` is a recording double. Auth is real, signed with the repository's
  * own `signAuthToken`.
  */
+import "../test-support/accept-test-sessions";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";

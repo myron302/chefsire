@@ -18,7 +18,8 @@ import { UnsupportedMediaError, storeVerifiedImage } from "../services/image-upl
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { hashPassword } from "../lib/password-hash";
 import { isEmailAuthoritativelyVerified } from "../lib/email-verification-provenance";
-import { signAuthToken, verifyAuthToken } from "../lib/jwt-config";
+import { verifyAuthToken } from "../lib/jwt-config";
+import { issueAuthToken, resolveSessionUser } from "../lib/auth-session";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -172,6 +173,10 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
     if (error instanceof UnsupportedMediaError) {
       return res.status(error.status).json({ error: error.message });
     }
+    // Two concurrent signups for the same address (any casing): the unique index lets exactly one in.
+    if ((error as { code?: string })?.code === "23505" && /email/i.test((error as { constraint?: string }).constraint ?? "")) {
+      return res.status(400).json({ error: "Email already registered" });
+    }
     console.error("Error during signup:", error);
     res.status(500).json({ error: "Failed to create account" });
   }
@@ -210,11 +215,7 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
     }
 
     // Create JWT token
-    const token = signAuthToken({
-      id: user.id,
-      email: user.email,
-      username: user.username,
-    });
+    const token = issueAuthToken(user);
 
     // Set token as HTTP-only cookie
     res.cookie("auth_token", token, {
@@ -371,7 +372,11 @@ router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => 
     }
 
     // Verify token
-    const decoded = verifyAuthToken(token) as { id: string };
+    const decoded = verifyAuthToken(token) as { id: string; av?: number };
+    // A signed token is not enough: it must still match the account's current auth version.
+    if (!(await resolveSessionUser(decoded))) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
     const userId = decoded.id;
 
     const { currentPassword, newPassword } = req.body;
@@ -429,11 +434,12 @@ router.get("/auth/me", async (req, res) => {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const decoded = verifyAuthToken(token) as { id: string; email: string; username: string };
-    const user = await storage.getUser(decoded.id);
+    const decoded = verifyAuthToken(token) as { id: string; av?: number };
+    const user = await resolveSessionUser(decoded);
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      // Unknown account and revoked session are indistinguishable to the caller.
+      return res.status(401).json({ error: "Not authenticated" });
     }
 
     res.json({
@@ -499,11 +505,7 @@ router.get("/auth/google/callback", (req, res, next) => {
       }
 
       // Create JWT token for the user
-      const token = signAuthToken({
-        id: user.id,
-        email: user.email,
-        username: user.username,
-      });
+      const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {
@@ -548,11 +550,7 @@ router.get("/auth/facebook/callback",
       }
 
       // Create JWT token for the user
-      const token = signAuthToken({
-        id: user.id,
-        email: user.email,
-        username: user.username,
-      });
+      const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {
@@ -595,11 +593,7 @@ router.get("/auth/tiktok/callback",
       }
 
       // Create JWT token for the user
-      const token = signAuthToken({
-        id: user.id,
-        email: user.email,
-        username: user.username,
-      });
+      const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {

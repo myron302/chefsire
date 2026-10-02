@@ -1,6 +1,7 @@
 // server/middleware/auth.ts
 import type { Request, Response, NextFunction } from "express";
 import { verifyAuthToken } from "../lib/jwt-config";
+import { resolveSessionUser } from "../lib/auth-session";
 import { hasCurrentAdminAuthority } from "../lib/admin-authority";
 
 /**
@@ -65,48 +66,42 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return res.status(401).json({ error: "Unauthorized", code: "BAD_TOKEN" });
     }
 
+    // The signature proves the token was issued; only the live account row says it still counts.
+    const fullUser = await resolveSessionUser(decoded);
+    if (!fullUser) {
+      return res.status(401).json({ error: "Unauthorized", code: "BAD_TOKEN" });
+    }
+
     req.user = {
       id: String(decoded.id),
       email: decoded.email,
       username: decoded.username,
+      nutritionPremium: fullUser.nutritionPremium ?? undefined,
+      nutritionTrialEndsAt: fullUser.nutritionTrialEndsAt ?? undefined,
     };
 
     // Check and expire nutrition trial if needed
-    // Load full user data to check trial status
     try {
-      const { db } = await import("../db");
-      const { users } = await import("../../shared/schema");
-      const { eq } = await import("drizzle-orm");
+      if (fullUser.nutritionPremium && fullUser.nutritionTrialEndsAt) {
+        const now = new Date();
+        const trialEnd = new Date(fullUser.nutritionTrialEndsAt);
 
-      const [fullUser] = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, req.user.id))
-        .limit(1);
+        if (now > trialEnd) {
+          const { db } = await import("../db");
+          const { users } = await import("../../shared/schema");
+          const { eq } = await import("drizzle-orm");
+          // Trial has expired - disable nutrition premium
+          await db
+            .update(users)
+            .set({
+              nutritionPremium: false,
+              nutritionTrialEndsAt: null,
+            })
+            .where(eq(users.id, req.user.id));
 
-      if (fullUser) {
-        req.user.nutritionPremium = fullUser.nutritionPremium;
-        req.user.nutritionTrialEndsAt = fullUser.nutritionTrialEndsAt;
-
-        // Check if trial has expired
-        if (fullUser.nutritionPremium && fullUser.nutritionTrialEndsAt) {
-          const now = new Date();
-          const trialEnd = new Date(fullUser.nutritionTrialEndsAt);
-
-          if (now > trialEnd) {
-            // Trial has expired - disable nutrition premium
-            await db
-              .update(users)
-              .set({
-                nutritionPremium: false,
-                nutritionTrialEndsAt: null,
-              })
-              .where(eq(users.id, req.user.id));
-
-            // Update the request user object
-            req.user.nutritionPremium = false;
-            req.user.nutritionTrialEndsAt = undefined;
-          }
+          // Update the request user object
+          req.user.nutritionPremium = false;
+          req.user.nutritionTrialEndsAt = undefined;
         }
       }
     } catch (trialError) {
@@ -152,7 +147,8 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     }
 
     const decoded = verifyAuthToken(token) as JwtPayload;
-    if (decoded && decoded.id) {
+    // A revoked or stale session is anonymous, exactly like an invalid token.
+    if (decoded && decoded.id && (await resolveSessionUser(decoded))) {
       req.user = {
         id: String(decoded.id),
         email: decoded.email,

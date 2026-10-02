@@ -12,6 +12,7 @@
  * deletion mechanics, which are exercised against a real PostgreSQL server in
  * server/lib/remix-engagement-cleanup.test.ts.
  */
+import "../test-support/accept-test-sessions";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -50,7 +51,7 @@ await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 test.after(() => server.close());
 
-const asUser = (id: string) => ({ Authorization: `Bearer ${signAuthToken({ id })}` });
+const asUser = (id: string) => ({ Authorization: `Bearer ${signAuthToken({ id, av: 1 })}` });
 
 function given() {
   deleteCalls = [];

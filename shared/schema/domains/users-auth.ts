@@ -9,6 +9,7 @@ import {
   jsonb,
   decimal,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
@@ -64,6 +65,10 @@ export const users = pgTable(
     // timestamp came from a provider that never vouched for the address. Only these two values may
     // confer admin authority or count as proof of ownership.
     emailVerifiedVia: text("email_verified_via"),
+    // Server-side session generation (P2-1). Every access token carries the value current at issuance
+    // (`av` claim); a token whose value no longer matches is dead. Bumped atomically whenever credentials
+    // or provider identities are reclaimed from an account that had not authoritatively proven its email.
+    authVersion: integer("auth_version").notNull().default(1),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
@@ -73,5 +78,7 @@ export const users = pgTable(
     facebookIdIdx: index("facebook_id_idx").on(table.facebookId),
     instagramIdIdx: index("instagram_id_idx").on(table.instagramId),
     tiktokIdIdx: index("tiktok_id_idx").on(table.tiktokId),
+    // Email identity is case-insensitive (see migrations/20261002_users_email_canonical_unique.sql).
+    emailLowerUnique: uniqueIndex("users_email_lower_unique").on(sql`lower(${table.email})`),
   })
 );

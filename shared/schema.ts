@@ -377,6 +377,7 @@ export const insertUserSchema = createInsertSchema(users).omit({
   // ✅ Don’t require this on insert
   emailVerifiedAt: true,
   emailVerifiedVia: true,
+  authVersion: true,
 });
 
 export const insertPostSchema = createInsertSchema(posts).omit({

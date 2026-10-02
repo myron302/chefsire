@@ -5,6 +5,7 @@ import { emailVerificationTokens, users } from "../../shared/schema";
 import { eq, and, isNull, gt, sql } from "drizzle-orm";
 import { sendVerificationEmail } from "../utils/mailer";
 import { hashPassword } from "../lib/password-hash";
+import { disconnectUserSockets } from "../realtime/socket-auth";
 import { EMAIL_VERIFIED_VIA_LINK } from "../lib/email-verification-provenance";
 
 /** Minimum length for a password chosen while redeeming a verification link (matches change-password). */
@@ -120,6 +121,8 @@ export class AuthService {
           tiktokId: null,
           instagramId: null,
           provider: "local",
+          // Reclamation: every access token issued before this moment dies with this same statement.
+          authVersion: sql`${users.authVersion} + 1`,
         })
         .where(
           and(
@@ -135,6 +138,10 @@ export class AuthService {
       }
 
       return { success: true, userId: activated.id };
+    }).then((result: { success: boolean; error?: string; userId?: string }) => {
+      // Sockets authenticated with a now-revoked token must not outlive it.
+      if (result.success && result.userId) disconnectUserSockets(result.userId);
+      return result;
     });
   }
 

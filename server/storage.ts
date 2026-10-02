@@ -1,6 +1,7 @@
 // server/storage.ts — COMPLETE FILE WITH DRINKS
 import "./lib/load-env";
 import { drizzle } from "drizzle-orm/neon-serverless";
+import { canonicalEmail } from "./lib/email-canonical";
 import { eq, desc, and, or, sql, asc, ilike, inArray, exists } from "drizzle-orm";
 import { pool as sharedPool } from "./db/index";
 
@@ -386,19 +387,22 @@ export class DrizzleStorage implements IStorage {
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     const db = getDb();
-    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    // Case-insensitive, matching the unique index on lower(email).
+    const result = await db.select().from(users).where(sql`lower(${users.email}) = ${canonicalEmail(email)}`).limit(1);
     return result[0];
   }
 
   async createUser(insertUser: NewUserRecord): Promise<User> {
     const db = getDb();
-    const result = await db.insert(users).values(insertUser).returning();
+    const values = { ...insertUser, email: canonicalEmail(insertUser.email) };
+    const result = await db.insert(users).values(values).returning();
     return result[0];
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
     const db = getDb();
-    const result = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    const next = typeof updates.email === "string" ? { ...updates, email: canonicalEmail(updates.email) } : updates;
+    const result = await db.update(users).set(next).where(eq(users.id, id)).returning();
     return result[0];
   }
 

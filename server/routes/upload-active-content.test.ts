@@ -14,6 +14,7 @@
  */
 process.env.NODE_ENV = "test";
 
+import "../test-support/accept-test-sessions";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
@@ -33,7 +34,7 @@ const uploadRouter = (await import("./upload")).default;
 const { uploadsStaticHandler } = await import("../lib/uploads-static");
 const r2 = await import("../lib/r2");
 
-const TOKEN = signAuthToken({ id: "11111111-1111-4111-8111-111111111111" });
+const TOKEN = signAuthToken({ id: "11111111-1111-4111-8111-111111111111", av: 1 });
 
 /* ------------------------------------------------------------------ harness */
 

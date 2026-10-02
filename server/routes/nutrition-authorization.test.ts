@@ -1,4 +1,5 @@
 /** Runtime coverage for CS-CL-01: private nutrition data is always scoped to the authenticated account. */
+import "../test-support/accept-test-sessions";
 import "../test-support/auth-test-env";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

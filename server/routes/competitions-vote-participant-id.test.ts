@@ -15,6 +15,7 @@
  * value would therefore persist the request value and fail -- which is exactly the regression guard
  * this finding needs. Auth is real: tokens are signed with the repository's own `signAuthToken`.
  */
+import "../test-support/accept-test-sessions";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -141,7 +142,7 @@ await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 test.after(() => server.close());
 
-const token = signAuthToken({ id: VOTER });
+const token = signAuthToken({ id: VOTER, av: 1 });
 
 async function castVote(body: unknown, headers: Record<string, string> = {}) {
   recorded = [];
