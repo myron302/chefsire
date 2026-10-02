@@ -194,6 +194,31 @@ if (!PG_URL) {
     assert.deepEqual(leaks(r, "HASH-SECRET", "@example.com", "cus_", "password", "stripe"), []);
   });
 
+  test("recipe-suggestions: the REAL endpoint response satisfies the recipe-matches page contract", async () => {
+    const { normalizeRecipeSuggestions } = await import("../../client/src/pages/pantry/recipe-matches-model");
+    const post = (await local.query(`INSERT INTO posts (user_id, caption) VALUES ($1, 'p') RETURNING id`, [ids.B])).rows[0].id;
+    const recipeId = (await local.query(
+      `INSERT INTO recipes (post_id, title, ingredients, image_url, cook_time, difficulty) VALUES ($1, 'Garlic Pasta', $2::jsonb, 'https://img.example/p.jpg', 25, 'easy') RETURNING id`,
+      [post, JSON.stringify(["pasta", "garlic", "olive oil", "parmesan"])])).rows[0].id;
+    for (const name of ["pasta", "garlic", "olive oil"]) await local.query(`INSERT INTO pantry_items (user_id, name) VALUES ($1, $2)`, [ids.A, name]);
+
+    const r = await call("GET", `/api/pantry/users/me/pantry/recipe-suggestions?maxMissingIngredients=3&limit=50`, "A");
+    assert.equal(r.status, 200);
+    const raw = r.json.suggestions.find((s: any) => s.id === recipeId);
+    // The shapes the page must not assume: no `name`, no `matchingIngredients`, a 0-100 score, a numeric match count.
+    assert.equal(raw.name, undefined);
+    assert.equal(raw.matchingIngredients, undefined);
+    assert.equal(raw.matchScore, 75);
+    assert.equal(raw.ingredientMatches, 3);
+    assert.deepEqual(raw.missingIngredients, ["parmesan"]);
+
+    const match = normalizeRecipeSuggestions(r.json).find((m) => m.id === recipeId)!;
+    assert.deepEqual(
+      { title: match.title, percent: match.matchPercent, have: match.matchingCount, total: match.totalIngredients, missing: match.missingIngredients, haveNames: match.matchingIngredients, cookTime: match.cookTime, difficulty: match.difficulty, imageUrl: match.imageUrl },
+      { title: "Garlic Pasta", percent: 75, have: 3, total: 4, missing: ["parmesan"], haveNames: ["pasta", "garlic", "olive oil"], cookTime: 25, difficulty: "easy", imageUrl: "https://img.example/p.jpg" },
+    );
+  });
+
   test("subscription info returns only the commission/entitlement fields the client uses", async () => {
     const r = await call("GET", `/api/users/${ids.A}/subscription/info`, "A");
     assert.equal(r.status, 200);
