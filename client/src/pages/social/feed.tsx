@@ -309,7 +309,7 @@ export default function Feed() {
 
   const { data: suggestedUsers, error: usersError } = useQuery<User[]>({
     queryKey: ["/api/users", currentUserId, "suggested"],
-    queryFn: () => fetchJSON<User[]>(`/api/users/${encodeURIComponent(currentUserId)}/suggested?limit=5`),
+    queryFn: () => fetchJSON<User[]>(`/api/users/me/suggested?limit=5`),
     enabled: !!currentUserId,
     retry: false,
   });

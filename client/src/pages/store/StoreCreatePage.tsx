@@ -54,7 +54,7 @@ export default function StoreCreatePage() {
     if (!user?.id) return;
 
     try {
-      const response = await fetch(`/api/stores/user/${user.id}`);
+      const response = await fetch(`/api/stores/user/${user.id}`, { credentials: "include" });
       if (response.ok) {
         const data = await response.json();
         if (data.store) {

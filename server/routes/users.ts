@@ -2,7 +2,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import { requireAuth } from "../middleware";
+import { requireAuth, optionalAuth } from "../middleware";
+import { resolveSelfUserId } from "../lib/self-scope";
+import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
 import { serializePublicUser } from "../serializers/public-user";
@@ -102,7 +104,7 @@ r.put("/:id", requireAuth, async (req, res) => {
     // Explicit profile allowlist above intentionally excludes every subscription/entitlement field.
     const updated = await storage.updateUser(req.params.id, body);
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Profile updated successfully", user: updated });
+    res.json({ message: "Profile updated successfully", user: serializeAuthenticatedUser(updated) });
   } catch (error: any) {
     if (error?.issues) {
       return res
@@ -117,14 +119,16 @@ r.put("/:id", requireAuth, async (req, res) => {
   }
 });
 
-r.get("/:id/suggested", async (req, res) => {
+// Public: chef suggestions. The path id is NOT the viewer (anyone can type any id); the only identity that
+// shapes the list is the verified session, which merely excludes the caller from their own suggestions.
+r.get("/:id/suggested", optionalAuth, async (req, res) => {
   try {
     const limit = Number(req.query.limit ?? 5);
     const list = await storage.getSuggestedUsers(
-      req.params.id,
-      isNaN(limit) ? 5 : limit
+      (req.user as { id?: string } | undefined)?.id ?? "",
+      isNaN(limit) ? 5 : Math.max(1, Math.min(limit, 50))
     );
-    res.json(list);
+    res.json(list.map(serializePublicUser));
   } catch (error) {
     console.error("GET /users/:id/suggested error", error);
     res.status(500).json({ message: "Failed to fetch suggested users" });
@@ -249,12 +253,14 @@ r.put("/:id/subscription", requireAuth, async (req, res) => {
     subscriptionEndsAt: null,
   } as any);
   if (!updated) return res.status(404).json({ message: "User not found" });
-  return res.json({ message: "Subscription changed to Free", user: updated });
+  return res.json({ message: "Subscription changed to Free", user: serializeAuthenticatedUser(updated) });
 });
 
-r.get("/:id/subscription/info", async (req, res) => {
+r.get("/:id/subscription/info", requireAuth, async (req, res) => {
   try {
-    const user = await storage.getUser(req.params.id);
+    const userId = resolveSelfUserId(req, res, req.params.id, { message: "You can only view your own subscription" });
+    if (!userId) return;
+    const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const getCommissionRate = (tier: string, monthlyRevenue: number) => {

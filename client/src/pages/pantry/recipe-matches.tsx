@@ -31,7 +31,8 @@ export default function RecipeMatches() {
     queryKey: ["/api/pantry/recipe-matches", { minScore: minMatchScore }],
     queryFn: async () => {
       if (!user?.id) throw new Error("User not authenticated");
-      const res = await fetch(`/api/users/${user.id}/pantry/recipe-suggestions?maxMissingIngredients=3&limit=20`, {
+      // Self endpoint: the server derives the account from the session, never from an id in the URL.
+      const res = await fetch(`/api/pantry/users/me/pantry/recipe-suggestions?maxMissingIngredients=3&limit=20`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch recipe suggestions");

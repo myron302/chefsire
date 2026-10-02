@@ -178,8 +178,11 @@ test("saved list: another user's private drink saved by B is hidden from B (no l
   const asB = await get(`/saved/${B}`, tok(B));
   assert.deepEqual(ids(asB.body), ["A-public"]);
   assert.doesNotMatch(asB.text, /A-private|HASH-|@example\.com/);
+  // P2-2: a saved list is private to its owner, so another user (even the drink's author) cannot read B's list at all.
   const asA = await get(`/saved/${B}`, tok(A));
-  assert.deepEqual(ids(asA.body), ["A-private", "A-public"]); // A owns A-private
+  assert.equal(asA.status, 403);
+  assert.equal(asA.body.drinks, undefined);
+  assert.doesNotMatch(asA.text, /A-private|A-public/);
 });
 
 test("/public: reaches the public handler (not /:id) and returns only explicit-public rows", async () => {
