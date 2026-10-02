@@ -83,10 +83,11 @@ test("anonymous PATCH -> 401, nothing written", async () => {
   assert.equal(sets.length, 0);
 });
 
-test("cross-user PATCH -> 403, no mutation", async () => {
+test("cross-user PATCH -> 404 (indistinguishable from nonexistent, CS-CL-08), no mutation", async () => {
   const r = await patch({ name: "hijack" }, tok(ATTACKER));
-  assert.equal(r.status, 403);
-  assert.equal(sets.length, 0);
+  assert.equal(r.status, 404);
+  // No pre-read: authorization is the owner-scoped UPDATE itself, which matches no row for a non-owner.
+  assert.ok(sets.every((s) => s.params.includes(ATTACKER) && !s.params.includes(OWNER)));
   assert.equal(row.name, "Green");
 });
 

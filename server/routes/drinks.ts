@@ -28342,30 +28342,20 @@ r.post("/custom-drinks", requireAuth, async (req, res) => {
   }
 });
 
+// Owner-only mutations below never look the drink up first. Ownership is enforced inside one owner-scoped
+// storage statement, and "not yours" / "does not exist" / "private" all return the same 404 so a valid
+// drink id cannot be probed. Body validation (400) runs before storage and is independent of existence.
+const DRINK_NOT_FOUND = { ok: false, error: "Drink not found" };
+
 // Update custom drink
 r.patch("/custom-drinks/:id", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
-    
-    // Verify ownership
-    const existing = await storage.getCustomDrink(id);
-    if (!existing) {
-      return res.status(404).json({ ok: false, error: "Drink not found" });
-    }
-    if (existing.userId !== req.user.id) {
-      return res.status(403).json({ ok: false, error: "Not authorized" });
-    }
-    
     const parsed = customDrinkOwnerPatchSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ ok: false, error: "Invalid drink data", details: parsed.error.errors });
     }
-
-    // Owner-scoped UPDATE (id AND user_id): a stale check above cannot be exploited.
-    const updated = await storage.updateOwnedCustomDrink(id, req.user!.id, toCustomDrinkOwnerPatch(parsed.data));
-    if (!updated || updated.userId !== req.user!.id) {
-      return res.status(404).json({ ok: false, error: "Drink not found" });
-    }
+    const updated = await storage.updateOwnedCustomDrink(req.params.id, req.user!.id, toCustomDrinkOwnerPatch(parsed.data));
+    if (!updated) return res.status(404).json(DRINK_NOT_FOUND);
     res.json({ ok: true, drink: updated });
   } catch (error: any) {
     console.error("Error updating drink:", error);
@@ -28376,23 +28366,9 @@ r.patch("/custom-drinks/:id", requireAuth, async (req, res) => {
 // Delete custom drink
 r.delete("/custom-drinks/:id", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
-    
-    // Verify ownership
-    const existing = await storage.getCustomDrink(id);
-    if (!existing) {
-      return res.status(404).json({ ok: false, error: "Drink not found" });
-    }
-    if (existing.userId !== req.user.id) {
-      return res.status(403).json({ ok: false, error: "Not authorized" });
-    }
-    
-    const success = await storage.deleteCustomDrink(id);
-    if (success) {
-      res.json({ ok: true, message: "Drink deleted successfully" });
-    } else {
-      res.status(500).json({ ok: false, error: "Failed to delete drink" });
-    }
+    const success = await storage.deleteOwnedCustomDrink(req.params.id, req.user!.id);
+    if (!success) return res.status(404).json(DRINK_NOT_FOUND);
+    res.json({ ok: true, message: "Drink deleted successfully" });
   } catch (error: any) {
     console.error("Error deleting drink:", error);
     res.status(500).json({ ok: false, error: "Failed to delete drink" });
@@ -28403,34 +28379,20 @@ r.delete("/custom-drinks/:id", requireAuth, async (req, res) => {
 // DRINK PHOTOS
 // ========================================
 
-// Upload drink photo
+// Upload drink photo (owner of the parent drink only)
 r.post("/custom-drinks/:id/photo", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // Verify drink exists and user owns it
-    const drink = await storage.getCustomDrink(id);
-    if (!drink) {
-      return res.status(404).json({ ok: false, error: "Drink not found" });
-    }
-    if (drink.userId !== req.user.id) {
-      return res.status(403).json({ ok: false, error: "Not authorized" });
-    }
-    
     const photoData = insertDrinkPhotoSchema.parse({
       drinkId: id,
-      userId: req.user.id,
-      imageUrl: req.body.imageUrl,
-      caption: req.body.caption,
+      userId: req.user!.id,
+      imageUrl: req.body?.imageUrl,
+      caption: req.body?.caption,
     });
-    
-    const photo = await storage.createDrinkPhoto(photoData);
-    
-    // Also update the drink's imageUrl if it doesn't have one
-    if (!drink.imageUrl) {
-      await storage.updateOwnedCustomDrink(id, req.user!.id, { imageUrl: photo.imageUrl });
-    }
-    
+
+    const photo = await storage.createOwnedDrinkPhoto(photoData, req.user!.id);
+    if (!photo) return res.status(404).json(DRINK_NOT_FOUND);
+
     res.status(201).json({ ok: true, photo });
   } catch (error) {
     if (error instanceof z.ZodError) {

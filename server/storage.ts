@@ -307,10 +307,10 @@ export interface IStorage {
   createCustomDrink(drink: InsertCustomDrink): Promise<CustomDrink>;
   /** Owner-scoped: the UPDATE is constrained by id AND user_id; returns undefined when no owned row matched. */
   updateOwnedCustomDrink(id: string, ownerId: string, patch: CustomDrinkOwnerPatch): Promise<CustomDrink | undefined>;
-  deleteCustomDrink(id: string): Promise<boolean>;
+  deleteOwnedCustomDrink(id: string, ownerId: string): Promise<boolean>;
   
   // Drink Photos
-  createDrinkPhoto(photo: InsertDrinkPhoto): Promise<DrinkPhoto>;
+  createOwnedDrinkPhoto(photo: InsertDrinkPhoto, ownerId: string): Promise<DrinkPhoto | undefined>;
   /** Photos of a custom drink, only if the drink is visible to `viewerId` (null = anonymous). */
   getDrinkPhotosVisibleTo(drinkId: string, viewerId: string | null): Promise<DrinkPhoto[]>;
   /**
@@ -2010,17 +2010,44 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async deleteCustomDrink(id: string): Promise<boolean> {
+  async deleteOwnedCustomDrink(id: string, ownerId: string): Promise<boolean> {
     const db = getDb();
-    const result = await db.delete(customDrinks).where(eq(customDrinks.id, id)).returning();
+    // Single owner-scoped DELETE: non-owner and nonexistent are indistinguishable (both false).
+    const result = await db
+      .delete(customDrinks)
+      .where(and(eq(customDrinks.id, id), eq(customDrinks.userId, ownerId)))
+      .returning({ id: customDrinks.id });
     return result.length > 0;
   }
 
   // ---------- Drink Photos ----------
-  async createDrinkPhoto(photo: InsertDrinkPhoto): Promise<DrinkPhoto> {
+  /**
+   * Inserts a photo only if `ownerId` owns the parent drink. The ownership check takes a row lock
+   * (FOR UPDATE) in the same transaction as the insert, so ownership cannot change or the drink be
+   * deleted between check and insert. Returns undefined for non-owner and nonexistent alike.
+   * The photo's user_id is always the verified owner, never caller-supplied.
+   */
+  async createOwnedDrinkPhoto(photo: InsertDrinkPhoto, ownerId: string): Promise<DrinkPhoto | undefined> {
     const db = getDb();
-    const result = await db.insert(drinkPhotos).values(photo).returning();
-    return result[0];
+    return db.transaction(async (tx) => {
+      const locked = await tx
+        .select({ id: customDrinks.id, imageUrl: customDrinks.imageUrl })
+        .from(customDrinks)
+        .where(and(eq(customDrinks.id, photo.drinkId), eq(customDrinks.userId, ownerId)))
+        .for("update");
+      if (locked.length === 0) return undefined;
+      const [row] = await tx
+        .insert(drinkPhotos)
+        .values({ ...photo, userId: ownerId })
+        .returning();
+      if (!locked[0].imageUrl) {
+        await tx
+          .update(customDrinks)
+          .set({ imageUrl: row.imageUrl, updatedAt: new Date() })
+          .where(and(eq(customDrinks.id, photo.drinkId), eq(customDrinks.userId, ownerId)));
+      }
+      return row;
+    });
   }
 
   async getDrinkPhotosVisibleTo(drinkId: string, viewerId: string | null): Promise<DrinkPhoto[]> {
