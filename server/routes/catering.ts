@@ -13,9 +13,12 @@ import { insertCateringInquirySchema } from "@shared/schema";
 import { publicCateringLocation, serializePublicCateringProvider } from "../serializers/public-catering-provider";
 import { cateringQuoteDateSchema } from "../services/catering-date";
 import { canTransitionCateringInquiry, cateringInquiryRole } from "../services/catering-inquiry-policy";
-import { cateringBookings, cateringPackages, cateringPortfolioItems, cateringAvailabilitySettings, cateringAvailabilityExceptions, cateringAvailabilityWeeklyRules, cateringInquiries, cateringReviews } from "@shared/schema";
+import { cateringBookings, cateringPackages, cateringPortfolioItems, cateringAvailabilitySettings, cateringAvailabilityExceptions, cateringAvailabilityWeeklyRules, cateringInquiries, cateringReviews, notifications } from "@shared/schema";
 import { cateringReviewAggregate } from "@shared/catering-reviews";
 import { isCateringAvailabilityConfigured } from "@shared/catering-dashboard";
+import { withdrawCateringInquiry } from "../services/catering-inquiry-withdrawal";
+import { serializeCateringCustomerInquiry, type CateringCustomerInquiryRow } from "../serializers/catering-customer-inquiry";
+import { CATERING_CUSTOMER_REQUESTS_URL, CATERING_PROVIDER_INQUIRIES_URL, cateringInquiryContactSchema } from "@shared/catering-inquiries";
 import { canViewProviderInquiryPage, cateringInquiryPageMetadata, cateringInquiryPageSchema } from "../services/catering-inquiry-pagination";
 import { availabilityExceptionSchema, availabilitySettingsSchema, calendarDateSchema, weeklyRulesSchema } from "@shared/catering-availability";
 import { addCalendarDays, calendarDateInTimezone, evaluateNewCateringInquiryAvailability } from "../services/catering-availability";
@@ -387,7 +390,7 @@ r.post("/inquiries", requireAuth, async (req, res, next) => {
     const body = insertCateringInquirySchema.pick({
       chefId: true, packageId: true, guestCount: true, eventType: true,
       cuisinePreferences: true, budget: true, message: true,
-    }).and(z.object({ eventDate: z.string(), timezoneOffsetMinutes: z.number() })).parse(req.body);
+    }).and(z.object({ eventDate: z.string(), timezoneOffsetMinutes: z.number() })).and(cateringInquiryContactSchema).parse(req.body);
     const { eventDate } = cateringQuoteDateSchema.parse(body);
     const { timezoneOffsetMinutes: _timezoneOffsetMinutes, ...inquiryFields } = body;
     const input = { ...inquiryFields, eventDate };
@@ -430,6 +433,66 @@ r.post("/inquiries", requireAuth, async (req, res, next) => {
 });
 
 /**
+ * GET /api/catering/inquiries/mine?page=&limit=
+ * The authenticated customer's own inquiries, newest first, whatever became of them. The customer is the session user
+ * and nothing in the request can name another: there is no id parameter to trust. A booking, if the inquiry produced
+ * one, is joined for status only -- the lifecycle stage is derived from it, never stored beside it.
+ */
+r.get("/inquiries/mine", requireAuth, async (req, res, next) => {
+  try {
+    const customerId = (req.user as { id: string }).id;
+    const { page, limit } = cateringInquiryPageSchema.parse(req.query);
+    const ownedByCustomer = eq(cateringInquiries.customerId, customerId);
+    const [{ value }] = await db.select({ value: count() }).from(cateringInquiries).where(ownedByCustomer);
+    const rows = await db.select({
+      inquiry: cateringInquiries,
+      booking: { id: cateringBookings.id, status: cateringBookings.status, agreedPrice: cateringBookings.agreedPrice, currency: cateringBookings.currency, providerConfirmedAt: cateringBookings.providerConfirmedAt, customerConfirmedAt: cateringBookings.customerConfirmedAt },
+      provider: { id: users.id, displayName: users.displayName, username: users.username },
+      packageTitle: cateringPackages.title,
+    }).from(cateringInquiries)
+      .innerJoin(users, eq(users.id, cateringInquiries.chefId))
+      .leftJoin(cateringBookings, eq(cateringBookings.inquiryId, cateringInquiries.id))
+      .leftJoin(cateringPackages, eq(cateringPackages.id, cateringInquiries.packageId))
+      .where(ownedByCustomer)
+      .orderBy(desc(cateringInquiries.createdAt), desc(cateringInquiries.id))
+      .limit(limit).offset((page - 1) * limit);
+    const total = Number(value);
+    res.json({
+      inquiries: rows.map((row: CateringCustomerInquiryRow) => serializeCateringCustomerInquiry({ ...row, booking: row.booking?.id ? row.booking : null })),
+      pagination: cateringInquiryPageMetadata(page, limit, total),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid pagination" });
+    next(error);
+  }
+});
+
+/** Runs the one customer-withdrawal transaction and answers for it; shared by the explicit route and the legacy status PUT. */
+async function withdrawInquiryAs(customerId: string, rawInquiryId: string, res: import("express").Response) {
+  const inquiryId = z.string().uuid().safeParse(rawInquiryId);
+  if (!inquiryId.success) return res.status(404).json({ message: "Inquiry not found" });
+  const result = await db.transaction((tx: typeof db) => withdrawCateringInquiry(tx, { inquiryId: inquiryId.data, customerId }));
+  if (result.kind === "not_found") return res.status(404).json({ message: "Inquiry not found" });
+  if (result.kind === "has_booking") return res.status(409).json({ code: "inquiry_has_booking", message: "This request already has booking terms. Open the booking to confirm or cancel it." });
+  if (result.kind === "not_withdrawable") return res.status(409).json({ code: "inquiry_not_withdrawable", message: "This request has already been answered and can no longer be withdrawn." });
+  // Only the transition that actually happened tells the provider; a retry of a withdrawal that already landed does not.
+  if (result.kind === "withdrawn") {
+    await db.insert(notifications).values({ userId: result.inquiry.chefId, type: "catering_inquiry_withdrawn", title: "Catering request withdrawn", message: "A customer withdrew their catering request. Open your inquiries for the current status.", linkUrl: CATERING_PROVIDER_INQUIRIES_URL }).catch(() => undefined);
+  }
+  return res.json({ message: "Inquiry withdrawn", inquiry: { id: result.inquiry.id, status: result.inquiry.status } });
+}
+
+/**
+ * POST /api/catering/inquiries/:id/withdraw
+ * No body. The actor is the session user; a body naming a customer is never read.
+ */
+r.post("/inquiries/:id/withdraw", requireAuth, async (req, res, next) => {
+  try {
+    await withdrawInquiryAs((req.user as { id: string }).id, req.params.id, res);
+  } catch (error) { next(error); }
+});
+
+/**
  * GET /api/catering/users/:id/inquiries
  */
 r.get("/users/:id/inquiries", requireAuth, async (req, res, next) => {
@@ -448,17 +511,25 @@ r.get("/users/:id/inquiries", requireAuth, async (req, res, next) => {
 /**
  * PUT /api/catering/inquiries/:id
  * Body: { status }
+ * A provider accepts or declines; a customer's `cancelled` is a withdrawal and runs the same transaction as the
+ * explicit withdraw route, so there is one rule for it. The provider's own update is a single conditional statement on
+ * `status = 'pending'`, which the customer's locked withdrawal serializes against.
  */
 r.put("/inquiries/:id", requireAuth, async (req, res, next) => {
   try {
     const { status } = z.object({ status: z.enum(["accepted", "declined", "cancelled"]) }).parse(req.body);
+    const userId = (req.user as { id: string }).id;
     const inquiry = await storage.getCateringInquiry(req.params.id);
     if (!inquiry) return res.status(404).json({ message: "Inquiry not found" });
-    const role = cateringInquiryRole(inquiry, (req.user as { id: string }).id);
+    const role = cateringInquiryRole(inquiry, userId);
     if (!role) return res.status(403).json({ message: "You are not a participant in this inquiry" });
+    if (role === "customer" && status === "cancelled") return await withdrawInquiryAs(userId, inquiry.id, res);
     if (!canTransitionCateringInquiry(role, inquiry.status, status)) return res.status(409).json({ message: "That status transition is not allowed" });
     const updated = await storage.updateCateringInquiry(req.params.id, { status });
     if (!updated) return res.status(409).json({ message: "The inquiry status changed before this request completed" });
+    if (status === "declined") {
+      await db.insert(notifications).values({ userId: updated.customerId, type: "catering_inquiry_declined", title: "Catering request declined", message: "A caterer declined your catering request. Open your requests for the current status.", linkUrl: CATERING_CUSTOMER_REQUESTS_URL }).catch(() => undefined);
+    }
     res.json({ message: "Inquiry updated successfully", inquiry: updated });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid inquiry update", errors: error.issues });

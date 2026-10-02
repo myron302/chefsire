@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, count, desc, eq, gte, lte, or } from "drizzle-orm";
 import { z } from "zod";
-import { cateringAvailabilityExceptions, cateringAvailabilitySettings, cateringBookingActivity, cateringBookings, cateringInquiries, cateringPackages, cateringReviews, notifications } from "@shared/schema";
+import { cateringAvailabilityExceptions, cateringAvailabilitySettings, cateringBookingActivity, cateringBookings, cateringPackages, cateringReviews, notifications } from "@shared/schema";
 import { cateringBookingCancelSchema, cateringBookingIdSchema, cateringBookingOfferSchema, cateringBookingPageSchema } from "@shared/catering-bookings";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
@@ -11,6 +11,7 @@ import { evaluateBookingDateForConfirmation, evaluateBookingDateForOffer } from 
 import { bookingActor, mayCancel, mayComplete, mayConfirm, mayInquiryProduceBooking, nextConfirmationStatus } from "../services/catering-booking-policy";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { CATERING_CUSTOMER_BOOKINGS_URL, CATERING_PROVIDER_BOOKINGS_URL } from "../services/catering-booking-links";
+import { lockCateringInquiry } from "../services/catering-inquiry-withdrawal";
 import { lockCateringReviewRelationship } from "../services/catering-review-relationship-lock";
 
 const r = Router();
@@ -38,7 +39,10 @@ r.get("/bookings/:id", requireAuth, async (req, res, next) => { try {
 r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, next) => { try {
   const inquiryId = cateringBookingIdSchema.parse(req.params.inquiryId); const providerId = (req.user as { id: string }).id; const offer = cateringBookingOfferSchema.parse(req.body ?? {}); const now = new Date();
   const result = await db.transaction(async (tx: typeof db) => {
-    const [inquiry] = await tx.select().from(cateringInquiries).where(and(eq(cateringInquiries.id, inquiryId), eq(cateringInquiries.chefId, providerId))).limit(1);
+    // The inquiry row is locked before its status is judged, and a customer's withdrawal locks the same row before it looks
+    // for a booking, so an inquiry can end up withdrawn or booked but never both.
+    const locked = await lockCateringInquiry(tx, inquiryId);
+    const inquiry = locked && locked.chefId === providerId ? locked : undefined;
     if (!inquiry) return { error: 404, message: "Accepted inquiry not found" } as const;
     if (!mayInquiryProduceBooking(inquiry)) return { error: 409, message: "Only an accepted inquiry can be offered for booking" } as const;
     const [pkg] = inquiry.packageId ? await tx.select().from(cateringPackages).where(and(eq(cateringPackages.id, inquiry.packageId), eq(cateringPackages.providerId, providerId))).limit(1) : [];

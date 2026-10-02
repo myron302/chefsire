@@ -1,6 +1,6 @@
 // client/src/pages/services/catering.tsx
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,8 @@ import { localCalendarDate } from './catering-provider-actions';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 import { BookingManager } from '@/components/catering/BookingManager';
+import { CustomerInquiries } from '@/components/catering/CustomerInquiries';
+import { cateringCustomerInquiriesKey } from '@/pages/services/catering-customer-inquiry-state';
 import { 
   MapPin, 
   Users, 
@@ -57,6 +59,7 @@ const defaultBookingForm: CateringBookingForm = {
 export function CateringMarketplace() {
   const { user, loading: isUserLoading } = useUser();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('all');
   const [selectedPriceRange, setSelectedPriceRange] = useState('all');
@@ -131,17 +134,14 @@ export function CateringMarketplace() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerId: user.id,
           chefId,
           eventDate: form.eventDate ? localCalendarDate(form.eventDate) : undefined,
           timezoneOffsetMinutes: new Date().getTimezoneOffset(),
           guestCount: form.guestCount ? parseInt(form.guestCount) : undefined,
           eventType: form.eventType || undefined,
-          message: [
-            form.additionalNotes,
-            form.contactEmail ? `Email: ${form.contactEmail}` : '',
-            form.contactPhone ? `Phone: ${form.contactPhone}` : '',
-          ].filter(Boolean).join('\n') || undefined,
+          message: form.additionalNotes.trim() || undefined,
+          customerEmail: form.contactEmail.trim() || undefined,
+          customerPhone: form.contactPhone.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -151,7 +151,8 @@ export function CateringMarketplace() {
       return res.json();
     },
     onSuccess: (_data, { chefId }) => {
-      toast({ title: 'Request sent!', description: 'The chef will contact you soon.' });
+      toast({ title: 'Request sent!', description: 'Track it under My catering requests.' });
+      if (user) void queryClient.invalidateQueries({ queryKey: cateringCustomerInquiriesKey(user.id) });
       setOpenDialogs((prev) => ({ ...prev, [chefId]: false }));
       setBookingForms((prev) => ({ ...prev, [chefId]: defaultBookingForm }));
     },
@@ -183,7 +184,7 @@ export function CateringMarketplace() {
         <p className="text-gray-600">Book professional chefs for your events and special occasions</p>
       </div>
 
-      {user && <div className="mb-8"><BookingManager userId={user.id} mode="customer" /></div>}
+      {user && <div className="mb-8 space-y-6"><CustomerInquiries userId={user.id} /><BookingManager userId={user.id} mode="customer" /></div>}
 
       {/* Wedding Planning Hub Card */}
       <Link href="/catering/wedding-planning">

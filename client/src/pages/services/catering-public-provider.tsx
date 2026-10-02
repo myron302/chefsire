@@ -9,6 +9,7 @@ import { PackageGallery } from "@/components/catering/PackageGallery";
 import { PortfolioGallery } from "@/components/catering/PortfolioGallery";
 import { CateringReviews } from "@/components/catering/CateringReviews";
 import { useUser } from "@/contexts/UserContext";
+import { cateringCustomerInquiriesKey } from "./catering-customer-inquiry-state";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -85,7 +86,7 @@ export default function CateringPublicProvider({ params }: { params: { providerI
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.message || "Unable to send quote request");
     },
-    onSuccess: () => { setQuoteOpen(false); toast({ title: "Quote request sent", description: "The provider can now review your event request." }); queryClient.invalidateQueries({ queryKey: ["catering", "inquiries"] }); },
+    onSuccess: () => { setQuoteOpen(false); toast({ title: "Quote request sent", description: "The provider can now review your event request." }); if (user) void queryClient.invalidateQueries({ queryKey: cateringCustomerInquiriesKey(user.id) }); },
     onError: (error: Error) => toast({ title: "Quote request not sent", description: error.message, variant: "destructive" }),
   });
 
