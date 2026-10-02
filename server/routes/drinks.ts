@@ -107,6 +107,7 @@ import { z } from "zod";
 import { customDrinkOwnerPatchSchema, toCustomDrinkOwnerPatch } from "../../shared/custom-drink-mutations";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
 import { optionalAuth, requireAuth } from "../middleware";
+import { resolveSelfUserId } from "../lib/self-scope";
 import { WebhooksHelper } from "square";
 import { getSquareClient, getSquareConfigError, requireWebhookKey, squareConfig } from "../lib/square";
 import {
@@ -28528,9 +28529,11 @@ r.get("/custom-drinks/:id/saved", requireAuth, async (req, res) => {
 });
 
 // Get user's saved drinks
+// A saved list is private to its owner (`:userId` must be the actor or "me"); only the owner can list it.
 r.get("/custom-drinks/saved/:userId", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = resolveSelfUserId(req, res, req.params.userId, { ok: false, error: "Not authorized" });
+    if (!userId) return;
     const { category } = req.query;
     const drinks = await storage.getUserSavedDrinks(
       userId,
@@ -28548,10 +28551,13 @@ r.get("/custom-drinks/saved/:userId", requireAuth, async (req, res) => {
 // USER DRINK STATS
 // ========================================
 
-// Get user stats
-r.get("/user-drink-stats/:userId", async (req, res) => {
+// Get the signed-in user's stats (`:userId` must be the actor or "me"). The read lazily creates a row, so it must
+// never be reachable for an id the caller does not own.
+r.get("/user-drink-stats/:userId", requireAuth, async (req, res) => {
   try {
-    const stats = await storage.getUserDrinkStats(req.params.userId);
+    const userId = resolveSelfUserId(req, res, req.params.userId, { ok: false, error: "Not authorized" });
+    if (!userId) return;
+    const stats = await storage.getUserDrinkStats(userId);
     res.json({ ok: true, stats });
   } catch (error: any) {
     console.error("Error fetching stats:", error);
@@ -28562,12 +28568,9 @@ r.get("/user-drink-stats/:userId", async (req, res) => {
 // Update user stats
 r.patch("/user-drink-stats/:userId", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
-    
-    if (userId !== req.user.id) {
-      return res.status(403).json({ ok: false, error: "Not authorized" });
-    }
-    
+    const userId = resolveSelfUserId(req, res, req.params.userId, { ok: false, error: "Not authorized" });
+    if (!userId) return;
+
     const updated = await storage.updateUserDrinkStats(userId, req.body);
     res.json({ ok: true, stats: updated });
   } catch (error: any) {
@@ -28579,7 +28582,8 @@ r.patch("/user-drink-stats/:userId", requireAuth, async (req, res) => {
 // Award badge to user
 r.post("/user-drink-stats/:userId/badge", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = resolveSelfUserId(req, res, req.params.userId, { ok: false, error: "Not authorized" });
+    if (!userId) return;
     const { badge } = req.body;
     
     if (!badge) {

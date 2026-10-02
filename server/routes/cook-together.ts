@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
+import { resolveSelfUserId } from "../lib/self-scope";
 
 const router = Router();
 
@@ -415,11 +416,12 @@ router.post("/:sessionId/rate", requireAuth, async (req, res) => {
 
 /**
  * GET /api/cook-together/user/:userId/history
- * Get user's session history
+ * Get the signed-in user's session history (`:userId` must be the actor or "me")
  */
-router.get("/user/:userId/history", async (req, res) => {
+router.get("/user/:userId/history", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = resolveSelfUserId(req, res, req.params.userId, { error: "Forbidden" });
+    if (!userId) return;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
 

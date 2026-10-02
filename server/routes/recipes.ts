@@ -4,6 +4,7 @@ import { z } from "zod";
 import { searchRecipes } from "../services/recipes-service";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
+import { resolveSelfUserId } from "../lib/self-scope";
 import { resolveSaveRouteUserId } from "./recipes/auth";
 import { normalizeIngredients, normalizeInstructions, withItemsFromResults } from "./recipes/serializers";
 import {
@@ -290,12 +291,13 @@ router.get("/:id/save-status", requireAuth, async (req, res) => {
 });
 
 /**
- * GET /api/recipes/users/:id/saved-recipes
+ * GET /api/recipes/users/:id/saved-recipes -- private to the signed-in user (`:id` must be the actor or "me").
  */
-router.get("/users/:id/saved-recipes", async (req, res) => {
+router.get("/users/:id/saved-recipes", requireAuth, async (req, res) => {
   try {
-    const userId = req.params.id;
-    const recipes = await storage.getSavedRecipes(userId);
+    const userId = resolveSelfUserId(req, res, req.params.id, { ok: false, error: "Not allowed" });
+    if (!userId) return;
+    const recipes = await storage.getUserSavedRecipes(userId);
     res.json({ ok: true, recipes });
   } catch (err: any) {
     console.error("get saved recipes error:", err);

@@ -25,6 +25,7 @@ import {
 } from "./pantry/feature-helpers";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
+import { resolveSelfUserId } from "../lib/self-scope";
 import {
   sendHouseholdInviteNotification,
   sendHouseholdInviteAcceptedNotification,
@@ -118,10 +119,12 @@ r.delete("/items/:itemId", requireAuth, async (req, res) => {
 });
 
 // User-ID based endpoints (for backwards compatibility)
-// Get a user's pantry
-r.get("/users/:id/pantry", async (req, res) => {
+// Get the signed-in user's pantry. The path id is only the actor (or "me"); see lib/self-scope.
+r.get("/users/:id/pantry", requireAuth, async (req, res) => {
   try {
-    const items = await storage.getPantryItems(req.params.id);
+    const userId = resolveSelfUserId(req, res, req.params.id);
+    if (!userId) return;
+    const items = await storage.getPantryItems(userId);
     res.json({ pantryItems: items, total: items.length });
   } catch (error) {
     console.error("pantry/list error", error);
@@ -219,10 +222,12 @@ r.delete("/pantry/:itemId", requireAuth, async (req, res) => {
 });
 
 // Expiring soon
-r.get("/users/:id/pantry/expiring", async (req, res) => {
+r.get("/users/:id/pantry/expiring", requireAuth, async (req, res) => {
   try {
+    const userId = resolveSelfUserId(req, res, req.params.id);
+    if (!userId) return;
     const days = Number(req.query.days ?? 7);
-    const items = await storage.getExpiringItems(req.params.id, parseDaysWithDefault(req.query.days, 7));
+    const items = await storage.getExpiringItems(userId, parseDaysWithDefault(req.query.days, 7));
     res.json({ expiringItems: items, daysAhead: days, total: items.length });
   } catch (error) {
     console.error("pantry/expiring error", error);
@@ -231,11 +236,13 @@ r.get("/users/:id/pantry/expiring", async (req, res) => {
 });
 
 // Pantry-based recipe suggestions
-r.get("/users/:id/pantry/recipe-suggestions", async (req, res) => {
+r.get("/users/:id/pantry/recipe-suggestions", requireAuth, async (req, res) => {
   try {
+    const userId = resolveSelfUserId(req, res, req.params.id);
+    if (!userId) return;
     const opts = pantrySuggestionsQuerySchema.parse(req.query);
 
-    const suggestions = await storage.getRecipesFromPantryItems(req.params.id, opts);
+    const suggestions = await storage.getRecipesFromPantryItems(userId, opts);
     res.json({
       suggestions,
       options: opts,

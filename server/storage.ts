@@ -76,6 +76,7 @@ import {
 } from "@shared/schema";
 import { isProviderInRange, milesBetween, type Coordinates } from "./services/catering-geo";
 import { visiblePostsCondition } from "./lib/post-visibility";
+import { serializePublicUser } from "./serializers/public-user";
 import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
 import { purgeRemixEngagementForUser } from "./lib/remix-engagement-cleanup";
 import type { PasswordHash } from "./lib/password-hash";
@@ -1851,7 +1852,7 @@ export class DrizzleStorage implements IStorage {
 
       return {
         ...r,
-        post: { ...row.post, user: row.user },
+        post: { ...row.post, user: serializePublicUser(row.user) },
         matchScore,
         ingredientMatches: matches,
         totalIngredients: total,

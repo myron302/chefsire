@@ -78,14 +78,17 @@ type StoreUpdateRequestBody = {
  * Requires Starter tier or higher for store builder access.
  */
 
-// GET /api/stores/user/:userId - Get user's store (for owner)
+// GET /api/stores/user/:userId - Get a user's store.
+// Public for PUBLISHED stores (profile pages). An unpublished store is the owner's draft: it is returned only to the
+// authenticated owner and is otherwise indistinguishable from "this user has no store".
 // NOTE: This route must come BEFORE /:handle to avoid matching conflicts
-router.get("/user/:userId", async (req, res) => {
+router.get("/user/:userId", optionalAuth, async (req, res) => {
   try {
     const { userId } = req.params;
-    const store = await db.query.stores.findFirst({
+    const found = await db.query.stores.findFirst({
       where: eq(stores.userId, userId),
     });
+    const store = found && (found.published === true || (req.user as { id?: string } | undefined)?.id === found.userId) ? found : undefined;
 
     const socialProof = store ? await fetchSocialProof(userId) : undefined;
     res.json({ ok: true, store: store || null, socialProof });
