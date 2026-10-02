@@ -22,6 +22,8 @@ export function cateringBookingMutationInvalidationKeys(input: { surfaceUserId: 
     ["catering", "bookings", input.providerId],
     [...cateringProviderInquiryKey(input.providerId)],
     ["catering", "dashboard", input.providerId],
+    // A booking action changes what the customer's request list derives from the booking.
+    ["catering", "inquiries", "customer", input.surfaceUserId],
   ];
   if (input.action === "complete") keys.push(["catering", "reviews", input.providerId]);
   return keys.filter((key, index) => keys.findIndex((candidate) => candidate.join("\0") === key.join("\0")) === index);

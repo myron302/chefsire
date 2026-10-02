@@ -315,6 +315,10 @@ export const cateringInquiries = pgTable("catering_inquiries", {
     .default(sql`'[]'::jsonb`),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   message: text("message"),
+  // Structured contact details the customer chose to share with this provider. Nullable: inquiries created before
+  // Phase 2M carried them (if at all) only inside the free-text message, which is never parsed back out.
+  customerEmail: varchar("customer_email", { length: 254 }),
+  customerPhone: varchar("customer_phone", { length: 32 }),
   status: text("status").default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
 });
