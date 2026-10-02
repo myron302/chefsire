@@ -16,6 +16,7 @@
  * actual event (`disconnect`, a delivered notification) with a generous ceiling, so the tests are
  * decided by observed server behaviour rather than by a race with the clock.
  */
+import "../test-support/accept-test-sessions";
 import { TEST_JWT_SECRET } from "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -34,12 +35,12 @@ const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 /** A token that is valid now and expires in `seconds`, with a real verified `exp`. */
 const shortLivedToken = (id: string, seconds: number) =>
-  jwt.sign({ id, email: `${id}@chefsire.test`, exp: nowSeconds() + seconds }, TEST_JWT_SECRET, {
+  jwt.sign({ id, av: 1, email: `${id}@chefsire.test`, exp: nowSeconds() + seconds }, TEST_JWT_SECRET, {
     algorithm: "HS256",
   });
 
 const longLivedToken = (id: string) =>
-  jwt.sign({ id }, TEST_JWT_SECRET, { algorithm: "HS256", expiresIn: "7d" });
+  jwt.sign({ id, av: 1 }, TEST_JWT_SECRET, { algorithm: "HS256", expiresIn: "7d" });
 
 /* ----------------------------------------------------------------- harness */
 

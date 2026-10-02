@@ -2,8 +2,14 @@
 import crypto from "node:crypto";
 import { db } from "../db";
 import { emailVerificationTokens, users } from "../../shared/schema";
-import { eq, and, isNull, gt } from "drizzle-orm";
+import { eq, and, isNull, gt, sql } from "drizzle-orm";
 import { sendVerificationEmail } from "../utils/mailer";
+import { hashPassword } from "../lib/password-hash";
+import { disconnectUserSockets } from "../realtime/socket-auth";
+import { EMAIL_VERIFIED_VIA_LINK } from "../lib/email-verification-provenance";
+
+/** Minimum length for a password chosen while redeeming a verification link (matches change-password). */
+export const MIN_PASSWORD_LENGTH = 6;
 
 /**
  * AuthService - Centralized authentication utilities
@@ -51,11 +57,23 @@ export class AuthService {
   }
 
   /**
-   * Verify an email verification token and mark user as verified
+   * Redeem an email verification token, establishing the account's password in the same step.
+   *
+   * SECURITY (P2-1): an unverified account's password hash was chosen by whoever called
+   * `POST /auth/signup`, who has not proven they own the address. Activating the account while
+   * keeping that hash would hand the signup caller a working credential for an account the real
+   * owner has just verified. So the stored hash is never activated: the person redeeming the
+   * emailed link (the only party who has proven ownership) supplies the password, and it replaces
+   * whatever was stored. A legitimate signup user simply re-enters the password they chose.
+   *
+   * Token consumption and activation happen in one transaction, and both are conditional
+   * (`consumed_at IS NULL`, `email_verified_at IS NULL`), so a replayed or concurrent redemption,
+   * or an OAuth link that verified the account first, cannot overwrite a trusted state.
+   *
    * @param token - Raw token from verification link
-   * @returns Object with success status and optional error message
+   * @param password - Plaintext password chosen by the person redeeming the link
    */
-  static async verifyEmailToken(token: string): Promise<{
+  static async verifyEmailToken(token: string, password: string): Promise<{
     success: boolean;
     error?: string;
     userId?: string;
@@ -63,40 +81,68 @@ export class AuthService {
     if (!token) {
       return { success: false, error: "Missing token" };
     }
+    if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+      return { success: false, error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` };
+    }
 
     const tokenHash = this.hashToken(token);
     const now = new Date();
+    const passwordHash = await hashPassword(password);
 
-    // Find valid token
-    const [tokenRecord] = await db
-      .select()
-      .from(emailVerificationTokens)
-      .where(
-        and(
-          eq(emailVerificationTokens.tokenHash, tokenHash),
-          isNull(emailVerificationTokens.consumedAt),
-          gt(emailVerificationTokens.expiresAt, now)
+    return db.transaction(async (tx: any) => {
+      // Claim the token atomically: exactly one redemption can win.
+      const [claimed] = await tx
+        .update(emailVerificationTokens)
+        .set({ consumedAt: now })
+        .where(
+          and(
+            eq(emailVerificationTokens.tokenHash, tokenHash),
+            isNull(emailVerificationTokens.consumedAt),
+            gt(emailVerificationTokens.expiresAt, now)
+          )
         )
-      )
-      .limit(1);
+        .returning();
 
-    if (!tokenRecord) {
-      return { success: false, error: "Invalid or expired verification link" };
-    }
+      if (!claimed) {
+        return { success: false, error: "Invalid or expired verification link" };
+      }
 
-    // Mark user as verified
-    await db
-      .update(users)
-      .set({ emailVerifiedAt: now })
-      .where(eq(users.id, tokenRecord.userId));
+      // Activate only a still-unverified account whose current address is the one the token proves.
+      const [activated] = await tx
+        .update(users)
+        .set({
+          emailVerifiedAt: sql`COALESCE(${users.emailVerifiedAt}, ${now})`,
+          emailVerifiedVia: EMAIL_VERIFIED_VIA_LINK,
+          password: passwordHash,
+          // Every provider identity on a not-yet-authoritative account was attached without proof of
+          // the address (Facebook/TikTok never vouch; legacy rows are unprovable). None survives.
+          googleId: null,
+          facebookId: null,
+          tiktokId: null,
+          instagramId: null,
+          provider: "local",
+          // Reclamation: every access token issued before this moment dies with this same statement.
+          authVersion: sql`${users.authVersion} + 1`,
+        })
+        .where(
+          and(
+            eq(users.id, claimed.userId),
+            isNull(users.emailVerifiedVia),
+            sql`lower(${users.email}) = ${claimed.email.toLowerCase()}`
+          )
+        )
+        .returning({ id: users.id });
 
-    // Mark token as consumed
-    await db
-      .update(emailVerificationTokens)
-      .set({ consumedAt: now })
-      .where(eq(emailVerificationTokens.id, tokenRecord.id));
+      if (!activated) {
+        return { success: false, error: "Invalid or expired verification link" };
+      }
 
-    return { success: true, userId: tokenRecord.userId };
+      return { success: true, userId: activated.id };
+    }).then((result: { success: boolean; error?: string; userId?: string }) => {
+      // Sockets authenticated with a now-revoked token must not outlive it.
+      if (result.success && result.userId) disconnectUserSockets(result.userId);
+      return result;
+    });
   }
 
   /**

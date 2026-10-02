@@ -30,6 +30,7 @@
  * the repository's own `signAuthToken`, so a request that asserts an identity any other way -- a body
  * field, a query parameter, an `x-user-id` header -- is treated as the account its token names.
  */
+import "../test-support/accept-test-sessions";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -268,7 +269,7 @@ await new Promise<void>((resolve) => server.once("listening", () => resolve()));
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 test.after(() => server.close());
 
-const asUser = (id: string) => ({ Authorization: `Bearer ${signAuthToken({ id })}` });
+const asUser = (id: string) => ({ Authorization: `Bearer ${signAuthToken({ id, av: 1 })}` });
 
 /** Reset the world: three rows owned by OWNER, plus the accounts `requireAuth` looks up. */
 function given() {

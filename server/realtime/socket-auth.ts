@@ -33,6 +33,7 @@ import {
   SOCKET_AUTH_EXPIRED_EVENT,
 } from "../../shared/realtime-auth";
 import { verifyAuthToken } from "../lib/jwt-config";
+import { resolveSessionUser } from "../lib/auth-session";
 
 /** The cookie ChefSire's login route sets. It is httpOnly, so the browser sends it, not the app. */
 export const AUTH_TOKEN_COOKIE = "auth_token";
@@ -123,6 +124,8 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647; // ~24.8 days
  * handle stays out of the data every handler reads, and so nothing here keeps a socket alive.
  */
 const expiryTimers = new WeakMap<Socket, NodeJS.Timeout>();
+/** Authenticated sockets, so a revoked account's connections can be found and closed. */
+const liveSockets = new Set<Socket>();
 
 /** How many expiry timers are currently armed. Exposed so tests can prove none are leaked. */
 let armedTimers = 0;
@@ -230,7 +233,7 @@ export function authenticateSocket(socket: Socket, next: (err?: Error) => void):
   const token = tokenFromHandshake(socket);
   if (!token) return next(unauthorized());
 
-  let claims: { id?: unknown; exp?: unknown };
+  let claims: { id?: unknown; exp?: unknown; av?: unknown };
   try {
     claims = verifyAuthToken(token);
   } catch {
@@ -250,16 +253,38 @@ export function authenticateSocket(socket: Socket, next: (err?: Error) => void):
   if (authExpiresAt === null) return next(unauthorized());
   if (authExpiresAt <= Date.now()) return next(unauthorized());
 
-  const data = socket.data as AuthenticatedSocketData;
-  data.userId = userId;
-  data.authExpiresAt = authExpiresAt;
+  // The token must also still match the account's current auth version (revocation on reclamation).
+  // The connection is not admitted to anything until that check has answered.
+  void resolveSessionUser(claims).then((user) => {
+    if (!user) return next(unauthorized());
 
-  // The socket's authorization now has a hard end. If it disconnects on its own first, the timer
-  // goes with it rather than being left to hold the closure.
-  socket.on("disconnect", () => clearAuthExpiryTimer(socket));
-  armAuthExpiryTimer(socket);
+    const data = socket.data as AuthenticatedSocketData;
+    data.userId = userId;
+    data.authExpiresAt = authExpiresAt;
 
-  next();
+    // The socket's authorization now has a hard end. If it disconnects on its own first, the timer
+    // goes with it rather than being left to hold the closure.
+    liveSockets.add(socket);
+    socket.on("disconnect", () => {
+      liveSockets.delete(socket);
+      clearAuthExpiryTimer(socket);
+    });
+    armAuthExpiryTimer(socket);
+
+    next();
+  });
+}
+
+/**
+ * End every live socket authenticated as `userId`. Called when the account's auth version is bumped
+ * (credential reclamation), so a connection opened with a now-revoked token does not outlive it.
+ */
+export function disconnectUserSockets(userId: string): void {
+  for (const socket of Array.from(liveSockets)) {
+    if ((socket.data as Partial<AuthenticatedSocketData> | undefined)?.userId === userId) {
+      terminateExpiredSocket(socket);
+    }
+  }
 }
 
 /**

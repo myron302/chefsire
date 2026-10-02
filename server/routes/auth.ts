@@ -5,18 +5,21 @@ import jwt from "jsonwebtoken";
 import passport from "passport";
 import multer from "multer";
 import { storage } from "../storage";
-import { AuthService } from "../services/auth.service";
+import { AuthService, MIN_PASSWORD_LENGTH } from "../services/auth.service";
 import {
   loginLimiter,
   signupLimiter,
   emailSendLimiter,
   passwordChangeLimiter,
   verifyEmailLimiter,
+  verifyEmailPageLimiter,
 } from "../middleware/rate-limit";
 import { UnsupportedMediaError, storeVerifiedImage } from "../services/image-upload";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { hashPassword } from "../lib/password-hash";
-import { signAuthToken, verifyAuthToken } from "../lib/jwt-config";
+import { isEmailAuthoritativelyVerified } from "../lib/email-verification-provenance";
+import { verifyAuthToken } from "../lib/jwt-config";
+import { issueAuthToken, resolveSessionUser } from "../lib/auth-session";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -170,6 +173,10 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
     if (error instanceof UnsupportedMediaError) {
       return res.status(error.status).json({ error: error.message });
     }
+    // Two concurrent signups for the same address (any casing): the unique index lets exactly one in.
+    if ((error as { code?: string })?.code === "23505" && /email/i.test((error as { constraint?: string }).constraint ?? "")) {
+      return res.status(400).json({ error: "Email already registered" });
+    }
     console.error("Error during signup:", error);
     res.status(500).json({ error: "Failed to create account" });
   }
@@ -196,6 +203,11 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
       return res.status(403).json({ error: "Please verify your email to log in." });
     }
 
+    // OAuth-only (or credential-cleared) accounts have no local password: never a valid login.
+    if (!user.password) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
     // Verify password
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
@@ -203,11 +215,7 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
     }
 
     // Create JWT token
-    const token = signAuthToken({
-      id: user.id,
-      email: user.email,
-      username: user.username,
-    });
+    const token = issueAuthToken(user);
 
     // Set token as HTTP-only cookie
     res.cookie("auth_token", token, {
@@ -230,24 +238,64 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
   }
 });
 
+const VERIFY_TOKEN_SHAPE = /^[a-f0-9]{64}$/;
+
+function verifyEmailPage(token: string, error?: string): string {
+  // `token` is validated as 64 hex characters before it reaches here; `error` is a fixed server string.
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>Verify your email</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:26rem;margin:4rem auto;padding:0 1rem">
+<h1>Verify your email</h1>
+<p>Choose the password for your ChefSire account to finish verifying your email address.</p>
+${error ? `<p role="alert" style="color:#b00020">${error}</p>` : ""}
+<form method="POST" action="/api/auth/verify-email">
+<input type="hidden" name="token" value="${token}">
+<label>Password<br><input type="password" name="password" minlength="6" autocomplete="new-password" required style="width:100%;padding:.5rem;margin:.25rem 0 1rem"></label>
+<button type="submit" style="padding:.5rem 1rem">Verify email</button>
+</form></body></html>`;
+}
+
 /**
  * GET /auth/verify-email?token=xxx
+ * Shows the password form. Deliberately does NOT consume the token or verify anything: ownership of
+ * the address is proven by the emailed token, and the password is established by the same person
+ * in the POST below -- never taken from whoever created the account (P2-1).
  */
-router.get("/auth/verify-email", verifyEmailLimiter, async (req, res) => {
-  try {
-    const { token } = req.query;
+router.get("/auth/verify-email", verifyEmailPageLimiter, async (req, res) => {
+  const { token } = req.query;
+  if (typeof token !== "string" || !VERIFY_TOKEN_SHAPE.test(token)) {
+    return res.status(400).send("Invalid verification link");
+  }
+  res.set("Cache-Control", "no-store");
+  res.type("html").send(verifyEmailPage(token));
+});
 
-    if (!token || typeof token !== "string") {
+/**
+ * POST /auth/verify-email  { token, password }
+ * Redeems the token and sets the account password atomically.
+ */
+router.post("/auth/verify-email", verifyEmailLimiter, async (req, res) => {
+  try {
+    const { token, password } = req.body ?? {};
+
+    if (typeof token !== "string" || !VERIFY_TOKEN_SHAPE.test(token)) {
       return res.status(400).send("Invalid verification link");
     }
+    if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
+      res.set("Cache-Control", "no-store");
+      return res
+        .status(400)
+        .type("html")
+        .send(verifyEmailPage(token, `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`));
+    }
 
-    const result = await AuthService.verifyEmailToken(token);
+    const result = await AuthService.verifyEmailToken(token, password);
 
     if (!result.success) {
       return res.status(400).send(result.error);
     }
 
-    res.redirect("/verify/success");
+    res.redirect(303, "/verify/success");
   } catch (error) {
     console.error("Error verifying email:", error);
     res.status(500).send("Verification failed");
@@ -290,7 +338,8 @@ router.post("/auth/resend-verification", emailSendLimiter, async (req, res) => {
       return res.json({ message: "If that email exists, a verification email has been sent." });
     }
 
-    if (user.emailVerifiedAt) {
+    // "Verified" here means authoritatively verified: a legacy provider-stamped timestamp can be re-proven.
+    if (isEmailAuthoritativelyVerified(user)) {
       return res.status(400).json({ error: "Email is already verified" });
     }
 
@@ -323,7 +372,11 @@ router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => 
     }
 
     // Verify token
-    const decoded = verifyAuthToken(token) as { id: string };
+    const decoded = verifyAuthToken(token) as { id: string; av?: number };
+    // A signed token is not enough: it must still match the account's current auth version.
+    if (!(await resolveSessionUser(decoded))) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
     const userId = decoded.id;
 
     const { currentPassword, newPassword } = req.body;
@@ -381,11 +434,12 @@ router.get("/auth/me", async (req, res) => {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const decoded = verifyAuthToken(token) as { id: string; email: string; username: string };
-    const user = await storage.getUser(decoded.id);
+    const decoded = verifyAuthToken(token) as { id: string; av?: number };
+    const user = await resolveSessionUser(decoded);
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      // Unknown account and revoked session are indistinguishable to the caller.
+      return res.status(401).json({ error: "Not authenticated" });
     }
 
     res.json({
@@ -451,11 +505,7 @@ router.get("/auth/google/callback", (req, res, next) => {
       }
 
       // Create JWT token for the user
-      const token = signAuthToken({
-        id: user.id,
-        email: user.email,
-        username: user.username,
-      });
+      const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {
@@ -500,11 +550,7 @@ router.get("/auth/facebook/callback",
       }
 
       // Create JWT token for the user
-      const token = signAuthToken({
-        id: user.id,
-        email: user.email,
-        username: user.username,
-      });
+      const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {
@@ -547,11 +593,7 @@ router.get("/auth/tiktok/callback",
       }
 
       // Create JWT token for the user
-      const token = signAuthToken({
-        id: user.id,
-        email: user.email,
-        username: user.username,
-      });
+      const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
       res.cookie("auth_token", token, {

@@ -4,6 +4,7 @@
  * conditions and bound params) against stored rows, so a route/storage that forgets to put the
  * visibility rule in the query returns the private rows and the test fails.
  */
+import "../test-support/accept-test-sessions";
 import "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +16,7 @@ process.env.DATABASE_URL ||= "postgres://u:p@custom-drink-tests.invalid/none";
 
 const A = "user-a";
 const B = "user-b";
-const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id } as any)}` });
+const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id, av: 1 } as any)}` });
 
 const drink = (id: string, userId: string, isPublic: boolean | null) => ({
   id, userId, name: `name-${id}`, category: "smoothies", drinkType: "green", ingredients: [], calories: 100,

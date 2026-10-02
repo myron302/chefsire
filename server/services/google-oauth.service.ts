@@ -4,9 +4,9 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { storage } from "../storage";
 import { randomBytes } from "crypto";
 import { db } from "../db";
-import { eq } from "drizzle-orm";
 import { users } from "@shared/schema";
 import { logToFile } from "../lib/logger";
+import { googleProfileEmailIsVerified, linkVerifiedProviderIdentity } from "./oauth-account-link";
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
@@ -39,6 +39,104 @@ function generateUsername(email: string): string {
   return `${baseUsername}-${randomSuffix}`;
 }
 
+export async function verifyGoogleProfile(
+  _accessToken: string,
+  _refreshToken: string,
+  profile: any,
+  done: (error: any, user?: any) => void,
+) {
+  try {
+    logToFile("🔍 OAuth callback started", { profileId: profile.id });
+
+    // Extract user info from Google profile
+    const email = profile.emails?.[0]?.value;
+    const googleId = profile.id;
+    const firstName = profile.name?.givenName || "";
+    const lastName = profile.name?.familyName || "";
+    const avatar = profile.photos?.[0]?.value || "";
+
+    logToFile("📧 Email extracted", { email });
+
+    if (!email) {
+      console.error("❌ No email in profile");
+      return done(new Error("No email found in Google profile"), undefined);
+    }
+
+    // Check if user exists with this Google ID
+    const existingUser = await db.query.users.findFirst({
+      where: (users, { eq }) => eq(users.googleId, googleId),
+    });
+
+    if (existingUser) {
+      return done(null, existingUser);
+    }
+
+    // Past this point the Google identity is new to us, so the profile email is the only thing
+    // tying it to an account. Only an address Google itself reports as verified may do that.
+    if (!googleProfileEmailIsVerified(profile)) {
+      console.error("❌ Google profile email is not verified; refusing to link or create");
+      return done(new Error("Google email is not verified"), undefined);
+    }
+
+    // Check if email is already registered
+    const emailUser = await storage.findByEmail(email.toLowerCase().trim());
+
+    if (emailUser) {
+      // Atomic: verifies the account and discards pre-verification credentials (P2-1).
+      const updated = await linkVerifiedProviderIdentity(
+        emailUser.id,
+        { idColumn: "googleId", provider: "google", providerId: googleId },
+        avatar,
+      );
+      if (!updated) {
+        return done(new Error("Account is linked to a different Google identity"), undefined);
+      }
+      return done(null, updated);
+    }
+
+    // Create new user
+    const username = generateUsername(email);
+    const displayName = `${firstName} ${lastName}`.trim() || username;
+
+    const newUser = await storage.createUser({
+      email: email.toLowerCase().trim(),
+      password: null, // No password for OAuth users
+      username,
+      displayName,
+      firstName,
+      lastName,
+      googleId,
+      provider: "google",
+      avatar,
+      emailVerifiedAt: new Date(), // Google vouched for this address (checked above)
+      emailVerifiedVia: "google",
+      royalTitle: null,
+      showFullName: false,
+    });
+
+    return done(null, newUser);
+  } catch (error) {
+    const databaseError = databaseErrorDetails(error);
+    const errorDetails = {
+      type: error?.constructor?.name,
+      ...databaseError,
+      stack: error instanceof Error ? error.stack : undefined,
+    };
+
+    logToFile("💥 ERROR in Google OAuth callback", errorDetails);
+
+    console.error("💥 ERROR in Google OAuth callback:");
+    console.error("Error type:", error?.constructor?.name);
+    console.error("PostgreSQL error code:", databaseError.code ?? "unavailable");
+    console.error("Missing database column:", databaseError.missingColumn ?? "unavailable");
+    console.error("Error message:", databaseError.message);
+    if (error instanceof Error && error.stack) {
+      console.error("Stack trace:", error.stack);
+    }
+    return done(error as Error, undefined);
+  }
+}
+
 export function setupGoogleOAuth() {
 
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -54,94 +152,7 @@ export function setupGoogleOAuth() {
           clientSecret: GOOGLE_CLIENT_SECRET,
           callbackURL: GOOGLE_CALLBACK_URL,
         },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          logToFile("🔍 OAuth callback started", { profileId: profile.id });
-
-          // Extract user info from Google profile
-          const email = profile.emails?.[0]?.value;
-          const googleId = profile.id;
-          const firstName = profile.name?.givenName || "";
-          const lastName = profile.name?.familyName || "";
-          const avatar = profile.photos?.[0]?.value || "";
-
-          logToFile("📧 Email extracted", { email });
-
-          if (!email) {
-            console.error("❌ No email in profile");
-            return done(new Error("No email found in Google profile"), undefined);
-          }
-
-          // Check if user exists with this Google ID
-          const existingUser = await db.query.users.findFirst({
-            where: (users, { eq }) => eq(users.googleId, googleId),
-          });
-
-          if (existingUser) {
-            return done(null, existingUser);
-          }
-
-          // Check if email is already registered
-          const emailUser = await storage.findByEmail(email);
-
-          if (emailUser) {
-            // Email exists but no Google ID - link accounts
-            const updated = await db
-              .update(users)
-              .set({
-                googleId,
-                provider: "google",
-                // Preserve original avatar if user already has one
-                avatar: emailUser.avatar || avatar,
-                emailVerifiedAt: new Date(), // Google emails are pre-verified
-              })
-              .where(eq(users.id, emailUser.id))
-              .returning();
-
-            return done(null, updated[0]);
-          }
-
-          // Create new user
-          const username = generateUsername(email);
-          const displayName = `${firstName} ${lastName}`.trim() || username;
-
-          const newUser = await storage.createUser({
-            email: email.toLowerCase().trim(),
-            password: null, // No password for OAuth users
-            username,
-            displayName,
-            firstName,
-            lastName,
-            googleId,
-            provider: "google",
-            avatar,
-            emailVerifiedAt: new Date(), // Google emails are pre-verified
-            royalTitle: null,
-            showFullName: false,
-          });
-
-          return done(null, newUser);
-        } catch (error) {
-          const databaseError = databaseErrorDetails(error);
-          const errorDetails = {
-            type: error?.constructor?.name,
-            ...databaseError,
-            stack: error instanceof Error ? error.stack : undefined,
-          };
-
-          logToFile("💥 ERROR in Google OAuth callback", errorDetails);
-
-          console.error("💥 ERROR in Google OAuth callback:");
-          console.error("Error type:", error?.constructor?.name);
-          console.error("PostgreSQL error code:", databaseError.code ?? "unavailable");
-          console.error("Missing database column:", databaseError.missingColumn ?? "unavailable");
-          console.error("Error message:", databaseError.message);
-          if (error instanceof Error && error.stack) {
-            console.error("Stack trace:", error.stack);
-          }
-          return done(error as Error, undefined);
-        }
-      }
+      verifyGoogleProfile
     )
   );
 

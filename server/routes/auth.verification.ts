@@ -4,7 +4,7 @@ import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { users } from "../../shared/schema";
 import { AuthService } from "../services/auth.service";
-import { emailSendLimiter, verifyEmailLimiter } from "../middleware/rate-limit";
+import { emailSendLimiter } from "../middleware/rate-limit";
 
 const router = Router();
 
@@ -37,27 +37,9 @@ router.post("/send-email-verification", emailSendLimiter, async (req, res) => {
   }
 });
 
-// GET /api/auth/verify-email?token=RAW
-router.get("/verify-email", verifyEmailLimiter, async (req, res) => {
-  try {
-    const token = String(req.query.token || "");
-    if (!token) {
-      return res.status(400).send("Missing token.");
-    }
-
-    const result = await AuthService.verifyEmailToken(token);
-
-    if (!result.success) {
-      return res.status(400).send(result.error || "Verification failed");
-    }
-
-    const appUrl = process.env.APP_URL || "http://localhost:5173";
-    return res.redirect(`${appUrl}/verify/success`);
-  } catch (error) {
-    console.error("verify-email error:", error);
-    return res.status(500).send("Internal server error.");
-  }
-});
+// NOTE: the verification redemption endpoint lives only in routes/auth.ts (GET shows the
+// password form, POST redeems). It must not be duplicated here: redemption has to establish the
+// password in the same step (P2-1), which a bare GET cannot do.
 
 /**
  * DEV-ONLY helper for you (no terminal needed):

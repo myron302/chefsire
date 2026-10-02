@@ -69,25 +69,13 @@ export function setupTikTokOAuth() {
               return done(null, existingUser);
             }
 
-            // If email is real, check if email is already registered
+            // TikTok does not vouch for the email it returns, so it can neither link to an existing
+            // account by email nor be treated as proof of ownership (P2-1).
             if (!isPlaceholderEmail) {
-              const emailUser = await storage.findByEmail(email);
+              const emailUser = await storage.findByEmail(email.toLowerCase().trim());
 
               if (emailUser) {
-                // Email exists but no TikTok ID - link accounts
-                const updated = await db
-                  .update(users)
-                  .set({
-                    tiktokId,
-                    provider: "tiktok",
-                    // Preserve original avatar if user already has one
-                    avatar: emailUser.avatar || avatar,
-                    emailVerifiedAt: new Date(),
-                  })
-                  .where(eq(users.id, emailUser.id))
-                  .returning();
-
-                return done(null, updated[0]);
+                return done(new Error("TikTok cannot link to an existing account by email"), undefined);
               }
             }
 
@@ -104,8 +92,8 @@ export function setupTikTokOAuth() {
               tiktokId,
               provider: "tiktok",
               avatar,
-              // Only mark as verified if they provided a real email
-              emailVerifiedAt: isPlaceholderEmail ? null : new Date(),
+              // TikTok does not vouch for the email: never born verified.
+              emailVerifiedAt: null,
               royalTitle: null,
               showFullName: false,
             });

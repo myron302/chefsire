@@ -3,6 +3,7 @@
  * storage layer. Only the database is a double: it records every `.set(...)` object and the rendered
  * WHERE (SQL + bound params), and applies an update only if the bound owner matches the stored row.
  */
+import "../test-support/accept-test-sessions";
 import "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +18,7 @@ const OWNER = "owner-id";
 const VICTIM = "victim-id";
 const ATTACKER = "attacker-id";
 const DRINK = "drink-1";
-const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id } as any)}` });
+const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id, av: 1 } as any)}` });
 
 const fresh = () => ({
   id: DRINK, userId: OWNER, name: "Green", category: "smoothies", drinkType: "green",
