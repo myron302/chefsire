@@ -17985,6 +17985,12 @@ async function userHasActiveCollectionReviewAccess(userId: string, collectionId:
   return ownedCollectionIds.has(collectionId);
 }
 
+/**
+ * Number of items of a locked (premium_purchase / membership_only) collection that are intentionally public as a
+ * storefront preview. Everything past this is the premium payload and is only serialized for an entitled viewer.
+ */
+const LOCKED_COLLECTION_PREVIEW_LIMIT = 2;
+
 async function resolveCollectionWithItems(
   collection: typeof drinkCollections.$inferSelect,
   viewerUserId?: string | null,
@@ -18025,11 +18031,20 @@ async function resolveCollectionWithItems(
       addedAt: drinkCollectionItems.addedAt,
     })
     .from(drinkCollectionItems)
-    .where(eq(drinkCollectionItems.collectionId, normalizedCollection.id));
+    .where(eq(drinkCollectionItems.collectionId, normalizedCollection.id))
+    .orderBy(asc(drinkCollectionItems.addedAt), asc(drinkCollectionItems.drinkSlug));
 
-  const detailsBySlug = await resolveDrinkDetailsMapBySlugs(itemRows.map((row) => row.drinkSlug));
+  // Single server-side access boundary for every route that hydrates a collection (explore, featured, creator
+  // storefront, bundles, detail, ...). Entitlement comes only from the canonical access inputs the callers load
+  // (creator, completed purchase, owned bundle, active membership) -- never from client-supplied fields.
+  const isOwner = Boolean(viewerUserId && viewerUserId === normalizedCollection.userId);
+  const isOwned = isOwner || Boolean(viewerUserId && ownedCollectionIds?.has(normalizedCollection.id));
+  const isLocked = normalizedCollection.accessType !== "public" && !isOwned;
+  const visibleItemRows = isLocked ? itemRows.slice(0, LOCKED_COLLECTION_PREVIEW_LIMIT) : itemRows;
 
-  const items = itemRows.map((row) => ({
+  const detailsBySlug = await resolveDrinkDetailsMapBySlugs(visibleItemRows.map((row) => row.drinkSlug));
+
+  const items = visibleItemRows.map((row) => ({
     id: `${normalizedCollection.id}:${row.drinkSlug}`,
     drinkSlug: row.drinkSlug,
     drinkName: detailsBySlug.get(row.drinkSlug)?.name ?? row.drinkSlug,
@@ -18041,8 +18056,6 @@ async function resolveCollectionWithItems(
   }));
 
   const coverImage = items[0]?.image ?? null;
-  const isOwner = Boolean(viewerUserId && viewerUserId === normalizedCollection.userId);
-  const isOwned = isOwner || Boolean(viewerUserId && ownedCollectionIds?.has(normalizedCollection.id));
   const accessGrants = new Set<CollectionAccessGrant>(collectionAccessMap?.get(normalizedCollection.id) ?? []);
   if (isOwner) accessGrants.add("creator");
   const serializedAccessGrants = serializeCollectionAccessGrants(accessGrants);
@@ -18057,6 +18070,9 @@ async function resolveCollectionWithItems(
     coverImage,
     itemsCount: itemRows.length,
     items,
+    isLocked,
+    requiresUnlock: isLocked,
+    ...(isLocked ? { previewLimit: LOCKED_COLLECTION_PREVIEW_LIMIT } : {}),
     ownedByViewer: isOwned,
     viewerAccessGrants: serializedAccessGrants,
     viewerPrimaryAccessGrant: serializedAccessGrants[0] ?? null,
@@ -28052,7 +28068,7 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
     const isOwned = Boolean(hydrated.ownedByViewer);
     const requiresUnlock = hydrated.accessType !== "public" && !isOwner && !isOwned;
     if (requiresUnlock) {
-      const previewLimit = 2;
+      const previewLimit = LOCKED_COLLECTION_PREVIEW_LIMIT;
       return res.json({
         ok: true,
         collection: {
