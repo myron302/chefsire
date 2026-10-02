@@ -15,7 +15,9 @@ import { resolveAuthRuntimeMode, signAuthToken } from "./jwt-config";
 
 type SessionUser = { id: string; email?: string | null; username?: string | null; authVersion?: number | null };
 
-type SessionLookup = (id: string) => Promise<{ authVersion?: number | null } | undefined>;
+// The live row is the storage layer's `User`; typed loosely here so this token-layer module stays free of
+// the schema import graph (and callers keep the shape they read).
+type SessionLookup = (id: string) => Promise<any>;
 
 // `storage` is imported on first use, not at module load: this module sits under the token layer, which
 // must stay importable without dragging the database layer in.

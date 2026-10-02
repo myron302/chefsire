@@ -11,6 +11,7 @@ import "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
+import cookieParser from "cookie-parser";
 import pg from "pg";
 import type { AddressInfo } from "node:net";
 import { getTableColumns } from "drizzle-orm";
@@ -70,6 +71,7 @@ if (!PG_URL) {
   let ipCounter = 0;
   const nextIp = () => `10.${(++ipCounter >> 16) & 255}.${(ipCounter >> 8) & 255}.${ipCounter & 255}`;
   app.use(express.json());
+  app.use(cookieParser());
   app.use(express.urlencoded({ extended: true }));
   app.use("/api", authRouter);
   app.use("/api/users", usersRouter);
@@ -77,7 +79,7 @@ if (!PG_URL) {
   app.get("/api/admin-guarded", requireAuth, requireAdmin, (_req, res) => res.json({ ok: true }));
   const server = app.listen(0);
   test.after(async () => { server.close(); await local.end(); });
-  test.beforeEach(async () => { await local.query(`TRUNCATE email_verification_tokens, users CASCADE`); lastToken = ""; });
+  test.beforeEach(async () => { await local.query(`TRUNCATE email_verification_tokens, users CASCADE; DROP TABLE IF EXISTS legacy_credential_invalidations`); lastToken = ""; });
 
   const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
   const post = (p: string, b: unknown) => fetch(base() + p, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": nextIp() }, body: JSON.stringify(b) });

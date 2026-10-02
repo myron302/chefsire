@@ -9,4 +9,4 @@
 process.env.NODE_ENV = process.env.NODE_ENV || "test";
 import { setSessionLookupForTests } from "../lib/auth-session";
 
-setSessionLookupForTests(async (id) => ({ id, authVersion: 1 }) as { authVersion: number });
+setSessionLookupForTests(async (id) => ({ id, authVersion: 1 }));
