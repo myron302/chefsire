@@ -23,16 +23,18 @@ const NORMAL_EMAIL = "cook@chefsire.test";
 
 /* ------------------------------------------------------------------ the world */
 
-type UserRecord = { id: string; email: string; username: string };
+type UserRecord = { id: string; email: string; username: string; emailVerifiedAt: Date | null };
 
 let world: Record<string, UserRecord> = {};
 
 function seedWorld() {
   world = {
     // A: an ordinary account.
-    A: { id: "A", email: NORMAL_EMAIL, username: "a" },
+    A: { id: "A", email: NORMAL_EMAIL, username: "a", emailVerifiedAt: new Date() },
+    // UNV: claims the allowlisted address but never proved ownership of it (P2-1).
+    UNV: { id: "UNV", email: ADMIN_EMAIL, username: "unv", emailVerifiedAt: null },
     // ADM: an account whose *current stored* address is on the allowlist.
-    ADM: { id: "ADM", email: ADMIN_EMAIL, username: "adm" },
+    ADM: { id: "ADM", email: ADMIN_EMAIL, username: "adm", emailVerifiedAt: new Date() },
   };
 }
 
@@ -118,6 +120,13 @@ test("a legitimate current admin is allowed", async () => {
   );
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { ok: true });
+});
+
+test("an account holding an allowlisted address it never verified is denied (P2-1)", async () => {
+  const response = await withAdminAllowlist(ADMIN_EMAIL, () =>
+    callAdminRoute(token({ id: "UNV", email: ADMIN_EMAIL, username: "unv" })),
+  );
+  assert.equal(response.status, 403);
 });
 
 test("a forged admin email claim does not grant authority to a normal account", async () => {
