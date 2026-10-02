@@ -60,9 +60,24 @@ export const passwordChangeLimiter = rateLimit({
 export const verifyEmailLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: 10,
+  // Only failed redemptions spend the budget (brute force on token/password); legitimate users behind a
+  // shared IP are not throttled by each other's successful verifications.
+  skipSuccessfulRequests: true,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many verification attempts. Please try again later." },
+});
+
+/**
+ * Rendering the verification form is not a guess at anything: it consumes nothing and reveals nothing,
+ * so it has its own, much larger budget and cannot starve POST redemption (link previews, reloads).
+ */
+export const verifyEmailPageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
 });
 
 /**

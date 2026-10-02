@@ -14,10 +14,14 @@ import express from "express";
 import pg from "pg";
 import type { AddressInfo } from "node:net";
 import { getTableColumns } from "drizzle-orm";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseLocalTestDatabaseUrl } from "../test-support/local-test-database";
 
 process.env.DATABASE_URL ||= "postgres://u:p@prehijack-tests.invalid/none";
 const PG_URL = process.env.CS_TEST_PG_URL;
+const MIGRATION_SQL = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../migrations/20261002_email_verification_provenance.sql"), "utf8");
 
 if (!PG_URL) {
   test("account pre-hijack (skipped: CS_TEST_PG_URL not set)", { skip: true }, () => {});
@@ -43,6 +47,7 @@ if (!PG_URL) {
   const { verifyGoogleProfile } = await import("../services/google-oauth.service");
   const { verifyFacebookProfile } = await import("../services/facebook-oauth.service");
   const { hasCurrentAdminAuthority } = await import("../lib/admin-authority");
+  const { applyMigration } = await import("../scripts/migration-runner");
 
   // Capture the emailed token instead of sending mail.
   let lastToken = "";
@@ -77,6 +82,22 @@ if (!PG_URL) {
   const runVerify = (fn: Function, profile: any) => new Promise<{ err?: Error; user?: any }>((resolve) => fn("a", "r", profile, (err: any, user: any) => resolve({ err, user })));
 
   const VICTIM = "victim@example.com";
+  const resend = (email: string) => post("/auth/resend-verification", { email });
+  const seedRow = async (r: { email: string; password?: string | null; verifiedAt?: boolean; via?: string | null; google?: string; facebook?: string; tiktok?: string; provider?: string }) =>
+    (await local.query(
+      `INSERT INTO users (username, email, display_name, password, email_verified_at, email_verified_via, google_id, facebook_id, tiktok_id, provider)
+       VALUES ($1,$1,'d',$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [r.email, r.password ?? null, r.verifiedAt ? new Date() : null, r.via ?? null, r.google ?? null, r.facebook ?? null, r.tiktok ?? null, r.provider ?? null])).rows[0].id as string;
+  const withAdmin = async (email: string, fn: () => Promise<void>) => {
+    const prev = process.env.INTERNAL_ADMIN_EMAILS;
+    process.env.INTERNAL_ADMIN_EMAILS = email;
+    try { await fn(); } finally { if (prev === undefined) delete process.env.INTERNAL_ADMIN_EMAILS; else process.env.INTERNAL_ADMIN_EMAILS = prev; }
+  };
+  const runMigration = async () => {
+    await local.query(`CREATE TABLE IF NOT EXISTS _app_migrations (filename text primary key, applied_at timestamptz not null default now())`);
+    const c = await local.connect();
+    try { await applyMigration(c as any, "server:20261002_email_verification_provenance.sql", MIGRATION_SQL, { error() {} } as any); } finally { c.release(); }
+  };
 
   // ---------- A: attacker pre-registration + email verification ----------
   test("A: victim verifying the emailed link does not activate the attacker's password", async () => {
@@ -266,5 +287,159 @@ if (!PG_URL) {
     } finally {
       if (prev === undefined) delete process.env.INTERNAL_ADMIN_EMAILS; else process.env.INTERNAL_ADMIN_EMAILS = prev;
     }
+  });
+
+  // ---------- P1 (re-review): provider identities attached before proof must not survive email verification ----------
+  test("PI-1: attacker's Facebook identity on an unverified account is cleared by legitimate email verification", async () => {
+    const fb = await runVerify(verifyFacebookProfile, facebookProfile("fb-attacker", VICTIM));
+    assert.equal((await row(VICTIM)).facebook_id, "fb-attacker");
+    assert.equal((await resend(VICTIM)).status, 200);
+    assert.equal((await redeem(lastToken, "victim-own-pw")).status, 303);
+    const r = await row(VICTIM);
+    assert.equal(r.facebook_id, null);
+    assert.equal(r.provider, "local");
+    assert.equal(r.email_verified_via, "email_link");
+    assert.equal(r.id, fb.user.id, "same account, owner now holds it");
+    // The stale Facebook identity no longer resolves to the account.
+    const stale = await runVerify(verifyFacebookProfile, facebookProfile("fb-attacker", VICTIM));
+    assert.ok(stale.err);
+    assert.equal((await login(VICTIM, "victim-own-pw")).status, 200);
+  });
+
+  test("PI-2: attacker's TikTok (and any other provider) identity is cleared; replay cannot restore it", async () => {
+    // Exactly the row the TikTok strategy creates: unverified, no password, tiktok id.
+    const id = await seedRow({ email: VICTIM, tiktok: "tt-attacker", facebook: "fb-x", google: "g-x", provider: "tiktok" });
+    assert.equal((await resend(VICTIM)).status, 200);
+    const token = lastToken;
+    assert.equal((await redeem(token, "victim-own-pw")).status, 303);
+    const r = await row(VICTIM);
+    assert.equal(r.id, id);
+    for (const col of ["tiktok_id", "facebook_id", "google_id", "instagram_id"]) assert.equal(r[col], null, col);
+    // Replay of the consumed token, and a second resend after verification, restore nothing.
+    assert.equal((await redeem(token, "attacker-pw")).status, 400);
+    assert.equal((await resend(VICTIM)).status, 400, "already authoritatively verified");
+    const after = await row(VICTIM);
+    for (const col of ["tiktok_id", "facebook_id", "google_id", "instagram_id"]) assert.equal(after[col], null, col);
+    assert.equal((await login(VICTIM, "attacker-pw")).status, 401);
+    assert.equal((await login(VICTIM, "victim-own-pw")).status, 200);
+  });
+
+  test("PI-3: legitimate verified-Google linking is untouched by email verification of an already-authoritative account", async () => {
+    await runVerify(verifyGoogleProfile, googleProfile("g-1", VICTIM, true));
+    assert.equal((await resend(VICTIM)).status, 400);
+    assert.equal((await redeem("a".repeat(64), "whatever-pw")).status, 400);
+    const r = await row(VICTIM);
+    assert.equal(r.google_id, "g-1");
+    assert.equal(r.email_verified_via, "google");
+  });
+
+  test("PI-4: Facebook identity racing email verification never survives it", async () => {
+    await runVerify(verifyFacebookProfile, facebookProfile("fb-attacker", VICTIM));
+    await resend(VICTIM);
+    await Promise.all([redeem(lastToken, "victim-own-pw"), runVerify(verifyFacebookProfile, facebookProfile("fb-attacker", VICTIM))]);
+    const r = await row(VICTIM);
+    assert.equal(r.facebook_id, null);
+    assert.equal(r.email_verified_via, "email_link");
+  });
+
+  // ---------- P1 (re-review): legacy emailVerifiedAt provenance ----------
+  test("LG: migration classifies history without touching passwords, ids or timestamps", async () => {
+    await seedRow({ email: "local@x.test", password: "hash-l", verifiedAt: true, provider: "local" });
+    await seedRow({ email: "local-null-provider@x.test", password: "hash-n", verifiedAt: true });
+    await seedRow({ email: "google@x.test", verifiedAt: true, google: "g-1", provider: "google" });
+    await seedRow({ email: "fb@x.test", verifiedAt: true, facebook: "fb-1", provider: "facebook" });
+    await seedRow({ email: "tt@x.test", verifiedAt: true, tiktok: "tt-1", provider: "tiktok" });
+    await seedRow({ email: "mixed@x.test", password: "hash-m", verifiedAt: true, google: "g-2", facebook: "fb-2", provider: "facebook" });
+    await seedRow({ email: "unverified@x.test", password: "hash-u" });
+    const before = (await local.query(`SELECT email, password, google_id, facebook_id, tiktok_id, email_verified_at FROM users ORDER BY email`)).rows;
+    await runMigration();
+    await runMigration(); // idempotent
+    const via = Object.fromEntries((await local.query(`SELECT email, email_verified_via v FROM users`)).rows.map((r) => [r.email, r.v]));
+    assert.deepEqual(via, {
+      "local@x.test": "email_link", "local-null-provider@x.test": "email_link", "google@x.test": "google",
+      "fb@x.test": null, "tt@x.test": null, "mixed@x.test": null, "unverified@x.test": null,
+    });
+    const after = (await local.query(`SELECT email, password, google_id, facebook_id, tiktok_id, email_verified_at FROM users ORDER BY email`)).rows;
+    assert.deepEqual(after, before, "migration only classifies; nothing else changes");
+  });
+
+  test("LG-A/B: legacy Facebook-only and TikTok-only admins (historical timestamp) get no authority until re-verification", async () => {
+    const ADMIN = "boss@chefsire.test";
+    for (const provider of ["facebook", "tiktok"] as const) {
+      await local.query(`TRUNCATE email_verification_tokens, users CASCADE`);
+      const id = await seedRow({ email: ADMIN, verifiedAt: true, provider, ...(provider === "facebook" ? { facebook: "fb-legacy" } : { tiktok: "tt-legacy" }) });
+      await runMigration();
+      await withAdmin(ADMIN, async () => {
+        assert.equal(await hasCurrentAdminAuthority(id), false, `${provider}: stale timestamp must not confer authority`);
+        // Authoritative re-verification restores it, and discards the unproven provider identity.
+        assert.equal((await resend(ADMIN)).status, 200);
+        assert.equal((await redeem(lastToken, "owner-pw-123")).status, 303);
+        assert.equal(await hasCurrentAdminAuthority(id), true);
+        const r = await row(ADMIN);
+        assert.equal(r.facebook_id, null);
+        assert.equal(r.tiktok_id, null);
+      });
+    }
+  });
+
+  test("LG-A2: a legacy provider admin can also be restored by authoritative Google verification", async () => {
+    const ADMIN = "boss@chefsire.test";
+    const id = await seedRow({ email: ADMIN, verifiedAt: true, facebook: "fb-legacy", provider: "facebook" });
+    await runMigration();
+    await withAdmin(ADMIN, async () => {
+      assert.equal(await hasCurrentAdminAuthority(id), false);
+      const g = await runVerify(verifyGoogleProfile, googleProfile("g-boss", ADMIN, true));
+      assert.equal(await hasCurrentAdminAuthority(g.user.id), true);
+      assert.equal((await row(ADMIN)).facebook_id, null);
+    });
+  });
+
+  test("LG-C/D/E: locally verified and Google-verified admins keep authority; normal verified users are preserved", async () => {
+    const LOCAL = "local-admin@chefsire.test";
+    const GOOGLE = "google-admin@chefsire.test";
+    // Locally verified through the real flow (new code) ...
+    const token = await signup(LOCAL, "pw-1234567");
+    await redeem(token, "pw-1234567");
+    // ... Google verified through the real flow ...
+    const g = await runVerify(verifyGoogleProfile, googleProfile("g-admin", GOOGLE, true));
+    // ... and a legacy verified local account + legacy Google-only account, classified by the migration.
+    const legacyLocal = await seedRow({ email: "legacy-local-admin@chefsire.test", password: "hash", verifiedAt: true, provider: "local" });
+    const legacyGoogle = await seedRow({ email: "legacy-google-admin@chefsire.test", verifiedAt: true, google: "g-old", provider: "google" });
+    await runMigration();
+    const emails = [LOCAL, GOOGLE, "legacy-local-admin@chefsire.test", "legacy-google-admin@chefsire.test"].join(",");
+    await withAdmin(emails, async () => {
+      assert.equal(await hasCurrentAdminAuthority((await row(LOCAL)).id), true);
+      assert.equal(await hasCurrentAdminAuthority(g.user.id), true);
+      assert.equal(await hasCurrentAdminAuthority(legacyLocal), true);
+      assert.equal(await hasCurrentAdminAuthority(legacyGoogle), true);
+    });
+    // Normal users keep their password and can still log in.
+    assert.equal((await login(LOCAL, "pw-1234567")).status, 200);
+    assert.equal((await row("legacy-local-admin@chefsire.test")).password, "hash");
+  });
+
+  // ---------- P2 (re-review): verification limiter budgets ----------
+  test("RL: GET rendering cannot exhaust POST redemption; failed POSTs stay limited; shared-IP success works", async () => {
+    const SHARED = "203.0.113.7";
+    const sharedGet = (t: string) => fetch(`${base()}/auth/verify-email?token=${t}`, { headers: { "x-forwarded-for": SHARED } });
+    const sharedPost = (t: string, pw: string) =>
+      fetch(`${base()}/auth/verify-email`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": SHARED }, body: new URLSearchParams({ token: t, password: pw }) });
+
+    // 12 distinct people behind one NAT, each opening the link a few times (previews/reloads), then redeeming.
+    const tokens: string[] = [];
+    for (let i = 0; i < 12; i++) tokens.push(await signup(`nat${i}@example.com`, "attacker-pw"));
+    for (const t of tokens) for (let k = 0; k < 3; k++) assert.equal((await sharedGet(t)).status, 200);
+    for (const t of tokens) assert.equal((await sharedPost(t, "owner-pw-123")).status, 303, "every legitimate redemption succeeds");
+
+    // Failed redemptions from that IP are still limited: brute force is not free.
+    const statuses: number[] = [];
+    for (let i = 0; i < 12; i++) statuses.push((await sharedPost(`${i}`.padStart(64, "0"), "guess-pw-123")).status);
+    assert.deepEqual(statuses.slice(0, 10), Array(10).fill(400));
+    assert.equal(statuses[10], 429);
+    // Even a correct token is refused while the failure budget is spent ...
+    const late = await signup("late@example.com", "attacker-pw");
+    assert.equal((await sharedPost(late, "owner-pw-123")).status, 429);
+    // ... but another network is unaffected.
+    assert.equal((await redeem(late, "owner-pw-123")).status, 303);
   });
 }

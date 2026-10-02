@@ -2,6 +2,7 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { emailVerificationTokens, users } from "../../shared/schema";
+import { EMAIL_VERIFIED_VIA_GOOGLE } from "../lib/email-verification-provenance";
 
 /**
  * Linking an OAuth identity to an existing ChefSire account that matches by email (P2-1).
@@ -43,13 +44,15 @@ export async function linkVerifiedProviderIdentity(
   avatar: string,
 ) {
   const now = new Date();
-  const unverified = sql`${users.emailVerifiedAt} IS NULL`;
+  // "Unverified" means not *authoritatively* verified: a legacy timestamp with no provenance counts.
+  const unverified = sql`${users.emailVerifiedVia} IS NULL`;
   const [updated] = await db
     .update(users)
     .set({
       [link.idColumn]: link.providerId,
       provider: link.provider,
       emailVerifiedAt: sql`COALESCE(${users.emailVerifiedAt}, ${now})`,
+      emailVerifiedVia: sql`COALESCE(${users.emailVerifiedVia}, ${EMAIL_VERIFIED_VIA_GOOGLE})`,
       // Unverified account: the password and every other provider identity were set by someone who
       // had not proven the address. Verified account: left exactly as it was.
       password: sql`CASE WHEN ${unverified} THEN NULL ELSE ${users.password} END`,

@@ -12,10 +12,12 @@ import {
   emailSendLimiter,
   passwordChangeLimiter,
   verifyEmailLimiter,
+  verifyEmailPageLimiter,
 } from "../middleware/rate-limit";
 import { UnsupportedMediaError, storeVerifiedImage } from "../services/image-upload";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { hashPassword } from "../lib/password-hash";
+import { isEmailAuthoritativelyVerified } from "../lib/email-verification-provenance";
 import { signAuthToken, verifyAuthToken } from "../lib/jwt-config";
 
 const router = Router();
@@ -258,7 +260,7 @@ ${error ? `<p role="alert" style="color:#b00020">${error}</p>` : ""}
  * the address is proven by the emailed token, and the password is established by the same person
  * in the POST below -- never taken from whoever created the account (P2-1).
  */
-router.get("/auth/verify-email", verifyEmailLimiter, async (req, res) => {
+router.get("/auth/verify-email", verifyEmailPageLimiter, async (req, res) => {
   const { token } = req.query;
   if (typeof token !== "string" || !VERIFY_TOKEN_SHAPE.test(token)) {
     return res.status(400).send("Invalid verification link");
@@ -335,7 +337,8 @@ router.post("/auth/resend-verification", emailSendLimiter, async (req, res) => {
       return res.json({ message: "If that email exists, a verification email has been sent." });
     }
 
-    if (user.emailVerifiedAt) {
+    // "Verified" here means authoritatively verified: a legacy provider-stamped timestamp can be re-proven.
+    if (isEmailAuthoritativelyVerified(user)) {
       return res.status(400).json({ error: "Email is already verified" });
     }
 

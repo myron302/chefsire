@@ -14,6 +14,7 @@
  * allowed to do right now*. Admin authority is always evaluated against the current stored record.
  */
 import { storage } from "../storage";
+import { isEmailAuthoritativelyVerified } from "./email-verification-provenance";
 
 /**
  * Parse `INTERNAL_ADMIN_EMAILS` into a normalised allowlist: comma separated, trimmed,
@@ -54,7 +55,7 @@ export async function hasCurrentAdminAuthority(userId: string | null | undefined
   const id = typeof userId === "string" ? userId.trim() : "";
   if (!id) return false;
 
-  let currentUser: { email?: string | null; emailVerifiedAt?: Date | string | null } | undefined;
+  let currentUser: { email?: string | null; emailVerifiedAt?: Date | string | null; emailVerifiedVia?: string | null } | undefined;
   try {
     currentUser = await storage.getUser(id);
   } catch (error) {
@@ -65,10 +66,11 @@ export async function hasCurrentAdminAuthority(userId: string | null | undefined
   // Deleted or otherwise missing account: no authority, regardless of what the token claims.
   if (!currentUser) return false;
 
-  // An address only confers authority once its owner has proven control of it (P2-1). An account
-  // that merely *claims* an allowlisted address -- a signup, or a provider that does not vouch for
-  // the email -- holds no authority until verification succeeds.
-  if (!currentUser.emailVerifiedAt) return false;
+  // An address only confers authority once its owner has *authoritatively* proven control of it
+  // (P2-1): the emailed link, or an address Google vouched for. A bare `emailVerifiedAt` is not enough --
+  // legacy Facebook/TikTok rows carry a timestamp no provider ever stood behind, so they stay denied
+  // until the owner re-verifies.
+  if (!isEmailAuthoritativelyVerified(currentUser)) return false;
 
   return isAllowlistedAdminEmail(currentUser.email);
 }

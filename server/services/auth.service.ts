@@ -5,6 +5,7 @@ import { emailVerificationTokens, users } from "../../shared/schema";
 import { eq, and, isNull, gt, sql } from "drizzle-orm";
 import { sendVerificationEmail } from "../utils/mailer";
 import { hashPassword } from "../lib/password-hash";
+import { EMAIL_VERIFIED_VIA_LINK } from "../lib/email-verification-provenance";
 
 /** Minimum length for a password chosen while redeeming a verification link (matches change-password). */
 export const MIN_PASSWORD_LENGTH = 6;
@@ -108,11 +109,22 @@ export class AuthService {
       // Activate only a still-unverified account whose current address is the one the token proves.
       const [activated] = await tx
         .update(users)
-        .set({ emailVerifiedAt: now, password: passwordHash })
+        .set({
+          emailVerifiedAt: sql`COALESCE(${users.emailVerifiedAt}, ${now})`,
+          emailVerifiedVia: EMAIL_VERIFIED_VIA_LINK,
+          password: passwordHash,
+          // Every provider identity on a not-yet-authoritative account was attached without proof of
+          // the address (Facebook/TikTok never vouch; legacy rows are unprovable). None survives.
+          googleId: null,
+          facebookId: null,
+          tiktokId: null,
+          instagramId: null,
+          provider: "local",
+        })
         .where(
           and(
             eq(users.id, claimed.userId),
-            isNull(users.emailVerifiedAt),
+            isNull(users.emailVerifiedVia),
             sql`lower(${users.email}) = ${claimed.email.toLowerCase()}`
           )
         )

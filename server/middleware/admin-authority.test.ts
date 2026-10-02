@@ -23,18 +23,20 @@ const NORMAL_EMAIL = "cook@chefsire.test";
 
 /* ------------------------------------------------------------------ the world */
 
-type UserRecord = { id: string; email: string; username: string; emailVerifiedAt: Date | null };
+type UserRecord = { id: string; email: string; username: string; emailVerifiedAt: Date | null; emailVerifiedVia: string | null };
 
 let world: Record<string, UserRecord> = {};
 
 function seedWorld() {
   world = {
     // A: an ordinary account.
-    A: { id: "A", email: NORMAL_EMAIL, username: "a", emailVerifiedAt: new Date() },
+    A: { id: "A", email: NORMAL_EMAIL, username: "a", emailVerifiedAt: new Date(), emailVerifiedVia: "email_link" },
     // UNV: claims the allowlisted address but never proved ownership of it (P2-1).
-    UNV: { id: "UNV", email: ADMIN_EMAIL, username: "unv", emailVerifiedAt: null },
+    UNV: { id: "UNV", email: ADMIN_EMAIL, username: "unv", emailVerifiedAt: null, emailVerifiedVia: null },
+    // LEG: legacy provider row -- historical timestamp, provenance unproven.
+    LEG: { id: "LEG", email: ADMIN_EMAIL, username: "leg", emailVerifiedAt: new Date(), emailVerifiedVia: null },
     // ADM: an account whose *current stored* address is on the allowlist.
-    ADM: { id: "ADM", email: ADMIN_EMAIL, username: "adm", emailVerifiedAt: new Date() },
+    ADM: { id: "ADM", email: ADMIN_EMAIL, username: "adm", emailVerifiedAt: new Date(), emailVerifiedVia: "email_link" },
   };
 }
 
@@ -127,6 +129,23 @@ test("an account holding an allowlisted address it never verified is denied (P2-
     callAdminRoute(token({ id: "UNV", email: ADMIN_EMAIL, username: "unv" })),
   );
   assert.equal(response.status, 403);
+});
+
+test("a legacy account with a timestamp but no verification provenance is denied (P2-1)", async () => {
+  const response = await withAdminAllowlist(ADMIN_EMAIL, () =>
+    callAdminRoute(token({ id: "LEG", email: ADMIN_EMAIL, username: "leg" })),
+  );
+  assert.equal(response.status, 403);
+});
+
+test("a Google-verified admin is allowed", async () => {
+  const response = await withAdminAllowlist(ADMIN_EMAIL, async () => {
+    await listen();
+    seedWorld();
+    world.ADM.emailVerifiedVia = "google";
+    return fetch(`${baseUrl}/admin/thing`, { headers: { authorization: `Bearer ${token({ id: "ADM", email: ADMIN_EMAIL, username: "adm" })}` } });
+  });
+  assert.equal(response.status, 200);
 });
 
 test("a forged admin email claim does not grant authority to a normal account", async () => {

@@ -108,7 +108,8 @@ export async function verifyGoogleProfile(
       googleId,
       provider: "google",
       avatar,
-      emailVerifiedAt: new Date(), // Google emails are pre-verified
+      emailVerifiedAt: new Date(), // Google vouched for this address (checked above)
+      emailVerifiedVia: "google",
       royalTitle: null,
       showFullName: false,
     });
