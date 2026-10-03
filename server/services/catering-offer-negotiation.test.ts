@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { CateringBooking, CateringOfferRevision } from "@shared/schema";
 import {
   acceptanceRetryContradictsAccepted, bookingPriceCents, bookingTermsFromRevision, buildCateringOfferNegotiationView, currentCateringOffer, hasPendingCateringChangeRequest,
-  firstOfferRetryMatches, resolveCateringOfferAcceptance,
+  changesBillingSensitiveTerms, firstOfferRetryMatches, resolveCateringOfferAcceptance,
 } from "./catering-offer-negotiation";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -173,4 +173,28 @@ test("structure: the first-offer retry is judged before anything is written", ()
   assert.ok(offer.indexOf("firstOfferRetryMatches(") < offer.indexOf("tx.update(cateringBookings)"), "no update precedes the comparison");
   assert.match(offer, /if \(!created && !firstOfferRetryMatches\(/);
   assert.match(offer, /code: "offer_already_exists"/);
+});
+
+test("only price and currency are billing-sensitive; guests and the terms note are not", () => {
+  const b = booking({ agreedPrice: "500.00", currency: "USD" });
+  assert.equal(changesBillingSensitiveTerms(b, { priceCents: 50000, currency: "USD" }), false);
+  assert.equal(changesBillingSensitiveTerms(b, { priceCents: 40000, currency: "USD" }), true);
+  assert.equal(changesBillingSensitiveTerms(b, { priceCents: 50000, currency: "EUR" }), true);
+  assert.equal(changesBillingSensitiveTerms(b, { priceCents: null, currency: "USD" }), true, "dropping the price changes what an invoice derives from");
+  assert.equal(changesBillingSensitiveTerms(booking({ agreedPrice: null }), { priceCents: null, currency: "USD" }), false);
+  assert.equal(changesBillingSensitiveTerms(booking({ agreedPrice: "0.00" }), { priceCents: null, currency: "USD" }), true, "zero is a price, none is not");
+});
+
+test("structure: the ledger check runs under the booking lock, after staleness and before any write, and acceptance re-checks it", () => {
+  const service = read("catering-offer-negotiation.ts");
+  const body = service.slice(service.indexOf("export async function createProviderOfferRevision"), service.indexOf("export type ChangeRequestResult"));
+  assert.ok(body.indexOf("lockCateringBookingForNegotiation(tx") < body.indexOf("cateringBillingLedgerActive(tx"));
+  assert.ok(body.indexOf('"stale_revision"') < body.indexOf("cateringBillingLedgerActive(tx"));
+  assert.ok(body.indexOf("cateringBillingLedgerActive(tx") < body.indexOf("insertRevision("));
+  assert.match(body, /"billing_terms_locked"/);
+  assert.match(service, /ne\(cateringBookingInvoices\.status, "void"\)/);
+  const route = read("../routes/catering-bookings.ts");
+  const confirm = route.slice(route.indexOf('"/bookings/:id/customer-confirm"'), route.indexOf('"/bookings/:id/cancel"'));
+  assert.ok(confirm.indexOf("acceptanceWouldContradictBilling(") > confirm.indexOf('.for("update")'));
+  assert.ok(confirm.indexOf("acceptanceWouldContradictBilling(") < confirm.indexOf("tx.update(cateringBookings)"));
 });

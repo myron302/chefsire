@@ -60,7 +60,7 @@ if (!PG_URL) {
       metadata jsonb DEFAULT '{}'::jsonb, read boolean DEFAULT false, read_at timestamp, priority text DEFAULT 'normal',
       created_at timestamp DEFAULT now());
   `);
-  for (const file of ["migrations/010_create_catering_packages.sql", "server/migrations/20260812_catering_availability.sql", "server/migrations/20260827_catering_bookings.sql", "server/migrations/20260829_catering_booking_operations.sql", "server/migrations/20261003_catering_inquiry_contact.sql"]) {
+  for (const file of ["migrations/010_create_catering_packages.sql", "server/migrations/20260812_catering_availability.sql", "server/migrations/20260827_catering_bookings.sql", "server/migrations/20260829_catering_booking_operations.sql", "server/migrations/20261003_catering_inquiry_contact.sql", "server/migrations/20260913_catering_booking_billing.sql"]) {
     await local.query(sqlFile(file));
   }
   const offerMigration = sqlFile("server/migrations/20261004_catering_offer_negotiation.sql");
@@ -68,11 +68,13 @@ if (!PG_URL) {
   const { default: cateringRouter } = await import("./catering");
   const { default: bookingsRouter } = await import("./catering-bookings");
   const { default: offersRouter } = await import("./catering-booking-offers");
+  const { default: billingRouter } = await import("./catering-booking-billing");
   const app = express();
   app.use(express.json());
   app.use("/api/catering", cateringRouter);
   app.use("/api/catering", bookingsRouter);
   app.use("/api/catering", offersRouter);
+  app.use("/api/catering", billingRouter);
   const server = app.listen(0);
   test.after(async () => { server.close(); await local.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`); await local.end(); });
   const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/catering`;
@@ -121,7 +123,7 @@ if (!PG_URL) {
   const notificationsFor = async (userId: string, type: string) => (await local.query(`SELECT title, message, link_url FROM notifications WHERE user_id = $1 AND type = $2`, [userId, type])).rows;
 
   test.beforeEach(async () => {
-    await local.query(`TRUNCATE notifications, catering_booking_activity, catering_booking_details, catering_bookings, catering_inquiries, users CASCADE`);
+    await local.query(`TRUNCATE notifications, catering_booking_payments, catering_booking_invoices, catering_booking_billing, catering_booking_activity, catering_booking_details, catering_bookings, catering_inquiries, users CASCADE`);
     await local.query(`INSERT INTO users (id, username, display_name) VALUES ($1, 'ann', 'Ann A'), ($2, 'bob', 'Bob B'), ($3, 'chef1', 'Chef One'), ($4, 'chef2', NULL)`, [CUSTOMER_A, CUSTOMER_B, PROVIDER, OTHER_PROVIDER]);
   });
 
@@ -871,6 +873,149 @@ if (!PG_URL) {
       if (price === winner) assert.ok(response.status === 200 || response.status === 201, response.text);
       else assert.deepEqual([response.status, response.body.code], [409, "offer_already_exists"]);
     }
+  });
+
+  // ------------------------------------------------------------------ Billing invariant repair
+  const issue = (bookingId: string, kind = "balance", who = PROVIDER) => call("POST", `/bookings/${bookingId}/billing/invoices`, tok(who), { kind });
+  const invoiceRows = async (bookingId: string) => (await local.query(`SELECT * FROM catering_booking_invoices WHERE booking_id = $1 ORDER BY invoice_number`, [bookingId])).rows;
+  const recordPayment = (bookingId: string, invoiceId: string, amount = "100.00") =>
+    call("POST", `/bookings/${bookingId}/billing/payments`, tok(PROVIDER), { invoiceId, amount, method: "cash", receivedOn: "2026-01-01", idempotencyKey: randomUUID() });
+
+  test("54. with no billing, price and currency can be revised freely", async () => {
+    const { bookingId, revisionId } = await offered({ priceCents: 50000 });
+    const priced = await revise(bookingId, revisionId, { priceCents: 40000 });
+    assert.equal(priced.status, 201, priced.text);
+    const euro = await revise(bookingId, priced.body.negotiation.currentRevisionId, { priceCents: 40000, currency: "EUR" });
+    assert.equal(euro.status, 201, euro.text);
+    assert.deepEqual([(await bookingRow(bookingId)).agreed_price, (await bookingRow(bookingId)).currency], ["400.00", "EUR"]);
+  });
+
+  test("55. an inert deposit-terms row does not lock the offer; it is planning, not ledger activity", async () => {
+    const { bookingId, revisionId } = await offered({ priceCents: 50000 });
+    await local.query(`INSERT INTO catering_booking_billing (booking_id, deposit_mode) VALUES ($1, 'none')`, [bookingId]);
+    assert.equal((await revise(bookingId, revisionId, { priceCents: 45000 })).status, 201);
+  });
+
+  test("56. once an invoice exists, a price or currency revision is refused and nothing at all changes", async () => {
+    const { bookingId, revisionId } = await offered({ priceCents: 50000 });
+    const invoice = await issue(bookingId);
+    assert.equal(invoice.status, 200, invoice.text);
+    const bookingBefore = await bookingRow(bookingId);
+    const revisionsBefore = await revisionRows(bookingId);
+    const invoicesBefore = await invoiceRows(bookingId);
+    const notificationsBefore = Number((await local.query(`SELECT count(*) FROM notifications`)).rows[0].count);
+    for (const changed of [{ priceCents: 40000 }, { priceCents: 50000, currency: "EUR" }, { priceCents: null }, { priceCents: 60000, currency: "GBP" }]) {
+      const response = await revise(bookingId, revisionId, changed);
+      assert.deepEqual([response.status, response.body.code], [409, "billing_terms_locked"], JSON.stringify(changed));
+      assert.match(response.body.message, /price and currency can no longer change/);
+    }
+    assert.deepEqual(await bookingRow(bookingId), bookingBefore);
+    assert.deepEqual(await revisionRows(bookingId), revisionsBefore);
+    assert.deepEqual(await invoiceRows(bookingId), invoicesBefore);
+    assert.equal(Number((await local.query(`SELECT count(*) FROM notifications`)).rows[0].count), notificationsBefore, "no 'offer revised' notice for a refused revision");
+  });
+
+  test("57. after billing, a revision that keeps price and currency is still legal, so guests and the terms note can change", async () => {
+    const { bookingId, revisionId } = await offered({ priceCents: 50000, guestCount: 40, note: "old" });
+    await issue(bookingId);
+    const response = await revise(bookingId, revisionId, { priceCents: 50000, guestCount: 55, note: "new menu" });
+    assert.equal(response.status, 201, response.text);
+    const booking = await bookingRow(bookingId);
+    assert.deepEqual([booking.agreed_price, booking.guest_count, booking.currency], ["500.00", 55, "USD"]);
+    assert.equal((await invoiceRows(bookingId))[0].amount_cents, "50000");
+  });
+
+  test("58. payments alone also lock the commercial terms, and recording a payment stays compatible with the locked currency", async () => {
+    const { bookingId, revisionId } = await offered({ priceCents: 50000 });
+    const invoice = await issue(bookingId);
+    const invoiceId = invoice.body.billing?.invoices?.[0]?.id ?? (await invoiceRows(bookingId))[0].id;
+    const paid = await recordPayment(bookingId, invoiceId);
+    assert.equal(paid.status, 200, paid.text);
+    assert.equal((await local.query(`SELECT currency FROM catering_booking_payments WHERE booking_id = $1`, [bookingId])).rows[0].currency, "USD");
+    assert.equal((await revise(bookingId, revisionId, { priceCents: 50000, currency: "EUR" })).body.code, "billing_terms_locked");
+    assert.equal((await bookingRow(bookingId)).currency, "USD");
+  });
+
+  test("59. a voided invoice with no payments is not live ledger activity, so terms may change again", async () => {
+    const { bookingId, revisionId } = await offered({ priceCents: 50000 });
+    await issue(bookingId);
+    const row = (await invoiceRows(bookingId))[0];
+    const voided = await call("POST", `/bookings/${bookingId}/billing/invoices/${row.id}/void`, tok(PROVIDER), { reason: "mistake", expectedUpdatedAt: new Date(row.updated_at).toISOString() });
+    assert.equal(voided.status, 200, voided.text);
+    assert.equal((await revise(bookingId, revisionId, { priceCents: 40000 })).status, 201);
+  });
+
+  test("60. a legacy pending offer with an existing invoice cannot enter the revision history with a changed price or currency", async () => {
+    const { bookingId } = await legacyOffer();
+    const invoice = await issue(bookingId);
+    assert.equal(invoice.status, 200, invoice.text);
+    assert.equal((await revise(bookingId, null, { priceCents: 40000, guestCount: 40 })).body.code, "billing_terms_locked");
+    assert.equal((await revise(bookingId, null, { priceCents: 120000, guestCount: 40, currency: "EUR" })).body.code, "billing_terms_locked");
+    assert.equal((await revisionRows(bookingId)).length, 0, "no first revision was written");
+    assert.equal((await bookingRow(bookingId)).agreed_price, "1200.00");
+    const same = await revise(bookingId, null, { priceCents: 120000, guestCount: 42, note: "same money, new detail" });
+    assert.equal(same.status, 201, same.text);
+    assert.equal((await bookingRow(bookingId)).agreed_price, "1200.00");
+  });
+
+  test("61. revision first, then invoice: the invoice is issued on the revised terms; invoice first, then revision: the changed terms are refused", async () => {
+    const a = await offered({ priceCents: 50000 });
+    assert.equal((await revise(a.bookingId, a.revisionId, { priceCents: 40000 })).status, 201);
+    await issue(a.bookingId);
+    assert.equal((await invoiceRows(a.bookingId))[0].amount_cents, "40000");
+    const b = await offered({ priceCents: 50000 });
+    await issue(b.bookingId);
+    assert.equal((await revise(b.bookingId, b.revisionId, { priceCents: 40000 })).body.code, "billing_terms_locked");
+    assert.equal((await invoiceRows(b.bookingId))[0].amount_cents, "50000");
+    assert.equal((await bookingRow(b.bookingId)).agreed_price, "500.00");
+  });
+
+  test("62. a revision racing invoice creation can never leave an invoice and a booking that disagree", async () => {
+    let revisionWon = 0;
+    let invoiceWon = 0;
+    for (let round = 0; round < 24; round += 1) {
+      const { bookingId, revisionId } = await offered({ priceCents: 50000 });
+      // Staggered starts in both directions, so both orders (and the true overlap) are exercised across rounds.
+      const lead = [0, 4, 8, 12][round % 4];
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      const [revised, invoiced] = await Promise.all([
+        round % 2 === 0 ? wait(lead).then(() => revise(bookingId, revisionId, { priceCents: 40000 })) : revise(bookingId, revisionId, { priceCents: 40000 }),
+        round % 2 === 0 ? issue(bookingId) : wait(lead).then(() => issue(bookingId)),
+      ]);
+      assert.equal(invoiced.status, 200, invoiced.text);
+      const booking = await bookingRow(bookingId);
+      const invoices = await invoiceRows(bookingId);
+      assert.equal(invoices.length, 1);
+      assert.equal(invoices[0].amount_cents, String(Math.round(Number(booking.agreed_price) * 100)), "the invoice is always for exactly what the booking now says");
+      assert.equal(invoices[0].currency, booking.currency);
+      if (revised.status === 201) { revisionWon += 1; assert.equal(invoices[0].amount_cents, "40000"); }
+      else { invoiceWon += 1; assert.deepEqual([revised.status, revised.body.code], [409, "billing_terms_locked"]); assert.equal(invoices[0].amount_cents, "50000"); }
+      assert.equal((await revisionRows(bookingId)).length, revised.status === 201 ? 2 : 1);
+    }
+    assert.equal(revisionWon + invoiceWon, 24);
+    assert.ok(revisionWon > 0 && invoiceWon > 0, `both orders occurred (revision first ${revisionWon}, invoice first ${invoiceWon})`);
+  });
+
+  test("63. accepting terms that would contradict a live ledger is refused, and nothing is confirmed", async () => {
+    const { bookingId } = await offered({ priceCents: 50000 });
+    await issue(bookingId);
+    // A state the routes cannot produce (a newer revision whose price the booking does not carry), forced directly.
+    const { rows } = await local.query(
+      `INSERT INTO catering_offer_revisions (booking_id, revision_number, kind, proposed_by_user_id, proposed_by_role, client_request_id, price_cents, currency, guest_count) VALUES ($1, 2, 'offer', $2, 'provider', $3, 40000, 'USD', 40) RETURNING id`,
+      [bookingId, PROVIDER, randomUUID()]);
+    const refused = await accept(bookingId, rows[0].id);
+    assert.deepEqual([refused.status, refused.body.code], [409, "billing_terms_locked"]);
+    const booking = await bookingRow(bookingId);
+    assert.deepEqual([booking.status, booking.agreed_price, booking.customer_confirmed_at], ["pending_confirmation", "500.00", null]);
+    assert.equal((await revisionRows(bookingId)).filter((row) => row.accepted_at).length, 0);
+  });
+
+  test("64. a normal acceptance still works with billing present when the terms agree", async () => {
+    const { bookingId, revisionId } = await offered({ priceCents: 50000 });
+    await issue(bookingId);
+    assert.equal((await accept(bookingId, revisionId)).status, 200);
+    assert.equal((await bookingRow(bookingId)).status, "confirmed");
+    assert.equal((await invoiceRows(bookingId))[0].amount_cents, "50000");
   });
 
   // ---------------------------------------------------------------------- Phase 2M rules stay intact

@@ -1,4 +1,4 @@
-import { cateringMoneyToCents } from "@shared/catering-booking-billing";
+import { cateringBookingBillingKey, cateringMoneyToCents } from "@shared/catering-booking-billing";
 import {
   CATERING_OFFER_GUEST_MAX, CATERING_OFFER_NOTE_MAX_LENGTH, cateringOfferRevisionKey, isCateringOfferConflict,
   type CateringOfferNegotiationView, type CateringOfferTermsInput,
@@ -181,4 +181,14 @@ export function bindClientRequestId(previous: BoundRequestId | null, payload: Re
 /** The first offer was refused because the request already has one with other terms: refresh, never treat the form as saved. */
 export function isOfferAlreadyExists(error: unknown): boolean {
   return error instanceof CateringOfferRequestError && error.status === 409 && error.code === "offer_already_exists";
+}
+
+/** Billed price and currency are locked: not a stale offer, so the editor stays open for the fields that can still change. */
+export function isBillingTermsLocked(error: unknown): boolean {
+  return error instanceof CateringOfferRequestError && error.status === 409 && error.code === "billing_terms_locked";
+}
+
+/** What a locked-terms refusal refreshes: the offer as the server now holds it, and this booking's billing view. */
+export function billingLockedInvalidationKeys(identity: { userId: string; bookingId: string }) {
+  return [cateringOfferRevisionKey(identity.userId, identity.bookingId), cateringBookingBillingKey(identity.userId, identity.bookingId)] as const;
 }

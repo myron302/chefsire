@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringOfferRevisionKey } from "@shared/catering-offers";
 import {
-  acceptSubmissionTarget, bindClientRequestId, isOfferAlreadyExists, isSessionBehind, offerPayloadFingerprint, openAcceptSession, openChangeRequestSession, openReviseSession, reviseSubmissionTarget,
+  acceptSubmissionTarget, billingLockedInvalidationKeys, bindClientRequestId, isBillingTermsLocked, isOfferAlreadyExists, isSessionBehind, offerPayloadFingerprint, openAcceptSession, openChangeRequestSession, openReviseSession, reviseSubmissionTarget,
   CateringOfferRequestError, cateringOfferInvalidationKeys, isCurrentOfferTarget, newCateringClientRequestId, offerAuthorLabel, offerDraftFromNegotiation,
   validateChangeRequestMessage, validateOfferDraft,
 } from "./catering-offer-state";
@@ -210,4 +210,11 @@ test("the first-offer refusal for an existing offer is recognised, and no other 
   assert.equal(isOfferAlreadyExists(new CateringOfferRequestError("m", 500, "offer_already_exists")), false);
   assert.equal(isOfferAlreadyExists(new Error("offer_already_exists")), false);
   assert.equal(isOfferAlreadyExists(null), false);
+});
+
+test("a billing-locked refusal is recognised on its own and refreshes this booking's offer and billing views only", () => {
+  assert.equal(isBillingTermsLocked(new CateringOfferRequestError("m", 409, "billing_terms_locked")), true);
+  assert.equal(isBillingTermsLocked(new CateringOfferRequestError("m", 409, "stale_revision")), false);
+  assert.equal(new CateringOfferRequestError("m", 409, "billing_terms_locked").isConflict, false, "not a stale offer: the editor is kept");
+  assert.deepEqual(billingLockedInvalidationKeys({ userId: "u", bookingId: "b" }).map((key) => key.join("/")), ["catering/offer/u/b", "catering/booking-billing/u/b"]);
 });

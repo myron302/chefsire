@@ -15,7 +15,7 @@ import { serializeCateringBooking } from "../serializers/catering-booking";
 import { CATERING_CUSTOMER_BOOKINGS_URL, CATERING_PROVIDER_BOOKINGS_URL } from "../services/catering-booking-links";
 import { lockCateringInquiry } from "../services/catering-inquiry-withdrawal";
 import { lockCateringReviewRelationship } from "../services/catering-review-relationship-lock";
-import { acceptanceRetryContradictsAccepted, bookingTermsFromRevision, CATERING_OFFER_ALREADY_EXISTS_MESSAGE, createProviderOfferRevision, firstOfferRetryMatches, listCateringOfferRevisions, resolveCateringOfferAcceptance, stampCateringOfferAccepted } from "../services/catering-offer-negotiation";
+import { acceptanceRetryContradictsAccepted, acceptanceWouldContradictBilling, bookingTermsFromRevision, CATERING_OFFER_ALREADY_EXISTS_MESSAGE, createProviderOfferRevision, firstOfferRetryMatches, listCateringOfferRevisions, resolveCateringOfferAcceptance, stampCateringOfferAccepted } from "../services/catering-offer-negotiation";
 
 const r = Router();
 async function bookingDateExceptions(executor: typeof db, providerId: string, targetDate: string) {
@@ -92,6 +92,7 @@ r.post("/bookings/:id/customer-confirm", requireAuth, async (req, res, next) => 
     if (!mayConfirm(current, "customer")) return { error: 409, code: "negotiation_closed", message: "Booking can no longer be confirmed" };
     const acceptance = resolveCateringOfferAcceptance(revisions, accepting.revisionId ?? null);
     if (acceptance.kind === "refused") return { error: 409, code: acceptance.code, message: acceptance.message };
+    if (await acceptanceWouldContradictBilling(tx, current, acceptance.revision)) return { error: 409, code: "billing_terms_locked", message: "These terms no longer match the booking's billing, so they cannot be accepted. Contact the caterer." };
     const nextStatus = nextConfirmationStatus(current, "customer");
     const confirmationDate = evaluateBookingDateForConfirmation({ targetDate: current.eventDate, currentDate: await providerCalendarDate(tx, current.providerId, now), exceptions: await bookingDateExceptions(tx, current.providerId, current.eventDate) });
     if (nextStatus === "confirmed" && !confirmationDate.available) return { error: 409, message: confirmationDate.reason === "past_event" ? "This booking can no longer be confirmed because its event date has passed." : "The provider explicitly blocked this event date after offering the booking. Contact the provider to resolve it." };

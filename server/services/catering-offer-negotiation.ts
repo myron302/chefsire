@@ -1,5 +1,5 @@
-import { and, asc, eq } from "drizzle-orm";
-import { cateringBookings, cateringOfferRevisions, type CateringBooking, type CateringOfferRevision } from "@shared/schema";
+import { and, asc, eq, ne } from "drizzle-orm";
+import { cateringBookingInvoices, cateringBookingPayments, cateringBookings, cateringOfferRevisions, type CateringBooking, type CateringOfferRevision } from "@shared/schema";
 import { cateringCentsToDecimal, cateringMoneyToCents } from "@shared/catering-booking-billing";
 import {
   CATERING_OFFER_HISTORY_LIMIT, cateringOfferActions, cateringOfferNegotiationState,
@@ -57,6 +57,30 @@ export function bookingTermsFromRevision(revision: Pick<CateringOfferRevision, "
   };
 }
 
+/**
+ * Whether Phase 2L has real ledger activity for this booking: any invoice that has not been voided, or any payment row
+ * (a voided payment is still part of the ledger's history). An inert deposit-terms row is deliberately NOT activity: it
+ * is the provider's planning, asks the customer for nothing and freezes nothing by design. Read under the booking row
+ * lock the caller already holds; invoice and payment writes take that same lock, so this answer cannot change under it.
+ */
+export async function cateringBillingLedgerActive(executor: Executor, bookingId: string): Promise<boolean> {
+  const [invoice] = await executor.select({ id: cateringBookingInvoices.id }).from(cateringBookingInvoices)
+    .where(and(eq(cateringBookingInvoices.bookingId, bookingId), ne(cateringBookingInvoices.status, "void"))).limit(1);
+  if (invoice) return true;
+  const [payment] = await executor.select({ id: cateringBookingPayments.id }).from(cateringBookingPayments).where(eq(cateringBookingPayments.bookingId, bookingId)).limit(1);
+  return Boolean(payment);
+}
+
+/**
+ * The only terms an invoice depends on are the agreed price (what a deposit or balance is derived from) and the currency
+ * it is denominated in. Guest count and the terms note are not part of any billing row.
+ */
+export function changesBillingSensitiveTerms(booking: Pick<CateringBooking, "agreedPrice" | "currency">, proposed: { priceCents: number | null; currency: string }): boolean {
+  return bookingPriceCents(booking) !== proposed.priceCents || booking.currency !== proposed.currency;
+}
+
+export const CATERING_BILLING_TERMS_LOCKED_MESSAGE = "Billing has started for this booking, so its price and currency can no longer change. You can still update the guest count or the terms description.";
+
 const bookingIsOpen = (booking: Pick<CateringBooking, "status" | "customerConfirmedAt">) => booking.status === "pending_confirmation" && booking.customerConfirmedAt === null;
 
 export type NegotiationRefusal = { kind: "refused"; status: 404 | 409; code?: CateringOfferErrorCode; message: string };
@@ -83,6 +107,9 @@ export async function createProviderOfferRevision(tx: Executor, input: { booking
   if (!bookingIsOpen(booking)) return refuse(409, CATERING_OFFER_CLOSED_MESSAGE, "negotiation_closed");
   const current = currentCateringOffer(revisions);
   if ((current?.id ?? null) !== input.expectedRevisionId) return refuse(409, STALE_MESSAGE, "stale_revision");
+  // Judged under the booking lock, against what the booking itself carries (which is what every invoice was derived from), so a legacy
+  // offer that already has an invoice cannot enter the revision history with a different price or currency either.
+  if (changesBillingSensitiveTerms(booking, { priceCents: input.terms.priceCents ?? null, currency: input.terms.currency }) && await cateringBillingLedgerActive(tx, booking.id)) return refuse(409, CATERING_BILLING_TERMS_LOCKED_MESSAGE, "billing_terms_locked");
   if (revisions.length >= CATERING_OFFER_HISTORY_LIMIT) return refuse(409, "This negotiation has reached its revision limit. Cancel it and start a new request.", "revision_limit");
   const revision = await insertRevision(tx, booking, revisions, {
     kind: "offer", userId: input.providerId, role: "provider", clientRequestId: input.clientRequestId, respondsToRevisionId: null,
@@ -197,3 +224,13 @@ export function firstOfferRetryMatches(existing: { booking: Pick<CateringBooking
 }
 
 export const CATERING_OFFER_ALREADY_EXISTS_MESSAGE = "An offer already exists for this request, and the terms you sent are not the ones it was made with. It has been refreshed; use Revise offer on the booking to change its terms.";
+
+/**
+ * A last, independent check at acceptance: terms about to be written onto a booking whose ledger is live must not move its
+ * price or currency. Revisions are refused for that already, and the booking mirrors the current revision, so this should
+ * never fire; it exists so confirming can never be the way a ledger and a booking come to disagree.
+ */
+export async function acceptanceWouldContradictBilling(tx: Executor, booking: Pick<CateringBooking, "id" | "agreedPrice" | "currency">, revision: Pick<CateringOfferRevision, "priceCents" | "currency"> | null): Promise<boolean> {
+  if (!revision || !changesBillingSensitiveTerms(booking, revision)) return false;
+  return cateringBillingLedgerActive(tx, booking.id);
+}

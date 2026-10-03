@@ -172,3 +172,10 @@ test("a refused first-offer retry refreshes the provider's lists, is announced, 
   const onSuccess = provider.slice(provider.indexOf("onSuccess: async ({ booking }, { id: inquiryId })"));
   assert.ok(onSuccess.indexOf("applyInquiryBookingProjection") > 0, "the booking projection is applied only on a real success");
 });
+
+test("a billing-locked refusal keeps the editor open with the server's message and refreshes the offer and billing views", () => {
+  assert.match(offer, /if \(isBillingTermsLocked\(error\)\) \{[\s\S]*?billingLockedInvalidationKeys\(identity\)[\s\S]*?return;\s*\}/);
+  const branch = offer.slice(offer.indexOf("if (isBillingTermsLocked(error))"), offer.indexOf("if (error instanceof CateringOfferRequestError && error.isConflict)"));
+  assert.doesNotMatch(branch, /setReviseSession\(null\)|setConflict/, "the form is not closed and no stale-offer banner is raised");
+  assert.match(offer, /revise\.isError && !\(revise\.error instanceof CateringOfferRequestError && revise\.error\.isConflict\) \? revise\.error\.message : null/);
+});

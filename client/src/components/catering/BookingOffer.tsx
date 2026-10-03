@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
   CateringOfferRequestError, cateringOfferInvalidationKeys, isCurrentOfferTarget, offerAuthorLabel,
-  acceptSubmissionTarget, bindClientRequestId, isSessionBehind, openAcceptSession, openChangeRequestSession, openReviseSession, reviseSubmissionTarget, validateChangeRequestMessage, validateOfferDraft,
+  acceptSubmissionTarget, billingLockedInvalidationKeys, bindClientRequestId, isBillingTermsLocked, isSessionBehind, openAcceptSession, openChangeRequestSession, openReviseSession, reviseSubmissionTarget, validateChangeRequestMessage, validateOfferDraft,
   type AcceptSession, type BoundRequestId, type CateringOfferAction, type ChangeRequestSession, type OfferDraft, type OfferDraftErrors, type OfferMutationIdentity, type ReviseSession,
 } from "@/pages/services/catering-offer-state";
 
@@ -148,6 +148,11 @@ export function BookingOffer({ bookingId, userId, role, providerId = null }: { b
   };
   const onFailure = async (error: Error, identity: OfferMutationIdentity) => {
     if (!isCurrentOfferTarget(shown.current, identity)) return;
+    if (isBillingTermsLocked(error)) {
+      // Not a stale offer: the form stays open with the message so the fields that may still change can be sent. Both views are refreshed.
+      await Promise.all(billingLockedInvalidationKeys(identity).map((queryKey) => client.invalidateQueries({ queryKey: [...queryKey] })));
+      return;
+    }
     if (error instanceof CateringOfferRequestError && error.isConflict) {
       setConflict(error.message); setAcceptSession(null); setDeclineOpen(false); setReviseSession(null); setChangesSession(null); resetRequests();
       await client.invalidateQueries({ queryKey: cateringOfferRevisionKey(identity.userId, identity.bookingId) });
