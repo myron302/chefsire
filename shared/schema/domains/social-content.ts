@@ -358,6 +358,40 @@ export const cateringBookings = pgTable("catering_bookings", {
   agreedPriceCheck: check("catering_bookings_agreed_price_check", sql`${t.agreedPrice} IS NULL OR ${t.agreedPrice} >= 0`),
 }));
 
+/**
+ * Phase 2N negotiation history around a pending_confirmation booking: provider offer revisions and customer change
+ * requests on one shared revision_number sequence. Terms are immutable once written (the migration's trigger enforces
+ * it); `acceptedAt` is the only column that is ever stamped later. Money is integer cents.
+ */
+export const cateringOfferRevisions = pgTable("catering_offer_revisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  revisionNumber: integer("revision_number").notNull(),
+  kind: varchar("kind", { length: 16 }).notNull(),
+  proposedByUserId: varchar("proposed_by_user_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  proposedByRole: varchar("proposed_by_role", { length: 16 }).notNull(),
+  clientRequestId: varchar("client_request_id", { length: 36 }).notNull(),
+  respondsToRevisionId: varchar("responds_to_revision_id").references((): AnyPgColumn => cateringOfferRevisions.id, { onDelete: "restrict" }),
+  priceCents: bigint("price_cents", { mode: "number" }),
+  currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+  guestCount: integer("guest_count"),
+  note: text("note"),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  bookingNumberUnique: uniqueIndex("catering_offer_revisions_booking_number_uidx").on(t.bookingId, t.revisionNumber),
+  requestUnique: uniqueIndex("catering_offer_revisions_request_uidx").on(t.bookingId, t.proposedByUserId, t.clientRequestId),
+  acceptedUnique: uniqueIndex("catering_offer_revisions_accepted_uidx").on(t.bookingId).where(sql`${t.acceptedAt} IS NOT NULL`),
+  numberCheck: check("catering_offer_revisions_number_check", sql`${t.revisionNumber} >= 1 AND ${t.revisionNumber} <= 50`),
+  kindCheck: check("catering_offer_revisions_kind_check", sql`${t.kind} IN ('offer', 'change_request')`),
+  roleCheck: check("catering_offer_revisions_role_check", sql`(${t.kind} = 'offer' AND ${t.proposedByRole} = 'provider') OR (${t.kind} = 'change_request' AND ${t.proposedByRole} = 'customer')`),
+  priceCheck: check("catering_offer_revisions_price_check", sql`${t.priceCents} IS NULL OR (${t.priceCents} >= 0 AND ${t.priceCents} <= 9999999999)`),
+  guestCheck: check("catering_offer_revisions_guest_check", sql`${t.guestCount} IS NULL OR (${t.guestCount} > 0 AND ${t.guestCount} <= 100000)`),
+  currencyCheck: check("catering_offer_revisions_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
+  changeRequestCheck: check("catering_offer_revisions_change_request_check", sql`${t.kind} <> 'change_request' OR (${t.priceCents} IS NULL AND ${t.guestCount} IS NULL AND ${t.note} IS NOT NULL AND length(btrim(${t.note})) > 0 AND ${t.acceptedAt} IS NULL)`),
+  respondsToCheck: check("catering_offer_revisions_responds_to_check", sql`${t.kind} = 'change_request' OR ${t.respondsToRevisionId} IS NULL`),
+}));
+
 /** Mutable event-planning data layered on the immutable booking agreement. */
 export const cateringBookingDetails = pgTable("catering_booking_details", {
   bookingId: varchar("booking_id").primaryKey().references(() => cateringBookings.id, { onDelete: "restrict" }),

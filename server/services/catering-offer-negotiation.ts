@@ -1,0 +1,179 @@
+import { and, asc, eq } from "drizzle-orm";
+import { cateringBookings, cateringOfferRevisions, type CateringBooking, type CateringOfferRevision } from "@shared/schema";
+import { cateringCentsToDecimal, cateringMoneyToCents } from "@shared/catering-booking-billing";
+import {
+  CATERING_OFFER_HISTORY_LIMIT, cateringOfferActions, cateringOfferNegotiationState,
+  type CateringOfferErrorCode, type CateringOfferNegotiationView, type CateringOfferTermsInput,
+} from "@shared/catering-offers";
+import { serializeCateringOfferRevision } from "../serializers/catering-offer-revision";
+import type { db } from "../db";
+
+type Executor = typeof db;
+
+/**
+ * Phase 2N negotiation, one booking at a time.
+ *
+ * Every mutation here runs inside the caller's transaction and starts by taking the BOOKING row's lock. That single lock
+ * is what serializes a provider revision against a customer acceptance, two provider revisions against each other, a
+ * change request against a revision, and any of them against a cancellation (which updates the same row): whichever
+ * transaction gets the lock first writes, and the others then judge the state it left. The unique constraints on the
+ * revision table are only the backstop behind it.
+ *
+ * "Current" is not stored. The current offer is the offer revision with the highest number, so there cannot be two of
+ * them, and a revision stops being current the instant a higher one commits.
+ */
+
+export async function lockCateringBookingForNegotiation(tx: Executor, bookingId: string): Promise<CateringBooking | undefined> {
+  const [row] = await tx.select().from(cateringBookings).where(eq(cateringBookings.id, bookingId)).limit(1).for("update");
+  return row;
+}
+
+/** The whole negotiation, oldest first. Bounded by construction: no write is accepted past CATERING_OFFER_HISTORY_LIMIT rows. */
+export async function listCateringOfferRevisions(executor: Executor, bookingId: string): Promise<CateringOfferRevision[]> {
+  return executor.select().from(cateringOfferRevisions).where(eq(cateringOfferRevisions.bookingId, bookingId)).orderBy(asc(cateringOfferRevisions.revisionNumber)).limit(CATERING_OFFER_HISTORY_LIMIT);
+}
+
+export function currentCateringOffer(revisions: readonly CateringOfferRevision[]): CateringOfferRevision | null {
+  for (let index = revisions.length - 1; index >= 0; index -= 1) if (revisions[index].kind === "offer") return revisions[index];
+  return null;
+}
+
+/** Whether the customer's latest word is still unanswered: nothing, offer or request, has been written after it. */
+export function hasPendingCateringChangeRequest(revisions: readonly CateringOfferRevision[]): boolean {
+  return revisions.length > 0 && revisions[revisions.length - 1].kind === "change_request";
+}
+
+/** The booking's own `numeric(12,2)` price, as the cents the negotiation speaks in. Null stays null: no price is not zero. */
+export function bookingPriceCents(booking: Pick<CateringBooking, "agreedPrice">): number | null {
+  return booking.agreedPrice === null ? null : cateringMoneyToCents(booking.agreedPrice);
+}
+
+/** The columns a revision's terms are written onto the booking as. Derived from cents, never the other way. */
+export function bookingTermsFromRevision(revision: Pick<CateringOfferRevision, "priceCents" | "guestCount" | "currency">) {
+  return {
+    agreedPrice: revision.priceCents === null ? null : cateringCentsToDecimal(revision.priceCents),
+    guestCount: revision.guestCount,
+    currency: revision.currency,
+  };
+}
+
+const bookingIsOpen = (booking: Pick<CateringBooking, "status" | "customerConfirmedAt">) => booking.status === "pending_confirmation" && booking.customerConfirmedAt === null;
+
+export type NegotiationRefusal = { kind: "refused"; status: 404 | 409; code?: CateringOfferErrorCode; message: string };
+const refuse = (status: 404 | 409, message: string, code?: CateringOfferErrorCode): NegotiationRefusal => ({ kind: "refused", status, message, code });
+export const CATERING_OFFER_CLOSED_MESSAGE = "This offer can no longer be changed. Open the booking for its current status.";
+const STALE_MESSAGE = "The offer changed while you were looking at it. Review the latest terms and try again.";
+
+export type CateringOfferRevisionTerms = Pick<CateringOfferTermsInput, "priceCents" | "guestCount" | "note" | "currency">;
+
+export type ProviderRevisionResult =
+  | NegotiationRefusal
+  | { kind: "created" | "duplicate"; revision: CateringOfferRevision; booking: CateringBooking };
+
+/**
+ * A provider's new offer revision. Also the shape of the very first revision of an offer: `expectedRevisionId` null means
+ * "I was looking at an offer with no revisions", which is true of a brand-new booking and of a legacy one alike.
+ */
+export async function createProviderOfferRevision(tx: Executor, input: { bookingId: string; providerId: string; terms: CateringOfferRevisionTerms; expectedRevisionId: string | null; clientRequestId: string; now: Date }): Promise<ProviderRevisionResult> {
+  const booking = await lockCateringBookingForNegotiation(tx, input.bookingId);
+  if (!booking || booking.providerId !== input.providerId) return refuse(404, "Booking not found");
+  const revisions = await listCateringOfferRevisions(tx, booking.id);
+  const retried = revisions.find((row) => row.proposedByUserId === input.providerId && row.clientRequestId === input.clientRequestId);
+  if (retried) return { kind: "duplicate", revision: retried, booking };
+  if (!bookingIsOpen(booking)) return refuse(409, CATERING_OFFER_CLOSED_MESSAGE, "negotiation_closed");
+  const current = currentCateringOffer(revisions);
+  if ((current?.id ?? null) !== input.expectedRevisionId) return refuse(409, STALE_MESSAGE, "stale_revision");
+  if (revisions.length >= CATERING_OFFER_HISTORY_LIMIT) return refuse(409, "This negotiation has reached its revision limit. Cancel it and start a new request.", "revision_limit");
+  const revision = await insertRevision(tx, booking, revisions, {
+    kind: "offer", userId: input.providerId, role: "provider", clientRequestId: input.clientRequestId, respondsToRevisionId: null,
+    priceCents: input.terms.priceCents ?? null, guestCount: input.terms.guestCount ?? null, note: input.terms.note ?? null, currency: input.terms.currency,
+  });
+  // The booking mirrors the current offer, in this same transaction, so a reader never sees terms the history disagrees with.
+  const [synced] = await tx.update(cateringBookings).set({ ...bookingTermsFromRevision(revision), providerConfirmedAt: input.now, updatedAt: input.now })
+    .where(and(eq(cateringBookings.id, booking.id), eq(cateringBookings.status, "pending_confirmation"))).returning();
+  if (!synced) throw new Error("offer booking was not pending after its lock");
+  return { kind: "created", revision, booking: synced };
+}
+
+export type ChangeRequestResult =
+  | NegotiationRefusal
+  | { kind: "created" | "duplicate"; revision: CateringOfferRevision; booking: CateringBooking };
+
+/**
+ * A customer's request for changes. It is a row in the negotiation and nothing more: the booking's terms are not read
+ * for update, let alone written, so the customer cannot move any provider-owned term by asking.
+ */
+export async function createCustomerChangeRequest(tx: Executor, input: { bookingId: string; customerId: string; revisionId: string | null; message: string; clientRequestId: string }): Promise<ChangeRequestResult> {
+  const booking = await lockCateringBookingForNegotiation(tx, input.bookingId);
+  if (!booking || booking.customerId !== input.customerId) return refuse(404, "Booking not found");
+  const revisions = await listCateringOfferRevisions(tx, booking.id);
+  const retried = revisions.find((row) => row.proposedByUserId === input.customerId && row.clientRequestId === input.clientRequestId);
+  if (retried) return { kind: "duplicate", revision: retried, booking };
+  if (!bookingIsOpen(booking)) return refuse(409, CATERING_OFFER_CLOSED_MESSAGE, "negotiation_closed");
+  const current = currentCateringOffer(revisions);
+  if ((current?.id ?? null) !== input.revisionId) return refuse(409, STALE_MESSAGE, "stale_revision");
+  if (hasPendingCateringChangeRequest(revisions)) return refuse(409, "You already asked for changes. Wait for the caterer to respond.", "change_request_pending");
+  if (revisions.length >= CATERING_OFFER_HISTORY_LIMIT) return refuse(409, "This negotiation has reached its revision limit. Cancel it and start a new request.", "revision_limit");
+  const revision = await insertRevision(tx, booking, revisions, {
+    kind: "change_request", userId: input.customerId, role: "customer", clientRequestId: input.clientRequestId, respondsToRevisionId: current?.id ?? null,
+    priceCents: null, guestCount: null, note: input.message, currency: booking.currency,
+  });
+  return { kind: "created", revision, booking };
+}
+
+async function insertRevision(tx: Executor, booking: CateringBooking, existing: readonly CateringOfferRevision[], row: { kind: "offer" | "change_request"; userId: string; role: "provider" | "customer"; clientRequestId: string; respondsToRevisionId: string | null; priceCents: number | null; guestCount: number | null; note: string | null; currency: string }): Promise<CateringOfferRevision> {
+  const revisionNumber = (existing.length ? existing[existing.length - 1].revisionNumber : 0) + 1;
+  const [inserted] = await tx.insert(cateringOfferRevisions).values({
+    bookingId: booking.id, revisionNumber, kind: row.kind, proposedByUserId: row.userId, proposedByRole: row.role, clientRequestId: row.clientRequestId,
+    respondsToRevisionId: row.respondsToRevisionId, priceCents: row.priceCents, currency: row.currency, guestCount: row.guestCount, note: row.note,
+  }).returning();
+  return inserted;
+}
+
+export type AcceptanceResolution =
+  | NegotiationRefusal
+  | { kind: "ok"; revision: CateringOfferRevision | null };
+
+/**
+ * Which terms the customer is accepting, judged under the booking lock the caller already holds. A booking that has
+ * offer revisions can only be accepted by naming the CURRENT one; a legacy offer, which has none, only by naming none.
+ * Anything else means the terms moved under the customer, and nothing is confirmed.
+ */
+export function resolveCateringOfferAcceptance(revisions: readonly CateringOfferRevision[], revisionId: string | null): AcceptanceResolution {
+  const current = currentCateringOffer(revisions);
+  if (!current) return revisionId === null ? { kind: "ok", revision: null } : refuse(409, STALE_MESSAGE, "stale_revision");
+  if (revisionId === null) return refuse(409, "Review the latest offer before accepting it.", "offer_revision_required");
+  return current.id === revisionId ? { kind: "ok", revision: current } : refuse(409, STALE_MESSAGE, "stale_revision");
+}
+
+/** True when a customer's retry names something other than what was actually accepted. */
+export function acceptanceRetryContradictsAccepted(revisions: readonly CateringOfferRevision[], revisionId: string | null | undefined): boolean {
+  if (revisionId === null || revisionId === undefined) return false;
+  const accepted = revisions.find((row) => row.acceptedAt !== null);
+  return accepted ? accepted.id !== revisionId : false;
+}
+
+export async function stampCateringOfferAccepted(tx: Executor, revision: CateringOfferRevision, now: Date): Promise<void> {
+  const stamped = await tx.update(cateringOfferRevisions).set({ acceptedAt: now })
+    .where(and(eq(cateringOfferRevisions.id, revision.id), eq(cateringOfferRevisions.kind, "offer"))).returning({ id: cateringOfferRevisions.id });
+  if (stamped.length !== 1) throw new Error("accepted revision could not be stamped");
+}
+
+/** The negotiation as one participant may see it. Provider-private data and internal attribution are not part of it. */
+export function buildCateringOfferNegotiationView(booking: CateringBooking, role: "provider" | "customer", revisions: readonly CateringOfferRevision[]): CateringOfferNegotiationView {
+  const current = currentCateringOffer(revisions);
+  const numbers = new Map(revisions.map((row) => [row.id, row.revisionNumber]));
+  const changeRequestPending = booking.status === "pending_confirmation" && hasPendingCateringChangeRequest(revisions);
+  return {
+    bookingId: booking.id,
+    role,
+    bookingStatus: booking.status as CateringOfferNegotiationView["bookingStatus"],
+    state: cateringOfferNegotiationState(booking.status),
+    legacy: current === null,
+    currentRevisionId: current?.id ?? null,
+    legacyTerms: current === null ? { priceCents: bookingPriceCents(booking), currency: booking.currency, guestCount: booking.guestCount, offeredAt: booking.providerConfirmedAt ? booking.providerConfirmedAt.toISOString() : null } : null,
+    changeRequestPending,
+    actions: cateringOfferActions({ role, bookingStatus: booking.status, customerConfirmedAt: booking.customerConfirmedAt !== null, changeRequestPending, historyFull: revisions.length >= CATERING_OFFER_HISTORY_LIMIT }),
+    revisions: revisions.map((row) => serializeCateringOfferRevision(row, { currentId: current?.id ?? null, respondsToNumber: row.respondsToRevisionId ? numbers.get(row.respondsToRevisionId) ?? null : null })).reverse(),
+  };
+}
