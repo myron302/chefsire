@@ -21,10 +21,18 @@ const NOT_FOUND = { message: "Booking not found" };
 r.get("/bookings/:id/amendments", requireAuth, async (req, res, next) => { try {
   const userId = (req.user as { id: string }).id;
   const id = cateringBookingIdSchema.safeParse(req.params.id);
-  const booking = id.success ? await ownedCateringBooking(id.data, userId) : undefined;
-  const role = booking ? bookingActor(booking, userId) : null;
-  if (!booking || !role) return res.status(404).json(NOT_FOUND);
-  res.json({ amendments: await buildCateringAmendmentsView(db, booking, role) });
+  if (!id.success) return res.status(404).json(NOT_FOUND);
+  // One REPEATABLE READ transaction: its snapshot is fixed by the first statement, so the booking row, the amendment history,
+  // the terms description and the billing check below all describe the same committed moment. At the default READ COMMITTED
+  // each statement would take its own snapshot, and an acceptance committing in between could pair an accepted amendment with
+  // the booking's old terms. It is a pure read, so it takes no row lock and never blocks, or is blocked by, a writer.
+  const view = await db.transaction(async (tx: typeof db) => {
+    const booking = await ownedCateringBooking(id.data, userId, tx);
+    const role = booking ? bookingActor(booking, userId) : null;
+    return booking && role ? buildCateringAmendmentsView(tx, booking, role) : null;
+  }, { isolationLevel: "repeatable read" });
+  if (!view) return res.status(404).json(NOT_FOUND);
+  res.json({ amendments: view });
 } catch (error) { next(error); } });
 
 r.post("/bookings/:id/amendments", requireAuth, async (req, res, next) => { try {

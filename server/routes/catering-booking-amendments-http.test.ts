@@ -41,7 +41,24 @@ if (!PG_URL) {
   const SCHEMA = "catering_amendment_tests";
   const local = new pg.Pool({ ...parseLocalTestDatabaseUrl(PG_URL), options: `-c search_path=${SCHEMA}` });
   const { pool } = await import("../db/index");
-  (pool as never as { connect: unknown }).connect = () => local.connect();
+  // A one-shot gate on the amendment-history read, applied to the connection itself so the production code carries no test hook:
+  // when armed, the next SELECT from catering_booking_amendments announces that it has been reached and waits to be released.
+  // That holds a GET between its booking read and its amendment read while a real writer commits on another connection.
+  const gate: { armed: boolean; reached: () => void; release: Promise<void> | null } = { armed: false, reached: () => undefined, release: null };
+  (pool as never as { connect: unknown }).connect = async () => {
+    const client = await local.connect();
+    const query = client.query.bind(client) as (...args: unknown[]) => unknown;
+    (client as unknown as { query: unknown }).query = async (...args: unknown[]) => {
+      const text = typeof args[0] === "string" ? args[0] : (args[0] as { text?: string })?.text ?? "";
+      if (gate.armed && /^\s*select\b[\s\S]*\bfrom "catering_booking_amendments"/i.test(text)) {
+        gate.armed = false;
+        gate.reached();
+        await gate.release;
+      }
+      return query(...args);
+    };
+    return client;
+  };
   (pool as never as { query: unknown }).query = (q: unknown, params?: unknown[]) =>
     typeof q === "string" ? local.query(q, params) : local.query(params ? { ...(q as object), values: params } as never : q as never);
 
@@ -499,5 +516,115 @@ if (!PG_URL) {
     assert.equal(history.originalTerms.guestCount, 100);
     assert.equal(history.currentTerms.guestCount, 140);
     assert.equal(history.currentTerms.termsNote, "Updated");
+  });
+
+  // ------------------------------------------------------------------------------- consistent read snapshot
+  /** Starts a GET, holds it between its booking read and its amendment read, runs `during` (a committed transition), then lets the GET finish. */
+  async function readDuring(bookingId: string, who: string, during: () => Promise<unknown>) {
+    let reached!: () => void;
+    const arrived = new Promise<void>((resolve) => { reached = resolve; });
+    let release!: () => void;
+    gate.release = new Promise<void>((resolve) => { release = resolve; });
+    gate.reached = reached;
+    gate.armed = true;
+    const pendingRead = amendmentsView(bookingId, who);
+    await arrived;
+    try { await during(); } finally { release(); }
+    const read = await pendingRead;
+    gate.armed = false;
+    return read;
+  }
+
+  test("snapshot: authorized customer and provider reads work, and strangers keep the non-enumerating 404", async () => {
+    const bookingId = await confirmed();
+    for (const who of [CUSTOMER_A, PROVIDER]) {
+      const read = await amendmentsView(bookingId, who);
+      assert.equal(read.status, 200, read.text);
+      assert.equal(read.body.amendments.role, who === PROVIDER ? "provider" : "customer");
+    }
+    const strangers = [(await amendmentsView(bookingId, CUSTOMER_B)), (await amendmentsView(bookingId, OTHER_PROVIDER)), (await call("GET", `/bookings/${randomUUID()}/amendments`, tok(CUSTOMER_A))), (await call("GET", `/bookings/not-a-uuid/amendments`, tok(CUSTOMER_A)))];
+    assert.deepEqual(strangers.map((r) => r.status), [404, 404, 404, 404]);
+    assert.equal(new Set(strangers.map((r) => r.text)).size, 1, "a foreign booking, a missing one and a malformed id are indistinguishable");
+  });
+
+  test("snapshot: before acceptance the view is wholly before, after acceptance it is wholly after", async () => {
+    const bookingId = await confirmed();
+    const created = await propose(bookingId, { guestCount: 125 }, PROVIDER);
+    const before = (await amendmentsView(bookingId)).body.amendments;
+    assert.deepEqual([before.pending.status, before.currentTerms.guestCount, before.actions.canAccept], ["pending", 100, true]);
+    await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A);
+    const after = (await amendmentsView(bookingId)).body.amendments;
+    assert.deepEqual([after.pending, after.amendments[0].status, after.currentTerms.guestCount, after.latestAcceptedAmendmentId], [null, "accepted", 125, created.body.amendments.pending.id]);
+  });
+
+  test("snapshot: an acceptance committing between the booking read and the amendment read cannot produce accepted-amendment + old terms", async () => {
+    for (const reader of [CUSTOMER_A, PROVIDER]) {
+      const bookingId = await confirmed();
+      const created = await propose(bookingId, { guestCount: 125, priceCents: 260000, termsNote: "New terms" }, PROVIDER);
+      const id = created.body.amendments.pending.id;
+      let accepted: Awaited<ReturnType<typeof respond>> | undefined;
+      const read = await readDuring(bookingId, reader, async () => { accepted = await respond(bookingId, id, "accept", CUSTOMER_A); });
+      assert.equal(accepted?.status, 200, "the writer really committed inside the GET's window");
+      assert.equal((await bookingRow(bookingId)).guest_count, 125);
+      const view = read.body.amendments;
+      // The GET's snapshot predates the commit, so everything in it must be from before: never a mix.
+      assert.deepEqual([view.pending?.status, view.amendments[0].status, view.currentTerms.guestCount, view.currentTerms.priceCents, view.currentTerms.termsNote, view.latestAcceptedAmendmentId, view.originalTerms?.guestCount],
+        ["pending", "pending", 100, 250000, "Buffet for 100", null, 100]);
+      assert.equal(view.actions.canAccept, reader === CUSTOMER_A);
+      const next = (await amendmentsView(bookingId, reader)).body.amendments;
+      assert.deepEqual([next.pending, next.amendments[0].status, next.currentTerms.guestCount, next.currentTerms.priceCents, next.currentTerms.termsNote], [null, "accepted", 125, 260000, "New terms"]);
+    }
+  });
+
+  test("snapshot: a decline or a withdrawal committing mid-read leaves the view wholly pending", async () => {
+    for (const [action, actor] of [["decline", CUSTOMER_A], ["withdraw", PROVIDER]] as const) {
+      const bookingId = await confirmed();
+      const created = await propose(bookingId, { guestCount: 125 }, PROVIDER);
+      const id = created.body.amendments.pending.id;
+      const read = await readDuring(bookingId, PROVIDER, async () => { assert.equal((await respond(bookingId, id, action, actor)).status, 200); });
+      const view = read.body.amendments;
+      assert.deepEqual([view.pending?.status, view.amendments.map((a: { status: string }) => a.status), view.currentTerms.guestCount, view.actions.canWithdraw, view.actions.canPropose], ["pending", ["pending"], 100, true, false], action);
+      const next = (await amendmentsView(bookingId, PROVIDER)).body.amendments;
+      assert.deepEqual([next.pending, next.amendments[0].status, next.currentTerms.guestCount, next.actions.canPropose], [null, action === "decline" ? "declined" : "withdrawn", 100, true], action);
+    }
+  });
+
+  test("snapshot: a cancellation committing mid-read gives a wholly-confirmed view, and a view taken after it is wholly closed", async () => {
+    const bookingId = await confirmed();
+    const created = await propose(bookingId, { guestCount: 125 }, PROVIDER);
+    const read = await readDuring(bookingId, CUSTOMER_A, async () => { assert.equal((await call("POST", `/bookings/${bookingId}/cancel`, tok(CUSTOMER_A), {})).status, 200); });
+    const view = read.body.amendments;
+    assert.deepEqual([view.bookingStatus, view.pending?.status, view.amendments[0].status, view.actions], ["confirmed", "pending", "pending", { canPropose: false, canAccept: true, canDecline: true, canWithdraw: false }]);
+    const after = (await amendmentsView(bookingId, CUSTOMER_A)).body.amendments;
+    assert.deepEqual([after.bookingStatus, after.pending, after.amendments[0].status, after.actions], ["cancelled", null, "superseded", { canPropose: false, canAccept: false, canDecline: false, canWithdraw: false }]);
+    assert.equal(created.status, 201);
+  });
+
+  test("snapshot: a completion committing mid-read gives a wholly-confirmed view, and a view taken after it is wholly closed", async () => {
+    const bookingId = await confirmed();
+    await propose(bookingId, { guestCount: 125 }, CUSTOMER_A);
+    // Completion is committed with the same row change the complete route makes; that route also writes review tables this schema does not build.
+    const read = await readDuring(bookingId, PROVIDER, async () => { await local.query(`UPDATE catering_bookings SET status = 'completed', completed_at = now() WHERE id = $1`, [bookingId]); });
+    const view = read.body.amendments;
+    assert.deepEqual([view.bookingStatus, view.pending?.status, view.actions.canAccept], ["confirmed", "pending", true]);
+    const after = (await amendmentsView(bookingId, PROVIDER)).body.amendments;
+    assert.deepEqual([after.bookingStatus, after.pending, after.amendments[0].status, after.actions.canAccept], ["completed", null, "superseded", false]);
+  });
+
+  test("snapshot: a billing ledger appearing mid-read is not half-seen either", async () => {
+    const bookingId = await confirmed();
+    const read = await readDuring(bookingId, PROVIDER, async () => { await issueInvoice(bookingId); });
+    assert.equal(read.body.amendments.billingTermsLocked, false, "the whole view is from before the invoice");
+    assert.equal((await amendmentsView(bookingId, PROVIDER)).body.amendments.billingTermsLocked, true);
+  });
+
+  test("snapshot: the read takes no lock, so it neither waits for nor blocks a writer", async () => {
+    const bookingId = await confirmed();
+    const created = await propose(bookingId, { guestCount: 125 }, PROVIDER);
+    const lockHeld = await local.query(`SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'transactionid' AND NOT granted`);
+    assert.equal(lockHeld.rows[0].n, 0);
+    // The accept inside readDuring only completes if the paused GET is not holding the booking row.
+    const read = await readDuring(bookingId, CUSTOMER_A, async () => { assert.equal((await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A)).status, 200); });
+    assert.equal(read.status, 200);
   });
 }
