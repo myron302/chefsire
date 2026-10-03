@@ -54,7 +54,7 @@ if (!PG_URL) {
       metadata jsonb DEFAULT '{}'::jsonb, read boolean DEFAULT false, read_at timestamp, priority text DEFAULT 'normal',
       created_at timestamp DEFAULT now());
   `);
-  for (const file of ["migrations/010_create_catering_packages.sql", "server/migrations/20260812_catering_availability.sql", "server/migrations/20260827_catering_bookings.sql", "server/migrations/20260829_catering_booking_operations.sql"]) {
+  for (const file of ["migrations/010_create_catering_packages.sql", "server/migrations/20260812_catering_availability.sql", "server/migrations/20260827_catering_bookings.sql", "server/migrations/20260829_catering_booking_operations.sql", "server/migrations/20261004_catering_offer_negotiation.sql"]) {
     await local.query(sqlFile(file));
   }
   const contactMigration = sqlFile("server/migrations/20261003_catering_inquiry_contact.sql");
@@ -107,7 +107,7 @@ if (!PG_URL) {
     await local.query(contactMigration);
     const { rows } = await local.query(`SELECT customer_email, customer_phone, message FROM catering_inquiries WHERE id = $1`, [id]);
     assert.deepEqual(rows[0], { customer_email: null, customer_phone: null, message: "customer note" });
-    const columns = await local.query(`SELECT column_name, is_nullable, character_maximum_length FROM information_schema.columns WHERE table_name = 'catering_inquiries' AND column_name IN ('customer_email', 'customer_phone') ORDER BY column_name`);
+    const columns = await local.query(`SELECT column_name, is_nullable, character_maximum_length FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'catering_inquiries' AND column_name IN ('customer_email', 'customer_phone') ORDER BY column_name`);
     assert.deepEqual(columns.rows, [
       { column_name: "customer_email", is_nullable: "YES", character_maximum_length: 254 },
       { column_name: "customer_phone", is_nullable: "YES", character_maximum_length: 32 },

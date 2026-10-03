@@ -84,6 +84,7 @@ import weddingInsightsRouter from "./wedding-insights";
 import cateringRouter from "./catering";
 import cateringReviewsRouter from "./catering-reviews";
 import cateringBookingsRouter from "./catering-bookings";
+import cateringBookingOffersRouter from "./catering-booking-offers";
 import cateringBookingWorkspaceRouter from "./catering-booking-workspace";
 import cateringBookingCommunicationRouter from "./catering-booking-communication";
 import cateringBookingFilesRouter from "./catering-booking-files";
@@ -213,6 +214,7 @@ r.use("/upload", uploadRouter);
 // Catering
 r.use("/catering", cateringReviewsRouter);
 r.use("/catering", cateringBookingsRouter);
+r.use("/catering", cateringBookingOffersRouter);
 r.use("/catering", cateringBookingWorkspaceRouter);
 r.use("/catering", cateringBookingCommunicationRouter);
 r.use("/catering", cateringBookingFilesRouter);

@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { and, count, desc, eq, gte, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import { cateringAvailabilityExceptions, cateringAvailabilitySettings, cateringBookingActivity, cateringBookings, cateringPackages, cateringReviews, notifications } from "@shared/schema";
-import { cateringBookingCancelSchema, cateringBookingIdSchema, cateringBookingOfferSchema, cateringBookingPageSchema } from "@shared/catering-bookings";
+import { cateringBookingCancelSchema, cateringBookingIdSchema, cateringBookingPageSchema } from "@shared/catering-bookings";
+import { cateringFirstOfferSchema, cateringOfferAcceptSchema } from "@shared/catering-offers";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { calendarDateInTimezone } from "../services/catering-availability";
@@ -13,6 +15,7 @@ import { serializeCateringBooking } from "../serializers/catering-booking";
 import { CATERING_CUSTOMER_BOOKINGS_URL, CATERING_PROVIDER_BOOKINGS_URL } from "../services/catering-booking-links";
 import { lockCateringInquiry } from "../services/catering-inquiry-withdrawal";
 import { lockCateringReviewRelationship } from "../services/catering-review-relationship-lock";
+import { acceptanceRetryContradictsAccepted, acceptanceWouldContradictBilling, bookingTermsFromRevision, CATERING_OFFER_ALREADY_EXISTS_MESSAGE, createProviderOfferRevision, firstOfferRetryMatches, listCateringOfferRevisions, resolveCateringOfferAcceptance, stampCateringOfferAccepted } from "../services/catering-offer-negotiation";
 
 const r = Router();
 async function bookingDateExceptions(executor: typeof db, providerId: string, targetDate: string) {
@@ -37,7 +40,7 @@ r.get("/bookings/:id", requireAuth, async (req, res, next) => { try {
 
 // Provider acceptance remains an inquiry fact. This separate intent creates/offers the agreement.
 r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, next) => { try {
-  const inquiryId = cateringBookingIdSchema.parse(req.params.inquiryId); const providerId = (req.user as { id: string }).id; const offer = cateringBookingOfferSchema.parse(req.body ?? {}); const now = new Date();
+  const inquiryId = cateringBookingIdSchema.parse(req.params.inquiryId); const providerId = (req.user as { id: string }).id; const offer = cateringFirstOfferSchema.parse(req.body ?? {}); const now = new Date();
   const result = await db.transaction(async (tx: typeof db) => {
     // The inquiry row is locked before its status is judged, and a customer's withdrawal locks the same row before it looks
     // for a booking, so an inquiry can end up withdrawn or booked but never both.
@@ -49,34 +52,60 @@ r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, n
     const eventDate = calendarDateInTimezone(inquiry.eventDate, "UTC");
     const offerDate = evaluateBookingDateForOffer({ targetDate: eventDate, currentDate: await providerCalendarDate(tx, providerId, now), exceptions: await bookingDateExceptions(tx, providerId, eventDate) });
     if (!offerDate.available) return { error: 409, message: offerDate.reason === "past_event" ? "Booking terms cannot be offered after the event date." : "This event date is explicitly blocked. Remove the date block before offering booking terms." } as const;
-    const [created] = await tx.insert(cateringBookings).values({ inquiryId, providerId, customerId: inquiry.customerId, packageId: pkg?.id ?? null, eventDate, eventType: inquiry.eventType, guestCount: inquiry.guestCount, agreedPrice: offer.agreedPrice?.toFixed(2), currency: offer.currency, packageTitleSnapshot: pkg?.title ?? null, packagePricingModelSnapshot: pkg?.pricingModel ?? null, packageStartingPriceSnapshot: pkg?.startingPrice ?? null, providerConfirmedAt: now }).onConflictDoNothing({ target: cateringBookings.inquiryId }).returning({ id: cateringBookings.id });
+    // Omitted means "the request's own guest count"; an explicit null is the provider clearing it, and stays cleared in the booking and in revision 1 alike.
+    const initialGuestCount = offer.guestCount === undefined ? inquiry.guestCount : offer.guestCount;
+    const [created] = await tx.insert(cateringBookings).values({ inquiryId, providerId, customerId: inquiry.customerId, packageId: pkg?.id ?? null, eventDate, eventType: inquiry.eventType, guestCount: initialGuestCount, agreedPrice: offer.priceCents === null ? undefined : bookingTermsFromRevision({ priceCents: offer.priceCents, guestCount: null, currency: offer.currency }).agreedPrice, currency: offer.currency, packageTitleSnapshot: pkg?.title ?? null, packagePricingModelSnapshot: pkg?.pricingModel ?? null, packageStartingPriceSnapshot: pkg?.startingPrice ?? null, providerConfirmedAt: now }).onConflictDoNothing({ target: cateringBookings.inquiryId }).returning({ id: cateringBookings.id });
     const [booking] = await tx.select().from(cateringBookings).where(eq(cateringBookings.inquiryId, inquiryId)).limit(1);
     if (!booking || booking.providerId !== providerId) return { error: 409, message: "Booking could not be created" } as const;
+    // The inquiry already had its offer. A request carrying the same terms is that offer's retry and may be answered with it; one carrying
+    // different terms is NOT, and is refused before anything is written so it can never be reported as saved.
+    if (!created && !firstOfferRetryMatches({ booking, revisions: await listCateringOfferRevisions(tx, booking.id) }, { priceCents: offer.priceCents, guestCount: initialGuestCount ?? null, note: offer.note ?? null, currency: offer.currency })) return { error: 409, code: "offer_already_exists", message: CATERING_OFFER_ALREADY_EXISTS_MESSAGE } as const;
     if (booking.status === "pending_confirmation" && !booking.providerConfirmedAt) await tx.update(cateringBookings).set({ providerConfirmedAt: now, updatedAt: now }).where(and(eq(cateringBookings.id, booking.id), eq(cateringBookings.status, "pending_confirmation")));
     const newlyConfirmed = !booking.providerConfirmedAt;
     if (created) await tx.insert(cateringBookingActivity).values({ bookingId: booking.id, actorUserId: providerId, eventType: "booking_offered", visibility: "shared", metadata: {} });
+    if (created) {
+      // A brand-new offer is revision 1 of its own negotiation, written in the transaction that creates the booking. A retry finds the booking and writes nothing.
+      const first = await createProviderOfferRevision(tx, { bookingId: created.id, providerId, terms: { priceCents: offer.priceCents, guestCount: initialGuestCount, note: offer.note, currency: offer.currency }, expectedRevisionId: null, clientRequestId: randomUUID(), now });
+      if (first.kind === "refused") throw new Error("first offer revision was refused");
+    }
     const [fresh] = await tx.select().from(cateringBookings).where(eq(cateringBookings.id, booking.id)).limit(1); return { booking: fresh, notify: Boolean(created || newlyConfirmed) } as const;
   });
-  if ("error" in result) return res.status(result.error).json({ message: result.message });
+  if ("error" in result) return res.status(result.error).json({ message: result.message, ..."code" in result ? { code: result.code } : {} });
   if (result.notify) await db.insert(notifications).values({ userId: result.booking.customerId, type: "catering_booking_confirmation", title: "Catering booking ready to confirm", message: "Your provider has offered booking terms for your explicit confirmation.", linkUrl: CATERING_CUSTOMER_BOOKINGS_URL }).catch(() => undefined);
   res.status(result.notify ? 201 : 200).json({ booking: serializeCateringBooking(result.booking) });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });
 
 r.post("/bookings/:id/customer-confirm", requireAuth, async (req, res, next) => { try {
   const id = cateringBookingIdSchema.parse(req.params.id); const customerId = (req.user as { id: string }).id; const now = new Date();
-  const result = await db.transaction(async (tx: typeof db) => {
-    const [current] = await tx.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId))).limit(1);
-    if (!current) return { error: 404, message: "Booking not found" } as const;
-    if (current.customerConfirmedAt) return { booking: current, notify: false } as const;
-    if (!mayConfirm(current, "customer")) return { error: 409, message: "Booking can no longer be confirmed" } as const;
+  // The terms being accepted are named by the client and judged by the server: a body naming no revision means "the legacy offer".
+  const accepting = cateringOfferAcceptSchema.parse(req.body ?? {});
+  type Refusal = { error: 404 | 409; message: string; code?: string };
+  const result = await db.transaction(async (tx: typeof db): Promise<Refusal | { booking: typeof cateringBookings.$inferSelect; notify: boolean }> => {
+    // The booking row is locked before anything is judged, so a provider revising and a customer accepting are serialized on it.
+    const [current] = await tx.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId))).limit(1).for("update");
+    if (!current) return { error: 404, message: "Booking not found" };
+    const revisions = await listCateringOfferRevisions(tx, id);
+    if (current.customerConfirmedAt) {
+      if (acceptanceRetryContradictsAccepted(revisions, accepting.revisionId)) return { error: 409, code: "stale_revision", message: "A different version of this offer was already accepted. Review the booking for its current terms." };
+      return { booking: current, notify: false };
+    }
+    if (!mayConfirm(current, "customer")) return { error: 409, code: "negotiation_closed", message: "Booking can no longer be confirmed" };
+    const acceptance = resolveCateringOfferAcceptance(revisions, accepting.revisionId ?? null);
+    if (acceptance.kind === "refused") return { error: 409, code: acceptance.code, message: acceptance.message };
+    if (await acceptanceWouldContradictBilling(tx, current, acceptance.revision)) return { error: 409, code: "billing_terms_locked", message: "These terms no longer match the booking's billing, so they cannot be accepted. Contact the caterer." };
     const nextStatus = nextConfirmationStatus(current, "customer");
     const confirmationDate = evaluateBookingDateForConfirmation({ targetDate: current.eventDate, currentDate: await providerCalendarDate(tx, current.providerId, now), exceptions: await bookingDateExceptions(tx, current.providerId, current.eventDate) });
-    if (nextStatus === "confirmed" && !confirmationDate.available) return { error: 409, message: confirmationDate.reason === "past_event" ? "This booking can no longer be confirmed because its event date has passed." : "The provider explicitly blocked this event date after offering the booking. Contact the provider to resolve it." } as const;
-    const [updated] = await tx.update(cateringBookings).set({ customerConfirmedAt: now, status: nextStatus, confirmedAt: nextStatus === "confirmed" ? now : null, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId), eq(cateringBookings.status, "pending_confirmation"))).returning();
-    if (updated) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: customerId, eventType: "customer_confirmed", visibility: "shared", metadata: {} });
-    return updated ? { booking: updated, notify: true } as const : { error: 409, message: "Booking changed before confirmation completed" } as const;
+    if (nextStatus === "confirmed" && !confirmationDate.available) return { error: 409, message: confirmationDate.reason === "past_event" ? "This booking can no longer be confirmed because its event date has passed." : "The provider explicitly blocked this event date after offering the booking. Contact the provider to resolve it." };
+    // The accepted revision's terms are written onto the booking in the same statement that confirms it, so the booking can never
+    // confirm with terms other than the revision that was accepted. A legacy offer has no revision and keeps its own stored terms.
+    const terms = acceptance.revision ? bookingTermsFromRevision(acceptance.revision) : {};
+    const [updated] = await tx.update(cateringBookings).set({ ...terms, customerConfirmedAt: now, status: nextStatus, confirmedAt: nextStatus === "confirmed" ? now : null, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId), eq(cateringBookings.status, "pending_confirmation"))).returning();
+    if (!updated) return { error: 409, message: "Booking changed before confirmation completed" };
+    if (acceptance.revision) await stampCateringOfferAccepted(tx, acceptance.revision, now);
+    await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: customerId, eventType: "customer_confirmed", visibility: "shared", metadata: {} });
+    return { booking: updated, notify: true };
   });
-  if ("error" in result) return res.status(result.error).json({ message: result.message });
+  if ("error" in result) return res.status(result.error).json({ message: result.message, ...(result.code ? { code: result.code } : {}) });
   const updated = result.booking;
   if (!result.notify) return res.json({ booking: serializeCateringBooking(updated) });
   await db.insert(notifications).values({ userId: updated.providerId, type: "catering_booking_confirmed", title: "Catering booking confirmed", message: "The customer explicitly accepted the booking terms.", linkUrl: CATERING_PROVIDER_BOOKINGS_URL }).catch(() => undefined);
