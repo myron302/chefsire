@@ -26,6 +26,8 @@ export const CATERING_AMENDMENT_HISTORY_LIMIT = 50;
 export const CATERING_AMENDMENT_MESSAGE_MAX_LENGTH = 1000;
 
 const blankToNull = (value: unknown) => (typeof value === "string" && value.trim() === "" ? null : value);
+/** The one currency contract: the ISO-style three-letter code every Catering schema already validates. The server and the editor both use this. */
+export const CATERING_CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const eventDateSchema = z.string().refine((value) => calendarDateParts(value) !== null, "Event date must be a real date (YYYY-MM-DD)");
 
 /**
@@ -37,7 +39,7 @@ export const cateringAmendmentProposalSchema = z.object({
   eventDate: eventDateSchema.optional(),
   guestCount: z.number().int("Guest count must be a whole number").min(1, "Guest count must be at least 1").max(CATERING_OFFER_GUEST_MAX, "Guest count is too large").nullable().optional(),
   priceCents: z.number().int("Price must be a whole number of cents").min(0, "Price cannot be negative").max(CATERING_OFFER_PRICE_MAX_CENTS, "Price is too large").nullable().optional(),
-  currency: z.string().trim().regex(/^[A-Z]{3}$/, "Currency must be a 3-letter code").optional(),
+  currency: z.string().trim().regex(CATERING_CURRENCY_PATTERN, "Currency must be a 3-letter code").optional(),
   termsNote: z.preprocess(blankToNull, z.string().trim().max(CATERING_OFFER_NOTE_MAX_LENGTH, `Terms can be at most ${CATERING_OFFER_NOTE_MAX_LENGTH} characters`).nullable().optional()),
   message: z.preprocess(blankToNull, z.string().trim().max(CATERING_AMENDMENT_MESSAGE_MAX_LENGTH, `Message can be at most ${CATERING_AMENDMENT_MESSAGE_MAX_LENGTH} characters`).nullable().optional()),
   /** The latest ACCEPTED amendment the proposer was looking at (null: the original confirmed terms). */
@@ -115,17 +117,21 @@ export const CATERING_AMENDMENT_FIELD_LABELS: Record<CateringAmendmentField, str
 export type CateringAmendmentChange = { field: CateringAmendmentField; label: string; before: string; after: string };
 
 /**
- * The changed terms only, as text. Price and currency read together as one money value because that is how a person reads
- * them. An unchanged term never appears, whatever the two sides hold.
+ * The changed terms only, as text, each with its own before and after. An unchanged term never appears, whatever the two sides hold.
  */
 export function describeCateringAmendmentChanges(amendment: Pick<CateringAmendmentView, "changedFields" | "before" | "after">): CateringAmendmentChange[] {
   const { changedFields: fields, before, after } = amendment;
   const changes: CateringAmendmentChange[] = [];
   if (fields.includes("event_date")) changes.push({ field: "event_date", label: CATERING_AMENDMENT_FIELD_LABELS.event_date, before: formatCateringCalendarDate(before.eventDate), after: formatCateringCalendarDate(after.eventDate) });
   if (fields.includes("guest_count")) changes.push({ field: "guest_count", label: CATERING_AMENDMENT_FIELD_LABELS.guest_count, before: before.guestCount === null ? "Not specified" : String(before.guestCount), after: after.guestCount === null ? "Not specified" : String(after.guestCount) });
-  if (fields.includes("price_cents") || fields.includes("currency")) {
-    changes.push({ field: fields.includes("price_cents") ? "price_cents" : "currency", label: fields.includes("price_cents") ? CATERING_AMENDMENT_FIELD_LABELS.price_cents : CATERING_AMENDMENT_FIELD_LABELS.currency, before: formatCateringAmendmentMoney(before.priceCents, before.currency), after: formatCateringAmendmentMoney(after.priceCents, after.currency) });
+  // Price and currency are separate rows so neither can hide the other. The price row appears when the amount changes, or when the
+  // currency changes under a stated amount (the same number in another currency is a different price). A currency change with no
+  // price at all has nothing to show on a money row, so it is carried entirely by the explicit Currency row.
+  const priceStated = before.priceCents !== null || after.priceCents !== null;
+  if (fields.includes("price_cents") || (fields.includes("currency") && priceStated)) {
+    changes.push({ field: "price_cents", label: CATERING_AMENDMENT_FIELD_LABELS.price_cents, before: formatCateringAmendmentMoney(before.priceCents, before.currency), after: formatCateringAmendmentMoney(after.priceCents, after.currency) });
   }
+  if (fields.includes("currency")) changes.push({ field: "currency", label: CATERING_AMENDMENT_FIELD_LABELS.currency, before: before.currency, after: after.currency });
   if (fields.includes("terms_note")) changes.push({ field: "terms_note", label: CATERING_AMENDMENT_FIELD_LABELS.terms_note, before: before.termsNote ?? "None", after: after.termsNote ?? "None" });
   return changes;
 }

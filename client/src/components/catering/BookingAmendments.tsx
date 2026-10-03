@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CATERING_AMENDMENT_STATUS_LABELS, describeCateringAmendmentChanges, formatCateringAmendmentMoney,
+  CATERING_AMENDMENT_STATUS_LABELS, formatCateringAmendmentMoney,
   type CateringAmendmentTerms, type CateringAmendmentView, type CateringAmendmentsView,
 } from "@shared/catering-amendments";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 import { CATERING_OFFER_NOTE_MAX_LENGTH } from "@shared/catering-offers";
+import { AmendmentChanges } from "@/components/catering/AmendmentChanges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,18 +45,6 @@ function TermsList({ terms }: { terms: CateringAmendmentTerms }) {
       <dt className="text-muted-foreground">Agreed price</dt><dd className="break-words">{formatCateringAmendmentMoney(terms.priceCents, terms.currency)}</dd>
       {terms.termsNote && <><dt className="text-muted-foreground">Terms</dt><dd className="whitespace-pre-wrap break-words">{terms.termsNote}</dd></>}
     </dl>
-  );
-}
-
-/** Changed terms only, as OLD -> NEW text. The change is in the words, so it never depends on colour. */
-function Changes({ amendment }: { amendment: CateringAmendmentView }) {
-  const changes = describeCateringAmendmentChanges(amendment);
-  return (
-    <ul className="space-y-1 text-sm" aria-label="Proposed changes">
-      {changes.map((change) => (
-        <li key={change.field} className="break-words"><span className="font-medium">{change.label}:</span> <span className="whitespace-pre-wrap">{change.before}</span> <span aria-label="changes to">→</span> <span className="whitespace-pre-wrap font-medium">{change.after}</span></li>
-      ))}
-    </ul>
   );
 }
 
@@ -158,7 +147,7 @@ export function BookingAmendments({ bookingId, userId, role }: { bookingId: stri
             <p className="break-words text-sm font-medium">{offerAuthorLabel(pending.proposedBy, role)} proposed a change · {when(pending.createdAt)}</p>
             <Badge variant="outline" className="whitespace-normal text-left">{CATERING_AMENDMENT_STATUS_LABELS.pending}</Badge>
           </div>
-          <Changes amendment={pending} />
+          <AmendmentChanges amendment={pending} />
           {pending.message && <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">“{pending.message}”</p>}
           <p className="text-xs text-muted-foreground">{view.actions.canAccept ? "Nothing changes until you accept." : "Nothing changes until the other party accepts."}</p>
           <div className="flex flex-wrap gap-2">
@@ -190,6 +179,11 @@ export function BookingAmendments({ bookingId, userId, role }: { bookingId: stri
               <Label htmlFor={`amend-price-${bookingId}`}>Agreed price ({view.currentTerms.currency})</Label>
               <Input id={`amend-price-${bookingId}`} inputMode="decimal" autoComplete="off" value={editor.draft.price} disabled={propose.isPending || view.billingTermsLocked} aria-invalid={Boolean(errors.price)} aria-describedby={`amend-price-help-${bookingId}`} onChange={(event) => setField("price", event.target.value)} />
               <p id={`amend-price-help-${bookingId}`} className={errors.price ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={errors.price ? "alert" : undefined}>{errors.price ?? (view.billingTermsLocked ? "Billing has started, so the price can no longer change." : "Changing the price is only possible before any invoice or payment exists.")}</p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor={`amend-currency-${bookingId}`}>Currency</Label>
+              <Input id={`amend-currency-${bookingId}`} autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={3} value={editor.draft.currency} disabled={propose.isPending || view.billingTermsLocked} aria-invalid={Boolean(errors.currency)} aria-describedby={`amend-currency-help-${bookingId}`} onChange={(event) => setField("currency", event.target.value.toUpperCase())} />
+              <p id={`amend-currency-help-${bookingId}`} className={errors.currency ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={errors.currency ? "alert" : undefined}>{errors.currency ?? (view.billingTermsLocked ? "Billing has started, so the currency can no longer change." : "A 3-letter code such as USD or EUR. Only possible before any invoice or payment exists.")}</p>
             </div>
           </div>
           <div className="space-y-1">
@@ -224,7 +218,7 @@ export function BookingAmendments({ bookingId, userId, role }: { bookingId: stri
                     <Badge variant="outline" className="whitespace-normal text-left">{CATERING_AMENDMENT_STATUS_LABELS[amendment.status]}</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">{when(amendment.createdAt)}{amendment.respondedAt ? ` · closed ${when(amendment.respondedAt)}` : ""}</p>
-                  <div className="mt-2"><Changes amendment={amendment} /></div>
+                  <div className="mt-2"><AmendmentChanges amendment={amendment} /></div>
                   {amendment.message && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground">“{amendment.message}”</p>}
                 </li>
               ))}
@@ -242,7 +236,7 @@ export function BookingAmendments({ bookingId, userId, role }: { bookingId: stri
                 <AlertDialogTitle>{dialogCopy[confirming].title}</AlertDialogTitle>
                 <AlertDialogDescription>{dialogCopy[confirming].body}</AlertDialogDescription>
               </AlertDialogHeader>
-              <Changes amendment={pending} />
+              <AmendmentChanges amendment={pending} />
               {failure(respond) && <p role="alert" className="break-words text-sm text-destructive">{failure(respond)}</p>}
               <AlertDialogFooter>
                 <AlertDialogCancel className="min-h-11" disabled={respond.isPending}>Keep reviewing</AlertDialogCancel>

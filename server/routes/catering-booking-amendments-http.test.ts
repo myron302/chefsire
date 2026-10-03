@@ -518,6 +518,77 @@ if (!PG_URL) {
     assert.equal(history.currentTerms.termsNote, "Updated");
   });
 
+
+  // ------------------------------------------------------------------------------------------------ currency
+  test("currency: either party can propose a legal currency change before billing; the counterparty sees USD -> EUR, accepting updates the booking atomically, and history keeps it", async () => {
+    for (const [proposer, responder] of [[PROVIDER, CUSTOMER_A], [CUSTOMER_A, PROVIDER]] as const) {
+      const bookingId = await confirmed();
+      const created = await propose(bookingId, { currency: "EUR" }, proposer);
+      assert.equal(created.status, 201, created.text);
+      const seen = (await amendmentsView(bookingId, responder)).body.amendments.pending;
+      assert.deepEqual([seen.changedFields, seen.before.currency, seen.after.currency, seen.after.priceCents], [["currency"], "USD", "EUR", 250000], "the receiving party is shown current -> proposed");
+      assert.equal((await bookingRow(bookingId)).currency, "USD", "a proposal never changes the booking");
+      assert.equal((await respond(bookingId, seen.id, "accept", responder)).status, 200);
+      const row = await bookingRow(bookingId);
+      assert.deepEqual([row.currency, row.agreed_price], ["EUR", "2500.00"]);
+      const history = (await amendmentsView(bookingId, proposer)).body.amendments;
+      assert.deepEqual([history.amendments[0].status, history.amendments[0].before.currency, history.amendments[0].after.currency, history.currentTerms.currency], ["accepted", "USD", "EUR", "EUR"]);
+      const [stored] = await amendmentRows(bookingId);
+      await assert.rejects(local.query(`UPDATE catering_booking_amendments SET currency = 'GBP' WHERE id = $1`, [stored.id]), /immutable/, "an accepted amendment's currency can never be rewritten");
+    }
+  });
+
+  test("currency: price-only, currency-only, price+currency, and a currency change on an unpriced booking", async () => {
+    const priced = await confirmed();
+    const both = await propose(priced, { priceCents: 300000, currency: "EUR" }, PROVIDER);
+    assert.deepEqual(both.body.amendments.pending.changedFields, ["price_cents", "currency"]);
+    await respond(priced, both.body.amendments.pending.id, "accept", CUSTOMER_A);
+    assert.deepEqual([(await bookingRow(priced)).agreed_price, (await bookingRow(priced)).currency], ["3000.00", "EUR"]);
+    const priceOnly = await propose(priced, { priceCents: 310000 }, CUSTOMER_A, { expectedBaseAmendmentId: both.body.amendments.pending.id });
+    assert.deepEqual(priceOnly.body.amendments.pending.changedFields, ["price_cents"], "the unchanged currency is not a change");
+
+    const unpricedId = await confirmed({ guestCount: 100 });
+    assert.equal((await bookingRow(unpricedId)).agreed_price, null);
+    const currencyOnly = await propose(unpricedId, { currency: "EUR" }, PROVIDER);
+    assert.equal(currencyOnly.status, 201, currencyOnly.text);
+    assert.deepEqual([currencyOnly.body.amendments.pending.before.priceCents, currencyOnly.body.amendments.pending.after.priceCents], [null, null]);
+    await respond(unpricedId, currencyOnly.body.amendments.pending.id, "accept", CUSTOMER_A);
+    assert.deepEqual([(await bookingRow(unpricedId)).currency, (await bookingRow(unpricedId)).agreed_price], ["EUR", null]);
+    const same = await propose(unpricedId, { currency: "EUR" }, PROVIDER, { expectedBaseAmendmentId: currencyOnly.body.amendments.pending.id });
+    assert.deepEqual([same.status, same.body.code], [409, "no_change"], "unchanged null price and unchanged currency are no change");
+  });
+
+  test("currency: a declined currency amendment leaves the booking alone, and a stale one cannot overwrite newer terms", async () => {
+    const declined = await confirmed();
+    const one = await propose(declined, { currency: "EUR" }, CUSTOMER_A);
+    assert.equal((await respond(declined, one.body.amendments.pending.id, "decline", PROVIDER)).status, 200);
+    assert.equal((await bookingRow(declined)).currency, "USD");
+    const kept = (await amendmentsView(declined)).body.amendments.amendments[0];
+    assert.deepEqual([kept.status, kept.before.currency, kept.after.currency], ["declined", "USD", "EUR"]);
+
+    const stale = await confirmed();
+    const two = await propose(stale, { currency: "EUR" }, PROVIDER);
+    await local.query(`UPDATE catering_bookings SET currency = 'GBP' WHERE id = $1`, [stale]);
+    const accepted = await respond(stale, two.body.amendments.pending.id, "accept", CUSTOMER_A);
+    assert.deepEqual([accepted.status, accepted.body.code, (await bookingRow(stale)).currency], [409, "stale_terms", "GBP"]);
+  });
+
+  test("currency: billing fails it closed at the API for both parties, at proposal and at acceptance, and a bad code is a 400", async () => {
+    const bookingId = await confirmed();
+    const pending = await propose(bookingId, { currency: "EUR" }, PROVIDER);
+    await issueInvoice(bookingId);
+    const lateAccept = await respond(bookingId, pending.body.amendments.pending.id, "accept", CUSTOMER_A);
+    assert.deepEqual([lateAccept.status, lateAccept.body.code, (await bookingRow(bookingId)).currency], [409, "billing_terms_locked", "USD"]);
+    await respond(bookingId, pending.body.amendments.pending.id, "withdraw", PROVIDER);
+    for (const who of [PROVIDER, CUSTOMER_A]) {
+      const refused = await propose(bookingId, { currency: "GBP" }, who);
+      assert.deepEqual([refused.status, refused.body.code], [409, "billing_terms_locked"], who);
+    }
+    assert.equal((await amendmentsView(bookingId)).body.amendments.billingTermsLocked, true);
+    for (const bad of ["eur", "EURO", ""]) assert.equal((await propose(bookingId, { currency: bad })).status, 400, bad);
+    assert.equal((await bookingRow(bookingId)).currency, "USD");
+  });
+
   // ------------------------------------------------------------------------------- consistent read snapshot
   /** Starts a GET, holds it between its booking read and its amendment read, runs `during` (a committed transition), then lets the GET finish. */
   async function readDuring(bookingId: string, who: string, during: () => Promise<unknown>) {

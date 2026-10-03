@@ -2,7 +2,7 @@ import { cateringBookingBillingKey, cateringMoneyToCents } from "@shared/caterin
 import { cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
 import { calendarDateParts } from "@shared/catering-availability";
 import { CATERING_OFFER_GUEST_MAX, CATERING_OFFER_NOTE_MAX_LENGTH } from "@shared/catering-offers";
-import { cateringAmendmentsKey, isCateringAmendmentConflict, type CateringAmendmentTerms } from "@shared/catering-amendments";
+import { CATERING_CURRENCY_PATTERN, cateringAmendmentsKey, isCateringAmendmentConflict, type CateringAmendmentTerms } from "@shared/catering-amendments";
 
 export { cateringAmendmentsKey };
 
@@ -37,17 +37,17 @@ export function isCurrentAmendmentTarget(shown: AmendmentIdentity, submitted: Am
   return shown.userId === submitted.userId && shown.bookingId === submitted.bookingId;
 }
 
-export type AmendmentDraft = { eventDate: string; guestCount: string; price: string; termsNote: string; message: string };
+export type AmendmentDraft = { eventDate: string; guestCount: string; price: string; currency: string; termsNote: string; message: string };
 export type AmendmentDraftErrors = Partial<Record<keyof AmendmentDraft, string>> & { form?: string };
 
 const centsText = (cents: number | null) => (cents === null ? "" : `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`);
 
 /** The editor starts from the terms in force, so a proposal changes only what the person edits. */
 export function amendmentDraftFromTerms(terms: CateringAmendmentTerms): AmendmentDraft {
-  return { eventDate: terms.eventDate, guestCount: terms.guestCount === null ? "" : String(terms.guestCount), price: centsText(terms.priceCents), termsNote: terms.termsNote ?? "", message: "" };
+  return { eventDate: terms.eventDate, guestCount: terms.guestCount === null ? "" : String(terms.guestCount), price: centsText(terms.priceCents), currency: terms.currency, termsNote: terms.termsNote ?? "", message: "" };
 }
 
-export type AmendmentProposalBody = { eventDate?: string; guestCount?: number | null; priceCents?: number | null; termsNote?: string | null; message?: string };
+export type AmendmentProposalBody = { eventDate?: string; guestCount?: number | null; priceCents?: number | null; currency?: string; termsNote?: string | null; message?: string };
 
 /**
  * Turns what was typed into ONLY the terms that differ from the ones in force; an untouched field is absent, never resent,
@@ -77,6 +77,13 @@ export function buildAmendmentProposal(draft: AmendmentDraft, current: CateringA
       else body.priceCents = cents;
     }
   }
+  // Canonical form is upper-case; only a code that differs from the one in force is a change, and it is judged against the same pattern the server uses.
+  const currency = draft.currency.trim().toUpperCase();
+  if (currency !== current.currency) {
+    if (!CATERING_CURRENCY_PATTERN.test(currency)) errors.currency = "Enter a 3-letter currency code such as USD or EUR";
+    else if (options.billingTermsLocked) errors.currency = "Billing has started, so the currency can no longer change.";
+    else body.currency = currency;
+  }
   const note = draft.termsNote.trim();
   if (note !== (current.termsNote ?? "")) {
     if (note.length > CATERING_OFFER_NOTE_MAX_LENGTH) errors.termsNote = `Terms can be at most ${CATERING_OFFER_NOTE_MAX_LENGTH} characters`;
@@ -86,7 +93,7 @@ export function buildAmendmentProposal(draft: AmendmentDraft, current: CateringA
   if (message.length > 1000) errors.message = "A message can be at most 1000 characters";
   else if (message !== "") body.message = message;
   if (Object.keys(errors).length) return { ok: false, errors };
-  if (body.eventDate === undefined && body.guestCount === undefined && body.priceCents === undefined && body.termsNote === undefined) return { ok: false, errors: { form: "Change at least one term to propose an amendment." } };
+  if (body.eventDate === undefined && body.guestCount === undefined && body.priceCents === undefined && body.currency === undefined && body.termsNote === undefined) return { ok: false, errors: { form: "Change at least one term to propose an amendment." } };
   return { ok: true, body };
 }
 

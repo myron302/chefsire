@@ -41,3 +41,34 @@ test("errors classify into stale-state conflicts and in-place refusals, and only
   assert.equal(decline.some((k) => k.includes("booking-billing")), false);
   assert.equal(accept.every((k) => k.includes("u1")), true);
 });
+
+test("the draft carries the current currency, and an unchanged currency is never sent", () => {
+  const draft = amendmentDraftFromTerms(current);
+  assert.equal(draft.currency, "USD");
+  const guestOnly = buildAmendmentProposal({ ...draft, guestCount: "110" }, current, open);
+  assert.deepEqual(guestOnly, { ok: true, body: { guestCount: 110 } });
+  assert.equal(buildAmendmentProposal({ ...draft, currency: " usd " }, current, open).ok, false, "the canonical form equals the current one: nothing changed");
+});
+
+test("price-only, currency-only, price+currency and neither", () => {
+  const draft = amendmentDraftFromTerms(current);
+  assert.deepEqual(buildAmendmentProposal({ ...draft, price: "2900" }, current, open), { ok: true, body: { priceCents: 290000 } });
+  assert.deepEqual(buildAmendmentProposal({ ...draft, currency: "eur" }, current, open), { ok: true, body: { currency: "EUR" } }, "no price is demanded for a currency change");
+  assert.deepEqual(buildAmendmentProposal({ ...draft, price: "2900", currency: "EUR" }, current, open), { ok: true, body: { priceCents: 290000, currency: "EUR" } });
+  assert.equal(buildAmendmentProposal(draft, current, open).ok, false);
+  const unpriced = { ...current, priceCents: null };
+  assert.deepEqual(buildAmendmentProposal({ ...amendmentDraftFromTerms(unpriced), currency: "EUR" }, unpriced, open), { ok: true, body: { currency: "EUR" } }, "a currency-only change on an unpriced booking is a real change");
+});
+
+test("currency is validated against the server pattern and locked once billing has started", () => {
+  const draft = amendmentDraftFromTerms(current);
+  for (const bad of ["EU", "EURO", "E1R", ""]) {
+    const result = buildAmendmentProposal({ ...draft, currency: bad }, current, open);
+    assert.equal(result.ok, false, bad);
+    if (!result.ok) assert.ok(result.errors.currency, bad);
+  }
+  const locked = buildAmendmentProposal({ ...draft, currency: "EUR" }, current, { billingTermsLocked: true });
+  assert.deepEqual(locked.ok === false && Object.keys(locked.errors), ["currency"]);
+  assert.match(locked.ok === false ? locked.errors.currency ?? "" : "", /Billing has started/);
+  assert.equal(buildAmendmentProposal({ ...draft, currency: "USD", guestCount: "105" }, current, { billingTermsLocked: true }).ok, true, "an untouched currency never trips the lock");
+});
