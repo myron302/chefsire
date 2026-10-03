@@ -708,6 +708,74 @@ if (!PG_URL) {
     assert.equal((await accept(bookingId, revisionId)).status, 200, "a full negotiation can still be accepted");
   });
 
+  // ------------------------------------------------------------------------- Codex repair pass: stale gestures
+  test("42. guest count on the first offer: omitted falls back to the request's, explicit null stays null, a number is stored, in booking and revision 1 alike", async () => {
+    const guests = async (terms: Record<string, unknown>) => {
+      const { bookingId } = await offered(terms);
+      return { booking: (await bookingRow(bookingId)).guest_count, revision: (await revisionRows(bookingId))[0].guest_count };
+    };
+    assert.deepEqual(await guests({ priceCents: 100 }), { booking: 40, revision: 40 }, "omitted: the inquiry's 40");
+    assert.deepEqual(await guests({ agreedPrice: "10.00" }), { booking: 40, revision: 40 }, "legacy dollar-only body: the inquiry's 40");
+    assert.deepEqual(await guests({ priceCents: 100, guestCount: null }), { booking: null, revision: null }, "explicit null: the provider cleared it");
+    assert.deepEqual(await guests({ priceCents: 100, guestCount: 25 }), { booking: 25, revision: 25 }, "explicit number");
+    const cleared = await offered({ guestCount: null });
+    assert.equal((await view(cleared.bookingId)).body.negotiation.revisions[0].guestCount, null);
+  });
+
+  test("43. a provider editor opened on revision N that submits after another tab published N+1 is refused, and its stale fields never become revision N+2", async () => {
+    const { bookingId, revisionId: n } = await offered({ priceCents: 150000, note: "N" });
+    const tabAEditorBoundTo = n; // what the editor captured when it opened
+    const tabB = await revise(bookingId, n, { priceCents: 160000, guestCount: 40, note: "N+1 from the other tab" });
+    assert.equal(tabB.status, 201);
+    const stale = await revise(bookingId, tabAEditorBoundTo, { priceCents: 1, guestCount: 3, note: "stale local edit" });
+    assert.deepEqual([stale.status, stale.body.code], [409, "stale_revision"]);
+    const rows = await revisionRows(bookingId);
+    assert.deepEqual(rows.map((row) => [row.revision_number, Number(row.price_cents)]), [[1, 150000], [2, 160000]]);
+    assert.doesNotMatch(JSON.stringify(rows), /stale local edit/);
+    const booking = await bookingRow(bookingId);
+    assert.deepEqual([booking.agreed_price, booking.guest_count], ["1600.00", 40]);
+  });
+
+  test("44. an acceptance for the revision the dialog showed is refused once a newer one exists, nothing is confirmed, and the newer one needs its own confirmation", async () => {
+    const { bookingId, revisionId: n } = await offered({ priceCents: 150000 });
+    const second = await revise(bookingId, n, { priceCents: 190000, guestCount: 80 });
+    const newer = second.body.negotiation.currentRevisionId;
+    const refused = await accept(bookingId, n);
+    assert.deepEqual([refused.status, refused.body.code], [409, "stale_revision"]);
+    const afterRefusal = await bookingRow(bookingId);
+    assert.deepEqual([afterRefusal.status, afterRefusal.customer_confirmed_at], ["pending_confirmation", null]);
+    assert.equal((await revisionRows(bookingId)).filter((row) => row.accepted_at).length, 0);
+    const confirmedNewer = await accept(bookingId, newer);
+    assert.equal(confirmedNewer.status, 200);
+    assert.deepEqual([(await bookingRow(bookingId)).agreed_price, (await bookingRow(bookingId)).guest_count], ["1900.00", 80]);
+  });
+
+  test("45. a change request written against the revision the customer was reading is refused if it has since been replaced", async () => {
+    const { bookingId, revisionId: n } = await offered();
+    await revise(bookingId, n, { priceCents: 140000 });
+    const stale = await changeRequest(bookingId, n, "about the old terms");
+    assert.deepEqual([stale.status, stale.body.code], [409, "stale_revision"]);
+    assert.equal((await revisionRows(bookingId)).filter((row) => row.kind === "change_request").length, 0);
+  });
+
+  test("46. a retry with the same request id returns what was already saved; an edited retry under a new id is judged on its own and is not reported as saved", async () => {
+    const { bookingId, revisionId: n } = await offered({ priceCents: 150000 });
+    const requestId = randomUUID();
+    const first = await revise(bookingId, n, { priceCents: 160000 }, { clientRequestId: requestId });
+    assert.equal(first.status, 201);
+    // Same id, same payload: the true network retry collapses onto the committed revision.
+    const sameRetry = await revise(bookingId, n, { priceCents: 160000 }, { clientRequestId: requestId });
+    assert.deepEqual([sameRetry.status, sameRetry.body.negotiation.revisions.length], [200, 2]);
+    // The same id with edited terms would be answered with the OLD revision as if the edit were saved: this is why the client must rotate the id.
+    const staleIdEdited = await revise(bookingId, n, { priceCents: 175000 }, { clientRequestId: requestId });
+    assert.equal(staleIdEdited.status, 200);
+    assert.equal(staleIdEdited.body.negotiation.revisions[0].priceCents, 160000, "the edit was NOT stored");
+    // A rotated id for the edited payload is a new submission and is refused as stale rather than silently dropped.
+    const rotated = await revise(bookingId, n, { priceCents: 175000 }, { clientRequestId: randomUUID() });
+    assert.deepEqual([rotated.status, rotated.body.code], [409, "stale_revision"]);
+    assert.deepEqual((await revisionRows(bookingId)).map((row) => Number(row.price_cents)), [150000, 160000]);
+  });
+
   // ---------------------------------------------------------------------- Phase 2M rules stay intact
   test("39. inquiry withdrawal semantics are unchanged: refused once a booking exists, and never mutates it", async () => {
     const { inquiryId, bookingId } = await offered();

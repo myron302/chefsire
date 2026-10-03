@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringOfferRevisionKey } from "@shared/catering-offers";
 import {
+  acceptSubmissionTarget, bindClientRequestId, isSessionBehind, offerPayloadFingerprint, openAcceptSession, openChangeRequestSession, openReviseSession, reviseSubmissionTarget,
   CateringOfferRequestError, cateringOfferInvalidationKeys, isCurrentOfferTarget, newCateringClientRequestId, offerAuthorLabel, offerDraftFromNegotiation,
   validateChangeRequestMessage, validateOfferDraft,
 } from "./catering-offer-state";
@@ -108,4 +109,97 @@ test("authors are labelled relative to the viewer", () => {
   assert.equal(offerAuthorLabel("provider", "customer"), "Caterer");
   assert.equal(offerAuthorLabel("customer", "provider"), "Customer");
   assert.equal(offerAuthorLabel("customer", "customer"), "You");
+});
+
+// ------------------------------------------------------------------------------------------------ Codex repair pass
+const rev = (id: string, revisionNumber: number, priceCents: number, guestCount: number | null = 40, note: string | null = null) => ({ id, revisionNumber, kind: "offer", priceCents, guestCount, note, currency: "USD" });
+const facts = (currentId: string, ...revisions: ReturnType<typeof rev>[]) => ({ legacy: false, legacyTerms: null, currentRevisionId: currentId, revisions: revisions as never });
+
+test("the revise editor is bound to the revision that seeded it, and a refetch to a newer one changes neither the draft nor the target", () => {
+  const atN = facts("rN", rev("rN", 1, 150000, 40, "terms N"));
+  const session = openReviseSession(atN);
+  assert.deepEqual(session, { revisionId: "rN", revisionNumber: 1, draft: { price: "1500.00", guestCount: "40", note: "terms N" } });
+  const refetched = facts("rN1", rev("rN1", 2, 160000, 55, "terms N+1"), rev("rN", 1, 150000, 40, "terms N"));
+  // The session is a value captured at open time; nothing about `refetched` can reach it.
+  assert.deepEqual(reviseSubmissionTarget(session), { expectedRevisionId: "rN" }, "submits the ORIGINAL revision id");
+  assert.equal(session.draft.price, "1500.00", "and the ORIGINAL draft");
+  assert.equal(isSessionBehind(session, atN), false);
+  assert.equal(isSessionBehind(session, refetched), true, "the editor can tell the offer moved on, so it warns instead of silently rebasing");
+  assert.notEqual(reviseSubmissionTarget(session).expectedRevisionId, refetched.currentRevisionId);
+});
+
+test("a legacy offer's editor is bound to 'no revision', and stays so", () => {
+  const legacy = { legacy: true, legacyTerms: { priceCents: 120000, currency: "USD", guestCount: 40, offeredAt: null }, revisions: [], currentRevisionId: null };
+  const session = openReviseSession(legacy);
+  assert.deepEqual([session.revisionId, session.revisionNumber], [null, null]);
+  assert.equal(isSessionBehind(session, { currentRevisionId: "first-real-revision" }), true);
+});
+
+test("the acceptance dialog freezes the revision id and the terms it showed", () => {
+  const session = openAcceptSession(facts("rN", rev("rN", 3, 150000, 40)))!;
+  assert.deepEqual(session, { revisionId: "rN", revisionNumber: 3, priceCents: 150000, currency: "USD", guestCount: 40 });
+  assert.deepEqual(acceptSubmissionTarget(session), { revisionId: "rN" });
+  const newer = facts("rN1", rev("rN1", 4, 190000, 80), rev("rN", 3, 150000, 40));
+  assert.notDeepEqual(acceptSubmissionTarget(openAcceptSession(newer)!), acceptSubmissionTarget(session), "only a NEW opening of the dialog targets the newer revision");
+  assert.equal(session.priceCents, 150000, "the text the customer read still describes the revision they confirm");
+});
+
+test("a legacy acceptance names no revision, and an offer with nothing to show cannot open a dialog", () => {
+  const legacy = { legacy: true, legacyTerms: { priceCents: 120000, currency: "USD", guestCount: 40, offeredAt: null }, revisions: [], currentRevisionId: null };
+  assert.deepEqual(acceptSubmissionTarget(openAcceptSession(legacy)!), { revisionId: null });
+  assert.equal(openAcceptSession({ legacy: true, legacyTerms: null, revisions: [], currentRevisionId: null }), null);
+});
+
+test("a change request is bound to the revision the customer was reading when they opened the form", () => {
+  assert.deepEqual(openChangeRequestSession({ currentRevisionId: "rN" }), { revisionId: "rN" });
+});
+
+test("the fingerprint is canonical: key order, whitespace and undefined-versus-absent do not matter, any real difference does", () => {
+  const base = { bookingId: "b", expectedRevisionId: "r1", priceCents: 100, guestCount: 4, note: "hello", currency: "USD" };
+  const same = { currency: "USD", note: "  hello ", guestCount: 4, priceCents: 100, expectedRevisionId: "r1", bookingId: "b", extra: undefined };
+  assert.equal(offerPayloadFingerprint(same), offerPayloadFingerprint(base));
+  assert.equal(offerPayloadFingerprint({ ...base, note: undefined }), offerPayloadFingerprint({ bookingId: "b", expectedRevisionId: "r1", priceCents: 100, guestCount: 4, currency: "USD" }));
+  for (const changed of [{ priceCents: 101 }, { guestCount: null }, { guestCount: 5 }, { note: "hello!" }, { expectedRevisionId: "r2" }, { bookingId: "other" }, { currency: "EUR" }]) {
+    assert.notEqual(offerPayloadFingerprint({ ...base, ...changed }), offerPayloadFingerprint(base), JSON.stringify(changed));
+  }
+  assert.notEqual(offerPayloadFingerprint({ ...base, guestCount: null }), offerPayloadFingerprint({ ...base, guestCount: undefined }), "cleared and omitted are different submissions");
+});
+
+test("an identical resend after a dropped response keeps its request id", () => {
+  let made = 0;
+  const makeId = () => `id-${++made}`;
+  const payload = { bookingId: "b", expectedRevisionId: "r1", priceCents: 100 };
+  const first = bindClientRequestId(null, payload, makeId);
+  const retry = bindClientRequestId(first, { ...payload }, makeId);
+  const reordered = bindClientRequestId(retry, { priceCents: 100, expectedRevisionId: "r1", bookingId: "b" }, makeId);
+  assert.deepEqual([first.id, retry.id, reordered.id], ["id-1", "id-1", "id-1"]);
+  assert.equal(made, 1, "a rerender or resend that changes nothing mints nothing");
+});
+
+test("editing after an attempted submission rotates the request id, so the edit cannot be answered by the earlier request's stored result", () => {
+  let made = 0;
+  const makeId = () => `id-${++made}`;
+  const attempted = bindClientRequestId(null, { bookingId: "b", expectedRevisionId: "r1", priceCents: 100 }, makeId);
+  const edited = bindClientRequestId(attempted, { bookingId: "b", expectedRevisionId: "r1", priceCents: 175 }, makeId);
+  assert.notEqual(edited.id, attempted.id);
+  const retriedEdit = bindClientRequestId(edited, { bookingId: "b", expectedRevisionId: "r1", priceCents: 175 }, makeId);
+  assert.equal(retriedEdit.id, edited.id, "and the edited submission is itself retry-safe");
+  const revertedToOriginal = bindClientRequestId(edited, { bookingId: "b", expectedRevisionId: "r1", priceCents: 100 }, makeId);
+  assert.notEqual(revertedToOriginal.id, edited.id);
+  assert.equal(made, 3);
+});
+
+test("a different target revision is a different submission even with identical fields", () => {
+  const a = bindClientRequestId(null, { bookingId: "b", expectedRevisionId: "r1", priceCents: 100 }, () => "x");
+  const b = bindClientRequestId(a, { bookingId: "b", expectedRevisionId: "r2", priceCents: 100 }, () => "y");
+  assert.deepEqual([a.id, b.id], ["x", "y"]);
+});
+
+test("many edits before the first submission make no request ids at all", () => {
+  let made = 0;
+  // The component only binds an id inside submit; edits touch draft state alone. Binding is the only minting site.
+  for (const price of ["1", "12", "125", "1250"]) offerPayloadFingerprint({ price });
+  assert.equal(made, 0);
+  bindClientRequestId(null, { priceCents: 125000 }, () => `id-${++made}`);
+  assert.equal(made, 1);
 });

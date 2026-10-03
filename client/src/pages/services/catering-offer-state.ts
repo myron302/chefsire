@@ -95,3 +95,85 @@ export function validateChangeRequestMessage(message: string): string | null {
 export function offerAuthorLabel(proposedBy: "provider" | "customer", viewerRole: "provider" | "customer"): string {
   return proposedBy === viewerRole ? "You" : proposedBy === "provider" ? "Caterer" : "Customer";
 }
+
+// ------------------------------------------------------------------------------------------------------------
+// Snapshots: what a gesture was made against stays fixed, whatever a refetch brings in underneath it.
+// ------------------------------------------------------------------------------------------------------------
+
+type NegotiationFacts = Pick<CateringOfferNegotiationView, "legacy" | "legacyTerms" | "revisions" | "currentRevisionId">;
+
+/**
+ * The provider's revise editor, bound to the exact revision that seeded its draft. The draft and the revision it was
+ * written against travel together: a refetch that brings in a newer revision does not touch either, so submitting sends
+ * the ORIGINAL revision id with the original fields and the server answers with its stale-revision conflict instead of
+ * accepting old fields as a fresh revision on top of the new one.
+ */
+export type ReviseSession = { revisionId: string | null; revisionNumber: number | null; draft: OfferDraft };
+
+export function openReviseSession(negotiation: NegotiationFacts): ReviseSession {
+  const current = negotiation.revisions.find((revision) => revision.id === negotiation.currentRevisionId) ?? null;
+  return { revisionId: negotiation.currentRevisionId, revisionNumber: current?.revisionNumber ?? null, draft: offerDraftFromNegotiation(negotiation) };
+}
+
+/** True once the offer on the server has moved past the revision this editor was opened on. */
+export function isSessionBehind(session: { revisionId: string | null }, negotiation: Pick<CateringOfferNegotiationView, "currentRevisionId">): boolean {
+  return session.revisionId !== negotiation.currentRevisionId;
+}
+
+export function reviseSubmissionTarget(session: ReviseSession): { expectedRevisionId: string | null } {
+  return { expectedRevisionId: session.revisionId };
+}
+
+/** The terms a customer's acceptance dialog displayed, frozen with the revision they describe. */
+export type AcceptSession = { revisionId: string | null; revisionNumber: number | null; priceCents: number | null; currency: string; guestCount: number | null };
+
+export function openAcceptSession(negotiation: NegotiationFacts): AcceptSession | null {
+  const current = negotiation.revisions.find((revision) => revision.id === negotiation.currentRevisionId) ?? null;
+  if (current) return { revisionId: current.id, revisionNumber: current.revisionNumber, priceCents: current.priceCents, currency: current.currency, guestCount: current.guestCount };
+  if (!negotiation.legacyTerms) return null;
+  return { revisionId: null, revisionNumber: null, priceCents: negotiation.legacyTerms.priceCents, currency: negotiation.legacyTerms.currency, guestCount: negotiation.legacyTerms.guestCount };
+}
+
+export function acceptSubmissionTarget(session: AcceptSession): { revisionId: string | null } {
+  return { revisionId: session.revisionId };
+}
+
+/** A change request answers the revision the customer was reading when they opened the form, not whichever is current at click time. */
+export type ChangeRequestSession = { revisionId: string | null };
+export function openChangeRequestSession(negotiation: Pick<CateringOfferNegotiationView, "currentRevisionId">): ChangeRequestSession {
+  return { revisionId: negotiation.currentRevisionId };
+}
+
+// ------------------------------------------------------------------------------------------------------------
+// Idempotency: a request id belongs to one exact payload.
+// ------------------------------------------------------------------------------------------------------------
+
+/**
+ * A canonical, order-independent spelling of a submission: object keys sorted, `undefined` and absent the same thing,
+ * strings trimmed. Two submissions that mean the same thing have the same fingerprint, and any change to what would be
+ * sent -- a field, the revision it targets -- changes it.
+ */
+export function offerPayloadFingerprint(payload: Record<string, unknown>): string {
+  const canonical = (value: unknown): unknown => {
+    if (typeof value === "string") return value.trim();
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, inner]) => inner !== undefined).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([key, inner]) => [key, canonical(inner)]));
+    }
+    return value === undefined ? null : value;
+  };
+  return JSON.stringify(canonical(payload));
+}
+
+export type BoundRequestId = { id: string; fingerprint: string };
+
+/**
+ * The request id for this submission. An identical payload (a dropped connection, a double tap) keeps the id it already
+ * has, so the server collapses the retry onto the revision it already wrote; a payload that differs in any way gets a
+ * fresh id, so an edited retry is judged as the new submission it is and can never be answered with the earlier one's
+ * stored result. Nothing is generated until a submission is actually made, and a rerender never calls this.
+ */
+export function bindClientRequestId(previous: BoundRequestId | null, payload: Record<string, unknown>, makeId: () => string = newCateringClientRequestId): BoundRequestId {
+  const fingerprint = offerPayloadFingerprint(payload);
+  return previous && previous.fingerprint === fingerprint ? previous : { id: makeId(), fingerprint };
+}

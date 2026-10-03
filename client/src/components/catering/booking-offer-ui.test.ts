@@ -17,7 +17,7 @@ test("the offer is read from the server under an actor- and booking-scoped key, 
   assert.match(offer, /const key = cateringOfferRevisionKey\(userId, bookingId\)/);
   assert.match(offer, /queryKey: key, queryFn: \(\) => fetchNegotiation\(bookingId\)/);
   assert.match(offer, /\/api\/catering\/bookings\/\$\{encodeURIComponent\(bookingId\)\}\/offer`/);
-  assert.match(offer, /useEffect\(\(\) => \{ setReviseOpen\(false\);[^}]*\}, \[userId, bookingId\]\)/);
+  assert.match(offer, /useEffect\(\(\) => \{ setReviseSession\(null\);[^}]*resetRequests\(\); \}, \[userId, bookingId\]\)/);
   assert.match(offer, /refetchOnWindowFocus: true/);
 });
 
@@ -29,17 +29,18 @@ test("no request carries an actor: identity is the session", () => {
 
 test("acceptance names the exact revision on screen and is confirmed in an accessible dialog, not window.confirm", () => {
   assert.match(offer, /customer-confirm`, \{ revisionId: variables\.revisionId \}/);
-  assert.match(offer, /accept\.mutate\(\{ identity, revisionId: negotiation\.currentRevisionId \}\)/);
-  assert.match(offer, /<AlertDialog open=\{confirm === "accept"\}/);
+  assert.match(offer, /accept\.mutate\(\{ identity, \.\.\.acceptSubmissionTarget\(acceptSession\) \}\)/);
+  assert.match(offer, /<AlertDialog open=\{acceptSession !== null\}/);
   assert.match(offer, /AlertDialogTitle>Accept this offer\?</);
   assert.doesNotMatch(offer, /window\.confirm|confirm\(/);
-  assert.match(offer, /if \(!open && !accept\.isPending\) setConfirm\(null\)/);
+  assert.match(offer, /if \(!open && !accept\.isPending\) setAcceptSession\(null\)/);
 });
 
 test("a revision names the revision it edits and carries one retry key per submission", () => {
-  assert.match(offer, /expectedRevisionId: negotiation\.currentRevisionId, clientRequestId: requestId\.current/);
-  assert.match(offer, /const requestId = useRef\(newCateringClientRequestId\(\)\)/);
-  assert.match(offer, /requestId\.current = newCateringClientRequestId\(\)/);
+  assert.match(offer, /expectedRevisionId: target\.expectedRevisionId, clientRequestId: reviseRequest\.current\.id/);
+  assert.match(offer, /const reviseRequest = useRef<BoundRequestId \| null>\(null\)/);
+  assert.match(offer, /reviseRequest\.current = bindClientRequestId\(reviseRequest\.current, \{ bookingId, \.\.\.target, \.\.\.submitted \}\)/);
+  assert.doesNotMatch(offer, /requestId\.current|newCateringClientRequestId/, "no form-lifetime id is minted outside the payload-bound helper");
 });
 
 test("'accepted' is shown from the persisted negotiation, never because a mutation started", () => {
@@ -51,7 +52,7 @@ test("'accepted' is shown from the persisted negotiation, never because a mutati
 
 test("a stale-revision answer is surfaced, re-reads the offer, and keeps the customer's typed message", () => {
   assert.match(offer, /error\.isConflict/);
-  assert.match(offer, /setConflict\(error\.message\); setConfirm\(null\); setReviseOpen\(false\)/);
+  assert.match(offer, /setConflict\(error\.message\); setAcceptSession\(null\); setDeclineOpen\(false\); setReviseSession\(null\); setChangesSession\(null\); resetRequests\(\)/);
   assert.match(offer, /await client\.invalidateQueries\(\{ queryKey: cateringOfferRevisionKey\(identity\.userId, identity\.bookingId\) \}\)/);
   assert.match(offer, /role="alert"[^>]*>\{conflict\} The latest terms are shown below/);
   assert.doesNotMatch(offer, /onFailure[\s\S]{0,400}setChangeMessage\(""\)/, "a conflict does not discard what the customer wrote");
@@ -131,4 +132,34 @@ test("the provider's first offer is a form, not a bodyless one-tap, and it sends
   assert.match(provider, /<OfferTermsForm idPrefix=\{`first-offer-\$\{inquiry\.id\}`\}/);
   assert.doesNotMatch(provider, /body: "\{\}"[^;]*provider-confirm|provider-confirm`, \{ method: "POST", credentials: "include", headers: \{ "Content-Type": "application\/json" \}, body: "\{\}" \}/);
   assert.match(provider, /body: JSON\.stringify\(terms\)/);
+});
+
+test("the editor, the acceptance dialog and the change request are bound to what they were opened on, never to the live query at click time", () => {
+  assert.match(offer, /setReviseSession\(openReviseSession\(negotiation\)\)/);
+  assert.match(offer, /setAcceptSession\(openAcceptSession\(negotiation\)\)/);
+  assert.match(offer, /setChangesSession\(openChangeRequestSession\(negotiation\)\)/);
+  assert.match(offer, /initial=\{reviseSession\.draft\}/);
+  assert.match(offer, /const payload = \{ revisionId: changesSession\.revisionId, message: changeMessage\.trim\(\) \}/);
+  // No submit handler reads the live current revision: the only places `currentRevisionId` appears are display derivations.
+  const mutateCalls = offer.match(/\b(revise|requestChanges|accept)\.mutate\([^;]*;/g) ?? [];
+  assert.equal(mutateCalls.length, 3);
+  for (const call of mutateCalls) assert.doesNotMatch(call, /currentRevisionId/, call);
+});
+
+test("the acceptance dialog describes the snapshot it will submit, not the live terms", () => {
+  assert.match(offer, /\{acceptSession \? `You are accepting \$\{acceptSession\.revisionNumber/);
+  assert.match(offer, /disabled=\{accept\.isPending \|\| !acceptSession\}/);
+});
+
+test("an editor that has fallen behind the offer says so instead of silently rebasing", () => {
+  assert.match(offer, /isSessionBehind\(reviseSession, negotiation\)/);
+  assert.match(offer, /sending it will be refused/);
+  assert.doesNotMatch(offer, /useEffect\([^)]*reviseSession/, "nothing re-seeds the draft or the bound revision from a refetch");
+});
+
+test("change requests and revisions both bind their request id to the exact payload, and success or conflict clears it", () => {
+  assert.match(offer, /changeRequestRequest\.current = bindClientRequestId\(changeRequestRequest\.current, \{ bookingId, \.\.\.payload \}\)/);
+  assert.match(offer, /reviseRequest\.current = null;\s*if \(isCurrentOfferTarget/);
+  assert.match(offer, /changeRequestRequest\.current = null;\s*if \(isCurrentOfferTarget/);
+  assert.match(offer, /const resetRequests = \(\) => \{ reviseRequest\.current = null; changeRequestRequest\.current = null; \}/);
 });

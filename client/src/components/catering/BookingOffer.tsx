@@ -11,8 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import {
-  CateringOfferRequestError, cateringOfferInvalidationKeys, isCurrentOfferTarget, newCateringClientRequestId, offerAuthorLabel,
-  offerDraftFromNegotiation, validateChangeRequestMessage, validateOfferDraft, type CateringOfferAction, type OfferDraft, type OfferDraftErrors, type OfferMutationIdentity,
+  CateringOfferRequestError, cateringOfferInvalidationKeys, isCurrentOfferTarget, offerAuthorLabel,
+  acceptSubmissionTarget, bindClientRequestId, isSessionBehind, openAcceptSession, openChangeRequestSession, openReviseSession, reviseSubmissionTarget, validateChangeRequestMessage, validateOfferDraft,
+  type AcceptSession, type BoundRequestId, type CateringOfferAction, type ChangeRequestSession, type OfferDraft, type OfferDraftErrors, type OfferMutationIdentity, type ReviseSession,
 } from "@/pages/services/catering-offer-state";
 
 async function readJson(response: Response) { return response.json().catch(() => ({})); }
@@ -124,16 +125,20 @@ export function BookingOffer({ bookingId, userId, role, providerId = null }: { b
   const client = useQueryClient();
   const shown = useRef<OfferMutationIdentity>({ userId, bookingId });
   shown.current = { userId, bookingId };
-  const [reviseOpen, setReviseOpen] = useState(false);
-  const [changesOpen, setChangesOpen] = useState(false);
+  // What each gesture was made against is captured when it begins and never re-read from a later refetch.
+  const [reviseSession, setReviseSession] = useState<ReviseSession | null>(null);
+  const [changesSession, setChangesSession] = useState<ChangeRequestSession | null>(null);
   const [changeMessage, setChangeMessage] = useState("");
   const [changeMessageError, setChangeMessageError] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<"accept" | "decline" | null>(null);
+  const [acceptSession, setAcceptSession] = useState<AcceptSession | null>(null);
+  const [declineOpen, setDeclineOpen] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
-  // One id per submission, so resending the same form (a dropped connection, a double tap) is one revision, never two.
-  const requestId = useRef(newCateringClientRequestId());
+  // A request id belongs to one exact payload: an identical resend keeps it (so a retry is one revision, never two), any edit gets a new one.
+  const reviseRequest = useRef<BoundRequestId | null>(null);
+  const changeRequestRequest = useRef<BoundRequestId | null>(null);
+  const resetRequests = () => { reviseRequest.current = null; changeRequestRequest.current = null; };
   const key = cateringOfferRevisionKey(userId, bookingId);
-  useEffect(() => { setReviseOpen(false); setChangesOpen(false); setChangeMessage(""); setChangeMessageError(null); setConfirm(null); setConflict(null); requestId.current = newCateringClientRequestId(); }, [userId, bookingId]);
+  useEffect(() => { setReviseSession(null); setChangesSession(null); setChangeMessage(""); setChangeMessageError(null); setAcceptSession(null); setDeclineOpen(false); setConflict(null); resetRequests(); }, [userId, bookingId]);
 
   const query = useQuery({ queryKey: key, queryFn: () => fetchNegotiation(bookingId), staleTime: 15_000, refetchOnWindowFocus: true });
   const negotiation = query.data;
@@ -144,7 +149,7 @@ export function BookingOffer({ bookingId, userId, role, providerId = null }: { b
   const onFailure = async (error: Error, identity: OfferMutationIdentity) => {
     if (!isCurrentOfferTarget(shown.current, identity)) return;
     if (error instanceof CateringOfferRequestError && error.isConflict) {
-      setConflict(error.message); setConfirm(null); setReviseOpen(false); requestId.current = newCateringClientRequestId();
+      setConflict(error.message); setAcceptSession(null); setDeclineOpen(false); setReviseSession(null); setChangesSession(null); resetRequests();
       await client.invalidateQueries({ queryKey: cateringOfferRevisionKey(identity.userId, identity.bookingId) });
     }
   };
@@ -154,7 +159,8 @@ export function BookingOffer({ bookingId, userId, role, providerId = null }: { b
       post(`/api/catering/bookings/${encodeURIComponent(variables.identity.bookingId)}/offer/revisions`, { ...variables.terms, expectedRevisionId: variables.expectedRevisionId, clientRequestId: variables.clientRequestId }, "The offer could not be revised") as Promise<{ negotiation: CateringOfferNegotiationView }>,
     onSuccess: async (data, variables) => {
       client.setQueryData(cateringOfferRevisionKey(variables.identity.userId, variables.identity.bookingId), data.negotiation);
-      if (isCurrentOfferTarget(shown.current, variables.identity)) { setReviseOpen(false); setConflict(null); requestId.current = newCateringClientRequestId(); }
+      reviseRequest.current = null;
+      if (isCurrentOfferTarget(shown.current, variables.identity)) { setReviseSession(null); setConflict(null); }
       await settle(variables.identity, "revise");
     },
     onError: (error, variables) => onFailure(error, variables.identity),
@@ -164,19 +170,20 @@ export function BookingOffer({ bookingId, userId, role, providerId = null }: { b
       post(`/api/catering/bookings/${encodeURIComponent(variables.identity.bookingId)}/offer/change-requests`, { revisionId: variables.revisionId, message: variables.message, clientRequestId: variables.clientRequestId }, "Your request could not be sent") as Promise<{ negotiation: CateringOfferNegotiationView }>,
     onSuccess: async (data, variables) => {
       client.setQueryData(cateringOfferRevisionKey(variables.identity.userId, variables.identity.bookingId), data.negotiation);
-      if (isCurrentOfferTarget(shown.current, variables.identity)) { setChangesOpen(false); setChangeMessage(""); setConflict(null); requestId.current = newCateringClientRequestId(); }
+      changeRequestRequest.current = null;
+      if (isCurrentOfferTarget(shown.current, variables.identity)) { setChangesSession(null); setChangeMessage(""); setConflict(null); }
       await settle(variables.identity, "request-changes");
     },
     onError: (error, variables) => onFailure(error, variables.identity),
   });
   const accept = useMutation({
     mutationFn: async (variables: { identity: OfferMutationIdentity; revisionId: string | null }) => post(`/api/catering/bookings/${encodeURIComponent(variables.identity.bookingId)}/customer-confirm`, { revisionId: variables.revisionId }, "The offer could not be accepted"),
-    onSuccess: async (_data, variables) => { if (isCurrentOfferTarget(shown.current, variables.identity)) { setConfirm(null); setConflict(null); } await settle(variables.identity, "accept"); },
+    onSuccess: async (_data, variables) => { if (isCurrentOfferTarget(shown.current, variables.identity)) { setAcceptSession(null); setConflict(null); } await settle(variables.identity, "accept"); },
     onError: (error, variables) => onFailure(error, variables.identity),
   });
   const decline = useMutation({
     mutationFn: async (variables: { identity: OfferMutationIdentity }) => post(`/api/catering/bookings/${encodeURIComponent(variables.identity.bookingId)}/cancel`, {}, "The offer could not be declined"),
-    onSuccess: async (_data, variables) => { if (isCurrentOfferTarget(shown.current, variables.identity)) { setConfirm(null); setConflict(null); } await settle(variables.identity, "decline"); },
+    onSuccess: async (_data, variables) => { if (isCurrentOfferTarget(shown.current, variables.identity)) { setDeclineOpen(false); setConflict(null); } await settle(variables.identity, "decline"); },
     onError: (error, variables) => onFailure(error, variables.identity),
   });
   useEffect(() => { revise.reset(); requestChanges.reset(); accept.reset(); decline.reset(); }, [userId, bookingId]);
@@ -212,20 +219,22 @@ export function BookingOffer({ bookingId, userId, role, providerId = null }: { b
       {negotiation.changeRequestPending && <p role="status" className="break-words text-sm font-medium">{role === "provider" ? "The customer asked for changes. Send a revised offer to respond." : "You asked for changes. Waiting for the caterer to send a revised offer."}</p>}
       {negotiation.state !== "open" && <p className="text-sm text-muted-foreground">This negotiation is closed and read-only. {negotiation.state === "accepted" ? "Later changes need a separate booking amendment." : ""}</p>}
 
-      {negotiation.actions.canAccept && !changesOpen && (
+      {negotiation.actions.canAccept && !changesSession && (
         <div className="flex flex-wrap gap-2">
-          <Button className="min-h-11" disabled={busy} onClick={() => { accept.reset(); setConfirm("accept"); }}>{acceptLabel}</Button>
-          {negotiation.actions.canRequestChanges && <Button className="min-h-11" variant="outline" disabled={busy} onClick={() => { setChangesOpen(true); setConflict(null); }}>Request changes</Button>}
-          {negotiation.actions.canDecline && <Button className="min-h-11" variant="destructive" disabled={busy} onClick={() => { decline.reset(); setConfirm("decline"); }}>Decline offer</Button>}
+          <Button className="min-h-11" disabled={busy} onClick={() => { accept.reset(); setAcceptSession(openAcceptSession(negotiation)); }}>{acceptLabel}</Button>
+          {negotiation.actions.canRequestChanges && <Button className="min-h-11" variant="outline" disabled={busy} onClick={() => { setChangesSession(openChangeRequestSession(negotiation)); setConflict(null); }}>Request changes</Button>}
+          {negotiation.actions.canDecline && <Button className="min-h-11" variant="destructive" disabled={busy} onClick={() => { decline.reset(); setDeclineOpen(true); }}>Decline offer</Button>}
         </div>
       )}
-      {changesOpen && negotiation.actions.canRequestChanges && (
+      {changesSession && negotiation.actions.canRequestChanges && (
         <form className="space-y-2" noValidate aria-label="Request changes" onSubmit={(event) => {
           event.preventDefault();
           const problem = validateChangeRequestMessage(changeMessage);
           setChangeMessageError(problem);
           if (problem) return;
-          requestChanges.mutate({ identity, revisionId: negotiation.currentRevisionId, message: changeMessage.trim(), clientRequestId: requestId.current });
+          const payload = { revisionId: changesSession.revisionId, message: changeMessage.trim() };
+          changeRequestRequest.current = bindClientRequestId(changeRequestRequest.current, { bookingId, ...payload });
+          requestChanges.mutate({ identity, ...payload, clientRequestId: changeRequestRequest.current.id });
         }}>
           <Label htmlFor={`offer-changes-${bookingId}`}>What would you like changed?</Label>
           <Textarea id={`offer-changes-${bookingId}`} rows={4} value={changeMessage} disabled={requestChanges.isPending} aria-invalid={Boolean(changeMessageError)} aria-describedby={`offer-changes-help-${bookingId}`} onChange={(event) => setChangeMessage(event.target.value)} />
@@ -234,17 +243,24 @@ export function BookingOffer({ bookingId, userId, role, providerId = null }: { b
           {requestChanges.isError && !(requestChanges.error instanceof CateringOfferRequestError && requestChanges.error.isConflict) && <p role="alert" className="break-words text-sm text-destructive">{requestChanges.error.message}</p>}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" className="min-h-11" disabled={requestChanges.isPending}>{requestChanges.isPending ? "Sending…" : "Send change request"}</Button>
-            <Button type="button" variant="outline" className="min-h-11" disabled={requestChanges.isPending} onClick={() => { setChangesOpen(false); setChangeMessageError(null); }}>Cancel</Button>
+            <Button type="button" variant="outline" className="min-h-11" disabled={requestChanges.isPending} onClick={() => { setChangesSession(null); setChangeMessageError(null); }}>Cancel</Button>
           </div>
         </form>
       )}
 
-      {negotiation.actions.canRevise && !reviseOpen && <div><Button className="min-h-11" disabled={busy} onClick={() => { setReviseOpen(true); setConflict(null); revise.reset(); }}>{negotiation.legacy ? "Send a revised offer" : "Revise offer"}</Button></div>}
-      {reviseOpen && negotiation.actions.canRevise && (
-        <OfferTermsForm idPrefix={`offer-${bookingId}`} initial={offerDraftFromNegotiation(negotiation)} currency={terms?.currency ?? "USD"} submitLabel="Send revised offer" pendingLabel="Sending revised offer…" pending={revise.isPending}
-          error={revise.isError && !(revise.error instanceof CateringOfferRequestError && revise.error.isConflict) ? revise.error.message : null}
-          onCancel={() => setReviseOpen(false)}
-          onSubmit={(submitted) => revise.mutate({ identity, terms: submitted, expectedRevisionId: negotiation.currentRevisionId, clientRequestId: requestId.current })} />
+      {negotiation.actions.canRevise && !reviseSession && <div><Button className="min-h-11" disabled={busy} onClick={() => { setReviseSession(openReviseSession(negotiation)); setConflict(null); revise.reset(); }}>{negotiation.legacy ? "Send a revised offer" : "Revise offer"}</Button></div>}
+      {reviseSession && negotiation.actions.canRevise && (
+        <>
+          {isSessionBehind(reviseSession, negotiation) && <p role="status" className="break-words rounded-md border p-2 text-sm">A newer revision was published while you were editing. This editor is still based on {reviseSession.revisionNumber ? `revision ${reviseSession.revisionNumber}` : "the original offer"}, so sending it will be refused. Cancel to start again from the latest terms.</p>}
+          <OfferTermsForm key={reviseSession.revisionId ?? "legacy"} idPrefix={`offer-${bookingId}`} initial={reviseSession.draft} currency={terms?.currency ?? "USD"} submitLabel="Send revised offer" pendingLabel="Sending revised offer…" pending={revise.isPending}
+            error={revise.isError && !(revise.error instanceof CateringOfferRequestError && revise.error.isConflict) ? revise.error.message : null}
+            onCancel={() => setReviseSession(null)}
+            onSubmit={(submitted) => {
+              const target = reviseSubmissionTarget(reviseSession);
+              reviseRequest.current = bindClientRequestId(reviseRequest.current, { bookingId, ...target, ...submitted });
+              revise.mutate({ identity, terms: submitted, expectedRevisionId: target.expectedRevisionId, clientRequestId: reviseRequest.current.id });
+            }} />
+        </>
       )}
 
       <details className="text-sm">
@@ -252,20 +268,20 @@ export function BookingOffer({ bookingId, userId, role, providerId = null }: { b
         <div className="mt-2"><History negotiation={negotiation} /></div>
       </details>
 
-      <AlertDialog open={confirm === "accept"} onOpenChange={(open) => { if (!open && !accept.isPending) setConfirm(null); }}>
+      <AlertDialog open={acceptSession !== null} onOpenChange={(open) => { if (!open && !accept.isPending) setAcceptSession(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Accept this offer?</AlertDialogTitle>
-            <AlertDialogDescription>{terms ? `You are accepting ${current ? `revision ${current.revisionNumber}` : "the original offer"}: ${formatCateringOfferMoney(terms.priceCents, terms.currency)}${terms.guestCount ? ` for ${terms.guestCount} guests` : ""}. This confirms the booking with these terms.` : "This confirms the booking with the terms shown."}</AlertDialogDescription>
+            <AlertDialogDescription>{acceptSession ? `You are accepting ${acceptSession.revisionNumber ? `revision ${acceptSession.revisionNumber}` : "the original offer"}: ${formatCateringOfferMoney(acceptSession.priceCents, acceptSession.currency)}${acceptSession.guestCount ? ` for ${acceptSession.guestCount} guests` : ""}. This confirms the booking with these terms.` : ""}</AlertDialogDescription>
           </AlertDialogHeader>
           {accept.isError && !(accept.error instanceof CateringOfferRequestError && accept.error.isConflict) && <p role="alert" className="break-words text-sm text-destructive">{accept.error.message}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-11" disabled={accept.isPending}>Keep reviewing</AlertDialogCancel>
-            <Button className="min-h-11" disabled={accept.isPending} onClick={() => accept.mutate({ identity, revisionId: negotiation.currentRevisionId })}>{accept.isPending ? "Accepting…" : "Accept and confirm"}</Button>
+            <Button className="min-h-11" disabled={accept.isPending || !acceptSession} onClick={() => { if (acceptSession) accept.mutate({ identity, ...acceptSubmissionTarget(acceptSession) }); }}>{accept.isPending ? "Accepting…" : "Accept and confirm"}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={confirm === "decline"} onOpenChange={(open) => { if (!open && !decline.isPending) setConfirm(null); }}>
+      <AlertDialog open={declineOpen} onOpenChange={(open) => { if (!open && !decline.isPending) setDeclineOpen(false); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Decline this offer?</AlertDialogTitle>
