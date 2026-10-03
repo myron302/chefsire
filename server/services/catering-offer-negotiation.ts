@@ -177,3 +177,23 @@ export function buildCateringOfferNegotiationView(booking: CateringBooking, role
     revisions: revisions.map((row) => serializeCateringOfferRevision(row, { currentId: current?.id ?? null, respondsToNumber: row.respondsToRevisionId ? numbers.get(row.respondsToRevisionId) ?? null : null })).reverse(),
   };
 }
+
+export type FirstOfferTerms = { priceCents: number | null; guestCount: number | null; note: string | null; currency: string };
+
+/**
+ * Whether a first-offer request that finds its inquiry already booked is a true retry of the offer that was written.
+ * The comparison is between canonical stored values and the terms this request would itself have written: the first
+ * offer revision when there is one, otherwise (a pre-2N offer) the booking's own columns. Cents compare as integers,
+ * a guest count of null is "cleared" and never equal to a number, and a blank note is the same as none because that is
+ * how a note is stored. No display string is involved. Anything that differs means the offer already exists with
+ * other terms, and the request must not be answered as if its terms had been saved.
+ */
+export function firstOfferRetryMatches(existing: { booking: Pick<CateringBooking, "agreedPrice" | "guestCount" | "currency">; revisions: readonly CateringOfferRevision[] }, submitted: FirstOfferTerms): boolean {
+  const first = existing.revisions.find((row) => row.kind === "offer") ?? null;
+  const persisted: FirstOfferTerms = first
+    ? { priceCents: first.priceCents, guestCount: first.guestCount, note: first.note ?? null, currency: first.currency }
+    : { priceCents: bookingPriceCents(existing.booking), guestCount: existing.booking.guestCount, note: null, currency: existing.booking.currency };
+  return persisted.priceCents === submitted.priceCents && persisted.guestCount === submitted.guestCount && persisted.note === (submitted.note ?? null) && persisted.currency === submitted.currency;
+}
+
+export const CATERING_OFFER_ALREADY_EXISTS_MESSAGE = "An offer already exists for this request, and the terms you sent are not the ones it was made with. It has been refreshed; use Revise offer on the booking to change its terms.";

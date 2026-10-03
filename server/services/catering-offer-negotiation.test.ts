@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { CateringBooking, CateringOfferRevision } from "@shared/schema";
 import {
   acceptanceRetryContradictsAccepted, bookingPriceCents, bookingTermsFromRevision, buildCateringOfferNegotiationView, currentCateringOffer, hasPendingCateringChangeRequest,
-  resolveCateringOfferAcceptance,
+  firstOfferRetryMatches, resolveCateringOfferAcceptance,
 } from "./catering-offer-negotiation";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -130,4 +130,47 @@ test("structure: the negotiation router derives identity from the session and ne
   assert.match(route, /\(req\.user as \{ id: string \}\)\.id/);
   assert.match(route, /\.catch\(\(\) => undefined\)/, "a failed notification never undoes the transition");
   assert.ok(route.indexOf("db.transaction") < route.indexOf("db.insert(notifications)"), "notified only after the transaction committed");
+});
+
+test("a first-offer retry matches only the terms that were stored, compared as canonical values", () => {
+  const first = revision({ revisionNumber: 1, priceCents: 150000, guestCount: 45, note: "A" });
+  const existing = { booking: booking(), revisions: [first] };
+  const same = { priceCents: 150000, guestCount: 45, note: "A", currency: "USD" };
+  assert.equal(firstOfferRetryMatches(existing, same), true);
+  for (const different of [{ priceCents: 150001 }, { priceCents: null }, { guestCount: 46 }, { guestCount: null }, { note: "B" }, { note: null }, { currency: "EUR" }]) {
+    assert.equal(firstOfferRetryMatches(existing, { ...same, ...different }), false, JSON.stringify(different));
+  }
+});
+
+test("null is never equal to a number or to an empty note, but a missing note equals an absent one", () => {
+  const cleared = { booking: booking(), revisions: [revision({ revisionNumber: 1, priceCents: null, guestCount: null, note: null })] };
+  assert.equal(firstOfferRetryMatches(cleared, { priceCents: null, guestCount: null, note: null, currency: "USD" }), true);
+  assert.equal(firstOfferRetryMatches(cleared, { priceCents: 0, guestCount: null, note: null, currency: "USD" }), false, "no price is not zero");
+  assert.equal(firstOfferRetryMatches(cleared, { priceCents: null, guestCount: 0, note: null, currency: "USD" }), false);
+  assert.equal(firstOfferRetryMatches(cleared, { priceCents: null, guestCount: null, note: "", currency: "USD" }), false, "an empty string is not a stored note; the request schema removes blanks before this point");
+});
+
+test("the first OFFER revision is the reference even after revisions and change requests were added", () => {
+  const first = revision({ revisionNumber: 1, priceCents: 100, guestCount: 10, note: null });
+  const ask = revision({ revisionNumber: 2, kind: "change_request", proposedByRole: "customer", priceCents: null, guestCount: null, note: "lower?" });
+  const second = revision({ revisionNumber: 3, priceCents: 90, guestCount: 10, note: null });
+  assert.equal(firstOfferRetryMatches({ booking: booking(), revisions: [first, ask, second] }, { priceCents: 100, guestCount: 10, note: null, currency: "USD" }), true);
+  assert.equal(firstOfferRetryMatches({ booking: booking(), revisions: [first, ask, second] }, { priceCents: 90, guestCount: 10, note: null, currency: "USD" }), false);
+});
+
+test("a pre-2N offer is compared against the booking's own stored terms", () => {
+  const legacy = { booking: booking({ agreedPrice: "1200.00", guestCount: 40, currency: "USD" }), revisions: [] };
+  assert.equal(firstOfferRetryMatches(legacy, { priceCents: 120000, guestCount: 40, note: null, currency: "USD" }), true);
+  assert.equal(firstOfferRetryMatches(legacy, { priceCents: 120001, guestCount: 40, note: null, currency: "USD" }), false);
+  assert.equal(firstOfferRetryMatches(legacy, { priceCents: 120000, guestCount: 40, note: "x", currency: "USD" }), false);
+  assert.equal(firstOfferRetryMatches({ booking: booking({ agreedPrice: null }), revisions: [] }, { priceCents: null, guestCount: 40, note: null, currency: "USD" }), true);
+});
+
+test("structure: the first-offer retry is judged before anything is written", () => {
+  const route = read("../routes/catering-bookings.ts");
+  const offer = route.slice(route.indexOf('"/inquiries/:inquiryId/provider-confirm"'), route.indexOf('"/bookings/:id/customer-confirm"'));
+  assert.ok(offer.indexOf("firstOfferRetryMatches(") > offer.indexOf("tx.insert(cateringBookings)"));
+  assert.ok(offer.indexOf("firstOfferRetryMatches(") < offer.indexOf("tx.update(cateringBookings)"), "no update precedes the comparison");
+  assert.match(offer, /if \(!created && !firstOfferRetryMatches\(/);
+  assert.match(offer, /code: "offer_already_exists"/);
 });

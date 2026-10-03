@@ -177,3 +177,8 @@ export function bindClientRequestId(previous: BoundRequestId | null, payload: Re
   const fingerprint = offerPayloadFingerprint(payload);
   return previous && previous.fingerprint === fingerprint ? previous : { id: makeId(), fingerprint };
 }
+
+/** The first offer was refused because the request already has one with other terms: refresh, never treat the form as saved. */
+export function isOfferAlreadyExists(error: unknown): boolean {
+  return error instanceof CateringOfferRequestError && error.status === 409 && error.code === "offer_already_exists";
+}

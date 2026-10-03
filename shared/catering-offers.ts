@@ -84,7 +84,7 @@ export const cateringOfferChangeRequestSchema = z.object({
 /** Body of the existing customer confirmation. Absent / null means "the legacy offer"; the server decides if that is still true. */
 export const cateringOfferAcceptSchema = z.object({ revisionId: revisionIdSchema.nullish() }).strict();
 
-export const CATERING_OFFER_ERROR_CODES = ["stale_revision", "offer_revision_required", "negotiation_closed", "change_request_pending", "revision_limit"] as const;
+export const CATERING_OFFER_ERROR_CODES = ["stale_revision", "offer_revision_required", "negotiation_closed", "change_request_pending", "revision_limit", "offer_already_exists"] as const;
 export type CateringOfferErrorCode = typeof CATERING_OFFER_ERROR_CODES[number];
 
 export type CateringOfferRevisionView = {

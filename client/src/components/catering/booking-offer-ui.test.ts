@@ -163,3 +163,12 @@ test("change requests and revisions both bind their request id to the exact payl
   assert.match(offer, /changeRequestRequest\.current = null;\s*if \(isCurrentOfferTarget/);
   assert.match(offer, /const resetRequests = \(\) => \{ reviseRequest\.current = null; changeRequestRequest\.current = null; \}/);
 });
+
+test("a refused first-offer retry refreshes the provider's lists, is announced, and never looks like a save", () => {
+  assert.match(provider, /throw new CateringOfferRequestError\(body\.message \|\| "Booking terms could not be offered", response\.status/);
+  assert.match(provider, /onError: async \(error\) => \{ if \(isOfferAlreadyExists\(error\)\) await Promise\.all\(cateringOfferInvalidationKeys\(providerId\)/);
+  assert.match(provider, /offer\.isError && isOfferAlreadyExists\(offer\.error\) && <p className="mt-3 break-words text-destructive" role="alert">\{offer\.error\.message\}<\/p>/);
+  assert.match(provider, /!isOfferAlreadyExists\(offer\.error\) \? offer\.error\.message : null/, "the inline form does not also claim it");
+  const onSuccess = provider.slice(provider.indexOf("onSuccess: async ({ booking }, { id: inquiryId })"));
+  assert.ok(onSuccess.indexOf("applyInquiryBookingProjection") > 0, "the booking projection is applied only on a real success");
+});

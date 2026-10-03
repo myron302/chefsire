@@ -15,7 +15,7 @@ import { serializeCateringBooking } from "../serializers/catering-booking";
 import { CATERING_CUSTOMER_BOOKINGS_URL, CATERING_PROVIDER_BOOKINGS_URL } from "../services/catering-booking-links";
 import { lockCateringInquiry } from "../services/catering-inquiry-withdrawal";
 import { lockCateringReviewRelationship } from "../services/catering-review-relationship-lock";
-import { acceptanceRetryContradictsAccepted, bookingTermsFromRevision, createProviderOfferRevision, listCateringOfferRevisions, resolveCateringOfferAcceptance, stampCateringOfferAccepted } from "../services/catering-offer-negotiation";
+import { acceptanceRetryContradictsAccepted, bookingTermsFromRevision, CATERING_OFFER_ALREADY_EXISTS_MESSAGE, createProviderOfferRevision, firstOfferRetryMatches, listCateringOfferRevisions, resolveCateringOfferAcceptance, stampCateringOfferAccepted } from "../services/catering-offer-negotiation";
 
 const r = Router();
 async function bookingDateExceptions(executor: typeof db, providerId: string, targetDate: string) {
@@ -57,6 +57,9 @@ r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, n
     const [created] = await tx.insert(cateringBookings).values({ inquiryId, providerId, customerId: inquiry.customerId, packageId: pkg?.id ?? null, eventDate, eventType: inquiry.eventType, guestCount: initialGuestCount, agreedPrice: offer.priceCents === null ? undefined : bookingTermsFromRevision({ priceCents: offer.priceCents, guestCount: null, currency: offer.currency }).agreedPrice, currency: offer.currency, packageTitleSnapshot: pkg?.title ?? null, packagePricingModelSnapshot: pkg?.pricingModel ?? null, packageStartingPriceSnapshot: pkg?.startingPrice ?? null, providerConfirmedAt: now }).onConflictDoNothing({ target: cateringBookings.inquiryId }).returning({ id: cateringBookings.id });
     const [booking] = await tx.select().from(cateringBookings).where(eq(cateringBookings.inquiryId, inquiryId)).limit(1);
     if (!booking || booking.providerId !== providerId) return { error: 409, message: "Booking could not be created" } as const;
+    // The inquiry already had its offer. A request carrying the same terms is that offer's retry and may be answered with it; one carrying
+    // different terms is NOT, and is refused before anything is written so it can never be reported as saved.
+    if (!created && !firstOfferRetryMatches({ booking, revisions: await listCateringOfferRevisions(tx, booking.id) }, { priceCents: offer.priceCents, guestCount: initialGuestCount ?? null, note: offer.note ?? null, currency: offer.currency })) return { error: 409, code: "offer_already_exists", message: CATERING_OFFER_ALREADY_EXISTS_MESSAGE } as const;
     if (booking.status === "pending_confirmation" && !booking.providerConfirmedAt) await tx.update(cateringBookings).set({ providerConfirmedAt: now, updatedAt: now }).where(and(eq(cateringBookings.id, booking.id), eq(cateringBookings.status, "pending_confirmation")));
     const newlyConfirmed = !booking.providerConfirmedAt;
     if (created) await tx.insert(cateringBookingActivity).values({ bookingId: booking.id, actorUserId: providerId, eventType: "booking_offered", visibility: "shared", metadata: {} });
@@ -67,7 +70,7 @@ r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, n
     }
     const [fresh] = await tx.select().from(cateringBookings).where(eq(cateringBookings.id, booking.id)).limit(1); return { booking: fresh, notify: Boolean(created || newlyConfirmed) } as const;
   });
-  if ("error" in result) return res.status(result.error).json({ message: result.message });
+  if ("error" in result) return res.status(result.error).json({ message: result.message, ..."code" in result ? { code: result.code } : {} });
   if (result.notify) await db.insert(notifications).values({ userId: result.booking.customerId, type: "catering_booking_confirmation", title: "Catering booking ready to confirm", message: "Your provider has offered booking terms for your explicit confirmation.", linkUrl: CATERING_CUSTOMER_BOOKINGS_URL }).catch(() => undefined);
   res.status(result.notify ? 201 : 200).json({ booking: serializeCateringBooking(result.booking) });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });

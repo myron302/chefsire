@@ -776,6 +776,103 @@ if (!PG_URL) {
     assert.deepEqual((await revisionRows(bookingId)).map((row) => Number(row.price_cents)), [150000, 160000]);
   });
 
+  // ------------------------------------------------------------------ Final repair: first-offer retries
+  const firstOffer = (inquiryId: string, body: Record<string, unknown>, who = PROVIDER) => call("POST", `/inquiries/${inquiryId}/provider-confirm`, tok(who), body);
+
+  test("47. an exact retry of the first offer after a lost response is idempotent: still one booking, one revision 1, one notification", async () => {
+    const inquiryId = await inquiry();
+    const terms = { priceCents: 150000, guestCount: 45, note: "Buffet for 45" };
+    const first = await firstOffer(inquiryId, terms);
+    assert.equal(first.status, 201);
+    assert.equal(await bookingCount(), 1);
+    assert.equal((await revisionRows(first.body.booking.id)).length, 1);
+    for (const retry of [{ ...terms }, { note: "Buffet for 45", guestCount: 45, priceCents: 150000 }, { ...terms, note: "  Buffet for 45  " }]) {
+      const again = await firstOffer(inquiryId, retry);
+      assert.equal(again.status, 200, again.text);
+      assert.equal(again.body.booking.id, first.body.booking.id);
+    }
+    assert.equal(await bookingCount(), 1);
+    assert.equal((await revisionRows(first.body.booking.id)).length, 1);
+    assert.equal((await notificationsFor(CUSTOMER_A, "catering_booking_confirmation")).length, 1);
+  });
+
+  test("48. an edited retry of the first offer is refused with a conflict, writes nothing and is never reported as saved", async () => {
+    const inquiryId = await inquiry();
+    const first = await firstOffer(inquiryId, { priceCents: 150000, guestCount: 45, note: "A" });
+    const bookingId = first.body.booking.id as string;
+    const bookingBefore = await bookingRow(bookingId);
+    const revisionBefore = await revisionRows(bookingId);
+    const notificationsBefore = Number((await local.query(`SELECT count(*) FROM notifications`)).rows[0].count);
+    for (const edited of [{ priceCents: 175000, guestCount: 45, note: "A" }, { priceCents: 150000, guestCount: 50, note: "A" }, { priceCents: 150000, guestCount: 45, note: "B" }, { priceCents: 150000, guestCount: 45 }, { priceCents: 150000, guestCount: 45, note: "A", currency: "EUR" }, { guestCount: 45, note: "A" }, { priceCents: 150000, guestCount: null, note: "A" }, { priceCents: 150000, note: "A" }, {}]) {
+      const response = await firstOffer(inquiryId, edited);
+      assert.deepEqual([response.status, response.body.code], [409, "offer_already_exists"], JSON.stringify(edited));
+      assert.equal(response.body.booking, undefined, "no booking is returned as though it were the result");
+    }
+    assert.deepEqual(await bookingRow(bookingId), bookingBefore, "booking terms and timestamps are untouched");
+    assert.deepEqual(await revisionRows(bookingId), revisionBefore, "revision 1 is untouched and no revision was added");
+    assert.equal(await bookingCount(), 1);
+    assert.equal(Number((await local.query(`SELECT count(*) FROM notifications`)).rows[0].count), notificationsBefore);
+  });
+
+  test("49. after an edited first-offer retry is refused, the normal revise path saves the edited terms", async () => {
+    const inquiryId = await inquiry();
+    const first = await firstOffer(inquiryId, { priceCents: 150000, guestCount: 45, note: "A" });
+    const bookingId = first.body.booking.id as string;
+    assert.equal((await firstOffer(inquiryId, { priceCents: 175000, guestCount: 45, note: "B" })).status, 409);
+    const rev1 = (await revisionRows(bookingId))[0].id as string;
+    const revised = await revise(bookingId, rev1, { priceCents: 175000, guestCount: 45, note: "B" });
+    assert.equal(revised.status, 201, revised.text);
+    assert.deepEqual([(await bookingRow(bookingId)).agreed_price, (await revisionRows(bookingId)).length], ["1750.00", 2]);
+    // Retrying the ORIGINAL first request is still recognised as that offer's retry, even after it was revised.
+    assert.equal((await firstOffer(inquiryId, { priceCents: 150000, guestCount: 45, note: "A" })).status, 200);
+    assert.equal((await revisionRows(bookingId)).length, 2);
+  });
+
+  test("50. an explicit guestCount of null is compared as null: only a retry that also clears it is idempotent", async () => {
+    const inquiryId = await inquiry();
+    const first = await firstOffer(inquiryId, { priceCents: 100, guestCount: null });
+    assert.equal(first.status, 201);
+    assert.equal((await bookingRow(first.body.booking.id)).guest_count, null);
+    assert.equal((await firstOffer(inquiryId, { priceCents: 100, guestCount: null })).status, 200);
+    for (const different of [{ priceCents: 100 }, { priceCents: 100, guestCount: 40 }, { priceCents: 100, guestCount: 25 }]) {
+      assert.equal((await firstOffer(inquiryId, different)).body.code, "offer_already_exists", JSON.stringify(different));
+    }
+    assert.equal((await bookingRow(first.body.booking.id)).guest_count, null);
+  });
+
+  test("51. a first-offer retry that omits the guest count matches an offer that took the request's own count, and a blank note equals none", async () => {
+    const inquiryId = await inquiry();
+    assert.equal((await firstOffer(inquiryId, { priceCents: 100 })).status, 201);
+    assert.equal((await firstOffer(inquiryId, { priceCents: 100, guestCount: 40, note: "   " })).status, 200);
+    assert.equal((await firstOffer(inquiryId, { priceCents: 100, guestCount: 41 })).body.code, "offer_already_exists");
+  });
+
+  test("52. a pre-2N offer with no revision rows: a retry of its own terms succeeds and a different one is refused, and nothing is back-filled", async () => {
+    const { inquiryId, bookingId } = await legacyOffer();
+    assert.equal((await firstOffer(inquiryId, {})).body.code, "offer_already_exists", "a body with no price is not the offer that was priced at 1200");
+    assert.equal((await firstOffer(inquiryId, { agreedPrice: "1200.00" })).status, 200);
+    assert.equal((await firstOffer(inquiryId, { priceCents: 120000, guestCount: 40 })).status, 200);
+    assert.equal((await firstOffer(inquiryId, { agreedPrice: "1300.00" })).body.code, "offer_already_exists");
+    assert.equal((await firstOffer(inquiryId, { note: "new terms" })).body.code, "offer_already_exists");
+    assert.equal((await revisionRows(bookingId)).length, 0);
+    assert.equal((await bookingRow(bookingId)).agreed_price, "1200.00");
+  });
+
+  test("53. concurrent exact first offers stay one booking and one revision; a concurrent edited one is refused or loses to the winner, never both saved", async () => {
+    const inquiryId = await inquiry();
+    const results = await Promise.all([firstOffer(inquiryId, { priceCents: 111 }), firstOffer(inquiryId, { priceCents: 111 }), firstOffer(inquiryId, { priceCents: 222 })]);
+    assert.equal(await bookingCount(), 1);
+    const bookingId = (await local.query(`SELECT id FROM catering_bookings`)).rows[0].id as string;
+    const rows = await revisionRows(bookingId);
+    assert.equal(rows.length, 1);
+    const winner = Number(rows[0].price_cents);
+    for (const [index, response] of results.entries()) {
+      const price = [111, 111, 222][index];
+      if (price === winner) assert.ok(response.status === 200 || response.status === 201, response.text);
+      else assert.deepEqual([response.status, response.body.code], [409, "offer_already_exists"]);
+    }
+  });
+
   // ---------------------------------------------------------------------- Phase 2M rules stay intact
   test("39. inquiry withdrawal semantics are unchanged: refused once a booking exists, and never mutates it", async () => {
     const { inquiryId, bookingId } = await offered();

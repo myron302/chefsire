@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringOfferRevisionKey } from "@shared/catering-offers";
 import {
-  acceptSubmissionTarget, bindClientRequestId, isSessionBehind, offerPayloadFingerprint, openAcceptSession, openChangeRequestSession, openReviseSession, reviseSubmissionTarget,
+  acceptSubmissionTarget, bindClientRequestId, isOfferAlreadyExists, isSessionBehind, offerPayloadFingerprint, openAcceptSession, openChangeRequestSession, openReviseSession, reviseSubmissionTarget,
   CateringOfferRequestError, cateringOfferInvalidationKeys, isCurrentOfferTarget, newCateringClientRequestId, offerAuthorLabel, offerDraftFromNegotiation,
   validateChangeRequestMessage, validateOfferDraft,
 } from "./catering-offer-state";
@@ -202,4 +202,12 @@ test("many edits before the first submission make no request ids at all", () => 
   assert.equal(made, 0);
   bindClientRequestId(null, { priceCents: 125000 }, () => `id-${++made}`);
   assert.equal(made, 1);
+});
+
+test("the first-offer refusal for an existing offer is recognised, and no other failure is mistaken for it", () => {
+  assert.equal(isOfferAlreadyExists(new CateringOfferRequestError("m", 409, "offer_already_exists")), true);
+  assert.equal(isOfferAlreadyExists(new CateringOfferRequestError("m", 409, "stale_revision")), false);
+  assert.equal(isOfferAlreadyExists(new CateringOfferRequestError("m", 500, "offer_already_exists")), false);
+  assert.equal(isOfferAlreadyExists(new Error("offer_already_exists")), false);
+  assert.equal(isOfferAlreadyExists(null), false);
 });
