@@ -9,9 +9,12 @@ type Tx = typeof db;
  * provider or customer of that booking. A request body never contributes a participant, so a forged providerId,
  * customerId, ownerId or actorId cannot widen this, and an authenticated stranger simply gets no row -- which the
  * callers answer as a not-found, so a guessed booking id reveals nothing about whether the booking exists.
+ *
+ * `executor` defaults to the shared database; a caller that needs this read to belong to a larger snapshot passes its
+ * transaction. Which rows are visible is decided by that transaction, never here.
  */
-export async function ownedCateringBooking(bookingId: string, userId: string) {
-  const [booking] = await db.select().from(cateringBookings)
+export async function ownedCateringBooking(bookingId: string, userId: string, executor: Tx = db) {
+  const [booking] = await executor.select().from(cateringBookings)
     .where(and(eq(cateringBookings.id, bookingId), or(eq(cateringBookings.providerId, userId), eq(cateringBookings.customerId, userId))))
     .limit(1);
   return booking;

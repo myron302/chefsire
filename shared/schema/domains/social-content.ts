@@ -392,6 +392,58 @@ export const cateringOfferRevisions = pgTable("catering_offer_revisions", {
   respondsToCheck: check("catering_offer_revisions_responds_to_check", sql`${t.kind} = 'change_request' OR ${t.respondsToRevisionId} IS NULL`),
 }));
 
+/**
+ * Phase 2O post-confirmation amendments: one immutable row per proposed change to a CONFIRMED booking. The booking row
+ * stays the authoritative current projection; this table is the history of how it changed. `changedFields` says which
+ * terms the row changes, and the base_* columns freeze the terms it was proposed against. Money is integer cents. The
+ * migration's trigger allows exactly one update per row: closing it while it is still pending.
+ */
+export const cateringBookingAmendments = pgTable("catering_booking_amendments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  amendmentNumber: integer("amendment_number").notNull(),
+  proposedByUserId: varchar("proposed_by_user_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  proposedByRole: varchar("proposed_by_role", { length: 16 }).notNull(),
+  clientRequestId: varchar("client_request_id", { length: 36 }).notNull(),
+  status: varchar("status", { length: 16 }).default("pending").notNull(),
+  changedFields: text("changed_fields").array().notNull(),
+  baseAcceptedAmendmentId: varchar("base_accepted_amendment_id").references((): AnyPgColumn => cateringBookingAmendments.id, { onDelete: "restrict" }),
+  baseEventDate: date("base_event_date", { mode: "string" }).notNull(),
+  baseGuestCount: integer("base_guest_count"),
+  basePriceCents: bigint("base_price_cents", { mode: "number" }),
+  baseCurrency: varchar("base_currency", { length: 3 }).notNull(),
+  baseTermsNote: text("base_terms_note"),
+  eventDate: date("event_date", { mode: "string" }),
+  guestCount: integer("guest_count"),
+  priceCents: bigint("price_cents", { mode: "number" }),
+  currency: varchar("currency", { length: 3 }),
+  termsNote: text("terms_note"),
+  message: text("message"),
+  respondedByUserId: varchar("responded_by_user_id").references(() => users.id, { onDelete: "restrict" }),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  bookingNumberUnique: uniqueIndex("catering_amendments_booking_number_uidx").on(t.bookingId, t.amendmentNumber),
+  requestUnique: uniqueIndex("catering_amendments_request_uidx").on(t.bookingId, t.proposedByUserId, t.clientRequestId),
+  pendingUnique: uniqueIndex("catering_amendments_pending_uidx").on(t.bookingId).where(sql`${t.status} = 'pending'`),
+  numberCheck: check("catering_amendments_number_check", sql`${t.amendmentNumber} >= 1 AND ${t.amendmentNumber} <= 50`),
+  roleCheck: check("catering_amendments_role_check", sql`${t.proposedByRole} IN ('provider', 'customer')`),
+  statusCheck: check("catering_amendments_status_check", sql`${t.status} IN ('pending', 'accepted', 'declined', 'withdrawn', 'superseded')`),
+  fieldsCheck: check("catering_amendments_fields_check", sql`cardinality(${t.changedFields}) >= 1 AND ${t.changedFields} <@ ARRAY['event_date', 'guest_count', 'price_cents', 'currency', 'terms_note']::text[]`),
+  eventDateCheck: check("catering_amendments_event_date_check", sql`('event_date' = ANY(${t.changedFields}) AND ${t.eventDate} IS NOT NULL) OR ('event_date' <> ALL(${t.changedFields}) AND ${t.eventDate} IS NULL)`),
+  currencyCheck: check("catering_amendments_currency_check", sql`('currency' = ANY(${t.changedFields}) AND ${t.currency} IS NOT NULL AND ${t.currency} ~ '^[A-Z]{3}$') OR ('currency' <> ALL(${t.changedFields}) AND ${t.currency} IS NULL)`),
+  guestUnlistedCheck: check("catering_amendments_guest_unlisted_check", sql`'guest_count' = ANY(${t.changedFields}) OR ${t.guestCount} IS NULL`),
+  priceUnlistedCheck: check("catering_amendments_price_unlisted_check", sql`'price_cents' = ANY(${t.changedFields}) OR ${t.priceCents} IS NULL`),
+  noteUnlistedCheck: check("catering_amendments_note_unlisted_check", sql`'terms_note' = ANY(${t.changedFields}) OR ${t.termsNote} IS NULL`),
+  guestCheck: check("catering_amendments_guest_check", sql`${t.guestCount} IS NULL OR (${t.guestCount} > 0 AND ${t.guestCount} <= 100000)`),
+  priceCheck: check("catering_amendments_price_check", sql`${t.priceCents} IS NULL OR (${t.priceCents} >= 0 AND ${t.priceCents} <= 9999999999)`),
+  baseGuestCheck: check("catering_amendments_base_guest_check", sql`${t.baseGuestCount} IS NULL OR ${t.baseGuestCount} > 0`),
+  basePriceCheck: check("catering_amendments_base_price_check", sql`${t.basePriceCents} IS NULL OR ${t.basePriceCents} >= 0`),
+  baseCurrencyCheck: check("catering_amendments_base_currency_check", sql`${t.baseCurrency} ~ '^[A-Z]{3}$'`),
+  lengthCheck: check("catering_amendments_note_length_check", sql`(${t.termsNote} IS NULL OR length(${t.termsNote}) <= 2000) AND (${t.message} IS NULL OR length(${t.message}) <= 1000)`),
+  responseCheck: check("catering_amendments_response_check", sql`(${t.status} = 'pending' AND ${t.respondedByUserId} IS NULL AND ${t.respondedAt} IS NULL) OR (${t.status} IN ('accepted', 'declined') AND ${t.respondedByUserId} IS NOT NULL AND ${t.respondedByUserId} <> ${t.proposedByUserId} AND ${t.respondedAt} IS NOT NULL) OR (${t.status} = 'withdrawn' AND ${t.respondedByUserId} = ${t.proposedByUserId} AND ${t.respondedAt} IS NOT NULL) OR (${t.status} = 'superseded' AND ${t.respondedByUserId} IS NULL AND ${t.respondedAt} IS NOT NULL)`),
+}));
+
 /** Mutable event-planning data layered on the immutable booking agreement. */
 export const cateringBookingDetails = pgTable("catering_booking_details", {
   bookingId: varchar("booking_id").primaryKey().references(() => cateringBookings.id, { onDelete: "restrict" }),
