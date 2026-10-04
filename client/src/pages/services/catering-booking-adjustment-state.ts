@@ -47,6 +47,16 @@ export type CateringAdjustmentForm = {
 export const openCateringAdjustmentForm = (identity: CateringAdjustmentIdentity, kind: CateringAdjustmentKind, idempotencyKey: string): CateringAdjustmentForm =>
   ({ identity, kind, amount: "", reason: "", paymentId: "", reference: "", idempotencyKey });
 
+/**
+ * Whether the latest SERVER action list still offers this form's kind. The list is the freshest UX truth: a kind leaves it when
+ * the booking's lifecycle changes OR when its ceiling reaches zero (another credit, another charge, another refund). A form
+ * for a kind that is gone must not stay actionable. The endpoint still judges every write again under its lock.
+ */
+export const cateringAdjustmentFormStillAllowed = (form: CateringAdjustmentForm, allowedKinds: readonly CateringAdjustmentKind[]): boolean =>
+  form === null || allowedKinds.includes(form.kind);
+
+export const CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE = "That adjustment is no longer available because the booking changed. Nothing was recorded.";
+
 /** The open form, but only if it belongs to the booking on screen and the provider may still write. */
 export function activeCateringAdjustmentForm(form: CateringAdjustmentForm, identity: CateringAdjustmentIdentity, canWrite: boolean): NonNullable<CateringAdjustmentForm> | null {
   return form && form.identity === identity && canWrite ? form : null;

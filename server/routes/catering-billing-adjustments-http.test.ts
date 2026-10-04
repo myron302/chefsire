@@ -1707,6 +1707,63 @@ if (!PG_URL) {
     assert.equal((await takeBack(bookingId, a)).status, 409);
   });
 
+  // ------------------------------------------------------------------------------------------------ available kinds (Codex 13)
+  const kindsOf = async (bookingId: string) => ((await billing(bookingId)).body.adjustmentActions.kinds as string[]);
+
+  test("available kinds: a cancelled booking with nothing received offers no refund; with refundable money it does; a customer's view is unchanged", async () => {
+    const empty = await billed("0");
+    await setStatus(empty.bookingId, "cancelled");
+    assert.deepEqual(await kindsOf(empty.bookingId), []);
+    assert.equal((await billing(empty.bookingId)).body.adjustmentActions.maxRefundCents, 0);
+    const paid = await billed("1000.00");
+    await setStatus(paid.bookingId, "cancelled");
+    assert.deepEqual(await kindsOf(paid.bookingId), ["refund"]);
+    const customer = (await billing(paid.bookingId, CUSTOMER_A)).body;
+    assert.equal(customer.adjustmentActions, undefined);
+    assert.equal(Array.isArray(customer.adjustments), true, "history stays readable");
+  });
+
+  test("available kinds: credit disappears at a zero obligation, refund follows received money, and a legacy confirmed booking keeps all three", async () => {
+    const legacy = await billed("1000.00");
+    assert.deepEqual(await kindsOf(legacy.bookingId), ["charge", "credit", "refund"]);
+    const owed = await billed("0");
+    assert.deepEqual(await kindsOf(owed.bookingId), ["charge", "credit"], "nothing received yet, so nothing to refund");
+    const credit = await adjust(owed.bookingId, { kind: "credit", amountCents: 250000 });
+    assert.deepEqual(await kindsOf(owed.bookingId), ["charge"], "a zero obligation offers no credit");
+    await reverse(owed.bookingId, credit.body.adjustments[0].id);
+    assert.deepEqual(await kindsOf(owed.bookingId), ["charge", "credit"]);
+    const refunded = await billed("500.00");
+    const refund = await adjust(refunded.bookingId, { kind: "refund", amountCents: 50000 });
+    assert.deepEqual(await kindsOf(refunded.bookingId), ["charge", "credit"], "all received money already recorded as returned");
+    await reverse(refunded.bookingId, refund.body.adjustments[0].id);
+    assert.deepEqual(await kindsOf(refunded.bookingId), ["charge", "credit", "refund"]);
+  });
+
+  test("available kinds: no charge is offered at the obligation ceiling, and a credit brings it back", async () => {
+    const bookingId = await bigBooking();
+    const room = (await billing(bookingId)).body.adjustmentActions.maxChargeCents as number;
+    await adjust(bookingId, { kind: "charge", amountCents: room });
+    assert.equal((await kindsOf(bookingId)).includes("charge"), false);
+    await adjust(bookingId, { kind: "credit", amountCents: 1000 });
+    assert.equal((await kindsOf(bookingId)).includes("charge"), true);
+  });
+
+  test("available kinds: the list is a snapshot, so a write for a kind that vanished after the last refresh is still refused by the server with nothing recorded", async () => {
+    const { bookingId } = await billed("500.00");
+    assert.equal((await kindsOf(bookingId)).includes("refund"), true, "what the screen last saw");
+    await adjust(bookingId, { kind: "refund", amountCents: 50000 });
+    assert.equal((await kindsOf(bookingId)).includes("refund"), false);
+    const before = await sideEffects(bookingId);
+    const stale = await adjust(bookingId, { kind: "refund", amountCents: 1000 });
+    assert.deepEqual([stale.status, stale.body.code], [409, "catering_billing_state"]);
+    assert.equal(await sideEffects(bookingId), before);
+    const lifecycle = await billed("500.00");
+    assert.equal((await kindsOf(lifecycle.bookingId)).includes("charge"), true);
+    await setStatus(lifecycle.bookingId, "completed");
+    assert.equal((await kindsOf(lifecycle.bookingId)).includes("charge"), false);
+    assert.equal((await adjust(lifecycle.bookingId, { kind: "charge", amountCents: 1000 })).status, 409, "the stale charge form is refused");
+  });
+
   // ------------------------------------------------------------------------------------------------ the formula
   test("the derived position is exact: original + charges - credits = obligation, payments - refunds = net received, obligation - net = balance", async () => {
     const { bookingId } = await billed();

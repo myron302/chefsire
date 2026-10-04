@@ -167,3 +167,19 @@ test("the amount-due row says what it is: the agreed remainder with no adjustmen
   assert.ok(billing.includes("money(summary.balanceDueCents)") && billing.includes("money(summary.remainingOfAgreedCents)"));
   assert.equal(/adjustmentChargesCents\s*[-+]|CreditsCents\s*[-+]/.test(billing), false, "no accounting in React");
 });
+
+test("an open form is gated on the latest server action list, closes cleanly when its kind leaves it, and cannot be submitted meanwhile", () => {
+  assert.ok(component.includes("const kindStillAllowed = cateringAdjustmentFormStillAllowed(form, allowedKinds);"));
+  assert.ok(component.includes("const open = kindStillAllowed ? activeCateringAdjustmentForm(form, identity, provider && current) : null;"), "render-gated: never submittable, even before the reset");
+  const effect = component.slice(component.indexOf("useEffect(() => {\n    if (!provider || !current || !actions"), component.indexOf("const mutation = useMutation"));
+  for (const part of ["setForm(null);", 'setConfirming((value) => (value?.type === "post" ? null : value));', "setShowErrors(false);", "CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE"]) assert.ok(effect.includes(part), part);
+  assert.ok(component.includes("const confirmPost = () => {\n    if (!open || !check?.ok"), "confirmation cannot proceed without a still-allowed form");
+  assert.ok(component.includes("actions.kinds.map((kind) =>"), "only the kinds the server lists are offered as buttons");
+  assert.equal(/kinds\s*=\s*\[\s*"(charge|credit|refund)"/.test(component), false, "no UI-only kind list");
+});
+
+test("hiding unavailable actions never hides history: the ledger list does not depend on the action list", () => {
+  const list = component.slice(component.indexOf("entries.length === 0"), component.indexOf("{provider && current && actions && actions.kinds.length > 0"));
+  assert.equal(list.includes("actions.kinds"), false);
+  assert.ok(list.includes("entries.map"));
+});

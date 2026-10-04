@@ -25,6 +25,8 @@ import {
   buildCateringAdjustmentRequest,
   cateringAdjustmentAmountText,
   cateringAdjustmentEffectSentence,
+  cateringAdjustmentFormStillAllowed,
+  CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE,
   cateringAdjustmentIdentity,
   cateringAdjustmentInvalidationKeys,
   cateringAdjustmentSnapshot,
@@ -88,6 +90,16 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
     setForm(null); setConfirming(null); setReverseReason(""); setShowErrors(false); setNotice(null);
   }, [identity, localIdentity]);
   const current = localIdentity === identity;
+  // When a refresh takes the open form's kind away, close it cleanly: no draft amount, payment choice or confirmation survives to
+  // be submitted if the kind later returns, and the provider is told why in one line.
+  useEffect(() => {
+    if (!provider || !current || !actions || !form || form.identity !== identity) return;
+    if (cateringAdjustmentFormStillAllowed(form, actions.kinds)) return;
+    setForm(null);
+    setConfirming((value) => (value?.type === "post" ? null : value));
+    setShowErrors(false);
+    setNotice({ identity, message: CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE });
+  }, [provider, current, actions, form, identity]);
 
   const mutation = useMutation({
     mutationFn: async ({ path, body }: Mutation) => {
@@ -128,7 +140,11 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
   });
   const pending = mutation.isPending;
 
-  const open = activeCateringAdjustmentForm(form, identity, provider && current);
+  // The form is actionable only while the LATEST server action list still offers its kind (lifecycle AND a positive ceiling),
+  // on top of the identity gate. Render-gated, so a stale form can never be submitted even in the render before the reset below.
+  const allowedKinds = actions?.kinds ?? [];
+  const kindStillAllowed = cateringAdjustmentFormStillAllowed(form, allowedKinds);
+  const open = kindStillAllowed ? activeCateringAdjustmentForm(form, identity, provider && current) : null;
   const limits = limitsFor(open?.paymentId ?? "");
   const check = open ? checkCateringAdjustmentForm(open, limits) : null;
   const entries = chronologicalCateringAdjustments(billing.adjustments);

@@ -56,11 +56,18 @@ export function adjustmentFactsOf(booking: Pick<CateringBooking, "status" | "agr
 export function adjustmentActionsFor(facts: CateringAdjustmentFacts): CateringAdjustmentActions {
   const position = deriveCateringLedgerPosition({ agreedTotalCents: facts.agreedTotalCents, paidTotalCents: facts.paidTotalCents, adjustments: facts.adjustments });
   const hasPrice = position.obligationCents !== null;
+  const maxCreditCents = cateringCreditCeilingCents(position);
+  const maxRefundCents = cateringRefundCeilingCents({ paidTotalCents: facts.paidTotalCents, adjustments: facts.adjustments });
+  const maxChargeCents = cateringChargeCeilingCents(position);
+  // A kind is offered only if a positive amount could be recorded NOW: the booking's lifecycle permits it, the obligation it
+  // needs exists, AND the current ceiling for it is above zero. A kind whose ceiling is zero would be a dead end -- every
+  // positive amount is refused -- so it is not advertised. This is a snapshot for the screen; the endpoint judges again under its lock.
+  const ceilingFor = { charge: hasPrice ? maxChargeCents : 0, credit: hasPrice ? maxCreditCents : 0, refund: maxRefundCents } as const;
   return {
-    kinds: cateringAdjustmentKindsRecordable(facts.bookingStatus).filter((kind) => kind === "refund" || hasPrice) as CateringAdjustmentActions["kinds"],
-    maxCreditCents: cateringCreditCeilingCents(position),
-    maxRefundCents: cateringRefundCeilingCents({ paidTotalCents: facts.paidTotalCents, adjustments: facts.adjustments }),
-    maxChargeCents: cateringChargeCeilingCents(position),
+    kinds: cateringAdjustmentKindsRecordable(facts.bookingStatus).filter((kind) => ceilingFor[kind] > 0) as CateringAdjustmentActions["kinds"],
+    maxCreditCents,
+    maxRefundCents,
+    maxChargeCents,
   };
 }
 

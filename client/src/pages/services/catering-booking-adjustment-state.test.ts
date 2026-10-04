@@ -10,6 +10,8 @@ import {
   cateringAdjustmentSnapshot,
   cateringAdjustmentSourceText,
   checkCateringAdjustmentForm,
+  cateringAdjustmentFormStillAllowed,
+  CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE,
   cateringRefundLimitForForm,
   chronologicalCateringAdjustments,
   describeCateringAdjustmentConfirmation,
@@ -234,4 +236,32 @@ test("a charge is checked against the server's stated headroom when it states on
   assert.equal(over.ok, false);
   assert.match(over.ok === false ? over.message : "", /largest amount ChefSire can request/);
   assert.equal(checkCateringAdjustmentForm(form("charge", { amount: "999999" }), { maxCreditCents: 1, maxRefundCents: 1 }).ok, true, "an older payload without a headroom: the server judges");
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * An open form follows the LATEST allowed kinds
+ * ------------------------------------------------------------------------------------------------------------- */
+
+test("a form stays actionable only while the refreshed server action list still offers its kind", () => {
+  assert.equal(cateringAdjustmentFormStillAllowed(form("charge"), ["charge", "credit", "refund"]), true, "unchanged: continues normally");
+  assert.equal(cateringAdjustmentFormStillAllowed(form("charge"), ["credit", "refund"]), false, "booking completed: charge left the list");
+  assert.equal(cateringAdjustmentFormStillAllowed(form("charge"), ["refund"]), false, "booking cancelled");
+  assert.equal(cateringAdjustmentFormStillAllowed(form("credit"), ["charge", "refund"]), false, "the credit ceiling reached zero");
+  assert.equal(cateringAdjustmentFormStillAllowed(form("refund"), ["charge", "credit"]), false, "refundable capacity disappeared");
+  assert.equal(cateringAdjustmentFormStillAllowed(form("refund"), ["refund"]), true, "a cancelled booking that still has refundable money keeps its refund form");
+  assert.equal(cateringAdjustmentFormStillAllowed(null, []), true, "no form, nothing to invalidate");
+  assert.equal(cateringAdjustmentFormStillAllowed(form("charge"), []), false);
+});
+
+test("a payment choice change keeps the per-payment ceiling working while the refund kind stays allowed", () => {
+  const allowed = ["refund"] as const;
+  const onA = refundForm("50", "pa");
+  assert.equal(cateringAdjustmentFormStillAllowed(onA, allowed), true);
+  assert.equal(checkCateringAdjustmentForm(onA, { ...wide, selectedPaymentRefundableCents: 2_000 }).ok, false);
+  assert.equal(checkCateringAdjustmentForm({ ...onA, paymentId: "pb" }, { ...wide, selectedPaymentRefundableCents: 10_000 }).ok, true);
+});
+
+test("the message shown when a form is closed for a vanished kind is concise and promises nothing was recorded", () => {
+  assert.match(CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE, /no longer available because the booking changed/);
+  assert.match(CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE, /Nothing was recorded/);
 });
