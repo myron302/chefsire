@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { applyMigration } from "../scripts/migration-runner";
 import { parseLocalTestDatabaseUrl } from "../test-support/local-test-database";
-import { startFakeSquare, defaultFakeSquareState, type FakeSquareState } from "../test-support/fake-square";
+import { startFakeSquare, defaultFakeSquareState, FAKE_TOKEN_ERRORS, type FakeSquareState } from "../test-support/fake-square";
 import { createSquareConnectionService, SQUARE_TOKEN_REFRESH_WINDOW_MS, type SqlPool } from "./square-connection-service";
 import { createSquareProviderApi } from "./square-integration";
 import { decryptSecret, SECRET_BOX_KEY_ENV } from "./secret-box";
@@ -49,6 +49,7 @@ if (!URL_ENV) {
 } else {
   const config = parseLocalTestDatabaseUrl(URL_ENV);
   const migrationSql = fs.readFileSync(path.join(root, "server/migrations/20261007_square_connection_hardening.sql"), "utf8");
+  const revocationMigrationSql = fs.readFileSync(path.join(root, "server/migrations/20261009_square_merchant_revocation.sql"), "utf8");
   const generationMigrationSql = fs.readFileSync(path.join(root, "server/migrations/20261008_square_credential_generation.sql"), "utf8");
   const baseDdl = fs.readFileSync(path.join(root, "server/drizzle/20251108_marketplace_monetization.sql"), "utf8")
     .match(/CREATE TABLE IF NOT EXISTS payment_methods \([\s\S]*?\n\);/)![0];
@@ -81,6 +82,7 @@ if (!URL_ENV) {
         try {
           await applyMigration(client as never, `server:20261007_square_connection_hardening.sql`, migrationSql);
           await applyMigration(client as never, `server:20261008_square_credential_generation.sql`, generationMigrationSql);
+          await applyMigration(client as never, `server:20261009_square_merchant_revocation.sql`, revocationMigrationSql);
         } finally { client.release(); }
       },
       async user(id: string) { await pool.query(`INSERT INTO users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]); return id; },
@@ -205,6 +207,7 @@ if (!URL_ENV) {
   test("Square rejecting the code, or being unreachable, stores nothing", async () => {
     await withHarness({}, async (h) => {
       h.fake.state.failures.token = 400;
+      h.fake.state.tokenFailureBody = FAKE_TOKEN_ERRORS.invalidGrantV2;
       const rejected = await h.connect("provider-1");
       assert.equal(rejected.ok === false && rejected.reason, "provider_rejected");
       h.fake.state.failures.token = 503;
@@ -496,6 +499,7 @@ if (!URL_ENV) {
     await withHarness({ fake: { grants: [tokenGrant("rev-access-1", "rev-refresh-1", soon())] } }, async (h) => {
       await h.connect("provider-1");
       h.fake.state.failures.token = 401;
+      h.fake.state.tokenFailureBody = FAKE_TOKEN_ERRORS.invalidGrantV1;
       const readiness = await h.service.getSquarePaymentReadiness("provider-1");
       assert.equal(readiness.state, "needs_reauthorization");
       assert.equal(readiness.paymentReady, false);
@@ -772,7 +776,7 @@ if (!URL_ENV) {
   test("disconnect revokes at Square, removes every secret, keeps merchant/location history, and is idempotent", async () => {
     await withHarness({ fake: { grants: [tokenGrant("dc-access-1", "dc-refresh-1", "2099-01-01T00:00:00Z")] } }, async (h) => {
       await h.connect("provider-1");
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevoked: true });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "revoked", providerRevoked: true });
       const revoke = h.fake.requests.find((request) => request.path === "/oauth2/revoke")!;
       assert.equal(JSON.parse(revoke.body).access_token, "dc-access-1");
       const row = await h.row("provider-1");
@@ -788,7 +792,7 @@ if (!URL_ENV) {
       assert.deepEqual(row.account_details, { merchantId: "MERCHANT_1" });
       assert.equal(await h.rowCount(), 1, "the row is retained as history");
       // Repeating is safe and changes nothing.
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: false, providerRevoked: false });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: false, providerRevocation: "not_applicable", providerRevoked: false });
       assert.equal(h.fake.calls("/oauth2/revoke"), 1);
       assert.equal((await h.service.getSquarePaymentReadiness("provider-1")).state, "not_connected");
       assert.equal(await h.service.getReadyConnectedCredentials("provider-1"), null);
@@ -805,8 +809,8 @@ if (!URL_ENV) {
       await h.connect("provider-1");
       await connectSecondMerchant(h, "provider-2", "MERCHANT_2", tokenGrant("own-access-2", "own-refresh-2", "2099-01-01T00:00:00Z", "MERCHANT_2"));
       const second = await h.row("provider-2");
-      assert.deepEqual(await h.service.disconnect("someone-without-a-connection"), { changed: false, providerRevoked: false });
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevoked: true });
+      assert.deepEqual(await h.service.disconnect("someone-without-a-connection"), { changed: false, providerRevocation: "not_applicable", providerRevoked: false });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "revoked", providerRevoked: true });
       const untouched = await h.row("provider-2");
       assert.equal(untouched.account_status, "active");
       assert.equal(untouched.encrypted_access_token, second.encrypted_access_token);
@@ -820,7 +824,7 @@ if (!URL_ENV) {
       h.fake.resetGrants();
       h.fake.state.grants = [tokenGrant("shared-access-2", "shared-refresh-2", "2099-01-01T00:00:00Z")];
       await h.connect("provider-2");
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevoked: false });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "retained_for_shared_connection", providerRevoked: false });
       assert.equal(h.fake.calls("/oauth2/revoke"), 0);
       assert.equal((await h.service.getSquarePaymentReadiness("provider-2")).state, "active");
     });
@@ -830,7 +834,7 @@ if (!URL_ENV) {
     await withHarness({ fake: { grants: [tokenGrant("unc-access-1", "unc-refresh-1", "2099-01-01T00:00:00Z")] } }, async (h) => {
       await h.connect("provider-1");
       h.fake.state.failures.revoke = 503;
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevoked: false });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "unconfirmed", providerRevoked: false });
       assert.equal((await h.row("provider-1")).account_status, "disconnected");
       assert.equal((await h.row("provider-1")).encrypted_access_token, null);
       assert.deepEqual(h.logs.map((entry) => entry.event), ["square_disconnect_revocation_unconfirmed"]);
@@ -841,14 +845,15 @@ if (!URL_ENV) {
     await withHarness({ fake: { grants: [tokenGrant("dead-access-1", "dead-refresh-1", "2099-01-01T00:00:00Z")] } }, async (h) => {
       await h.connect("provider-1");
       h.fake.state.failures.revoke = 401;
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevoked: true });
+      h.fake.state.revokeFailureBody = { errors: [{ category: "AUTHENTICATION_ERROR", code: "ACCESS_TOKEN_REVOKED", detail: "already revoked" }] };
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "revoked", providerRevoked: true });
     });
     await withHarness({ fake: { grants: [tokenGrant("dead-access-2", "dead-refresh-2", "2099-01-01T00:00:00Z")] } }, async (h) => {
       await h.connect("provider-1");
       h.fake.state.failures.merchant = 401;
       await h.service.getSquarePaymentReadiness("provider-1", { force: true });
       assert.equal((await h.row("provider-1")).account_status, "needs_reauthorization");
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevoked: false });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "unconfirmed", providerRevoked: false });
       assert.equal((await h.row("provider-1")).account_status, "disconnected");
     });
   });

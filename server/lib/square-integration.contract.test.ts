@@ -21,10 +21,11 @@ import {
   selectPaymentLocation,
   SQUARE_CONNECTION_SCOPES,
   squareOauthAuthorizeUrl,
+  type SquareFailureSurface,
   type SquareLocationFacts,
 } from "./square-integration";
 import { getSquareClient as getMarketplaceSquareClient } from "./square-client";
-import { startFakeSquare } from "../test-support/fake-square";
+import { startFakeSquare, FAKE_TOKEN_ERRORS } from "../test-support/fake-square";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -135,24 +136,37 @@ test("the real SDK, driven by the production wrappers, sends the right requests 
   }
 });
 
-test("failures from the real SDK are classified: a rejected credential is `auth`, an outage is `transient`", async () => {
+test("failures from the real SDK are classified from the error CONTENT: only a provider-credential failure is destructive", async () => {
   const fake = await startFakeSquare();
   try {
     const api = createSquareProviderApi({ baseUrl: fake.baseUrl });
+    const classify = async (call: () => Promise<unknown>, surface: SquareFailureSurface) => {
+      try { await call(); } catch (error) { assert.ok(error instanceof SquareError || !(error instanceof SquareError)); return classifySquareFailure(error, { surface }); }
+      throw new Error("expected the call to fail");
+    };
+    // A bearer call: 401 means THIS provider's token is bad; an outage is transient.
     fake.state.failures.merchant = 401;
-    await assert.rejects(api.retrieveMerchant("AT"), (error: unknown) => {
-      assert.ok(error instanceof SquareError);
-      assert.equal(classifySquareFailure(error), "auth");
-      return true;
-    });
+    assert.equal(await classify(() => api.retrieveMerchant("AT"), "bearer"), "provider_credential_invalid");
     fake.state.failures.merchant = 503;
-    await assert.rejects(api.retrieveMerchant("AT"), (error: unknown) => classifySquareFailure(error) === "transient");
-    fake.state.failures.token = 401;
-    await assert.rejects(api.refreshAccessToken("RT"), (error: unknown) => classifySquareFailure(error, { tokenGrant: true }) === "auth");
-    fake.state.failures.token = 503;
-    await assert.rejects(api.refreshAccessToken("RT"), (error: unknown) => classifySquareFailure(error, { tokenGrant: true }) === "transient");
+    assert.equal(await classify(() => api.retrieveMerchant("AT"), "bearer"), "transient");
+    fake.state.failures.merchant = undefined;
+
+    // The token endpoint: the BODY decides, whatever the status.
+    const grant = (status: number, body: unknown) => { fake.state.failures.token = status; fake.state.tokenFailureBody = body; return classify(() => api.refreshAccessToken("RT"), "token_grant"); };
+    for (const status of [400, 401, 403]) {
+      assert.equal(await grant(status, FAKE_TOKEN_ERRORS.invalidClient), "application_auth", `INVALID_CLIENT ${status}`);
+      assert.equal(await grant(status, FAKE_TOKEN_ERRORS.clientDisabled), "application_auth", `CLIENT_DISABLED ${status}`);
+      assert.equal(await grant(status, FAKE_TOKEN_ERRORS.notAuthorizedV1), "application_auth", `Not Authorized ${status}`);
+      assert.equal(await grant(status, FAKE_TOKEN_ERRORS.invalidGrantV2), "provider_credential_invalid", `invalid_grant v2 ${status}`);
+      assert.equal(await grant(status, FAKE_TOKEN_ERRORS.invalidGrantV1), "provider_credential_invalid", `invalid_grant v1 ${status}`);
+      assert.equal(await grant(status, FAKE_TOKEN_ERRORS.unrecognized), "unrecognized", `unrecognised ${status}`);
+      assert.equal(await grant(status, FAKE_TOKEN_ERRORS.empty), "unrecognized", `empty ${status}`);
+    }
+    assert.equal(await grant(503, FAKE_TOKEN_ERRORS.invalidGrantV2), "transient", "a 5xx is transient whatever it says");
+    assert.equal(await grant(429, FAKE_TOKEN_ERRORS.invalidGrantV2), "transient");
     // A non-Square failure (network down) is never mistaken for a revoked credential.
     assert.equal(classifySquareFailure(new TypeError("fetch failed")), "transient");
+    assert.equal(classifySquareFailure(undefined), "transient");
   } finally {
     await fake.close();
   }

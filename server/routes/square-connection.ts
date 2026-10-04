@@ -78,7 +78,14 @@ export function createSquareConnectionRouter(service: SquareConnectionService) {
     try {
       res.set("Cache-Control", "no-store");
       const result = await service.disconnect(currentUserId(req));
-      res.json({ ok: true, changed: result.changed, providerRevoked: result.providerRevoked, connection: await service.status(currentUserId(req)) });
+      // `providerRevocation` says what happened at Square; `providerRevoked` is kept as its boolean form (true only for `revoked`).
+      res.json({
+        ok: true,
+        changed: result.changed,
+        providerRevocation: result.providerRevocation,
+        providerRevoked: result.providerRevoked,
+        connection: await service.status(currentUserId(req)),
+      });
     } catch (error) {
       console.error("Square disconnect error:", error instanceof Error ? error.name : "unknown");
       res.status(500).json({ ok: false, error: "Failed to disconnect Square" });

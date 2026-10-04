@@ -25,7 +25,7 @@ Rotation: set the new key as `…_KEY`, the old as `…_KEY_PREVIOUS`, deploy, r
 its lock, without changing the credential or its generation; reports unopenable rows by id), and remove the previous key only
 when it reports `failed: []`. A token refresh also always re-seals both the access and refresh token under the current key.
 
-## Schema (`server/migrations/20261007_square_connection_hardening.sql`, `20261008_square_credential_generation.sql`)
+## Schema (`20261007_square_connection_hardening.sql`, `20261008_square_credential_generation.sql`, `20261009_square_merchant_revocation.sql`)
 
 Additive on `payment_methods`: `encrypted_access_token`, `encrypted_refresh_token`, `token_expires_at`, `last_refreshed_at`,
 `location_id`, `location_name`, `location_currency`, `merchant_name`, `granted_scopes`, `status_changed_at`,
@@ -73,13 +73,52 @@ credential that was rejected; a report about replaced credentials is ignored.
   concurrent callers refresh once. Square's code-flow refresh returns the same refresh token; a rotated one is sealed and stored
   in the same update. The refreshed token must still belong to the authorized merchant, else the connection is taken out of
   service.
-* Square answering that a credential is bad (401, authentication error, rejected refresh, merchant mismatch, lost scope) sets
-  `needs_reauthorization` and clears every secret, keeping merchant/location identity. An outage never changes stored state:
+* **Failure classification** (`classifySquareFailure`) decides from what Square SAID, never from HTTP status alone, because the
+  token endpoint answers 400/401/403 both for a bad application secret and for a bad grant. Four classes:
+  * `provider_credential_invalid`: the PROVIDER's credential is refused (a bearer call answered 401 / authentication error /
+    `INSUFFICIENT_SCOPES`; or a token-endpoint body that positively says `invalid_grant` / invalid, revoked or expired
+    refresh token or authorization code). **Only this class may clear credentials**, and only against the exact credential
+    generation that failed.
+  * `application_auth`: ChefSire's own application credentials are rejected (`INVALID_CLIENT`, `CLIENT_DISABLED`, "Not
+    Authorized" / `service.not_authorized`, client-authentication text). Stored credentials are left untouched; readiness reports
+    `configuration_error`; the log line is `square_application_auth_failed` (status and class only). Checked before anything else.
+  * `transient`: network faults, timeouts, 5xx, 408, 429, whatever the body says. Nothing changes; `verification_unavailable`.
+  * `unrecognized`: any other Square answer. Fails closed: nothing changes; `verification_unavailable`.
+  The same classifier serves the authorization-code exchange (application-auth means "not configured", a bad grant means the
+  provider was rejected), refresh, merchant / token-status / location lookups and revocation. The signals match the real SDK
+  error structure (`SquareError.errors[]` with `category`/`code`/`detail`; a body without `errors` surfaces as `V1_ERROR` with
+  `code` = the body's `type`). I could not reach Square's documentation from the build environment to confirm every real body, so
+  recognition is deliberately conservative: an unfamiliar body never destroys a connection. The cost is that a truly revoked
+  refresh token whose body is not recognised stays `verification_unavailable` until a bearer call (a 401) proves the access
+  token dead too.
+* Square answering that a credential is bad (provider class above) sets `needs_reauthorization` and clears every secret, keeping
+  merchant/location identity. An outage never changes stored state:
   the connection reports `verification_unavailable` and is not payment ready.
-* Disconnect (`POST /api/square-connection/disconnect`, owner only, JSON from the app's own origin) revokes at Square unless
-  another active ChefSire connection shares the merchant (Square revokes every token of the app for a merchant), clears the
-  credentials and marks the row `disconnected`. If revocation cannot be confirmed the local disconnect still completes and the
-  response says `providerRevoked: false`. Repeating is a no-op.
+* Disconnect (`POST /api/square-connection/disconnect`, owner only, JSON from the app's own origin) always completes locally:
+  credentials are cleared and the row is marked `disconnected` (history kept). What happened at Square is reported as
+  `providerRevocation` (and `providerRevoked`, true only for `revoked`):
+
+  | Case | `providerRevocation` | What the provider is told |
+  | --- | --- | --- |
+  | Local disconnect; Square confirmed the revocation (or said the token was already invalid) | `revoked` | ChefSire's access to the Square account is revoked. |
+  | Local disconnect; another ACTIVE ChefSire account uses the same Square merchant, so revocation was intentionally skipped | `retained_for_shared_connection` | Disconnected here; the other account still uses it, so access in Square was left in place for it. Not an error. |
+  | Local disconnect; Square unavailable, rejected ChefSire's application credentials, or the call could not be confirmed | `unconfirmed` | Disconnected from ChefSire, but we could not confirm Square revoked access; it may still be active; remove ChefSire from the connected apps in your Square account. |
+  | Local disconnect; encryption/configuration fault or no stored credential left to revoke with | `unconfirmed` | Same warning. |
+  | Nothing was connected / repeat disconnect | `not_applicable` | Nothing. |
+
+* **Merchant-scoped serialization.** Square revokes every token the application holds for a merchant, so "is anyone else still
+  connected to this merchant?" must be decided atomically. OAuth persistence and disconnect first take
+  `pg_advisory_xact_lock(hashtext('square-merchant:' || merchantId))`; the shared-connection check and the revoke decision run
+  while holding it. Lock order, the only one used: users row (OAuth callback only) -> merchant locks, ascending by key
+  (an account moving merchant locks both) -> the `payment_methods` row `FOR UPDATE`. Refresh and verification take only the row
+  lock and never wait for a merchant lock while holding it, so there is no cycle. Outcomes: the last active connection to
+  disconnect revokes exactly once (two concurrent last disconnects: one `retained_for_shared_connection`, one `revoked`); a
+  reconnect that commits first makes a concurrent disconnect retain; and because a revocation also kills a token issued to a
+  concurrent authorization, a revoking disconnect stamps `merchant_revoked_at` and an authorization for that merchant that began
+  BEFORE it is refused at persistence (`authorization_superseded`; the provider connects again), so no active connection is ever
+  left on a just-revoked grant. Residual risk: that comparison uses the service clock, so skew between instances could let a
+  token through; the next verification (Square answers 401) takes it out of service. A connection Square itself rejects leaves
+  the active set under its row lock only (there is nothing left to revoke for a credential Square has already refused).
 * No `oauth.authorization.revoked` webhook route was added: it needs a dashboard subscription and a verified, replay-safe
   endpoint, which is Phase 2Q webhook work. Revocation is detected on use and on re-check instead.
 

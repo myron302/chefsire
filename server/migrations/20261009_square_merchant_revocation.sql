@@ -1,0 +1,12 @@
+-- Phase 2Q Gate 0 repair: remember when a merchant-wide Square revocation committed.
+--
+-- ADDITIVE ONLY: one nullable timestamp on payment_methods, no secret, no row rewritten.
+--
+-- Square revokes EVERY token the application holds for a merchant when one is revoked. When a disconnect revokes a merchant's
+-- grant it stamps merchant_revoked_at on the disconnected row, under the merchant-scoped advisory lock. An OAuth connection
+-- for the same merchant that began its authorization before that instant carries a token the revocation just killed; its
+-- persistence, which takes the same lock, reads this column and refuses to store it. Connections authorized after the
+-- revocation are unaffected.
+--
+-- Rollback: the previous application ignores the column; drop it to remove the change.
+ALTER TABLE payment_methods ADD COLUMN IF NOT EXISTS merchant_revoked_at timestamptz;

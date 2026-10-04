@@ -14,7 +14,9 @@ import {
   SQUARE_CONNECTION_STATUS_PATH,
   squareCallbackMessage,
   squareConnectionPresentation,
+  squareDisconnectNotice,
   type SquareConnectionStatus,
+  type SquareDisconnectResponse,
 } from "@/lib/square-connection";
 
 type StatusResponse = { ok: true; connection: SquareConnectionStatus };
@@ -24,6 +26,8 @@ export default function SquareConnectionPage() {
   const queryClient = useQueryClient();
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // Shown after a disconnect and kept until the provider acts again: local disconnect is not always a Square revocation.
+  const [disconnectNotice, setDisconnectNotice] = useState<{ tone: "good" | "attention"; text: string } | null>(null);
   const callback = squareCallbackMessage(typeof window === "undefined" ? "" : window.location.search);
 
   const status = useQuery<StatusResponse>({
@@ -51,8 +55,8 @@ export default function SquareConnectionPage() {
     onError: () => setProblem("We couldn't check Square right now. Please try again."),
   });
   const disconnect = useMutation({
-    mutationFn: async () => (await apiRequest("POST", SQUARE_CONNECTION_DISCONNECT_PATH, {})).json() as Promise<StatusResponse>,
-    onSuccess: (data) => { setProblem(null); setConfirmingDisconnect(false); refreshWith(data); },
+    mutationFn: async () => (await apiRequest("POST", SQUARE_CONNECTION_DISCONNECT_PATH, {})).json() as Promise<SquareDisconnectResponse>,
+    onSuccess: (data) => { setProblem(null); setConfirmingDisconnect(false); setDisconnectNotice(squareDisconnectNotice(data)); refreshWith(data); },
     onError: () => setProblem("We couldn't disconnect Square. Please try again."),
   });
 
@@ -71,6 +75,12 @@ export default function SquareConnectionPage() {
           <CardDescription>{SQUARE_CONNECTION_SCOPE_NOTE}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {disconnectNotice && (
+            <div role={disconnectNotice.tone === "attention" ? "alert" : "status"} className="flex items-start gap-2 text-sm" data-testid="square-disconnect-notice">
+              {disconnectNotice.tone === "good" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />}
+              <span>{disconnectNotice.text}</span>
+            </div>
+          )}
           {callback && (
             <div role="status" className="flex items-start gap-2 text-sm">
               {callback.tone === "good" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />}
@@ -89,10 +99,10 @@ export default function SquareConnectionPage() {
           {!status.isLoading && !status.isError && (
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {presentation.actions.includes("connect") && (
-                <Button className="min-h-11" disabled={busy} onClick={() => { setProblem(null); start.mutate(); }}>Connect Square</Button>
+                <Button className="min-h-11" disabled={busy} onClick={() => { setProblem(null); setDisconnectNotice(null); start.mutate(); }}>Connect Square</Button>
               )}
               {presentation.actions.includes("reconnect") && (
-                <Button className="min-h-11" disabled={busy} onClick={() => { setProblem(null); start.mutate(); }}>Reconnect Square</Button>
+                <Button className="min-h-11" disabled={busy} onClick={() => { setProblem(null); setDisconnectNotice(null); start.mutate(); }}>Reconnect Square</Button>
               )}
               {presentation.actions.includes("recheck") && (
                 <Button variant="outline" className="min-h-11" disabled={busy} onClick={() => recheck.mutate()}>Check again</Button>

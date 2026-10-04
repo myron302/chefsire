@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { applyMigration } from "../scripts/migration-runner";
 import { parseLocalTestDatabaseUrl } from "../test-support/local-test-database";
-import { startFakeSquare, REQUIRED_TEST_SCOPES, defaultFakeSquareState, type FakeSquareState } from "../test-support/fake-square";
+import { startFakeSquare, REQUIRED_TEST_SCOPES, defaultFakeSquareState, FAKE_TOKEN_ERRORS, type FakeSquareState } from "../test-support/fake-square";
 import { createSquareConnectionService, type SqlPool } from "./square-connection-service";
 import { createSquareProviderApi } from "./square-integration";
 import { decryptSecret, SECRET_BOX_KEY_ENV } from "./secret-box";
@@ -92,6 +92,7 @@ if (!URL_ENV) {
         try {
           await applyMigration(client as never, "server:20261007_square_connection_hardening.sql", sqlOf("server/migrations/20261007_square_connection_hardening.sql"));
           await applyMigration(client as never, "server:20261008_square_credential_generation.sql", sqlOf("server/migrations/20261008_square_credential_generation.sql"));
+          await applyMigration(client as never, "server:20261009_square_merchant_revocation.sql", sqlOf("server/migrations/20261009_square_merchant_revocation.sql"));
         } finally { client.release(); }
       },
       async connect(userId: string) {
@@ -157,7 +158,7 @@ if (!URL_ENV) {
       assert.ok(h.fake.calls("/v2/locations") >= 1, "Square had already answered");
 
       // Thread B: the owner disconnects, and that commits.
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevoked: true });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "revoked", providerRevoked: true });
       const disconnected = await h.row("provider-1");
       assert.equal(disconnected.account_status, "disconnected");
 
@@ -178,7 +179,7 @@ if (!URL_ENV) {
       assert.equal(after.disconnected_at.getTime(), disconnected.disconnected_at.getTime());
       assert.ok(h.logs.some((entry) => entry.event === "square_connection_snapshot_changed" && entry.fields.attempted === "verification"));
       // A repeat disconnect is still a no-op, and the connection stays out of service.
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: false, providerRevoked: false });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: false, providerRevocation: "not_applicable", providerRevoked: false });
       assert.equal((await h.service.getSquarePaymentReadiness("provider-1")).state, "not_connected");
     });
   });
@@ -400,6 +401,7 @@ if (!URL_ENV) {
       await withTimeout(gate.reached, "verification reached its write");
       await h.pool.query(`UPDATE payment_methods SET token_expires_at = $1 WHERE user_id = 'provider-1'`, [soon()]);
       h.fake.state.failures.token = 401; // Square rejects the refresh token
+      h.fake.state.tokenFailureBody = FAKE_TOKEN_ERRORS.invalidGrantV2;
       assert.equal((await h.service.getSquarePaymentReadiness("provider-1")).state, "needs_reauthorization");
       h.fake.state.failures.token = undefined;
       gate.release();

@@ -49,6 +49,7 @@ if (!URL_ENV) {
   await local.query(sql("server/migrations/20260928_square_oauth_hardening.sql"));
   await local.query(sql("server/migrations/20261007_square_connection_hardening.sql"));
   await local.query(sql("server/migrations/20261008_square_credential_generation.sql"));
+  await local.query(sql("server/migrations/20261009_square_merchant_revocation.sql"));
   for (const id of ["provider-a", "provider-b"]) await local.query(`INSERT INTO users (id) VALUES ($1)`, [id]);
 
   const fake = await startFakeSquare({ grants: [{ access_token: "http-access-token-1", refresh_token: "http-refresh-token-1", expires_at: "2099-01-01T00:00:00Z", merchant_id: "MERCHANT_1" }] });
@@ -225,7 +226,7 @@ if (!URL_ENV) {
     // The owner, from the app's own origin.
     const own = await call("POST", "/api/square-connection/disconnect", { ...tok("provider-a"), origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}` }, {});
     assert.equal(own.status, 200);
-    assert.deepEqual(own.body, { ok: true, changed: true, providerRevoked: true, connection: { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null } });
+    assert.deepEqual(own.body, { ok: true, changed: true, providerRevocation: "revoked", providerRevoked: true, connection: { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null } });
     const [after] = await rows("provider-a");
     assert.equal(after.account_status, "disconnected");
     assert.equal(after.encrypted_access_token, null);
@@ -237,6 +238,37 @@ if (!URL_ENV) {
     assert.equal(again.status, 200);
     assert.equal(again.body.changed, false);
     assert.equal(fake.calls("/oauth2/revoke"), 1);
+  });
+
+  test("disconnect says plainly when Square's revocation was NOT confirmed, and when it was deliberately left for a shared connection", async () => {
+    await wipe();
+    // Unconfirmed: Square cannot be reached for the revocation. The local disconnect still completes.
+    await authorize("provider-a");
+    fake.state.failures.revoke = 503;
+    const unconfirmed = await call("POST", "/api/square-connection/disconnect", tok("provider-a"), {});
+    assert.equal(unconfirmed.status, 200);
+    assert.equal(unconfirmed.body.changed, true);
+    assert.equal(unconfirmed.body.providerRevocation, "unconfirmed");
+    assert.equal(unconfirmed.body.providerRevoked, false);
+    assert.equal(unconfirmed.body.connection.state, "not_connected");
+    assert.equal((await rows("provider-a"))[0].account_status, "disconnected");
+    fake.state.failures.revoke = undefined;
+
+    // Shared: another active ChefSire account uses the same Square merchant, so Square access is intentionally left in place.
+    await wipe();
+    await authorize("provider-a");
+    await authorize("provider-b");
+    const shared = await call("POST", "/api/square-connection/disconnect", tok("provider-a"), {});
+    assert.equal(shared.body.providerRevocation, "retained_for_shared_connection");
+    assert.equal(shared.body.providerRevoked, false);
+    assert.equal(fake.calls("/oauth2/revoke"), 0);
+    // The last one out revokes.
+    const last = await call("POST", "/api/square-connection/disconnect", tok("provider-b"), {});
+    assert.equal(last.body.providerRevocation, "revoked");
+    // Repeating is a no-op that says so.
+    const again = await call("POST", "/api/square-connection/disconnect", tok("provider-b"), {});
+    assert.equal(again.body.providerRevocation, "not_applicable");
+    for (const body of [unconfirmed.text, shared.text, last.text]) for (const forbidden of ["http-access-token-1", "http-refresh-token-1", "sqenc", KEY]) assert.equal(body.includes(forbidden), false);
   });
 
   test("recheck re-asks Square; a connection Square has revoked is reported as needing reauthorization without leaking why", async () => {

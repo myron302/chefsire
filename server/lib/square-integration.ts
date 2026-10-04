@@ -83,23 +83,65 @@ function createUnauthenticatedSquareClient(options: SquareSdkOptions = {}): Squa
  * ------------------------------------------------------------------------------------------------------------- */
 
 /**
- * `auth` means Square answered and the credential is no good (revoked, expired, insufficient, unknown): the
- * connection must stop being treated as usable. `transient` means we do not know -- a timeout, a network fault, a
- * 5xx, a rate limit -- and nothing about the stored connection may be changed because of it.
+ * What a failed Square call MEANS for a stored provider connection. Only one of these may ever destroy credentials.
+ *
+ *  - `provider_credential_invalid`  Square answered, and the PROVIDER's own credential is no good: a revoked/expired/unknown
+ *                                   access token, a refresh or authorization grant Square says is invalid, or a token that
+ *                                   lacks scopes. This alone permits taking a connection out of service (and, in the service,
+ *                                   only against the exact credential snapshot that failed).
+ *  - `application_auth`             Square rejected CHEFSIRE'S OWN application credentials (wrong, stale or rotating
+ *                                   application secret, unknown or disabled client). That says nothing about the provider's
+ *                                   grant: stored credentials must be left exactly as they are and the fault reported as
+ *                                   configuration.
+ *  - `transient`                    A timeout, a network fault, a 5xx, a 408 or a rate limit. Nothing may change.
+ *  - `unrecognized`                 Square answered with an error this classifier does not positively recognise. Fails closed:
+ *                                   the call is treated as failed and nothing may change.
+ *
+ * HTTP status alone is never enough. The token endpoint answers 400/401/403 both for a bad application secret and for a
+ * bad grant, so the error BODY decides, and anything that is not positively identified as a provider-grant failure is not
+ * destructive. The signals below come from the SDK's real error structure: `SquareError.errors[]` entries carry
+ * `category`/`code`/`detail`, and a body without an `errors` array (Square's OAuth endpoints can answer in the older
+ * `{ type, message }` shape) is surfaced by the SDK as category `V1_ERROR` with `code` = the body's `type` and `detail` = its
+ * `message`.
  */
-export type SquareFailureKind = "auth" | "transient";
+export type SquareFailureClass = "provider_credential_invalid" | "application_auth" | "transient" | "unrecognized";
 
-const AUTH_CODES = new Set(["UNAUTHORIZED", "ACCESS_TOKEN_EXPIRED", "ACCESS_TOKEN_REVOKED", "INSUFFICIENT_SCOPES", "INVALID_GRANT", "INVALID_CLIENT"]);
+/** Which kind of call failed, because the same words mean different things on different surfaces. */
+export type SquareFailureSurface =
+  /** `oAuth.obtainToken`: authorization-code exchange or refresh. Authenticated by the APPLICATION secret. */
+  | "token_grant"
+  /** Any call made with a provider's bearer access token (merchant, token status, locations, payments). */
+  | "bearer"
+  /** `oAuth.revokeToken`. Authenticated by the APPLICATION secret. */
+  | "revoke";
 
-export function classifySquareFailure(error: unknown, options: { tokenGrant?: boolean } = {}): SquareFailureKind {
+const APPLICATION_AUTH_CODES = new Set(["INVALID_CLIENT", "CLIENT_DISABLED"]);
+const APPLICATION_AUTH_TEXT = /invalid[_ ]client|client[_ ]disabled|unauthorized[_ ]client|service[._]not[_]?authorized|not authorized|client authentication|client[_ ]secret|invalid (?:application|client)/i;
+const PROVIDER_GRANT_CODES = new Set(["INVALID_GRANT", "ACCESS_TOKEN_REVOKED", "ACCESS_TOKEN_EXPIRED"]);
+const PROVIDER_GRANT_TEXT = /invalid[_ ]grant|(?:invalid|revoked|expired|unknown)[_ ](?:refresh[_ ])?token|refresh[_ ]token[^.]*(?:invalid|revoked|expired)|authorization[_ ]code[^.]*(?:invalid|expired|used)/i;
+const BEARER_INVALID_CODES = new Set(["UNAUTHORIZED", "ACCESS_TOKEN_EXPIRED", "ACCESS_TOKEN_REVOKED", "INSUFFICIENT_SCOPES"]);
+
+export function classifySquareFailure(error: unknown, options: { surface?: SquareFailureSurface } = {}): SquareFailureClass {
   if (!(error instanceof SquareError)) return "transient";
+  const surface = options.surface ?? "bearer";
   const status = error.statusCode;
-  // Refusing to exchange or refresh a token is Square saying the grant itself is bad, not that it is unwell.
-  if (options.tokenGrant && (status === 400 || status === 401 || status === 403)) return "auth";
-  if (status === 401) return "auth";
+  if (status === undefined || status >= 500 || status === 408 || status === 429) return "transient";
   const errors = Array.isArray(error.errors) ? error.errors : [];
-  if (errors.some((item) => item.category === "AUTHENTICATION_ERROR" || (item.code !== undefined && AUTH_CODES.has(String(item.code))))) return "auth";
-  return "transient";
+  const codes = errors.map((item) => String(item.code ?? "").toUpperCase());
+  const text = errors.map((item) => `${item.code ?? ""} ${item.detail ?? ""}`).join(" ");
+
+  // Application authentication is decided FIRST: if ChefSire could not authenticate itself, Square said nothing about the grant.
+  if (codes.some((code) => APPLICATION_AUTH_CODES.has(code)) || APPLICATION_AUTH_TEXT.test(text)) return "application_auth";
+
+  if (surface === "bearer") {
+    const authCategory = errors.some((item) => item.category === "AUTHENTICATION_ERROR");
+    return status === 401 || authCategory || codes.some((code) => BEARER_INVALID_CODES.has(code)) ? "provider_credential_invalid" : "unrecognized";
+  }
+  // token_grant / revoke: only a body that positively says the grant/token is bad counts, and only on an auth-shaped status.
+  if ((status === 400 || status === 401 || status === 403) && (codes.some((code) => PROVIDER_GRANT_CODES.has(code)) || PROVIDER_GRANT_TEXT.test(text))) {
+    return "provider_credential_invalid";
+  }
+  return "unrecognized";
 }
 
 /** The HTTP status of a failure, for logging. Never the message or body, which can echo credentials. */

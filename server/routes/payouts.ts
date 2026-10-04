@@ -20,7 +20,7 @@ import {
   squareOauthBrowserBindingCookieOptions,
 } from "../lib/square-oauth-state";
 import { squareConnections } from "../lib/square-connection";
-import type { AuthorizationFailure } from "../lib/square-connection-service";
+import { SquareAuthorizationSupersededError, type AuthorizationFailure } from "../lib/square-connection-service";
 import { isSecretBoxConfigured } from "../lib/secret-box";
 import { SQUARE_CONNECTION_SCOPES, squareOauthApplication, squareOauthAuthorizeUrl } from "../lib/square-integration";
 
@@ -337,6 +337,7 @@ router.get("/square-callback", async (req, res) => {
     res.redirect("/settings/payouts?connected=true");
   } catch (error) {
     console.error("Square callback error:", error instanceof Error ? error.name : "unknown"); // never the error object: a database error can echo the row it rejected
+    if (error instanceof SquareAuthorizationSupersededError) return res.redirect("/settings/payouts?error=authorization_superseded");
     res.redirect("/settings/payouts?error=callback_failed");
   }
 });

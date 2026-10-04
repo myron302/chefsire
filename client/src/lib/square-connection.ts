@@ -23,6 +23,18 @@ export type SquareConnectionStatus = {
   locationDisplayName: string | null;
 };
 
+/** What a disconnect did at Square. Mirrors the server: LOCAL disconnect and SQUARE revocation are different things. */
+export type SquareProviderRevocation = "revoked" | "retained_for_shared_connection" | "unconfirmed" | "not_applicable";
+
+/** Exactly what `POST /api/square-connection/disconnect` returns. */
+export type SquareDisconnectResponse = {
+  ok: true;
+  changed: boolean;
+  providerRevocation?: SquareProviderRevocation;
+  providerRevoked?: boolean;
+  connection: SquareConnectionStatus;
+};
+
 export type SquareConnectionAction = "connect" | "reconnect" | "recheck" | "disconnect";
 
 export type SquareConnectionPresentation = {
@@ -94,6 +106,30 @@ export function squareConnectionPresentation(status: SquareConnectionStatus | nu
   }
 }
 
+/**
+ * What to tell the provider after a disconnect. The account is always disconnected from ChefSire locally; whether Square's
+ * authorization was revoked is a separate fact, and an unconfirmed revocation is surfaced as a warning rather than success.
+ * A response from an older server (no `providerRevocation`) is judged by `providerRevoked`, and anything unclear is a warning.
+ */
+export function squareDisconnectNotice(response: Pick<SquareDisconnectResponse, "changed" | "providerRevocation" | "providerRevoked">): { tone: "good" | "attention"; text: string } | null {
+  if (!response.changed) return null;
+  const revocation: SquareProviderRevocation = response.providerRevocation ?? (response.providerRevoked === true ? "revoked" : "unconfirmed");
+  switch (revocation) {
+    case "revoked":
+      return { tone: "good", text: "Square disconnected. ChefSire's access to your Square account has been revoked." };
+    case "retained_for_shared_connection":
+      return { tone: "attention", text: "Disconnected from this ChefSire account. Another ChefSire account uses the same Square account, so ChefSire's access in Square was left in place for it." };
+    case "not_applicable":
+      return null;
+    case "unconfirmed":
+    default:
+      return {
+        tone: "attention",
+        text: "Disconnected from ChefSire, but we couldn't confirm that Square has revoked ChefSire's access, so it may still be active. To be sure, remove ChefSire from the connected apps in your Square account.",
+      };
+  }
+}
+
 /** Messages for the `?error=` / `?connected=` the OAuth callback redirects back with. Anything unknown says nothing. */
 export function squareCallbackMessage(search: string): { tone: "good" | "attention"; text: string } | null {
   const params = new URLSearchParams(search);
@@ -103,6 +139,8 @@ export function squareCallbackMessage(search: string): { tone: "good" | "attenti
       return { tone: "attention", text: "Square returned a different account than the one authorized. Nothing was connected; please try again." };
     case "scopes_insufficient":
       return { tone: "attention", text: "Square didn't grant every permission needed. Nothing was connected; please try again and approve all of them." };
+    case "authorization_superseded":
+      return { tone: "attention", text: "Square access was revoked while connecting. Nothing was saved; please connect again." };
     case "square_not_configured":
       return { tone: "attention", text: "Connecting Square isn't available right now." };
     case "square_auth_failed":

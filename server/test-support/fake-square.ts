@@ -28,6 +28,14 @@ export type FakeSquareState = {
   grants: Array<{ access_token: string; refresh_token?: string; expires_at: string; merchant_id?: string | null }>;
   /** When set, the named endpoint answers with this status and an errors body instead of succeeding. */
   failures: Partial<Record<"token" | "merchant" | "tokenStatus" | "locations" | "revoke", number>>;
+  /** The raw JSON body the token endpoint answers with when `failures.token` is set (default: a generic auth error). */
+  tokenFailureBody?: unknown;
+  /** Likewise for `/v2/merchants/me` when `failures.merchant` is set. */
+  merchantFailureBody?: unknown;
+  /** Likewise for `/oauth2/revoke` when `failures.revoke` is set. */
+  revokeFailureBody?: unknown;
+  /** Added to the `/oauth2/revoke` response, to hold a merchant-wide revocation in flight. */
+  revokeDelayMs: number;
   /** Added to every token-endpoint response, to make a concurrent refresh overlap observable. */
   tokenDelayMs: number;
   /** The merchant id `/v2/merchants/me` reports; defaults to `merchantId`. */
@@ -50,6 +58,7 @@ export function defaultFakeSquareState(overrides: Partial<FakeSquareState> = {})
     grants: [{ access_token: "access-token-initial", refresh_token: "refresh-token-initial", expires_at: "2099-01-01T00:00:00Z", merchant_id: "MERCHANT_1" }],
     failures: {},
     tokenDelayMs: 0,
+    revokeDelayMs: 0,
     ...overrides,
   };
 }
@@ -72,7 +81,9 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
         const status = state.failures[key];
         if (!status) return false;
         res.statusCode = status;
-        res.end(status >= 500 ? JSON.stringify({ errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR" }] }) : failureBody);
+        const body = key === "token" ? state.tokenFailureBody : key === "revoke" ? state.revokeFailureBody : key === "merchant" ? state.merchantFailureBody : undefined;
+        if (status < 500 && body !== undefined) res.end(JSON.stringify(body));
+        else res.end(status >= 500 ? JSON.stringify({ errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR" }] }) : failureBody);
         return true;
       };
       if (req.method === "POST" && path === "/oauth2/token") {
@@ -91,6 +102,7 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
         if (fail("locations")) return;
         res.end(JSON.stringify({ locations: state.locations }));
       } else if (req.method === "POST" && path === "/oauth2/revoke") {
+        if (state.revokeDelayMs) await new Promise((resolve) => setTimeout(resolve, state.revokeDelayMs));
         if (fail("revoke")) return;
         res.end(JSON.stringify({ success: true }));
       } else {
@@ -110,3 +122,18 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
+
+/**
+ * Token-endpoint error bodies, in the shapes the real SDK delivers: the v2 `{ errors: [...] }` envelope, and the older
+ * `{ type, message }` shape Square's OAuth endpoints can answer in (which the SDK surfaces as category V1_ERROR, code = type).
+ * `notAuthorizedV1` is the body reported for a wrong/rotated application secret.
+ */
+export const FAKE_TOKEN_ERRORS = {
+  invalidClient: { errors: [{ category: "AUTHENTICATION_ERROR", code: "INVALID_CLIENT", detail: "Client authentication failed" }] },
+  clientDisabled: { errors: [{ category: "AUTHENTICATION_ERROR", code: "CLIENT_DISABLED", detail: "The application is disabled" }] },
+  notAuthorizedV1: { message: "Not Authorized", type: "service.not_authorized" },
+  invalidGrantV2: { errors: [{ category: "INVALID_REQUEST_ERROR", code: "INVALID_GRANT", detail: "The refresh token is invalid" }] },
+  invalidGrantV1: { type: "invalid_grant", message: "The refresh token has been revoked" },
+  unrecognized: { errors: [{ category: "INVALID_REQUEST_ERROR", code: "SOMETHING_NEW", detail: "an error nobody has seen before" }] },
+  empty: {},
+} as const;

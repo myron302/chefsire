@@ -7,6 +7,7 @@ import {
   isSquareAuthorizeUrl,
   squareCallbackMessage,
   squareConnectionPresentation,
+  squareDisconnectNotice,
   type SquareConnectionState,
   type SquareConnectionStatus,
 } from "./square-connection";
@@ -70,4 +71,44 @@ test("the provider screen has no customer payment, checkout, refund, payout or f
   assert.deepEqual([...code.matchAll(/apiRequest\("(GET|POST)", ([A-Z_]+)/g)].map((match) => `${match[1]} ${match[2]}`).sort(),
     ["GET SQUARE_CONNECTION_START_PATH", "GET SQUARE_CONNECTION_STATUS_PATH", "POST SQUARE_CONNECTION_DISCONNECT_PATH", "POST SQUARE_CONNECTION_RECHECK_PATH"]);
   assert.match(files[0], /min-h-11/, "touch-friendly targets for mobile");
+});
+
+test("after a disconnect the provider is told what happened at SQUARE, not just that ChefSire disconnected", () => {
+  const revoked = squareDisconnectNotice({ changed: true, providerRevocation: "revoked", providerRevoked: true });
+  assert.equal(revoked?.tone, "good");
+  assert.match(revoked!.text, /revoked/);
+
+  const shared = squareDisconnectNotice({ changed: true, providerRevocation: "retained_for_shared_connection", providerRevoked: false });
+  assert.equal(shared?.tone, "attention");
+  assert.match(shared!.text, /Another ChefSire account uses the same Square account/);
+  assert.doesNotMatch(shared!.text, /couldn't confirm/, "a deliberate shared connection is not reported as a failure");
+
+  const unconfirmed = squareDisconnectNotice({ changed: true, providerRevocation: "unconfirmed", providerRevoked: false });
+  assert.equal(unconfirmed?.tone, "attention");
+  assert.match(unconfirmed!.text, /Disconnected from ChefSire/);
+  assert.match(unconfirmed!.text, /couldn't confirm that Square has revoked/);
+  assert.match(unconfirmed!.text, /may still be active/);
+  assert.match(unconfirmed!.text, /remove ChefSire from the connected apps in your Square account/);
+
+  // Nothing to say when nothing changed; no technical internals or secrets in any copy.
+  assert.equal(squareDisconnectNotice({ changed: false, providerRevocation: "not_applicable", providerRevoked: false }), null);
+  for (const notice of [revoked, shared, unconfirmed]) assert.doesNotMatch(notice!.text, /token|secret|merchant id|error|status \d|payment_methods/i);
+});
+
+test("a response without the new field is judged by providerRevoked, and anything unclear WARNS rather than claims success", () => {
+  assert.equal(squareDisconnectNotice({ changed: true, providerRevoked: true })?.tone, "good");
+  assert.equal(squareDisconnectNotice({ changed: true, providerRevoked: false })?.tone, "attention");
+  assert.equal(squareDisconnectNotice({ changed: true })?.tone, "attention");
+  assert.equal(squareDisconnectNotice({ changed: true, providerRevocation: "something-new" as never })?.tone, "attention");
+});
+
+test("the screen renders the disconnect notice from the server's providerRevocation and does not discard it", () => {
+  const page = fs.readFileSync(path.join(root, "client/src/pages/square-connection.tsx"), "utf8");
+  assert.match(page, /as Promise<SquareDisconnectResponse>/);
+  assert.match(page, /setDisconnectNotice\(squareDisconnectNotice\(data\)\)/);
+  assert.match(page, /data-testid="square-disconnect-notice"/);
+  assert.match(page, /role=\{disconnectNotice\.tone === "attention" \? "alert" : "status"\}/);
+  // Cleared when the provider acts again (connect / reconnect), not on a timer.
+  assert.equal((page.match(/setDisconnectNotice\(null\)/g) ?? []).length, 2);
+  assert.equal(squareCallbackMessage("?error=authorization_superseded")?.tone, "attention");
 });

@@ -128,6 +128,40 @@ export class SquareConnectionUnavailableError extends Error {
     this.name = "SquareConnectionUnavailableError";
   }
 }
+/**
+ * Square rejected CHEFSIRE'S OWN application credentials (wrong, stale or rotating application secret, disabled client).
+ * That is a configuration fault, not evidence about any provider's grant: nothing stored is changed because of it.
+ */
+export class SquareApplicationAuthError extends Error {
+  constructor() {
+    super("Square rejected ChefSire's application credentials.");
+    this.name = "SquareApplicationAuthError";
+  }
+}
+/**
+ * A merchant-wide revocation committed after this authorization was obtained (so the token it carries is no longer valid even
+ * though Square issued it), or the connection changed concurrently. The authorization is not stored; the provider connects again.
+ */
+export class SquareAuthorizationSupersededError extends Error {
+  constructor() {
+    super("The Square authorization was revoked while connecting.");
+    this.name = "SquareAuthorizationSupersededError";
+  }
+}
+
+/**
+ * What a disconnect did at Square:
+ *  - `revoked`                         Square confirmed ChefSire's authorization for the merchant is revoked (including an
+ *                                      authoritative "this token is already invalid").
+ *  - `retained_for_shared_connection`  Intentionally NOT revoked: another active ChefSire connection uses the same Square
+ *                                      merchant, and Square revokes every token of the application for a merchant.
+ *  - `unconfirmed`                     Square could not confirm a revocation (outage, rejected application credentials,
+ *                                      encryption/configuration fault, or there was no stored credential left to revoke
+ *                                      with). The local disconnect still completed; Square access may remain.
+ *  - `not_applicable`                  Nothing was connected, so nothing was changed.
+ */
+export type ProviderRevocation = "revoked" | "retained_for_shared_connection" | "unconfirmed" | "not_applicable";
+
 /** Stored credentials exist but cannot be opened with the configured key. A configuration fault: nothing is changed. */
 export class SquareCredentialError extends Error {
   constructor() {
@@ -144,6 +178,8 @@ export type VerifiedAuthorization = {
   tokenExpiresAt: Date;
   scopes: string[];
   location: SquareLocationFacts | null;
+  /** When ChefSire began exchanging the authorization code (this service's clock). Compared with merchant-wide revocations. */
+  authorizedAt: Date;
 };
 
 export type AuthorizationFailure = "provider_rejected" | "merchant_mismatch" | "scopes_insufficient" | "unavailable" | "not_configured";
@@ -223,6 +259,27 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     if (changed) log.warn("square_connection_needs_reauthorization", { paymentMethodId: snapshot.id, reason });
     else log.warn("square_connection_snapshot_changed", { paymentMethodId: snapshot.id, attempted: "needs_reauthorization" });
     return changed;
+  }
+
+  /**
+   * MERCHANT-SCOPED LOCK. Everything that decides or changes which ChefSire accounts are connected to Square merchant M --
+   * OAuth persistence, disconnect and the merchant-wide revoke decision -- first takes the transaction-scoped advisory lock
+   * for M, so those decisions are serialized per merchant (and independent across merchants).
+   *
+   * LOCK ORDER (documented, and the only one used): users row (OAuth callback only) -> merchant advisory locks, ascending by
+   * key -> the payment_methods row (FOR UPDATE). Token refresh and verification take only the row lock and never wait for a
+   * merchant lock while holding it, so no cycle exists. Refresh does not change merchant membership (its merchant is verified
+   * unchanged). A connection that Square itself rejects (needs_reauthorization) leaves the active set under the row lock only:
+   * Square has already declared that credential unusable, so there is nothing left to revoke for it.
+   */
+  async function lockMerchants(db: SqlClient, merchantIds: ReadonlyArray<string | null | undefined>): Promise<void> {
+    const keys = new Set<number>();
+    for (const merchantId of Array.from(new Set(merchantIds))) {
+      if (!merchantId) continue;
+      const hashed = await db.query(`SELECT hashtext($1) AS key`, [`square-merchant:${merchantId}`]);
+      keys.add(Number(hashed.rows[0].key));
+    }
+    for (const key of Array.from(keys).sort((a, b) => a - b)) await db.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [key]);
   }
 
   /** The row as it stands once `markNeedsReauthorization` has applied to it: no credentials, not active. */
@@ -318,8 +375,11 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    */
   async function verifyAuthorizationCode(code: string): Promise<{ ok: true; verified: VerifiedAuthorization } | { ok: false; reason: AuthorizationFailure }> {
     if (!isSecretBoxConfigured() || !squareOauthApplication()) return { ok: false, reason: "not_configured" };
+    const authorizedAt = now();
+    let surface: "token_grant" | "bearer" = "token_grant";
     try {
       const grant = await api.exchangeAuthorizationCode(code);
+      surface = "bearer";
       if (!grant.refreshToken || !grant.merchantId) return { ok: false, reason: "provider_rejected" };
       const merchant: SquareMerchantProfile = await api.retrieveMerchant(grant.accessToken);
       if (merchant.id !== grant.merchantId) return { ok: false, reason: "merchant_mismatch" };
@@ -337,11 +397,15 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
           tokenExpiresAt: grant.expiresAt,
           scopes: tokenStatus.scopes,
           location: selectPaymentLocation(locations, merchant.id, { mainLocationId: merchant.mainLocationId }),
+          authorizedAt,
         },
       };
     } catch (error) {
-      log.warn("square_authorization_verification_failed", { status: squareFailureStatus(error), kind: classifySquareFailure(error, { tokenGrant: true }) });
-      return { ok: false, reason: classifySquareFailure(error, { tokenGrant: true }) === "auth" ? "provider_rejected" : "unavailable" };
+      const failure = classifySquareFailure(error, { surface });
+      log.warn("square_authorization_verification_failed", { status: squareFailureStatus(error), kind: failure, surface });
+      // Rejected APPLICATION credentials are ChefSire's configuration problem, not the provider's grant being refused.
+      if (failure === "application_auth") return { ok: false, reason: "not_configured" };
+      return { ok: false, reason: failure === "provider_credential_invalid" ? "provider_rejected" : "unavailable" };
     }
   }
 
@@ -350,7 +414,25 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    * OAuth transaction's consume. Tokens are sealed here, bound to the row id; nothing is written in plaintext.
    */
   async function persistVerifiedConnection(db: SqlClient, userId: string, verified: VerifiedAuthorization): Promise<{ paymentMethodId: string }> {
+    // Merchant locks first (the merchant being connected, and the one this account is leaving if it is changing merchant),
+    // then the row. Everything below runs inside the caller's transaction, so the locks are held until it commits.
+    const preview = await loadRow(db, userId, false);
+    await lockMerchants(db, [verified.merchantId, preview?.provider_id]);
     const existing = await loadRow(db, userId, true);
+    if (existing && existing.provider_id !== verified.merchantId && existing.provider_id !== preview?.provider_id) {
+      // The account changed merchant between the two reads. Taking a further merchant lock now could invert the lock order.
+      throw new SquareAuthorizationSupersededError();
+    }
+    // A merchant-wide revocation that committed after this authorization began has invalidated the token it carries: Square
+    // revokes every token of the application for a merchant, including one issued just before. Refuse to store it.
+    const revoked = await db.query(
+      `SELECT 1 FROM payment_methods WHERE provider = 'square' AND provider_id = $1 AND merchant_revoked_at IS NOT NULL AND merchant_revoked_at > $2 LIMIT 1`,
+      // Strictly after: an authorization that began AFTER the revocation is a fresh grant and is unaffected. (Both times come
+      // from the service clock; across instances their skew is the residual risk, and a token that did slip through is caught
+      // by the next verification, which Square answers with 401.)
+      [verified.merchantId, verified.authorizedAt],
+    );
+    if (revoked.rows.length) throw new SquareAuthorizationSupersededError();
     const id = existing?.id ?? randomUUID();
     const sealedAccess = encryptSecret(verified.accessToken, accessAad(id));
     const sealedRefresh = encryptSecret(verified.refreshToken, refreshAad(id));
@@ -441,13 +523,16 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       try {
         grant = await api.refreshAccessToken(refreshToken);
       } catch (error) {
-        if (classifySquareFailure(error, { tokenGrant: true }) === "auth") {
+        const failure = classifySquareFailure(error, { surface: "token_grant" });
+        // ONLY Square positively saying the provider's grant is invalid may clear credentials, and only the snapshot judged here.
+        if (failure === "provider_credential_invalid") {
           await markNeedsReauthorization(client, row, "refresh_rejected");
           await client.query("COMMIT");
           return { kind: "needs_reauthorization", row: outOfService(row) };
         }
         await client.query("ROLLBACK");
-        log.warn("square_token_refresh_unavailable", { paymentMethodId: row.id, status: squareFailureStatus(error) });
+        log.warn(failure === "application_auth" ? "square_application_auth_failed" : "square_token_refresh_unavailable", { paymentMethodId: row.id, status: squareFailureStatus(error), kind: failure });
+        if (failure === "application_auth") throw new SquareApplicationAuthError();
         throw new SquareConnectionUnavailableError();
       }
       // The refreshed token must still belong to the merchant this connection was authorized for.
@@ -456,12 +541,15 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
         try {
           grantMerchantId = (await api.retrieveMerchant(grant.accessToken)).id;
         } catch (error) {
-          if (classifySquareFailure(error) === "auth") {
+          const failure = classifySquareFailure(error, { surface: "bearer" });
+          if (failure === "provider_credential_invalid") {
             await markNeedsReauthorization(client, row, "refresh_identity_rejected");
             await client.query("COMMIT");
             return { kind: "needs_reauthorization", row: outOfService(row) };
           }
           await client.query("ROLLBACK");
+          log.warn(failure === "application_auth" ? "square_application_auth_failed" : "square_token_refresh_unavailable", { paymentMethodId: row.id, status: squareFailureStatus(error), kind: failure });
+          if (failure === "application_auth") throw new SquareApplicationAuthError();
           throw new SquareConnectionUnavailableError();
         }
       }
@@ -533,8 +621,10 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       scopes = (await api.retrieveTokenStatus(accessToken)).scopes;
       locations = await api.listLocations(accessToken);
     } catch (error) {
-      if (classifySquareFailure(error) === "auth") return needsReauthorization("verification_rejected");
-      log.warn("square_connection_verification_unavailable", { paymentMethodId: snapshot.id, status: squareFailureStatus(error) });
+      const failure = classifySquareFailure(error, { surface: "bearer" });
+      if (failure === "provider_credential_invalid") return needsReauthorization("verification_rejected");
+      log.warn(failure === "application_auth" ? "square_application_auth_failed" : "square_connection_verification_unavailable", { paymentMethodId: snapshot.id, status: squareFailureStatus(error), kind: failure });
+      if (failure === "application_auth") throw new SquareApplicationAuthError();
       throw new SquareConnectionUnavailableError();
     }
     if (merchant.id !== snapshot.provider_id) return needsReauthorization("verification_merchant_mismatch");
@@ -616,7 +706,7 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       return result(readinessOf(current), current);
     } catch (error) {
       if (error instanceof SquareConnectionUnavailableError) return result(emptyReadiness("verification_unavailable"));
-      if (error instanceof SquareCredentialError || error instanceof SecretBoxError) return result(emptyReadiness("configuration_error"));
+      if (error instanceof SquareApplicationAuthError || error instanceof SquareCredentialError || error instanceof SecretBoxError) return result(emptyReadiness("configuration_error"));
       throw error;
     }
   }
@@ -707,58 +797,86 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    * The owner disconnects their own Square account. There is no id in the request: the row is resolved from the
    * authenticated user, so there is nothing to guess and no way to reach another user's connection.
    *
-   * Idempotent: with no connection, or one already disconnected, it changes nothing and says so. The token is
-   * revoked at Square only when no OTHER active ChefSire connection uses the same merchant (Square revokes every
-   * token of the application for a merchant, so revoking one would silently kill the other). If revocation cannot be
-   * confirmed the local credentials are still removed -- the owner's decision stands and ChefSire can no longer use
-   * the token -- and the result says the provider revocation was not confirmed.
+   * Idempotent: with no connection, or one already disconnected, it changes nothing (`not_applicable`).
+   *
+   * The merchant-wide revoke decision is made while holding the merchant-scoped lock (see `lockMerchants`), so concurrent
+   * disconnects and OAuth reconnects for one merchant are serialized: exactly the LAST active connection revokes, once.
+   *
+   * What the owner is told (`providerRevocation`) -- in every case the LOCAL disconnect completes and every stored secret is cleared:
+   *  - `revoked`: Square confirmed the revocation (or authoritatively reported the token already invalid).
+   *  - `retained_for_shared_connection`: another active ChefSire account uses the same Square merchant; revoking would break it,
+   *    so Square authorization was intentionally left in place for it.
+   *  - `unconfirmed`: the revoke call failed or could not be confirmed (Square unavailable, ChefSire's application credentials
+   *    rejected, an encryption/configuration fault, or no credential left to revoke with). Square access MAY still be active.
+   *  - `not_applicable`: there was nothing connected.
    */
-  async function disconnect(userId: string): Promise<{ changed: boolean; providerRevoked: boolean }> {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT}'`);
-      const row = await loadRow(client, userId, true);
-      if (!row || row.account_status === "disconnected") {
-        await client.query("COMMIT");
-        return { changed: false, providerRevoked: false };
-      }
-      let providerRevoked = false;
-      if (row.encrypted_access_token && isSecretBoxConfigured() && squareOauthApplication()) {
-        const sharedMerchant = await client.query(
-          `SELECT 1 FROM payment_methods WHERE provider = 'square' AND provider_id = $1 AND id <> $2 AND account_status = 'active' AND encrypted_access_token IS NOT NULL LIMIT 1`,
-          [row.provider_id, row.id],
-        );
-        if (!sharedMerchant.rows.length) {
-          try {
-            await api.revokeAccessToken(openAccessToken(row));
-            providerRevoked = true;
-          } catch (error) {
-            // An authoritative "this token is already dead" is as good as a revocation; anything else is unconfirmed.
-            providerRevoked = error instanceof SquareCredentialError ? false : classifySquareFailure(error) === "auth";
-            log.warn("square_disconnect_revocation_unconfirmed", { paymentMethodId: row.id, status: squareFailureStatus(error), revoked: providerRevoked });
+  async function disconnect(userId: string): Promise<{ changed: boolean; providerRevocation: ProviderRevocation; providerRevoked: boolean }> {
+    const outcome = (changed: boolean, providerRevocation: ProviderRevocation) => ({ changed, providerRevocation, providerRevoked: providerRevocation === "revoked" });
+    for (let attempt = 0; attempt < MAX_SNAPSHOT_RETRIES; attempt += 1) {
+      const preview = await loadRow(pool, userId, false);
+      if (!preview || preview.account_status === "disconnected") return outcome(false, "not_applicable");
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT}'`);
+        // Merchant lock first, THEN the row: the "is anyone else still connected?" decision below is made while holding it.
+        await lockMerchants(client, [preview.provider_id]);
+        const row = await loadRow(client, userId, true);
+        if (!row || row.account_status === "disconnected") {
+          await client.query("COMMIT");
+          return outcome(false, "not_applicable");
+        }
+        if (row.provider_id !== preview.provider_id) {
+          // The account moved to another merchant while we waited: start over against the merchant it is on now.
+          await client.query("ROLLBACK");
+          continue;
+        }
+        let providerRevocation: ProviderRevocation = "unconfirmed";
+        if (row.encrypted_access_token && isSecretBoxConfigured() && squareOauthApplication()) {
+          // Authoritative, under the merchant lock: any other ChefSire connection that is active and holds credentials.
+          const sharedMerchant = await client.query(
+            `SELECT 1 FROM payment_methods WHERE provider = 'square' AND provider_id = $1 AND id <> $2 AND account_status = 'active' AND encrypted_access_token IS NOT NULL LIMIT 1`,
+            [row.provider_id, row.id],
+          );
+          if (sharedMerchant.rows.length) {
+            providerRevocation = "retained_for_shared_connection";
+          } else {
+            try {
+              await api.revokeAccessToken(openAccessToken(row));
+              providerRevocation = "revoked";
+            } catch (error) {
+              // Square saying the token is already invalid is as good as a revocation. Anything else (an outage, rejected
+              // APPLICATION credentials, an unreadable credential) is unconfirmed: the local disconnect still completes.
+              const failure = error instanceof SquareCredentialError ? "unrecognized" : classifySquareFailure(error, { surface: "revoke" });
+              providerRevocation = failure === "provider_credential_invalid" ? "revoked" : "unconfirmed";
+              log.warn("square_disconnect_revocation_unconfirmed", { paymentMethodId: row.id, status: squareFailureStatus(error), kind: failure, revoked: providerRevocation === "revoked" });
+            }
           }
         }
+        const at = now();
+        await client.query(
+          `UPDATE payment_methods
+           SET account_status = 'disconnected',
+               encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL,
+               account_details = COALESCE(account_details, '{}'::jsonb) - 'accessToken' - 'refreshToken' - 'tokenExpiresAt',
+               is_default = false, credential_generation = credential_generation + 1,
+               merchant_revoked_at = CASE WHEN $3::boolean THEN $2 ELSE merchant_revoked_at END,
+               status_changed_at = $2, disconnected_at = $2, updated_at = $2
+           WHERE id = $1`,
+          [row.id, at, providerRevocation === "revoked"],
+        );
+        await client.query("COMMIT");
+        return outcome(true, providerRevocation);
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
       }
-      const at = now();
-      await client.query(
-        `UPDATE payment_methods
-         SET account_status = 'disconnected',
-             encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL,
-             account_details = COALESCE(account_details, '{}'::jsonb) - 'accessToken' - 'refreshToken' - 'tokenExpiresAt',
-             is_default = false, credential_generation = credential_generation + 1,
-             status_changed_at = $2, disconnected_at = $2, updated_at = $2
-         WHERE id = $1`,
-        [row.id, at],
-      );
-      await client.query("COMMIT");
-      return { changed: true, providerRevoked };
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
     }
+    // The account kept changing merchant underneath us. Nothing was changed; the caller may simply try again.
+    throw new SquareConnectionUnavailableError();
   }
 
   return {
