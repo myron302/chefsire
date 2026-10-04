@@ -14,6 +14,7 @@ import {
   decryptSecret,
   encryptSecret,
   isSecretBoxConfigured,
+  sealedSecretNeedsRotation,
   SecretBoxError,
 } from "./secret-box";
 
@@ -476,13 +477,15 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       const written = await client.query(
         `UPDATE payment_methods
          SET encrypted_access_token = $2,
-             encrypted_refresh_token = COALESCE($3, encrypted_refresh_token),
+             encrypted_refresh_token = $3,
              token_expires_at = $4, last_refreshed_at = $5, updated_at = $5,
              credential_generation = credential_generation + 1
          WHERE id = $1 AND account_status = 'active' AND credential_generation = $6::bigint
          RETURNING ${ROW_COLUMNS}`,
         [row.id, encryptSecret(grant.accessToken, accessAad(row.id)),
-          grant.refreshToken && grant.refreshToken !== refreshToken ? encryptSecret(grant.refreshToken, refreshAad(row.id)) : null,
+          // ALWAYS re-sealed under the current key, even when Square returns the same refresh token (or none): the
+          // plaintext is in hand here, and leaving the old ciphertext would strand it under a retired key.
+          encryptSecret(grant.refreshToken ?? refreshToken, refreshAad(row.id)),
           grant.expiresAt, at, row.credential_generation],
       );
       const refreshed = written.rows[0] as unknown as ConnectionRow | undefined;
@@ -648,6 +651,54 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     return null;
   }
 
+  /**
+   * Key rotation: re-seals every stored credential that was sealed under a key other than the current one, so the previous
+   * key can then be removed. The credential itself does not change, so the credential generation is NOT advanced. Each row
+   * is handled under its lock; a row that cannot be opened is reported by id and left exactly as it was.
+   */
+  async function resealRotatedCredentials(options: { dryRun?: boolean } = {}) {
+    assertSecretBoxConfigured();
+    const candidates = await pool.query(
+      `SELECT id FROM payment_methods WHERE provider = 'square' AND (encrypted_access_token IS NOT NULL OR encrypted_refresh_token IS NOT NULL) ORDER BY created_at ASC, id ASC`,
+    );
+    const summary = { checked: candidates.rows.length, resealed: 0, alreadyCurrent: 0, failed: [] as { id: string; reason: string }[] };
+    for (const candidate of candidates.rows) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const found = await client.query(`SELECT ${ROW_COLUMNS} FROM payment_methods WHERE id = $1 FOR UPDATE`, [candidate.id]);
+        const row = found.rows[0] as unknown as ConnectionRow | undefined;
+        const sealed = [row?.encrypted_access_token, row?.encrypted_refresh_token];
+        if (!row || sealed.every((value) => !value || !sealedSecretNeedsRotation(value))) {
+          await client.query("COMMIT");
+          summary.alreadyCurrent += 1;
+          continue;
+        }
+        // Open both first: a row that cannot be opened is reported, in a dry run too, and never half re-sealed.
+        const access = row.encrypted_access_token ? encryptSecret(decryptSecret(row.encrypted_access_token, accessAad(row.id)), accessAad(row.id)) : null;
+        const refresh = row.encrypted_refresh_token ? encryptSecret(decryptSecret(row.encrypted_refresh_token, refreshAad(row.id)), refreshAad(row.id)) : null;
+        if (options.dryRun) {
+          await client.query("COMMIT");
+          summary.resealed += 1;
+          continue;
+        }
+        await client.query(
+          `UPDATE payment_methods SET encrypted_access_token = $2, encrypted_refresh_token = $3, updated_at = $4 WHERE id = $1`,
+          [row.id, access, refresh, now()],
+        );
+        await client.query("COMMIT");
+        summary.resealed += 1;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        if (!(error instanceof SecretBoxError)) throw error;
+        summary.failed.push({ id: String(candidate.id), reason: "cannot_decrypt" });
+      } finally {
+        client.release();
+      }
+    }
+    return summary;
+  }
+
   /* ----------------------------------------------------------------------------------------------------------- *
    * Disconnect
    * ----------------------------------------------------------------------------------------------------------- */
@@ -715,6 +766,7 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     persistVerifiedConnection,
     convertLegacyRow,
     convertAllLegacyRows,
+    resealRotatedCredentials,
     disconnect,
     /** The reusable gate Catering Phase 2Q consults: tokens are never part of the result. */
     getSquarePaymentReadiness: async (userId: string, options: { force?: boolean } = {}) => (await evaluate(userId, options)).readiness,

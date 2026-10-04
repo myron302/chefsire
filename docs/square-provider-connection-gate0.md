@@ -20,8 +20,10 @@ AES-256-GCM, random 96-bit nonce per value, 128-bit tag, format `sqenc:v1:<keyId
 open. A wrong key, tamper or malformed value raises one error type with no secret in its message, and **a decryption fault
 never demotes or deletes a connection** (it reports `configuration_error`).
 
-Rotation: set the new key as `…_KEY`, the old as `…_KEY_PREVIOUS`, deploy, re-save/reconnect or re-seal (see
-`sealedSecretNeedsRotation`), then remove the previous key.
+Rotation: set the new key as `…_KEY`, the old as `…_KEY_PREVIOUS`, deploy, run
+`npx tsx server/scripts/migrate-square-oauth-tokens.ts --reseal` (re-seals every credential under the new key, row by row under
+its lock, without changing the credential or its generation; reports unopenable rows by id), and remove the previous key only
+when it reports `failed: []`. A token refresh also always re-seals both the access and refresh token under the current key.
 
 ## Schema (`server/migrations/20261007_square_connection_hardening.sql`, `20261008_square_credential_generation.sql`)
 

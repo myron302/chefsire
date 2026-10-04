@@ -100,6 +100,7 @@ if (!URL_ENV) {
         } finally { client.release(); }
         return verification;
       },
+      sealedAccess: (row: { id: string; encrypted_access_token: string }) => decryptSecret(row.encrypted_access_token, `payment_methods:${row.id}:square_access_token`),
       async row(userId: string) { return (await pool.query(`SELECT * FROM payment_methods WHERE user_id = $1`, [userId])).rows[0]; },
       async rowCount() { return Number((await pool.query(`SELECT count(*) FROM payment_methods`)).rows[0].count); },
       async cleanup() {
@@ -445,7 +446,9 @@ if (!URL_ENV) {
       assert.equal(new Date(after.token_expires_at).toISOString(), "2099-06-01T00:00:00.000Z");
       assert.ok(new Date(after.last_refreshed_at).getTime() >= new Date(before.last_refreshed_at).getTime());
       assert.notEqual(after.encrypted_access_token, before.encrypted_access_token);
-      assert.equal(after.encrypted_refresh_token, before.encrypted_refresh_token, "an unchanged refresh token is not re-sealed");
+      // Always re-sealed under the current key (fresh nonce), whether or not Square returned a new value.
+      assert.notEqual(after.encrypted_refresh_token, before.encrypted_refresh_token);
+      assert.equal(decryptSecret(after.encrypted_refresh_token, `payment_methods:${after.id}:square_refresh_token`), "refresh-a-refresh-1");
       assert.equal(JSON.stringify(after).includes("refresh-a-access-2"), false);
       const refreshRequest = JSON.parse(h.fake.requests.filter((request) => request.path === "/oauth2/token")[1].body);
       assert.equal(refreshRequest.grant_type, "refresh_token");
@@ -558,6 +561,90 @@ if (!URL_ENV) {
         assert.deepEqual(h.logs.map((entry) => entry.fields.reason), ["refresh_merchant_mismatch"]);
       });
     }
+  });
+
+  /* ------------------------------------------------------------------------------------------------------- *
+   * Key rotation
+   * ------------------------------------------------------------------------------------------------------- */
+
+  const keyIdOf = (sealed: string) => sealed.split(":")[2];
+  async function withKeys<T>(current: string, previous: string | undefined, fn: () => Promise<T>): Promise<T> {
+    const saved = { current: process.env[SECRET_BOX_KEY_ENV], previous: process.env.SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY_PREVIOUS };
+    process.env[SECRET_BOX_KEY_ENV] = current;
+    if (previous === undefined) delete process.env.SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY_PREVIOUS; else process.env.SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY_PREVIOUS = previous;
+    try { return await fn(); } finally {
+      process.env[SECRET_BOX_KEY_ENV] = saved.current!;
+      if (saved.previous === undefined) delete process.env.SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY_PREVIOUS; else process.env.SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY_PREVIOUS = saved.previous;
+    }
+  }
+
+  test("a refresh after a key rotation re-seals BOTH tokens under the current key, so the previous key can then be removed", async () => {
+    for (const squareReturnsRefreshToken of [true, false]) {
+      const keyA = randomBytes(32).toString("base64");
+      const keyB = randomBytes(32).toString("base64");
+      await withKeys(keyA, undefined, () => withHarness({ fake: { grants: [
+        tokenGrant("rot-key-access-1", "rot-key-refresh-1", soon()),
+        // The code flow returns the SAME refresh token (or none); either way the old ciphertext must not survive.
+        { access_token: sentinel("rot-key-access-2"), ...(squareReturnsRefreshToken ? { refresh_token: "rot-key-refresh-1" } : {}), expires_at: "2099-06-01T00:00:00Z", merchant_id: "MERCHANT_1" },
+      ] } }, async (h) => {
+        await h.connect("provider-1");
+        const sealedUnderA = await h.row("provider-1");
+        assert.equal(keyIdOf(sealedUnderA.encrypted_refresh_token), keyIdOf(sealedUnderA.encrypted_access_token));
+        await withKeys(keyB, keyA, async () => {
+          assert.equal((await h.service.getSquarePaymentReadiness("provider-1")).state, "active");
+          const row = await h.row("provider-1");
+          assert.notEqual(keyIdOf(row.encrypted_access_token), keyIdOf(sealedUnderA.encrypted_access_token));
+          assert.equal(keyIdOf(row.encrypted_refresh_token), keyIdOf(row.encrypted_access_token), "the refresh token moved to the current key too");
+          assert.equal(decryptSecret(row.encrypted_refresh_token, `payment_methods:${row.id}:square_refresh_token`), "rot-key-refresh-1");
+        });
+        // The previous key is gone: the connection still opens.
+        await withKeys(keyB, undefined, async () => {
+          const credentials = await h.service.getReadyConnectedCredentials("provider-1");
+          assert.equal(credentials?.accessToken, "rot-key-access-2");
+          const row = await h.row("provider-1");
+          assert.equal(decryptSecret(row.encrypted_refresh_token, `payment_methods:${row.id}:square_refresh_token`), "rot-key-refresh-1");
+        });
+      }));
+    }
+  });
+
+  test("resealRotatedCredentials moves every credential to the current key without changing it or its generation, and is idempotent", async () => {
+    const keyA = randomBytes(32).toString("base64");
+    const keyB = randomBytes(32).toString("base64");
+    const keyC = randomBytes(32).toString("base64");
+    await withKeys(keyA, undefined, () => withHarness({ fake: { grants: [tokenGrant("reseal-access-1", "reseal-refresh-1", "2099-01-01T00:00:00Z")] } }, async (h) => {
+      await h.connect("provider-1");
+      const before = await h.row("provider-1");
+      // A second row sealed under a key that is neither current nor previous: it cannot be re-sealed.
+      await withKeys(keyC, undefined, async () => {
+        h.fake.resetGrants();
+        h.fake.state.grants = [tokenGrant("reseal-access-2", "reseal-refresh-2", "2099-01-01T00:00:00Z")];
+        await h.connect("provider-2");
+      });
+      const orphan = await h.row("provider-2");
+
+      await withKeys(keyB, keyA, async () => {
+        assert.deepEqual(await h.service.resealRotatedCredentials({ dryRun: true }), { checked: 2, resealed: 1, alreadyCurrent: 0, failed: [{ id: orphan.id, reason: "cannot_decrypt" }] });
+        assert.equal((await h.row("provider-1")).encrypted_access_token, before.encrypted_access_token, "a dry run changes nothing");
+
+        const summary = await h.service.resealRotatedCredentials();
+        assert.deepEqual(summary, { checked: 2, resealed: 1, alreadyCurrent: 0, failed: [{ id: orphan.id, reason: "cannot_decrypt" }] });
+        assert.equal(JSON.stringify(summary).includes("reseal-"), false, "the report names no token");
+        const after = await h.row("provider-1");
+        assert.notEqual(keyIdOf(after.encrypted_access_token), keyIdOf(before.encrypted_access_token));
+        assert.equal(keyIdOf(after.encrypted_refresh_token), keyIdOf(after.encrypted_access_token));
+        assert.equal(h.sealedAccess(after), "reseal-access-1");
+        assert.equal(after.credential_generation, before.credential_generation, "the credential did not change, so neither does its generation");
+        // The unopenable row is exactly as it was.
+        assert.equal((await h.row("provider-2")).encrypted_access_token, orphan.encrypted_access_token);
+        // Idempotent.
+        assert.deepEqual(await h.service.resealRotatedCredentials(), { checked: 2, resealed: 0, alreadyCurrent: 1, failed: [{ id: orphan.id, reason: "cannot_decrypt" }] });
+      });
+      // With the previous key removed, the re-sealed connection still works.
+      await withKeys(keyB, undefined, async () => {
+        assert.equal((await h.service.getReadyConnectedCredentials("provider-1"))?.accessToken, "reseal-access-1");
+      });
+    }));
   });
 
   /* ------------------------------------------------------------------------------------------------------- *
