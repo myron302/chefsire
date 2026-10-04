@@ -885,8 +885,11 @@ export const CATERING_FINANCIAL_STATUS_COPY: Record<CateringFinancialStatus, { l
   },
   settled: {
     label: "Settled",
-    provider: "Your customer has paid the agreed total in full, by your own records.",
-    customer: "Your caterer has recorded payment of the agreed total in full.",
+    // Settled against the CURRENT obligation (agreed price moved by the provider's own charges and credits), never against
+    // the original agreed total: a credited booking is settled without that total having been paid, and nothing here may
+    // say it was. Credits and refunds are not payments, so neither is named as one.
+    provider: "The amount currently owed on this booking has been fully settled, by your own records.",
+    customer: "Your caterer has recorded the amount currently owed on this booking as fully settled.",
   },
 };
 

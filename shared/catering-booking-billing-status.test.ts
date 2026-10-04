@@ -379,7 +379,7 @@ test("neither party is told they paid, credited or settled anything", () => {
   }
   // And specifically not the sentence the old behaviour produced.
   assert.notEqual(copy.customer, CATERING_FINANCIAL_STATUS_COPY.settled.customer);
-  assert.match(CATERING_FINANCIAL_STATUS_COPY.settled.customer, /in full/, "which really does claim payment");
+  assert.match(CATERING_FINANCIAL_STATUS_COPY.settled.customer, /fully settled/, "settled is stated against what is currently owed");
 });
 
 test("nothing is issuable and nothing is payable on a zero-dollar booking", () => {
@@ -436,4 +436,43 @@ test("the zero case is decided before the arithmetic that used to swallow it", (
   const zero = derivation.indexOf('if (derived.obligationCents === 0 && derived.netReceivedCents === 0) return "no_payment_required";');
   const generic = derivation.indexOf("if (derived.netReceivedCents >= derived.obligationCents) return \"settled\";");
   assert.ok(zero !== -1 && generic !== -1 && zero < generic);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Phase 2P: "settled" means the CURRENT adjusted obligation is satisfied, and the copy never says the original total was paid
+ * ------------------------------------------------------------------------------------------------------------- */
+
+const entry = (kind: "charge" | "credit" | "refund", amountCents: number, status: "posted" | "reversed" = "posted", id = `${kind}-${amountCents}`) =>
+  ({ id, kind, amountCents, currency: "USD", status, source: "provider_recorded", paymentId: kind === "refund" ? "pay-1" : null }) as const;
+const settledFacts = (agreed: number, paid: number, adjustments: ReturnType<typeof entry>[]) => facts({
+  agreedTotalCents: agreed,
+  invoices: [invoice({ id: "inv-1", kind: "balance", amountCents: Math.max(1, paid) })],
+  payments: [payment({ id: "pay-1", invoiceId: "inv-1", amountCents: paid })],
+  adjustments,
+});
+
+test("settled copy describes the current amount owed and never claims the agreed total, a payment of it, or a payment by credit", () => {
+  for (const role of ["provider", "customer"] as const) {
+    const text = CATERING_FINANCIAL_STATUS_COPY.settled[role];
+    assert.match(text, /currently owed/);
+    for (const forbidden of [/agreed total/i, /in full/i, /paid/i, /credit/i, /refund/i]) assert.doesNotMatch(text, forbidden, `${role}: ${forbidden}`);
+  }
+});
+
+test("settlement is against the adjusted obligation: credit-, charge- and plainly-settled bookings are all settled, one meaning", () => {
+  assert.equal(deriveCateringBillingSummary(settledFacts(100_000, 50_000, [entry("credit", 50_000)])).status, "settled", "$1,000, -$500, $500 paid");
+  assert.equal(deriveCateringBillingSummary(settledFacts(100_000, 100_000, [])).status, "settled", "$1,000 paid, no adjustments");
+  assert.equal(deriveCateringBillingSummary(settledFacts(100_000, 120_000, [entry("charge", 20_000)])).status, "settled", "$1,000 + $200 charge, $1,200 paid");
+  assert.equal(deriveCateringBillingSummary(settledFacts(100_000, 80_000, [entry("credit", 20_000)])).status, "settled", "$1,000, -$200, $800 paid");
+  const credited = deriveCateringBillingSummary(settledFacts(100_000, 50_000, [entry("credit", 50_000)]));
+  assert.deepEqual([credited.agreedTotalCents, credited.obligationCents, credited.paidTotalCents, credited.balanceDueCents], [100_000, 50_000, 50_000, 0], "the figures keep their own names");
+});
+
+test("a refund re-opens the balance until it is covered again; reversing the refund or a credit moves settlement with the obligation", () => {
+  assert.notEqual(deriveCateringBillingSummary(settledFacts(100_000, 100_000, [entry("refund", 30_000)])).status, "settled", "$300 came back out: $300 is owed again");
+  assert.equal(deriveCateringBillingSummary(settledFacts(100_000, 100_000, [entry("refund", 30_000, "reversed")])).status, "settled", "a reversed refund owes nothing again");
+  const repaid = { ...settledFacts(100_000, 100_000, [entry("refund", 30_000)]), payments: [payment({ id: "pay-1", invoiceId: "inv-1", amountCents: 100_000 }), payment({ id: "pay-2", invoiceId: "inv-1", amountCents: 30_000 })] };
+  assert.equal(deriveCateringBillingSummary(repaid).status, "settled", "re-paid, so settled again");
+  assert.equal(deriveCateringBillingSummary(settledFacts(100_000, 50_000, [entry("credit", 50_000, "posted")])).status, "settled");
+  assert.notEqual(deriveCateringBillingSummary(settledFacts(100_000, 50_000, [entry("credit", 50_000, "reversed")])).status, "settled", "a reversed credit restores what is owed: no settled copy while it remains due");
 });

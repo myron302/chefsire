@@ -1821,6 +1821,20 @@ if (!PG_URL) {
     assert.ok(settled.summary.balanceDueCents >= 0 && (await ledgerPayments(open.bookingId)) === (payment.status === 200 ? 1 : 0));
   });
 
+  test("settled: a credited booking reads as settled for BOTH parties against the adjusted obligation, and a reversed credit takes it back", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 50000 });
+    const balance = await issue(bookingId, "balance");
+    assert.equal(balance.body.invoices[0].amountCents, 50000);
+    assert.equal((await pay(bookingId, balance.body.invoices[0].id, "500.00")).status, 200);
+    for (const who of [PROVIDER, CUSTOMER_A]) {
+      const summary = (await billing(bookingId, who)).body.summary;
+      assert.deepEqual([summary.status, summary.agreedTotalCents, summary.obligationCents, summary.paidTotalCents, summary.balanceDueCents], ["settled", 100000, 50000, 50000, 0], who);
+    }
+    assert.equal((await reverse(bookingId, credit.body.adjustments[0].id)).status, 200);
+    for (const who of [PROVIDER, CUSTOMER_A]) assert.notEqual((await billing(bookingId, who)).body.summary.status, "settled", "$500 is owed again");
+  });
+
   test("coverage: concurrent requests, a charge racing a request, and a reversal racing a request all end with every cent covered exactly once", async () => {
     const make = async () => {
       const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
