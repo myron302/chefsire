@@ -97,10 +97,12 @@ export type ConnectionRow = {
   merchant_name: string | null;
   granted_scopes: string[] | null;
   last_verified_at: Date | null;
+  /** bigint, delivered by the driver as a string. Identifies the credential snapshot; see 20261008_square_credential_generation.sql. */
+  credential_generation: string;
 };
 
 const ROW_COLUMNS = `id, user_id, provider_id, account_status, account_details, encrypted_access_token, encrypted_refresh_token,
-  token_expires_at, last_refreshed_at, location_id, location_name, location_currency, merchant_name, granted_scopes, last_verified_at`;
+  token_expires_at, last_refreshed_at, location_id, location_name, location_currency, merchant_name, granted_scopes, last_verified_at, credential_generation`;
 
 const LEGACY_SECRET_KEYS = ["accessToken", "refreshToken", "tokenExpiresAt"] as const;
 
@@ -109,6 +111,15 @@ const refreshAad = (id: string) => `payment_methods:${id}:square_refresh_token`;
 
 /** Square answered, the credential is bad, and the connection has been taken out of service. */
 export type ConnectionOutcome = { kind: "ok"; accessToken: string; row: ConnectionRow } | { kind: "needs_reauthorization"; row: ConnectionRow | null };
+
+/** What a verification attempt concluded about the EXACT snapshot it started from. `stale` means that snapshot is gone. */
+type VerificationOutcome =
+  | { kind: "verified"; row: ConnectionRow }
+  | { kind: "needs_reauthorization"; row: ConnectionRow }
+  | { kind: "stale" };
+
+/** A snapshot changing under an attempt is retried from a fresh read this many times, then reported as unverifiable. */
+const MAX_SNAPSHOT_RETRIES = 3;
 
 export class SquareConnectionUnavailableError extends Error {
   constructor() {
@@ -191,18 +202,31 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     return (result.rows[0] as unknown as ConnectionRow | undefined) ?? null;
   }
 
-  /** Takes a connection out of service. Keeps merchant/location identity; removes every secret. Only from `active`. */
-  async function markNeedsReauthorization(db: SqlClient, rowId: string, reason: string): Promise<void> {
+  /**
+   * Takes a connection out of service. Keeps merchant/location identity; removes every secret; advances the credential
+   * generation. It applies ONLY to the exact snapshot the caller judged (id + generation + still active): a stale attempt
+   * matches nothing, changes nothing and returns false, so it can never clear credentials that replaced the ones it saw.
+   */
+  async function markNeedsReauthorization(db: SqlClient, snapshot: Pick<ConnectionRow, "id" | "credential_generation">, reason: string): Promise<boolean> {
     const result = await db.query(
       `UPDATE payment_methods
        SET account_status = 'needs_reauthorization',
            encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL,
            account_details = COALESCE(account_details, '{}'::jsonb) - 'accessToken' - 'refreshToken' - 'tokenExpiresAt',
-           status_changed_at = $2, updated_at = $2
-       WHERE id = $1 AND account_status = 'active'`,
-      [rowId, now()],
+           credential_generation = credential_generation + 1,
+           status_changed_at = $3, updated_at = $3
+       WHERE id = $1 AND account_status = 'active' AND credential_generation = $2::bigint`,
+      [snapshot.id, snapshot.credential_generation, now()],
     );
-    if (result.rowCount) log.warn("square_connection_needs_reauthorization", { paymentMethodId: rowId, reason });
+    const changed = Boolean(result.rowCount);
+    if (changed) log.warn("square_connection_needs_reauthorization", { paymentMethodId: snapshot.id, reason });
+    else log.warn("square_connection_snapshot_changed", { paymentMethodId: snapshot.id, attempted: "needs_reauthorization" });
+    return changed;
+  }
+
+  /** The row as it stands once `markNeedsReauthorization` has applied to it: no credentials, not active. */
+  function outOfService(row: ConnectionRow): ConnectionRow {
+    return { ...row, account_status: "needs_reauthorization", encrypted_access_token: null, encrypted_refresh_token: null, token_expires_at: null };
   }
 
   /* ----------------------------------------------------------------------------------------------------------- *
@@ -243,7 +267,7 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       `UPDATE payment_methods
        SET encrypted_access_token = $2, encrypted_refresh_token = $3, token_expires_at = $4,
            account_details = account_details - 'accessToken' - 'refreshToken' - 'tokenExpiresAt',
-           updated_at = now()
+           credential_generation = credential_generation + 1, updated_at = now()
        WHERE id = $1`,
       [rowId, encryptSecret(accessToken, accessAad(rowId)), encryptSecret(refreshToken, refreshAad(rowId)), expiresAt],
     );
@@ -338,7 +362,8 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
          SET provider_id = $2, account_status = 'active', account_details = $3::jsonb,
              encrypted_access_token = $4, encrypted_refresh_token = $5, token_expires_at = $6, last_refreshed_at = $7,
              location_id = $8, location_name = $9, location_currency = $10, merchant_name = $11, granted_scopes = $12,
-             status_changed_at = $7, disconnected_at = NULL, verified_at = $7, last_verified_at = $7, updated_at = $7
+             status_changed_at = $7, disconnected_at = NULL, verified_at = $7, last_verified_at = $7, updated_at = $7,
+             credential_generation = credential_generation + 1
          WHERE id = $1`,
         [id, verified.merchantId, details, sealedAccess, sealedRefresh, verified.tokenExpiresAt, at,
           location?.id ?? null, location?.name ?? null, location?.currency ?? null, verified.merchantName, verified.scopes],
@@ -416,9 +441,9 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
         grant = await api.refreshAccessToken(refreshToken);
       } catch (error) {
         if (classifySquareFailure(error, { tokenGrant: true }) === "auth") {
-          await markNeedsReauthorization(client, row.id, "refresh_rejected");
+          await markNeedsReauthorization(client, row, "refresh_rejected");
           await client.query("COMMIT");
-          return { kind: "needs_reauthorization", row };
+          return { kind: "needs_reauthorization", row: outOfService(row) };
         }
         await client.query("ROLLBACK");
         log.warn("square_token_refresh_unavailable", { paymentMethodId: row.id, status: squareFailureStatus(error) });
@@ -431,35 +456,43 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
           grantMerchantId = (await api.retrieveMerchant(grant.accessToken)).id;
         } catch (error) {
           if (classifySquareFailure(error) === "auth") {
-            await markNeedsReauthorization(client, row.id, "refresh_identity_rejected");
+            await markNeedsReauthorization(client, row, "refresh_identity_rejected");
             await client.query("COMMIT");
-            return { kind: "needs_reauthorization", row };
+            return { kind: "needs_reauthorization", row: outOfService(row) };
           }
           await client.query("ROLLBACK");
           throw new SquareConnectionUnavailableError();
         }
       }
       if (grantMerchantId !== row.provider_id) {
-        await markNeedsReauthorization(client, row.id, "refresh_merchant_mismatch");
+        await markNeedsReauthorization(client, row, "refresh_merchant_mismatch");
         await client.query("COMMIT");
-        return { kind: "needs_reauthorization", row };
+        return { kind: "needs_reauthorization", row: outOfService(row) };
       }
       const at = now();
-      await client.query(
+      // The refresh transaction owns this row (FOR UPDATE, re-read above). The generation predicate is belt and braces:
+      // the write applies only to the exact credentials this refresh was derived from, and advances the generation so a
+      // verification that began on the old credentials can no longer write.
+      const written = await client.query(
         `UPDATE payment_methods
          SET encrypted_access_token = $2,
              encrypted_refresh_token = COALESCE($3, encrypted_refresh_token),
-             token_expires_at = $4, last_refreshed_at = $5, updated_at = $5
-         WHERE id = $1 AND account_status = 'active'`,
+             token_expires_at = $4, last_refreshed_at = $5, updated_at = $5,
+             credential_generation = credential_generation + 1
+         WHERE id = $1 AND account_status = 'active' AND credential_generation = $6::bigint
+         RETURNING ${ROW_COLUMNS}`,
         [row.id, encryptSecret(grant.accessToken, accessAad(row.id)),
           grant.refreshToken && grant.refreshToken !== refreshToken ? encryptSecret(grant.refreshToken, refreshAad(row.id)) : null,
-          grant.expiresAt, at],
+          grant.expiresAt, at, row.credential_generation],
       );
+      const refreshed = written.rows[0] as unknown as ConnectionRow | undefined;
+      if (!refreshed) {
+        await client.query("ROLLBACK");
+        throw new SquareConnectionUnavailableError();
+      }
       await client.query("COMMIT");
-      const refreshed = await loadRow(pool, userId, false);
-      return refreshed?.account_status === "active" && refreshed.encrypted_access_token
-        ? { kind: "ok", accessToken: openAccessToken(refreshed), row: refreshed }
-        : { kind: "needs_reauthorization", row: refreshed };
+      // The token handed back is the one just written with the row it was written to: one snapshot, one generation.
+      return { kind: "ok", accessToken: grant.accessToken, row: refreshed };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
       throw error;
@@ -474,8 +507,21 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       || now().getTime() - row.last_verified_at.getTime() >= SQUARE_VERIFICATION_TTL_MS;
   }
 
-  /** Asks Square for the facts a payment depends on and stores them, never overwriting a concurrent state change. */
-  async function verifyConnection(row: ConnectionRow, accessToken: string): Promise<ConnectionRow | null> {
+  /**
+   * Asks Square for the facts a payment depends on, using `accessToken` -- which the caller decrypted from `snapshot` --
+   * and records them ONLY if the row is still that exact snapshot.
+   *
+   * Success writes and every failure/needs-reauthorization write carry the snapshot's id, provider (merchant), status and
+   * credential generation in their WHERE clause. If any of them has moved on (an OAuth reconnect, a refresh, a
+   * disconnect, a revocation) the statement matches zero rows, nothing is overwritten or cleared, and the caller is told
+   * `stale` so it re-reads the authoritative state instead of trusting what it learned about credentials that are gone.
+   */
+  async function verifyConnection(snapshot: ConnectionRow, accessToken: string): Promise<VerificationOutcome> {
+    const needsReauthorization = async (reason: string): Promise<VerificationOutcome> =>
+      (await markNeedsReauthorization(pool, snapshot, reason))
+        ? { kind: "needs_reauthorization", row: outOfService(snapshot) }
+        : { kind: "stale" };
+
     let merchant: SquareMerchantProfile;
     let scopes: string[];
     let locations: SquareLocationFacts[];
@@ -484,67 +530,122 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       scopes = (await api.retrieveTokenStatus(accessToken)).scopes;
       locations = await api.listLocations(accessToken);
     } catch (error) {
-      if (classifySquareFailure(error) === "auth") {
-        await markNeedsReauthorization(pool, row.id, "verification_rejected");
-        return null;
-      }
-      log.warn("square_connection_verification_unavailable", { paymentMethodId: row.id, status: squareFailureStatus(error) });
+      if (classifySquareFailure(error) === "auth") return needsReauthorization("verification_rejected");
+      log.warn("square_connection_verification_unavailable", { paymentMethodId: snapshot.id, status: squareFailureStatus(error) });
       throw new SquareConnectionUnavailableError();
     }
-    if (merchant.id !== row.provider_id) {
-      await markNeedsReauthorization(pool, row.id, "verification_merchant_mismatch");
-      return null;
-    }
-    if (!hasRequiredSquareScopes(scopes)) {
-      await markNeedsReauthorization(pool, row.id, "insufficient_scopes");
-      return null;
-    }
-    const location = selectPaymentLocation(locations, merchant.id, { currentLocationId: row.location_id, mainLocationId: merchant.mainLocationId });
+    if (merchant.id !== snapshot.provider_id) return needsReauthorization("verification_merchant_mismatch");
+    if (!hasRequiredSquareScopes(scopes)) return needsReauthorization("insufficient_scopes");
+
+    const location = selectPaymentLocation(locations, merchant.id, { currentLocationId: snapshot.location_id, mainLocationId: merchant.mainLocationId });
     const at = now();
-    await pool.query(
+    const written = await pool.query(
       `UPDATE payment_methods
-       SET granted_scopes = $2, merchant_name = $3, location_id = $4, location_name = $5, location_currency = $6,
-           last_verified_at = $7, verified_at = COALESCE(verified_at, $7), updated_at = $7
-       WHERE id = $1 AND account_status = 'active' AND encrypted_access_token IS NOT NULL`,
-      [row.id, scopes, merchant.businessName, location?.id ?? null, location?.name ?? null, location?.currency ?? null, at],
+       SET granted_scopes = $4, merchant_name = $5, location_id = $6, location_name = $7, location_currency = $8,
+           last_verified_at = $9, verified_at = COALESCE(verified_at, $9), updated_at = $9
+       WHERE id = $1 AND provider_id = $2 AND credential_generation = $3::bigint
+         AND account_status = 'active' AND encrypted_access_token IS NOT NULL
+       RETURNING ${ROW_COLUMNS}`,
+      [snapshot.id, snapshot.provider_id, snapshot.credential_generation, scopes, merchant.businessName,
+        location?.id ?? null, location?.name ?? null, location?.currency ?? null, at],
     );
-    return loadRow(pool, row.user_id, false);
+    const row = written.rows[0] as unknown as ConnectionRow | undefined;
+    if (!row) {
+      log.warn("square_connection_snapshot_changed", { paymentMethodId: snapshot.id, attempted: "verification" });
+      return { kind: "stale" };
+    }
+    return { kind: "verified", row };
   }
 
   /* ----------------------------------------------------------------------------------------------------------- *
    * Readiness
    * ----------------------------------------------------------------------------------------------------------- */
 
-  async function evaluate(userId: string, options: { force?: boolean } = {}): Promise<{ readiness: SquarePaymentReadiness; accessToken?: string }> {
-    if (!isSecretBoxConfigured() || !squareOauthApplication()) return { readiness: emptyReadiness("configuration_error") };
+  /**
+   * The readiness a row ITSELF supports. Status is checked first and always: retained location or merchant fields on a
+   * disconnected or revoked row are history, never evidence of a working connection.
+   */
+  function readinessOf(row: ConnectionRow): SquarePaymentReadiness {
+    if (row.account_status === "needs_reauthorization") return emptyReadiness("needs_reauthorization", row);
+    if (row.account_status !== "active" || !row.encrypted_access_token || !row.encrypted_refresh_token) {
+      return emptyReadiness(row.account_status === "disconnected" ? "not_connected" : "needs_reauthorization", row.account_status === "disconnected" ? null : row);
+    }
+    const hasLocation = Boolean(row.location_id) && Boolean(row.location_currency);
+    return { ...emptyReadiness(hasLocation ? "active" : "no_payment_location", row), paymentReady: hasLocation };
+  }
+
+  /**
+   * Evaluates a connection from authoritative persisted state. It never returns a credential: callers that need one go
+   * through `getReadyConnectedCredentials`, which re-reads and re-opens the CURRENT credential after this returns.
+   * `generation` names the snapshot the answer was derived from.
+   *
+   * When a verification discovers its snapshot was replaced (zero rows written), this starts again from a fresh read --
+   * it does not reuse anything learned about the old snapshot -- and gives up after MAX_SNAPSHOT_RETRIES as unverifiable.
+   */
+  async function evaluate(userId: string, options: { force?: boolean } = {}, attempt = 0): Promise<{ readiness: SquarePaymentReadiness; generation: string | null }> {
+    const result = (readiness: SquarePaymentReadiness, row?: ConnectionRow | null) => ({ readiness, generation: row ? String(row.credential_generation) : null });
+    if (!isSecretBoxConfigured() || !squareOauthApplication()) return result(emptyReadiness("configuration_error"));
+    if (attempt >= MAX_SNAPSHOT_RETRIES) return result(emptyReadiness("verification_unavailable"));
     try {
       let row = await loadRow(pool, userId, false);
-      if (!row || row.account_status === "disconnected") return { readiness: emptyReadiness("not_connected", null) };
+      if (!row || row.account_status === "disconnected") return result(emptyReadiness("not_connected", null));
       if (row.encrypted_access_token === null && hasLegacySecrets(row.account_details)) {
         const converted = await convertLegacyRowInTransaction(row.id);
-        if (converted.kind === "malformed") return { readiness: emptyReadiness("needs_reauthorization", row) };
+        if (converted.kind === "malformed") return result(emptyReadiness("needs_reauthorization", row));
         row = await loadRow(pool, userId, false);
-        if (!row) return { readiness: emptyReadiness("not_connected", null) };
+        if (!row) return result(emptyReadiness("not_connected", null));
       }
-      if (row.account_status === "needs_reauthorization") return { readiness: emptyReadiness("needs_reauthorization", row) };
-      if (row.account_status !== "active") return { readiness: emptyReadiness("not_connected", null) };
+      if (row.account_status === "needs_reauthorization") return result(emptyReadiness("needs_reauthorization", row), row);
+      if (row.account_status !== "active") return result(emptyReadiness("not_connected", null));
 
       const credentials = await ensureFreshCredentials(userId);
-      if (credentials.kind !== "ok") return { readiness: emptyReadiness("needs_reauthorization", credentials.row ?? row) };
+      if (credentials.kind !== "ok") {
+        const current = credentials.row ?? row;
+        return result(readinessOf(current), current);
+      }
       let current = credentials.row;
       if (options.force || verificationDue(current)) {
-        const verified = await verifyConnection(current, credentials.accessToken);
-        if (!verified) return { readiness: emptyReadiness("needs_reauthorization", current) };
-        current = verified;
+        const outcome = await verifyConnection(current, credentials.accessToken);
+        if (outcome.kind === "stale") return evaluate(userId, { ...options, force: false }, attempt + 1);
+        if (outcome.kind === "needs_reauthorization") return result(emptyReadiness("needs_reauthorization", outcome.row), outcome.row);
+        current = outcome.row;
       }
-      const hasLocation = Boolean(current.location_id) && Boolean(current.location_currency);
-      const readiness: SquarePaymentReadiness = { ...emptyReadiness(hasLocation ? "active" : "no_payment_location", current), paymentReady: hasLocation };
-      return hasLocation ? { readiness, accessToken: credentials.accessToken } : { readiness };
+      return result(readinessOf(current), current);
     } catch (error) {
-      if (error instanceof SquareConnectionUnavailableError) return { readiness: emptyReadiness("verification_unavailable") };
-      if (error instanceof SquareCredentialError || error instanceof SecretBoxError) return { readiness: emptyReadiness("configuration_error") };
+      if (error instanceof SquareConnectionUnavailableError) return result(emptyReadiness("verification_unavailable"));
+      if (error instanceof SquareCredentialError || error instanceof SecretBoxError) return result(emptyReadiness("configuration_error"));
       throw error;
     }
+  }
+
+  /**
+   * A decrypted credential for server-side payment code -- only if, at THIS moment, the persisted row is active, is
+   * still the credential generation that was just evaluated as payment ready, holds a sealed access token that opens,
+   * and has a verified card-capable location. The token returned is decrypted HERE from that freshly read row; no token
+   * decrypted earlier in the evaluation is ever carried across a database re-read.
+   */
+  async function readyCredentials(userId: string) {
+    for (let attempt = 0; attempt < MAX_SNAPSHOT_RETRIES; attempt += 1) {
+      const { readiness, generation } = await evaluate(userId);
+      if (!readiness.paymentReady || generation === null) return null;
+      const current = await loadRow(pool, userId, false);
+      if (!current || current.account_status !== "active" || !current.encrypted_access_token || !current.encrypted_refresh_token) return null;
+      if (String(current.credential_generation) !== generation) continue; // replaced since it was evaluated: start over
+      if (!current.location_id || !current.location_currency || current.provider_id !== readiness.merchantId) return null;
+      try {
+        return {
+          accessToken: openAccessToken(current),
+          merchantId: current.provider_id,
+          locationId: current.location_id,
+          currency: current.location_currency,
+          credentialGeneration: String(current.credential_generation),
+        };
+      } catch (error) {
+        if (error instanceof SquareCredentialError) return null;
+        throw error;
+      }
+    }
+    return null;
   }
 
   /* ----------------------------------------------------------------------------------------------------------- *
@@ -594,7 +695,8 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
          SET account_status = 'disconnected',
              encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL,
              account_details = COALESCE(account_details, '{}'::jsonb) - 'accessToken' - 'refreshToken' - 'tokenExpiresAt',
-             is_default = false, status_changed_at = $2, disconnected_at = $2, updated_at = $2
+             is_default = false, credential_generation = credential_generation + 1,
+             status_changed_at = $2, disconnected_at = $2, updated_at = $2
          WHERE id = $1`,
         [row.id, at],
       );
@@ -617,19 +719,19 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     /** The reusable gate Catering Phase 2Q consults: tokens are never part of the result. */
     getSquarePaymentReadiness: async (userId: string, options: { force?: boolean } = {}) => (await evaluate(userId, options)).readiness,
     /**
-     * For SERVER-SIDE payment code only. Returns a decrypted access token solely when the connection is verified and
-     * payment ready; otherwise `null`. The token must never be logged, serialized or sent to a browser.
+     * For SERVER-SIDE payment code only. Returns a decrypted access token solely when the connection is, right now,
+     * verified, active and payment ready; otherwise `null` (disconnected, needing reauthorization, misconfigured,
+     * unverifiable and "no payment location" all yield null). The token must never be logged, serialized or sent to a
+     * browser. `credentialGeneration` identifies the snapshot it came from, for `reportAuthorizationFailure`.
      */
-    getReadyConnectedCredentials: async (userId: string) => {
-      const { readiness, accessToken } = await evaluate(userId);
-      return readiness.paymentReady && accessToken && readiness.merchantId && readiness.locationId
-        ? { accessToken, merchantId: readiness.merchantId, locationId: readiness.locationId, currency: readiness.locationCurrency }
-        : null;
-    },
-    /** For future payment code that receives an authoritative 401 from Square while using a connection. */
-    reportAuthorizationFailure: async (userId: string) => {
+    getReadyConnectedCredentials: readyCredentials,
+    /**
+     * For payment code that receives an authoritative 401 from Square while using a credential. It must name the
+     * generation of the credential that was rejected: a report about credentials that have since been replaced changes nothing.
+     */
+    reportAuthorizationFailure: async (userId: string, credentialGeneration: string) => {
       const row = await loadRow(pool, userId, false);
-      if (row) await markNeedsReauthorization(pool, row.id, "payment_call_rejected");
+      if (row) await markNeedsReauthorization(pool, { id: row.id, credential_generation: credentialGeneration }, "payment_call_rejected");
     },
     status: async (userId: string, options: { force?: boolean } = {}) => toSquareConnectionStatusView((await evaluate(userId, options)).readiness),
   };

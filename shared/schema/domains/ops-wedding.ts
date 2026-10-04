@@ -1,5 +1,5 @@
 import { sql, type SQLWrapper } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, jsonb, decimal, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, bigint, boolean, timestamp, date, bigserial, jsonb, decimal, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { orders, products } from "./commerce-billing";
 import type { StoreLayoutConfigV2 } from "../../store/storeLayout";
@@ -84,6 +84,8 @@ export const paymentMethods = pgTable(
     grantedScopes: text("granted_scopes").array(),
     statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
     disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
+    // Advanced with every change to the row's credentials (20261008_square_credential_generation.sql); not a secret.
+    credentialGeneration: bigint("credential_generation", { mode: "number" }).notNull().default(1),
     isDefault: boolean("is_default").default(false),
     verifiedAt: timestamp("verified_at"),
     lastVerifiedAt: timestamp("last_verified_at"),

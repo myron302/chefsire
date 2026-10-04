@@ -23,7 +23,7 @@ never demotes or deletes a connection** (it reports `configuration_error`).
 Rotation: set the new key as `…_KEY`, the old as `…_KEY_PREVIOUS`, deploy, re-save/reconnect or re-seal (see
 `sealedSecretNeedsRotation`), then remove the previous key.
 
-## Schema (`server/migrations/20261007_square_connection_hardening.sql`)
+## Schema (`server/migrations/20261007_square_connection_hardening.sql`, `20261008_square_credential_generation.sql`)
 
 Additive on `payment_methods`: `encrypted_access_token`, `encrypted_refresh_token`, `token_expires_at`, `last_refreshed_at`,
 `location_id`, `location_name`, `location_currency`, `merchant_name`, `granted_scopes`, `status_changed_at`,
@@ -36,6 +36,23 @@ migration). No row is deleted; historical merchant/location identity is kept.
 Rollback: all columns are nullable and constraints are guarded, so the previous application version keeps running. To remove
 the change, drop the constraints, then the columns. After rows are converted, rolling back loses the (encrypted) tokens and
 providers must reconnect.
+
+## Credential generation (snapshot identity)
+
+`payment_methods.credential_generation` (bigint, NOT NULL, default 1; `20261008_square_credential_generation.sql`) names the
+credential snapshot a row currently represents. It is advanced in the SAME statement as the change by every path that
+installs, replaces, rotates or removes credentials: OAuth (re)connect, token refresh, legacy conversion, transition to
+`needs_reauthorization`, and disconnect. Facts-only verification writes (merchant name, scopes, location, verification time)
+do not advance it. It is a counter incremented under the row lock, so two changes never share a value.
+
+A verification starts from one read (id, status, merchant, generation) and decrypts the token from that same read. Its
+success write and every failure / needs-reauthorization write include `id`, `provider_id`, `credential_generation` and
+`status = 'active'` in the `WHERE`. If zero rows match, nothing is overwritten or cleared; the evaluation restarts from a fresh
+read (at most 3 times, then `verification_unavailable`). `getReadyConnectedCredentials` never carries a token across a re-read:
+after evaluating readiness it re-reads the row, requires it to be active, the same generation, sealed and located, and
+decrypts the CURRENT credential at that point. Status is always checked before location, so a disconnected or revoked row
+that retains merchant/location history can never read as active. `reportAuthorizationFailure` must name the generation of the
+credential that was rejected; a report about replaced credentials is ignored.
 
 ## Legacy plaintext tokens
 

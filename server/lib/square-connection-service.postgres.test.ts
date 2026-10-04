@@ -49,6 +49,7 @@ if (!URL_ENV) {
 } else {
   const config = parseLocalTestDatabaseUrl(URL_ENV);
   const migrationSql = fs.readFileSync(path.join(root, "server/migrations/20261007_square_connection_hardening.sql"), "utf8");
+  const generationMigrationSql = fs.readFileSync(path.join(root, "server/migrations/20261008_square_credential_generation.sql"), "utf8");
   const baseDdl = fs.readFileSync(path.join(root, "server/drizzle/20251108_marketplace_monetization.sql"), "utf8")
     .match(/CREATE TABLE IF NOT EXISTS payment_methods \([\s\S]*?\n\);/)![0];
 
@@ -77,7 +78,10 @@ if (!URL_ENV) {
       setClock: (value: Date) => { clock = value; },
       async hardening() {
         const client = await pool.connect();
-        try { await applyMigration(client as never, `server:20261007_square_connection_hardening.sql`, migrationSql); } finally { client.release(); }
+        try {
+          await applyMigration(client as never, `server:20261007_square_connection_hardening.sql`, migrationSql);
+          await applyMigration(client as never, `server:20261008_square_credential_generation.sql`, generationMigrationSql);
+        } finally { client.release(); }
       },
       async user(id: string) { await pool.query(`INSERT INTO users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]); return id; },
       /** The full callback path: verify with Square, then persist inside a transaction. */
