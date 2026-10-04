@@ -688,16 +688,18 @@ export function cateringRemainingOnInvoice(invoice: CateringInvoiceFact, payment
 }
 
 /**
- * The most a payment against this invoice may be RIGHT NOW: what the invoice has left, and never more than the customer
- * still owes for the booking after credits and recorded refunds (Phase 2P). One derivation, used by the server's own check
- * and serialized to the provider so the payment form states the same limit instead of re-inventing the accounting.
- * Zero when nothing may be recorded: a cancelled booking, a request that is not live, or a booking owing nothing.
+ * The most a payment against this invoice may be RIGHT NOW: its CURRENT EFFECTIVE PAYABLE amount (Phase 2P).
+ *
+ * That is the one oldest-first allocation of the booking's balance due across its live requests, `cateringEffectivePayables`
+ * -- not each request's remainder capped by the booking-wide balance on its own, which would hand the same cents to every
+ * sibling request at once (a $500 deposit and a $500 balance, then a $500 credit, left BOTH payable). One derivation, used by
+ * the server's own check and serialized to the provider so the payment form states the same limit instead of re-inventing the
+ * accounting. Zero when nothing may be recorded: a cancelled booking, a request that is not live, one the balance no longer
+ * reaches, or a booking owing nothing.
  */
 export function cateringPayableCents(invoice: CateringInvoiceFact, facts: CateringBillingFacts): number {
   if (!cateringBillingIsActionable(facts.bookingStatus) || !cateringInvoiceCounts(invoice)) return 0;
-  const remaining = cateringRemainingOnInvoice(invoice, facts.payments);
-  const balanceDue = deriveCateringBillingSummary(facts).balanceDueCents;
-  return balanceDue === null ? remaining : Math.min(remaining, balanceDue);
+  return cateringEffectivePayableCents(invoice, facts);
 }
 
 /** Whether a payment may be recorded against this invoice at all. */

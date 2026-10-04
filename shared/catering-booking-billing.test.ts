@@ -18,6 +18,7 @@ import {
   cateringInvoiceIsOverdue,
   cateringInvoiceState,
   cateringIssuableInvoiceKinds,
+  cateringPayableCents,
   cateringMoneyToCents,
   cateringPaidTowards,
   cateringPercentToBasisPoints,
@@ -446,4 +447,14 @@ test("with no ledger history at all the request gap stays zero, and a reversed c
   assert.equal(cateringAdjustmentRequestCents(facts({ agreedTotalCents: 100_000, invoices: [balanceOf(80_000)] })), 0);
   const charge = { id: "c", kind: "charge", amountCents: 10_000, currency: "USD", status: "reversed", source: "provider_recorded", paymentId: null } as const;
   assert.equal(cateringAdjustmentRequestCents(facts({ agreedTotalCents: 100_000, invoices: [balanceOf(100_000)], adjustments: [charge] })), 0);
+});
+
+test("the payment ceiling is each request's own effective payable, so sibling requests never share the same cents", () => {
+  const deposit = invoice({ id: "inv-d", number: 1, kind: "deposit", amountCents: 50_000 });
+  const balance = invoice({ id: "inv-b", number: 2, kind: "balance", amountCents: 50_000 });
+  const credited = facts({ agreedTotalCents: 100_000, invoices: [deposit, balance], adjustments: [{ id: "c", kind: "credit", amountCents: 50_000, currency: "USD", status: "posted", source: "provider_recorded", paymentId: null }] });
+  assert.deepEqual([cateringPayableCents(deposit, credited), cateringPayableCents(balance, credited)], [50_000, 0]);
+  assert.deepEqual([cateringPayableCents(deposit, facts({ agreedTotalCents: 100_000, invoices: [deposit, balance] })), cateringPayableCents(balance, facts({ agreedTotalCents: 100_000, invoices: [deposit, balance] }))], [50_000, 50_000], "no adjustments: raw remainders");
+  assert.equal(cateringPayableCents(deposit, { ...credited, bookingStatus: "cancelled" }), 0);
+  assert.equal(cateringPayableCents(invoice({ ...balance, status: "void" }), credited), 0, "a withdrawn request has no allocation");
 });

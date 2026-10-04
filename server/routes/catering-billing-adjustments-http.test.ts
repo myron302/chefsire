@@ -1702,6 +1702,125 @@ if (!PG_URL) {
     assert.deepEqual([(await billing(bookingId)).body.summary.obligationCents, (await billing(bookingId)).body.issuable], [100000, []]);
   });
 
+  // ------------------------------------------------------------------------------------------------ per-invoice effective payable (Codex 12)
+  /** $1,000 agreed with a $500 deposit request and a $500 balance request, neither paid. */
+  async function siblings(customer = CUSTOMER_A) {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" }, { customer });
+    assert.equal((await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "fixed", amount: "500" })).status, 200);
+    const deposit = await issue(bookingId, "deposit");
+    assert.equal(deposit.status, 200, deposit.text);
+    const balance = await issue(bookingId, "balance");
+    assert.equal(balance.status, 200, balance.text);
+    assert.deepEqual(balance.body.invoices.map((row: { amountCents: number }) => row.amountCents), [50000, 50000]);
+    return { bookingId, depositId: balance.body.invoices[0].id as string, balanceId: balance.body.invoices[1].id as string };
+  }
+  const capsOf = async (bookingId: string) => {
+    const body = (await billing(bookingId)).body;
+    return { caps: body.invoices.map((row: { maxPaymentCents: number }) => row.maxPaymentCents) as number[], body };
+  };
+
+  test("payable allocation: the Codex case -- $500 deposit + $500 balance, then a $500 credit -- makes only the deposit payable", async () => {
+    const { bookingId, depositId, balanceId } = await siblings();
+    assert.deepEqual((await capsOf(bookingId)).caps, [50000, 50000]);
+    assert.equal((await adjust(bookingId, { kind: "credit", amountCents: 50000 })).status, 201);
+    const { caps, body } = await capsOf(bookingId);
+    assert.deepEqual([caps, body.summary.balanceDueCents], [[50000, 0], 50000], "oldest first: the deposit owns the whole remaining $500");
+    const customer = (await billing(bookingId, CUSTOMER_A)).body;
+    assert.equal(customer.invoices.some((row: object) => "maxPaymentCents" in row), false, "a customer is never shown a cap");
+    const invoicesBefore = await rows("catering_booking_invoices", bookingId);
+    const refused = await pay(bookingId, balanceId, "500.00");
+    assert.equal(refused.status, 409, refused.text);
+    assert.equal(await ledgerPayments(bookingId), 0, "nothing was recorded");
+    assert.deepEqual(await rows("catering_booking_invoices", bookingId), invoicesBefore, "no invoice was touched");
+    assert.equal((await pay(bookingId, balanceId, "0.01")).status, 409, "not even a cent against a zero-payable request");
+    assert.equal((await pay(bookingId, depositId, "500.00")).status, 200);
+    const after = (await billing(bookingId)).body;
+    assert.deepEqual([after.summary.balanceDueCents, after.summary.status, after.invoices.map((row: { maxPaymentCents: number }) => row.maxPaymentCents)], [0, "settled", [0, 0]]);
+  });
+
+  test("payable allocation: a partial credit, partial payments and a paid invoice hand the balance to the next request", async () => {
+    const { bookingId, depositId, balanceId } = await siblings();
+    await adjust(bookingId, { kind: "credit", amountCents: 25000 });
+    assert.deepEqual((await capsOf(bookingId)).caps, [50000, 25000], "the credit reaches the newer request first");
+    assert.equal((await pay(bookingId, depositId, "300.00")).status, 200);
+    assert.deepEqual((await capsOf(bookingId)).caps, [20000, 25000], "$450 owed: $200 left on the deposit, then $250");
+    assert.equal((await pay(bookingId, depositId, "200.00")).status, 200);
+    const { caps, body } = await capsOf(bookingId);
+    assert.deepEqual([caps, body.summary.balanceDueCents], [[0, 25000], 25000]);
+    assert.equal((await pay(bookingId, balanceId, "250.01")).status, 409);
+    assert.equal((await pay(bookingId, balanceId, "250.00")).status, 200);
+  });
+
+  test("payable allocation: a full credit zeroes every request, and reversing it restores them in order", async () => {
+    const { bookingId } = await siblings();
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 100000 });
+    assert.equal(credit.status, 201, credit.text);
+    assert.deepEqual((await capsOf(bookingId)).caps, [0, 0]);
+    assert.equal((await reverse(bookingId, credit.body.adjustments[0].id)).status, 200);
+    assert.deepEqual((await capsOf(bookingId)).caps, [50000, 50000]);
+    const part = await adjust(bookingId, { kind: "credit", amountCents: 70000 });
+    assert.deepEqual((await capsOf(bookingId)).caps, [30000, 0]);
+    await reverse(bookingId, part.body.adjustments.find((row: { amountCents: number }) => row.amountCents === 70000).id);
+    assert.deepEqual((await capsOf(bookingId)).caps, [50000, 50000]);
+  });
+
+  test("payable allocation: a refund's recollection and a charge each get their own request and no request borrows another's capacity", async () => {
+    const { bookingId, depositId, balanceId } = await siblings();
+    await pay(bookingId, depositId, "500.00");
+    await pay(bookingId, balanceId, "500.00");
+    const paymentId = (await rows("catering_booking_payments", bookingId))[0].id;
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 30000, paymentId })).status, 201);
+    assert.deepEqual((await capsOf(bookingId)).caps, [0, 0], "both requests are paid; the $300 is requested separately");
+    const requested = await issue(bookingId, "adjustment");
+    assert.equal(requested.status, 200, requested.text);
+    assert.deepEqual((await capsOf(bookingId)).caps, [0, 0, 30000]);
+    assert.equal((await pay(bookingId, requested.body.invoices[2].id, "300.01")).status, 409);
+    assert.equal((await pay(bookingId, requested.body.invoices[2].id, "300.00")).status, 200);
+    const other = await siblings(CUSTOMER_B);
+    await adjust(other.bookingId, { kind: "charge", amountCents: 20000 });
+    const charged = await issue(other.bookingId, "adjustment");
+    assert.deepEqual((await capsOf(other.bookingId)).caps, [50000, 50000, 20000], "$1,200 owed, each request owns its own cents");
+    await adjust(other.bookingId, { kind: "credit", amountCents: 70000 });
+    assert.deepEqual((await capsOf(other.bookingId)).caps, [50000, 0, 0], "a later credit takes from the newest request first");
+    assert.equal(charged.status, 200);
+  });
+
+  test("payable allocation: the sum of per-request payables never exceeds the balance due, and a withdrawn request takes no allocation", async () => {
+    const { bookingId, depositId } = await siblings();
+    const total = async () => { const { caps, body } = await capsOf(bookingId); return [caps.reduce((sum, cents) => sum + cents, 0), body.summary.balanceDueCents]; };
+    for (const credit of [10000, 25000, 40000]) {
+      await adjust(bookingId, { kind: "credit", amountCents: credit });
+      const [sum, due] = await total();
+      assert.ok(sum <= due, `sum ${sum} <= due ${due}`);
+      assert.equal(sum, due, "with every request live the allocation reconciles exactly");
+    }
+    const view = (await billing(bookingId)).body;
+    assert.equal((await call("POST", `/bookings/${bookingId}/billing/invoices/${depositId}/void`, tok(PROVIDER), { expectedUpdatedAt: view.invoices[0].updatedAt })).status, 200);
+    const after = await capsOf(bookingId);
+    assert.deepEqual([after.caps[0], after.caps[1]], [0, 25000], "the withdrawn deposit is 0 and the balance request reaches the $250 that is still owed on it");
+    assert.equal((await pay(bookingId, depositId, "1.00")).status, 409);
+  });
+
+  test("payable allocation: a stale form and sibling payments racing a credit can never record more than the allocated receivable", async () => {
+    const { bookingId, balanceId } = await siblings();
+    const stale = (await capsOf(bookingId)).caps;
+    assert.deepEqual(stale, [50000, 50000]);
+    await adjust(bookingId, { kind: "credit", amountCents: 50000 });
+    assert.equal((await pay(bookingId, balanceId, "500.00")).status, 409, "the stale $500 on the balance request is not authority");
+    assert.equal(await ledgerPayments(bookingId), 0);
+    const raced = await siblings(CUSTOMER_B);
+    await adjust(raced.bookingId, { kind: "credit", amountCents: 50000 });
+    const results = await Promise.all([pay(raced.bookingId, raced.depositId, "500.00"), pay(raced.bookingId, raced.balanceId, "500.00")]);
+    assert.deepEqual(results.map((response) => response.status), [200, 409]);
+    const racedView = (await billing(raced.bookingId)).body;
+    assert.deepEqual([await ledgerPayments(raced.bookingId), racedView.summary.balanceDueCents, racedView.summary.status], [1, 0, "settled"]);
+    const open = await siblings();
+    const [credit, payment] = await Promise.all([adjust(open.bookingId, { kind: "credit", amountCents: 50000 }), pay(open.bookingId, open.balanceId, "500.00")]);
+    assert.equal(credit.status, 201);
+    const settled = (await billing(open.bookingId)).body;
+    assert.ok(settled.summary.balanceDueCents >= 0 && (await ledgerPayments(open.bookingId)) === (payment.status === 200 ? 1 : 0));
+  });
+
   test("coverage: concurrent requests, a charge racing a request, and a reversal racing a request all end with every cent covered exactly once", async () => {
     const make = async () => {
       const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });

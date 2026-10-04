@@ -407,7 +407,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
                 Record a payment
               </Button>}
               {invoice.remainingCents > 0 && cateringPaymentCap(invoice) === 0 && <p className="text-sm text-muted-foreground">
-                Nothing more can be recorded against this request: your customer now owes nothing further on this booking.
+                Nothing can be recorded against this request right now: what your customer owes is already paid or is covered by another request.
               </p>}
               {invoice.paidCents === 0 && <Button className="min-h-11" variant="outline" disabled={pending} onClick={() => voidInvoice(invoice)}>Withdraw</Button>}
             </div>}

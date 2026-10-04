@@ -9,6 +9,7 @@ import {
   EMPTY_CATERING_DEPOSIT_TERMS,
   cateringBillingIsActionable,
   cateringMoneyToCents,
+  cateringPayableCents,
   deriveCateringBillingSummary,
   type CateringBillingFacts,
   type CateringDepositTerms,
@@ -251,12 +252,18 @@ export function resolveCateringPayment(input: {
     (total, payment) => (payment.invoiceId === input.invoice!.id && payment.status === "recorded" ? total + payment.amountCents : total), 0));
   if (remaining === 0) return { ok: false, message: "This request is already fully covered by the payments you have recorded." };
   if (input.amountCents > remaining) return { ok: false, message: "That is more than this request still has outstanding." };
-  // Phase 2P: a credit granted after a request was sent can leave the request asking for more than is now owed. A payment
-  // may not take the customer past what they owe. With no adjustments this never binds, because every invoice already
-  // sits inside the agreed price and a payment is bounded by its invoice.
-  const summary = deriveCateringBillingSummary(input.facts);
-  if (summary.balanceDueCents !== null && input.amountCents > summary.balanceDueCents) {
-    return { ok: false, message: "That is more than your customer now owes for this booking, after the credits recorded on it." };
+  // Phase 2P: a payment is bounded by this request's CURRENT EFFECTIVE PAYABLE amount -- the same per-request allocation the
+  // provider was shown -- so credits, and sibling requests that are older and own the balance first, cannot be bypassed by a
+  // stale or crafted amount. With no adjustments it equals the remainder checked above and never binds.
+  const payable = cateringPayableCents(input.invoice, input.facts);
+  if (input.amountCents > payable) {
+    const balanceDue = deriveCateringBillingSummary(input.facts).balanceDueCents;
+    if (balanceDue !== null && input.amountCents > balanceDue) {
+      return { ok: false, message: "That is more than your customer now owes for this booking, after the credits recorded on it." };
+    }
+    return { ok: false, message: payable === 0
+      ? "What your customer owes is currently allocated to an earlier request, so nothing can be recorded against this one."
+      : "That is more than this request is currently asking for, after the credits recorded on this booking and the earlier requests ahead of it." };
   }
   return { ok: true, amountCents: input.amountCents };
 }
