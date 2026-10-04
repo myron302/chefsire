@@ -201,7 +201,7 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
       </p>}
 
       {hasLedger && <dl className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2" aria-label="Financial position">
-        <Figure label="Originally agreed" value={summary.originalAgreedCents === null ? "—" : money(summary.originalAgreedCents)} />
+        <Figure label="Agreed price when billing began" value={summary.originalAgreedCents === null ? "—" : money(summary.originalAgreedCents)} />
         <Figure label="Additional charges" value={`+${money(summary.adjustmentChargesCents)}`} />
         <Figure label="Credits" value={`-${money(summary.adjustmentCreditsCents)}`} />
         <Figure label="Current total owed" value={summary.obligationCents === null ? "—" : money(summary.obligationCents)} strong />

@@ -92,7 +92,11 @@ export type CateringLedgerPosition = {
   /** Posted amendment-generated charges less credits: already contained in the agreed price. */
   amendmentNetCents: number;
   refundsCents: number;
-  /** The agreed price before any amendment that was reconciled into the ledger. Null without an agreed price. */
+  /**
+   * The agreed price at the START OF THIS LEDGER: before any amendment that was reconciled into it. An amendment accepted before billing
+   * had any activity writes no ledger entry, so it is already inside this figure; the amendment history, not this number, is the record of the
+   * booking's first confirmed terms. Null without an agreed price.
+   */
   originalAgreedCents: number | null;
   /** What the customer owes in total right now. Null without an agreed price. */
   obligationCents: number | null;

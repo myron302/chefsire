@@ -205,3 +205,8 @@ test("a stale reversal cannot be confirmed, and closing it clears the reason and
 test("the billing card keeps polling a cancelled booking that holds recorded money, from the payload it was handed", () => {
   assert.ok(billing.includes("cateringBillingCanStillChange(polled.state.data?.bookingStatus, polled.state.data)"));
 });
+
+test("the ledger baseline is labelled as what it is: the agreed price when billing began, never 'originally agreed'", () => {
+  assert.ok(component.includes('<Figure label="Agreed price when billing began"'));
+  assert.equal(component.includes("Originally agreed"), false, "an amendment accepted before billing is already inside it, so 'original' would contradict the amendment history");
+});

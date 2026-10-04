@@ -1825,6 +1825,17 @@ if (!PG_URL) {
     assert.equal((await reverse(bookingId, secondId)).status, 409);
   });
 
+  test("a price amended BEFORE billing is inside the ledger baseline, which is why that figure is 'agreed when billing began' and not 'originally agreed'", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    const created = await propose(bookingId, { priceCents: 120000 }, PROVIDER);
+    await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A);
+    await adjust(bookingId, { kind: "charge", amountCents: 5000 });
+    const { summary } = (await billing(bookingId)).body;
+    assert.deepEqual([summary.originalAgreedCents, summary.obligationCents], [120000, 125000], "the pre-billing amendment wrote no ledger entry");
+    const amendments = (await call("GET", `/bookings/${bookingId}/amendments`, tok(CUSTOMER_A))).body.amendments;
+    assert.equal(amendments.originalTerms.priceCents, 100000, "the amendment history remains the record of the first confirmed terms");
+  });
+
   // ------------------------------------------------------------------------------------------------ the formula
   test("the derived position is exact: original + charges - credits = obligation, payments - refunds = net received, obligation - net = balance", async () => {
     const { bookingId } = await billed();

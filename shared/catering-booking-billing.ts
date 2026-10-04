@@ -345,6 +345,7 @@ export type CateringBillingSummary = {
   /**
    * PHASE 2P. The agreed price before any amendment that was reconciled into the ledger, and what is owed now:
    * `agreed + provider charges - provider credits`. Equal to `agreedTotalCents` on a booking with no adjustments.
+   * `originalAgreedCents` is the agreed price when billing began (see the ledger position), not the booking's first confirmed terms.
    */
   originalAgreedCents: number | null;
   obligationCents: number | null;
