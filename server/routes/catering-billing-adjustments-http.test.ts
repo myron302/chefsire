@@ -988,6 +988,194 @@ if (!PG_URL) {
     assert.equal(capOf((await billing(bookingId)).body, invoiceId).maxPaymentCents, 0);
   });
 
+  // ------------------------------------------------------------------------------------------------ refund collectibility (Codex 4)
+  const dueOf = (body: { invoices: { id: string; kind: string; amountCents: number; remainingCents: number }[] }) => body.invoices.filter((row) => row.remainingCents > 0).reduce((sum, row) => sum + row.remainingCents, 0);
+  const frozen = async (bookingId: string) => [await rows("catering_booking_invoices", bookingId), await rows("catering_booking_payments", bookingId)];
+
+  test("refund after partial payment: the refunded $300 gets a request, the customer can pay the full $1,800, and nothing is stranded", async () => {
+    const { bookingId, invoiceId } = await billed("1000.00");
+    const before = await frozen(bookingId);
+    const recorded = await adjust(bookingId, { kind: "refund", amountCents: 30000, reason: "Returned by bank transfer" });
+    assert.equal(recorded.status, 201);
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([view.summary.obligationCents, view.summary.netReceivedCents, view.summary.balanceDueCents], [250000, 70000, 180000]);
+    assert.deepEqual([view.issuable, view.issuablePreview], [["adjustment"], [{ kind: "adjustment", amountCents: 30000 }]]);
+    assert.equal(dueOf(view), 150000, "the original request still asks only for its own 1,500");
+    const issued = await issue(bookingId, "adjustment");
+    assert.equal(issued.status, 200, issued.text);
+    assert.deepEqual(issued.body.invoices.map((row: { kind: string; amountCents: number }) => [row.kind, row.amountCents]), [["balance", 250000], ["adjustment", 30000]]);
+    assert.equal(issued.body.summary.outstandingInvoicedCents, 180000, "the requests now ask for exactly what is owed");
+    assert.deepEqual(issued.body.issuable, [], "and the same receivable cannot be requested twice");
+    assert.equal((await issue(bookingId, "adjustment")).status, 409);
+    const further = issued.body.invoices[1];
+    assert.equal(further.kind, "adjustment");
+    assert.equal(capOf(issued.body, invoiceId).maxPaymentCents, 150000);
+    assert.equal(further.maxPaymentCents, 30000);
+    assert.equal((await pay(bookingId, invoiceId, "1500.00")).status, 200);
+    assert.equal((await pay(bookingId, further.id, "300.00")).status, 200);
+    const done = (await billing(bookingId)).body.summary;
+    assert.deepEqual([done.balanceDueCents, done.netReceivedCents, done.paidTotalCents, done.refundsRecordedCents, done.status], [0, 250000, 280000, 30000, "settled"]);
+    // Immutability: the original invoice and payment rows are byte-for-byte what they were; only new rows appeared.
+    const [invoicesAfter, paymentsAfter] = await frozen(bookingId);
+    assert.deepEqual(invoicesAfter.find((row: { id: string }) => row.id === invoiceId), before[0].find((row: { id: string }) => row.id === invoiceId));
+    assert.deepEqual(paymentsAfter.find((row: { id: string }) => row.id === before[1][0].id), before[1][0]);
+    const entries = await ledger(bookingId);
+    assert.deepEqual(entries.map((row: { entry_kind: string; amount_cents: string }) => [row.entry_kind, Number(row.amount_cents)]), [["refund", 30000]], "still one refund record, no fabricated charge");
+  });
+
+  test("refund after full payment: the booking is not settled, the $300 is requestable and then payable", async () => {
+    const { bookingId } = await billed("2500.00");
+    assert.equal((await billing(bookingId)).body.summary.status, "settled");
+    await adjust(bookingId, { kind: "refund", amountCents: 30000 });
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([view.summary.status, view.summary.balanceDueCents, view.summary.refundPotentiallyDueCents, view.issuable], ["balance_not_requested", 30000, 0, ["adjustment"]]);
+    const issued = await issue(bookingId, "adjustment");
+    assert.equal(issued.body.invoices[1].amountCents, 30000);
+    assert.equal((await pay(bookingId, issued.body.invoices[1].id, "300.00")).status, 200);
+    assert.deepEqual([(await billing(bookingId)).body.summary.balanceDueCents, (await billing(bookingId)).body.summary.status], [0, "settled"]);
+  });
+
+  test("multiple refunds, a reversed refund, and refund + credit / charge each count exactly once", async () => {
+    const { bookingId } = await billed("2500.00");
+    const one = await adjust(bookingId, { kind: "refund", amountCents: 30000 });
+    await adjust(bookingId, { kind: "refund", amountCents: 20000 });
+    assert.deepEqual((await billing(bookingId)).body.issuablePreview, [{ kind: "adjustment", amountCents: 50000 }]);
+    const issued = await issue(bookingId, "adjustment");
+    assert.equal(issued.body.invoices[1].amountCents, 50000);
+    // A later refund is requested for itself alone.
+    await adjust(bookingId, { kind: "refund", amountCents: 10000 });
+    assert.deepEqual((await billing(bookingId)).body.issuablePreview, [{ kind: "adjustment", amountCents: 10000 }]);
+    // Reversing the first refund while a request that includes it is unpaid is refused, then allowed once that request is withdrawn.
+    const refused = await reverse(bookingId, one.body.adjustments[0].id);
+    assert.deepEqual([refused.status, refused.body.code], [409, "catering_billing_state"]);
+    assert.match(refused.body.message, /Withdraw that request first/);
+    const version = (await billing(bookingId)).body.invoices[1].updatedAt as string;
+    const withdrawn = await call("POST", `/bookings/${bookingId}/billing/invoices/${issued.body.invoices[1].id}/void`, tok(PROVIDER), { expectedUpdatedAt: version });
+    assert.equal(withdrawn.status, 200, withdrawn.text);
+    assert.equal((await reverse(bookingId, one.body.adjustments[0].id)).status, 200);
+    const after = (await billing(bookingId)).body;
+    assert.deepEqual([after.summary.refundsRecordedCents, after.summary.balanceDueCents, after.issuablePreview], [30000, 30000, [{ kind: "adjustment", amountCents: 30000 }]], "20,000 + 10,000 live, exactly once");
+  });
+
+  test("refund + credit lowers the collectible amount; refund + charge adds each in its own place without double counting", async () => {
+    const credited = await billed("2500.00");
+    await adjust(credited.bookingId, { kind: "refund", amountCents: 30000 });
+    await adjust(credited.bookingId, { kind: "credit", amountCents: 20000 });
+    const a = (await billing(credited.bookingId)).body;
+    assert.deepEqual([a.summary.obligationCents, a.summary.netReceivedCents, a.summary.balanceDueCents, a.issuablePreview], [230000, 220000, 10000, [{ kind: "adjustment", amountCents: 10000 }]]);
+    const charged = await billed("2500.00");
+    await adjust(charged.bookingId, { kind: "refund", amountCents: 30000 });
+    await adjust(charged.bookingId, { kind: "charge", amountCents: 40000 });
+    const b = (await billing(charged.bookingId)).body;
+    assert.deepEqual([b.summary.obligationCents, b.summary.refundsRecordedCents, b.summary.balanceDueCents, b.issuablePreview], [290000, 30000, 70000, [{ kind: "adjustment", amountCents: 70000 }]]);
+    const issued = await issue(charged.bookingId, "adjustment");
+    assert.equal((await pay(charged.bookingId, issued.body.invoices[1].id, "700.00")).status, 200);
+    assert.equal((await billing(charged.bookingId)).body.summary.balanceDueCents, 0);
+  });
+
+  test("a refund after completion is collectible too, and after cancellation Phase 2L's closed billing is unchanged", async () => {
+    const done = await billed("2500.00");
+    await adjust(done.bookingId, { kind: "refund", amountCents: 30000 });
+    await setStatus(done.bookingId, "completed");
+    assert.equal((await issue(done.bookingId, "adjustment")).status, 200, "late reconciliation, no lifecycle change");
+    assert.equal((await bookingRow(done.bookingId)).status, "completed");
+    const cancelled = await billed("2500.00");
+    await setStatus(cancelled.bookingId, "cancelled");
+    assert.equal((await adjust(cancelled.bookingId, { kind: "refund", amountCents: 30000 })).status, 201, "a refund record after cancellation stays legitimate");
+    assert.equal((await issue(cancelled.bookingId, "adjustment")).status, 409, "and billing writes stay closed by cancellation, exactly as before");
+    assert.equal((await billing(cancelled.bookingId, CUSTOMER_A)).body.adjustments.length, 1);
+  });
+
+  test("concurrent requests for the same refunded receivable create one request, and a refund racing a request stays coherent", async () => {
+    const { bookingId } = await billed("2500.00");
+    await adjust(bookingId, { kind: "refund", amountCents: 30000 });
+    const results = await Promise.all([issue(bookingId, "adjustment"), issue(bookingId, "adjustment"), issue(bookingId, "adjustment")]);
+    assert.deepEqual(results.map((response) => response.status).sort(), [200, 409, 409]);
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual(view.invoices.filter((row: { kind: string }) => row.kind === "adjustment").map((row: { amountCents: number }) => row.amountCents), [30000]);
+    const other = await billed("2500.00");
+    await adjust(other.bookingId, { kind: "refund", amountCents: 30000 });
+    const [request, more] = await Promise.all([issue(other.bookingId, "adjustment"), adjust(other.bookingId, { kind: "refund", amountCents: 20000 })]);
+    assert.equal(more.status, 201);
+    assert.ok([200, 409].includes(request.status));
+    const settled = (await billing(other.bookingId)).body;
+    const asked = settled.invoices.filter((row: { kind: string }) => row.kind === "adjustment").reduce((sum: number, row: { amountCents: number }) => sum + row.amountCents, 0);
+    const requestable = (settled.issuablePreview as { amountCents: number }[]).reduce((sum, row) => sum + row.amountCents, 0);
+    assert.equal(asked + requestable, 50000, "whichever committed first, every refunded cent has exactly one request or one request still to issue");
+    assert.equal(settled.summary.balanceDueCents, 50000);
+  });
+
+  test("a refund racing a payment: the balance and the requests stay consistent", async () => {
+    const { bookingId, invoiceId } = await billed("1000.00");
+    const [refund, payment] = await Promise.all([adjust(bookingId, { kind: "refund", amountCents: 30000 }), pay(bookingId, invoiceId, "500.00")]);
+    assert.equal(refund.status, 201);
+    assert.equal(payment.status, 200);
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([view.summary.paidTotalCents, view.summary.netReceivedCents, view.summary.balanceDueCents, view.issuablePreview], [150000, 120000, 130000, [{ kind: "adjustment", amountCents: 30000 }]]);
+  });
+
+  // ------------------------------------------------------------------------------------------------ overdue (Codex 5)
+  const PAST = "2020-01-01";
+  const billedDue = async (paid = "0", dueOn: string | null = PAST) => {
+    const bookingId = await confirmed();
+    const invoice = await call("POST", `/bookings/${bookingId}/billing/invoices`, tok(PROVIDER), { kind: "balance", dueOn });
+    assert.equal(invoice.status, 200, invoice.text);
+    const invoiceId = invoice.body.invoices[0].id as string;
+    if (paid !== "0") assert.equal((await pay(bookingId, invoiceId, paid)).status, 200);
+    return { bookingId, invoiceId };
+  };
+
+  test("overdue: a past-due request whose balance a credit took to zero is not overdue, in the summary or on the invoice, and the invoice is untouched", async () => {
+    const { bookingId, invoiceId } = await billedDue();
+    const before = (await billing(bookingId, CUSTOMER_A)).body;
+    assert.deepEqual([before.summary.hasOverdue, before.summary.nextDueIsOverdue, before.invoices[0].overdue], [true, true, true]);
+    const invoiceRow = (await rows("catering_booking_invoices", bookingId))[0];
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 250000 });
+    assert.equal(credit.status, 201);
+    for (const who of [PROVIDER, CUSTOMER_A]) {
+      const { summary, invoices } = (await billing(bookingId, who)).body;
+      assert.deepEqual([summary.balanceDueCents, summary.nextAmountDueCents, summary.nextDueOn, summary.nextDueIsOverdue, summary.hasOverdue, summary.status], [0, null, null, false, false, "no_payment_required"], who);
+      assert.deepEqual([invoices[0].overdue, invoices[0].amountCents, invoices[0].status, invoices[0].remainingCents], [false, 250000, "issued", 250000], "the historical request is untouched and still visible");
+    }
+    assert.deepEqual((await rows("catering_booking_invoices", bookingId))[0], invoiceRow);
+    // Reversing the credit restores the overdue state.
+    await reverse(bookingId, credit.body.adjustments[0].id);
+    const restored = (await billing(bookingId)).body;
+    assert.deepEqual([restored.summary.hasOverdue, restored.summary.nextAmountDueCents, restored.invoices[0].overdue], [true, 250000, true]);
+    assert.equal(invoiceId, restored.invoices[0].id);
+  });
+
+  test("overdue: a partial credit keeps it overdue for exactly the effective positive amount", async () => {
+    const { bookingId } = await billedDue();
+    await adjust(bookingId, { kind: "credit", amountCents: 240000 });
+    const { summary, invoices } = (await billing(bookingId)).body;
+    assert.deepEqual([summary.balanceDueCents, summary.nextAmountDueCents, summary.hasOverdue, summary.status, invoices[0].overdue], [10000, 10000, true, "balance_due", true]);
+  });
+
+  test("overdue: a future-due request is not overdue, and settled / no-payment-required never carry an overdue flag", async () => {
+    const future = await billedDue("0", "2999-01-01");
+    assert.deepEqual([(await billing(future.bookingId)).body.summary.hasOverdue, (await billing(future.bookingId)).body.invoices[0].overdue], [false, false]);
+    const settled = await billedDue("2500.00");
+    const a = (await billing(settled.bookingId)).body;
+    assert.deepEqual([a.summary.status, a.summary.hasOverdue, a.invoices[0].overdue], ["settled", false, false]);
+    const credited = await billedDue("1000.00");
+    await adjust(credited.bookingId, { kind: "credit", amountCents: 150000 });
+    const b = (await billing(credited.bookingId)).body;
+    assert.deepEqual([b.summary.status, b.summary.balanceDueCents, b.summary.hasOverdue, b.invoices[0].overdue], ["settled", 0, false, false]);
+    assert.equal(b.summary.refundPotentiallyDueCents, 0);
+  });
+
+  test("overdue: a refund-created request is overdue by its own date, not by the earlier paid request's", async () => {
+    const { bookingId } = await billedDue("2500.00");
+    await adjust(bookingId, { kind: "refund", amountCents: 30000 });
+    const owed = (await billing(bookingId)).body;
+    assert.deepEqual([owed.summary.status, owed.summary.balanceDueCents, owed.summary.hasOverdue, owed.invoices[0].overdue], ["balance_not_requested", 30000, false, false], "owed, not yet requested, not settled and not overdue");
+    const requested = await call("POST", `/bookings/${bookingId}/billing/invoices`, tok(PROVIDER), { kind: "adjustment", dueOn: PAST });
+    assert.equal(requested.status, 200, requested.text);
+    const view = requested.body;
+    assert.deepEqual([view.summary.nextAmountDueCents, view.summary.nextDueOn, view.summary.hasOverdue, view.invoices[0].overdue, view.invoices[1].overdue], [30000, PAST, true, false, true]);
+  });
+
   // ------------------------------------------------------------------------------------------------ the formula
   test("the derived position is exact: original + charges - credits = obligation, payments - refunds = net received, obligation - net = balance", async () => {
     const { bookingId } = await billed();

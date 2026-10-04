@@ -1,6 +1,7 @@
 import type { CateringBookingBillingRecord, CateringBookingInvoice, CateringBookingPayment } from "@shared/schema";
 import {
   cateringDepositRequirement,
+  cateringEffectivePayableCents,
   cateringInvoiceIsOverdue,
   cateringInvoiceReference,
   cateringInvoiceState,
@@ -54,7 +55,9 @@ export function serializeCateringInvoice(
     currency: row.currency,
     status: row.status as CateringInvoiceStatus,
     state: cateringInvoiceState(fact, facts.payments),
-    overdue: cateringInvoiceIsOverdue(fact, facts.payments, facts.asOfDate),
+    // Overdue only while the request is currently asking for something: a past-due request the booking balance no longer
+    // reaches (a credit took it to zero) stays in the history, unpaid and unaltered, and is not flagged.
+    overdue: cateringEffectivePayableCents(fact, facts) > 0 && cateringInvoiceIsOverdue(fact, facts.payments, facts.asOfDate),
     dueOn: row.dueOn ?? null,
     issuedAt: row.issuedAt?.toISOString() ?? null,
     voidedAt: row.voidedAt?.toISOString() ?? null,

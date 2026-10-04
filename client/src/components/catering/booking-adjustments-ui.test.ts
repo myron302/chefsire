@@ -119,3 +119,18 @@ test("the billing card states the payable cap, offers no payment at a zero cap, 
   assert.ok(billing.includes("because credits have reduced what your customer owes"));
   assert.equal(/remainingCents\s*[-+]/.test(billing), false, "no accounting in React");
 });
+
+test("a refund-created request is called a further balance request, never a new charge, and the note says what stays untouched", () => {
+  assert.ok(billing.includes('"Further balance request"'));
+  assert.ok(billing.includes('"Request further balance"'));
+  assert.equal(billing.includes("Added since the balance"), false);
+  assert.ok(billing.includes('kind === "adjustment" && <p className="w-full text-xs text-muted-foreground">'));
+  assert.ok(billing.includes("Your earlier requests, payments and records stay exactly as they are."));
+  assert.equal(/card|charged|processor|Stripe|Square/i.test(billing.slice(billing.indexOf("This asks for the part of the balance"), billing.indexOf("stay exactly as they are."))), false, "no processor implication");
+});
+
+test("overdue is shown only from the server's derived flags, never recomputed in React", () => {
+  assert.ok(billing.includes("summary.hasOverdue"));
+  assert.ok(billing.includes("invoice.overdue"));
+  assert.equal(/dueOn\s*[<>]|asOfDate\s*[<>]|new Date\(\)/.test(billing.replace(/\/\*[\s\S]*?\*\//g, "")), false);
+});

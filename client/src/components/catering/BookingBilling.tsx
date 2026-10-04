@@ -384,7 +384,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
           : <ul className="space-y-3">{billing.invoices.map((invoice) => <li key={invoice.id} className="min-w-0 rounded-lg border p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="break-words font-medium">{invoice.kind === "deposit" ? "Deposit" : invoice.kind === "adjustment" ? "Added since the balance" : "Remaining balance"} · <span className="tabular-nums">{money(invoice.amountCents)}</span></p>
+                <p className="break-words font-medium">{invoice.kind === "deposit" ? "Deposit" : invoice.kind === "adjustment" ? "Further balance request" : "Remaining balance"} · <span className="tabular-nums">{money(invoice.amountCents)}</span></p>
                 <p className="break-words text-sm text-muted-foreground">
                   {invoice.reference}{invoice.dueOn ? ` · due ${invoice.dueOn}` : ""}
                   {invoice.paidCents > 0 && invoice.state !== "void" ? ` · ${money(invoice.paidCents)} recorded` : ""}
@@ -418,8 +418,11 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
             {/* The amount is the server's own preview, shown so nothing is requested unseen -- and it is NOT sent
                 back: the request carries the kind and a due date, and the server re-derives the figure under its
                 lock. */}
-            {kind === "deposit" ? "Request deposit" : kind === "adjustment" ? "Request added amount" : "Request balance"} · <span className="tabular-nums">{money(amountCents)}</span>
+            {kind === "deposit" ? "Request deposit" : kind === "adjustment" ? "Request further balance" : "Request balance"} · <span className="tabular-nums">{money(amountCents)}</span>
           </Button>
+          {kind === "adjustment" && <p className="w-full text-xs text-muted-foreground">
+            This asks for the part of the balance your earlier requests do not cover, such as a charge you added or money you recorded as returned. Your earlier requests, payments and records stay exactly as they are.
+          </p>}
         </div>)}
       </section>
 

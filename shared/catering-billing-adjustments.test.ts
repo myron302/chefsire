@@ -27,6 +27,9 @@ import {
   cateringIssuableInvoiceKinds,
   cateringObligationCents,
   cateringPayableCents,
+  cateringEffectivePayables,
+  cateringEffectivePayableCents,
+  cateringIssuanceKeepsPartition,
   cateringDepositRequirement,
   deriveCateringBillingSummary,
   type CateringBillingFacts,
@@ -393,4 +396,207 @@ test("one deposit basis: the percentage applies to the adjusted obligation, a fi
   const facts = billing({ agreedTotalCents: 100_000, terms: percent, adjustments: [entry({ kind: "charge", amountCents: 20_000 })] });
   assert.equal(cateringInvoiceAmountFor("deposit", facts), 60_000);
   assert.equal(deriveCateringBillingSummary(facts).depositRequiredCents, 60_000);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Refund collectibility: every cent of balance due has a request to be paid against
+ * ------------------------------------------------------------------------------------------------------------- */
+
+const refund = (amountCents: number, over: Partial<CateringAdjustmentFact> = {}) => entry({ kind: "refund", amountCents, ...over });
+/** The invariant, asserted over a whole set of facts: whatever is owed can be paid against an existing or issuable request. */
+function assertNoStrandedBalance(facts: CateringBillingFacts) {
+  const summary = deriveCateringBillingSummary(facts);
+  const live = facts.invoices.filter((row) => row.status === "issued");
+  const requestable = cateringIssuableInvoiceKinds(facts).reduce((total, kind) => total + (cateringInvoiceAmountFor(kind, facts) ?? 0), 0);
+  const unpaidOnLive = live.reduce((total, row) => total + Math.max(0, row.amountCents - facts.payments.filter((p) => p.invoiceId === row.id && p.status === "recorded").reduce((sum, p) => sum + p.amountCents, 0)), 0);
+  if ((summary.balanceDueCents ?? 0) > 0) assert.ok(unpaidOnLive + requestable >= summary.balanceDueCents!, `stranded: due ${summary.balanceDueCents}, unpaid ${unpaidOnLive}, requestable ${requestable}`);
+  return { summary, requestable, unpaidOnLive };
+}
+
+test("refund after partial payment: $2,500 obligation, $1,000 paid, $300 refunded => $1,800 due, $1,800 collectible in total", () => {
+  const inv = invoice({ kind: "balance", amountCents: 250_000 });
+  const facts = billing({ invoices: [inv], payments: [payment({ invoiceId: inv.id, amountCents: 100_000 })], adjustments: [refund(30_000)] });
+  const { summary, requestable, unpaidOnLive } = assertNoStrandedBalance(facts);
+  assert.deepEqual([summary.obligationCents, summary.netReceivedCents, summary.balanceDueCents], [250_000, 70_000, 180_000], "the refund moved net received, never the obligation");
+  assert.deepEqual([unpaidOnLive, requestable], [150_000, 30_000]);
+  assert.deepEqual(cateringIssuableInvoiceKinds(facts), ["adjustment"]);
+  assert.equal(cateringInvoiceAmountFor("adjustment", facts), 30_000, "exactly the refunded amount, once");
+});
+
+test("refund after full payment: the refunded $300 becomes collectible and the booking is NOT settled", () => {
+  const inv = invoice({ kind: "balance", amountCents: 250_000 });
+  const paid = payment({ invoiceId: inv.id, amountCents: 250_000 });
+  assert.equal(deriveCateringBillingSummary(billing({ invoices: [inv], payments: [paid] })).status, "settled");
+  const facts = billing({ invoices: [inv], payments: [paid], adjustments: [refund(30_000)] });
+  const { summary } = assertNoStrandedBalance(facts);
+  assert.deepEqual([summary.balanceDueCents, summary.status, summary.refundPotentiallyDueCents], [30_000, "balance_not_requested", 0]);
+  assert.equal(cateringInvoiceAmountFor("adjustment", facts), 30_000);
+  assert.equal(cateringInvoiceAmountFor("balance", facts), null, "the balance request is history and is never reissued larger");
+});
+
+test("with no live balance request the balance request itself covers a refunded amount", () => {
+  const deposit = invoice({ kind: "deposit", amountCents: 100_000 });
+  const facts = billing({ invoices: [deposit], payments: [payment({ invoiceId: deposit.id, amountCents: 100_000 })], adjustments: [refund(30_000)] });
+  assert.equal(cateringInvoiceAmountFor("balance", facts), 180_000, "2,500 + 300 refunded - 1,000 requested already");
+  assertNoStrandedBalance(facts);
+});
+
+test("the request is exactly satisfiable: paying every unpaid request settles the booking and strands nothing", () => {
+  const first = invoice({ kind: "balance", amountCents: 250_000 });
+  const second = invoice({ kind: "adjustment", amountCents: 30_000 });
+  const adjustments = [refund(30_000)];
+  const paying = (...amounts: [string, number][]) => amounts.map(([invoiceId, amountCents]) => payment({ invoiceId, amountCents }));
+  const before = billing({ invoices: [first, second], payments: paying([first.id, 100_000]), adjustments });
+  assert.equal(deriveCateringBillingSummary(before).balanceDueCents, 180_000);
+  assert.equal(deriveCateringBillingSummary(before).outstandingInvoicedCents, 180_000, "the requests now ask for exactly what is owed");
+  assert.deepEqual(cateringIssuableInvoiceKinds(before), [], "and nothing more can be requested for the same receivable");
+  const after = billing({ invoices: [first, second], payments: paying([first.id, 250_000], [second.id, 30_000]), adjustments });
+  const summary = deriveCateringBillingSummary(after);
+  assert.deepEqual([summary.balanceDueCents, summary.netReceivedCents, summary.status], [0, 250_000, "settled"]);
+});
+
+test("partial refund then partial re-payment tracks the remaining collectible balance", () => {
+  const first = invoice({ kind: "balance", amountCents: 250_000 });
+  const second = invoice({ kind: "adjustment", amountCents: 30_000 });
+  const facts = billing({ invoices: [first, second], payments: [payment({ invoiceId: first.id, amountCents: 250_000 }), payment({ invoiceId: second.id, amountCents: 10_000 })], adjustments: [refund(30_000)] });
+  const summary = deriveCateringBillingSummary(facts);
+  assert.deepEqual([summary.netReceivedCents, summary.balanceDueCents, summary.nextAmountDueCents], [230_000, 20_000, 20_000]);
+  assertNoStrandedBalance(facts);
+});
+
+test("multiple refunds raise the collectible amount exactly once per live refund, and a later refund is requested for itself alone", () => {
+  const first = invoice({ kind: "balance", amountCents: 250_000 });
+  const paid = payment({ invoiceId: first.id, amountCents: 250_000 });
+  assert.equal(cateringInvoiceAmountFor("adjustment", billing({ invoices: [first], payments: [paid], adjustments: [refund(30_000), refund(20_000)] })), 50_000);
+  const requested = invoice({ kind: "adjustment", amountCents: 30_000 });
+  const later = billing({ invoices: [first, requested], payments: [paid], adjustments: [refund(30_000), refund(20_000)] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", later), 20_000, "only what the earlier further request did not cover");
+  assertNoStrandedBalance(later);
+});
+
+test("a reversed refund stops creating collectible capacity, exactly once", () => {
+  const first = invoice({ kind: "balance", amountCents: 250_000 });
+  const paid = payment({ invoiceId: first.id, amountCents: 250_000 });
+  const reversed = billing({ invoices: [first], payments: [paid], adjustments: [refund(30_000, { status: "reversed" })] });
+  assert.deepEqual([cateringIssuableInvoiceKinds(reversed), deriveCateringBillingSummary(reversed).balanceDueCents, deriveCateringBillingSummary(reversed).status], [[], 0, "settled"]);
+  const live = billing({ invoices: [first], payments: [paid], adjustments: [refund(30_000)] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", live), 30_000);
+});
+
+test("refund + credit: the credit lowers the obligation and so the collectible amount; refund + charge: each lands once, in its own place", () => {
+  const first = invoice({ kind: "balance", amountCents: 250_000 });
+  const paid = payment({ invoiceId: first.id, amountCents: 250_000 });
+  const withCredit = billing({ invoices: [first], payments: [paid], adjustments: [refund(30_000), entry({ kind: "credit", amountCents: 20_000 })] });
+  const credited = assertNoStrandedBalance(withCredit);
+  assert.deepEqual([credited.summary.obligationCents, credited.summary.netReceivedCents, credited.summary.balanceDueCents], [230_000, 220_000, 10_000]);
+  assert.equal(cateringInvoiceAmountFor("adjustment", withCredit), 10_000, "300 refunded, 200 credited: 100 is collectible");
+  const withCharge = billing({ invoices: [first], payments: [paid], adjustments: [refund(30_000), entry({ kind: "charge", amountCents: 40_000 })] });
+  const charged = assertNoStrandedBalance(withCharge);
+  assert.deepEqual([charged.summary.obligationCents, charged.summary.refundsRecordedCents, charged.summary.balanceDueCents], [290_000, 30_000, 70_000], "the refund is not also counted as a charge");
+  assert.equal(cateringInvoiceAmountFor("adjustment", withCharge), 70_000);
+});
+
+test("a refund never creates request capacity beyond the actual positive balance due", () => {
+  const first = invoice({ kind: "balance", amountCents: 250_000 });
+  // Overpaid and then refunded back to the obligation: nothing is owed, so nothing may be requested.
+  const overpaid = billing({ invoices: [first], payments: [payment({ invoiceId: first.id, amountCents: 250_000 }), payment({ invoiceId: first.id, amountCents: 30_000 })], adjustments: [refund(30_000)] });
+  assert.deepEqual([deriveCateringBillingSummary(overpaid).balanceDueCents, cateringIssuableInvoiceKinds(overpaid)], [0, []], "nothing is owed, so nothing may be requested");
+});
+
+test("when payments already cover the refunded amount again, the collectible capacity is already spent", () => {
+  const first = invoice({ kind: "balance", amountCents: 250_000 });
+  const second = invoice({ kind: "adjustment", amountCents: 30_000 });
+  const facts = billing({ invoices: [first, second], payments: [payment({ invoiceId: first.id, amountCents: 250_000 }), payment({ invoiceId: second.id, amountCents: 30_000 })], adjustments: [refund(30_000)] });
+  assert.deepEqual([deriveCateringBillingSummary(facts).balanceDueCents, cateringIssuableInvoiceKinds(facts)], [0, []]);
+});
+
+test("the partition invariant now bounds live requests by obligation PLUS refunds, and by nothing looser", () => {
+  const first = invoice({ kind: "balance", amountCents: 250_000 });
+  const facts = billing({ invoices: [first], adjustments: [refund(30_000)] });
+  assert.equal(cateringIssuanceKeepsPartition(facts, 30_000), true);
+  assert.equal(cateringIssuanceKeepsPartition(facts, 30_001), false);
+  assert.equal(cateringIssuanceKeepsPartition(billing({ invoices: [first] }), 1), false, "no refund, no capacity");
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Overdue describes a positive CURRENT amount
+ * ------------------------------------------------------------------------------------------------------------- */
+
+const pastDue = (over: Partial<CateringInvoiceFact> = {}) => invoice({ kind: "balance", amountCents: 50_000, dueOn: "2026-01-15", ...over });
+const credit = (amountCents: number, over: Partial<CateringAdjustmentFact> = {}) => entry({ kind: "credit", amountCents, ...over });
+
+test("a past-due request whose balance a credit took to zero is not overdue, and the request itself is untouched", () => {
+  const inv = pastDue();
+  const facts = billing({ agreedTotalCents: 50_000, invoices: [inv], adjustments: [credit(50_000)] });
+  const summary = deriveCateringBillingSummary(facts);
+  assert.deepEqual([summary.balanceDueCents, summary.nextAmountDueCents, summary.nextDueOn, summary.nextDueIsOverdue, summary.hasOverdue, summary.status], [0, null, null, false, false, "no_payment_required"]);
+  assert.equal(inv.status, "issued", "the historical invoice is not mutated");
+  assert.equal(inv.amountCents, 50_000);
+  assert.equal(cateringEffectivePayableCents(inv, facts), 0);
+});
+
+test("a partial credit keeps the request overdue, but only for the effective positive amount", () => {
+  const inv = pastDue();
+  const summary = deriveCateringBillingSummary(billing({ agreedTotalCents: 50_000, invoices: [inv], adjustments: [credit(40_000)] }));
+  assert.deepEqual([summary.balanceDueCents, summary.nextAmountDueCents, summary.nextDueIsOverdue, summary.hasOverdue, summary.status], [10_000, 10_000, true, true, "balance_due"]);
+});
+
+test("a future-due request with a positive amount is not overdue", () => {
+  const summary = deriveCateringBillingSummary(billing({ agreedTotalCents: 50_000, invoices: [pastDue({ dueOn: "2026-03-01" })] }));
+  assert.deepEqual([summary.nextAmountDueCents, summary.nextDueIsOverdue, summary.hasOverdue], [50_000, false, false]);
+});
+
+test("a reversed credit restores the overdue state", () => {
+  const inv = pastDue();
+  const reversed = deriveCateringBillingSummary(billing({ agreedTotalCents: 50_000, invoices: [inv], adjustments: [credit(50_000, { status: "reversed" })] }));
+  assert.deepEqual([reversed.balanceDueCents, reversed.nextDueIsOverdue, reversed.hasOverdue], [50_000, true, true]);
+});
+
+test("the balance is applied oldest request first, so only a request it reaches can be overdue", () => {
+  const deposit = invoice({ kind: "deposit", number: 1, amountCents: 20_000, dueOn: "2026-01-10" });
+  const balance = invoice({ kind: "balance", number: 2, amountCents: 30_000, dueOn: "2026-01-12" });
+  const facts = billing({ agreedTotalCents: 50_000, invoices: [deposit, balance], adjustments: [credit(40_000)] });
+  assert.deepEqual([...cateringEffectivePayables([deposit, balance], [], 10_000).entries()], [[deposit.id, 10_000], [balance.id, 0]]);
+  const summary = deriveCateringBillingSummary(facts);
+  assert.deepEqual([summary.nextAmountDueCents, summary.nextDueOn, summary.hasOverdue], [10_000, "2026-01-10", true]);
+  const fullyCredited = deriveCateringBillingSummary(billing({ agreedTotalCents: 50_000, invoices: [deposit, balance], adjustments: [credit(50_000)] }));
+  assert.equal(fullyCredited.hasOverdue, false);
+});
+
+test("a refund-created request is overdue by ITS OWN date, never by a stale zero-payable earlier request", () => {
+  const first = pastDue({ amountCents: 250_000 });
+  const paid = payment({ invoiceId: first.id, amountCents: 250_000 });
+  const noneYet = deriveCateringBillingSummary(billing({ invoices: [first], payments: [paid], adjustments: [refund(30_000)] }));
+  assert.deepEqual([noneYet.hasOverdue, noneYet.balanceDueCents, noneYet.status], [false, 30_000, "balance_not_requested"], "owed, but not yet requested, so not overdue and not settled");
+  const dated = invoice({ kind: "adjustment", amountCents: 30_000, dueOn: "2026-01-20" });
+  const overdue = deriveCateringBillingSummary(billing({ invoices: [first, dated], payments: [paid], adjustments: [refund(30_000)] }));
+  assert.deepEqual([overdue.nextAmountDueCents, overdue.nextDueOn, overdue.nextDueIsOverdue, overdue.hasOverdue], [30_000, "2026-01-20", true, true]);
+  const future = invoice({ kind: "adjustment", amountCents: 30_000, dueOn: "2026-03-20" });
+  assert.equal(deriveCateringBillingSummary(billing({ invoices: [first, future], payments: [paid], adjustments: [refund(30_000)] })).hasOverdue, false);
+});
+
+test("'settled' and 'no payment required' never coexist with an overdue flag, across a sweep of states", () => {
+  const dues = ["2026-01-01", "2026-03-01", null];
+  for (const agreed of [0, 50_000]) for (const creditCents of [0, 10_000, 50_000]) for (const paidCents of [0, 20_000, 50_000]) for (const refundCents of [0, 10_000]) for (const dueOn of dues) {
+    if (creditCents > agreed || refundCents > paidCents) continue;
+    const inv = pastDue({ dueOn });
+    const pay = paidCents > 0 ? [payment({ invoiceId: inv.id, amountCents: Math.min(paidCents, 50_000) })] : [];
+    const adjustments = [...(creditCents ? [credit(creditCents)] : []), ...(refundCents ? [refund(refundCents)] : [])];
+    const summary = deriveCateringBillingSummary(billing({ agreedTotalCents: agreed, invoices: agreed > 0 ? [inv] : [], payments: agreed > 0 ? pay : [], adjustments }));
+    const label = JSON.stringify({ agreed, creditCents, paidCents, refundCents, dueOn, summary: [summary.status, summary.balanceDueCents, summary.hasOverdue] });
+    if (summary.status === "settled" || summary.status === "no_payment_required") {
+      assert.equal(summary.hasOverdue, false, label);
+      assert.equal(summary.nextDueIsOverdue, false, label);
+      assert.equal(summary.nextAmountDueCents, null, label);
+    }
+    if (summary.hasOverdue) assert.ok((summary.balanceDueCents ?? 0) > 0 && (summary.nextAmountDueCents ?? 0) > 0, label);
+    if (summary.nextDueIsOverdue) assert.ok((summary.nextAmountDueCents ?? 0) > 0, label);
+  }
+});
+
+test("without adjustments the effective payables are the raw remainders, so a legacy booking's overdue state is exactly as before", () => {
+  const inv = pastDue({ amountCents: 50_000 });
+  const part = payment({ invoiceId: inv.id, amountCents: 10_000 });
+  const summary = deriveCateringBillingSummary(billing({ agreedTotalCents: 50_000, invoices: [inv], payments: [part] }));
+  assert.deepEqual([summary.nextAmountDueCents, summary.nextDueIsOverdue, summary.hasOverdue, summary.status], [40_000, true, true, "balance_due"]);
 });
