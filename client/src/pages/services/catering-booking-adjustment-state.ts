@@ -8,6 +8,7 @@ import {
   CATERING_ADJUSTMENT_MAXIMUM_CENTS,
   CATERING_ADJUSTMENT_REASON_MAX_LENGTH,
   CATERING_ADJUSTMENT_REFERENCE_MAX_LENGTH,
+  cateringEffectiveRefundLimitCents,
   type CateringAdjustmentActions,
   type CateringAdjustmentKind,
   type CateringAdjustmentView,
@@ -55,19 +56,35 @@ export function editCateringAdjustmentForm(form: CateringAdjustmentForm, identit
   return form && form.identity === identity ? { ...form, ...patch } : form;
 }
 
+/** The server's stated limits, plus the selected payment's own refundable remainder (also the server's figure) when one is named. */
+export type CateringAdjustmentLimits = Pick<CateringAdjustmentActions, "maxCreditCents" | "maxRefundCents"> & { maxChargeCents?: number; selectedPaymentRefundableCents?: number | null };
+
+/**
+ * The refund limit for THIS form: the booking-wide remainder, and when a payment is selected also that payment's remainder,
+ * whichever is smaller. Both figures are the server's; this only takes the smaller.
+ */
+export const cateringRefundLimitForForm = (form: NonNullable<CateringAdjustmentForm>, limits: CateringAdjustmentLimits): number =>
+  cateringEffectiveRefundLimitCents(limits.maxRefundCents, form.paymentId ? limits.selectedPaymentRefundableCents ?? 0 : null);
+
 export type CateringAdjustmentFormCheck = { ok: true; amountCents: number } | { ok: false; field: "amount" | "reason" | "reference"; message: string };
 
 /**
  * What the form is worth sending. The amount is parsed by the exact decimal parser (never `parseFloat`), must be more than
  * nothing, and may not exceed the limit the SERVER stated for credits and refunds. The server judges all of it again.
  */
-export function checkCateringAdjustmentForm(form: NonNullable<CateringAdjustmentForm>, limits: Pick<CateringAdjustmentActions, "maxCreditCents" | "maxRefundCents">): CateringAdjustmentFormCheck {
+export function checkCateringAdjustmentForm(form: NonNullable<CateringAdjustmentForm>, limits: CateringAdjustmentLimits): CateringAdjustmentFormCheck {
   const text = form.amount.trim().replace(/^\$/, "").replace(/,/g, "");
   const cents = text === "" ? null : cateringMoneyToCents(text);
   if (cents === null || cents <= 0) return { ok: false, field: "amount", message: "Enter an amount such as 250 or 250.50" };
   if (cents > CATERING_ADJUSTMENT_MAXIMUM_CENTS) return { ok: false, field: "amount", message: "That amount is too large" };
   if (form.kind === "credit" && cents > limits.maxCreditCents) return { ok: false, field: "amount", message: "A credit cannot be more than your customer currently owes." };
-  if (form.kind === "refund" && cents > limits.maxRefundCents) return { ok: false, field: "amount", message: "A refund record cannot be more than the money already recorded as received and not yet recorded as returned." };
+  if (form.kind === "charge" && limits.maxChargeCents !== undefined && cents > limits.maxChargeCents) return { ok: false, field: "amount", message: "That would take what your customer owes above the largest amount ChefSire can request for one booking." };
+  if (form.kind === "refund" && cents > cateringRefundLimitForForm(form, limits)) {
+    const paymentBinds = Boolean(form.paymentId) && (limits.selectedPaymentRefundableCents ?? 0) < limits.maxRefundCents;
+    return { ok: false, field: "amount", message: !paymentBinds ? "A refund record cannot be more than the money already recorded as received and not yet recorded as returned."
+      : (limits.selectedPaymentRefundableCents ?? 0) === 0 ? "Nothing is left to record as returned against that payment."
+      : "A refund record against a payment cannot be more than what is left of that payment after refunds already recorded against it." };
+  }
   const reason = form.reason.trim();
   if (reason === "") return { ok: false, field: "reason", message: "Give your customer a reason. They will see it." };
   if (reason.length > CATERING_ADJUSTMENT_REASON_MAX_LENGTH) return { ok: false, field: "reason", message: `The reason can be at most ${CATERING_ADJUSTMENT_REASON_MAX_LENGTH} characters` };
@@ -75,7 +92,7 @@ export function checkCateringAdjustmentForm(form: NonNullable<CateringAdjustment
   return { ok: true, amountCents: cents };
 }
 
-export const maySubmitCateringAdjustment = (form: NonNullable<CateringAdjustmentForm>, limits: Pick<CateringAdjustmentActions, "maxCreditCents" | "maxRefundCents">, pending: boolean): boolean =>
+export const maySubmitCateringAdjustment = (form: NonNullable<CateringAdjustmentForm>, limits: CateringAdjustmentLimits, pending: boolean): boolean =>
   !pending && checkCateringAdjustmentForm(form, limits).ok;
 
 /** The request body: cents, an EXPLICIT currency (the booking's own), the kind, the reason and the attempt key. Never an actor. */

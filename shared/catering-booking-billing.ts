@@ -2,7 +2,7 @@ import { z } from "zod";
 import { calendarDateSchema } from "./catering-availability";
 import { cateringBookingWorkspacePath } from "./catering-booking-operations";
 import type { CateringBookingStatus } from "./catering-bookings";
-import { deriveCateringLedgerPosition, type CateringAdjustmentFact, type CateringAdjustmentView, type CateringAdjustmentActions } from "./catering-billing-adjustments";
+import { CATERING_INVOICE_MAXIMUM_CENTS, deriveCateringLedgerPosition, type CateringAdjustmentFact, type CateringAdjustmentView, type CateringAdjustmentActions } from "./catering-billing-adjustments";
 
 /**
  * PHASE 2L -- THE CATERING BILLING CONTRACT.
@@ -56,7 +56,7 @@ import { deriveCateringLedgerPosition, type CateringAdjustmentFact, type Caterin
  */
 export const CATERING_BILLING_MINOR_UNITS = 100;
 /** A hard ceiling, well inside `Number.MAX_SAFE_INTEGER` and inside `decimal(12, 2)`. */
-export const CATERING_BILLING_MAXIMUM_CENTS = 99_999_999_99;
+export const CATERING_BILLING_MAXIMUM_CENTS = CATERING_INVOICE_MAXIMUM_CENTS;
 
 /**
  * `decimal(12, 2)` as it arrives from the database, converted to cents WITHOUT floating point.
@@ -747,6 +747,8 @@ export type CateringPaymentView = {
   voidedAt: string | null;
   /** PROVIDER ONLY: the caterer's own reference for this receipt. Absent as a key from a customer's payload. */
   reference?: string | null;
+  /** PROVIDER ONLY (Phase 2P): what can still be recorded as returned against this payment. Server-derived. */
+  refundableCents?: number;
 };
 
 /** The deposit terms, PROVIDER ONLY as a whole: unissued terms are planning, not an ask. */

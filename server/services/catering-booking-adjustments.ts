@@ -6,7 +6,7 @@ import {
 import { cateringMoneyToCents } from "@shared/catering-booking-billing";
 import {
   CATERING_ADJUSTMENT_REPLAY_CONFLICT_MESSAGE, CATERING_ADJUSTMENT_REFUSAL_COPY, cateringAdjustmentCounts, cateringAdjustmentKindsRecordable, cateringAdjustmentKindsReversible,
-  cateringAdjustmentReplayMatches, cateringAmendedPriceKeepsLedgerCoherent, cateringAmendmentLedgerEffect, cateringCreditCeilingCents, cateringRefundCeilingCents,
+  cateringAdjustmentReplayMatches, cateringAmendedPriceKeepsLedgerCoherent, cateringAmendmentLedgerEffect, cateringChargeCeilingCents, cateringCreditCeilingCents, cateringRefundCeilingCents,
   deriveCateringLedgerPosition, resolveCateringAdjustment, resolveCateringAdjustmentReversal,
   type CateringAdjustmentActions, type CateringAdjustmentCreateInput, type CateringAdjustmentFacts,
 } from "@shared/catering-billing-adjustments";
@@ -61,6 +61,7 @@ export function adjustmentActionsFor(facts: CateringAdjustmentFacts): CateringAd
     reversibleKinds: [...cateringAdjustmentKindsReversible(facts.bookingStatus)],
     maxCreditCents: cateringCreditCeilingCents(position),
     maxRefundCents: cateringRefundCeilingCents({ paidTotalCents: facts.paidTotalCents, adjustments: facts.adjustments }),
+    maxChargeCents: cateringChargeCeilingCents(position),
   };
 }
 
@@ -165,7 +166,7 @@ export async function reconcileAmendedPrice(tx: Executor, input: {
   const rows = await loadLedgerRows(tx, input.booking.id);
   const facts = adjustmentFactsOf(input.booking, rows);
   if (!cateringAmendedPriceKeepsLedgerCoherent(input.amendment.priceCents!, facts)) {
-    return { ok: false, message: "Accepting this price would leave the billing history inconsistent: it would ask for more than is owed or take the amount owed below zero. Withdraw any unpaid request for payment and propose the change again." };
+    return { ok: false, message: "Accepting this price would leave the billing history inconsistent: it would ask for more than is owed, take the amount owed below zero, or take it above the largest amount ChefSire can request for one booking. Withdraw any unpaid request for payment and propose the change again." };
   }
   await tx.insert(cateringBookingAdjustments).values({
     bookingId: input.booking.id, entryKind: effect.kind, source: "amendment", status: "posted",

@@ -134,3 +134,13 @@ test("overdue is shown only from the server's derived flags, never recomputed in
   assert.ok(billing.includes("invoice.overdue"));
   assert.equal(/dueOn\s*[<>]|asOfDate\s*[<>]|new Date\(\)/.test(billing.replace(/\/\*[\s\S]*?\*\//g, "")), false);
 });
+
+test("the refund form states the selected payment's own remainder, disables spent payments, and takes it from the server's payload", () => {
+  assert.ok(component.includes("payment.refundableCents ?? 0"));
+  assert.ok(component.includes("disabled={(payment.refundableCents ?? 0) === 0}"));
+  assert.ok(component.includes("left to record as returned"));
+  assert.ok(component.includes("what is left of the selected payment, and never more than the"));
+  assert.ok(component.includes("selectedPaymentRefundableCents: paymentId ?"));
+  assert.ok(component.includes("cateringRefundLimitForForm(open, limits)"));
+  assert.equal(/amountCents\s*[-+]\s*\w*[Rr]efund/.test(component), false, "no refund accounting in React");
+});

@@ -179,7 +179,7 @@ function billingView(input: {
     // A voided invoice stays in both actors' history: a customer who was asked for money is entitled to see that
     // the ask was withdrawn rather than watch it vanish.
     invoices: input.invoices.map((row) => serializeCateringInvoice(row, facts, input.role)),
-    payments: input.payments.map((row) => serializeCateringPayment(row, input.role)),
+    payments: input.payments.map((row) => serializeCateringPayment(row, input.role, facts.adjustments)),
     adjustments: input.adjustments.map((row) => serializeCateringAdjustment(row, input.role, input.amendmentNumbers)),
   };
   if (input.role !== "provider") return view;

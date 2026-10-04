@@ -6,7 +6,12 @@ import {
   CATERING_ADJUSTMENT_KINDS,
   CATERING_ADJUSTMENT_NOTIFICATIONS,
   CATERING_REFUND_DISCLOSURE,
+  CATERING_ADJUSTMENT_MAXIMUM_CENTS,
+  CATERING_INVOICE_MAXIMUM_CENTS,
   cateringAdjustmentCreateSchema,
+  cateringChargeCeilingCents,
+  cateringEffectiveRefundLimitCents,
+  cateringPaymentRefundableCents,
   cateringAdjustmentKindsRecordable,
   cateringAdjustmentKindsReversible,
   cateringAdjustmentReplayMatches,
@@ -22,6 +27,7 @@ import {
   type CateringAdjustmentFacts,
 } from "./catering-billing-adjustments";
 import {
+  CATERING_BILLING_MAXIMUM_CENTS,
   CATERING_INVOICE_KINDS,
   cateringInvoiceAmountFor,
   cateringIssuableInvoiceKinds,
@@ -599,4 +605,82 @@ test("without adjustments the effective payables are the raw remainders, so a le
   const part = payment({ invoiceId: inv.id, amountCents: 10_000 });
   const summary = deriveCateringBillingSummary(billing({ agreedTotalCents: 50_000, invoices: [inv], payments: [part] }));
   assert.deepEqual([summary.nextAmountDueCents, summary.nextDueIsOverdue, summary.hasOverdue, summary.status], [40_000, true, true, "balance_due"]);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Per-payment refundable remainder, and the invoice ceiling on the obligation
+ * ------------------------------------------------------------------------------------------------------------- */
+
+test("a payment's refundable remainder is its amount less the LIVE refunds that name it, and nothing else touches it", () => {
+  const a = { id: "pa", amountCents: 10_000, status: "recorded" };
+  const b = { id: "pb", amountCents: 10_000, status: "recorded" };
+  const refundA = refund(8_000, { paymentId: "pa" });
+  assert.deepEqual([cateringPaymentRefundableCents(a, [refundA]), cateringPaymentRefundableCents(b, [refundA])], [2_000, 10_000], "a refund against A does not reduce B");
+  assert.equal(cateringPaymentRefundableCents(a, [refundA, refund(1_500, { paymentId: "pa" })]), 500, "multiple refunds decrement exactly once each");
+  assert.equal(cateringPaymentRefundableCents(a, [refund(8_000, { paymentId: "pa", status: "reversed" })]), 10_000, "a reversed refund restores the capacity");
+  assert.equal(cateringPaymentRefundableCents(a, [refund(8_000)]), 10_000, "a refund that names no payment is booking-wide only");
+  assert.equal(cateringPaymentRefundableCents(a, [entry({ kind: "charge", amountCents: 5_000, paymentId: "pa" })]), 10_000);
+  assert.equal(cateringPaymentRefundableCents({ ...a, status: "voided" }, []), 0);
+  assert.equal(cateringPaymentRefundableCents(a, [refund(10_000, { paymentId: "pa" })]), 0);
+});
+
+test("the effective refund limit is the smaller of the booking-wide remainder and the selected payment's remainder", () => {
+  // Payments A and B are $100 each; $80 already refunded against A: booking-wide $120, A $20, B $100.
+  assert.equal(cateringEffectiveRefundLimitCents(12_000, null), 12_000, "no payment selected");
+  assert.equal(cateringEffectiveRefundLimitCents(12_000, 2_000), 2_000);
+  assert.equal(cateringEffectiveRefundLimitCents(12_000, 10_000), 10_000);
+  assert.equal(cateringEffectiveRefundLimitCents(5_000, 10_000), 5_000, "the booking-wide remainder can be the smaller one");
+  assert.equal(cateringEffectiveRefundLimitCents(12_000, 0), 0);
+});
+
+test("the invoice ceiling is the one SQL ceiling, and the billing maximum is that same constant", () => {
+  assert.equal(CATERING_INVOICE_MAXIMUM_CENTS, 9_999_999_999);
+  assert.equal(CATERING_BILLING_MAXIMUM_CENTS, CATERING_INVOICE_MAXIMUM_CENTS);
+  assert.equal(CATERING_ADJUSTMENT_MAXIMUM_CENTS, CATERING_INVOICE_MAXIMUM_CENTS);
+});
+
+test("a charge may bring the obligation exactly to the ceiling and not one cent past it", () => {
+  const base = facts({ agreedTotalCents: 6_000_000_000 });
+  const room = cateringChargeCeilingCents(deriveCateringLedgerPosition({ agreedTotalCents: 6_000_000_000, paidTotalCents: 0, adjustments: [] }));
+  assert.equal(room, 3_999_999_999);
+  assert.equal(resolveCateringAdjustment({ kind: "charge", amountCents: 1_000, currency: "USD", paymentId: null }, base).ok, true, "well below");
+  assert.equal(resolveCateringAdjustment({ kind: "charge", amountCents: room, currency: "USD", paymentId: null }, base).ok, true, "exactly at the ceiling");
+  const over = resolveCateringAdjustment({ kind: "charge", amountCents: room + 1, currency: "USD", paymentId: null }, base);
+  assert.equal(over.ok === false && over.code, "exceeds_invoice_ceiling");
+  assert.match((over as { message: string }).message, /largest amount ChefSire can request/);
+  const huge = resolveCateringAdjustment({ kind: "charge", amountCents: 5_000_000_000, currency: "USD", paymentId: null }, base);
+  assert.equal(huge.ok, false, "individually valid, but the result would be uncollectible");
+});
+
+test("charge headroom follows live credits, reversed credits and reversed charges, computed from the billing obligation", () => {
+  const room = (adjustments: CateringAdjustmentFact[]) => cateringChargeCeilingCents(deriveCateringLedgerPosition({ agreedTotalCents: 6_000_000_000, paidTotalCents: 0, adjustments }));
+  assert.equal(room([]), 3_999_999_999);
+  assert.equal(room([entry({ kind: "credit", amountCents: 1_000_000_000 })]), 4_999_999_999, "a credit makes room");
+  assert.equal(room([entry({ kind: "credit", amountCents: 1_000_000_000, status: "reversed" })]), 3_999_999_999, "a reversed credit takes it back");
+  assert.equal(room([entry({ kind: "charge", amountCents: 1_000_000_000 })]), 2_999_999_999, "a live charge uses room");
+  assert.equal(room([entry({ kind: "charge", amountCents: 1_000_000_000, status: "reversed" })]), 3_999_999_999, "a reversed charge frees it");
+  assert.equal(room([entry({ kind: "charge", amountCents: 1_000_000_000, source: "amendment" })]), 3_999_999_999, "an amendment entry is already inside the agreed price");
+  assert.equal(room([entry({ kind: "refund", amountCents: 1_000 })]), 3_999_999_999, "a refund never moves the obligation");
+  assert.equal(cateringChargeCeilingCents({ obligationCents: CATERING_INVOICE_MAXIMUM_CENTS }), 0);
+});
+
+test("reversing a credit obeys the same ceiling, and an amended price cannot take the obligation past it", () => {
+  const credit = entry({ kind: "credit", amountCents: 1_000_000_000 });
+  const charge = entry({ kind: "charge", amountCents: 4_000_000_000 });
+  const f = facts({ agreedTotalCents: 6_000_000_000, adjustments: [credit, charge] });
+  const refused = resolveCateringAdjustmentReversal(credit, f);
+  assert.equal(refused.ok === false && refused.code, "exceeds_invoice_ceiling", "6e9 + 4e9 - 1e9 = 9e9 now; reversing the credit makes 10e9, past 9,999,999,999");
+  assert.equal(resolveCateringAdjustmentReversal(credit, facts({ agreedTotalCents: 6_000_000_000, adjustments: [credit, entry({ kind: "charge", amountCents: 2_999_999_999 })] })).ok, true);
+  const noMore = { liveInvoicedCents: 0, paidTotalCents: 0, adjustments: [entry({ kind: "charge", amountCents: 3_000_000_000 })] };
+  assert.equal(cateringAmendedPriceKeepsLedgerCoherent(6_999_999_999, noMore), true, "9,999,999,999 exactly");
+  assert.equal(cateringAmendedPriceKeepsLedgerCoherent(7_000_000_000, noMore), false, "one cent past");
+  assert.equal(cateringAmendedPriceKeepsLedgerCoherent(9_999_999_999, { liveInvoicedCents: 0, paidTotalCents: 0, adjustments: [] }), true);
+});
+
+test("an obligation the ceiling allows can always be requested: the balance request never exceeds the invoice maximum", () => {
+  const atCeiling = billing({ agreedTotalCents: 6_000_000_000, adjustments: [entry({ kind: "charge", amountCents: 3_999_999_999 })] });
+  assert.equal(cateringObligationCents(atCeiling), CATERING_INVOICE_MAXIMUM_CENTS);
+  const amount = cateringInvoiceAmountFor("balance", atCeiling);
+  assert.equal(amount, CATERING_INVOICE_MAXIMUM_CENTS);
+  assert.ok(amount! <= CATERING_INVOICE_MAXIMUM_CENTS);
 });

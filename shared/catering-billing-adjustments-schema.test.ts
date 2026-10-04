@@ -50,3 +50,16 @@ test("the Drizzle money column is bigint cents and the ledger references its boo
   assert.equal((table.match(/onDelete: "restrict"/g) ?? []).length, 5, "booking, payment, amendment and the two actors");
   assert.equal(table.includes("cascade"), false);
 });
+
+test("the one ceiling in code is the ceiling the SQL enforces on invoices, payments and adjustments", async () => {
+  const { CATERING_INVOICE_MAXIMUM_CENTS } = await import("./catering-billing-adjustments");
+  const billingSql = fs.readFileSync(path.join(repoRoot, "server", "migrations", "20260913_catering_booking_billing.sql"), "utf8");
+  for (const [name, source] of [["invoice", billingSql], ["payment", billingSql], ["adjustment", migration]] as const) {
+    assert.ok(source.includes(`catering_${name}_amount_check CHECK (amount_cents > 0 AND amount_cents <= ${CATERING_INVOICE_MAXIMUM_CENTS})`), name);
+  }
+  assert.equal(CATERING_INVOICE_MAXIMUM_CENTS, 9999999999);
+  const code = fs.readFileSync(path.join(repoRoot, "shared", "catering-billing-adjustments.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.equal((code.match(/9_999_999_999|9999999999|99_999_999_99/g) ?? []).length, 1, "the number is written once in the adjustment contract");
+  const billingCode = fs.readFileSync(path.join(repoRoot, "shared", "catering-booking-billing.ts"), "utf8");
+  assert.ok(billingCode.includes("CATERING_BILLING_MAXIMUM_CENTS = CATERING_INVOICE_MAXIMUM_CENTS"), "billing re-uses it rather than restating it");
+});

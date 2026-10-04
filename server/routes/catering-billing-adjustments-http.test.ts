@@ -1176,6 +1176,193 @@ if (!PG_URL) {
     assert.deepEqual([view.summary.nextAmountDueCents, view.summary.nextDueOn, view.summary.hasOverdue, view.invoices[0].overdue, view.invoices[1].overdue], [30000, PAST, true, false, true]);
   });
 
+  // ------------------------------------------------------------------------------------------------ per-payment refunds (Codex 6)
+  /** Two $100 payments against one request: A and B. */
+  async function twoPayments() {
+    const { bookingId, invoiceId } = await billed("0");
+    assert.equal((await pay(bookingId, invoiceId, "100.00")).status, 200);
+    assert.equal((await pay(bookingId, invoiceId, "100.00")).status, 200);
+    const payments = (await billing(bookingId)).body.payments as { id: string; refundableCents?: number }[];
+    return { bookingId, invoiceId, a: payments[0].id, b: payments[1].id };
+  }
+  const refundable = async (bookingId: string, id: string, who = PROVIDER) => ((await billing(bookingId, who)).body.payments as { id: string; refundableCents?: number }[]).find((row) => row.id === id)!.refundableCents;
+
+  test("per-payment refund: the server sends each payment's own refundable remainder, to the provider only", async () => {
+    const { bookingId, a, b } = await twoPayments();
+    assert.deepEqual([await refundable(bookingId, a), await refundable(bookingId, b)], [10000, 10000]);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 8000, paymentId: a })).status, 201);
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([await refundable(bookingId, a), await refundable(bookingId, b), view.adjustmentActions.maxRefundCents], [2000, 10000, 12000], "booking-wide 120, A 20, B 100");
+    const customer = (await billing(bookingId, CUSTOMER_A)).body;
+    assert.equal(customer.payments.every((row: { refundableCents?: number }) => !("refundableCents" in row)), true, "never given to a customer");
+    assert.equal(customer.adjustmentActions, undefined);
+  });
+
+  test("per-payment refund: $20 against A is accepted, $21 is rejected, B is unaffected, and other payments' refunds do not reduce A", async () => {
+    const { bookingId, a, b } = await twoPayments();
+    await adjust(bookingId, { kind: "refund", amountCents: 8000, paymentId: a });
+    const over = await adjust(bookingId, { kind: "refund", amountCents: 2100, paymentId: a });
+    assert.deepEqual([over.status, over.body.code], [409, "catering_billing_state"]);
+    assert.match(over.body.message, /cannot be more than that payment/);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 5000, paymentId: a })).status, 409, "$50 against A fails even though $120 remains booking-wide");
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 7000, paymentId: b })).status, 201, "B has its own $100");
+    assert.equal(await refundable(bookingId, a), 2000, "a refund against B never touched A");
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 2000, paymentId: a })).status, 201);
+    assert.equal(await refundable(bookingId, a), 0);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 1, paymentId: a })).status, 409, "zero left");
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 1000 })).status, 201, "a refund naming no payment is bounded booking-wide only");
+  });
+
+  test("per-payment refund: multiple refunds decrement once each and a reversed refund restores the capacity", async () => {
+    const { bookingId, a } = await twoPayments();
+    const first = await adjust(bookingId, { kind: "refund", amountCents: 3000, paymentId: a });
+    await adjust(bookingId, { kind: "refund", amountCents: 2000, paymentId: a });
+    assert.equal(await refundable(bookingId, a), 5000);
+    assert.equal((await reverse(bookingId, first.body.adjustments[0].id)).status, 200);
+    assert.equal(await refundable(bookingId, a), 8000, "only the reversed 30 comes back");
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 8000, paymentId: a })).status, 201);
+  });
+
+  test("per-payment refund: a form that was valid when it opened is rejected by the server once another refund commits", async () => {
+    const { bookingId, a } = await twoPayments();
+    const staleLimit = await refundable(bookingId, a);
+    assert.equal(staleLimit, 10000);
+    await adjust(bookingId, { kind: "refund", amountCents: 8000, paymentId: a });
+    const stale = await adjust(bookingId, { kind: "refund", amountCents: 5000, paymentId: a });
+    assert.equal(stale.status, 409, stale.text);
+    assert.equal((await ledger(bookingId)).length, 1);
+  });
+
+  test("per-payment refund: two simultaneous refunds against one payment's remaining capacity cannot over-refund it", async () => {
+    const { bookingId, a } = await twoPayments();
+    const results = await Promise.all([adjust(bookingId, { kind: "refund", amountCents: 6000, paymentId: a }), adjust(bookingId, { kind: "refund", amountCents: 6000, paymentId: a }), adjust(bookingId, { kind: "refund", amountCents: 6000, paymentId: a })]);
+    assert.deepEqual(results.map((response) => response.status).sort(), [201, 409, 409]);
+    assert.equal(await refundable(bookingId, a), 4000);
+    const total = (await ledger(bookingId)).reduce((sum: number, row: { amount_cents: string }) => sum + Number(row.amount_cents), 0);
+    assert.equal(total, 6000);
+  });
+
+  // ------------------------------------------------------------------------------------------------ obligation ceiling (Codex 7)
+  const CEILING = 9_999_999_999;
+  const bigBooking = (priceCents = 6_000_000_000) => confirmed({ priceCents, guestCount: 10, note: "Very large" });
+  const notificationCount = async () => Number((await local.query(`SELECT count(*) FROM notifications WHERE type = 'catering_booking_adjustment_posted'`)).rows[0].count);
+
+  test("charge ceiling: a small charge, a charge exactly to the ceiling, and a charge one cent over", async () => {
+    const small = await bigBooking();
+    assert.equal((await adjust(small, { kind: "charge", amountCents: 1000 })).status, 201);
+    const exact = await bigBooking();
+    const room = (await billing(exact)).body.adjustmentActions.maxChargeCents as number;
+    assert.equal(room, CEILING - 6_000_000_000);
+    const at = await adjust(exact, { kind: "charge", amountCents: room });
+    assert.equal(at.status, 201, at.text);
+    assert.equal(at.body.summary.obligationCents, CEILING);
+    assert.equal(at.body.adjustmentActions.maxChargeCents, 0);
+    const over = await bigBooking();
+    const refused = await adjust(over, { kind: "charge", amountCents: room + 1 });
+    assert.deepEqual([refused.status, refused.body.code], [409, "catering_billing_state"]);
+    assert.match(refused.body.message, /largest amount ChefSire can request/);
+  });
+
+  test("charge ceiling: a very large booking plus an individually valid charge is refused cleanly, with no side effect, and a retry is refused the same way", async () => {
+    const bookingId = await bigBooking(6_000_000_000);
+    const before = { booking: await bookingRow(bookingId), invoices: await rows("catering_booking_invoices", bookingId), notes: await notificationCount() };
+    const body = { kind: "charge", amountCents: 5_000_000_000, reason: "Huge", idempotencyKey: "over-ceiling-key-1" };
+    const first = await adjust(bookingId, body);
+    const retry = await adjust(bookingId, body);
+    for (const response of [first, retry]) assert.deepEqual([response.status, response.body.code], [409, "catering_billing_state"]);
+    assert.equal(first.text, retry.text, "an exact retry is refused identically");
+    assert.equal((await ledger(bookingId)).length, 0, "no ledger row");
+    assert.equal(await notificationCount(), before.notes, "no notification");
+    assert.deepEqual(await bookingRow(bookingId), before.booking, "no booking mutation");
+    assert.deepEqual(await rows("catering_booking_invoices", bookingId), before.invoices, "no invoice mutation");
+    // And no later 500: whatever was accepted can still be requested.
+    const issued = await issue(bookingId, "balance");
+    assert.equal(issued.status, 200, issued.text);
+    assert.equal(issued.body.invoices[0].amountCents, 6_000_000_000);
+  });
+
+  test("charge ceiling: an accepted charge at the ceiling can always be requested, with no 500 and no amount above the invoice maximum", async () => {
+    const bookingId = await bigBooking();
+    await adjust(bookingId, { kind: "charge", amountCents: CEILING - 6_000_000_000 });
+    const preview = (await billing(bookingId)).body.issuablePreview as { kind: string; amountCents: number }[];
+    assert.ok(preview.every((row) => row.amountCents <= CEILING), JSON.stringify(preview));
+    const issued = await issue(bookingId, "balance");
+    assert.equal(issued.status, 200, issued.text);
+    assert.equal(issued.body.invoices[0].amountCents, CEILING);
+  });
+
+  test("charge ceiling: credits make room, a reversed credit takes it back, a reversed charge frees it", async () => {
+    const bookingId = await bigBooking();
+    const room = async () => (await billing(bookingId)).body.adjustmentActions.maxChargeCents as number;
+    assert.equal(await room(), 3_999_999_999);
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 1_000_000_000 });
+    assert.equal(await room(), 4_999_999_999);
+    const charge = await adjust(bookingId, { kind: "charge", amountCents: 4_999_999_999 });
+    assert.equal(charge.status, 201);
+    assert.equal(await room(), 0);
+    const refusedReverse = await reverse(bookingId, credit.body.adjustments[0].id);
+    assert.deepEqual([refusedReverse.status, refusedReverse.body.code], [409, "catering_billing_state"], "reversing the credit would put the obligation past the ceiling");
+    assert.match(refusedReverse.body.message, /largest amount ChefSire can request/);
+    assert.equal((await reverse(bookingId, charge.body.adjustments[1].id)).status, 200);
+    assert.equal(await room(), 4_999_999_999, "the reversed charge freed its room");
+    assert.equal((await reverse(bookingId, credit.body.adjustments[0].id)).status, 200);
+    assert.equal(await room(), 3_999_999_999, "and a reversed credit took its room back");
+  });
+
+  test("charge ceiling: two simultaneous charges near the ceiling cannot both land", async () => {
+    const bookingId = await bigBooking();
+    const results = await Promise.all([adjust(bookingId, { kind: "charge", amountCents: 3_000_000_000 }), adjust(bookingId, { kind: "charge", amountCents: 3_000_000_000 })]);
+    assert.deepEqual(results.map((response) => response.status).sort(), [201, 409]);
+    const { summary } = (await billing(bookingId)).body;
+    assert.equal(summary.obligationCents, 9_000_000_000);
+    assert.ok(summary.obligationCents <= CEILING);
+  });
+
+  test("charge ceiling: a price amendment that would take the obligation past it is refused whole and stays pending; within it, one entry", async () => {
+    const bookingId = await bigBooking(6_000_000_000);
+    await adjust(bookingId, { kind: "charge", amountCents: 3_000_000_000 });
+    const tooBig = await propose(bookingId, { priceCents: 7_000_000_000 }, PROVIDER);
+    assert.equal(tooBig.status, 201, tooBig.text);
+    const refused = await respond(bookingId, tooBig.body.amendments.pending.id, "accept", CUSTOMER_A);
+    assert.deepEqual([refused.status, refused.body.code], [409, "billing_reconciliation_blocked"]);
+    assert.match(refused.body.message, /largest amount ChefSire can request/);
+    assert.equal((await bookingRow(bookingId)).agreed_price, "60000000.00", "the price did not move");
+    assert.equal((await ledger(bookingId)).length, 1, "only the manual charge: nothing half-written");
+    assert.equal((await local.query(`SELECT status FROM catering_booking_amendments WHERE id = $1`, [tooBig.body.amendments.pending.id])).rows[0].status, "pending");
+    assert.equal((await respond(bookingId, tooBig.body.amendments.pending.id, "decline", CUSTOMER_A)).status, 200);
+    const fits = await propose(bookingId, { priceCents: 6_999_999_999 }, PROVIDER);
+    assert.equal((await respond(bookingId, fits.body.amendments.pending.id, "accept", CUSTOMER_A)).status, 200);
+    assert.deepEqual((await ledger(bookingId)).map((row: { source: string }) => row.source), ["provider_recorded", "amendment"]);
+    assert.equal((await billing(bookingId)).body.summary.obligationCents, CEILING, "exactly at the ceiling");
+  });
+
+  test("charge ceiling: an amendment-generated charge racing a manual charge near the ceiling cannot take the obligation past it", async () => {
+    for (let round = 0; round < 4; round += 1) {
+      const bookingId = await bigBooking(6_000_000_000);
+      await adjust(bookingId, { kind: "charge", amountCents: 2_000_000_000 });
+      const created = await propose(bookingId, { priceCents: 7_500_000_000 }, PROVIDER);
+      const [accepted, manual] = await Promise.all([respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A), adjust(bookingId, { kind: "charge", amountCents: 1_500_000_000 })]);
+      const wins = [accepted.status === 200, manual.status === 201].filter(Boolean).length;
+      assert.equal(wins, 1, `exactly one fits: ${accepted.status}/${manual.status}`);
+      assert.equal([409].includes(accepted.status) || [409].includes(manual.status), true);
+      const obligation = (await billing(bookingId)).body.summary.obligationCents as number;
+      assert.ok(obligation <= CEILING, `obligation ${obligation}`);
+      const entries = await ledger(bookingId);
+      assert.equal(entries.length, 2, "the first manual charge plus exactly one of the contenders");
+      if (accepted.status === 200) assert.equal((await bookingRow(bookingId)).agreed_price, "75000000.00");
+      else assert.equal((await bookingRow(bookingId)).agreed_price, "60000000.00", "a refused acceptance leaves the price alone");
+    }
+  });
+
+  test("charge ceiling: an exact idempotent retry of an accepted charge near the ceiling stays a duplicate, not a second charge", async () => {
+    const bookingId = await bigBooking();
+    const body = { kind: "charge", amountCents: 3_999_999_999, reason: "To the ceiling", idempotencyKey: "retry-at-ceiling-1" };
+    assert.equal((await adjust(bookingId, body)).status, 201);
+    const retry = await adjust(bookingId, body);
+    assert.deepEqual([retry.status, retry.body.duplicate], [200, true], "answered from what happened, not re-judged against a ceiling it now sits at");
+    assert.equal((await ledger(bookingId)).length, 1);
+  });
+
   // ------------------------------------------------------------------------------------------------ the formula
   test("the derived position is exact: original + charges - credits = obligation, payments - refunds = net received, obligation - net = balance", async () => {
     const { bookingId } = await billed();

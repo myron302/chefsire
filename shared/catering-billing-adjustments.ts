@@ -53,7 +53,16 @@ export type CateringAdjustmentSource = typeof CATERING_ADJUSTMENT_SOURCES[number
 export const CATERING_ADJUSTMENT_STATUSES = ["posted", "reversed"] as const;
 export type CateringAdjustmentStatus = typeof CATERING_ADJUSTMENT_STATUSES[number];
 
-export const CATERING_ADJUSTMENT_MAXIMUM_CENTS = 99_999_999_99;
+/**
+ * THE ONE CEILING. The largest amount any single catering money row may hold: the `amount_cents <= 9999999999` CHECK on
+ * invoices, payments and adjustments alike. It is also the largest OBLIGATION the invoice model can bill, because a balance
+ * request is derived from the obligation and a request above this fails the invoice CHECK. Phase 2P therefore refuses any
+ * charge (or reversal of a credit, or amended price) that would take the obligation past it, instead of accepting it and
+ * failing later when the first request is issued. `catering-booking-billing.ts` re-exports this as its own maximum; the
+ * schema test pins it to the SQL.
+ */
+export const CATERING_INVOICE_MAXIMUM_CENTS = 9_999_999_999;
+export const CATERING_ADJUSTMENT_MAXIMUM_CENTS = CATERING_INVOICE_MAXIMUM_CENTS;
 export const CATERING_ADJUSTMENT_REASON_MAX_LENGTH = 500;
 export const CATERING_ADJUSTMENT_REFERENCE_MAX_LENGTH = 64;
 
@@ -170,7 +179,7 @@ export type CateringAdjustmentFacts = {
 };
 
 export type CateringAdjustmentRefusal = { ok: false; code: CateringAdjustmentRefusalCode; message: string };
-export type CateringAdjustmentRefusalCode = "not_allowed_for_status" | "no_agreed_price" | "currency_mismatch" | "exceeds_obligation" | "exceeds_received" | "payment_not_found" | "payment_exceeds" | "invoice_outstanding" | "not_reversible" | "already_reversed";
+export type CateringAdjustmentRefusalCode = "exceeds_invoice_ceiling" | "not_allowed_for_status" | "no_agreed_price" | "currency_mismatch" | "exceeds_obligation" | "exceeds_received" | "payment_not_found" | "payment_exceeds" | "invoice_outstanding" | "not_reversible" | "already_reversed";
 
 const refuse = (code: CateringAdjustmentRefusalCode, message: string): CateringAdjustmentRefusal => ({ ok: false, code, message });
 
@@ -184,6 +193,7 @@ export const CATERING_ADJUSTMENT_REFUSAL_COPY = {
         : "That cannot be recorded against this booking in its current state.",
   noAgreedPrice: "This booking has no agreed price, so there is nothing to add a charge or credit to.",
   currency: "That amount is in a different currency from this booking. ChefSire does not convert between currencies.",
+  obligationCeiling: "That would take what your customer owes above the largest amount ChefSire can request for one booking. Nothing was recorded.",
   creditTooLarge: "A credit cannot be more than what your customer currently owes for this booking.",
   refundTooLarge: "A refund record cannot be more than the money already recorded as received and not yet recorded as returned.",
   paymentNotFound: "That payment is not recorded on this booking.",
@@ -197,6 +207,25 @@ export const CATERING_ADJUSTMENT_REFUSAL_COPY = {
 export function cateringRefundCeilingCents(input: { paidTotalCents: number; adjustments: readonly CateringAdjustmentFact[] }): number {
   return Math.max(0, input.paidTotalCents - sumPosted(input.adjustments, "refund"));
 }
+/** How much more the obligation may grow before it passes the invoice ceiling. Zero when it is already there. */
+export function cateringChargeCeilingCents(position: Pick<CateringLedgerPosition, "obligationCents">): number {
+  return Math.max(0, CATERING_INVOICE_MAXIMUM_CENTS - (position.obligationCents ?? 0));
+}
+/**
+ * What a recorded payment can still have returned against it: its own amount less the live refunds that name it. A
+ * reversed refund no longer consumes it. Zero for a voided payment. The server derives it and sends it to the provider, so
+ * the form states the same limit the write is judged against instead of rebuilding the accounting.
+ */
+export function cateringPaymentRefundableCents(payment: { id: string; amountCents: number; status: string }, adjustments: readonly CateringAdjustmentFact[]): number {
+  if (payment.status !== "recorded") return 0;
+  const refunded = adjustments.reduce((total, entry) => (cateringAdjustmentCounts(entry) && entry.kind === "refund" && entry.paymentId === payment.id ? total + entry.amountCents : total), 0);
+  return Math.max(0, payment.amountCents - refunded);
+}
+/** The most a refund may be right now: the booking-wide ceiling, and when a payment is named, also that payment's own remainder. */
+export function cateringEffectiveRefundLimitCents(bookingWideCents: number, selectedPaymentRefundableCents: number | null): number {
+  return selectedPaymentRefundableCents === null ? bookingWideCents : Math.max(0, Math.min(bookingWideCents, selectedPaymentRefundableCents));
+}
+
 /** The most a credit may be: the obligation, so it can reach zero and never go below it. */
 export function cateringCreditCeilingCents(position: Pick<CateringLedgerPosition, "obligationCents">): number {
   return Math.max(0, position.obligationCents ?? 0);
@@ -226,6 +255,8 @@ export function resolveCateringAdjustment(request: CateringAdjustmentRequest, fa
   if (request.kind !== "refund") {
     if (position.obligationCents === null) return refuse("no_agreed_price", CATERING_ADJUSTMENT_REFUSAL_COPY.noAgreedPrice);
     if (request.kind === "credit" && request.amountCents > cateringCreditCeilingCents(position)) return refuse("exceeds_obligation", CATERING_ADJUSTMENT_REFUSAL_COPY.creditTooLarge);
+    // Checked BEFORE the row exists: a charge the invoice model cannot bill is refused now, not at the first request.
+    if (request.kind === "charge" && request.amountCents > cateringChargeCeilingCents(position)) return refuse("exceeds_invoice_ceiling", CATERING_ADJUSTMENT_REFUSAL_COPY.obligationCeiling);
     return { ok: true };
   }
   if (request.amountCents > cateringRefundCeilingCents({ paidTotalCents: facts.paidTotalCents, adjustments: facts.adjustments })) return refuse("exceeds_received", CATERING_ADJUSTMENT_REFUSAL_COPY.refundTooLarge);
@@ -248,6 +279,8 @@ export function resolveCateringAdjustmentReversal(entry: CateringAdjustmentFact 
   const after = facts.adjustments.map((row) => (row.id === entry.id ? { ...row, status: "reversed" as const } : row));
   const position = deriveCateringLedgerPosition({ agreedTotalCents: facts.agreedTotalCents, paidTotalCents: facts.paidTotalCents, adjustments: after });
   if (position.obligationCents !== null && position.obligationCents < 0) return refuse("exceeds_obligation", CATERING_ADJUSTMENT_REFUSAL_COPY.creditTooLarge);
+  // Reversing a credit raises the obligation, so it obeys the same ceiling a charge does.
+  if (position.obligationCents !== null && position.obligationCents > CATERING_INVOICE_MAXIMUM_CENTS) return refuse("exceeds_invoice_ceiling", CATERING_ADJUSTMENT_REFUSAL_COPY.obligationCeiling);
   if (!cateringOutstandingAskFitsPosition(facts, position)) return refuse("invoice_outstanding", CATERING_ADJUSTMENT_REFUSAL_COPY.invoiceOutstanding);
   return { ok: true };
 }
@@ -266,11 +299,11 @@ export function cateringAmendmentLedgerEffect(basePriceCents: number | null, new
 
 /**
  * Whether the booking's agreed price may move to `newAgreedTotalCents` without leaving the ledger incoherent: the
- * resulting obligation may not be negative and an unpaid request may not outlive it. Paid history is untouched.
+ * resulting obligation may not be negative or above the invoice ceiling, and an unpaid request may not outlive it. Paid history is untouched.
  */
 export function cateringAmendedPriceKeepsLedgerCoherent(newAgreedTotalCents: number, facts: Pick<CateringAdjustmentFacts, "liveInvoicedCents" | "paidTotalCents" | "adjustments">): boolean {
   const position = deriveCateringLedgerPosition({ agreedTotalCents: newAgreedTotalCents, paidTotalCents: facts.paidTotalCents, adjustments: facts.adjustments });
-  return (position.obligationCents ?? 0) >= 0 && cateringOutstandingAskFitsPosition(facts, position);
+  return (position.obligationCents ?? 0) >= 0 && (position.obligationCents ?? 0) <= CATERING_INVOICE_MAXIMUM_CENTS && cateringOutstandingAskFitsPosition(facts, position);
 }
 
 /**
@@ -318,6 +351,8 @@ export type CateringAdjustmentActions = {
   /** The most a credit / a refund record may be right now, so the form states its own limit. */
   maxCreditCents: number;
   maxRefundCents: number;
+  /** How much more a charge may add before the obligation passes the largest amount a request can be issued for. */
+  maxChargeCents: number;
 };
 
 export const cateringBookingAdjustmentsPath = (bookingId: string) => `/api/catering/bookings/${bookingId}/billing/adjustments`;

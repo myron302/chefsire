@@ -30,6 +30,7 @@ import {
   cateringAdjustmentSnapshot,
   cateringAdjustmentSourceText,
   checkCateringAdjustmentForm,
+  cateringRefundLimitForForm,
   chronologicalCateringAdjustments,
   describeCateringAdjustmentConfirmation,
   describeCateringReversalConfirmation,
@@ -65,7 +66,13 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
   const currency = summary.currency;
   const money = (cents: number) => formatCateringMoney(cents, currency);
   const actions = billing.adjustmentActions;
-  const limits = { maxCreditCents: actions?.maxCreditCents ?? 0, maxRefundCents: actions?.maxRefundCents ?? 0 };
+  const limitsFor = (paymentId: string) => ({
+    maxCreditCents: actions?.maxCreditCents ?? 0,
+    maxRefundCents: actions?.maxRefundCents ?? 0,
+    maxChargeCents: actions?.maxChargeCents,
+    // The selected payment's own remainder, as the server derived it; a payment the payload does not vouch for allows nothing.
+    selectedPaymentRefundableCents: paymentId ? billing.payments.find((payment) => payment.id === paymentId)?.refundableCents ?? 0 : null,
+  });
 
   // Assigned during RENDER, as in the rest of billing, so the one committed render of booking B before the reset flushes
   // can neither show nor submit booking A's draft.
@@ -122,6 +129,7 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
   const pending = mutation.isPending;
 
   const open = activeCateringAdjustmentForm(form, identity, provider && current);
+  const limits = limitsFor(open?.paymentId ?? "");
   const check = open ? checkCateringAdjustmentForm(open, limits) : null;
   const entries = chronologicalCateringAdjustments(billing.adjustments);
   const recordedPayments = billing.payments.filter((payment) => payment.status === "recorded");
@@ -208,7 +216,9 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
             <p id={`adjustment-amount-help-${bookingId}`} className={showErrors && check?.ok === false && check.field === "amount" ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={showErrors && check?.ok === false && check.field === "amount" ? "alert" : undefined}>
               {showErrors && check?.ok === false && check.field === "amount" ? check.message
                 : open.kind === "credit" ? `At most ${money(limits.maxCreditCents)}, what your customer currently owes.`
-                : open.kind === "refund" ? `At most ${money(limits.maxRefundCents)}, the money recorded as received and not yet recorded as returned.`
+                : open.kind === "refund" ? (open.paymentId
+                  ? `At most ${money(cateringRefundLimitForForm(open, limits))}: what is left of the selected payment, and never more than the ${money(limits.maxRefundCents)} recorded as received and not yet recorded as returned.`
+                  : `At most ${money(limits.maxRefundCents)}, the money recorded as received and not yet recorded as returned.`)
                 : "In the booking's currency. ChefSire does not convert currencies."}
             </p>
           </div>
@@ -217,7 +227,7 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
             <select id={`adjustment-payment-${bookingId}`} className="min-h-11 w-full rounded-md border bg-background px-3" value={open.paymentId}
               onChange={(event) => setForm((value) => editCateringAdjustmentForm(value, identity, { paymentId: event.target.value }))}>
               <option value="">Not tied to one payment</option>
-              {recordedPayments.map((payment) => <option key={payment.id} value={payment.id}>{money(payment.amountCents)} · {CATERING_PAYMENT_METHOD_COPY[payment.method]} · {payment.receivedOn}</option>)}
+              {recordedPayments.map((payment) => <option key={payment.id} value={payment.id} disabled={(payment.refundableCents ?? 0) === 0}>{money(payment.amountCents)} · {CATERING_PAYMENT_METHOD_COPY[payment.method]} · {payment.receivedOn} · {money(payment.refundableCents ?? 0)} left to record as returned</option>)}
             </select>
           </div>}
         </div>

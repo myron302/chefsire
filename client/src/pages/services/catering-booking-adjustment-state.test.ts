@@ -10,6 +10,7 @@ import {
   cateringAdjustmentSnapshot,
   cateringAdjustmentSourceText,
   checkCateringAdjustmentForm,
+  cateringRefundLimitForForm,
   chronologicalCateringAdjustments,
   describeCateringAdjustmentConfirmation,
   describeCateringReversalConfirmation,
@@ -176,4 +177,61 @@ test("an ACTIVE entry keeps its present-tense meaning", () => {
   assert.match(active("credit", "provider"), /^What your customer owes is reduced by \$100\.00\./);
   assert.match(active("refund", "customer"), /^Your caterer recorded \$100\.00 as returned outside ChefSire\. ChefSire did not send it\.$/);
   assert.match(active("refund", "provider"), /^You recorded \$100\.00 as returned outside ChefSire\. ChefSire did not send it\.$/);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * A selected payment's own refundable remainder
+ * ------------------------------------------------------------------------------------------------------------- */
+
+// Payments A and B are $100 each; $80 already recorded against A. Booking-wide $120, A $20, B $100 -- all server figures.
+const wide = { maxCreditCents: 250_000, maxRefundCents: 12_000, maxChargeCents: 400_000 };
+const refundForm = (amount: string, paymentId = "") => ({ ...form("refund", { amount }), paymentId });
+
+test("with a payment selected the limit is the smaller of the booking-wide remainder and that payment's remainder", () => {
+  const onA = { ...wide, selectedPaymentRefundableCents: 2_000 };
+  const onB = { ...wide, selectedPaymentRefundableCents: 10_000 };
+  assert.equal(cateringRefundLimitForForm(refundForm("50", "pa"), onA), 2_000);
+  assert.equal(cateringRefundLimitForForm(refundForm("50", "pb"), onB), 10_000);
+  assert.equal(cateringRefundLimitForForm(refundForm("50"), { ...wide, selectedPaymentRefundableCents: null }), 12_000, "no payment selected: booking-wide");
+  assert.equal(cateringRefundLimitForForm(refundForm("50", "pa"), { ...wide, maxRefundCents: 1_500, selectedPaymentRefundableCents: 10_000 }), 1_500, "the booking-wide remainder can be the smaller one");
+});
+
+test("$50 against a payment with $20 left is refused client-side even though $120 remains booking-wide; $20 is accepted, $21 is not", () => {
+  const onA = { ...wide, selectedPaymentRefundableCents: 2_000 };
+  const refused = checkCateringAdjustmentForm(refundForm("50", "pa"), onA);
+  assert.equal(refused.ok, false);
+  assert.match(refused.ok === false ? refused.message : "", /cannot be more than what is left of that payment/);
+  assert.deepEqual(checkCateringAdjustmentForm(refundForm("20", "pa"), onA), { ok: true, amountCents: 2_000 });
+  assert.equal(checkCateringAdjustmentForm(refundForm("20.01", "pa"), onA).ok, false);
+  assert.equal(checkCateringAdjustmentForm(refundForm("21", "pa"), onA).ok, false);
+  assert.equal(checkCateringAdjustmentForm(refundForm("50", "pb"), { ...wide, selectedPaymentRefundableCents: 10_000 }).ok, true, "the same $50 against B is fine");
+  assert.equal(maySubmitCateringAdjustment(refundForm("50", "pa"), onA, false), false, "submit is disabled above the payment's limit");
+});
+
+test("switching the selected payment immediately changes what the form accepts", () => {
+  const amount = "50";
+  const against = (paymentId: string, remaining: number | null) => checkCateringAdjustmentForm(refundForm(amount, paymentId), { ...wide, selectedPaymentRefundableCents: remaining }).ok;
+  assert.deepEqual([against("pa", 2_000), against("pb", 10_000), against("", null)], [false, true, true]);
+});
+
+test("a payment with nothing left allows no positive refund, with a truthful message; a payment the payload does not vouch for allows nothing", () => {
+  const spent = checkCateringAdjustmentForm(refundForm("0.01", "pa"), { ...wide, selectedPaymentRefundableCents: 0 });
+  assert.equal(spent.ok, false);
+  assert.match(spent.ok === false ? spent.message : "", /Nothing is left to record as returned against that payment/);
+  assert.equal(checkCateringAdjustmentForm(refundForm("1", "pa"), { ...wide, selectedPaymentRefundableCents: undefined }).ok, false);
+  assert.equal(maySubmitCateringAdjustment(refundForm("1", "pa"), { ...wide, selectedPaymentRefundableCents: 0 }, false), false);
+});
+
+test("the booking-wide message is used when no payment is the binding limit", () => {
+  const wideOnly = checkCateringAdjustmentForm(refundForm("121"), { ...wide, selectedPaymentRefundableCents: null });
+  assert.match(wideOnly.ok === false ? wideOnly.message : "", /money already recorded as received and not yet recorded as returned/);
+  assert.equal(checkCateringAdjustmentForm(refundForm("120"), { ...wide, selectedPaymentRefundableCents: null }).ok, true);
+});
+
+test("a charge is checked against the server's stated headroom when it states one, and the server decides when it does not", () => {
+  assert.equal(checkCateringAdjustmentForm(form("charge", { amount: "4000" }), wide).ok, true);
+  const over = checkCateringAdjustmentForm(form("charge", { amount: "4000.01" }), wide);
+  assert.equal(over.ok, false);
+  assert.match(over.ok === false ? over.message : "", /largest amount ChefSire can request/);
+  assert.equal(checkCateringAdjustmentForm(form("charge", { amount: "999999" }), { maxCreditCents: 1, maxRefundCents: 1 }).ok, true, "an older payload without a headroom: the server judges");
 });
