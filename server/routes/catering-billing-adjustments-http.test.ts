@@ -1582,6 +1582,126 @@ if (!PG_URL) {
     assert.deepEqual(issued.body.issuable, []);
   });
 
+  // ------------------------------------------------------------------------------------------------ reversed-credit gap (Codex 11)
+  /** $1,000 agreed, credits entered before the balance, and the balance requested at the reduced figure. */
+  async function creditedBalance(credits: number[], paid = "0", customer = CUSTOMER_A) {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" }, { customer });
+    const entries: string[] = [];
+    for (const cents of credits) {
+      const created = await adjust(bookingId, { kind: "credit", amountCents: cents });
+      assert.equal(created.status, 201, created.text);
+      entries.push(created.body.adjustments.find((row: { amountCents: number; id: string }) => !entries.includes(row.id) && row.amountCents === cents).id);
+    }
+    const balance = await issue(bookingId, "balance");
+    assert.equal(balance.status, 200, balance.text);
+    const invoiceId = balance.body.invoices[0].id as string;
+    if (paid !== "0") assert.equal((await pay(bookingId, invoiceId, paid)).status, 200);
+    return { bookingId, invoiceId, entries };
+  }
+  const preview = async (bookingId: string) => (await billing(bookingId)).body.issuablePreview as { kind: string; amountCents: number }[];
+  const shape = (body: { invoices: { kind: string; amountCents: number }[] }) => body.invoices.map((row) => [row.kind, row.amountCents]);
+
+  test("reversed-credit gap: the exact Codex case ($1,000, -$200, $800 balance, $400 paid, credit reversed) offers a $200 request with no posted entry left", async () => {
+    const { bookingId, invoiceId, entries } = await creditedBalance([20000], "400.00");
+    const invoiceBefore = (await rows("catering_booking_invoices", bookingId)).find((row: { id: string }) => row.id === invoiceId);
+    assert.equal((await reverse(bookingId, entries[0])).status, 200);
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([view.summary.obligationCents, view.summary.netReceivedCents, view.summary.balanceDueCents], [100000, 40000, 60000]);
+    assert.equal((await ledger(bookingId)).filter((row: { status: string }) => row.status === "posted").length, 0, "no posted entry remains");
+    assert.deepEqual(view.issuablePreview, [{ kind: "adjustment", amountCents: 20000 }], "$200 of obligation the $800 request never covered");
+    const requested = await issue(bookingId, "adjustment");
+    assert.equal(requested.status, 200, requested.text);
+    assert.deepEqual(shape(requested.body), [["balance", 80000], ["adjustment", 20000]]);
+    assert.deepEqual((await rows("catering_booking_invoices", bookingId)).find((row: { id: string }) => row.id === invoiceId), invoiceBefore, "the historical invoice is untouched");
+    assert.deepEqual(requested.body.issuable, []);
+    assert.equal((await issue(bookingId, "adjustment")).status, 409, "the same gap is never requested twice");
+    assert.equal((await pay(bookingId, invoiceId, "400.00")).status, 200);
+    assert.equal((await pay(bookingId, requested.body.invoices[1].id, "200.00")).status, 200, "a payment target exists for the whole receivable");
+    const settled = (await billing(bookingId)).body.summary;
+    assert.deepEqual([settled.balanceDueCents, settled.status], [0, "settled"]);
+  });
+
+  test("reversed-credit gap: the same case with no payment yet, and with the lower balance fully paid", async () => {
+    const unpaid = await creditedBalance([20000]);
+    await reverse(unpaid.bookingId, unpaid.entries[0]);
+    assert.deepEqual(await preview(unpaid.bookingId), [{ kind: "adjustment", amountCents: 20000 }], "beside the existing $800 request, not instead of it");
+    const paid = await creditedBalance([20000], "800.00", CUSTOMER_B);
+    await reverse(paid.bookingId, paid.entries[0]);
+    const view = (await billing(paid.bookingId)).body;
+    assert.deepEqual([view.summary.balanceDueCents, view.issuablePreview], [20000, [{ kind: "adjustment", amountCents: 20000 }]]);
+  });
+
+  test("reversed-credit gap: several credits in the balance, reversing one restores only that one; reversing all restores the total once", async () => {
+    const { bookingId, entries } = await creditedBalance([20000, 5000]);
+    await reverse(bookingId, entries[1]);
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 5000 }]);
+    await reverse(bookingId, entries[0]);
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 25000 }]);
+    const requested = await issue(bookingId, "adjustment");
+    assert.deepEqual(shape(requested.body), [["balance", 75000], ["adjustment", 25000]]);
+    assert.deepEqual(requested.body.issuable, []);
+  });
+
+  test("reversed-credit gap: a reversal then a new credit or a charge moves the gap from current obligation; a reversed charge leaves none", async () => {
+    const { bookingId, entries } = await creditedBalance([20000]);
+    await reverse(bookingId, entries[0]);
+    await adjust(bookingId, { kind: "credit", amountCents: 5000 });
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 15000 }], "$950 obligation less the $800 already requested");
+    const charge = await adjust(bookingId, { kind: "charge", amountCents: 10000 });
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 25000 }]);
+    assert.equal((await reverse(bookingId, charge.body.adjustments.find((row: { kind: string }) => row.kind === "charge").id)).status, 200);
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 15000 }], "a reversed charge no longer counts");
+    const other = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" }, { customer: CUSTOMER_B });
+    await issue(other, "balance");
+    const onlyCharge = await adjust(other, { kind: "charge", amountCents: 10000 });
+    await reverse(other, onlyCharge.body.adjustments[0].id);
+    assert.deepEqual([await preview(other), (await billing(other)).body.issuable], [[], []], "no stale positive request");
+  });
+
+  test("reversed-credit gap: a refund and its reversal add and remove only their own recollection beside the restored gap", async () => {
+    const { bookingId, entries } = await creditedBalance([20000], "800.00");
+    await reverse(bookingId, entries[0]);
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 20000 }]);
+    const refund = await adjust(bookingId, { kind: "refund", amountCents: 30000, paymentId: (await rows("catering_booking_payments", bookingId))[0].id });
+    assert.equal(refund.status, 201, refund.text);
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 50000 }], "restored $200 and refunded $300, each once");
+    assert.equal((await reverse(bookingId, refund.body.adjustments.find((row: { kind: string }) => row.kind === "refund").id)).status, 200);
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 20000 }], "reversing the refund removes only its recollection");
+  });
+
+  test("reversed-credit gap: a request that already covers the gap, or part of it, never duplicates", async () => {
+    const { bookingId, entries } = await creditedBalance([20000, 5000]);
+    await reverse(bookingId, entries[0]);
+    const first = await issue(bookingId, "adjustment");
+    assert.deepEqual(shape(first.body), [["balance", 75000], ["adjustment", 20000]]);
+    assert.deepEqual(first.body.issuable, []);
+    await reverse(bookingId, entries[1]);
+    assert.deepEqual(await preview(bookingId), [{ kind: "adjustment", amountCents: 5000 }], "only what the $200 request did not cover");
+    const second = await issue(bookingId, "adjustment");
+    assert.deepEqual(shape(second.body), [["balance", 75000], ["adjustment", 20000], ["adjustment", 5000]]);
+    assert.equal(second.body.summary.outstandingInvoicedCents, 100000);
+  });
+
+  test("reversed-credit gap: a fully covered booking with no ledger history is unchanged", async () => {
+    const legacy = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    await issue(legacy, "balance");
+    assert.deepEqual([await preview(legacy), (await billing(legacy)).body.issuable], [[], []]);
+  });
+
+  test("reversed-credit gap: concurrent requests and a payment racing the restored-gap request leave the gap requested exactly once", async () => {
+    const { bookingId, invoiceId, entries } = await creditedBalance([20000], "400.00");
+    await reverse(bookingId, entries[0]);
+    const results = await Promise.all([issue(bookingId, "adjustment"), issue(bookingId, "adjustment"), pay(bookingId, invoiceId, "100.00")]);
+    assert.equal(results.slice(0, 2).filter((response) => response.status === 200).length, 1, "exactly one request is issued");
+    assert.equal(results[2].status, 200);
+    const view = (await billing(bookingId)).body;
+    assert.equal(view.invoices.filter((row: { kind: string; status: string }) => row.kind === "adjustment" && row.status === "issued").length, 1);
+    assert.deepEqual([view.summary.outstandingInvoicedCents, view.issuable], [50000, []]);
+    assert.equal((await reverse(bookingId, entries[0])).status, 200, "a retried reversal resolves to the one that landed");
+    assert.equal((await ledger(bookingId)).length, 1, "and writes nothing new");
+    assert.deepEqual([(await billing(bookingId)).body.summary.obligationCents, (await billing(bookingId)).body.issuable], [100000, []]);
+  });
+
   test("coverage: concurrent requests, a charge racing a request, and a reversal racing a request all end with every cent covered exactly once", async () => {
     const make = async () => {
       const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });

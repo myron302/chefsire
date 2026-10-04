@@ -736,7 +736,7 @@ test("later credits reduce the uncovered amount, a reversed later charge removes
   assert.equal(adj(credit(20_000, { status: "reversed" })), 0, "a reversed credit that was never reflected recreates nothing");
   const reducedBalance = invoice({ kind: "balance", amountCents: 80_000 });
   const withReversedCredit = billing({ agreedTotalCents: 100_000, invoices: [reducedBalance], adjustments: [credit(20_000, { status: "reversed" })] });
-  assert.equal(cateringInvoiceAmountFor("adjustment", withReversedCredit), null, "no live entry: Phase 2L's meaning, withdraw and reissue");
+  assert.equal(cateringInvoiceAmountFor("adjustment", withReversedCredit), 20_000, "no posted entry is needed: the restored obligation exceeds what the live balance requested");
   const withLiveOther = billing({ agreedTotalCents: 100_000, invoices: [reducedBalance], adjustments: [credit(20_000, { status: "reversed" }), entry({ kind: "charge", amountCents: 1_000 })] });
   assert.equal(cateringInvoiceAmountFor("adjustment", withLiveOther), 21_000, "the reversed credit's room is owed again, together with the new charge");
 });

@@ -8,6 +8,7 @@ import {
   CATERING_INVOICE_STATUSES,
   CATERING_PAYMENT_METHODS,
   CATERING_PAYMENT_SOURCES,
+  cateringAdjustmentRequestCents,
   cateringBalanceAmount,
   cateringBillingIsActionable,
   cateringCentsToDecimal,
@@ -420,4 +421,29 @@ test("withdrawing and reissuing is the only way to change an ask, and it frees t
   assert.equal(cateringInvoiceAmountFor("deposit", state), 180_000, "at the terms as they now stand");
   // And the withdrawn invoice keeps its own amount: history is not rewritten to look as though it was always 1800.
   assert.equal(withdrawn.amountCents, 50_000);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Phase 2P: the request gap is current coverage, not "is an entry still posted"
+ * ------------------------------------------------------------------------------------------------------------- */
+
+const credit = (status: "posted" | "reversed", amountCents = 20_000, id = "adj-1") =>
+  ({ id, kind: "credit", amountCents, currency: "USD", status, source: "provider_recorded", paymentId: null }) as const;
+const balanceOf = (amountCents: number) => invoice({ id: "inv-b", kind: "balance", amountCents });
+
+test("a reversed credit that a live balance reflects leaves its restored amount requestable with no posted entry", () => {
+  const base = { agreedTotalCents: 100_000, invoices: [balanceOf(80_000)], payments: [payment({ id: "p", invoiceId: "inv-b", amountCents: 40_000 })] };
+  assert.equal(cateringAdjustmentRequestCents(facts({ ...base, adjustments: [credit("posted")] })), 0, "still credited: the balance already reflects it");
+  const reversed = facts({ ...base, adjustments: [credit("reversed")] });
+  assert.equal(cateringAdjustmentRequestCents(reversed), 20_000, "obligation is $1,000 against $800 requested");
+  assert.deepEqual(cateringIssuableInvoiceKinds(reversed), ["adjustment"]);
+  assert.equal(cateringInvoiceAmountFor("adjustment", reversed), 20_000);
+  const requested = facts({ ...base, invoices: [balanceOf(80_000), invoice({ id: "inv-a", kind: "adjustment", amountCents: 20_000 })], adjustments: [credit("reversed")] });
+  assert.equal(cateringAdjustmentRequestCents(requested), 0, "once covered it is not requested again");
+});
+
+test("with no ledger history at all the request gap stays zero, and a reversed charge leaves nothing to request", () => {
+  assert.equal(cateringAdjustmentRequestCents(facts({ agreedTotalCents: 100_000, invoices: [balanceOf(80_000)] })), 0);
+  const charge = { id: "c", kind: "charge", amountCents: 10_000, currency: "USD", status: "reversed", source: "provider_recorded", paymentId: null } as const;
+  assert.equal(cateringAdjustmentRequestCents(facts({ agreedTotalCents: 100_000, invoices: [balanceOf(100_000)], adjustments: [charge] })), 0);
 });

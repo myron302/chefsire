@@ -569,11 +569,14 @@ export function cateringInvoiceHeadroomCents(facts: CateringBillingFacts): numbe
  * exactly what has happened since -- a later charge, a reversed credit, or a recorded refund -- whichever order they came in,
  * with earlier further requests already counted in the coverage.
  *
- * It is offered only once the ledger has a live entry. Without one there is no adjustment to be requested, and a gap beside a
- * live balance (a withdrawn deposit) keeps its Phase 2L meaning: withdraw the balance and issue the pair afresh.
+ * The gate is whether the ledger has ANY history, not whether an entry is still posted. Reversing a credit that a live balance
+ * already reflects is not a new charge; it is the obligation growing back past what that balance asked for, which leaves the
+ * restored amount uncovered with no entry left to point at. The coverage gap (target minus live requests, capped by what is owed
+ * and unasked) is the whole rule; the history gate only keeps a booking that never used the ledger on its Phase 2L meaning,
+ * where a gap beside a live balance (a withdrawn deposit) is resolved by withdrawing the balance and issuing the pair afresh.
  */
 export function cateringAdjustmentRequestCents(facts: CateringBillingFacts): number {
-  if (!(facts.adjustments ?? []).some((entry) => entry.status === "posted")) return 0;
+  if ((facts.adjustments ?? []).length === 0) return 0;
   const paid = facts.payments.reduce((total, row) => (cateringPaymentCounts(row) ? total + row.amountCents : total), 0);
   const balanceDue = deriveCateringLedgerPosition({ agreedTotalCents: facts.agreedTotalCents, paidTotalCents: paid, adjustments: facts.adjustments ?? [] }).balanceDueCents ?? 0;
   // What is owed and not already asked for: a refund cannot create request capacity beyond a positive balance.
