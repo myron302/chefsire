@@ -1532,6 +1532,181 @@ if (!PG_URL) {
     assert.equal(reversedOnce, true);
   });
 
+  // ------------------------------------------------------------------------------------------------ request coverage (Codex 10)
+  test("coverage: a credit already inside the balance request does not cancel a later charge ($1,000, -$200, $800 balance, +$200 => a $200 request)", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    assert.equal((await adjust(bookingId, { kind: "credit", amountCents: 20000 })).status, 201);
+    const balance = await issue(bookingId, "balance");
+    assert.equal(balance.status, 200, balance.text);
+    assert.equal(balance.body.invoices[0].amountCents, 80000, "the balance request incorporates the credit");
+    assert.deepEqual(balance.body.issuable, [], "nothing uncovered yet");
+    const invoiceRow = (await rows("catering_booking_invoices", bookingId)).find((row: { id: string }) => row.id === balance.body.invoices[0].id);
+    await adjust(bookingId, { kind: "charge", amountCents: 20000 });
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([view.summary.obligationCents, view.summary.balanceDueCents, view.issuable, view.issuablePreview], [100000, 100000, ["adjustment"], [{ kind: "adjustment", amountCents: 20000 }]]);
+    const requested = await issue(bookingId, "adjustment");
+    assert.equal(requested.status, 200, requested.text);
+    assert.deepEqual(requested.body.invoices.map((row: { kind: string; amountCents: number }) => [row.kind, row.amountCents]), [["balance", 80000], ["adjustment", 20000]]);
+    assert.equal(requested.body.summary.outstandingInvoicedCents, 100000);
+    assert.deepEqual((await rows("catering_booking_invoices", bookingId)).find((row: { id: string }) => row.id === balance.body.invoices[0].id), invoiceRow, "no historical invoice mutation");
+    assert.equal((await issue(bookingId, "adjustment")).status, 409, "a retry cannot request the same amount twice");
+    assert.equal((await pay(bookingId, requested.body.invoices[1].id, "200.00")).status, 200);
+    assert.equal((await pay(bookingId, requested.body.invoices[0].id, "800.00")).status, 200);
+    assert.deepEqual([(await billing(bookingId)).body.summary.balanceDueCents, (await billing(bookingId)).body.summary.status], [0, "settled"]);
+  });
+
+  test("coverage: a charge inside the balance then a later credit needs no request; credits and reversals move the uncovered amount exactly", async () => {
+    const included = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    await adjust(included, { kind: "charge", amountCents: 20000 });
+    assert.equal((await issue(included, "balance")).body.invoices[0].amountCents, 120000);
+    await adjust(included, { kind: "credit", amountCents: 20000 });
+    assert.deepEqual((await billing(included)).body.issuable, []);
+    const later = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" }, { customer: CUSTOMER_B });
+    const laterBalance = await issue(later, "balance");
+    assert.equal((await pay(later, laterBalance.body.invoices[0].id, "1000.00")).status, 200, "paid, so no unpaid request depends on the obligation");
+    const charge = await adjust(later, { kind: "charge", amountCents: 20000 });
+    await adjust(later, { kind: "credit", amountCents: 5000 });
+    assert.deepEqual((await billing(later)).body.issuablePreview, [{ kind: "adjustment", amountCents: 15000 }], "a later credit reduces it");
+    assert.equal((await reverse(later, charge.body.adjustments[0].id)).status, 200);
+    assert.deepEqual((await billing(later)).body.issuable, [], "a reversed later charge removes it");
+  });
+
+  test("coverage: a refund after the balance request remains requestable through the same rule, once", async () => {
+    const { bookingId } = await billed("2500.00");
+    await adjust(bookingId, { kind: "refund", amountCents: 30000 });
+    assert.deepEqual((await billing(bookingId)).body.issuablePreview, [{ kind: "adjustment", amountCents: 30000 }]);
+    await adjust(bookingId, { kind: "charge", amountCents: 20000 });
+    assert.deepEqual((await billing(bookingId)).body.issuablePreview, [{ kind: "adjustment", amountCents: 50000 }], "each counted once");
+    const issued = await issue(bookingId, "adjustment");
+    assert.equal(issued.body.invoices[1].amountCents, 50000);
+    assert.deepEqual(issued.body.issuable, []);
+  });
+
+  test("coverage: concurrent requests, a charge racing a request, and a reversal racing a request all end with every cent covered exactly once", async () => {
+    const make = async () => {
+      const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+      await adjust(bookingId, { kind: "credit", amountCents: 20000 });
+      await issue(bookingId, "balance");
+      return bookingId;
+    };
+    const covered = async (bookingId: string) => {
+      const view = (await billing(bookingId)).body;
+      const asked = view.invoices.filter((row: { status: string }) => row.status === "issued").reduce((sum: number, row: { amountCents: number }) => sum + row.amountCents, 0);
+      const requestable = (view.issuablePreview as { amountCents: number }[]).reduce((sum, row) => sum + row.amountCents, 0);
+      return { asked, requestable, obligation: view.summary.obligationCents as number, view };
+    };
+    const first = await make();
+    await adjust(first, { kind: "charge", amountCents: 20000 });
+    const many = await Promise.all([issue(first, "adjustment"), issue(first, "adjustment"), issue(first, "adjustment")]);
+    assert.deepEqual(many.map((response) => response.status).sort(), [200, 409, 409]);
+    assert.equal((await covered(first)).asked, 100000);
+    const second = await make();
+    const [raced, charged] = await Promise.all([issue(second, "adjustment"), adjust(second, { kind: "charge", amountCents: 20000 })]);
+    assert.equal(charged.status, 201);
+    assert.ok([200, 409].includes(raced.status));
+    const afterRace = await covered(second);
+    assert.equal(afterRace.asked + afterRace.requestable, afterRace.obligation, "whichever committed first, the obligation is covered exactly once");
+    const third = await make();
+    const charge = await adjust(third, { kind: "charge", amountCents: 20000 });
+    const [revert, request] = await Promise.all([reverse(third, charge.body.adjustments[0].id), issue(third, "adjustment")]);
+    assert.ok([revert.status, request.status].filter((status) => status === 200).length >= 1);
+    const settled = await covered(third);
+    const reversed = (await ledger(third))[1].status === "reversed";
+    assert.equal(reversed && settled.asked > settled.obligation, false, "never a live request for a reversed charge");
+    assert.ok(settled.asked <= settled.obligation + 0);
+  });
+
+  // ------------------------------------------------------------------------------------------------ agreed vs adjusted (Codex 11)
+  test("agreed remainder and adjusted amount due are different figures, over HTTP, for both participants", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    await issue(bookingId, "balance");
+    const plain = (await billing(bookingId, CUSTOMER_A)).body.summary;
+    assert.deepEqual([plain.remainingOfAgreedCents, plain.balanceDueCents], [100000, 100000]);
+    await adjust(bookingId, { kind: "charge", amountCents: 20000 });
+    const invoiceId = (await billing(bookingId)).body.invoices[0].id as string;
+    assert.equal((await pay(bookingId, invoiceId, "300.00")).status, 200);
+    for (const who of [PROVIDER, CUSTOMER_A]) {
+      const { summary } = (await billing(bookingId, who)).body;
+      assert.deepEqual([summary.agreedTotalCents, summary.remainingOfAgreedCents, summary.obligationCents, summary.balanceDueCents], [100000, 70000, 120000, 90000], who);
+      assert.ok(summary.remainingOfAgreedCents <= summary.agreedTotalCents);
+    }
+  });
+
+  // ------------------------------------------------------------------------------------------------ payment take-back (Codex 12)
+  const payView = async (bookingId: string, id: string, who = PROVIDER) => ((await billing(bookingId, who)).body.payments as { id: string; voidable?: boolean; voidBlockedReason?: string | null; status: string }[]).find((row) => row.id === id)!;
+  const takeBack = (bookingId: string, id: string, who = PROVIDER) => call("POST", `/bookings/${bookingId}/billing/payments/${id}/void`, tok(who), {});
+
+  test("take-back: a simple payment is voidable and the customer is never given the flag or the control", async () => {
+    const { bookingId, a } = await twoPayments();
+    assert.deepEqual([(await payView(bookingId, a)).voidable, (await payView(bookingId, a)).voidBlockedReason], [true, null]);
+    const customer = await payView(bookingId, a, CUSTOMER_A);
+    assert.equal("voidable" in customer || "voidBlockedReason" in customer, false);
+    assert.equal((await takeBack(bookingId, a, CUSTOMER_A)).status, 403);
+  });
+
+  test("take-back: a payment a refund names is blocked in the view and by the endpoint, with no side effects; a reversed refund frees it", async () => {
+    const { bookingId, a, b } = await twoPayments();
+    const refund = await adjust(bookingId, { kind: "refund", amountCents: 5000, paymentId: a });
+    const blocked = await payView(bookingId, a);
+    assert.equal(blocked.voidable, false);
+    assert.match(blocked.voidBlockedReason ?? "", /refund has been recorded against this payment/i);
+    assert.equal((await payView(bookingId, b)).voidable, true, "the other payment is safe");
+    const before = await sideEffects(bookingId);
+    assert.equal((await takeBack(bookingId, a)).status, 409);
+    assert.equal(await sideEffects(bookingId), before, "no payment, ledger, booking or notification change");
+    await reverse(bookingId, refund.body.adjustments[0].id);
+    assert.equal((await payView(bookingId, a)).voidable, true, "a reversed refund no longer blocks");
+    assert.equal((await takeBack(bookingId, a)).status, 200);
+    assert.deepEqual([(await payView(bookingId, a)).voidable, (await payView(bookingId, a)).status], [false, "voided"], "a voided payment is not actionable");
+  });
+
+  test("take-back: aggregate refunds that need the money block every payment that would leave them uncovered, and only the safe ones stay voidable", async () => {
+    const { bookingId, a, b } = await twoPayments();
+    await adjust(bookingId, { kind: "refund", amountCents: 15000 });
+    assert.deepEqual([(await payView(bookingId, a)).voidable, (await payView(bookingId, b)).voidable], [false, false], "each leaves only $100 to cover a $150 refund");
+    assert.match((await payView(bookingId, a)).voidBlockedReason ?? "", /Refunds are recorded against money received/);
+    assert.equal((await takeBack(bookingId, a)).status, 409);
+    const small = await twoPayments();
+    await adjust(small.bookingId, { kind: "refund", amountCents: 5000 });
+    assert.deepEqual([(await payView(small.bookingId, small.a)).voidable, (await payView(small.bookingId, small.b)).voidable], [true, true], "$100 still covers a $50 refund");
+    assert.equal((await takeBack(small.bookingId, small.a)).status, 200);
+    assert.equal((await payView(small.bookingId, small.b)).voidable, false, "now B is the money the refund relies on");
+    assert.equal((await takeBack(small.bookingId, small.b)).status, 409, "so voiding both can never leave refunds exceeding what was received");
+  });
+
+  test("take-back: a view that showed a payment voidable is re-judged by the endpoint after a refund commits, with no side effects", async () => {
+    const { bookingId, a } = await twoPayments();
+    assert.equal((await payView(bookingId, a)).voidable, true, "the stale screen");
+    await adjust(bookingId, { kind: "refund", amountCents: 5000, paymentId: a });
+    const before = await sideEffects(bookingId);
+    const post = await takeBack(bookingId, a);
+    assert.deepEqual([post.status, post.body.code], [409, "catering_billing_state"]);
+    assert.equal(await sideEffects(bookingId), before);
+  });
+
+  test("take-back: a take-back racing a refund that names the payment, and two take-backs racing an aggregate refund, never leave refunds uncovered", async () => {
+    const one = await twoPayments();
+    const [voided, refunded] = await Promise.all([takeBack(one.bookingId, one.a), adjust(one.bookingId, { kind: "refund", amountCents: 5000, paymentId: one.a })]);
+    assert.equal([voided.status === 200, refunded.status === 201].filter(Boolean).length, 1, `exactly one wins: ${voided.status}/${refunded.status}`);
+    const named = (await ledger(one.bookingId)).filter((row: { payment_id: string | null; status: string }) => row.payment_id === one.a && row.status === "posted").length;
+    const aVoided = (await payView(one.bookingId, one.a)).status === "voided";
+    assert.equal(aVoided && named > 0, false, "never a voided payment with a live refund naming it");
+    const two = await twoPayments();
+    await adjust(two.bookingId, { kind: "refund", amountCents: 5000 });
+    const results = await Promise.all([takeBack(two.bookingId, two.a), takeBack(two.bookingId, two.b)]);
+    assert.deepEqual(results.map((response) => response.status).sort(), [200, 409]);
+    const view = (await billing(two.bookingId)).body;
+    assert.ok(view.summary.paidTotalCents >= view.summary.refundsRecordedCents, "recorded payments still cover recorded refunds");
+  });
+
+  test("take-back: a cancelled booking's payments are not offered for take-back, and the endpoint agrees", async () => {
+    const { bookingId, a } = await twoPayments();
+    await setStatus(bookingId, "cancelled");
+    const view = await payView(bookingId, a);
+    assert.deepEqual([view.voidable, /cancelled/.test(view.voidBlockedReason ?? "")], [false, true]);
+    assert.equal((await takeBack(bookingId, a)).status, 409);
+  });
+
   // ------------------------------------------------------------------------------------------------ the formula
   test("the derived position is exact: original + charges - credits = obligation, payments - refunds = net received, obligation - net = balance", async () => {
     const { bookingId } = await billed();

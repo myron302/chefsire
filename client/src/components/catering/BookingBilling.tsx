@@ -362,8 +362,14 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
           <dd className="break-words text-lg font-semibold tabular-nums">{summary.agreedTotalCents === null ? "Not agreed yet" : money(summary.agreedTotalCents)}</dd></div>
         <div><dt className="text-sm text-muted-foreground">Recorded as paid</dt>
           <dd className="break-words text-lg font-semibold tabular-nums">{money(summary.paidTotalCents)}</dd></div>
-        <div><dt className="text-sm text-muted-foreground">Remaining of the agreed total</dt>
-          <dd className="break-words tabular-nums">{summary.remainingOfAgreedCents === null ? "—" : money(summary.remainingOfAgreedCents)}</dd></div>
+        {/* Two different questions, two different figures. With nothing adjusted they are the same number and the original row
+            says it; once the ledger has moved the amount due, the row says "Current amount due" and shows the server's adjusted
+            balance instead of an "agreed" remainder that no longer describes what is owed. */}
+        {summary.balanceDueCents !== summary.remainingOfAgreedCents
+          ? <div><dt className="text-sm text-muted-foreground">Current amount due, with the adjustments recorded on this booking</dt>
+            <dd className="break-words tabular-nums">{summary.balanceDueCents === null ? "—" : money(summary.balanceDueCents)}</dd></div>
+          : <div><dt className="text-sm text-muted-foreground">Remaining of the agreed total</dt>
+            <dd className="break-words tabular-nums">{summary.remainingOfAgreedCents === null ? "—" : money(summary.remainingOfAgreedCents)}</dd></div>}
         <div><dt className="text-sm text-muted-foreground">Requested and not yet covered</dt>
           <dd className="break-words tabular-nums">{money(summary.outstandingInvoicedCents)}</dd></div>
         {summary.nextAmountDueCents !== null && <div className="sm:col-span-2">
@@ -481,7 +487,9 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
                 {provider && payment.reference ? ` · ${payment.reference}` : ""}
               </p>
             </div>
-            {provider && actionable && payment.status === "recorded" && <Button variant="outline" className="min-h-11" disabled={pending} onClick={() => voidPayment(payment.id)}>Take back</Button>}
+            {/* The server's verdict for THIS payment, from the same policy the take-back endpoint applies -- never a guess. */}
+            {provider && actionable && payment.status === "recorded" && payment.voidable === true && <Button variant="outline" className="min-h-11" disabled={pending} onClick={() => voidPayment(payment.id)}>Take back</Button>}
+            {provider && actionable && payment.status === "recorded" && payment.voidable === false && payment.voidBlockedReason && <p className="w-full break-words text-sm text-muted-foreground">This payment can't be taken back right now. {payment.voidBlockedReason}</p>}
           </li>)}</ul>}
       </section>
 

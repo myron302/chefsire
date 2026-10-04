@@ -326,7 +326,10 @@ export type CateringBillingSummary = {
   paidTotalCents: number;
   /** Issued minus paid, floored at zero: what is on the table right now. */
   outstandingInvoicedCents: number;
-  /** Agreed minus paid, floored at zero. Null when there is no agreed price to remain from. */
+  /**
+   * Agreed price minus payments, floored at zero: what remains of the AGREEMENT. Charges, credits and refunds do not move it
+   * (so it can never exceed the agreed total); the amount actually due after them is `balanceDueCents`. Null without an agreed price.
+   */
   remainingOfAgreedCents: number | null;
   /** Agreed minus invoiced, floored at zero: what the provider has still to bill. Null without an agreed price. */
   uninvoicedCents: number | null;
@@ -411,7 +414,9 @@ export function deriveCateringBillingSummary(facts: CateringBillingFacts): Cater
   const capped = (cents: number) => (ledger.balanceDueCents === null ? cents : Math.min(cents, ledger.balanceDueCents));
   const nextAmountDueCents = next ? effective.get(next.id) ?? 0 : null;
 
-  const remainingOfAgreedCents = ledger.balanceDueCents;
+  // The AGREEMENT's own remainder, with its original meaning: the agreed price less what has been paid, never above the agreed
+  // total. It does not move with charges, credits or refunds -- those are in `balanceDueCents`, the adjusted amount due.
+  const remainingOfAgreedCents = facts.agreedTotalCents === null ? null : Math.max(0, facts.agreedTotalCents - paidTotalCents);
   const uninvoicedCents = obligationCents === null ? null : Math.max(0, obligationCents - invoicedTotalCents);
 
   return {
@@ -553,22 +558,26 @@ export function cateringInvoiceHeadroomCents(facts: CateringBillingFacts): numbe
 }
 
 /**
- * What a further (`adjustment`) request would be for: what the ledger has ADDED since the original agreement -- net charges
- * and credits, plus recorded refunds, which are owed in again -- less what earlier further requests already asked for, and
- * never more than the headroom the collectible target has over the live invoices.
+ * What a further (`adjustment`) request would be for: the part of the collectible target the live requests do not cover,
+ * and never more than what is owed and not already asked for.
  *
- * Bounded by those additions rather than by the headroom alone, because headroom can exist for reasons that are not an
- * addition at all -- a withdrawn deposit leaves a gap beside a live balance, and that gap is not owed in again.
+ * It is derived from CURRENT COVERAGE, not from the ledger's lifetime totals. A credit that was posted before the balance
+ * request is already inside that request's amount; netting a later charge against it would call a genuinely uncovered
+ * charge "no addition" and strand it. So there is no running sum of charges and credits here at all: the live requests
+ * already add up to whatever the obligation was when each was issued, and the target (obligation + refunds) minus them is
+ * exactly what has happened since -- a later charge, a reversed credit, or a recorded refund -- whichever order they came in,
+ * with earlier further requests already counted in the coverage.
+ *
+ * It is offered only once the ledger has a live entry. Without one there is no adjustment to be requested, and a gap beside a
+ * live balance (a withdrawn deposit) keeps its Phase 2L meaning: withdraw the balance and issue the pair afresh.
  */
 export function cateringAdjustmentRequestCents(facts: CateringBillingFacts): number {
-  const ledger = deriveCateringLedgerPosition({ agreedTotalCents: facts.agreedTotalCents, paidTotalCents: 0, adjustments: facts.adjustments ?? [] });
-  const added = Math.max(0, ledger.chargesCents - ledger.creditsCents) + ledger.refundsCents;
-  const alreadyRequested = facts.invoices.filter((invoice) => cateringInvoiceCounts(invoice) && invoice.kind === "adjustment").reduce((total, invoice) => total + invoice.amountCents, 0);
-  // And never more than what is owed and not already asked for: a refund cannot create request capacity beyond a positive balance.
+  if (!(facts.adjustments ?? []).some((entry) => entry.status === "posted")) return 0;
   const paid = facts.payments.reduce((total, row) => (cateringPaymentCounts(row) ? total + row.amountCents : total), 0);
   const balanceDue = deriveCateringLedgerPosition({ agreedTotalCents: facts.agreedTotalCents, paidTotalCents: paid, adjustments: facts.adjustments ?? [] }).balanceDueCents ?? 0;
+  // What is owed and not already asked for: a refund cannot create request capacity beyond a positive balance.
   const unaskedBalance = balanceDue - Math.max(0, cateringLiveInvoicedCents(facts) - paid);
-  return Math.max(0, Math.min(cateringInvoiceHeadroomCents(facts) ?? 0, added - alreadyRequested, unaskedBalance));
+  return Math.max(0, Math.min(cateringInvoiceHeadroomCents(facts) ?? 0, unaskedBalance));
 }
 
 /**
@@ -749,6 +758,10 @@ export type CateringPaymentView = {
   reference?: string | null;
   /** PROVIDER ONLY (Phase 2P): what can still be recorded as returned against this payment. Server-derived. */
   refundableCents?: number;
+  /** PROVIDER ONLY: whether the take-back endpoint would allow this payment to be taken back right now. Server-derived. */
+  voidable?: boolean;
+  /** PROVIDER ONLY: why a recorded payment cannot be taken back right now. Null otherwise. */
+  voidBlockedReason?: string | null;
 };
 
 /** The deposit terms, PROVIDER ONLY as a whole: unissued terms are planning, not an ask. */

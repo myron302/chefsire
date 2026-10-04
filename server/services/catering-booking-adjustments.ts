@@ -195,13 +195,29 @@ export async function cateringAdjustmentLedgerActive(executor: Executor, booking
   return Boolean(row);
 }
 
-/** Kept here so the payment void route and this module share one definition of "money this refund relies on". */
-export function cateringPaymentMayBeVoided(input: { payment: Pick<CateringBookingPayment, "id" | "amountCents">; rows: LedgerRows }): { ok: true } | { ok: false; message: string } {
+/**
+ * THE payment take-back policy, applied by the void endpoint under its lock and by the view for every payment it lists.
+ *
+ * A payment can be taken back only if it is a payment the provider recorded themselves, no live refund record names it, and
+ * the money that remains recorded on the booking would still cover every live refund. Already-voided payments are not
+ * judged here (the endpoint answers those by state). One function, two callers: a payment the view calls voidable is one the
+ * endpoint would allow at that snapshot.
+ */
+export function evaluatePaymentVoid(input: { payment: Pick<CateringBookingPayment, "id" | "amountCents" | "paymentSource">; rows: LedgerRows }): { ok: true } | { ok: false; code: "not_provider_recorded" | "refund_names_payment" | "refunds_need_payment"; message: string } {
+  if (input.payment.paymentSource !== "provider_recorded") return { ok: false, code: "not_provider_recorded", message: "Only a payment you recorded yourself can be taken back here." };
   const referenced = input.rows.adjustments.some((entry) => entry.paymentId === input.payment.id && cateringAdjustmentCounts(cateringAdjustmentFactOf(entry)));
-  if (referenced) return { ok: false, message: "A refund has been recorded against this payment. Reverse that refund record first." };
+  if (referenced) return { ok: false, code: "refund_names_payment", message: "A refund has been recorded against this payment. Reverse that refund record first." };
   const paid = input.rows.payments.reduce((total, payment) => (payment.status === "recorded" && payment.id !== input.payment.id ? total + payment.amountCents : total), 0);
   const refunded = input.rows.adjustments.reduce((total, entry) => (entry.entryKind === "refund" && entry.status === "posted" ? total + entry.amountCents : total), 0);
-  if (paid < refunded) return { ok: false, message: "Refunds are recorded against money received on this booking. Reverse the refund record first, then take this payment back." };
+  if (paid < refunded) return { ok: false, code: "refunds_need_payment", message: "Refunds are recorded against money received on this booking. Reverse the refund record first, then take this payment back." };
   return { ok: true };
+}
+
+/** What the provider's screen is told about one payment's take-back: a snapshot hint; the endpoint judges again under its lock. */
+export function paymentVoidOutlook(payment: CateringBookingPayment, bookingStatus: string, rows: LedgerRows): { voidable: boolean; blockedReason: string | null } {
+  if (payment.status !== "recorded") return { voidable: false, blockedReason: null };
+  if (bookingStatus === "cancelled") return { voidable: false, blockedReason: "This booking was cancelled, so its payments can no longer be changed." };
+  const decision = evaluatePaymentVoid({ payment, rows });
+  return decision.ok ? { voidable: true, blockedReason: null } : { voidable: false, blockedReason: decision.message };
 }
 

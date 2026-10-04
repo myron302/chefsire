@@ -157,3 +157,13 @@ test("the deposit terms are a provider-only key on the view, added after the cus
   assert.ok(afterReturn.includes("terms: serializeCateringDepositTerms"), "terms are added only past that line");
   assert.ok(afterReturn.includes("issuable"), "and so is what may be issued, which is a provider control");
 });
+
+test("take-back verdicts and refundable remainders are provider-only keys on a payment, absent for a customer", async () => {
+  const { serializeCateringPayment } = await import("./catering-booking-billing");
+  const row = { id: "p1", invoiceId: "i1", amountCents: 1000, currency: "USD", paymentMethod: "cash", paymentSource: "provider_recorded", status: "recorded", receivedOn: "2026-01-01", reference: "ref", createdAt: new Date("2026-01-01T00:00:00Z"), voidedAt: null } as never;
+  const customer = serializeCateringPayment(row, "customer", [], { voidable: true, blockedReason: null });
+  for (const key of ["voidable", "voidBlockedReason", "refundableCents", "reference"]) assert.equal(key in customer, false, key);
+  const provider = serializeCateringPayment(row, "provider", [], { voidable: false, blockedReason: "A refund has been recorded against this payment." });
+  assert.deepEqual([provider.voidable, provider.voidBlockedReason, provider.refundableCents], [false, "A refund has been recorded against this payment.", 1000]);
+  assert.equal(serializeCateringPayment(row, "provider", []).voidable, false, "no verdict means no control");
+});

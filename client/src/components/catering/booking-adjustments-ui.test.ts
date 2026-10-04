@@ -152,3 +152,18 @@ test("a blocked entry shows no enabled Reverse control and says why, from the se
   assert.ok(component.includes("{reversible && <Button variant=\"outline\""), "the button exists only for a reversible entry");
   assert.equal(/entry\.kind\s*===\s*"(charge|credit|refund)"[^\n]*Reverse/.test(component), false, "reversibility is never inferred from kind");
 });
+
+test("Take back is offered only for a payment the server says is voidable, and a blocked one says why", () => {
+  assert.ok(billing.includes('payment.status === "recorded" && payment.voidable === true && <Button'));
+  assert.ok(billing.includes('payment.voidable === false && payment.voidBlockedReason && <p'));
+  assert.ok(billing.includes("This payment can't be taken back right now. {payment.voidBlockedReason}"));
+  assert.equal(/payment\.status === "recorded" && <Button[^\n]*Take back/.test(billing), false, "no unconditional Take back button");
+});
+
+test("the amount-due row says what it is: the agreed remainder with no adjustments, the adjusted amount due once the ledger has moved", () => {
+  assert.ok(billing.includes("Remaining of the agreed total"));
+  assert.ok(billing.includes("Current amount due, with the adjustments recorded on this booking"));
+  assert.ok(billing.includes("summary.balanceDueCents !== summary.remainingOfAgreedCents"), "the two server figures differ exactly when the ledger has moved what is due");
+  assert.ok(billing.includes("money(summary.balanceDueCents)") && billing.includes("money(summary.remainingOfAgreedCents)"));
+  assert.equal(/adjustmentChargesCents\s*[-+]|CreditsCents\s*[-+]/.test(billing), false, "no accounting in React");
+});

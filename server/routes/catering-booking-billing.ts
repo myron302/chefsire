@@ -60,7 +60,8 @@ import {
   adjustmentFactsOf,
   amendmentNumbersFor,
   loadLedgerRows,
-  cateringPaymentMayBeVoided,
+  evaluatePaymentVoid,
+  paymentVoidOutlook,
   reversalOutlook,
 } from "../services/catering-booking-adjustments";
 import { serializeCateringAdjustment } from "../serializers/catering-booking-adjustment";
@@ -180,7 +181,8 @@ function billingView(input: {
     // A voided invoice stays in both actors' history: a customer who was asked for money is entitled to see that
     // the ask was withdrawn rather than watch it vanish.
     invoices: input.invoices.map((row) => serializeCateringInvoice(row, facts, input.role)),
-    payments: input.payments.map((row) => serializeCateringPayment(row, input.role, facts.adjustments)),
+    payments: input.payments.map((row) => serializeCateringPayment(row, input.role, facts.adjustments,
+      input.role === "provider" ? paymentVoidOutlook(row, input.booking.status, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] }) : undefined)),
     // PROVIDER ONLY: whether THIS entry can be reversed right now, judged by the very policy the reversal endpoint applies.
     adjustments: input.adjustments.map((row) => serializeCateringAdjustment(row, input.role, input.amendmentNumbers, input.role === "provider" ? reversalOutlook(row.id, adjustmentFactsOf(input.booking, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] })) : undefined)),
   };
@@ -559,15 +561,10 @@ r.post("/bookings/:id/billing/payments/:paymentId/void", requireAuth, async (req
     if (!payment) return { kind: "missing" } as const;
     // Idempotent by state: a retry of a void that already landed says so instead of failing.
     if (payment.status === "voided") return { kind: "already" } as const;
-    // A provider may only take back what a provider recorded. A processor-backed payment, when a later phase
-    // writes one, is the processor's fact and cannot be reversed by a database toggle here.
-    if (payment.paymentSource !== "provider_recorded") {
-      return { kind: "refused", message: "Only a payment you recorded yourself can be taken back here." } as const;
-    }
-    // Phase 2P: a payment that recorded refunds rely on cannot be taken back while they stand, or the ledger would show
-    // more money returned than was ever received.
-    const supports = cateringPaymentMayBeVoided({ payment, rows: await loadLedgerRows(tx, id) });
-    if (!supports.ok) return { kind: "refused", message: supports.message } as const;
+    // THE take-back policy: a payment the provider recorded, that no live refund names, and whose removal still leaves enough
+    // recorded money to cover every live refund. The view lists each payment's verdict from this same function.
+    const decision = evaluatePaymentVoid({ payment, rows: await loadLedgerRows(tx, id) });
+    if (!decision.ok) return { kind: "refused", message: decision.message } as const;
     await tx.update(cateringBookingPayments).set({
       status: "voided", voidedAt: new Date(), voidedBy: userId, voidReason: body.reason ?? null, updatedAt: new Date(),
     }).where(eq(cateringBookingPayments.id, paymentId));

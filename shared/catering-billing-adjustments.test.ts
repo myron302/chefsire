@@ -684,3 +684,109 @@ test("an obligation the ceiling allows can always be requested: the balance requ
   assert.equal(amount, CATERING_INVOICE_MAXIMUM_CENTS);
   assert.ok(amount! <= CATERING_INVOICE_MAXIMUM_CENTS);
 });
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Request coverage: requestable = target - live coverage, never lifetime net charges and credits
+ * ------------------------------------------------------------------------------------------------------------- */
+
+test("a credit already inside the balance request does not cancel a later charge: $1,000 agreed, -$200, $800 balance, +$200 => $200 request", () => {
+  const balance = invoice({ kind: "balance", amountCents: 80_000 });
+  const facts = billing({ agreedTotalCents: 100_000, invoices: [balance], adjustments: [credit(20_000), entry({ kind: "charge", amountCents: 20_000 })] });
+  const { summary } = assertNoStrandedBalance(facts);
+  assert.deepEqual([summary.obligationCents, summary.balanceDueCents], [100_000, 100_000]);
+  assert.deepEqual(cateringIssuableInvoiceKinds(facts), ["adjustment"]);
+  assert.equal(cateringInvoiceAmountFor("adjustment", facts), 20_000, "the later charge has its own target");
+  assert.equal(balance.amountCents, 80_000, "no historical invoice was touched");
+});
+
+test("a charge inside the balance request followed by a later credit needs no new request", () => {
+  const balance = invoice({ kind: "balance", amountCents: 120_000 });
+  const facts = billing({ agreedTotalCents: 100_000, invoices: [balance], adjustments: [entry({ kind: "charge", amountCents: 20_000 }), credit(20_000)] });
+  assert.deepEqual(cateringIssuableInvoiceKinds(facts), []);
+  assert.equal(deriveCateringBillingSummary(facts).balanceDueCents, 100_000, "and the request now asks for no more than is owed");
+});
+
+test("a charge after a full balance request, and a refund after it, are each requestable through the same coverage rule", () => {
+  const balance = invoice({ kind: "balance", amountCents: 100_000 });
+  const charged = billing({ agreedTotalCents: 100_000, invoices: [balance], adjustments: [entry({ kind: "charge", amountCents: 20_000 })] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", charged), 20_000);
+  const refunded = billing({ agreedTotalCents: 100_000, invoices: [balance], payments: [payment({ invoiceId: balance.id, amountCents: 100_000 })], adjustments: [refund(30_000)] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", refunded), 30_000);
+  const both = billing({ agreedTotalCents: 100_000, invoices: [balance], payments: [payment({ invoiceId: balance.id, amountCents: 100_000 })], adjustments: [refund(30_000), entry({ kind: "charge", amountCents: 20_000 })] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", both), 50_000, "each counted once, neither double-counted");
+  assertNoStrandedBalance(both);
+});
+
+test("multiple pre-balance entries are all inside the balance request, and only what comes after is requestable", () => {
+  const preBalance = [credit(10_000), entry({ kind: "charge", amountCents: 30_000 }), credit(5_000)];
+  const target = 100_000 + 30_000 - 15_000;
+  const balance = invoice({ kind: "balance", amountCents: target });
+  assert.deepEqual(cateringIssuableInvoiceKinds(billing({ agreedTotalCents: 100_000, invoices: [balance], adjustments: preBalance })), []);
+  assert.equal(cateringInvoiceAmountFor("balance", billing({ agreedTotalCents: 100_000, adjustments: preBalance })), target, "the balance request incorporates the obligation at issue time");
+  const later = billing({ agreedTotalCents: 100_000, invoices: [balance], adjustments: [...preBalance, entry({ kind: "charge", amountCents: 7_000 })] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", later), 7_000);
+});
+
+test("later credits reduce the uncovered amount, a reversed later charge removes it, and a reversed credit can recreate it", () => {
+  const balance = invoice({ kind: "balance", amountCents: 100_000 });
+  const adj = (...entries: CateringAdjustmentFact[]) => cateringInvoiceAmountFor("adjustment", billing({ agreedTotalCents: 100_000, invoices: [balance], adjustments: entries })) ?? 0;
+  assert.equal(adj(entry({ kind: "charge", amountCents: 20_000 })), 20_000);
+  assert.equal(adj(entry({ kind: "charge", amountCents: 20_000 }), credit(5_000)), 15_000, "a later credit reduces it");
+  assert.equal(adj(entry({ kind: "charge", amountCents: 20_000, status: "reversed" })), 0, "a reversed later charge removes it");
+  assert.equal(adj(credit(20_000, { status: "reversed" })), 0, "a reversed credit that was never reflected recreates nothing");
+  const reducedBalance = invoice({ kind: "balance", amountCents: 80_000 });
+  const withReversedCredit = billing({ agreedTotalCents: 100_000, invoices: [reducedBalance], adjustments: [credit(20_000, { status: "reversed" })] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", withReversedCredit), null, "no live entry: Phase 2L's meaning, withdraw and reissue");
+  const withLiveOther = billing({ agreedTotalCents: 100_000, invoices: [reducedBalance], adjustments: [credit(20_000, { status: "reversed" }), entry({ kind: "charge", amountCents: 1_000 })] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", withLiveOther), 21_000, "the reversed credit's room is owed again, together with the new charge");
+});
+
+test("existing further requests reduce what remains requestable, and a retry cannot create a second request for the same amount", () => {
+  const balance = invoice({ kind: "balance", amountCents: 100_000 });
+  const first = invoice({ kind: "adjustment", amountCents: 20_000 });
+  const adjustments = [entry({ kind: "charge", amountCents: 20_000 })];
+  assert.deepEqual(cateringIssuableInvoiceKinds(billing({ agreedTotalCents: 100_000, invoices: [balance, first], adjustments })), []);
+  const more = billing({ agreedTotalCents: 100_000, invoices: [balance, first], adjustments: [...adjustments, entry({ kind: "charge", amountCents: 3_000 })] });
+  assert.equal(cateringInvoiceAmountFor("adjustment", more), 3_000);
+  const voided = billing({ agreedTotalCents: 100_000, invoices: [balance, invoice({ kind: "adjustment", amountCents: 20_000, status: "void" })], adjustments });
+  assert.equal(cateringInvoiceAmountFor("adjustment", voided), 20_000, "a withdrawn request covers nothing");
+});
+
+test("a request is never offered while the balance is not actually owed (no stranding, no excess)", () => {
+  for (const [agreed, balanceAmount, paid, adjustments] of [
+    [100_000, 80_000, 0, [credit(20_000), entry({ kind: "charge", amountCents: 20_000 })]],
+    [100_000, 100_000, 100_000, [refund(30_000)]],
+    [100_000, 100_000, 100_000, [refund(30_000), credit(30_000)]],
+    [100_000, 100_000, 50_000, [entry({ kind: "charge", amountCents: 10_000 }), refund(10_000)]],
+    [100_000, 120_000, 120_000, [entry({ kind: "charge", amountCents: 20_000 }), credit(20_000)]],
+  ] as [number, number, number, CateringAdjustmentFact[]][]) {
+    const bal = invoice({ kind: "balance", amountCents: balanceAmount });
+    const facts = billing({ agreedTotalCents: agreed, invoices: [bal], payments: paid > 0 ? [payment({ invoiceId: bal.id, amountCents: paid })] : [], adjustments });
+    const { summary, requestable } = assertNoStrandedBalance(facts);
+    assert.ok(requestable <= (summary.balanceDueCents ?? 0), `excess request: ${JSON.stringify({ agreed, balanceAmount, paid, requestable, due: summary.balanceDueCents })}`);
+  }
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * "Remaining of the agreement" and "amount due" are different figures
+ * ------------------------------------------------------------------------------------------------------------- */
+
+test("remainingOfAgreed is the agreed price less payments and never moves with charges, credits or refunds; balanceDue does", () => {
+  const f = (adjustments: CateringAdjustmentFact[], paidCents = 0) => {
+    const inv = invoice({ kind: "balance", amountCents: 100_000 });
+    return deriveCateringBillingSummary(billing({ agreedTotalCents: 100_000, invoices: [inv], payments: paidCents ? [payment({ invoiceId: inv.id, amountCents: paidCents })] : [], adjustments }));
+  };
+  const plain = f([]);
+  assert.deepEqual([plain.remainingOfAgreedCents, plain.balanceDueCents], [100_000, 100_000], "1. no adjustments or payments");
+  const charged = f([entry({ kind: "charge", amountCents: 20_000 })]);
+  assert.deepEqual([charged.remainingOfAgreedCents, charged.balanceDueCents], [100_000, 120_000], "2. a charge: agreed stays $1,000, due is $1,200");
+  const credited = f([credit(20_000)]);
+  assert.deepEqual([credited.remainingOfAgreedCents, credited.balanceDueCents], [100_000, 80_000], "3. a credit");
+  const paid = f([], 30_000);
+  assert.deepEqual([paid.remainingOfAgreedCents, paid.balanceDueCents], [70_000, 70_000], "4. a payment with no adjustment: identical");
+  const both = f([entry({ kind: "charge", amountCents: 20_000 })], 30_000);
+  assert.deepEqual([both.remainingOfAgreedCents, both.balanceDueCents], [70_000, 90_000], "5. charge + payment");
+  const refunded = f([refund(30_000)], 100_000);
+  assert.deepEqual([refunded.remainingOfAgreedCents, refunded.balanceDueCents], [0, 30_000], "6. a refund raises the amount due but never the agreed remainder");
+  for (const summary of [plain, charged, credited, paid, both, refunded]) assert.ok((summary.remainingOfAgreedCents ?? 0) <= (summary.agreedTotalCents ?? 0), "never above the agreed total");
+});

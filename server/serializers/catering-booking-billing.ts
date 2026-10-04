@@ -69,7 +69,7 @@ export function serializeCateringInvoice(
   return { ...shared, maxPaymentCents: cateringPayableCents(fact, facts), updatedAt: row.updatedAt.toISOString() };
 }
 
-export function serializeCateringPayment(row: CateringBookingPayment, role: "provider" | "customer", adjustments: readonly CateringAdjustmentFact[] = []): CateringPaymentView {
+export function serializeCateringPayment(row: CateringBookingPayment, role: "provider" | "customer", adjustments: readonly CateringAdjustmentFact[] = [], voidability?: { voidable: boolean; blockedReason: string | null }): CateringPaymentView {
   const shared: CateringPaymentView = {
     id: row.id,
     invoiceId: row.invoiceId,
@@ -86,7 +86,7 @@ export function serializeCateringPayment(row: CateringBookingPayment, role: "pro
     voidedAt: row.voidedAt?.toISOString() ?? null,
   };
   if (role !== "provider") return shared;
-  return { ...shared, reference: row.reference ?? null, refundableCents: cateringPaymentRefundableCents(row, adjustments) };
+  return { ...shared, reference: row.reference ?? null, refundableCents: cateringPaymentRefundableCents(row, adjustments), voidable: voidability?.voidable ?? false, voidBlockedReason: voidability?.blockedReason ?? null };
 }
 
 /**
