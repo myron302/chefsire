@@ -83,6 +83,7 @@ if (!PG_URL) {
   await local.query(sqlFile("server/migrations/20261004_catering_offer_negotiation.sql"));
   const amendmentMigration = sqlFile("server/migrations/20261005_catering_booking_amendments.sql");
   await local.query(amendmentMigration);
+  await local.query(sqlFile("server/migrations/20261006_catering_billing_adjustments.sql"));
 
   const { default: cateringRouter } = await import("./catering");
   const { default: bookingsRouter } = await import("./catering-bookings");
@@ -144,7 +145,7 @@ if (!PG_URL) {
   const notificationsFor = async (userId: string, type: string) => (await local.query(`SELECT title, message, link_url FROM notifications WHERE user_id = $1 AND type = $2`, [userId, type])).rows;
 
   test.beforeEach(async () => {
-    await local.query(`TRUNCATE notifications, catering_booking_amendments, catering_offer_revisions, catering_availability_exceptions, catering_booking_payments, catering_booking_invoices, catering_booking_billing, catering_booking_activity, catering_booking_details, catering_bookings, catering_inquiries, users CASCADE`);
+    await local.query(`TRUNCATE notifications, catering_booking_adjustments, catering_booking_amendments, catering_offer_revisions, catering_availability_exceptions, catering_booking_payments, catering_booking_invoices, catering_booking_billing, catering_booking_activity, catering_booking_details, catering_bookings, catering_inquiries, users CASCADE`);
     await local.query(`INSERT INTO users (id, username, display_name) VALUES ($1, 'ann', 'Ann A'), ($2, 'bob', 'Bob B'), ($3, 'chef1', 'Chef One'), ($4, 'chef2', NULL)`, [CUSTOMER_A, CUSTOMER_B, PROVIDER, OTHER_PROVIDER]);
   });
 
@@ -403,11 +404,14 @@ if (!PG_URL) {
   });
 
   // ------------------------------------------------------------------------------------------------ billing
-  test("billing: once the ledger is live, price and currency amendments fail closed at proposal and at acceptance; other terms stay legal", async () => {
+  test("billing: once the ledger is live, currency amendments and clearing the price fail closed at proposal; other terms stay legal", async () => {
     const bookingId = await confirmed();
     await issueInvoice(bookingId);
     const before = await bookingRow(bookingId);
-    for (const change of [{ priceCents: 300000 }, { currency: "EUR" }, { priceCents: 1, guestCount: 130 }]) {
+    // Phase 2P: a price change between two stated amounts is no longer refused -- it is reconciled into the adjustment ledger
+    // when it is accepted. A currency change (no conversion exists) and a price that is cleared (no stated difference to record)
+    // still are.
+    for (const change of [{ currency: "EUR" }, { priceCents: null }, { priceCents: 300000, currency: "EUR" }]) {
       const refused = await propose(bookingId, change, PROVIDER);
       assert.deepEqual([refused.status, refused.body.code], [409, "billing_terms_locked"], JSON.stringify(change));
     }
@@ -420,16 +424,18 @@ if (!PG_URL) {
     assert.equal(Number((await local.query(`SELECT count(*) FROM catering_booking_invoices WHERE booking_id = $1 AND amount_cents = 50000 AND status = 'issued'`, [bookingId])).rows[0].count), 1, "the invoice is untouched");
   });
 
-  test("billing: a price amendment proposed BEFORE billing started cannot be accepted AFTER it; the booking keeps its price and the invoice is untouched", async () => {
+  test("billing: a price amendment proposed BEFORE billing started is reconciled when accepted AFTER it; the invoice is untouched and one charge is recorded", async () => {
     const bookingId = await confirmed();
     const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
     assert.equal(created.status, 201, created.text);
     await issueInvoice(bookingId);
     const accepted = await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A);
-    assert.deepEqual([accepted.status, accepted.body.code], [409, "billing_terms_locked"]);
-    assert.equal((await bookingRow(bookingId)).agreed_price, "2500.00");
-    assert.equal((await amendmentRows(bookingId))[0].status, "pending", "still answerable: it can be declined or withdrawn");
-    assert.equal((await respond(bookingId, created.body.amendments.pending.id, "decline", CUSTOMER_A)).status, 200);
+    assert.equal(accepted.status, 200, accepted.text);
+    assert.equal((await bookingRow(bookingId)).agreed_price, "2900.00");
+    assert.equal((await amendmentRows(bookingId))[0].status, "accepted");
+    const entries = (await local.query(`SELECT entry_kind, source, amount_cents, amendment_id FROM catering_booking_adjustments WHERE booking_id = $1`, [bookingId])).rows;
+    assert.deepEqual(entries.map((row: { entry_kind: string; source: string; amount_cents: string }) => [row.entry_kind, row.source, Number(row.amount_cents)]), [["charge", "amendment", 40000]]);
+    assert.equal(Number((await local.query(`SELECT count(*) FROM catering_booking_invoices WHERE booking_id = $1 AND amount_cents = 50000 AND status = 'issued'`, [bookingId])).rows[0].count), 1, "the invoice is untouched");
   });
 
   test("billing: a voided invoice is not live ledger activity, and a price amendment converts cents to the booking's decimal exactly", async () => {

@@ -200,7 +200,10 @@ test("an invoice with credited payments cannot be withdrawn while they stand", (
 test("only a provider-recorded payment can be taken back here", () => {
   // A processor-backed payment, when a later phase writes one, is the processor's fact and cannot be reversed by a
   // database toggle. There is no refund button anywhere in this phase.
-  assert.ok(route.includes('if (payment.paymentSource !== "provider_recorded") {'));
+  // The check lives in the ONE take-back policy, which the endpoint applies under its lock and the view applies to every payment.
+  assert.ok(route.includes("evaluatePaymentVoid({ payment, rows: await loadLedgerRows(tx, id) })"));
+  const policy = fs.readFileSync(path.join(here, "..", "services", "catering-booking-adjustments.ts"), "utf8");
+  assert.ok(policy.includes('if (input.payment.paymentSource !== "provider_recorded") return { ok: false'));
   // No refund exists anywhere in this phase's CODE. The word appears only in a comment saying so, which is why the
   // comments are stripped before looking: a fake refund control is exactly what the audit forbade building.
   const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");

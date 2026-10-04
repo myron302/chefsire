@@ -64,7 +64,7 @@ test("every money column is bigint cents -- there is no decimal, real, float or 
     assert.equal(ddl.toLowerCase().includes(forbidden), false, forbidden);
   }
   assert.equal(billingSchema.includes("decimal("), false, "and the Drizzle tables carry no decimal money either");
-  assert.equal((billingSchema.match(/bigint\("(?:deposit_amount_cents|amount_cents)"/g) ?? []).length, 3);
+  assert.equal((billingSchema.match(/bigint\("(?:deposit_amount_cents|amount_cents)"/g) ?? []).length, 4, "deposit amount, invoice amount, payment amount and (Phase 2P) adjustment amount");
 });
 
 test("every money column is read as a number rather than a string", () => {

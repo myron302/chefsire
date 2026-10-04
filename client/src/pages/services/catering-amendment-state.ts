@@ -14,7 +14,7 @@ export class CateringAmendmentRequestError extends Error {
   /** The amendment or the booking moved under the user: show the newest state, do not retry the old request. */
   get isConflict() { return this.status === 409 && isCateringAmendmentConflict(this.code); }
   /** Not a stale view: the form stays open with the explanation (billing started, or the date is unavailable). */
-  get isRefusal() { return this.status === 409 && (this.code === "billing_terms_locked" || this.code === "date_unavailable" || this.code === "no_change"); }
+  get isRefusal() { return this.status === 409 && (this.code === "billing_terms_locked" || this.code === "billing_reconciliation_blocked" || this.code === "date_unavailable" || this.code === "no_change"); }
 }
 
 /**
@@ -73,7 +73,9 @@ export function buildAmendmentProposal(draft: AmendmentDraft, current: CateringA
     const cents = priceText === "" ? null : cateringMoneyToCents(priceText);
     if (priceText !== "" && cents === null) errors.price = "Enter an amount such as 1250 or 1250.50";
     else if (cents !== current.priceCents) {
-      if (options.billingTermsLocked) errors.price = "Billing has started, so the price can no longer change.";
+      // Phase 2P: once billing exists a price change between two stated amounts is reconciled into the adjustment ledger when
+      // it is accepted. Only clearing the price, or setting one where none was stated, has no difference to record.
+      if (options.billingTermsLocked && (current.priceCents === null || cents === null)) errors.price = "Billing has started, so the price can only change from one amount to another.";
       else body.priceCents = cents;
     }
   }

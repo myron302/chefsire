@@ -8,6 +8,7 @@ import {
   CATERING_INVOICE_STATUSES,
   CATERING_PAYMENT_METHODS,
   CATERING_PAYMENT_SOURCES,
+  cateringAdjustmentRequestCents,
   cateringBalanceAmount,
   cateringBillingIsActionable,
   cateringCentsToDecimal,
@@ -17,6 +18,7 @@ import {
   cateringInvoiceIsOverdue,
   cateringInvoiceState,
   cateringIssuableInvoiceKinds,
+  cateringPayableCents,
   cateringMoneyToCents,
   cateringPaidTowards,
   cateringPercentToBasisPoints,
@@ -366,11 +368,12 @@ test("no financial status is a booking status, and no booking status is a financ
  * The enums this phase deliberately kept small
  * ------------------------------------------------------------------------------------------------------------- */
 
-test("there are exactly two invoice kinds, and no adjustment kind", () => {
-  assert.deepEqual([...CATERING_INVOICE_KINDS], ["deposit", "balance"]);
-  // An adjustment would bill beyond the agreed price, and `agreed_price` is written once at booking creation and
-  // never updated by anything in the repository -- so there would be no agreement behind the difference.
-  assert.equal((CATERING_INVOICE_KINDS as readonly string[]).includes("adjustment"), false);
+test("there are exactly three invoice kinds: Phase 2P added `adjustment` once there was an agreement behind one", () => {
+  assert.deepEqual([...CATERING_INVOICE_KINDS], ["deposit", "balance", "adjustment"]);
+  // Phase 2L refused a third kind because `agreed_price` was written once and never updated, so an invoice beyond it would
+  // have had no agreement behind the difference. Phase 2O added the agreement (an accepted amendment) and Phase 2P the
+  // ledger that records it; an `adjustment` request is issued only for what that ledger has ADDED, never for headroom alone.
+  assert.equal(CATERING_INVOICE_KINDS.filter((kind) => kind === "adjustment").length, 1);
 });
 
 test("every payment method is something that happened outside ChefSire", () => {
@@ -419,4 +422,39 @@ test("withdrawing and reissuing is the only way to change an ask, and it frees t
   assert.equal(cateringInvoiceAmountFor("deposit", state), 180_000, "at the terms as they now stand");
   // And the withdrawn invoice keeps its own amount: history is not rewritten to look as though it was always 1800.
   assert.equal(withdrawn.amountCents, 50_000);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Phase 2P: the request gap is current coverage, not "is an entry still posted"
+ * ------------------------------------------------------------------------------------------------------------- */
+
+const credit = (status: "posted" | "reversed", amountCents = 20_000, id = "adj-1") =>
+  ({ id, kind: "credit", amountCents, currency: "USD", status, source: "provider_recorded", paymentId: null }) as const;
+const balanceOf = (amountCents: number) => invoice({ id: "inv-b", kind: "balance", amountCents });
+
+test("a reversed credit that a live balance reflects leaves its restored amount requestable with no posted entry", () => {
+  const base = { agreedTotalCents: 100_000, invoices: [balanceOf(80_000)], payments: [payment({ id: "p", invoiceId: "inv-b", amountCents: 40_000 })] };
+  assert.equal(cateringAdjustmentRequestCents(facts({ ...base, adjustments: [credit("posted")] })), 0, "still credited: the balance already reflects it");
+  const reversed = facts({ ...base, adjustments: [credit("reversed")] });
+  assert.equal(cateringAdjustmentRequestCents(reversed), 20_000, "obligation is $1,000 against $800 requested");
+  assert.deepEqual(cateringIssuableInvoiceKinds(reversed), ["adjustment"]);
+  assert.equal(cateringInvoiceAmountFor("adjustment", reversed), 20_000);
+  const requested = facts({ ...base, invoices: [balanceOf(80_000), invoice({ id: "inv-a", kind: "adjustment", amountCents: 20_000 })], adjustments: [credit("reversed")] });
+  assert.equal(cateringAdjustmentRequestCents(requested), 0, "once covered it is not requested again");
+});
+
+test("with no ledger history at all the request gap stays zero, and a reversed charge leaves nothing to request", () => {
+  assert.equal(cateringAdjustmentRequestCents(facts({ agreedTotalCents: 100_000, invoices: [balanceOf(80_000)] })), 0);
+  const charge = { id: "c", kind: "charge", amountCents: 10_000, currency: "USD", status: "reversed", source: "provider_recorded", paymentId: null } as const;
+  assert.equal(cateringAdjustmentRequestCents(facts({ agreedTotalCents: 100_000, invoices: [balanceOf(100_000)], adjustments: [charge] })), 0);
+});
+
+test("the payment ceiling is each request's own effective payable, so sibling requests never share the same cents", () => {
+  const deposit = invoice({ id: "inv-d", number: 1, kind: "deposit", amountCents: 50_000 });
+  const balance = invoice({ id: "inv-b", number: 2, kind: "balance", amountCents: 50_000 });
+  const credited = facts({ agreedTotalCents: 100_000, invoices: [deposit, balance], adjustments: [{ id: "c", kind: "credit", amountCents: 50_000, currency: "USD", status: "posted", source: "provider_recorded", paymentId: null }] });
+  assert.deepEqual([cateringPayableCents(deposit, credited), cateringPayableCents(balance, credited)], [50_000, 0]);
+  assert.deepEqual([cateringPayableCents(deposit, facts({ agreedTotalCents: 100_000, invoices: [deposit, balance] })), cateringPayableCents(balance, facts({ agreedTotalCents: 100_000, invoices: [deposit, balance] }))], [50_000, 50_000], "no adjustments: raw remainders");
+  assert.equal(cateringPayableCents(deposit, { ...credited, bookingStatus: "cancelled" }), 0);
+  assert.equal(cateringPayableCents(invoice({ ...balance, status: "void" }), credited), 0, "a withdrawn request has no allocation");
 });

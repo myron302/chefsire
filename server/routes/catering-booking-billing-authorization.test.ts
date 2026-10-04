@@ -52,7 +52,7 @@ test("every route resolves its booking through ownedCateringBooking and nothing 
   }
   assert.equal((route.match(/ownedCateringBooking\(/g) ?? []).length, 2);
   // And the re-read is scoped to the acting user exactly as the first one is, so it cannot widen access.
-  assert.ok(route.includes("await ownedCateringBooking(resolved.id, resolved.userId)"));
+  assert.ok(route.includes("await ownedCateringBooking(resolved.id, resolved.userId, tx)"), "inside the same repeatable-read snapshot as the ledger rows");
 });
 
 test("the actor is the session and never the request", () => {

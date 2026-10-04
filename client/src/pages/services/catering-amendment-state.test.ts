@@ -19,13 +19,18 @@ test("a blank guest count, price or description is an explicit clear, never an o
   assert.equal(buildAmendmentProposal(amendmentDraftFromTerms(empty), empty, open).ok, false, "blank over blank is not a change");
 });
 
-test("bad input is explained field by field, money never goes through a float, and a locked price is refused up front", () => {
+test("bad input is explained field by field, money never goes through a float, and once billing exists only a stated price-to-price change or a non-money change is legal", () => {
   const draft = amendmentDraftFromTerms(current);
   const bad = buildAmendmentProposal({ ...draft, eventDate: "2099-02-31", guestCount: "0", price: "12.345" }, current, open);
   assert.equal(bad.ok, false);
   if (!bad.ok) assert.deepEqual(Object.keys(bad.errors).sort(), ["eventDate", "guestCount", "price"]);
-  const locked = buildAmendmentProposal({ ...draft, price: "2900", guestCount: "110" }, current, { billingTermsLocked: true });
-  assert.equal(locked.ok, false);
+  // Phase 2P: with billing live, a change between two stated prices is legal (the server records the difference as a charge or credit).
+  const repriced = buildAmendmentProposal({ ...draft, price: "2900", guestCount: "110" }, current, { billingTermsLocked: true });
+  assert.deepEqual(repriced, { ok: true, body: { priceCents: 290000, guestCount: 110 } });
+  const cleared = buildAmendmentProposal({ ...draft, price: "" }, current, { billingTermsLocked: true });
+  assert.equal(cleared.ok, false, "clearing the price leaves no stated difference to record");
+  const recurrency = buildAmendmentProposal({ ...draft, currency: "EUR" }, current, { billingTermsLocked: true });
+  assert.equal(recurrency.ok, false, "no conversion exists, so the currency stays locked");
   const stillLegal = buildAmendmentProposal({ ...draft, guestCount: "110" }, current, { billingTermsLocked: true });
   assert.deepEqual(stillLegal, { ok: true, body: { guestCount: 110 } });
 });

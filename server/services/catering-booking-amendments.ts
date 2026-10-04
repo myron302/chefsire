@@ -5,6 +5,7 @@ import {
   CATERING_AMENDMENT_BILLING_FIELDS, CATERING_AMENDMENT_HISTORY_LIMIT, cateringAmendmentActions,
   type CateringAmendmentErrorCode, type CateringAmendmentField, type CateringAmendmentProposalInput, type CateringAmendmentTerms, type CateringAmendmentsView,
 } from "@shared/catering-amendments";
+import { reconcileAmendedPrice } from "./catering-booking-adjustments";
 import { serializeCateringAmendment } from "../serializers/catering-booking-amendment";
 import { evaluateBookingDateForConfirmation } from "./catering-booking-availability";
 import { bookingActor } from "./catering-booking-policy";
@@ -26,7 +27,7 @@ type Executor = typeof db;
  * it, and nothing else in ChefSire replays amendment history to learn the booking's terms.
  */
 
-export const CATERING_AMENDMENT_BILLING_LOCKED_MESSAGE = "Billing has started for this booking, so its price and currency can no longer change. You can still amend the event date, guest count or terms description.";
+export const CATERING_AMENDMENT_BILLING_LOCKED_MESSAGE = "Billing has started for this booking, so its currency can no longer change, and its price can only change from one stated amount to another. You can still amend the event date, guest count or terms description.";
 export const CATERING_AMENDMENT_STALE_MESSAGE = "The booking's terms changed while you were looking at them. Review the current terms and try again.";
 export const CATERING_AMENDMENT_CLOSED_MESSAGE = "This booking can no longer be amended. Only a confirmed booking can be.";
 
@@ -70,6 +71,16 @@ export function changedAmendmentFields(base: CateringAmendmentTerms, input: Pick
   if (input.currency !== undefined && input.currency !== base.currency) fields.push("currency");
   if (input.termsNote !== undefined && (input.termsNote ?? null) !== (base.termsNote ?? null)) fields.push("terms_note");
   return fields;
+}
+
+/**
+ * Whether billing that already exists forbids this change outright. A currency change always does (no conversion exists).
+ * A price change does only when it clears the price or sets one where there was none, because then there is no stated
+ * difference to record. Everything else is reconciled into the adjustment ledger at acceptance.
+ */
+export function billingForbidsAmendment(fields: readonly string[], base: Pick<CateringAmendmentTerms, "priceCents">, proposedPriceCents: number | null | undefined): boolean {
+  if (fields.includes("currency")) return true;
+  return fields.includes("price_cents") && (base.priceCents === null || proposedPriceCents === null || proposedPriceCents === undefined);
 }
 
 export const changesBillingSensitiveFields = (fields: readonly string[]) => fields.some((field) => (CATERING_AMENDMENT_BILLING_FIELDS as readonly string[]).includes(field));
@@ -116,7 +127,7 @@ export async function proposeCateringAmendment(tx: Executor, input: { bookingId:
   const base = bookingTerms(booking, await currentTermsNote(tx, booking.id, amendments));
   const fields = changedAmendmentFields(base, input.proposal);
   if (fields.length === 0) return refuse(409, "Nothing in this proposal differs from the booking's current terms.", "no_change");
-  if (changesBillingSensitiveFields(fields) && await cateringBillingLedgerActive(tx, booking.id)) return refuse(409, CATERING_AMENDMENT_BILLING_LOCKED_MESSAGE, "billing_terms_locked");
+  if (changesBillingSensitiveFields(fields) && await cateringBillingLedgerActive(tx, booking.id) && billingForbidsAmendment(fields, base, input.proposal.priceCents)) return refuse(409, CATERING_AMENDMENT_BILLING_LOCKED_MESSAGE, "billing_terms_locked");
   if (fields.includes("event_date") && !(await dateAvailable(tx, booking, input.proposal.eventDate!, input.now))) return refuse(409, DATE_UNAVAILABLE_MESSAGE, "date_unavailable");
   const [inserted] = await tx.insert(cateringBookingAmendments).values({
     bookingId: booking.id, amendmentNumber: (amendments.length ? amendments[amendments.length - 1].amendmentNumber : 0) + 1,
@@ -179,8 +190,17 @@ export async function respondToCateringAmendment(tx: Executor, input: { bookingI
     await closePending(tx, amendment.id, "superseded", null, input.now);
     return refuse(409, CATERING_AMENDMENT_STALE_MESSAGE, "stale_terms");
   }
-  if (changesBillingSensitiveFields(amendment.changedFields) && await cateringBillingLedgerActive(tx, booking.id)) return refuse(409, CATERING_AMENDMENT_BILLING_LOCKED_MESSAGE, "billing_terms_locked");
+  // Judged against the booking as it is NOW, under its row lock: whether billing exists is decided here, not at proposal time.
+  const ledgerActive = changesBillingSensitiveFields(amendment.changedFields) && await cateringBillingLedgerActive(tx, booking.id);
+  if (ledgerActive && billingForbidsAmendment(amendment.changedFields, base, amendment.priceCents)) return refuse(409, CATERING_AMENDMENT_BILLING_LOCKED_MESSAGE, "billing_terms_locked");
   if (amendment.changedFields.includes("event_date") && !(await dateAvailable(tx, booking, amendment.eventDate!, input.now))) return refuse(409, DATE_UNAVAILABLE_MESSAGE, "date_unavailable");
+  // The billing side of a price change, in the SAME transaction as the booking's new price and the accepted amendment: the
+  // ledger entry that explains the difference is judged and written first, and nothing after it can fail without rolling it
+  // back. A refusal here writes nothing and leaves the amendment pending.
+  if (ledgerActive && amendment.changedFields.includes("price_cents")) {
+    const reconciled = await reconcileAmendedPrice(tx, { booking, amendment, userId: input.userId });
+    if (!reconciled.ok) return refuse(409, reconciled.message, "billing_reconciliation_blocked");
+  }
   const result = amendmentResultingTerms(amendment);
   const [updated] = await tx.update(cateringBookings).set({
     eventDate: result.eventDate, guestCount: result.guestCount, currency: result.currency,

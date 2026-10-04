@@ -64,6 +64,9 @@ if (!PG_URL) {
     await local.query(sqlFile(file));
   }
   const offerMigration = sqlFile("server/migrations/20261004_catering_offer_negotiation.sql");
+  // The billing read joins the Phase 2P adjustment ledger, which itself references the Phase 2O amendment table.
+  await local.query(sqlFile("server/migrations/20261005_catering_booking_amendments.sql"));
+  await local.query(sqlFile("server/migrations/20261006_catering_billing_adjustments.sql"));
 
   const { default: cateringRouter } = await import("./catering");
   const { default: bookingsRouter } = await import("./catering-bookings");

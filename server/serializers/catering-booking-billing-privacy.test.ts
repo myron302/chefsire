@@ -140,9 +140,12 @@ test("the route sends only serialized views, never a row it just read or wrote",
   const responses = [...body.matchAll(/res\.json\(([^\n]*)/g)].map((match) => match[1]);
   assert.ok(responses.length >= 5, `expected every route to answer: ${responses.length}`);
   for (const response of responses) {
-    const safe = response.includes("billingView(") || response.includes("freshView(") || response.includes("serializeCateringDepositTerms(");
+    // `view` is only ever the result of `snapshotBillingView`, which returns `billingView(...)` -- asserted just below.
+    const safe = response.includes("billingView(") || response.includes("freshView(") || response.includes("serializeCateringDepositTerms(") || response === "view);";
     assert.ok(safe, `raw payload: ${response}`);
   }
+  assert.ok(body.includes("const view = await snapshotBillingView(resolved);"), "the bare `view` is the snapshot read's result");
+  assert.ok(body.slice(body.indexOf("export async function snapshotBillingView")).includes("return billingView({"), "which is a serialized view");
   // And the serializers are what the view is built from.
   assert.ok(body.includes("serializeCateringInvoice"));
   assert.ok(body.includes("serializeCateringPayment"));
@@ -153,4 +156,14 @@ test("the deposit terms are a provider-only key on the view, added after the cus
   const afterReturn = route.slice(route.indexOf('if (input.role !== "provider") return view;'));
   assert.ok(afterReturn.includes("terms: serializeCateringDepositTerms"), "terms are added only past that line");
   assert.ok(afterReturn.includes("issuable"), "and so is what may be issued, which is a provider control");
+});
+
+test("take-back verdicts and refundable remainders are provider-only keys on a payment, absent for a customer", async () => {
+  const { serializeCateringPayment } = await import("./catering-booking-billing");
+  const row = { id: "p1", invoiceId: "i1", amountCents: 1000, currency: "USD", paymentMethod: "cash", paymentSource: "provider_recorded", status: "recorded", receivedOn: "2026-01-01", reference: "ref", createdAt: new Date("2026-01-01T00:00:00Z"), voidedAt: null } as never;
+  const customer = serializeCateringPayment(row, "customer", [], { voidable: true, blockedReason: null });
+  for (const key of ["voidable", "voidBlockedReason", "refundableCents", "reference"]) assert.equal(key in customer, false, key);
+  const provider = serializeCateringPayment(row, "provider", [], { voidable: false, blockedReason: "A refund has been recorded against this payment." });
+  assert.deepEqual([provider.voidable, provider.voidBlockedReason, provider.refundableCents], [false, "A refund has been recorded against this payment.", 1000]);
+  assert.equal(serializeCateringPayment(row, "provider", []).voidable, false, "no verdict means no control");
 });

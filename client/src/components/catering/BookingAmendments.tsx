@@ -177,8 +177,8 @@ export function BookingAmendments({ bookingId, userId, role }: { bookingId: stri
             </div>
             <div className="space-y-1">
               <Label htmlFor={`amend-price-${bookingId}`}>Agreed price ({view.currentTerms.currency})</Label>
-              <Input id={`amend-price-${bookingId}`} inputMode="decimal" autoComplete="off" value={editor.draft.price} disabled={propose.isPending || view.billingTermsLocked} aria-invalid={Boolean(errors.price)} aria-describedby={`amend-price-help-${bookingId}`} onChange={(event) => setField("price", event.target.value)} />
-              <p id={`amend-price-help-${bookingId}`} className={errors.price ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={errors.price ? "alert" : undefined}>{errors.price ?? (view.billingTermsLocked ? "Billing has started, so the price can no longer change." : "Changing the price is only possible before any invoice or payment exists.")}</p>
+              <Input id={`amend-price-${bookingId}`} inputMode="decimal" autoComplete="off" value={editor.draft.price} disabled={propose.isPending} aria-invalid={Boolean(errors.price)} aria-describedby={`amend-price-help-${bookingId}`} onChange={(event) => setField("price", event.target.value)} />
+              <p id={`amend-price-help-${bookingId}`} className={errors.price ? "text-sm text-destructive" : "text-xs text-muted-foreground"} role={errors.price ? "alert" : undefined}>{errors.price ?? (view.billingTermsLocked ? "Billing has started. If accepted, the difference is recorded as an additional charge or a credit; requests already sent do not change." : "The price your customer pays for this booking.")}</p>
             </div>
             <div className="space-y-1">
               <Label htmlFor={`amend-currency-${bookingId}`}>Currency</Label>
@@ -234,7 +234,7 @@ export function BookingAmendments({ bookingId, userId, role }: { bookingId: stri
             <>
               <AlertDialogHeader>
                 <AlertDialogTitle>{dialogCopy[confirming].title}</AlertDialogTitle>
-                <AlertDialogDescription>{dialogCopy[confirming].body}</AlertDialogDescription>
+                <AlertDialogDescription>{dialogCopy[confirming].body}{confirming === "accept" && view.billingTermsLocked && pending.changedFields.includes("price_cents") ? " Billing has started, so the price difference is recorded as an additional charge or a credit; requests already sent do not change." : ""}</AlertDialogDescription>
               </AlertDialogHeader>
               <AmendmentChanges amendment={pending} />
               {failure(respond) && <p role="alert" className="break-words text-sm text-destructive">{failure(respond)}</p>}

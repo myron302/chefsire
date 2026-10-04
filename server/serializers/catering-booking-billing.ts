@@ -1,9 +1,11 @@
 import type { CateringBookingBillingRecord, CateringBookingInvoice, CateringBookingPayment } from "@shared/schema";
 import {
   cateringDepositRequirement,
+  cateringEffectivePayableCents,
   cateringInvoiceIsOverdue,
   cateringInvoiceReference,
   cateringInvoiceState,
+  cateringPayableCents,
   cateringPaidTowards,
   cateringRemainingOnInvoice,
   type CateringBillingFacts,
@@ -16,6 +18,7 @@ import {
   type CateringPaymentStatus,
   type CateringPaymentView,
 } from "@shared/catering-booking-billing";
+import { cateringPaymentRefundableCents, type CateringAdjustmentFact } from "@shared/catering-billing-adjustments";
 import { cateringInvoiceFactOf, cateringDepositTermsOf } from "../services/catering-booking-billing-policy";
 
 /**
@@ -53,7 +56,9 @@ export function serializeCateringInvoice(
     currency: row.currency,
     status: row.status as CateringInvoiceStatus,
     state: cateringInvoiceState(fact, facts.payments),
-    overdue: cateringInvoiceIsOverdue(fact, facts.payments, facts.asOfDate),
+    // Overdue only while the request is currently asking for something: a past-due request the booking balance no longer
+    // reaches (a credit took it to zero) stays in the history, unpaid and unaltered, and is not flagged.
+    overdue: cateringEffectivePayableCents(fact, facts) > 0 && cateringInvoiceIsOverdue(fact, facts.payments, facts.asOfDate),
     dueOn: row.dueOn ?? null,
     issuedAt: row.issuedAt?.toISOString() ?? null,
     voidedAt: row.voidedAt?.toISOString() ?? null,
@@ -61,10 +66,10 @@ export function serializeCateringInvoice(
     remainingCents: cateringRemainingOnInvoice(fact, facts.payments),
   };
   if (role !== "provider") return shared;
-  return { ...shared, updatedAt: row.updatedAt.toISOString() };
+  return { ...shared, maxPaymentCents: cateringPayableCents(fact, facts), updatedAt: row.updatedAt.toISOString() };
 }
 
-export function serializeCateringPayment(row: CateringBookingPayment, role: "provider" | "customer"): CateringPaymentView {
+export function serializeCateringPayment(row: CateringBookingPayment, role: "provider" | "customer", adjustments: readonly CateringAdjustmentFact[] = [], voidability?: { voidable: boolean; blockedReason: string | null }): CateringPaymentView {
   const shared: CateringPaymentView = {
     id: row.id,
     invoiceId: row.invoiceId,
@@ -81,7 +86,7 @@ export function serializeCateringPayment(row: CateringBookingPayment, role: "pro
     voidedAt: row.voidedAt?.toISOString() ?? null,
   };
   if (role !== "provider") return shared;
-  return { ...shared, reference: row.reference ?? null };
+  return { ...shared, reference: row.reference ?? null, refundableCents: cateringPaymentRefundableCents(row, adjustments), voidable: voidability?.voidable ?? false, voidBlockedReason: voidability?.blockedReason ?? null };
 }
 
 /**

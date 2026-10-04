@@ -983,9 +983,9 @@ export const cateringBookingInvoices = pgTable("catering_booking_invoices", {
   numberUnique: uniqueIndex("catering_invoices_number_uidx").on(t.bookingId, t.invoiceNumber),
   // At most ONE live invoice of each kind per booking. This is what makes a double-issue impossible under a
   // double-click, a retry or two tabs: the second insert violates the index inside the transaction.
-  liveKindUnique: uniqueIndex("catering_invoices_live_kind_uidx").on(t.bookingId, t.invoiceKind).where(sql`${t.status} <> 'void'`),
+  liveKindUnique: uniqueIndex("catering_invoices_live_kind_uidx").on(t.bookingId, t.invoiceKind).where(sql`${t.status} <> 'void' AND ${t.invoiceKind} <> 'adjustment'`),
   dueIdx: index("catering_invoices_due_idx").on(t.bookingId, t.status, t.dueOn),
-  kindCheck: check("catering_invoice_kind_check", sql`${t.invoiceKind} IN ('deposit', 'balance')`),
+  kindCheck: check("catering_invoice_kind_check", sql`${t.invoiceKind} IN ('deposit', 'balance', 'adjustment')`),
   statusCheck: check("catering_invoice_status_check", sql`${t.status} IN ('draft', 'issued', 'void')`),
   amountCheck: check("catering_invoice_amount_check", sql`${t.amountCents} > 0 AND ${t.amountCents} <= 9999999999`),
   currencyCheck: check("catering_invoice_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
@@ -1038,6 +1038,51 @@ export const cateringBookingPayments = pgTable("catering_booking_payments", {
   // A provider-recorded payment always names who recorded it and carries no processor identity; a processor
   // payment is the exact opposite. Neither can be forged into the other's shape.
   provenanceCheck: check("catering_payment_provenance_check", sql`(${t.paymentSource} = 'provider_recorded' AND ${t.recordedBy} IS NOT NULL AND ${t.processor} IS NULL AND ${t.processorPaymentId} IS NULL) OR (${t.paymentSource} = 'processor' AND ${t.processor} IS NOT NULL AND ${t.processorPaymentId} IS NOT NULL)`),
+}));
+
+/**
+ * Phase 2P: the post-confirmation adjustment ledger -- additional charges, credits and external refund RECORDS.
+ *
+ * Append-only: the migration's trigger forbids deleting a row and allows exactly one update, reversing a POSTED
+ * provider entry. No processor column exists, because nothing here moves or verifies money. `agreed_price` stays the
+ * current agreed price; an `amendment`-sourced row explains a movement it already contains, and the unique amendment
+ * index is what stops one amendment ever producing two. Money is integer cents.
+ */
+export const cateringBookingAdjustments = pgTable("catering_booking_adjustments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  entryKind: varchar("entry_kind", { length: 16 }).notNull(),
+  source: varchar("source", { length: 24 }).default("provider_recorded").notNull(),
+  status: varchar("status", { length: 16 }).default("posted").notNull(),
+  amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  /** Customer-visible by definition. */
+  reason: varchar("reason", { length: 500 }).notNull(),
+  /** Refunds only. PROVIDER ONLY and not verified by ChefSire. */
+  reference: varchar("reference", { length: 64 }),
+  paymentId: varchar("payment_id").references(() => cateringBookingPayments.id, { onDelete: "restrict" }),
+  amendmentId: varchar("amendment_id").references(() => cateringBookingAmendments.id, { onDelete: "restrict" }),
+  idempotencyKey: varchar("idempotency_key", { length: 64 }),
+  /** Internal attribution, never serialized to either participant. */
+  recordedBy: varchar("recorded_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
+  reversedBy: varchar("reversed_by").references(() => users.id, { onDelete: "restrict" }),
+  reversalReason: varchar("reversal_reason", { length: 500 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  idempotencyUnique: uniqueIndex("catering_adjustments_idempotency_uidx").on(t.bookingId, t.idempotencyKey).where(sql`${t.idempotencyKey} IS NOT NULL`),
+  amendmentUnique: uniqueIndex("catering_adjustments_amendment_uidx").on(t.amendmentId).where(sql`${t.amendmentId} IS NOT NULL`),
+  bookingIdx: index("catering_adjustments_booking_idx").on(t.bookingId, t.createdAt, t.id),
+  paymentIdx: index("catering_adjustments_payment_idx").on(t.paymentId).where(sql`${t.paymentId} IS NOT NULL`),
+  kindCheck: check("catering_adjustment_kind_check", sql`${t.entryKind} IN ('charge', 'credit', 'refund')`),
+  sourceCheck: check("catering_adjustment_source_check", sql`${t.source} IN ('provider_recorded', 'amendment')`),
+  statusCheck: check("catering_adjustment_status_check", sql`${t.status} IN ('posted', 'reversed')`),
+  amountCheck: check("catering_adjustment_amount_check", sql`${t.amountCents} > 0 AND ${t.amountCents} <= 9999999999`),
+  currencyCheck: check("catering_adjustment_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
+  reasonCheck: check("catering_adjustment_reason_check", sql`length(btrim(${t.reason})) > 0`),
+  provenanceCheck: check("catering_adjustment_provenance_check", sql`(${t.source} = 'provider_recorded' AND ${t.amendmentId} IS NULL AND ${t.idempotencyKey} IS NOT NULL) OR (${t.source} = 'amendment' AND ${t.amendmentId} IS NOT NULL AND ${t.idempotencyKey} IS NULL AND ${t.entryKind} IN ('charge', 'credit') AND ${t.paymentId} IS NULL AND ${t.reference} IS NULL)`),
+  refundColumnsCheck: check("catering_adjustment_refund_columns_check", sql`(${t.paymentId} IS NULL AND ${t.reference} IS NULL) OR ${t.entryKind} = 'refund'`),
+  reversalCheck: check("catering_adjustment_reversal_check", sql`(${t.status} = 'posted' AND ${t.reversedAt} IS NULL AND ${t.reversedBy} IS NULL AND ${t.reversalReason} IS NULL) OR (${t.status} = 'reversed' AND ${t.source} = 'provider_recorded' AND ${t.reversedAt} IS NOT NULL AND ${t.reversedBy} IS NOT NULL AND ${t.reversalReason} IS NOT NULL AND length(btrim(${t.reversalReason})) > 0)`),
 }));
 
 export const cateringReviews = pgTable("catering_reviews", {

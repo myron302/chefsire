@@ -1,4 +1,5 @@
-import type { CateringBookingBillingRecord, CateringBookingInvoice, CateringBookingPayment } from "@shared/schema";
+import type { CateringBookingAdjustment, CateringBookingBillingRecord, CateringBookingInvoice, CateringBookingPayment } from "@shared/schema";
+import type { CateringAdjustmentFact, CateringAdjustmentKind, CateringAdjustmentSource, CateringAdjustmentStatus } from "@shared/catering-billing-adjustments";
 import { cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import {
   CATERING_BILLING_NOT_AVAILABLE_CODE,
@@ -8,6 +9,8 @@ import {
   EMPTY_CATERING_DEPOSIT_TERMS,
   cateringBillingIsActionable,
   cateringMoneyToCents,
+  cateringPayableCents,
+  deriveCateringBillingSummary,
   type CateringBillingFacts,
   type CateringDepositTerms,
   type CateringInvoiceFact,
@@ -102,6 +105,18 @@ export function cateringPaymentFactOf(row: CateringBookingPayment): CateringPaym
   };
 }
 
+export function cateringAdjustmentFactOf(row: CateringBookingAdjustment): CateringAdjustmentFact {
+  return {
+    id: row.id,
+    kind: row.entryKind as CateringAdjustmentKind,
+    amountCents: row.amountCents,
+    currency: row.currency,
+    status: row.status as CateringAdjustmentStatus,
+    source: row.source as CateringAdjustmentSource,
+    paymentId: row.paymentId ?? null,
+  };
+}
+
 /**
  * Every fact the derivation needs, assembled in one place.
  *
@@ -114,6 +129,7 @@ export function cateringBillingFacts(input: {
   terms: CateringBookingBillingRecord | undefined;
   invoices: readonly CateringBookingInvoice[];
   payments: readonly CateringBookingPayment[];
+  adjustments?: readonly CateringBookingAdjustment[];
   asOfDate: string;
 }): CateringBillingFacts {
   return {
@@ -123,6 +139,7 @@ export function cateringBillingFacts(input: {
     terms: cateringDepositTermsOf(input.terms),
     invoices: input.invoices.map(cateringInvoiceFactOf),
     payments: input.payments.map(cateringPaymentFactOf),
+    adjustments: (input.adjustments ?? []).map(cateringAdjustmentFactOf),
     asOfDate: input.asOfDate,
   };
 }
@@ -194,7 +211,7 @@ export function resolveCateringDepositTerms(input: {
     if (input.amountCents === null) return { ok: false, message: "Enter the deposit amount." };
     if (input.amountCents <= 0) return { ok: false, message: "A deposit has to be more than nothing. Choose 'no deposit' instead." };
     if (input.agreedTotalCents !== null && input.amountCents > input.agreedTotalCents) {
-      return { ok: false, message: "A deposit cannot be more than the agreed price for the event." };
+      return { ok: false, message: "A deposit cannot be more than what your customer owes for the event: the agreed price, with any charges and credits recorded on it." };
     }
     return { ok: true, mode: "fixed", amountCents: input.amountCents, percentBasisPoints: null, dueOn };
   }
@@ -235,5 +252,18 @@ export function resolveCateringPayment(input: {
     (total, payment) => (payment.invoiceId === input.invoice!.id && payment.status === "recorded" ? total + payment.amountCents : total), 0));
   if (remaining === 0) return { ok: false, message: "This request is already fully covered by the payments you have recorded." };
   if (input.amountCents > remaining) return { ok: false, message: "That is more than this request still has outstanding." };
+  // Phase 2P: a payment is bounded by this request's CURRENT EFFECTIVE PAYABLE amount -- the same per-request allocation the
+  // provider was shown -- so credits, and sibling requests that are older and own the balance first, cannot be bypassed by a
+  // stale or crafted amount. With no adjustments it equals the remainder checked above and never binds.
+  const payable = cateringPayableCents(input.invoice, input.facts);
+  if (input.amountCents > payable) {
+    const balanceDue = deriveCateringBillingSummary(input.facts).balanceDueCents;
+    if (balanceDue !== null && input.amountCents > balanceDue) {
+      return { ok: false, message: "That is more than your customer now owes for this booking, after the credits recorded on it." };
+    }
+    return { ok: false, message: payable === 0
+      ? "What your customer owes is currently allocated to an earlier request, so nothing can be recorded against this one."
+      : "That is more than this request is currently asking for, after the credits recorded on this booking and the earlier requests ahead of it." };
+  }
   return { ok: true, amountCents: input.amountCents };
 }

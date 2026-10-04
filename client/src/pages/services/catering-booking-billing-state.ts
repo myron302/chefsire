@@ -1,4 +1,5 @@
 import { calendarDateSchema } from "@shared/catering-availability";
+import { cateringBillingViewMayStillChange } from "@shared/catering-billing-adjustments";
 import {
   CATERING_BILLING_STATE_CODE,
   CATERING_BILLING_NOT_AVAILABLE_CODE,
@@ -182,6 +183,15 @@ export type CateringPaymentForm = {
   idempotencyKey: string;
 } | null;
 
+/**
+ * The most the server says a payment against this invoice may be right now: the smaller of what the invoice has left and
+ * what the customer still owes for the booking after credits and recorded refunds. Carried on the provider's payload as
+ * `maxPaymentCents`; an older payload without it (every Phase 2L booking before this field) falls back to the invoice's
+ * own remaining amount, which is what the cap always was. Never computed here.
+ */
+export const cateringPaymentCap = (invoice: Pick<CateringInvoiceView, "remainingCents" | "maxPaymentCents">): number =>
+  Math.max(0, invoice.maxPaymentCents ?? invoice.remainingCents);
+
 export function openCateringPaymentForm(
   identity: CateringBillingIdentity,
   invoice: CateringInvoiceView,
@@ -191,8 +201,9 @@ export function openCateringPaymentForm(
   return {
     identity,
     invoiceId: invoice.id,
-    // Prefilled with what is actually left on the invoice, from the server's own figure -- not computed here.
-    amount: cateringMajorUnits(invoice.remainingCents),
+    // Prefilled with the most the server says may be recorded now -- never more than the customer still owes after credits.
+    // At a zero cap the field is empty rather than a positive amount the server would refuse.
+    amount: cateringPaymentCap(invoice) > 0 ? cateringMajorUnits(cateringPaymentCap(invoice)) : "",
     method: "bank_transfer",
     receivedOn: today,
     reference: "",
@@ -297,7 +308,7 @@ export function maySubmitCateringPayment(
   if (pending || !invoice || invoice.id !== form.invoiceId) return false;
   if (invoice.state !== "issued" && invoice.state !== "partially_paid") return false;
   const cents = cateringMoneyToCents(form.amount);
-  if (cents === null || cents <= 0 || cents > invoice.remainingCents) return false;
+  if (cents === null || cents <= 0 || cents > cateringPaymentCap(invoice)) return false;
   // The CANONICAL calendar check, not a shape regex: the same `calendarDateSchema` the server validates the request
   // with, so an impossible day is refused by the form rather than after a round trip. The server applies it again
   // regardless -- this is the provider being told sooner, never the client being trusted.
@@ -327,7 +338,11 @@ export function cateringPaymentProvenance(source: string, role: "provider" | "cu
   return role === "provider" ? "Recorded by you" : "Recorded by your caterer";
 }
 
-/** Whether a booking's billing can still change, which is what the section's polling is gated on. */
-export function cateringBillingCanStillChange(status: string | undefined): boolean {
-  return status !== undefined && status !== "cancelled";
+/**
+ * Whether a booking's billing can still change through a legitimate server write, which is what the section's polling is gated on.
+ * Judged from the status AND, for a cancelled booking, from the payload itself: Phase 2P still accepts an external refund record
+ * (and its reversal) after cancellation, so a cancelled booking that holds recorded money keeps refreshing. Polling is not authority.
+ */
+export function cateringBillingCanStillChange(status: string | undefined, view?: { payments: readonly { status: string }[]; adjustments: readonly { kind: string; status: string }[] }): boolean {
+  return cateringBillingViewMayStillChange(status, view);
 }

@@ -21,6 +21,7 @@ import {
   type CateringInvoiceView,
   type CateringPaymentMethod,
 } from "@shared/catering-booking-billing";
+import BookingAdjustments from "./BookingAdjustments";
 import { cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
 import {
   activeCateringPaymentForm,
@@ -28,6 +29,7 @@ import {
   cateringBillingFailureNotice,
   cateringBillingIdentity,
   cateringMajorUnits,
+  cateringPaymentCap,
   cateringPaymentProvenance,
   cateringPaymentSnapshot,
   cateringTermsFormIsCurrent,
@@ -80,7 +82,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
     // still produce a financial change, which is every status except cancelled: a customer must learn that their
     // caterer has requested a deposit without reloading the page.
     refetchInterval: (polled: { state: { data?: CateringBookingBillingView } }) =>
-      cateringWorkspacePollInterval(cateringBillingCanStillChange(polled.state.data?.bookingStatus)),
+      cateringWorkspacePollInterval(cateringBillingCanStillChange(polled.state.data?.bookingStatus, polled.state.data)),
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<CateringBookingBillingView> => {
       const response = await fetch(cateringBookingBillingPath(bookingId), { credentials: "include" });
@@ -330,6 +332,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
   const statusCopy = CATERING_FINANCIAL_STATUS_COPY[summary.status];
   const money = (cents: number) => formatCateringMoney(cents, currency);
   const openPayment = activeCateringPaymentForm(paymentForm, identity, actionable);
+  const openPaymentInvoice = openPayment ? billing.invoices.find((row) => row.id === openPayment.invoiceId) : undefined;
   const activeNotice = notice && notice.identity === identity ? notice : null;
   const termsAreCurrent = localStateIsCurrent && cateringTermsFormIsCurrent(termsForm, identity);
 
@@ -359,8 +362,14 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
           <dd className="break-words text-lg font-semibold tabular-nums">{summary.agreedTotalCents === null ? "Not agreed yet" : money(summary.agreedTotalCents)}</dd></div>
         <div><dt className="text-sm text-muted-foreground">Recorded as paid</dt>
           <dd className="break-words text-lg font-semibold tabular-nums">{money(summary.paidTotalCents)}</dd></div>
-        <div><dt className="text-sm text-muted-foreground">Remaining of the agreed total</dt>
-          <dd className="break-words tabular-nums">{summary.remainingOfAgreedCents === null ? "—" : money(summary.remainingOfAgreedCents)}</dd></div>
+        {/* Two different questions, two different figures. With nothing adjusted they are the same number and the original row
+            says it; once the ledger has moved the amount due, the row says "Current amount due" and shows the server's adjusted
+            balance instead of an "agreed" remainder that no longer describes what is owed. */}
+        {summary.balanceDueCents !== summary.remainingOfAgreedCents
+          ? <div><dt className="text-sm text-muted-foreground">Current amount due, with the adjustments recorded on this booking</dt>
+            <dd className="break-words tabular-nums">{summary.balanceDueCents === null ? "—" : money(summary.balanceDueCents)}</dd></div>
+          : <div><dt className="text-sm text-muted-foreground">Remaining of the agreed total</dt>
+            <dd className="break-words tabular-nums">{summary.remainingOfAgreedCents === null ? "—" : money(summary.remainingOfAgreedCents)}</dd></div>}
         <div><dt className="text-sm text-muted-foreground">Requested and not yet covered</dt>
           <dd className="break-words tabular-nums">{money(summary.outstandingInvoicedCents)}</dd></div>
         {summary.nextAmountDueCents !== null && <div className="sm:col-span-2">
@@ -381,7 +390,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
           : <ul className="space-y-3">{billing.invoices.map((invoice) => <li key={invoice.id} className="min-w-0 rounded-lg border p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="break-words font-medium">{invoice.kind === "deposit" ? "Deposit" : "Remaining balance"} · <span className="tabular-nums">{money(invoice.amountCents)}</span></p>
+                <p className="break-words font-medium">{invoice.kind === "deposit" ? "Deposit" : invoice.kind === "adjustment" ? "Further balance request" : "Remaining balance"} · <span className="tabular-nums">{money(invoice.amountCents)}</span></p>
                 <p className="break-words text-sm text-muted-foreground">
                   {invoice.reference}{invoice.dueOn ? ` · due ${invoice.dueOn}` : ""}
                   {invoice.paidCents > 0 && invoice.state !== "void" ? ` · ${money(invoice.paidCents)} recorded` : ""}
@@ -393,10 +402,13 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
               </div>
             </div>
             {provider && actionable && invoice.state !== "void" && <div className="mt-3 flex flex-wrap gap-2">
-              {invoice.remainingCents > 0 && <Button className="min-h-11" disabled={pending}
+              {cateringPaymentCap(invoice) > 0 && <Button className="min-h-11" disabled={pending}
                 onClick={() => setPaymentForm(openCateringPaymentForm(identity, invoice, billing.asOfDate, cateringIdempotencyKey()))}>
                 Record a payment
               </Button>}
+              {invoice.remainingCents > 0 && cateringPaymentCap(invoice) === 0 && <p className="text-sm text-muted-foreground">
+                Nothing can be recorded against this request right now: what your customer owes is already paid or is covered by another request.
+              </p>}
               {invoice.paidCents === 0 && <Button className="min-h-11" variant="outline" disabled={pending} onClick={() => voidInvoice(invoice)}>Withdraw</Button>}
             </div>}
           </li>)}</ul>}
@@ -412,10 +424,17 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
             {/* The amount is the server's own preview, shown so nothing is requested unseen -- and it is NOT sent
                 back: the request carries the kind and a due date, and the server re-derives the figure under its
                 lock. */}
-            {kind === "deposit" ? "Request deposit" : "Request balance"} · <span className="tabular-nums">{money(amountCents)}</span>
+            {kind === "deposit" ? "Request deposit" : kind === "adjustment" ? "Request further balance" : "Request balance"} · <span className="tabular-nums">{money(amountCents)}</span>
           </Button>
+          {kind === "adjustment" && <p className="w-full text-xs text-muted-foreground">
+            This asks for the part of the balance your earlier requests do not cover, such as a charge you added or money you recorded as returned. Your earlier requests, payments and records stay exactly as they are.
+          </p>}
         </div>)}
       </section>
+
+      {/* Phase 2P: later financial changes -- charges, credits and recorded external returns -- as their own ledger, below the
+          requests they never edit. The same section serves both actors; only the provider is given the controls. */}
+      <BookingAdjustments bookingId={bookingId} userId={userId} role={role} billing={billing} />
 
       {/* The payment form. Inline rather than a dialog, so it works the same at 320px as it does on a desktop. */}
       {provider && openPayment && <form onSubmit={submitPayment} className="space-y-3 rounded-lg border p-4">
@@ -424,8 +443,11 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="catering-payment-amount">Amount received</Label>
-            <Input id="catering-payment-amount" className="min-h-11" inputMode="decimal" value={openPayment.amount}
+            <Input id="catering-payment-amount" className="min-h-11" inputMode="decimal" value={openPayment.amount} aria-describedby="catering-payment-amount-help"
               onChange={(event) => setPaymentForm((current) => editCateringPaymentForm(current, identity, { amount: event.target.value }))} />
+            {openPaymentInvoice && <p id="catering-payment-amount-help" className="text-xs text-muted-foreground">
+              At most {money(cateringPaymentCap(openPaymentInvoice))}{openPaymentInvoice.remainingCents > cateringPaymentCap(openPaymentInvoice) ? ", because credits have reduced what your customer owes" : ", what is still outstanding on this request"}.
+            </p>}
           </div>
           <div className="space-y-1">
             <Label htmlFor="catering-payment-date">Date received</Label>
@@ -465,7 +487,9 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
                 {provider && payment.reference ? ` · ${payment.reference}` : ""}
               </p>
             </div>
-            {provider && actionable && payment.status === "recorded" && <Button variant="outline" className="min-h-11" disabled={pending} onClick={() => voidPayment(payment.id)}>Take back</Button>}
+            {/* The server's verdict for THIS payment, from the same policy the take-back endpoint applies -- never a guess. */}
+            {provider && actionable && payment.status === "recorded" && payment.voidable === true && <Button variant="outline" className="min-h-11" disabled={pending} onClick={() => voidPayment(payment.id)}>Take back</Button>}
+            {provider && actionable && payment.status === "recorded" && payment.voidable === false && payment.voidBlockedReason && <p className="w-full break-words text-sm text-muted-foreground">This payment can't be taken back right now. {payment.voidBlockedReason}</p>}
           </li>)}</ul>}
       </section>
 
