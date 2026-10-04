@@ -389,7 +389,9 @@ r.post("/bookings/:id/billing/invoices", requireAuth, async (req, res, next) => 
 function unissuableMessage(kind: CateringInvoiceKind, facts: CateringBillingFacts): string {
   if (facts.agreedTotalCents === null) return "This booking has no agreed price, so there is nothing to request yet.";
   const live = facts.invoices.filter((invoice) => invoice.status === "issued");
-  if (live.some((invoice) => invoice.kind === kind)) {
+  // One live request per kind is the contract for a deposit and a balance only. Adjustment requests are deliberately many over
+  // time -- each covers what was added since the last -- so an earlier one is no reason to refuse; the requestable amount is.
+  if (kind !== "adjustment" && live.some((invoice) => invoice.kind === kind)) {
     return kind === "deposit" ? "A deposit has already been requested." : "The balance has already been requested.";
   }
   if (kind === "deposit" && live.some((invoice) => invoice.kind === "balance")) {

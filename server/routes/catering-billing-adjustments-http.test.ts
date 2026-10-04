@@ -1835,6 +1835,57 @@ if (!PG_URL) {
     for (const who of [PROVIDER, CUSTOMER_A]) assert.notEqual((await billing(bookingId, who)).body.summary.status, "settled", "$500 is owed again");
   });
 
+  // ------------------------------------------------------------------------------------------------ adjustment refusal routing (Codex 13)
+  const REFUSAL_NOTHING_ADDED = "There is nothing added since your balance was requested, so there is nothing more to request.";
+  const messageOf = (response: { body: { message?: string; error?: string } }) => response.body.message ?? response.body.error;
+
+  test("adjustment refusal: deposit and balance keep their single-live-kind refusals", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "fixed", amount: "300" });
+    assert.equal((await issue(bookingId, "deposit")).status, 200);
+    const again = await issue(bookingId, "deposit");
+    assert.equal(again.status, 409);
+    assert.equal(messageOf(again), "A deposit has already been requested.");
+    assert.equal((await issue(bookingId, "balance")).status, 200);
+    const balanceAgain = await issue(bookingId, "balance");
+    assert.equal(balanceAgain.status, 409);
+    assert.equal(messageOf(balanceAgain), "The balance has already been requested.");
+  });
+
+  test("adjustment refusal: with an adjustment request live and nothing new uncovered the adjustment-specific message is returned and nothing is created", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    await issue(bookingId, "balance");
+    await adjust(bookingId, { kind: "charge", amountCents: 20000 });
+    assert.equal((await issue(bookingId, "adjustment")).status, 200);
+    const before = await rows("catering_booking_invoices", bookingId);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const stale = await issue(bookingId, "adjustment");
+      assert.equal(stale.status, 409, stale.text);
+      assert.equal(messageOf(stale), REFUSAL_NOTHING_ADDED, "never the generic balance message");
+    }
+    assert.deepEqual(await rows("catering_booking_invoices", bookingId), before, "no duplicate invoice");
+    const racing = await Promise.all([issue(bookingId, "adjustment"), issue(bookingId, "adjustment")]);
+    assert.deepEqual(racing.map((response) => response.status), [409, 409]);
+  });
+
+  test("adjustment refusal: new uncovered amount after earlier adjustment requests still allows another, and zero headroom afterwards is the clean refusal", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    await issue(bookingId, "balance");
+    for (const cents of [20000, 5000, 7000]) {
+      assert.equal((await adjust(bookingId, { kind: "charge", amountCents: cents })).status, 201);
+      const issued = await issue(bookingId, "adjustment");
+      assert.equal(issued.status, 200, issued.text);
+      assert.equal(issued.body.invoices[issued.body.invoices.length - 1].amountCents, cents, "each covers only what was added since the last");
+    }
+    const view = (await billing(bookingId)).body;
+    assert.equal(view.invoices.filter((row: { kind: string }) => row.kind === "adjustment").length, 3);
+    assert.deepEqual([view.issuable, view.summary.outstandingInvoicedCents], [[], 132000]);
+    const none = await issue(bookingId, "adjustment");
+    assert.equal(none.status, 409);
+    assert.equal(messageOf(none), REFUSAL_NOTHING_ADDED);
+    assert.equal((await billing(bookingId)).body.invoices.length, 4, "three adjustments and the balance, no more");
+  });
+
   test("coverage: concurrent requests, a charge racing a request, and a reversal racing a request all end with every cent covered exactly once", async () => {
     const make = async () => {
       const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
