@@ -343,11 +343,17 @@ export type CateringAdjustmentView = {
   /** The recorded payment a refund names, when it names one. */
   paymentId: string | null;
   reference?: string | null;
+  /**
+   * PROVIDER ONLY. Whether THIS entry can be reversed right now, by the same policy the reversal endpoint applies; never
+   * inferred from its kind. A hint for the screen -- the endpoint judges again under its lock.
+   */
+  reversible?: boolean;
+  /** PROVIDER ONLY. Why a posted entry cannot be reversed right now, in words the provider can act on. Null otherwise. */
+  reversalBlockedReason?: string | null;
 };
 
 export type CateringAdjustmentActions = {
   kinds: CateringAdjustmentKind[];
-  reversibleKinds: CateringAdjustmentKind[];
   /** The most a credit / a refund record may be right now, so the form states its own limit. */
   maxCreditCents: number;
   maxRefundCents: number;

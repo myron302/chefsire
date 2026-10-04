@@ -5,7 +5,7 @@ import {
 } from "@shared/schema";
 import { cateringMoneyToCents } from "@shared/catering-booking-billing";
 import {
-  CATERING_ADJUSTMENT_REPLAY_CONFLICT_MESSAGE, CATERING_ADJUSTMENT_REFUSAL_COPY, cateringAdjustmentCounts, cateringAdjustmentKindsRecordable, cateringAdjustmentKindsReversible,
+  CATERING_ADJUSTMENT_REPLAY_CONFLICT_MESSAGE, CATERING_ADJUSTMENT_REFUSAL_COPY, cateringAdjustmentCounts, cateringAdjustmentKindsRecordable,
   cateringAdjustmentReplayMatches, cateringAmendedPriceKeepsLedgerCoherent, cateringAmendmentLedgerEffect, cateringChargeCeilingCents, cateringCreditCeilingCents, cateringRefundCeilingCents,
   deriveCateringLedgerPosition, resolveCateringAdjustment, resolveCateringAdjustmentReversal,
   type CateringAdjustmentActions, type CateringAdjustmentCreateInput, type CateringAdjustmentFacts,
@@ -58,11 +58,23 @@ export function adjustmentActionsFor(facts: CateringAdjustmentFacts): CateringAd
   const hasPrice = position.obligationCents !== null;
   return {
     kinds: cateringAdjustmentKindsRecordable(facts.bookingStatus).filter((kind) => kind === "refund" || hasPrice) as CateringAdjustmentActions["kinds"],
-    reversibleKinds: [...cateringAdjustmentKindsReversible(facts.bookingStatus)],
     maxCreditCents: cateringCreditCeilingCents(position),
     maxRefundCents: cateringRefundCeilingCents({ paidTotalCents: facts.paidTotalCents, adjustments: facts.adjustments }),
     maxChargeCents: cateringChargeCeilingCents(position),
   };
+}
+
+/**
+ * Whether ONE entry can be reversed against these facts, by the same `resolveCateringAdjustmentReversal` the reversal
+ * endpoint calls under its lock -- so the view says "reversible" if and only if the endpoint would allow it at this snapshot.
+ * It is a hint for the provider's screen, never an authority: the endpoint judges again, under the lock, when it is used.
+ */
+export function reversalOutlook(entryId: string, facts: CateringAdjustmentFacts): { reversible: boolean; blockedReason: string | null } {
+  const entry = facts.adjustments.find((row) => row.id === entryId);
+  const decision = resolveCateringAdjustmentReversal(entry, facts);
+  if (decision.ok) return { reversible: true, blockedReason: null };
+  // A reversed entry is simply history; every other refusal is a reason the provider can be told.
+  return { reversible: false, blockedReason: decision.code === "already_reversed" ? null : decision.message };
 }
 
 /** The amendment numbers entries refer to, so the history can say "from amendment 2" without exposing amendment internals. */

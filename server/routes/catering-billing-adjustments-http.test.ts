@@ -1363,6 +1363,175 @@ if (!PG_URL) {
     assert.equal((await ledger(bookingId)).length, 1);
   });
 
+  // ------------------------------------------------------------------------------------------------ fixed deposit basis (Codex 8)
+  const saveTerms = (bookingId: string, body: Record<string, unknown>) => call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), body);
+  const termsVersion = async (bookingId: string) => (await billing(bookingId)).body.terms.updatedAt as string | null;
+
+  test("fixed deposit: validated against the CURRENT obligation, so a charge makes a larger deposit valid and one cent past it is refused", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    assert.equal((await adjust(bookingId, { kind: "charge", amountCents: 20000 })).status, 201);
+    assert.equal((await billing(bookingId)).body.summary.obligationCents, 120000);
+    const ok = await saveTerms(bookingId, { mode: "fixed", amount: "1100" });
+    assert.equal(ok.status, 200, ok.text);
+    assert.equal(ok.body.terms.requiredCents, 110000);
+    const exact = await saveTerms(bookingId, { mode: "fixed", amount: "1200", expectedUpdatedAt: ok.body.terms.updatedAt });
+    assert.equal(exact.status, 200, "equal to the obligation is allowed");
+    const over = await saveTerms(bookingId, { mode: "fixed", amount: "1201", expectedUpdatedAt: exact.body.terms.updatedAt });
+    assert.deepEqual([over.status, over.body.code], [409, "catering_billing_state"]);
+    assert.match(over.body.message, /cannot be more than what your customer owes/);
+    const kept = (await billing(bookingId)).body;
+    assert.deepEqual([kept.terms.amountCents, kept.terms.requiredCents], [120000, 120000], "the refused save changed nothing");
+  });
+
+  test("fixed deposit: preview, validation, serialization and the issued invoice share one basis", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    await adjust(bookingId, { kind: "charge", amountCents: 20000 });
+    const saved = await saveTerms(bookingId, { mode: "fixed", amount: "1100" });
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([saved.body.terms.requiredCents, view.terms.requiredCents, view.summary.depositRequiredCents, view.issuablePreview.find((row: { kind: string }) => row.kind === "deposit").amountCents], [110000, 110000, 110000, 110000]);
+    const issued = await issue(bookingId, "deposit");
+    assert.equal(issued.status, 200, issued.text);
+    assert.equal(issued.body.invoices[0].amountCents, 110000);
+  });
+
+  test("fixed deposit: a credit lowers the ceiling, and reversals move it back exactly", async () => {
+    const credited = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    const credit = await adjust(credited, { kind: "credit", amountCents: 20000 });
+    assert.equal((await saveTerms(credited, { mode: "fixed", amount: "900" })).status, 409, "obligation is 800");
+    assert.equal((await saveTerms(credited, { mode: "fixed", amount: "800" })).status, 200, "equal to the obligation");
+    assert.equal((await saveTerms(credited, { mode: "fixed", amount: "800.01", expectedUpdatedAt: await termsVersion(credited) })).status, 409);
+    await reverse(credited, credit.body.adjustments[0].id);
+    assert.equal((await saveTerms(credited, { mode: "fixed", amount: "900", expectedUpdatedAt: await termsVersion(credited) })).status, 200, "a reversed credit restores the room");
+    const charged = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" }, { customer: CUSTOMER_B });
+    const charge = await adjust(charged, { kind: "charge", amountCents: 20000 });
+    await reverse(charged, charge.body.adjustments[0].id);
+    assert.equal((await saveTerms(charged, { mode: "fixed", amount: "1100" })).status, 409, "a reversed charge no longer raises the ceiling");
+    assert.equal((await saveTerms(charged, { mode: "fixed", amount: "1000" })).status, 200);
+  });
+
+  test("fixed deposit: a legacy booking with no adjustments behaves exactly as before, and a percentage stays coherent with the same basis", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    assert.equal((await saveTerms(bookingId, { mode: "fixed", amount: "1000" })).status, 200);
+    assert.equal((await saveTerms(bookingId, { mode: "fixed", amount: "1000.01", expectedUpdatedAt: await termsVersion(bookingId) })).status, 409);
+    await adjust(bookingId, { kind: "charge", amountCents: 20000 });
+    const pct = await saveTerms(bookingId, { mode: "percentage", percent: "50", expectedUpdatedAt: await termsVersion(bookingId) });
+    assert.equal(pct.body.terms.requiredCents, 60000, "50% of 1,200");
+    assert.equal((await billing(bookingId)).body.issuablePreview.find((row: { kind: string }) => row.kind === "deposit").amountCents, 60000);
+    assert.equal((await issue(bookingId, "deposit")).body.invoices[0].amountCents, 60000);
+  });
+
+  // ------------------------------------------------------------------------------------------------ per-entry reversibility (Codex 9)
+  const entryView = async (bookingId: string, id: string, who = PROVIDER) => ((await billing(bookingId, who)).body.adjustments as { id: string; reversible?: boolean; reversalBlockedReason?: string | null; status: string }[]).find((row) => row.id === id)!;
+  const sideEffects = async (bookingId: string) => JSON.stringify([await ledger(bookingId), await bookingRow(bookingId), await rows("catering_booking_invoices", bookingId), await rows("catering_booking_payments", bookingId), await notificationCount()]);
+
+  test("reversibility: a simple live charge is reversible, and the customer is never given the flag", async () => {
+    const { bookingId } = await billed();
+    const charge = await adjust(bookingId, { kind: "charge", amountCents: 1000 });
+    const id = charge.body.adjustments[0].id as string;
+    assert.deepEqual([(await entryView(bookingId, id)).reversible, (await entryView(bookingId, id)).reversalBlockedReason], [true, null]);
+    const customer = await entryView(bookingId, id, CUSTOMER_A);
+    assert.equal("reversible" in customer || "reversalBlockedReason" in customer, false, "no provider authority is offered to a customer");
+    assert.equal((await reverse(bookingId, id, CUSTOMER_A)).status, 403, "and a customer's POST is refused whatever the flag says");
+  });
+
+  test("reversibility: a charge an unpaid request depends on is NOT reversible in the view and the POST agrees, with zero side effects", async () => {
+    const { bookingId } = await billed("2500.00");
+    const charge = await adjust(bookingId, { kind: "charge", amountCents: 40000 });
+    const id = charge.body.adjustments[0].id as string;
+    assert.equal((await entryView(bookingId, id)).reversible, true, "before any request depends on it");
+    assert.equal((await issue(bookingId, "adjustment")).status, 200);
+    const blocked = await entryView(bookingId, id);
+    assert.equal(blocked.reversible, false);
+    assert.match(blocked.reversalBlockedReason ?? "", /Withdraw that request first/);
+    const before = await sideEffects(bookingId);
+    const post = await reverse(bookingId, id);
+    assert.deepEqual([post.status, post.body.code], [409, "catering_billing_state"], "view and endpoint agree");
+    assert.equal(await sideEffects(bookingId), before, "no ledger, booking, invoice, payment or notification change");
+  });
+
+  test("reversibility: a stale view that showed a charge as reversible is re-judged under the lock by the POST", async () => {
+    const { bookingId } = await billed("2500.00");
+    const charge = await adjust(bookingId, { kind: "charge", amountCents: 40000 });
+    const id = charge.body.adjustments[0].id as string;
+    const stale = await entryView(bookingId, id);
+    assert.equal(stale.reversible, true, "what the screen was holding");
+    await issue(bookingId, "adjustment");
+    const before = await sideEffects(bookingId);
+    const post = await reverse(bookingId, id);
+    assert.equal(post.status, 409, post.text);
+    assert.equal(await sideEffects(bookingId), before);
+    assert.equal((await entryView(bookingId, id)).reversible, false, "the refreshed view now tells the truth");
+  });
+
+  test("reversibility: a credit is reversible while the ceiling holds and not when it would not; a refund likewise follows the dependent request", async () => {
+    const bookingId = await bigBooking();
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 1_000_000_000 });
+    const creditId = credit.body.adjustments[0].id as string;
+    assert.equal((await entryView(bookingId, creditId)).reversible, true);
+    const charge = await adjust(bookingId, { kind: "charge", amountCents: 4_999_999_999 });
+    const blocked = await entryView(bookingId, creditId);
+    assert.deepEqual([blocked.reversible, /largest amount ChefSire can request/.test(blocked.reversalBlockedReason ?? "")], [false, true]);
+    assert.equal((await reverse(bookingId, creditId)).status, 409, "parity with the view");
+    assert.equal((await entryView(bookingId, charge.body.adjustments[1].id)).reversible, true, "the charge beside it is still reversible");
+    const refunds = await billed("2500.00");
+    const refund = await adjust(refunds.bookingId, { kind: "refund", amountCents: 30000 });
+    const refundId = refund.body.adjustments[0].id as string;
+    assert.equal((await entryView(refunds.bookingId, refundId)).reversible, true);
+    await issue(refunds.bookingId, "adjustment");
+    assert.equal((await entryView(refunds.bookingId, refundId)).reversible, false, "the request that covers the refund depends on it");
+    assert.equal((await reverse(refunds.bookingId, refundId)).status, 409);
+  });
+
+  test("reversibility: a reversed entry, an amendment-generated entry, and entries the booking's status forbids are not reversible, with a reason where one helps", async () => {
+    const { bookingId } = await billed();
+    const charge = await adjust(bookingId, { kind: "charge", amountCents: 1000 });
+    const id = charge.body.adjustments[0].id as string;
+    await reverse(bookingId, id);
+    assert.deepEqual([(await entryView(bookingId, id)).reversible, (await entryView(bookingId, id)).reversalBlockedReason], [false, null], "a reversed entry is history");
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A);
+    const fromAmendment = ((await billing(bookingId)).body.adjustments as { source: string; id: string }[]).find((row) => row.source === "amendment")!;
+    const amendmentView = await entryView(bookingId, fromAmendment.id);
+    assert.equal(amendmentView.reversible, false);
+    assert.match(amendmentView.reversalBlockedReason ?? "", /Propose another amendment/);
+    const completed = await billed("2500.00");
+    const credit = await adjust(completed.bookingId, { kind: "credit", amountCents: 1000 });
+    const completedCharge = await adjust(completed.bookingId, { kind: "charge", amountCents: 1000 });
+    await setStatus(completed.bookingId, "completed");
+    assert.equal((await entryView(completed.bookingId, credit.body.adjustments[0].id)).reversible, false, "after completion a credit cannot be undone");
+    assert.equal((await entryView(completed.bookingId, completedCharge.body.adjustments[1].id)).reversible, true, "but a charge can");
+    await setStatus(completed.bookingId, "cancelled");
+    assert.equal((await entryView(completed.bookingId, completedCharge.body.adjustments[1].id)).reversible, false);
+  });
+
+  test("reversibility: whatever the view says, the POST agrees across a sweep of states, and a successful reversal appends nothing and deletes nothing", async () => {
+    const { bookingId } = await billed("2500.00");
+    await adjust(bookingId, { kind: "charge", amountCents: 10000 });
+    await adjust(bookingId, { kind: "credit", amountCents: 5000 });
+    await adjust(bookingId, { kind: "refund", amountCents: 3000 });
+    let reversedOnce = false;
+    for (const stage of ["before request", "after request"]) {
+      const entries = (await billing(bookingId)).body.adjustments as { id: string; reversible: boolean; status: string }[];
+      for (const entry of entries.filter((row) => row.status === "posted")) {
+        const before = await sideEffects(bookingId);
+        const countBefore = (await ledger(bookingId)).length;
+        const flagged = (await entryView(bookingId, entry.id)).reversible;
+        const post = await reverse(bookingId, entry.id);
+        assert.equal(post.status, flagged ? 200 : 409, `${stage}: ${entry.id} flagged ${flagged}`);
+        if (flagged) {
+          reversedOnce = true;
+          assert.equal((await ledger(bookingId)).length, countBefore, "history is append-only: a reversal adds and removes no row");
+          assert.equal((await entryView(bookingId, entry.id)).status, "reversed", "still visible");
+        } else assert.equal(await sideEffects(bookingId), before, "a blocked reversal changes nothing");
+      }
+      if (stage === "before request") {
+        const requestable = (await billing(bookingId)).body.issuable as string[];
+        if (requestable.includes("adjustment")) await issue(bookingId, "adjustment");
+      }
+    }
+    assert.equal(reversedOnce, true);
+  });
+
   // ------------------------------------------------------------------------------------------------ the formula
   test("the derived position is exact: original + charges - credits = obligation, payments - refunds = net received, obligation - net = balance", async () => {
     const { bookingId } = await billed();

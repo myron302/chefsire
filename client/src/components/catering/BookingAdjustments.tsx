@@ -183,7 +183,9 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
         ? <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">{provider ? "You have not recorded any charge, credit or refund on this booking." : "No additional charges, credits or refunds have been recorded on this booking."}</p>
         : <ol className="space-y-2" aria-label="Adjustment history, oldest first">{entries.map((entry) => {
           const source = cateringAdjustmentSourceText(entry);
-          const reversible = provider && current && entry.status === "posted" && entry.source === "provider_recorded" && (actions?.reversibleKinds ?? []).includes(entry.kind);
+          // The server's own verdict for THIS entry, never a guess from its kind. It is a snapshot hint; the endpoint judges again.
+          const reversible = provider && current && entry.reversible === true;
+          const blockedReason = provider && current && entry.status === "posted" && entry.reversible === false ? entry.reversalBlockedReason ?? null : null;
           return <li key={entry.id} className="min-w-0 rounded-lg border p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
@@ -196,6 +198,7 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
             <p className="mt-1 break-words text-sm text-muted-foreground">{cateringAdjustmentEffectSentence(entry, role)}</p>
             {entry.status === "reversed" && <p className="mt-1 break-words text-sm"><span className="font-medium">Reversed{entry.reversedAt ? ` on ${formatDate(entry.reversedAt)}` : ""}: </span>{entry.reversalReason}</p>}
             {provider && entry.reference && <p className="mt-1 break-words text-sm text-muted-foreground">Your note: {entry.reference}</p>}
+            {blockedReason && <p className="mt-2 break-words text-sm text-muted-foreground">This entry cannot be reversed right now. {blockedReason}</p>}
             {reversible && <Button variant="outline" className="mt-3 min-h-11" disabled={pending} onClick={() => { setReverseReason(""); setConfirming({ type: "reverse", entry }); }}>Reverse entry</Button>}
           </li>;
         })}</ol>}

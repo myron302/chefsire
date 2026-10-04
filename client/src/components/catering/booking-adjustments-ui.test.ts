@@ -72,7 +72,8 @@ test("a financial write is confirmed in an accessible dialog that states its eff
 
 test("the customer is read-only: no control exists for them, and an empty state is explained", () => {
   assert.ok(component.includes("provider && current && actions && actions.kinds.length > 0 && !open"));
-  assert.ok(component.includes("const reversible = provider && current"));
+  assert.ok(component.includes("const reversible = provider && current && entry.reversible === true;"), "the server's verdict for this entry, never its kind");
+  assert.equal(component.includes("reversibleKinds"), false);
   assert.ok(component.includes("{provider && entry.reference &&"), "the provider's note is theirs alone");
   assert.ok(component.includes("No additional charges, credits or refunds have been recorded on this booking."));
   assert.ok(component.includes("You have not recorded any charge, credit or refund on this booking."));
@@ -143,4 +144,11 @@ test("the refund form states the selected payment's own remainder, disables spen
   assert.ok(component.includes("selectedPaymentRefundableCents: paymentId ?"));
   assert.ok(component.includes("cateringRefundLimitForForm(open, limits)"));
   assert.equal(/amountCents\s*[-+]\s*\w*[Rr]efund/.test(component), false, "no refund accounting in React");
+});
+
+test("a blocked entry shows no enabled Reverse control and says why, from the server's reason", () => {
+  assert.ok(component.includes("entry.reversible === false ? entry.reversalBlockedReason ?? null : null"));
+  assert.ok(component.includes("This entry cannot be reversed right now. {blockedReason}"));
+  assert.ok(component.includes("{reversible && <Button variant=\"outline\""), "the button exists only for a reversible entry");
+  assert.equal(/entry\.kind\s*===\s*"(charge|credit|refund)"[^\n]*Reverse/.test(component), false, "reversibility is never inferred from kind");
 });

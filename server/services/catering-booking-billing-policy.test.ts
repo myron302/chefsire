@@ -132,7 +132,7 @@ test("every billing day is a plain calendar date, whatever the zone", () => {
 test("a fixed deposit may not exceed the agreed price", () => {
   const refused = resolveCateringDepositTerms({ mode: "fixed", amountCents: 300_000, percentBasisPoints: null, dueOn: null, agreedTotalCents: 200_000 });
   assert.equal(refused.ok, false);
-  assert.match((refused as { message: string }).message, /cannot be more than the agreed price/);
+  assert.match((refused as { message: string }).message, /cannot be more than what your customer owes for the event/);
   const allowed = resolveCateringDepositTerms({ mode: "fixed", amountCents: 200_000, percentBasisPoints: null, dueOn: null, agreedTotalCents: 200_000 });
   assert.equal(allowed.ok, true, "exactly the agreed price is allowed");
 });

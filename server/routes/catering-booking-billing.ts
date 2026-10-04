@@ -61,6 +61,7 @@ import {
   amendmentNumbersFor,
   loadLedgerRows,
   cateringPaymentMayBeVoided,
+  reversalOutlook,
 } from "../services/catering-booking-adjustments";
 import { serializeCateringAdjustment } from "../serializers/catering-booking-adjustment";
 import {
@@ -180,7 +181,8 @@ function billingView(input: {
     // the ask was withdrawn rather than watch it vanish.
     invoices: input.invoices.map((row) => serializeCateringInvoice(row, facts, input.role)),
     payments: input.payments.map((row) => serializeCateringPayment(row, input.role, facts.adjustments)),
-    adjustments: input.adjustments.map((row) => serializeCateringAdjustment(row, input.role, input.amendmentNumbers)),
+    // PROVIDER ONLY: whether THIS entry can be reversed right now, judged by the very policy the reversal endpoint applies.
+    adjustments: input.adjustments.map((row) => serializeCateringAdjustment(row, input.role, input.amendmentNumbers, input.role === "provider" ? reversalOutlook(row.id, adjustmentFactsOf(input.booking, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] })) : undefined)),
   };
   if (input.role !== "provider") return view;
   const issuable = cateringIssuableInvoiceKinds(facts);
@@ -262,12 +264,17 @@ r.put("/bookings/:id/billing/deposit-terms", requireAuth, async (req, res, next)
     // row this transaction is actually holding rather than the one the request was composed from.
     if (!cateringBillingVersionMatches(body.expectedUpdatedAt, existing?.updatedAt)) return { kind: "conflict" } as const;
 
+    // The CURRENT obligation, from the ledger as it stands under this transaction's locks -- the same derivation the
+    // serialized terms, the preview and the issued invoice use. Validating against the booking's bare agreed price would
+    // refuse a deposit the live charges make perfectly valid, and accept one a live credit makes too large.
+    const ledgerRows = await loadLedgerRows(tx, id);
+    const currentObligationCents = cateringObligationCents({ agreedTotalCents: cateringMoneyToCents(booking.agreedPrice), adjustments: ledgerRows.adjustments.map(cateringAdjustmentFactOf) });
     const resolution = resolveCateringDepositTerms({
       mode: body.mode,
       amountCents: body.amount === undefined ? null : cateringMoneyToCents(body.amount),
       percentBasisPoints: body.percent === undefined ? null : cateringPercentToBasisPoints(body.percent),
       dueOn: body.dueOn ?? null,
-      agreedTotalCents: cateringMoneyToCents(booking.agreedPrice),
+      agreedTotalCents: currentObligationCents,
     });
     if (!resolution.ok) return { kind: "refused", message: resolution.message } as const;
 
@@ -284,9 +291,7 @@ r.put("/bookings/:id/billing/deposit-terms", requireAuth, async (req, res, next)
     // Terms write NO activity and NO notification. Nothing has been asked of the customer yet -- an issued invoice
     // is the ask, and that is the event they hear about.
     // The deposit this would require is stated against the same CURRENT OBLIGATION the preview and the issued invoice use.
-    const ledger = await loadLedgerRows(tx, id);
-    const obligationCents = cateringObligationCents({ agreedTotalCents: cateringMoneyToCents(booking.agreedPrice), adjustments: ledger.adjustments.map(cateringAdjustmentFactOf) });
-    return { kind: "saved", record: saved as CateringBookingBillingRecord, agreedTotalCents: obligationCents } as const;
+    return { kind: "saved", record: saved as CateringBookingBillingRecord, agreedTotalCents: currentObligationCents } as const;
   });
 
   if (result.kind === "not_available") return refuse(res, CATERING_BILLING_NOT_AVAILABLE_REFUSAL);

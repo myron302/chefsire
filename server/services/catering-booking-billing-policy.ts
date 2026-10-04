@@ -210,7 +210,7 @@ export function resolveCateringDepositTerms(input: {
     if (input.amountCents === null) return { ok: false, message: "Enter the deposit amount." };
     if (input.amountCents <= 0) return { ok: false, message: "A deposit has to be more than nothing. Choose 'no deposit' instead." };
     if (input.agreedTotalCents !== null && input.amountCents > input.agreedTotalCents) {
-      return { ok: false, message: "A deposit cannot be more than the agreed price for the event." };
+      return { ok: false, message: "A deposit cannot be more than what your customer owes for the event: the agreed price, with any charges and credits recorded on it." };
     }
     return { ok: true, mode: "fixed", amountCents: input.amountCents, percentBasisPoints: null, dueOn };
   }

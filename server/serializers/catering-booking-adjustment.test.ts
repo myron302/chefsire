@@ -35,3 +35,13 @@ test("money stays integer cents and the currency is explicit on every projection
   assert.equal(Number.isInteger(view.amountCents), true);
   assert.equal(view.currency, "USD");
 });
+
+test("reversibility is a provider-only, server-supplied fact: absent for the customer, present and honest for the provider", () => {
+  const customer = serializeCateringAdjustment(row(), "customer", new Map(), { reversible: true, blockedReason: null });
+  assert.equal("reversible" in customer || "reversalBlockedReason" in customer, false, "even a true verdict is never handed to a customer");
+  const open = serializeCateringAdjustment(row(), "provider", new Map(), { reversible: true, blockedReason: null });
+  assert.deepEqual([open.reversible, open.reversalBlockedReason], [true, null]);
+  const blocked = serializeCateringAdjustment(row(), "provider", new Map(), { reversible: false, blockedReason: "Withdraw that request first." });
+  assert.deepEqual([blocked.reversible, blocked.reversalBlockedReason], [false, "Withdraw that request first."]);
+  assert.equal(serializeCateringAdjustment(row(), "provider", new Map()).reversible, false, "no verdict means no control");
+});
