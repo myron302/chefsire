@@ -16,11 +16,19 @@ type StoreThemeConfig =
 
 
 type StoreLayoutConfig = StoreLayoutConfigV2;
+/**
+ * Non-secret facts only. OAuth tokens live in the typed `encrypted_*` columns, sealed by server/lib/secret-box.ts.
+ * `accessToken` / `refreshToken` / `tokenExpiresAt` exist solely to describe PLAINTEXT rows written before Phase 2Q
+ * Gate 0; the credential conversion removes them and a CHECK constraint forbids writing them again.
+ */
 type PaymentMethodAccountDetails = {
   merchantId?: string;
   locationId?: string;
-  accessToken?: string; // encrypted
-  refreshToken?: string; // encrypted
+  /** @deprecated legacy plaintext, removed by the credential conversion. */
+  accessToken?: string;
+  /** @deprecated legacy plaintext, removed by the credential conversion. */
+  refreshToken?: string;
+  /** @deprecated legacy, superseded by token_expires_at. */
   tokenExpiresAt?: string;
 };
 
@@ -62,6 +70,20 @@ export const paymentMethods = pgTable(
     accountType: text("account_type"), // individual, business
     accountEmail: text("account_email"),
     accountDetails: jsonb("account_details").$type<PaymentMethodAccountDetails>(),
+    // Square connection hardening (20261007_square_connection_hardening.sql). `accountStatus` is the connection state:
+    // 'active' | 'needs_reauthorization' | 'disconnected' (plus the historical 'pending' | 'disabled' | 'rejected').
+    // The sealed tokens are SERVER-ONLY and must never be selected into a response.
+    encryptedAccessToken: text("encrypted_access_token"),
+    encryptedRefreshToken: text("encrypted_refresh_token"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
+    locationId: varchar("location_id", { length: 64 }),
+    locationName: text("location_name"),
+    locationCurrency: varchar("location_currency", { length: 3 }),
+    merchantName: text("merchant_name"),
+    grantedScopes: text("granted_scopes").array(),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
+    disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
     isDefault: boolean("is_default").default(false),
     verifiedAt: timestamp("verified_at"),
     lastVerifiedAt: timestamp("last_verified_at"),

@@ -91,3 +91,15 @@ export const squareOauthInitiationLimiter = rateLimit({
   legacyHeaders: false,
   message: { ok: false, error: "Too many Square connection attempts. Please try again later." },
 });
+
+/**
+ * Limiter for the signed-in provider's Square connection status, recheck and disconnect.
+ * 60 requests per 15 minutes per IP: a status read may call Square, so it is bounded.
+ */
+export const squareConnectionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 60,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { ok: false, error: "Too many Square connection requests. Please try again later." },
+});

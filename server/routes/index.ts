@@ -40,6 +40,7 @@ import storeDropsRouter from "./store-drops";
 
 // Square (subscriptions / checkout links)
 import squareRouter from "./square";
+import squareConnectionRouter from "./square-connection";
 
 // ⚡ Phase 1: Daily Addiction Features
 import notificationsRouter from "./notifications";
@@ -185,6 +186,7 @@ r.use("/stores", storeDropsRouter);
 
 // Square (payments/subscriptions)
 r.use("/square", squareRouter);
+r.use("/square-connection", squareConnectionRouter);
 
 // ⚡ Phase 1: Daily Addiction Features
 r.use("/notifications", notificationsRouter);
@@ -268,6 +270,7 @@ if (process.env.NODE_ENV !== "production") {
         "/competitions/*",
         "/stores/*",
         "/square/*",
+        "/square-connection/*",
         "/notifications/*", // ⚡ Phase 1
         "/quests/*",        // ⚡ Phase 1
         "/suggestions/*",   // ⚡ Phase 1

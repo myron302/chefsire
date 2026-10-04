@@ -19,11 +19,21 @@ import {
   SQUARE_OAUTH_STATE_TTL_MS,
   squareOauthBrowserBindingCookieOptions,
 } from "../lib/square-oauth-state";
-// Square is a CommonJS module - import it properly
-import square from "square";
-const { Client, Environment } = square;
+import { squareConnections } from "../lib/square-connection";
+import type { AuthorizationFailure } from "../lib/square-connection-service";
+import { isSecretBoxConfigured } from "../lib/secret-box";
+import { SQUARE_CONNECTION_SCOPES, squareOauthApplication, squareOauthAuthorizeUrl } from "../lib/square-integration";
 
 type PayoutRecord = typeof payouts.$inferSelect;
+
+/** Fixed local destinations only: nothing from the request or from Square is ever placed in a redirect. */
+const SQUARE_CALLBACK_FAILURE_REDIRECTS: Record<AuthorizationFailure, string> = {
+  provider_rejected: "/settings/payouts?error=square_auth_failed",
+  unavailable: "/settings/payouts?error=square_auth_failed",
+  merchant_mismatch: "/settings/payouts?error=merchant_mismatch",
+  scopes_insufficient: "/settings/payouts?error=scopes_insufficient",
+  not_configured: "/settings/payouts?error=square_not_configured",
+};
 
 const router = Router();
 
@@ -157,7 +167,10 @@ router.get("/connect-square", squareOauthInitiationLimiter, requireAuth, async (
   try {
     const sellerId = req.user!.id;
 
-    if (!process.env.SQUARE_APPLICATION_ID || !pool) {
+    // Refuse to start an authorization ChefSire could not complete or could not store safely: without the
+    // application secret the code cannot be exchanged, and without the encryption key the token cannot be sealed.
+    const application = squareOauthApplication();
+    if (!application || !isSecretBoxConfigured() || !pool) {
       return res.status(503).json({ ok: false, error: "Square not configured" });
     }
 
@@ -184,9 +197,9 @@ router.get("/connect-square", squareOauthInitiationLimiter, requireAuth, async (
 
     res.cookie(SQUARE_OAUTH_BROWSER_BINDING_COOKIE, browserBinding, squareOauthBrowserBindingCookieOptions());
 
-    const authUrl = new URL("https://connect.squareup.com/oauth2/authorize");
-    authUrl.searchParams.set("client_id", process.env.SQUARE_APPLICATION_ID);
-    authUrl.searchParams.set("scope", "MERCHANT_PROFILE_READ PAYMENTS_WRITE");
+    const authUrl = new URL(squareOauthAuthorizeUrl());
+    authUrl.searchParams.set("client_id", application.clientId);
+    authUrl.searchParams.set("scope", SQUARE_CONNECTION_SCOPES.join(" "));
     authUrl.searchParams.set("session", "false");
     authUrl.searchParams.set("state", state);
 
@@ -276,76 +289,12 @@ router.get("/square-callback", async (req, res) => {
       return res.redirect("/settings/payouts?error=square_auth_failed");
     }
 
-    if (!process.env.SQUARE_APPLICATION_ID || !process.env.SQUARE_APPLICATION_SECRET) {
-      return res.status(503).json({ ok: false, error: "Square not fully configured" });
+    // Exchange the code and PROVE the identity behind the token (merchant profile, token status, scopes and
+    // payment locations) with the installed SDK, before anything is stored. Any mismatch fails closed.
+    const verification = await squareConnections.verifyAuthorizationCode(code);
+    if (!verification.ok) {
+      return res.redirect(SQUARE_CALLBACK_FAILURE_REDIRECTS[verification.reason]);
     }
-
-    // Exchange auth code for access token
-    const tokenResponse = await fetch("https://connect.squareup.com/oauth2/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Square-Version": "2024-01-18" },
-      body: JSON.stringify({
-        client_id: process.env.SQUARE_APPLICATION_ID,
-        client_secret: process.env.SQUARE_APPLICATION_SECRET,
-        code,
-        grant_type: "authorization_code",
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      // Do not log Square's response: it can contain authorization material.
-      console.error("Square token exchange failed with status", tokenResponse.status);
-      return res.redirect("/settings/payouts?error=square_auth_failed");
-    }
-
-    const tokenData = await tokenResponse.json() as {
-      access_token: string;
-      refresh_token: string;
-      expires_at: string;
-      merchant_id: string;
-    };
-
-    // Fetch merchant profile to get location ID and the authoritative merchant
-    // identity. Every step below fails closed: a missing token merchant id, a
-    // failed lookup, a missing merchant/profile id, or any mismatch between
-    // the authoritative profile id and the token-response merchant id must
-    // all prevent activation. A merely-missing profileMerchantId must never
-    // bypass verification, so this never uses `profileMerchantId && ...`.
-    const squareClient = new Client({
-      accessToken: tokenData.access_token,
-      environment: process.env.NODE_ENV === "production" ? Environment.Production : Environment.Sandbox,
-    });
-
-    let merchant: { id?: string; mainLocationId?: string } | undefined;
-    try {
-      const { result: merchantResult } = await squareClient.merchantsApi.retrieveMerchant("me");
-      merchant = merchantResult?.merchant;
-    } catch (_merchantError) {
-      // Do not log the provider exception: it can contain authorization material.
-      console.error("Square merchant lookup failed");
-      return res.redirect("/settings/payouts?error=square_auth_failed");
-    }
-
-    const locationId = merchant?.mainLocationId || undefined;
-    const profileMerchantId = merchant?.id;
-    if (
-      !tokenData.access_token ||
-      !tokenData.refresh_token ||
-      !tokenData.merchant_id ||
-      !merchant ||
-      !profileMerchantId ||
-      profileMerchantId !== tokenData.merchant_id
-    ) {
-      return res.redirect("/settings/payouts?error=square_auth_failed");
-    }
-
-    const accountDetails = {
-      merchantId: tokenData.merchant_id,
-      locationId,
-      accessToken: tokenData.access_token,
-      refreshToken: tokenData.refresh_token,
-      tokenExpiresAt: tokenData.expires_at,
-    };
 
     const client = await pool.connect();
     try {
@@ -370,27 +319,8 @@ router.get("/square-callback", async (req, res) => {
         return res.status(400).json({ ok: false, error: "OAuth transaction is no longer current" });
       }
 
-      const existing = await client.query(
-        `SELECT id FROM payment_methods
-         WHERE user_id = $1 AND provider = 'square'
-         ORDER BY created_at ASC LIMIT 1 FOR UPDATE`,
-        [sellerId],
-      );
-      if (existing.rowCount) {
-        await client.query(
-          `UPDATE payment_methods SET provider_id = $2, account_status = 'active',
-             account_details = $3::jsonb, verified_at = now(), last_verified_at = now(), updated_at = now()
-           WHERE id = $1`,
-          [existing.rows[0].id, tokenData.merchant_id, JSON.stringify(accountDetails)],
-        );
-      } else {
-        await client.query(
-          `INSERT INTO payment_methods
-             (user_id, provider, provider_id, account_status, account_details, is_default, verified_at, last_verified_at)
-           VALUES ($1, 'square', $2, 'active', $3::jsonb, true, now(), now())`,
-          [sellerId, tokenData.merchant_id, JSON.stringify(accountDetails)],
-        );
-      }
+      // Tokens are sealed (AES-256-GCM) before they reach the database; see server/lib/secret-box.ts.
+      await squareConnections.persistVerifiedConnection(client, sellerId, verification.verified);
       await client.query(
         `UPDATE square_oauth_transactions SET consumed_at = now()
          WHERE nonce_hash = $1 AND claim_id = $2`,
@@ -406,7 +336,7 @@ router.get("/square-callback", async (req, res) => {
 
     res.redirect("/settings/payouts?connected=true");
   } catch (error) {
-    console.error("Square callback error:", error);
+    console.error("Square callback error:", error instanceof Error ? error.name : "unknown"); // never the error object: a database error can echo the row it rejected
     res.redirect("/settings/payouts?error=callback_failed");
   }
 });
