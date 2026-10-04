@@ -1,4 +1,5 @@
 import { calendarDateSchema } from "@shared/catering-availability";
+import { cateringBillingViewMayStillChange } from "@shared/catering-billing-adjustments";
 import {
   CATERING_BILLING_STATE_CODE,
   CATERING_BILLING_NOT_AVAILABLE_CODE,
@@ -337,7 +338,11 @@ export function cateringPaymentProvenance(source: string, role: "provider" | "cu
   return role === "provider" ? "Recorded by you" : "Recorded by your caterer";
 }
 
-/** Whether a booking's billing can still change, which is what the section's polling is gated on. */
-export function cateringBillingCanStillChange(status: string | undefined): boolean {
-  return status !== undefined && status !== "cancelled";
+/**
+ * Whether a booking's billing can still change through a legitimate server write, which is what the section's polling is gated on.
+ * Judged from the status AND, for a cancelled booking, from the payload itself: Phase 2P still accepts an external refund record
+ * (and its reversal) after cancellation, so a cancelled booking that holds recorded money keeps refreshing. Polling is not authority.
+ */
+export function cateringBillingCanStillChange(status: string | undefined, view?: { payments: readonly { status: string }[]; adjustments: readonly { kind: string; status: string }[] }): boolean {
+  return cateringBillingViewMayStillChange(status, view);
 }

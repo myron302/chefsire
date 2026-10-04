@@ -221,6 +221,30 @@ export function cateringPaymentRefundableCents(payment: { id: string; amountCent
   const refunded = adjustments.reduce((total, entry) => (cateringAdjustmentCounts(entry) && entry.kind === "refund" && entry.paymentId === payment.id ? total + entry.amountCents : total), 0);
   return Math.max(0, payment.amountCents - refunded);
 }
+/**
+ * Can this booking's billing payload still change through a LEGITIMATE server write? It decides whether a screen keeps
+ * refreshing; it authorizes nothing.
+ *
+ * Pending, confirmed and completed bookings can always change (requests, payments, charges, credits, refunds). A CANCELLED
+ * booking closes Phase 2L billing, but Phase 2P still lets the provider record an external refund and reverse a refund record --
+ * and both need money to have been recorded. So a cancelled booking stays live while any payment is recorded or any refund
+ * record stands, and is immutable (polling can stop) when it has neither. Without the figures to judge by, cancelled reads as
+ * settled history, exactly as before.
+ */
+export function cateringBillingMayStillChange(status: string | undefined, money?: { recordedPaymentCount: number; liveRefundCount: number }): boolean {
+  if (status === undefined) return false;
+  if (status !== "cancelled") return true;
+  return money !== undefined && (money.recordedPaymentCount > 0 || money.liveRefundCount > 0);
+}
+
+/** The same judgement, made from a billing payload's own payments and adjustments. */
+export function cateringBillingViewMayStillChange(status: string | undefined, view?: { payments: readonly { status: string }[]; adjustments: readonly { kind: string; status: string }[] }): boolean {
+  return cateringBillingMayStillChange(status, view === undefined ? undefined : {
+    recordedPaymentCount: view.payments.filter((payment) => payment.status === "recorded").length,
+    liveRefundCount: view.adjustments.filter((entry) => entry.kind === "refund" && entry.status === "posted").length,
+  });
+}
+
 /** The most a refund may be right now: the booking-wide ceiling, and when a payment is named, also that payment's own remainder. */
 export function cateringEffectiveRefundLimitCents(bookingWideCents: number, selectedPaymentRefundableCents: number | null): number {
   return selectedPaymentRefundableCents === null ? bookingWideCents : Math.max(0, Math.min(bookingWideCents, selectedPaymentRefundableCents));

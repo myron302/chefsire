@@ -82,7 +82,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
     // still produce a financial change, which is every status except cancelled: a customer must learn that their
     // caterer has requested a deposit without reloading the page.
     refetchInterval: (polled: { state: { data?: CateringBookingBillingView } }) =>
-      cateringWorkspacePollInterval(cateringBillingCanStillChange(polled.state.data?.bookingStatus)),
+      cateringWorkspacePollInterval(cateringBillingCanStillChange(polled.state.data?.bookingStatus, polled.state.data)),
     refetchIntervalInBackground: false,
     queryFn: async (): Promise<CateringBookingBillingView> => {
       const response = await fetch(cateringBookingBillingPath(bookingId), { credentials: "include" });

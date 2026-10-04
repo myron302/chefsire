@@ -300,3 +300,14 @@ test("client validation uses the same cap: $500 is refused against a $300 cap, $
   assert.equal(maySubmitCateringPayment(form("500.00", legacy), legacy, false), true);
   assert.equal(maySubmitCateringPayment(form("500.01", legacy), legacy, false), false);
 });
+
+test("a cancelled booking keeps refreshing while Phase 2P still lets a refund be recorded or reversed, and stops when nothing can change", () => {
+  const payment = (status: string) => ({ status });
+  const refund = (status: string) => ({ kind: "refund", status });
+  assert.equal(cateringBillingCanStillChange("cancelled", { payments: [payment("recorded")], adjustments: [] }), true, "refundable money is recorded");
+  assert.equal(cateringBillingCanStillChange("cancelled", { payments: [payment("voided")], adjustments: [refund("posted")] }), true, "a refund record stands and may be reversed");
+  assert.equal(cateringBillingCanStillChange("cancelled", { payments: [payment("voided")], adjustments: [refund("reversed"), { kind: "charge", status: "posted" }] }), false, "no recorded money and no live refund: immutable");
+  assert.equal(cateringBillingCanStillChange("cancelled", { payments: [], adjustments: [] }), false);
+  assert.equal(cateringBillingCanStillChange("cancelled"), false, "without a payload to judge by, unchanged");
+  for (const status of ["pending_confirmation", "confirmed", "completed"]) assert.equal(cateringBillingCanStillChange(status, { payments: [], adjustments: [] }), true, status);
+});

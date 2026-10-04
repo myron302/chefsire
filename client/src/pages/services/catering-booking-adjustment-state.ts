@@ -55,6 +55,20 @@ export const openCateringAdjustmentForm = (identity: CateringAdjustmentIdentity,
 export const cateringAdjustmentFormStillAllowed = (form: CateringAdjustmentForm, allowedKinds: readonly CateringAdjustmentKind[]): boolean =>
   form === null || allowedKinds.includes(form.kind);
 
+/**
+ * Whether an open reversal dialog may still be confirmed, judged against the LATEST copy of its entry (found by id), never the
+ * copy the dialog was opened from. The entry must still exist, still be posted, and the server must still call it reversible.
+ */
+export const cateringReversalDialogStillActionable = (latest: Pick<CateringAdjustmentView, "status" | "reversible"> | undefined): boolean =>
+  latest !== undefined && latest.status === "posted" && latest.reversible === true;
+
+/** What the provider is told when a reversal they had open can no longer be done; the server's own reason is used when it has one. */
+export function cateringReversalNoLongerAvailableMessage(latest: Pick<CateringAdjustmentView, "status" | "reversalBlockedReason"> | undefined): string {
+  if (latest === undefined) return "That entry is no longer on this booking. Nothing was changed.";
+  if (latest.status === "reversed") return "That entry was already reversed. Nothing was changed.";
+  return `That entry can no longer be reversed. ${latest.reversalBlockedReason ?? ""}`.trim();
+}
+
 export const CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE = "That adjustment is no longer available because the booking changed. Nothing was recorded.";
 
 /** The open form, but only if it belongs to the booking on screen and the provider may still write. */

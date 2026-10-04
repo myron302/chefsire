@@ -790,3 +790,22 @@ test("remainingOfAgreed is the agreed price less payments and never moves with c
   assert.deepEqual([refunded.remainingOfAgreedCents, refunded.balanceDueCents], [0, 30_000], "6. a refund raises the amount due but never the agreed remainder");
   for (const summary of [plain, charged, credited, paid, both, refunded]) assert.ok((summary.remainingOfAgreedCents ?? 0) <= (summary.agreedTotalCents ?? 0), "never above the agreed total");
 });
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Whether billing can still change (what keeps a screen refreshing)
+ * ------------------------------------------------------------------------------------------------------------- */
+
+import { cateringBillingMayStillChange } from "./catering-billing-adjustments";
+
+test("pending, confirmed and completed bookings can always change; nothing can before a payload has landed", () => {
+  for (const status of ["pending_confirmation", "confirmed", "completed"]) assert.equal(cateringBillingMayStillChange(status), true, status);
+  assert.equal(cateringBillingMayStillChange(undefined), false);
+  assert.equal(cateringBillingMayStillChange(undefined, { recordedPaymentCount: 3, liveRefundCount: 3 }), false);
+});
+
+test("a cancelled booking stays live while money is recorded or a refund record stands, and is immutable when it has neither", () => {
+  assert.equal(cateringBillingMayStillChange("cancelled", { recordedPaymentCount: 1, liveRefundCount: 0 }), true, "a refund can still be recorded");
+  assert.equal(cateringBillingMayStillChange("cancelled", { recordedPaymentCount: 0, liveRefundCount: 1 }), true, "a refund record can still be reversed");
+  assert.equal(cateringBillingMayStillChange("cancelled", { recordedPaymentCount: 0, liveRefundCount: 0 }), false, "no money, no write is possible: polling can stop");
+  assert.equal(cateringBillingMayStillChange("cancelled"), false, "judged from the status alone it stays what it was");
+});

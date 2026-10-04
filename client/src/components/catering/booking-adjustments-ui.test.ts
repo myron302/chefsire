@@ -101,7 +101,7 @@ test("every request is a JSON POST to a route the server registers, and a lost r
   for (const [method, route] of [["post", "/bookings/:id/billing/adjustments"], ["post", "/bookings/:id/billing/adjustments/:entryId/reverse"]]) assert.ok(server.includes(`r.${method}("${route}"`), route);
   assert.ok(component.includes('method: "POST"'));
   assert.ok(component.includes('"Content-Type": "application/json"'));
-  assert.ok(component.includes("cateringBookingAdjustmentsPath(bookingId)") && component.includes("cateringBookingAdjustmentReversePath(bookingId, entry.id)"));
+  assert.ok(component.includes("cateringBookingAdjustmentsPath(bookingId)") && component.includes("cateringBookingAdjustmentReversePath(bookingId, latestReversalEntry.id)"));
   assert.ok(component.includes("offline: true"), "a transport failure is retryable");
   assert.ok(component.includes("INDETERMINATE"), "an unreadable 2xx is not treated as success");
   assert.ok(component.includes("settleCateringAdjustmentForm(open, variables.started, variables.submitted!, newKey())"));
@@ -182,4 +182,26 @@ test("hiding unavailable actions never hides history: the ledger list does not d
   const list = component.slice(component.indexOf("entries.length === 0"), component.indexOf("{provider && current && actions && actions.kinds.length > 0"));
   assert.equal(list.includes("actions.kinds"), false);
   assert.ok(list.includes("entries.map"));
+});
+
+test("an open reversal holds only an entry ID and reads every policy-bearing field from the latest payload", () => {
+  assert.ok(component.includes('{ type: "reverse"; entryId: string }'), "no frozen entry object in state");
+  assert.equal(/type: "reverse"; entry:/.test(component), false);
+  assert.ok(component.includes("const latestReversalEntry = reversalEntryId === null ? undefined : billing.adjustments.find((entry) => entry.id === reversalEntryId);"));
+  assert.ok(component.includes("const reversalActionable = reversalEntryId !== null && provider && cateringReversalDialogStillActionable(latestReversalEntry);"));
+  assert.ok(component.includes("describeCateringReversalConfirmation(latestReversalEntry)"), "the dialog describes the latest entry, not the one it opened with");
+  assert.ok(component.includes("latestReversalEntry.id"), "the request names the latest entry's id");
+  assert.equal(/confirming\.entry\b/.test(component), false);
+});
+
+test("a stale reversal cannot be confirmed, and closing it clears the reason and tells the provider why", () => {
+  assert.ok(component.includes('(reverseReason.trim() === "" || !reversalActionable)'), "Confirm is disabled the moment the latest payload says no");
+  assert.ok(component.includes("if (!current || pending || reverseReason.trim() === \"\" || !reversalActionable || latestReversalEntry === undefined) return;"));
+  const effect = component.slice(component.indexOf("if (reversalEntryId === null || !current || reversalActionable) return;"), component.indexOf("const mutation = useMutation"));
+  for (const part of ["setConfirming(null);", 'setReverseReason("");', "cateringReversalNoLongerAvailableMessage(latestReversalEntry)"]) assert.ok(effect.includes(part), part);
+  assert.ok(component.includes("const reversible = provider && current && entry.reversible === true;"), "a customer never gets the control");
+});
+
+test("the billing card keeps polling a cancelled booking that holds recorded money, from the payload it was handed", () => {
+  assert.ok(billing.includes("cateringBillingCanStillChange(polled.state.data?.bookingStatus, polled.state.data)"));
 });

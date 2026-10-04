@@ -1764,6 +1764,67 @@ if (!PG_URL) {
     assert.equal((await adjust(lifecycle.bookingId, { kind: "charge", amountCents: 1000 })).status, 409, "the stale charge form is refused");
   });
 
+  // ------------------------------------------------------------------------------------------------ post-cancellation freshness & stale reversal (Codex 14)
+  test("cancelled: a refund recorded and then reversed after cancellation reaches BOTH participants' next read, which is why polling must continue", async () => {
+    const { bookingId } = await billed("1000.00");
+    await setStatus(bookingId, "cancelled");
+    for (const who of [PROVIDER, CUSTOMER_A]) assert.equal((await billing(bookingId, who)).body.adjustments.length, 0);
+    const refund = await adjust(bookingId, { kind: "refund", amountCents: 30000, reason: "Event cancelled" });
+    assert.equal(refund.status, 201, "a write the screen could not have known about");
+    for (const who of [PROVIDER, CUSTOMER_A]) {
+      const { summary, adjustments } = (await billing(bookingId, who)).body;
+      assert.deepEqual([adjustments.length, adjustments[0].status, summary.refundsRecordedCents, summary.netReceivedCents], [1, "posted", 30000, 70000], who);
+    }
+    assert.equal((await reverse(bookingId, refund.body.adjustments[0].id)).status, 200);
+    for (const who of [PROVIDER, CUSTOMER_A]) {
+      const { summary, adjustments } = (await billing(bookingId, who)).body;
+      assert.deepEqual([adjustments[0].status, summary.refundsRecordedCents, summary.netReceivedCents], ["reversed", 0, 100000], who);
+    }
+  });
+
+  test("completed bookings stay mutable (credits, refunds, reversals), so their billing keeps refreshing; a cancelled booking with no money cannot change", async () => {
+    const done = await billed("1000.00");
+    await setStatus(done.bookingId, "completed");
+    assert.equal((await adjust(done.bookingId, { kind: "credit", amountCents: 1000 })).status, 201);
+    assert.equal((await adjust(done.bookingId, { kind: "refund", amountCents: 1000 })).status, 201);
+    const empty = await billed("0");
+    await setStatus(empty.bookingId, "cancelled");
+    assert.deepEqual(await kindsOf(empty.bookingId), [], "nothing can be written, so there is nothing to refresh for");
+    assert.equal((await adjust(empty.bookingId, { kind: "refund", amountCents: 1 })).status, 409);
+  });
+
+  test("a credit shown reversible, then the booking completes elsewhere: the next payload says it is not, and a reversal sent from the stale dialog is refused with nothing changed", async () => {
+    const { bookingId } = await billed("2500.00");
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 1000 });
+    const id = credit.body.adjustments[0].id as string;
+    assert.equal((await entryView(bookingId, id)).reversible, true, "when the dialog opened");
+    await setStatus(bookingId, "completed");
+    const latest = await entryView(bookingId, id);
+    assert.equal(latest.reversible, false, "the refreshed payload");
+    assert.ok(latest.reversalBlockedReason);
+    const before = await sideEffects(bookingId);
+    const stale = await reverse(bookingId, id);
+    assert.deepEqual([stale.status, stale.body.code], [409, "catering_billing_state"]);
+    assert.equal(await sideEffects(bookingId), before, "no ledger, booking, invoice, payment or notification change");
+  });
+
+  test("a reversal dialog's entry reversed elsewhere, or made non-reversible by a dependent request, is reported by the next payload", async () => {
+    const { bookingId } = await billed("2500.00");
+    const first = await adjust(bookingId, { kind: "charge", amountCents: 1000 });
+    const firstId = first.body.adjustments[0].id as string;
+    await reverse(bookingId, firstId);
+    const reversed = await entryView(bookingId, firstId);
+    assert.deepEqual([reversed.status, reversed.reversible], ["reversed", false]);
+    const again = await reverse(bookingId, firstId);
+    assert.deepEqual([again.status, again.body.duplicate], [200, true], "a duplicate reversal is a no-op, not a second mutation");
+    const second = await adjust(bookingId, { kind: "charge", amountCents: 4000 });
+    const secondId = second.body.adjustments.find((row: { status: string }) => row.status === "posted").id as string;
+    assert.equal((await entryView(bookingId, secondId)).reversible, true);
+    await issue(bookingId, "adjustment");
+    assert.equal((await entryView(bookingId, secondId)).reversible, false, "a dependent request now covers it");
+    assert.equal((await reverse(bookingId, secondId)).status, 409);
+  });
+
   // ------------------------------------------------------------------------------------------------ the formula
   test("the derived position is exact: original + charges - credits = obligation, payments - refunds = net received, obligation - net = balance", async () => {
     const { bookingId } = await billed();

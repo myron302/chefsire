@@ -26,6 +26,8 @@ import {
   cateringAdjustmentAmountText,
   cateringAdjustmentEffectSentence,
   cateringAdjustmentFormStillAllowed,
+  cateringReversalDialogStillActionable,
+  cateringReversalNoLongerAvailableMessage,
   CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE,
   cateringAdjustmentIdentity,
   cateringAdjustmentInvalidationKeys,
@@ -80,7 +82,7 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
   // can neither show nor submit booking A's draft.
   const [localIdentity, setLocalIdentity] = useState(identity);
   const [form, setForm] = useState<CateringAdjustmentForm>(null);
-  const [confirming, setConfirming] = useState<{ type: "post" } | { type: "reverse"; entry: CateringAdjustmentView } | null>(null);
+  const [confirming, setConfirming] = useState<{ type: "post" } | { type: "reverse"; entryId: string } | null>(null);
   const [reverseReason, setReverseReason] = useState("");
   const [showErrors, setShowErrors] = useState(false);
   const [notice, setNotice] = useState<{ identity: string; message: string } | null>(null);
@@ -100,6 +102,14 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
     setShowErrors(false);
     setNotice({ identity, message: CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE });
   }, [provider, current, actions, form, identity]);
+  // The same principle for a reversal dialog: when the latest payload no longer calls its entry reversible, close it, clear its
+  // reason, and say why. (The Confirm is already disabled by `reversalActionable` in the render before this runs.)
+  useEffect(() => {
+    if (reversalEntryId === null || !current || reversalActionable) return;
+    setConfirming(null);
+    setReverseReason("");
+    setNotice({ identity, message: cateringReversalNoLongerAvailableMessage(latestReversalEntry) });
+  }, [reversalEntryId, reversalActionable, latestReversalEntry, current, identity]);
 
   const mutation = useMutation({
     mutationFn: async ({ path, body }: Mutation) => {
@@ -144,6 +154,12 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
   // on top of the identity gate. Render-gated, so a stale form can never be submitted even in the render before the reset below.
   const allowedKinds = actions?.kinds ?? [];
   const kindStillAllowed = cateringAdjustmentFormStillAllowed(form, allowedKinds);
+  // An open reversal holds only the entry's ID. Its policy-bearing fields (reversible, status, blocked reason) are read from the
+  // LATEST payload every render, so a refresh that makes the entry non-reversible, reversed elsewhere, or gone cannot leave a stale
+  // snapshot behind an enabled Confirm.
+  const reversalEntryId = confirming?.type === "reverse" ? confirming.entryId : null;
+  const latestReversalEntry = reversalEntryId === null ? undefined : billing.adjustments.find((entry) => entry.id === reversalEntryId);
+  const reversalActionable = reversalEntryId !== null && provider && cateringReversalDialogStillActionable(latestReversalEntry);
   const open = kindStillAllowed ? activeCateringAdjustmentForm(form, identity, provider && current) : null;
   const limits = limitsFor(open?.paymentId ?? "");
   const check = open ? checkCateringAdjustmentForm(open, limits) : null;
@@ -163,14 +179,14 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
     if (!open || !check?.ok || !current || pending) return;
     mutation.mutate({ started: identity, userId, bookingId, path: cateringBookingAdjustmentsPath(bookingId), body: buildCateringAdjustmentRequest(open, currency, check.amountCents), submitted: cateringAdjustmentSnapshot(open) });
   };
-  const confirmReverse = (entry: CateringAdjustmentView) => {
-    if (!current || pending || reverseReason.trim() === "") return;
-    mutation.mutate({ started: identity, userId, bookingId, path: cateringBookingAdjustmentReversePath(bookingId, entry.id), body: { reason: reverseReason.trim() } });
+  const confirmReverse = () => {
+    if (!current || pending || reverseReason.trim() === "" || !reversalActionable || latestReversalEntry === undefined) return;
+    mutation.mutate({ started: identity, userId, bookingId, path: cateringBookingAdjustmentReversePath(bookingId, latestReversalEntry.id), body: { reason: reverseReason.trim() } });
   };
   const startForm = (kind: CateringAdjustmentKind) => { setShowErrors(false); setNotice(null); setForm(openCateringAdjustmentForm(identity, kind, newKey())); };
 
   const confirmation = confirming?.type === "post" && open && check?.ok ? describeCateringAdjustmentConfirmation(open, currency, check.amountCents)
-    : confirming?.type === "reverse" ? describeCateringReversalConfirmation(confirming.entry) : null;
+    : confirming?.type === "reverse" && reversalActionable && latestReversalEntry ? describeCateringReversalConfirmation(latestReversalEntry) : null;
 
   return (
     <section className="min-w-0 space-y-3" aria-labelledby={`catering-adjustments-${bookingId}`}>
@@ -215,7 +231,7 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
             {entry.status === "reversed" && <p className="mt-1 break-words text-sm"><span className="font-medium">Reversed{entry.reversedAt ? ` on ${formatDate(entry.reversedAt)}` : ""}: </span>{entry.reversalReason}</p>}
             {provider && entry.reference && <p className="mt-1 break-words text-sm text-muted-foreground">Your note: {entry.reference}</p>}
             {blockedReason && <p className="mt-2 break-words text-sm text-muted-foreground">This entry cannot be reversed right now. {blockedReason}</p>}
-            {reversible && <Button variant="outline" className="mt-3 min-h-11" disabled={pending} onClick={() => { setReverseReason(""); setConfirming({ type: "reverse", entry }); }}>Reverse entry</Button>}
+            {reversible && <Button variant="outline" className="mt-3 min-h-11" disabled={pending} onClick={() => { setReverseReason(""); setConfirming({ type: "reverse", entryId: entry.id }); }}>Reverse entry</Button>}
           </li>;
         })}</ol>}
 
@@ -284,8 +300,8 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
             </div>}
             <AlertDialogFooter>
               <AlertDialogCancel className="min-h-11" disabled={pending}>Go back</AlertDialogCancel>
-              <Button className="min-h-11" variant={confirming?.type === "reverse" ? "destructive" : "default"} disabled={pending || (confirming?.type === "reverse" && reverseReason.trim() === "")}
-                onClick={() => (confirming?.type === "reverse" ? confirmReverse(confirming.entry) : confirmPost())}>
+              <Button className="min-h-11" variant={confirming?.type === "reverse" ? "destructive" : "default"} disabled={pending || (confirming?.type === "reverse" && (reverseReason.trim() === "" || !reversalActionable))}
+                onClick={() => (confirming?.type === "reverse" ? confirmReverse() : confirmPost())}>
                 {pending ? "Saving…" : confirmation.action}
               </Button>
             </AlertDialogFooter>

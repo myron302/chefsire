@@ -11,6 +11,8 @@ import {
   cateringAdjustmentSourceText,
   checkCateringAdjustmentForm,
   cateringAdjustmentFormStillAllowed,
+  cateringReversalDialogStillActionable,
+  cateringReversalNoLongerAvailableMessage,
   CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE,
   cateringRefundLimitForForm,
   chronologicalCateringAdjustments,
@@ -264,4 +266,25 @@ test("a payment choice change keeps the per-payment ceiling working while the re
 test("the message shown when a form is closed for a vanished kind is concise and promises nothing was recorded", () => {
   assert.match(CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE, /no longer available because the booking changed/);
   assert.match(CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE, /Nothing was recorded/);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * An open reversal dialog follows the LATEST copy of its entry
+ * ------------------------------------------------------------------------------------------------------------- */
+
+test("a reversal dialog stays confirmable only while the latest copy of its entry is posted and reversible", () => {
+  assert.equal(cateringReversalDialogStillActionable(view({ reversible: true })), true, "still reversible: confirm stays allowed");
+  assert.equal(cateringReversalDialogStillActionable(view({ reversible: false, reversalBlockedReason: "Withdraw that request first." })), false, "became non-reversible after a poll");
+  assert.equal(cateringReversalDialogStillActionable(view({ status: "reversed", reversible: false })), false, "reversed elsewhere");
+  assert.equal(cateringReversalDialogStillActionable(view({ status: "reversed", reversible: true })), false, "a reversed entry is never actionable, whatever else it says");
+  assert.equal(cateringReversalDialogStillActionable(undefined), false, "the entry disappeared");
+  assert.equal(cateringReversalDialogStillActionable(view({})), false, "no server verdict means no action");
+});
+
+test("what the provider is told when the dialog closes is truthful for each way it can happen", () => {
+  assert.match(cateringReversalNoLongerAvailableMessage(undefined), /no longer on this booking/);
+  assert.match(cateringReversalNoLongerAvailableMessage(view({ status: "reversed" })), /already reversed/);
+  const blocked = cateringReversalNoLongerAvailableMessage(view({ reversible: false, reversalBlockedReason: "Withdraw that request first." }));
+  assert.match(blocked, /can no longer be reversed\. Withdraw that request first\./);
+  for (const text of [cateringReversalNoLongerAvailableMessage(undefined), blocked]) assert.equal(/successful|reversed it|refund(ed)? to/i.test(text.replace("already reversed", "")), false);
 });
