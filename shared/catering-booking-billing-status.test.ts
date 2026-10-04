@@ -433,7 +433,7 @@ test("a positive booking paid in full is still settled, so the zero case did not
 test("the zero case is decided before the arithmetic that used to swallow it", () => {
   const contract = fs.readFileSync(path.join(repoRoot, "shared", "catering-booking-billing.ts"), "utf8");
   const derivation = contract.slice(contract.indexOf("function deriveCateringFinancialStatus("));
-  const zero = derivation.indexOf('if (facts.agreedTotalCents === 0) return "no_payment_required";');
-  const generic = derivation.indexOf("if (derived.paidTotalCents >= facts.agreedTotalCents) return \"settled\";");
+  const zero = derivation.indexOf('if (derived.obligationCents === 0 && derived.netReceivedCents === 0) return "no_payment_required";');
+  const generic = derivation.indexOf("if (derived.netReceivedCents >= derived.obligationCents) return \"settled\";");
   assert.ok(zero !== -1 && generic !== -1 && zero < generic);
 });

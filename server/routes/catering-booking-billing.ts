@@ -3,11 +3,13 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   cateringBookingActivity,
+  cateringBookingAdjustments,
   cateringBookingBilling,
   cateringBookings,
   cateringBookingInvoices,
   cateringBookingPayments,
   notifications,
+  type CateringBookingAdjustment,
   type CateringBookingBillingRecord,
   type CateringBookingInvoice,
   type CateringBookingPayment,
@@ -51,6 +53,14 @@ import {
   resolveCateringDepositTerms,
   resolveCateringPayment,
 } from "../services/catering-booking-billing-policy";
+import {
+  adjustmentActionsFor,
+  adjustmentFactsOf,
+  amendmentNumbersFor,
+  loadLedgerRows,
+  cateringPaymentMayBeVoided,
+} from "../services/catering-booking-adjustments";
+import { serializeCateringAdjustment } from "../serializers/catering-booking-adjustment";
 import {
   serializeCateringDepositTerms,
   serializeCateringInvoice,
@@ -126,6 +136,8 @@ async function billingRows(tx: typeof db, bookingId: string): Promise<{
   terms: CateringBookingBillingRecord | undefined;
   invoices: CateringBookingInvoice[];
   payments: CateringBookingPayment[];
+  adjustments: CateringBookingAdjustment[];
+  amendmentNumbers: Map<string, number>;
 }> {
   const [terms] = await tx.select().from(cateringBookingBilling).where(eq(cateringBookingBilling.bookingId, bookingId)).limit(1);
   const invoices = await tx.select().from(cateringBookingInvoices)
@@ -133,7 +145,9 @@ async function billingRows(tx: typeof db, bookingId: string): Promise<{
   // Ordered by the day the money arrived, then by id, so a list rendered from this is stable across refetches.
   const payments = await tx.select().from(cateringBookingPayments)
     .where(eq(cateringBookingPayments.bookingId, bookingId)).orderBy(asc(cateringBookingPayments.receivedOn), asc(cateringBookingPayments.id)) as CateringBookingPayment[];
-  return { terms: terms as CateringBookingBillingRecord | undefined, invoices, payments };
+  const adjustments = await tx.select().from(cateringBookingAdjustments).where(eq(cateringBookingAdjustments.bookingId, bookingId))
+    .orderBy(asc(cateringBookingAdjustments.createdAt), asc(cateringBookingAdjustments.id)) as CateringBookingAdjustment[];
+  return { terms: terms as CateringBookingBillingRecord | undefined, invoices, payments, adjustments, amendmentNumbers: await amendmentNumbersFor(tx, adjustments) };
 }
 
 /**
@@ -149,6 +163,8 @@ function billingView(input: {
   terms: CateringBookingBillingRecord | undefined;
   invoices: readonly CateringBookingInvoice[];
   payments: readonly CateringBookingPayment[];
+  adjustments: readonly CateringBookingAdjustment[];
+  amendmentNumbers: ReadonlyMap<string, number>;
   asOfDate: string;
 }): CateringBookingBillingView {
   const facts = cateringBillingFacts(input);
@@ -162,6 +178,7 @@ function billingView(input: {
     // the ask was withdrawn rather than watch it vanish.
     invoices: input.invoices.map((row) => serializeCateringInvoice(row, facts, input.role)),
     payments: input.payments.map((row) => serializeCateringPayment(row, input.role)),
+    adjustments: input.adjustments.map((row) => serializeCateringAdjustment(row, input.role, input.amendmentNumbers)),
   };
   if (input.role !== "provider") return view;
   const issuable = cateringIssuableInvoiceKinds(facts);
@@ -170,6 +187,7 @@ function billingView(input: {
     terms: serializeCateringDepositTerms(input.terms, facts.agreedTotalCents),
     issuable,
     issuablePreview: issuable.map((kind) => ({ kind, amountCents: cateringInvoiceAmountFor(kind, facts) ?? 0 })),
+    adjustmentActions: adjustmentActionsFor(adjustmentFactsOf(input.booking, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] })),
   };
 }
 
@@ -215,11 +233,11 @@ async function notifyCustomer(booking: { providerId: string; customerId: string 
 r.get("/bookings/:id/billing", requireAuth, async (req, res, next) => { try {
   const resolved = await resolveRequest(req as never, res, false);
   if (!resolved) return;
-  const { terms, invoices, payments } = await billingRows(db, resolved.id);
+  const rows = await billingRows(db, resolved.id);
   res.json(billingView({
     role: resolved.role,
     booking: resolved.booking,
-    terms, invoices, payments,
+    ...rows,
     asOfDate: resolved.asOfDate,
   }));
 } catch (error) { invalid(error, res, next); } });
@@ -369,6 +387,7 @@ function unissuableMessage(kind: CateringInvoiceKind, facts: CateringBillingFact
     return "The remaining balance has already been requested, so a deposit cannot be added beside it. Withdraw the balance first if you need to ask for a deposit.";
   }
   if (kind === "deposit") return "There is no deposit to request. Set your deposit terms first.";
+  if (kind === "adjustment") return "There is nothing added since your balance was requested, so there is nothing more to request.";
   return "There is no balance left to request.";
 }
 
@@ -536,6 +555,10 @@ r.post("/bookings/:id/billing/payments/:paymentId/void", requireAuth, async (req
     if (payment.paymentSource !== "provider_recorded") {
       return { kind: "refused", message: "Only a payment you recorded yourself can be taken back here." } as const;
     }
+    // Phase 2P: a payment that recorded refunds rely on cannot be taken back while they stand, or the ledger would show
+    // more money returned than was ever received.
+    const supports = cateringPaymentMayBeVoided({ payment, rows: await loadLedgerRows(tx, id) });
+    if (!supports.ok) return { kind: "refused", message: supports.message } as const;
     await tx.update(cateringBookingPayments).set({
       status: "voided", voidedAt: new Date(), voidedBy: userId, voidReason: body.reason ?? null, updatedAt: new Date(),
     }).where(eq(cateringBookingPayments.id, paymentId));
@@ -560,19 +583,23 @@ r.post("/bookings/:id/billing/payments/:paymentId/void", requireAuth, async (req
  * response carrying only the new row would leave the client to recompute the rest, which is exactly the
  * client-side arithmetic this phase refuses to have anywhere.
  */
-async function freshView(resolved: { id: string; userId: string; role: "provider" | "customer"; asOfDate: string }) {
-  // The booking is re-read as well as the rows. The one this request resolved was read before the transaction, and
-  // answering with it would report a booking cancelled in the meantime as still actionable for one render.
-  const booking = await ownedCateringBooking(resolved.id, resolved.userId);
-  const rows = await billingRows(db, resolved.id);
-  return billingView({
-    role: resolved.role,
-    booking: booking ?? { status: "cancelled", agreedPrice: null, currency: "USD" },
-    ...rows,
-    // The SAME day the request resolved, not a fresh one: the response a mutation answers with must describe the
-    // day its own rules were judged against.
-    asOfDate: resolved.asOfDate,
-  });
+export async function freshView(resolved: { id: string; userId: string; role: "provider" | "customer"; asOfDate: string }) {
+  // ONE repeatable-read snapshot for the booking and every ledger table, so a payment, a refund and an amendment committing
+  // in between cannot pair one table's old rows with another's new ones. The booking is re-read inside it as well: the one
+  // this request resolved was read before the transaction, and answering with it would report a booking cancelled in the
+  // meantime as still actionable for one render.
+  return db.transaction(async (tx: typeof db) => {
+    const booking = await ownedCateringBooking(resolved.id, resolved.userId, tx);
+    const rows = await billingRows(tx, resolved.id);
+    return billingView({
+      role: resolved.role,
+      booking: booking ?? { status: "cancelled", agreedPrice: null, currency: "USD" },
+      ...rows,
+      // The SAME day the request resolved, not a fresh one: the response a mutation answers with must describe the
+      // day its own rules were judged against.
+      asOfDate: resolved.asOfDate,
+    });
+  }, { isolationLevel: "repeatable read" });
 }
 
 export default r;

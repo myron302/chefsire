@@ -1,4 +1,5 @@
-import type { CateringBookingBillingRecord, CateringBookingInvoice, CateringBookingPayment } from "@shared/schema";
+import type { CateringBookingAdjustment, CateringBookingBillingRecord, CateringBookingInvoice, CateringBookingPayment } from "@shared/schema";
+import type { CateringAdjustmentFact, CateringAdjustmentKind, CateringAdjustmentSource, CateringAdjustmentStatus } from "@shared/catering-billing-adjustments";
 import { cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import {
   CATERING_BILLING_NOT_AVAILABLE_CODE,
@@ -8,6 +9,7 @@ import {
   EMPTY_CATERING_DEPOSIT_TERMS,
   cateringBillingIsActionable,
   cateringMoneyToCents,
+  deriveCateringBillingSummary,
   type CateringBillingFacts,
   type CateringDepositTerms,
   type CateringInvoiceFact,
@@ -102,6 +104,18 @@ export function cateringPaymentFactOf(row: CateringBookingPayment): CateringPaym
   };
 }
 
+export function cateringAdjustmentFactOf(row: CateringBookingAdjustment): CateringAdjustmentFact {
+  return {
+    id: row.id,
+    kind: row.entryKind as CateringAdjustmentKind,
+    amountCents: row.amountCents,
+    currency: row.currency,
+    status: row.status as CateringAdjustmentStatus,
+    source: row.source as CateringAdjustmentSource,
+    paymentId: row.paymentId ?? null,
+  };
+}
+
 /**
  * Every fact the derivation needs, assembled in one place.
  *
@@ -114,6 +128,7 @@ export function cateringBillingFacts(input: {
   terms: CateringBookingBillingRecord | undefined;
   invoices: readonly CateringBookingInvoice[];
   payments: readonly CateringBookingPayment[];
+  adjustments?: readonly CateringBookingAdjustment[];
   asOfDate: string;
 }): CateringBillingFacts {
   return {
@@ -123,6 +138,7 @@ export function cateringBillingFacts(input: {
     terms: cateringDepositTermsOf(input.terms),
     invoices: input.invoices.map(cateringInvoiceFactOf),
     payments: input.payments.map(cateringPaymentFactOf),
+    adjustments: (input.adjustments ?? []).map(cateringAdjustmentFactOf),
     asOfDate: input.asOfDate,
   };
 }
@@ -235,5 +251,12 @@ export function resolveCateringPayment(input: {
     (total, payment) => (payment.invoiceId === input.invoice!.id && payment.status === "recorded" ? total + payment.amountCents : total), 0));
   if (remaining === 0) return { ok: false, message: "This request is already fully covered by the payments you have recorded." };
   if (input.amountCents > remaining) return { ok: false, message: "That is more than this request still has outstanding." };
+  // Phase 2P: a credit granted after a request was sent can leave the request asking for more than is now owed. A payment
+  // may not take the customer past what they owe. With no adjustments this never binds, because every invoice already
+  // sits inside the agreed price and a payment is bounded by its invoice.
+  const summary = deriveCateringBillingSummary(input.facts);
+  if (summary.balanceDueCents !== null && input.amountCents > summary.balanceDueCents) {
+    return { ok: false, message: "That is more than your customer now owes for this booking, after the credits recorded on it." };
+  }
   return { ok: true, amountCents: input.amountCents };
 }

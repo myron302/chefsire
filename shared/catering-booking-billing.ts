@@ -2,6 +2,7 @@ import { z } from "zod";
 import { calendarDateSchema } from "./catering-availability";
 import { cateringBookingWorkspacePath } from "./catering-booking-operations";
 import type { CateringBookingStatus } from "./catering-bookings";
+import { deriveCateringLedgerPosition, type CateringAdjustmentFact, type CateringAdjustmentView, type CateringAdjustmentActions } from "./catering-billing-adjustments";
 
 /**
  * PHASE 2L -- THE CATERING BILLING CONTRACT.
@@ -122,15 +123,17 @@ export const CATERING_DEPOSIT_MODES = ["none", "fixed", "percentage"] as const;
 export type CateringDepositMode = typeof CATERING_DEPOSIT_MODES[number];
 
 /**
- * The two invoices a catering booking can have, and deliberately no third.
+ * The invoices a catering booking can have: the deposit, the balance, and (Phase 2P) a request for payment of what was
+ * ADDED afterwards.
  *
- * An "adjustment" or "additional charge" kind was considered and rejected on the evidence: `agreed_price` is
- * written once, when the booking is created from the provider's accepted offer, and NOTHING in the repository ever
- * updates it. An invoice beyond that price would therefore be a charge with no agreement behind it, issued by one
- * party against a number the other never accepted. Billing more than was agreed needs a way to agree a new price
- * first, which is a booking-lifecycle change and not this phase's to invent.
+ * Phase 2L deliberately had no third kind. `agreed_price` was written once, when the booking was created from the
+ * provider's accepted offer, and nothing ever updated it, so an invoice beyond that price would have been a charge with
+ * no agreement behind it. Phase 2O added the agreement (an accepted amendment) and Phase 2P the ledger that records it,
+ * so there is now something for an `adjustment` request to be FOR: it is issued only for the headroom the current
+ * obligation has over the live invoices, never edits an earlier invoice, and exists because a balance that is already
+ * live cannot be re-issued for a larger amount.
  */
-export const CATERING_INVOICE_KINDS = ["deposit", "balance"] as const;
+export const CATERING_INVOICE_KINDS = ["deposit", "balance", "adjustment"] as const;
 export type CateringInvoiceKind = typeof CATERING_INVOICE_KINDS[number];
 
 /**
@@ -229,6 +232,11 @@ export type CateringBillingFacts = {
   terms: CateringDepositTerms;
   invoices: readonly CateringInvoiceFact[];
   payments: readonly CateringPaymentFact[];
+  /**
+   * The Phase 2P adjustment ledger. Optional because a booking that predates it has none, and an absent list is exactly
+   * an empty one: every figure below then equals what Phase 2L derived, with no adjustment row fabricated.
+   */
+  adjustments?: readonly CateringAdjustmentFact[];
   /**
    * The billing day, date-only, resolved by the SERVER from the provider's own calendar and passed in.
    *
@@ -331,6 +339,22 @@ export type CateringBillingSummary = {
   status: CateringFinancialStatus;
   /** True when ANY issued invoice is past its due date. Derived from the server date, never the browser's. */
   hasOverdue: boolean;
+  /**
+   * PHASE 2P. The agreed price before any amendment that was reconciled into the ledger, and what is owed now:
+   * `agreed + provider charges - provider credits`. Equal to `agreedTotalCents` on a booking with no adjustments.
+   */
+  originalAgreedCents: number | null;
+  obligationCents: number | null;
+  adjustmentChargesCents: number;
+  adjustmentCreditsCents: number;
+  /** Recorded refunds: money the caterer says they returned OUTSIDE ChefSire. Not a credit and not a ChefSire action. */
+  refundsRecordedCents: number;
+  /** Payments recorded less refunds recorded. */
+  netReceivedCents: number;
+  /** Obligation less net received, floored at zero. Null without an agreed price. */
+  balanceDueCents: number | null;
+  /** Net received above the obligation. A prompt that a refund may be due, never a statement that one happened. */
+  refundPotentiallyDueCents: number;
 };
 
 export function deriveCateringBillingSummary(facts: CateringBillingFacts): CateringBillingSummary {
@@ -339,6 +363,8 @@ export function deriveCateringBillingSummary(facts: CateringBillingFacts): Cater
   const paidTotalCents = facts.payments.reduce((total, payment) => (cateringPaymentCounts(payment) ? total + payment.amountCents : total), 0);
   const deposit = live.find((invoice) => invoice.kind === "deposit");
   const depositPaidCents = deposit ? cateringPaidTowards(deposit.id, facts.payments) : 0;
+  const ledger = deriveCateringLedgerPosition({ agreedTotalCents: facts.agreedTotalCents, paidTotalCents, adjustments: facts.adjustments ?? [] });
+  const obligationCents = ledger.obligationCents;
 
   // The next thing owed: the oldest unsettled issued invoice, ordered by its own number so the deposit precedes
   // the balance whatever order the rows come back in.
@@ -346,27 +372,37 @@ export function deriveCateringBillingSummary(facts: CateringBillingFacts): Cater
     .filter((invoice) => cateringInvoiceState(invoice, facts.payments) !== "paid")
     .sort((left, right) => left.number - right.number);
   const next = unsettled[0];
-  const nextAmountDueCents = next ? Math.max(0, next.amountCents - cateringPaidTowards(next.id, facts.payments)) : null;
+  // Capped by what is actually still owed, so a credit granted after a request was sent can never leave the customer
+  // being told to pay more than the obligation. With no adjustments the cap never binds: payments never exceed invoices.
+  const capped = (cents: number) => (ledger.balanceDueCents === null ? cents : Math.min(cents, ledger.balanceDueCents));
+  const nextAmountDueCents = next ? capped(Math.max(0, next.amountCents - cateringPaidTowards(next.id, facts.payments))) : null;
 
-  const agreedTotalCents = facts.agreedTotalCents;
-  const remainingOfAgreedCents = agreedTotalCents === null ? null : Math.max(0, agreedTotalCents - paidTotalCents);
-  const uninvoicedCents = agreedTotalCents === null ? null : Math.max(0, agreedTotalCents - invoicedTotalCents);
+  const remainingOfAgreedCents = ledger.balanceDueCents;
+  const uninvoicedCents = obligationCents === null ? null : Math.max(0, obligationCents - invoicedTotalCents);
 
   return {
     currency: facts.currency,
-    agreedTotalCents,
+    agreedTotalCents: facts.agreedTotalCents,
     invoicedTotalCents,
     paidTotalCents,
-    outstandingInvoicedCents: Math.max(0, invoicedTotalCents - paidTotalCents),
+    outstandingInvoicedCents: capped(Math.max(0, invoicedTotalCents - paidTotalCents)),
     remainingOfAgreedCents,
     uninvoicedCents,
-    depositRequiredCents: cateringDepositRequirement(facts.terms, agreedTotalCents),
+    depositRequiredCents: cateringDepositRequirement(facts.terms, obligationCents),
     depositPaidCents,
     nextAmountDueCents,
     nextDueOn: next?.dueOn ?? null,
     nextDueIsOverdue: next ? cateringInvoiceIsOverdue(next, facts.payments, facts.asOfDate) : false,
-    status: deriveCateringFinancialStatus(facts, { live, paidTotalCents, next }),
+    status: deriveCateringFinancialStatus(facts, { live, netReceivedCents: ledger.netReceivedCents, obligationCents, next }),
     hasOverdue: live.some((invoice) => cateringInvoiceIsOverdue(invoice, facts.payments, facts.asOfDate)),
+    originalAgreedCents: ledger.originalAgreedCents,
+    obligationCents,
+    adjustmentChargesCents: ledger.chargesCents,
+    adjustmentCreditsCents: ledger.creditsCents,
+    refundsRecordedCents: ledger.refundsCents,
+    netReceivedCents: ledger.netReceivedCents,
+    balanceDueCents: ledger.balanceDueCents,
+    refundPotentiallyDueCents: ledger.refundPotentiallyDueCents,
   };
 }
 
@@ -392,17 +428,19 @@ export function deriveCateringBillingSummary(facts: CateringBillingFacts): Cater
  */
 function deriveCateringFinancialStatus(
   facts: CateringBillingFacts,
-  derived: { live: readonly CateringInvoiceFact[]; paidTotalCents: number; next: CateringInvoiceFact | undefined },
+  derived: { live: readonly CateringInvoiceFact[]; netReceivedCents: number; obligationCents: number | null; next: CateringInvoiceFact | undefined },
 ): CateringFinancialStatus {
-  if (facts.agreedTotalCents === null) return "not_configured";
+  if (facts.agreedTotalCents === null || derived.obligationCents === null) return "not_configured";
   // A ZERO-DOLLAR AGREEMENT IS ITS OWN FACT, and it is checked before any arithmetic can swallow it. `agreed_price`
   // permits 0.00, and for such a booking `paid >= total` is trivially true with nothing invoiced, nothing recorded
   // and nothing having changed hands -- so the generic rule below reported `settled`, whose copy tells the customer
   // they paid the agreed total in full. They paid nothing, because nothing was owed. That is a different sentence.
-  if (facts.agreedTotalCents === 0) return "no_payment_required";
+  // Phase 2P: "owed nothing" is the OBLIGATION being zero with nothing held, so a fully credited booking that was never
+  // paid reads the same as a zero-dollar agreement, while one that was paid first reads on as settled with a refund due.
+  if (derived.obligationCents === 0 && derived.netReceivedCents === 0) return "no_payment_required";
   // Settled next, so a fully credited agreement reads as finished whatever became of the invoices that got it
   // there. It is now reachable only where there was a positive total to have reached.
-  if (derived.paidTotalCents >= facts.agreedTotalCents) return "settled";
+  if (derived.netReceivedCents >= derived.obligationCents) return "settled";
   if (derived.live.length === 0) {
     // NOTHING LIVE, AND THE HISTORY DECIDES WHICH KIND OF NOTHING IT IS. "Nothing has been requested yet" was
     // printed above a list reading "Payment request withdrawn", which is a contradiction both parties could see at
@@ -449,9 +487,31 @@ export function cateringBillingIsActionable(status: CateringBookingStatus): bool
 export function cateringLiveInvoicedCents(facts: CateringBillingFacts): number {
   return facts.invoices.filter(cateringInvoiceCounts).reduce((total, invoice) => total + invoice.amountCents, 0);
 }
-/** What the agreed total has left to be invoiced. Null when there is no agreed total to divide. */
+/**
+ * What the customer owes in total: the agreed price, moved by the provider's own posted charges and credits (Phase 2P).
+ * Equal to the agreed price when there are none, which is every booking that predates the adjustment ledger.
+ */
+export function cateringObligationCents(facts: Pick<CateringBillingFacts, "agreedTotalCents" | "adjustments">): number | null {
+  return deriveCateringLedgerPosition({ agreedTotalCents: facts.agreedTotalCents, paidTotalCents: 0, adjustments: facts.adjustments ?? [] }).obligationCents;
+}
+/** What the current obligation has left to be invoiced. Null when there is nothing agreed to divide. */
 export function cateringInvoiceHeadroomCents(facts: CateringBillingFacts): number | null {
-  return facts.agreedTotalCents === null ? null : Math.max(0, facts.agreedTotalCents - cateringLiveInvoicedCents(facts));
+  const obligation = cateringObligationCents(facts);
+  return obligation === null ? null : Math.max(0, obligation - cateringLiveInvoicedCents(facts));
+}
+
+/**
+ * What an `adjustment` request would be for: what the ledger has ADDED to the original agreement, less what earlier
+ * adjustment requests already asked for, and never more than the headroom the obligation has over the live invoices.
+ *
+ * Bounded by the additions rather than by the headroom alone, because headroom can exist for reasons that are not an
+ * addition at all -- a withdrawn deposit leaves a gap beside a live balance, and that gap is not a new charge.
+ */
+export function cateringAdjustmentRequestCents(facts: CateringBillingFacts): number {
+  const ledger = deriveCateringLedgerPosition({ agreedTotalCents: facts.agreedTotalCents, paidTotalCents: 0, adjustments: facts.adjustments ?? [] });
+  const added = Math.max(0, ledger.chargesCents - ledger.creditsCents);
+  const alreadyRequested = facts.invoices.filter((invoice) => cateringInvoiceCounts(invoice) && invoice.kind === "adjustment").reduce((total, invoice) => total + invoice.amountCents, 0);
+  return Math.max(0, Math.min(cateringInvoiceHeadroomCents(facts) ?? 0, added - alreadyRequested));
 }
 
 /**
@@ -478,9 +538,12 @@ export function cateringIssuableInvoiceKinds(facts: CateringBillingFacts): Cater
   const kinds: CateringInvoiceKind[] = [];
   const hasDeposit = live.some((invoice) => invoice.kind === "deposit");
   const hasBalance = live.some((invoice) => invoice.kind === "balance");
-  const required = cateringDepositRequirement(facts.terms, facts.agreedTotalCents);
+  const required = cateringDepositRequirement(facts.terms, cateringObligationCents(facts));
   if (!hasDeposit && !hasBalance && required !== null && required > 0 && required <= headroom) kinds.push("deposit");
   if (!hasBalance && headroom > 0) kinds.push("balance");
+  // A live balance has already claimed what the obligation was when it was issued. Whatever the obligation has grown by
+  // since is requested separately, for what was added, so the earlier invoice is never touched.
+  if (hasBalance && cateringAdjustmentRequestCents(facts) > 0) kinds.push("adjustment");
   return kinds;
 }
 
@@ -505,14 +568,16 @@ export function cateringBalanceAmount(facts: CateringBillingFacts): number {
  * client believed when it pressed the button.
  */
 export function cateringIssuanceKeepsPartition(facts: CateringBillingFacts, amountCents: number): boolean {
-  if (facts.agreedTotalCents === null) return false;
-  return amountCents > 0 && cateringLiveInvoicedCents(facts) + amountCents <= facts.agreedTotalCents;
+  const obligation = cateringObligationCents(facts);
+  if (obligation === null) return false;
+  return amountCents > 0 && cateringLiveInvoicedCents(facts) + amountCents <= obligation;
 }
 
 /** The amount an invoice of this kind would be issued for, or null when it may not be issued. */
 export function cateringInvoiceAmountFor(kind: CateringInvoiceKind, facts: CateringBillingFacts): number | null {
   if (!cateringIssuableInvoiceKinds(facts).includes(kind)) return null;
-  return kind === "deposit" ? cateringDepositRequirement(facts.terms, facts.agreedTotalCents) : cateringBalanceAmount(facts);
+  if (kind === "adjustment") return cateringAdjustmentRequestCents(facts);
+  return kind === "deposit" ? cateringDepositRequirement(facts.terms, cateringObligationCents(facts)) : cateringBalanceAmount(facts);
 }
 
 /**
@@ -634,11 +699,15 @@ export type CateringBookingBillingView = {
   summary: CateringBillingSummary;
   invoices: CateringInvoiceView[];
   payments: CateringPaymentView[];
+  /** Phase 2P: the adjustment ledger, oldest first, reversed entries included. Empty for a booking with none. */
+  adjustments: CateringAdjustmentView[];
   /** Absent keys rather than empty values: a customer's payload carries no provider-only object at all. */
   terms?: CateringDepositTermsView;
   issuable?: CateringInvoiceKind[];
   /** What each issuable kind would be for, so the provider previews before issuing and sends no amount. */
   issuablePreview?: { kind: CateringInvoiceKind; amountCents: number }[];
+  /** PROVIDER ONLY: what may be recorded or reversed right now, and the limits the forms state. */
+  adjustmentActions?: CateringAdjustmentActions;
 };
 
 /* ------------------------------------------------------------------------------------------------------------- *

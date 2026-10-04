@@ -1,0 +1,845 @@
+/**
+ * Phase 2P: post-confirmation billing adjustments, credits and external refund records as real HTTP against the real
+ * catering routers, every rendered SQL statement executed by a REAL PostgreSQL. Tables are built from the repository's own
+ * catering migrations, so the additive ledger migration (table, constraints, unique indexes, immutability trigger and the
+ * widened invoice kind) is exercised too.
+ *
+ * Races here are real: concurrent requests are separate HTTP calls on separate pooled connections contending for the
+ * same booking row lock. Nothing is mocked pseudo-concurrency.
+ *
+ * Set CATERING_TEST_PG_URL to a loopback database whose name contains "test"; the suite is skipped otherwise. The
+ * suite's own schema is dropped and rebuilt on every run, which is why the loopback guard exists.
+ */
+import "../test-support/accept-test-sessions";
+import "../test-support/auth-test-env";
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import express from "express";
+import pg from "pg";
+import type { AddressInfo } from "node:net";
+import { signAuthToken } from "../lib/jwt-config";
+import { parseLocalTestDatabaseUrl } from "../test-support/local-test-database";
+
+process.env.DATABASE_URL ||= "postgres://u:p@catering-amendment-tests.invalid/none";
+const PG_URL = process.env.CATERING_TEST_PG_URL;
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(here, "..", "..");
+
+const CUSTOMER_A = "customer-a";
+const CUSTOMER_B = "customer-b";
+const PROVIDER = "provider-1";
+const OTHER_PROVIDER = "provider-2";
+const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id, av: 1 } as never)}` });
+
+if (!PG_URL) {
+  test("catering billing adjustments over HTTP (skipped: CATERING_TEST_PG_URL not set)", { skip: true }, () => {});
+} else {
+  // Its own schema, so this file can run beside the other real-Postgres catering suites that reset `public` in the same database.
+  const SCHEMA = "catering_adjustment_tests";
+  const local = new pg.Pool({ ...parseLocalTestDatabaseUrl(PG_URL), options: `-c search_path=${SCHEMA}` });
+  const { pool } = await import("../db/index");
+  // A one-shot gate on the amendment-history read, applied to the connection itself so the production code carries no test hook:
+  // when armed, the next SELECT from catering_booking_amendments announces that it has been reached and waits to be released.
+  // That holds a GET between its booking read and its amendment read while a real writer commits on another connection.
+  const gate: { armed: boolean; reached: () => void; release: Promise<void> | null } = { armed: false, reached: () => undefined, release: null };
+  (pool as never as { connect: unknown }).connect = async () => {
+    const client = await local.connect();
+    const query = client.query.bind(client) as (...args: unknown[]) => unknown;
+    (client as unknown as { query: unknown }).query = async (...args: unknown[]) => {
+      const text = typeof args[0] === "string" ? args[0] : (args[0] as { text?: string })?.text ?? "";
+      if (gate.armed && /^\s*select\b[\s\S]*\bfrom "catering_booking_amendments"/i.test(text)) {
+        gate.armed = false;
+        gate.reached();
+        await gate.release;
+      }
+      return query(...args);
+    };
+    return client;
+  };
+  (pool as never as { query: unknown }).query = (q: unknown, params?: unknown[]) =>
+    typeof q === "string" ? local.query(q, params) : local.query(params ? { ...(q as object), values: params } as never : q as never);
+
+  const sqlFile = (relative: string) => fs.readFileSync(path.join(root, relative), "utf8");
+  await local.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE; CREATE SCHEMA ${SCHEMA};`);
+  await local.query(`
+    CREATE TABLE users (id varchar PRIMARY KEY, username text, display_name text);
+    CREATE TABLE catering_inquiries (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+      customer_id varchar NOT NULL REFERENCES users(id), chef_id varchar NOT NULL REFERENCES users(id),
+      event_date timestamp NOT NULL, guest_count integer, event_type text, cuisine_preferences jsonb DEFAULT '[]'::jsonb,
+      budget numeric(10,2), message text, status text DEFAULT 'pending', created_at timestamp DEFAULT now());
+    CREATE TABLE notifications (
+      id varchar PRIMARY KEY DEFAULT gen_random_uuid(), user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type text NOT NULL, title text NOT NULL, message text NOT NULL, image_url text, link_url text,
+      metadata jsonb DEFAULT '{}'::jsonb, read boolean DEFAULT false, read_at timestamp, priority text DEFAULT 'normal',
+      created_at timestamp DEFAULT now());
+  `);
+  for (const file of ["migrations/010_create_catering_packages.sql", "server/migrations/20260812_catering_availability.sql", "server/migrations/20260827_catering_bookings.sql", "server/migrations/20260829_catering_booking_operations.sql", "server/migrations/20261003_catering_inquiry_contact.sql", "server/migrations/20260913_catering_booking_billing.sql"]) {
+    await local.query(sqlFile(file));
+  }
+  await local.query(sqlFile("server/migrations/20261004_catering_offer_negotiation.sql"));
+  const amendmentMigration = sqlFile("server/migrations/20261005_catering_booking_amendments.sql");
+  await local.query(amendmentMigration);
+  const adjustmentMigration = sqlFile("server/migrations/20261006_catering_billing_adjustments.sql");
+  await local.query(adjustmentMigration);
+  await local.query(sqlFile("server/migrations/20261006_catering_billing_adjustments.sql"));
+
+  const { default: cateringRouter } = await import("./catering");
+  const { default: bookingsRouter } = await import("./catering-bookings");
+  const { default: offersRouter } = await import("./catering-booking-offers");
+  const { default: amendmentsRouter } = await import("./catering-booking-amendments");
+  const { default: billingRouter } = await import("./catering-booking-billing");
+  const { default: adjustmentsRouter } = await import("./catering-booking-adjustments");
+  const app = express();
+  app.use(express.json());
+  app.use("/api/catering", cateringRouter);
+  app.use("/api/catering", bookingsRouter);
+  app.use("/api/catering", offersRouter);
+  app.use("/api/catering", amendmentsRouter);
+  app.use("/api/catering", billingRouter);
+  app.use("/api/catering", adjustmentsRouter);
+  const server = app.listen(0);
+  test.after(async () => { server.close(); await local.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`); await local.end(); });
+  const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/catering`;
+  const call = async (method: string, route: string, headers: Record<string, string> = {}, body?: unknown) => {
+    const response = await fetch(`${base()}${route}`, { method, headers: { ...headers, ...(body === undefined ? {} : { "content-type": "application/json" }) }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const text = await response.text();
+    return { status: response.status, text, body: text ? JSON.parse(text) : null };
+  };
+
+  let sequence = 0;
+  async function inquiry(input: { customer?: string; provider?: string; status?: string } = {}) {
+    const id = `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`;
+    await local.query(
+      `INSERT INTO catering_inquiries (id, customer_id, chef_id, event_date, guest_count, event_type, message, status, customer_email, customer_phone)
+       VALUES ($1, $2, $3, '2099-05-20', 40, 'wedding', 'customer note', $4, 'ann@example.com', '555 123 4567')`,
+      [id, input.customer ?? CUSTOMER_A, input.provider ?? PROVIDER, input.status ?? "accepted"]);
+    return id;
+  }
+  /** A real first offer through the real route: booking + revision 1. */
+  async function offered(terms: Record<string, unknown> = { priceCents: 150000, note: "Buffet for 40" }, input: { customer?: string; provider?: string } = {}) {
+    const inquiryId = await inquiry(input);
+    const response = await call("POST", `/inquiries/${inquiryId}/provider-confirm`, tok(input.provider ?? PROVIDER), terms);
+    assert.equal(response.status, 201, response.text);
+    const bookingId = response.body.booking.id as string;
+    const revisionId = (await local.query(`SELECT id FROM catering_offer_revisions WHERE booking_id = $1 AND revision_number = 1`, [bookingId])).rows[0].id as string;
+    return { inquiryId, bookingId, revisionId };
+  }
+  /** A pre-2N offer: a pending_confirmation booking that has no revision rows. */
+  async function legacyOffer(customer = CUSTOMER_A, provider = PROVIDER) {
+    const inquiryId = await inquiry({ customer, provider });
+    const { rows } = await local.query(
+      `INSERT INTO catering_bookings (inquiry_id, provider_id, customer_id, event_date, event_type, guest_count, agreed_price, currency, status, provider_confirmed_at)
+       VALUES ($1, $2, $3, '2099-05-20', 'wedding', 40, 1200.00, 'USD', 'pending_confirmation', now()) RETURNING id`, [inquiryId, provider, customer]);
+    return { inquiryId, bookingId: rows[0].id as string };
+  }
+  const revise = (bookingId: string, expected: string | null, terms: Record<string, unknown> = { priceCents: 160000 }, extra: Record<string, unknown> = {}, who = PROVIDER) =>
+    call("POST", `/bookings/${bookingId}/offer/revisions`, tok(who), { expectedRevisionId: expected, clientRequestId: randomUUID(), ...terms, ...extra });
+  const accept = (bookingId: string, revisionId: string | null | undefined, who = CUSTOMER_A) =>
+    call("POST", `/bookings/${bookingId}/customer-confirm`, tok(who), revisionId === undefined ? {} : { revisionId });
+  const changeRequest = (bookingId: string, revisionId: string | null, message = "Can we lower the price?", extra: Record<string, unknown> = {}, who = CUSTOMER_A) =>
+    call("POST", `/bookings/${bookingId}/offer/change-requests`, tok(who), { revisionId, message, clientRequestId: randomUUID(), ...extra });
+  const view = async (bookingId: string, who = CUSTOMER_A) => (await call("GET", `/bookings/${bookingId}/offer`, tok(who)));
+  const bookingRow = async (id: string) => (await local.query(`SELECT * FROM catering_bookings WHERE id = $1`, [id])).rows[0];
+  const revisionRows = async (bookingId: string) => (await local.query(`SELECT * FROM catering_offer_revisions WHERE booking_id = $1 ORDER BY revision_number`, [bookingId])).rows;
+  const bookingCount = async () => Number((await local.query(`SELECT count(*) FROM catering_bookings`)).rows[0].count);
+  const notificationsFor = async (userId: string, type: string) => (await local.query(`SELECT title, message, link_url FROM notifications WHERE user_id = $1 AND type = $2`, [userId, type])).rows;
+
+  test.beforeEach(async () => {
+    await local.query(`ALTER TABLE notifications DROP CONSTRAINT IF EXISTS no_adjustment_notifications`);
+    await local.query(`TRUNCATE notifications, catering_booking_adjustments, catering_booking_amendments, catering_offer_revisions, catering_availability_exceptions, catering_booking_payments, catering_booking_invoices, catering_booking_billing, catering_booking_activity, catering_booking_details, catering_bookings, catering_inquiries, users CASCADE`);
+    await local.query(`INSERT INTO users (id, username, display_name) VALUES ($1, 'ann', 'Ann A'), ($2, 'bob', 'Bob B'), ($3, 'chef1', 'Chef One'), ($4, 'chef2', NULL)`, [CUSTOMER_A, CUSTOMER_B, PROVIDER, OTHER_PROVIDER]);
+  });
+
+  // ------------------------------------------------------------------------------------------------ helpers
+  async function confirmed(terms: Record<string, unknown> = { priceCents: 250000, guestCount: 100, note: "Buffet for 100" }, input: { customer?: string; provider?: string } = {}) {
+    const made = await offered(terms, input);
+    const accepted = await accept(made.bookingId, made.revisionId, input.customer ?? CUSTOMER_A);
+    assert.equal(accepted.status, 200, accepted.text);
+    return made.bookingId;
+  }
+  const propose = (bookingId: string, changes: Record<string, unknown>, who = CUSTOMER_A) =>
+    call("POST", `/bookings/${bookingId}/amendments`, tok(who), { expectedBaseAmendmentId: null, clientRequestId: randomUUID(), ...changes });
+  const respond = (bookingId: string, amendmentId: string, action: "accept" | "decline" | "withdraw", who: string) =>
+    call("POST", `/bookings/${bookingId}/amendments/${amendmentId}/${action}`, tok(who), {});
+  const billing = (bookingId: string, who = PROVIDER) => call("GET", `/bookings/${bookingId}/billing`, tok(who));
+  const issue = (bookingId: string, kind: string, who = PROVIDER) => call("POST", `/bookings/${bookingId}/billing/invoices`, tok(who), { kind });
+  const pay = (bookingId: string, invoiceId: string, amount: string, who = PROVIDER, key = randomUUID()) =>
+    call("POST", `/bookings/${bookingId}/billing/payments`, tok(who), { invoiceId, amount, method: "bank_transfer", receivedOn: "2020-01-01", idempotencyKey: key });
+  const adjust = (bookingId: string, body: Record<string, unknown>, who = PROVIDER) =>
+    call("POST", `/bookings/${bookingId}/billing/adjustments`, tok(who), { currency: "USD", reason: "Agreed with the customer", idempotencyKey: randomUUID(), ...body });
+  const reverse = (bookingId: string, entryId: string, who = PROVIDER, body: Record<string, unknown> = { reason: "Entered in error" }) =>
+    call("POST", `/bookings/${bookingId}/billing/adjustments/${entryId}/reverse`, tok(who), body);
+  const setStatus = (bookingId: string, status: string) => local.query(`UPDATE catering_bookings SET status = $2 WHERE id = $1`, [bookingId, status]);
+  const ledger = async (bookingId: string) => (await local.query(`SELECT * FROM catering_booking_adjustments WHERE booking_id = $1 ORDER BY created_at, id`, [bookingId])).rows;
+  const rows = async (table: string, bookingId: string) => (await local.query(`SELECT * FROM ${table} WHERE booking_id = $1 ORDER BY 1`, [bookingId])).rows;
+  /** A booking confirmed at $2,500 with the balance requested and $1,000 recorded as received. */
+  async function billed(paid = "1000.00") {
+    const bookingId = await confirmed();
+    const invoice = await issue(bookingId, "balance");
+    assert.equal(invoice.status, 200, invoice.text);
+    const invoiceId = invoice.body.invoices[0].id as string;
+    if (paid !== "0") assert.equal((await pay(bookingId, invoiceId, paid)).status, 200);
+    return { bookingId, invoiceId };
+  }
+
+  // ------------------------------------------------------------------------------------------------ authority
+  test("a provider adds a charge, and BOTH participants read the same entry and the same derived summary", async () => {
+    const { bookingId } = await billed();
+    const created = await adjust(bookingId, { kind: "charge", amountCents: 40000, reason: "Extra 20 guests" });
+    assert.equal(created.status, 201, created.text);
+    const provider = await billing(bookingId, PROVIDER);
+    const customer = await billing(bookingId, CUSTOMER_A);
+    for (const response of [provider, customer]) {
+      assert.deepEqual(response.body.adjustments.map((entry: { kind: string; amountCents: number; status: string; reason: string; source: string }) => [entry.kind, entry.amountCents, entry.status, entry.reason, entry.source]), [["charge", 40000, "posted", "Extra 20 guests", "provider_recorded"]]);
+    }
+    assert.deepEqual(provider.body.summary, customer.body.summary, "one derivation, two identical summaries");
+    assert.deepEqual([provider.body.summary.agreedTotalCents, provider.body.summary.obligationCents, provider.body.summary.adjustmentChargesCents], [250000, 290000, 40000]);
+  });
+
+  test("a customer cannot add a charge, a credit or a refund record, and nothing is written", async () => {
+    const { bookingId } = await billed();
+    for (const body of [{ kind: "charge", amountCents: 100 }, { kind: "credit", amountCents: 100 }, { kind: "refund", amountCents: 100 }]) {
+      const refused = await adjust(bookingId, body, CUSTOMER_A);
+      assert.equal(refused.status, 403, refused.text);
+    }
+    assert.equal((await ledger(bookingId)).length, 0);
+    const entry = await adjust(bookingId, { kind: "charge", amountCents: 100 });
+    assert.equal((await reverse(bookingId, entry.body.adjustments[0].id, CUSTOMER_A)).status, 403);
+    assert.equal((await ledger(bookingId))[0].status, "posted");
+  });
+
+  test("a stranger, a wrong provider and a guessed booking id all get the same non-enumerating 404", async () => {
+    const { bookingId } = await billed();
+    const guessed = await adjust(randomUUID(), { kind: "charge", amountCents: 100 }, PROVIDER);
+    const stranger = await adjust(bookingId, { kind: "charge", amountCents: 100 }, CUSTOMER_B);
+    const otherProvider = await adjust(bookingId, { kind: "credit", amountCents: 100 }, OTHER_PROVIDER);
+    for (const response of [guessed, stranger, otherProvider]) assert.deepEqual([response.status, response.body], [404, guessed.body]);
+    assert.equal((await ledger(bookingId)).length, 0);
+    const malformed = await adjust("not-a-booking", { kind: "charge", amountCents: 100 });
+    assert.equal(malformed.status, 404);
+  });
+
+  test("a guessed ledger entry id is a 404, and another booking's entry cannot be reversed through this one", async () => {
+    const mine = await billed();
+    const other = await confirmed({ priceCents: 90000 }, { customer: CUSTOMER_B });
+    const foreign = await adjust(other, { kind: "charge", amountCents: 500 });
+    assert.equal((await reverse(mine.bookingId, randomUUID())).status, 404);
+    assert.equal((await reverse(mine.bookingId, foreign.body.adjustments[0].id)).status, 404);
+    assert.equal((await reverse(mine.bookingId, "not-a-uuid")).status, 404);
+    assert.equal((await ledger(other))[0].status, "posted", "untouched");
+  });
+
+  test("an actor, role or provider named in the body is rejected, and the session decides who is acting", async () => {
+    const { bookingId } = await billed();
+    for (const extra of [{ providerId: PROVIDER }, { userId: PROVIDER }, { role: "provider" }, { recordedBy: PROVIDER }, { status: "posted" }, { source: "amendment" }]) {
+      const refused = await adjust(bookingId, { kind: "charge", amountCents: 100, ...extra }, CUSTOMER_A);
+      assert.notEqual(refused.status, 201, JSON.stringify(extra));
+      assert.equal((await adjust(bookingId, { kind: "charge", amountCents: 100, ...extra }, PROVIDER)).status, 400, JSON.stringify(extra));
+    }
+    assert.equal((await ledger(bookingId)).length, 0);
+    await adjust(bookingId, { kind: "charge", amountCents: 100 });
+    assert.equal((await ledger(bookingId))[0].recorded_by, PROVIDER);
+  });
+
+  // ------------------------------------------------------------------------------------------------ money validation
+  test("amounts are whole positive cents and the currency is explicit and must match the booking", async () => {
+    const { bookingId } = await billed();
+    for (const amountCents of [10.5, 0, -5, "100", null, 1e12, Number.NaN]) {
+      const refused = await adjust(bookingId, { kind: "charge", amountCents });
+      assert.equal(refused.status, 400, String(amountCents));
+    }
+    assert.equal((await adjust(bookingId, { kind: "charge", amountCents: 100, currency: "usd" })).status, 400);
+    const missing = await call("POST", `/bookings/${bookingId}/billing/adjustments`, tok(PROVIDER), { kind: "charge", amountCents: 100, reason: "x", idempotencyKey: randomUUID() });
+    assert.equal(missing.status, 400, "no implicit currency");
+    const mismatch = await adjust(bookingId, { kind: "charge", amountCents: 100, currency: "EUR" });
+    assert.deepEqual([mismatch.status, mismatch.body.code], [409, "catering_billing_state"]);
+    assert.match(mismatch.body.message, /does not convert/);
+    assert.equal((await adjust(bookingId, { kind: "charge", amountCents: 100, reason: "   " })).status, 400);
+    assert.equal((await adjust(bookingId, { kind: "charge", amountCents: 100, paymentId: randomUUID() })).status, 400, "a payment is for a refund only");
+    assert.equal((await ledger(bookingId)).length, 0);
+  });
+
+  // ------------------------------------------------------------------------------------------------ charges
+  test("an additional charge is not paid by being posted, never edits an invoice, and never removes a payment", async () => {
+    const { bookingId } = await billed();
+    const invoicesBefore = await rows("catering_booking_invoices", bookingId);
+    const paymentsBefore = await rows("catering_booking_payments", bookingId);
+    await adjust(bookingId, { kind: "charge", amountCents: 40000 });
+    assert.deepEqual(await rows("catering_booking_invoices", bookingId), invoicesBefore, "historical invoice unchanged");
+    assert.deepEqual(await rows("catering_booking_payments", bookingId), paymentsBefore, "historical payment unchanged");
+    const { summary, invoices } = (await billing(bookingId)).body;
+    assert.equal(summary.paidTotalCents, 100000, "the charge was not marked paid");
+    assert.equal(summary.balanceDueCents, 190000);
+    assert.equal(invoices[0].amountCents, 250000);
+  });
+
+  test("a charge is collected by an `adjustment` request for exactly what was added, once, without touching the balance request", async () => {
+    const { bookingId, invoiceId } = await billed("2500.00");
+    assert.equal((await billing(bookingId)).body.summary.status, "settled");
+    assert.deepEqual((await billing(bookingId)).body.issuable, []);
+    await adjust(bookingId, { kind: "charge", amountCents: 40000 });
+    const view = await billing(bookingId);
+    assert.deepEqual(view.body.issuable, ["adjustment"]);
+    assert.deepEqual(view.body.issuablePreview, [{ kind: "adjustment", amountCents: 40000 }]);
+    const issued = await issue(bookingId, "adjustment");
+    assert.equal(issued.status, 200, issued.text);
+    assert.deepEqual(issued.body.invoices.map((row: { kind: string; amountCents: number }) => [row.kind, row.amountCents]), [["balance", 250000], ["adjustment", 40000]]);
+    assert.deepEqual((await issue(bookingId, "adjustment")).status, 409, "nothing more to request");
+    const adjustmentInvoice = issued.body.invoices[1];
+    assert.equal((await pay(bookingId, adjustmentInvoice.id, "400.00")).status, 200);
+    const done = (await billing(bookingId)).body;
+    assert.deepEqual([done.summary.status, done.summary.balanceDueCents, done.summary.paidTotalCents], ["settled", 0, 290000]);
+    assert.equal(done.invoices.find((row: { id: string }) => row.id === invoiceId).amountCents, 250000);
+  });
+
+  test("a withdrawn deposit leaves headroom that is NOT an addition: no adjustment request is offered for it", async () => {
+    const bookingId = await confirmed();
+    const deposit = await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "fixed", amount: "500" });
+    assert.equal(deposit.status, 200, deposit.text);
+    const invoiced = await issue(bookingId, "deposit");
+    await issue(bookingId, "balance");
+    const withdraw = await call("POST", `/bookings/${bookingId}/billing/invoices/${invoiced.body.invoices[0].id}/void`, tok(PROVIDER), { expectedUpdatedAt: invoiced.body.invoices[0].updatedAt });
+    assert.equal(withdraw.status, 200, withdraw.text);
+    assert.deepEqual((await billing(bookingId)).body.issuable, []);
+  });
+
+  // ------------------------------------------------------------------------------------------------ credits
+  test("a credit reduces the obligation exactly once and is not evidence that money was returned", async () => {
+    const { bookingId } = await billed();
+    const credited = await adjust(bookingId, { kind: "credit", amountCents: 20000, reason: "Dessert course dropped" });
+    assert.equal(credited.status, 201, credited.text);
+    const { summary } = credited.body;
+    assert.deepEqual([summary.obligationCents, summary.adjustmentCreditsCents, summary.refundsRecordedCents, summary.netReceivedCents, summary.balanceDueCents], [230000, 20000, 0, 100000, 130000]);
+    const replay = await adjust(bookingId, { kind: "credit", amountCents: 20000, reason: "Dessert course dropped", idempotencyKey: (await ledger(bookingId))[0].idempotency_key });
+    assert.deepEqual([replay.status, replay.body.duplicate, replay.body.summary.obligationCents], [200, true, 230000], "applied once");
+    assert.equal((await ledger(bookingId)).length, 1);
+  });
+
+  test("a credit may reach zero and never goes below it, and a credit on money already paid asks for a refund without claiming one", async () => {
+    const { bookingId } = await billed("2500.00");
+    const tooMuch = await adjust(bookingId, { kind: "credit", amountCents: 250001 });
+    assert.deepEqual([tooMuch.status, tooMuch.body.code], [409, "catering_billing_state"]);
+    assert.match(tooMuch.body.message, /cannot be more than what your customer currently owes/);
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 20000 });
+    assert.equal(credit.status, 201, credit.text);
+    assert.deepEqual([credit.body.summary.obligationCents, credit.body.summary.refundPotentiallyDueCents, credit.body.summary.refundsRecordedCents, credit.body.summary.balanceDueCents], [230000, 20000, 0, 0]);
+    assert.equal((await adjust(bookingId, { kind: "credit", amountCents: 230001 })).status, 409);
+    assert.equal((await adjust(bookingId, { kind: "credit", amountCents: 230000 })).status, 201, "all the way to zero");
+    assert.equal((await adjust(bookingId, { kind: "credit", amountCents: 1 })).status, 409, "and no further");
+    assert.equal((await billing(bookingId)).body.summary.obligationCents, 0);
+  });
+
+  test("a credit and a charge need an agreed price", async () => {
+    const bookingId = await confirmed({ guestCount: 40, note: "No price yet" });
+    assert.equal((await bookingRow(bookingId)).agreed_price, null);
+    for (const kind of ["charge", "credit"]) {
+      const refused = await adjust(bookingId, { kind, amountCents: 100 });
+      assert.deepEqual([refused.status, refused.body.code], [409, "catering_billing_state"], kind);
+    }
+  });
+
+  test("two simultaneous credits cannot take the obligation below zero", async () => {
+    const { bookingId } = await billed();
+    const results = await Promise.all([adjust(bookingId, { kind: "credit", amountCents: 150000 }), adjust(bookingId, { kind: "credit", amountCents: 150000 })]);
+    assert.deepEqual(results.map((response) => response.status).sort(), [201, 409]);
+    assert.equal((await billing(bookingId)).body.summary.obligationCents, 100000);
+  });
+
+  test("two simultaneous charges are both recorded, each exactly once", async () => {
+    const { bookingId } = await billed();
+    const results = await Promise.all([adjust(bookingId, { kind: "charge", amountCents: 10000 }), adjust(bookingId, { kind: "charge", amountCents: 20000 })]);
+    assert.deepEqual(results.map((response) => response.status), [201, 201]);
+    assert.equal((await billing(bookingId)).body.summary.obligationCents, 280000);
+    assert.equal((await ledger(bookingId)).length, 2);
+  });
+
+  // ------------------------------------------------------------------------------------------------ refunds
+  test("a provider records an eligible external refund: net received falls once, the obligation does not, and the payment row is untouched", async () => {
+    const { bookingId } = await billed();
+    const paymentsBefore = await rows("catering_booking_payments", bookingId);
+    const refund = await adjust(bookingId, { kind: "refund", amountCents: 30000, reason: "Returned by bank transfer", reference: "BANK-REF-77" });
+    assert.equal(refund.status, 201, refund.text);
+    const { summary } = refund.body;
+    assert.deepEqual([summary.paidTotalCents, summary.refundsRecordedCents, summary.netReceivedCents, summary.obligationCents, summary.balanceDueCents], [100000, 30000, 70000, 250000, 180000]);
+    assert.deepEqual(await rows("catering_booking_payments", bookingId), paymentsBefore, "the recorded payment is never rewritten");
+    const entry = (await ledger(bookingId))[0];
+    assert.deepEqual([entry.entry_kind, entry.source, entry.idempotency_key !== null], ["refund", "provider_recorded", true]);
+    assert.equal(entry.processor ?? null, null, "no processor identity exists to fabricate");
+  });
+
+  test("a refund cannot exceed money recorded as received and not already recorded as returned", async () => {
+    const { bookingId } = await billed();
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 100001 })).status, 409);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 70000 })).status, 201);
+    const over = await adjust(bookingId, { kind: "refund", amountCents: 30001 });
+    assert.deepEqual([over.status, over.body.code], [409, "catering_billing_state"]);
+    assert.match(over.body.message, /already recorded as received and not yet recorded as returned/);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 30000 })).status, 201, "exactly the remainder");
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 1 })).status, 409);
+    assert.equal((await billing(bookingId)).body.summary.netReceivedCents, 0);
+  });
+
+  test("nothing received means nothing to refund", async () => {
+    const { bookingId } = await billed("0");
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 1 })).status, 409);
+  });
+
+  test("two simultaneous refunds against the same received money cannot over-refund", async () => {
+    const { bookingId } = await billed();
+    const results = await Promise.all([adjust(bookingId, { kind: "refund", amountCents: 60000 }), adjust(bookingId, { kind: "refund", amountCents: 60000 })]);
+    assert.deepEqual(results.map((response) => response.status).sort(), [201, 409]);
+    const total = (await ledger(bookingId)).filter((row: { status: string }) => row.status === "posted").reduce((sum: number, row: { amount_cents: string }) => sum + Number(row.amount_cents), 0);
+    assert.equal(total, 60000);
+    assert.ok(total <= 100000);
+  });
+
+  test("a refund may name a payment, is bounded by that payment, and the payment cannot be taken back while it stands", async () => {
+    const { bookingId, invoiceId } = await billed();
+    const paymentId = (await billing(bookingId)).body.payments[0].id as string;
+    const second = await pay(bookingId, invoiceId, "500.00");
+    assert.equal(second.status, 200);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 100001, paymentId })).status, 409, "more than that payment");
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 40000, paymentId })).status, 201);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 60001, paymentId })).status, 409);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 100, paymentId: randomUUID() })).status, 409, "a payment that is not on this booking");
+    const voided = await call("POST", `/bookings/${bookingId}/billing/payments/${paymentId}/void`, tok(PROVIDER), {});
+    assert.equal(voided.status, 409, voided.text);
+    assert.match(voided.body.message, /Reverse that refund record first/);
+    assert.equal((await rows("catering_booking_payments", bookingId)).every((row: { status: string }) => row.status === "recorded"), true);
+  });
+
+  test("a payment that the refunds no longer cover cannot be taken back, so refunds never exceed what was received", async () => {
+    const { bookingId } = await billed();
+    const paymentId = (await billing(bookingId)).body.payments[0].id as string;
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 40000 })).status, 201);
+    const refused = await call("POST", `/bookings/${bookingId}/billing/payments/${paymentId}/void`, tok(PROVIDER), {});
+    assert.equal(refused.status, 409);
+    const entryId = (await ledger(bookingId))[0].id;
+    assert.equal((await reverse(bookingId, entryId)).status, 200);
+    assert.equal((await call("POST", `/bookings/${bookingId}/billing/payments/${paymentId}/void`, tok(PROVIDER), {})).status, 200, "once the refund record is reversed");
+  });
+
+  test("a refund and a new payment racing resolve coherently: every refund fits the money received at the moment it commits", async () => {
+    const { bookingId, invoiceId } = await billed();
+    const [refund, payment] = await Promise.all([adjust(bookingId, { kind: "refund", amountCents: 100000 }), pay(bookingId, invoiceId, "250.00")]);
+    assert.equal(refund.status, 201);
+    assert.equal(payment.status, 200);
+    const { summary } = (await billing(bookingId)).body;
+    assert.deepEqual([summary.paidTotalCents, summary.refundsRecordedCents, summary.netReceivedCents], [125000, 100000, 25000]);
+  });
+
+  // ------------------------------------------------------------------------------------------------ idempotency
+  test("an exact retry is safe: one row, one notification; the same key with a changed payload is a conflict", async () => {
+    const { bookingId } = await billed();
+    const body = { kind: "charge", amountCents: 12345, reason: "Extra linen", idempotencyKey: "retry-key-0001" };
+    const first = await adjust(bookingId, body);
+    const second = await adjust(bookingId, body);
+    assert.deepEqual([first.status, first.body.duplicate, second.status, second.body.duplicate], [201, false, 200, true]);
+    assert.equal((await ledger(bookingId)).length, 1);
+    assert.equal((await notificationsFor(CUSTOMER_A, "catering_booking_adjustment_posted")).length, 1, "a retry is not news");
+    for (const changed of [{ amountCents: 12346 }, { reason: "Different" }, { kind: "credit" }, { currency: "EUR" }]) {
+      const conflict = await adjust(bookingId, { ...body, ...changed });
+      assert.deepEqual([conflict.status, conflict.body.code], [409, "catering_billing_state"], JSON.stringify(changed));
+      assert.match(conflict.body.message, /already recorded with different details/);
+    }
+    assert.equal((await ledger(bookingId)).length, 1);
+    assert.equal((await billing(bookingId)).body.summary.obligationCents, 262345);
+  });
+
+  test("concurrent retries of one attempt create one entry", async () => {
+    const { bookingId } = await billed();
+    const body = { kind: "credit", amountCents: 5000, reason: "Goodwill", idempotencyKey: "concurrent-retry-1" };
+    const results = await Promise.all([adjust(bookingId, body), adjust(bookingId, body), adjust(bookingId, body)]);
+    assert.deepEqual(results.map((response) => response.status).sort(), [200, 200, 201]);
+    assert.equal((await ledger(bookingId)).length, 1);
+    assert.equal((await notificationsFor(CUSTOMER_A, "catering_booking_adjustment_posted")).length, 1);
+  });
+
+  test("a replay is answered from what happened, even after the booking has moved on", async () => {
+    const { bookingId } = await billed();
+    const body = { kind: "refund", amountCents: 1000, reason: "Returned", idempotencyKey: "replay-after-cancel" };
+    assert.equal((await adjust(bookingId, body)).status, 201);
+    await setStatus(bookingId, "cancelled");
+    const replay = await adjust(bookingId, body);
+    assert.deepEqual([replay.status, replay.body.duplicate], [200, true]);
+  });
+
+  // ------------------------------------------------------------------------------------------------ reversal
+  test("a reversal keeps the entry visible, stops it counting, and is idempotent by state", async () => {
+    const { bookingId } = await billed();
+    const created = await adjust(bookingId, { kind: "charge", amountCents: 40000, reason: "Extra guests" });
+    const entryId = created.body.adjustments[0].id as string;
+    const reversed = await reverse(bookingId, entryId, PROVIDER, { reason: "Wrong booking" });
+    assert.equal(reversed.status, 200, reversed.text);
+    const view = (await billing(bookingId, CUSTOMER_A)).body;
+    assert.deepEqual(view.adjustments.map((entry: { status: string; reversalReason: string | null; amountCents: number }) => [entry.status, entry.reversalReason, entry.amountCents]), [["reversed", "Wrong booking", 40000]], "still historically visible");
+    assert.deepEqual([view.summary.obligationCents, view.summary.adjustmentChargesCents], [250000, 0], "no longer counts");
+    const again = await reverse(bookingId, entryId);
+    assert.deepEqual([again.status, again.body.duplicate], [200, true]);
+    assert.equal((await notificationsFor(CUSTOMER_A, "catering_booking_adjustment_reversed")).length, 1);
+    assert.equal((await ledger(bookingId)).length, 1, "reversal appends nothing and deletes nothing");
+    assert.equal((await reverse(bookingId, entryId, PROVIDER, { reason: "" })).status, 400, "a reason is required");
+  });
+
+  test("a reversal that would leave the ledger incoherent is refused, and a credit can be reversed to restore the obligation", async () => {
+    const { bookingId } = await billed("0");
+    const charge = (await adjust(bookingId, { kind: "charge", amountCents: 100000 })).body.adjustments[0].id;
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 340000 });
+    assert.equal(credit.status, 201, credit.text);
+    assert.equal(credit.body.summary.obligationCents, 10000);
+    const refused = await reverse(bookingId, charge);
+    assert.deepEqual([refused.status, refused.body.code], [409, "catering_billing_state"]);
+    assert.match(refused.body.message, /cannot be more than what your customer currently owes/);
+    const creditId = (await ledger(bookingId)).find((row: { entry_kind: string }) => row.entry_kind === "credit").id;
+    assert.equal((await reverse(bookingId, creditId)).status, 200);
+    assert.equal((await billing(bookingId)).body.summary.obligationCents, 350000);
+  });
+
+  test("a reversal racing a new credit leaves a coherent ledger", async () => {
+    const { bookingId } = await billed("0");
+    const charge = (await adjust(bookingId, { kind: "charge", amountCents: 100000 })).body.adjustments[0].id;
+    await Promise.all([reverse(bookingId, charge), adjust(bookingId, { kind: "credit", amountCents: 340000 })]);
+    const { summary } = (await billing(bookingId)).body;
+    assert.ok(summary.obligationCents >= 0, `obligation ${summary.obligationCents}`);
+  });
+
+  test("a refund record can be reversed, restoring net received, and an unpaid request cannot outlive the obligation that justified it", async () => {
+    const { bookingId } = await billed("2500.00");
+    await adjust(bookingId, { kind: "charge", amountCents: 40000 });
+    const adjustmentRequest = await issue(bookingId, "adjustment");
+    assert.equal(adjustmentRequest.status, 200, adjustmentRequest.text);
+    const chargeId = (await ledger(bookingId))[0].id;
+    const refused = await reverse(bookingId, chargeId);
+    assert.deepEqual([refused.status, refused.body.code], [409, "catering_billing_state"]);
+    assert.match(refused.body.message, /Withdraw that request first/);
+    const refund = await adjust(bookingId, { kind: "refund", amountCents: 10000 });
+    assert.equal((await reverse(bookingId, refund.body.adjustments[1].id)).status, 200);
+    assert.equal((await billing(bookingId)).body.summary.netReceivedCents, 250000);
+  });
+
+  // ------------------------------------------------------------------------------------------------ booking status
+  test("cancellation preserves every record, still accepts refund records, and refuses new charges and credits", async () => {
+    const { bookingId } = await billed();
+    await adjust(bookingId, { kind: "charge", amountCents: 40000 });
+    await adjust(bookingId, { kind: "credit", amountCents: 10000 });
+    await setStatus(bookingId, "cancelled");
+    const customerView = await billing(bookingId, CUSTOMER_A);
+    assert.equal(customerView.status, 200);
+    assert.equal(customerView.body.adjustments.length, 2, "history stays readable");
+    for (const kind of ["charge", "credit"]) {
+      const refused = await adjust(bookingId, { kind, amountCents: 100 });
+      assert.deepEqual([refused.status, refused.body.code], [409, "catering_billing_state"], kind);
+      assert.match(refused.body.message, /cancelled/);
+    }
+    const refund = await adjust(bookingId, { kind: "refund", amountCents: 100000, reason: "Event cancelled; returned in full" });
+    assert.equal(refund.status, 201, refund.text);
+    assert.deepEqual([refund.body.summary.netReceivedCents, refund.body.adjustments.length], [0, 3]);
+    assert.equal((await issue(bookingId, "balance")).status, 409, "Phase 2L billing writes stay closed by cancellation");
+    const chargeId = (await ledger(bookingId)).find((row: { entry_kind: string }) => row.entry_kind === "charge").id;
+    assert.equal((await reverse(bookingId, chargeId)).status, 409, "a cancelled booking only reverses refund records");
+    assert.equal((await ledger(bookingId)).every((row: { status: string }) => row.status === "posted"), true);
+  });
+
+  test("a completed booking keeps readable history and accepts only reconciliation: credits and refunds, not a new charge", async () => {
+    const { bookingId } = await billed();
+    const charge = await adjust(bookingId, { kind: "charge", amountCents: 40000 });
+    await setStatus(bookingId, "completed");
+    assert.equal((await billing(bookingId, CUSTOMER_A)).body.adjustments.length, 1);
+    const refusedCharge = await adjust(bookingId, { kind: "charge", amountCents: 100 });
+    assert.deepEqual([refusedCharge.status, refusedCharge.body.code], [409, "catering_billing_state"]);
+    assert.match(refusedCharge.body.message, /complete/);
+    assert.equal((await adjust(bookingId, { kind: "credit", amountCents: 5000 })).status, 201);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 5000 })).status, 201);
+    assert.equal((await reverse(bookingId, charge.body.adjustments[0].id)).status, 200, "undoing a charge only lowers what is owed");
+    const creditId = (await ledger(bookingId)).find((row: { entry_kind: string }) => row.entry_kind === "credit").id;
+    assert.equal((await reverse(bookingId, creditId)).status, 409, "undoing a credit would raise what is owed after the event");
+    assert.equal((await bookingRow(bookingId)).status, "completed", "the operational lifecycle is never touched");
+  });
+
+  test("a charge racing a cancellation is either recorded and then cancelled, or refused: never a charge added to a cancelled booking", async () => {
+    for (let round = 0; round < 6; round += 1) {
+      const { bookingId } = await billed();
+      const [charge, cancelled] = await Promise.all([adjust(bookingId, { kind: "charge", amountCents: 100 }), call("POST", `/bookings/${bookingId}/cancel`, tok(CUSTOMER_A), {})]);
+      assert.equal(cancelled.status, 200, cancelled.text);
+      assert.ok([201, 409].includes(charge.status), charge.text);
+      const entries = await ledger(bookingId);
+      const booking = await bookingRow(bookingId);
+      assert.equal(booking.status, "cancelled");
+      // The charge answered 201 if and only if its row exists, and it was refused for the cancellation if it lost the race:
+      // the booking row lock is what makes "judged against the booking as it is NOW" true.
+      if (charge.status === 409) { assert.equal(entries.length, 0); assert.match(charge.body.message, /cancelled/); }
+      else assert.deepEqual(entries.map((row: { entry_kind: string }) => row.entry_kind), ["charge"]);
+      assert.equal((await billing(bookingId, CUSTOMER_A)).status, 200, "history stays readable either way");
+    }
+  });
+
+  test("before confirmation only refund records are possible: price changes go through the offer", async () => {
+    const made = await offered();
+    for (const kind of ["charge", "credit"]) assert.equal((await adjust(made.bookingId, { kind, amountCents: 100 })).status, 409, kind);
+  });
+
+  // ------------------------------------------------------------------------------------------------ amendments
+  test("a price-INCREASING amendment after billing records exactly one charge atomically and leaves the invoice alone", async () => {
+    const { bookingId, invoiceId } = await billed();
+    const invoicesBefore = await rows("catering_booking_invoices", bookingId);
+    const created = await propose(bookingId, { priceCents: 290000 }, CUSTOMER_A);
+    assert.equal(created.status, 201, created.text);
+    const accepted = await respond(bookingId, created.body.amendments.pending.id, "accept", PROVIDER);
+    assert.equal(accepted.status, 200, accepted.text);
+    assert.equal((await bookingRow(bookingId)).agreed_price, "2900.00");
+    const entries = await ledger(bookingId);
+    assert.deepEqual(entries.map((row: { entry_kind: string; source: string; amount_cents: string; status: string }) => [row.entry_kind, row.source, Number(row.amount_cents), row.status]), [["charge", "amendment", 40000, "posted"]]);
+    assert.deepEqual(await rows("catering_booking_invoices", bookingId), invoicesBefore);
+    const { body } = await billing(bookingId, CUSTOMER_A);
+    assert.deepEqual([body.summary.agreedTotalCents, body.summary.originalAgreedCents, body.summary.obligationCents, body.summary.adjustmentChargesCents, body.summary.balanceDueCents], [290000, 250000, 290000, 40000, 190000], "the 400 is explained, not added twice");
+    assert.equal(body.adjustments[0].amendmentNumber, 1);
+    assert.equal(body.invoices.find((row: { id: string }) => row.id === invoiceId).amountCents, 250000);
+    assert.deepEqual(body.adjustments[0].paymentId, null);
+  });
+
+  test("a price-DECREASING amendment after billing records one credit, claims no refund, and flags a refund as potentially due", async () => {
+    const { bookingId } = await billed("2500.00");
+    const created = await propose(bookingId, { priceCents: 230000 }, PROVIDER);
+    assert.equal((await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A)).status, 200);
+    const entries = await ledger(bookingId);
+    assert.deepEqual(entries.map((row: { entry_kind: string; source: string; amount_cents: string }) => [row.entry_kind, row.source, Number(row.amount_cents)]), [["credit", "amendment", 20000]]);
+    const { summary } = (await billing(bookingId)).body;
+    assert.deepEqual([summary.obligationCents, summary.refundsRecordedCents, summary.refundPotentiallyDueCents, summary.paidTotalCents], [230000, 0, 20000, 250000]);
+    assert.equal((await adjust(bookingId, { kind: "refund", amountCents: 20000, reason: "Returned the difference" })).status, 201);
+    assert.equal((await billing(bookingId)).body.summary.refundsRecordedCents, 20000);
+  });
+
+  test("an amendment that would leave an unpaid request asking for more than is owed is refused whole and stays pending", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    const version = (await billing(bookingId)).body.invoices[0].updatedAt as string;
+    const created = await propose(bookingId, { priceCents: 230000 }, PROVIDER);
+    const refused = await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A);
+    assert.deepEqual([refused.status, refused.body.code], [409, "billing_reconciliation_blocked"]);
+    assert.equal((await bookingRow(bookingId)).agreed_price, "2500.00");
+    assert.equal((await ledger(bookingId)).length, 0, "nothing half-written");
+    const withdrawn = await call("POST", `/bookings/${bookingId}/billing/invoices/${invoiceId}/void`, tok(PROVIDER), { expectedUpdatedAt: version });
+    assert.equal(withdrawn.status, 200, withdrawn.text);
+    assert.equal((await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A)).status, 200, "once the request is withdrawn");
+    assert.equal((await bookingRow(bookingId)).agreed_price, "2300.00");
+    assert.deepEqual(await ledger(bookingId), [], "a withdrawn request with no payment is no ledger activity, so there is nothing to reconcile");
+  });
+
+  test("a currency amendment, or clearing the price, stays fail-closed once any ledger activity exists, adjustments included", async () => {
+    const { bookingId } = await billed();
+    for (const change of [{ currency: "EUR" }, { priceCents: null }]) {
+      const refused = await propose(bookingId, change, PROVIDER);
+      assert.deepEqual([refused.status, refused.body.code], [409, "billing_terms_locked"], JSON.stringify(change));
+    }
+    // Ledger activity from an adjustment alone is enough: here no invoice or payment exists at all.
+    const second = await confirmed({ priceCents: 100000 }, { customer: CUSTOMER_B });
+    assert.equal((await propose(second, { currency: "EUR" }, PROVIDER)).status, 201, "no ledger activity yet: legal");
+    const third = await confirmed({ priceCents: 100000 }, { customer: CUSTOMER_B });
+    await adjust(third, { kind: "charge", amountCents: 100 });
+    const refused = await propose(third, { currency: "EUR" }, PROVIDER, );
+    assert.deepEqual([refused.status, refused.body.code], [409, "billing_terms_locked"]);
+  });
+
+  test("the amendments view reports that billing has started, so the currency control stays locked", async () => {
+    const { bookingId } = await billed();
+    const view = await call("GET", `/bookings/${bookingId}/amendments`, tok(CUSTOMER_A));
+    assert.equal(view.body.amendments.billingTermsLocked, true);
+  });
+
+  test("duplicate and concurrent acceptance create exactly one ledger entry, and a retry cannot double count", async () => {
+    const { bookingId } = await billed();
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    const amendmentId = created.body.amendments.pending.id as string;
+    const results = await Promise.all([respond(bookingId, amendmentId, "accept", CUSTOMER_A), respond(bookingId, amendmentId, "accept", CUSTOMER_A), respond(bookingId, amendmentId, "accept", CUSTOMER_A)]);
+    assert.equal(results.every((response) => response.status === 200), true, JSON.stringify(results.map((response) => response.text)));
+    assert.equal((await ledger(bookingId)).length, 1);
+    assert.equal((await respond(bookingId, amendmentId, "accept", CUSTOMER_A)).status, 200, "a late retry is a no-op");
+    assert.equal((await ledger(bookingId)).length, 1);
+    assert.equal((await billing(bookingId)).body.summary.obligationCents, 290000);
+  });
+
+  test("the same amendment cannot create a second ledger entry: the database refuses it", async () => {
+    const { bookingId } = await billed();
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    const amendmentId = created.body.amendments.pending.id as string;
+    await respond(bookingId, amendmentId, "accept", CUSTOMER_A);
+    await assert.rejects(local.query(`INSERT INTO catering_booking_adjustments (booking_id, entry_kind, source, amount_cents, currency, reason, amendment_id, recorded_by) VALUES ($1, 'charge', 'amendment', 40000, 'USD', 'again', $2, $3)`, [bookingId, amendmentId, PROVIDER]), /catering_adjustments_amendment_uidx/);
+  });
+
+  test("an acceptance and its financial effect cannot half-commit: a failure rolls back the price, the acceptance and the entry together", async () => {
+    const { bookingId } = await billed();
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    const amendmentId = created.body.amendments.pending.id as string;
+    // A row already bound to this amendment makes the ledger insert violate its unique index INSIDE the acceptance.
+    await local.query(`INSERT INTO catering_booking_adjustments (booking_id, entry_kind, source, amount_cents, currency, reason, amendment_id, recorded_by) VALUES ($1, 'charge', 'amendment', 1, 'USD', 'pre-existing', $2, $3)`, [bookingId, amendmentId, PROVIDER]);
+    const response = await fetch(`${base()}/bookings/${bookingId}/amendments/${amendmentId}/accept`, { method: "POST", headers: { ...tok(CUSTOMER_A), "content-type": "application/json" }, body: "{}" });
+    assert.equal(response.status, 500);
+    assert.equal((await bookingRow(bookingId)).agreed_price, "2500.00", "the price did not move");
+    assert.equal((await local.query(`SELECT status FROM catering_booking_amendments WHERE id = $1`, [amendmentId])).rows[0].status, "pending", "the amendment is still pending");
+    assert.equal((await ledger(bookingId)).length, 1, "only the row that was already there");
+  });
+
+  test("an invoice and an amendment racing leave a coherent ledger whichever commits first", async () => {
+    const bookingId = await confirmed();
+    await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "fixed", amount: "500" });
+    assert.equal((await issue(bookingId, "deposit")).status, 200);
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    const [accepted, invoiced] = await Promise.all([respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A), issue(bookingId, "balance")]);
+    assert.equal(accepted.status, 200, accepted.text);
+    assert.equal(invoiced.status, 200, invoiced.text);
+    const { body } = await billing(bookingId);
+    const live = body.invoices.filter((row: { status: string }) => row.status === "issued").reduce((sum: number, row: { amountCents: number }) => sum + row.amountCents, 0);
+    assert.equal(body.summary.obligationCents, 290000);
+    assert.ok(live <= 290000, `live invoices ${live}`);
+    assert.equal((await ledger(bookingId)).length, 1);
+    // Whatever the balance request was derived from, anything the obligation still has beyond it is requestable exactly once.
+    for (const kind of body.issuable as string[]) assert.equal(kind, "adjustment");
+  });
+
+  test("a price amendment before any billing needs no ledger entry, and its history is untouched by later adjustments", async () => {
+    const bookingId = await confirmed();
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    assert.equal((await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A)).status, 200);
+    assert.equal((await ledger(bookingId)).length, 0, "nothing was billed, so there is nothing to reconcile");
+    assert.equal((await billing(bookingId)).body.summary.originalAgreedCents, 290000);
+  });
+
+  // ------------------------------------------------------------------------------------------------ unrelated history
+  test("Phase 2N offer history, Phase 2O amendment history and operational data are unchanged by ledger activity", async () => {
+    const { bookingId } = await billed();
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A);
+    const snapshot = async () => ({
+      offers: await rows("catering_offer_revisions", bookingId),
+      amendments: await rows("catering_booking_amendments", bookingId),
+      details: await rows("catering_booking_details", bookingId),
+      activity: (await rows("catering_booking_activity", bookingId)).length,
+    });
+    const before = await snapshot();
+    const booking = await bookingRow(bookingId);
+    await adjust(bookingId, { kind: "charge", amountCents: 100 });
+    await adjust(bookingId, { kind: "credit", amountCents: 100 });
+    await adjust(bookingId, { kind: "refund", amountCents: 100 });
+    assert.deepEqual(await snapshot(), before);
+    const after = await bookingRow(bookingId);
+    assert.deepEqual([after.agreed_price, after.status, after.guest_count, after.currency], [booking.agreed_price, booking.status, booking.guest_count, booking.currency], "the confirmed booking projection stays authoritative");
+  });
+
+  test("a booking that predates the ledger works unchanged and fabricates no rows", async () => {
+    const bookingId = await confirmed();
+    await local.query(`INSERT INTO catering_booking_invoices (booking_id, invoice_number, invoice_kind, amount_cents, currency, status, issued_at) VALUES ($1, 1, 'deposit', 50000, 'USD', 'issued', now())`, [bookingId]);
+    const invoiceId = (await local.query(`SELECT id FROM catering_booking_invoices WHERE booking_id = $1`, [bookingId])).rows[0].id;
+    await local.query(`INSERT INTO catering_booking_payments (booking_id, invoice_id, amount_cents, currency, payment_method, received_on, recorded_by, idempotency_key) VALUES ($1, $2, 20000, 'USD', 'cash', '2020-01-01', $3, 'legacy-key-0001')`, [bookingId, invoiceId, PROVIDER]);
+    const view = await billing(bookingId, CUSTOMER_A);
+    assert.equal(view.status, 200);
+    assert.deepEqual(view.body.adjustments, []);
+    const { summary } = view.body;
+    assert.deepEqual([summary.agreedTotalCents, summary.originalAgreedCents, summary.obligationCents, summary.paidTotalCents, summary.netReceivedCents, summary.remainingOfAgreedCents, summary.balanceDueCents, summary.refundPotentiallyDueCents], [250000, 250000, 250000, 20000, 20000, 230000, 230000, 0]);
+    assert.equal((await ledger(bookingId)).length, 0, "reading billing never writes an adjustment");
+    assert.equal((await pay(bookingId, invoiceId, "300.00")).status, 200, "Phase 2L payments behave exactly as before");
+    assert.equal((await ledger(bookingId)).length, 0);
+  });
+
+  // ------------------------------------------------------------------------------------------------ privacy
+  test("the provider's reference and internal attribution never reach the customer, and no raw row is exposed", async () => {
+    const { bookingId } = await billed();
+    await adjust(bookingId, { kind: "refund", amountCents: 5000, reason: "Returned", reference: "PRIVATE-BANK-REF-991" });
+    const customer = await billing(bookingId, CUSTOMER_A);
+    const provider = await billing(bookingId, PROVIDER);
+    assert.equal(customer.text.includes("PRIVATE-BANK-REF-991"), false);
+    assert.equal(customer.body.adjustmentActions, undefined, "no provider-only object at all");
+    assert.equal("reference" in customer.body.adjustments[0], false);
+    for (const leaked of ["recordedBy", "recorded_by", "idempotency", "reversedBy", PROVIDER, "processor"]) assert.equal(customer.text.includes(leaked), false, leaked);
+    assert.equal(provider.body.adjustments[0].reference, "PRIVATE-BANK-REF-991");
+    assert.equal(provider.text.includes("recorded_by"), false);
+    assert.deepEqual(Object.keys(customer.body.adjustments[0]).sort(), ["amendmentNumber", "amountCents", "createdAt", "currency", "id", "kind", "paymentId", "reason", "reversalReason", "reversedAt", "source", "status"]);
+  });
+
+  test("notifications go to the customer once, name no amount, reason or payment detail, and a failure never un-posts the entry", async () => {
+    const { bookingId } = await billed();
+    await adjust(bookingId, { kind: "refund", amountCents: 4321, reason: "Secret reason text", reference: "REF-ABC" });
+    const sent = await notificationsFor(CUSTOMER_A, "catering_booking_adjustment_posted");
+    assert.equal(sent.length, 1);
+    for (const text of [sent[0].title, sent[0].message]) {
+      for (const leaked of ["4321", "43.21", "Secret reason text", "REF-ABC", "refund"]) assert.equal(text.toLowerCase().includes(leaked.toLowerCase()), false, leaked);
+    }
+    assert.match(sent[0].link_url, /#billing$/);
+    assert.equal((await notificationsFor(PROVIDER, "catering_booking_adjustment_posted")).length, 0, "the actor is not told about their own action");
+    await local.query(`ALTER TABLE notifications ADD CONSTRAINT no_adjustment_notifications CHECK (type NOT LIKE 'catering_booking_adjustment%') NOT VALID`);
+    const survived = await adjust(bookingId, { kind: "charge", amountCents: 700, reason: "Added while notifications are failing" });
+    assert.equal(survived.status, 201, survived.text);
+    assert.equal((await ledger(bookingId)).length, 2, "the committed entry stands");
+    assert.equal((await notificationsFor(CUSTOMER_A, "catering_booking_adjustment_posted")).length, 1, "and the failed notification was not retried into a duplicate");
+  });
+
+  // ------------------------------------------------------------------------------------------------ the formula
+  test("the derived position is exact: original + charges - credits = obligation, payments - refunds = net received, obligation - net = balance", async () => {
+    const { bookingId } = await billed();
+    await adjust(bookingId, { kind: "charge", amountCents: 40000 });
+    await adjust(bookingId, { kind: "credit", amountCents: 20000 });
+    await adjust(bookingId, { kind: "refund", amountCents: 30000 });
+    const { summary } = (await billing(bookingId)).body;
+    assert.deepEqual(
+      [summary.originalAgreedCents, summary.adjustmentChargesCents, summary.adjustmentCreditsCents, summary.obligationCents, summary.paidTotalCents, summary.refundsRecordedCents, summary.netReceivedCents, summary.balanceDueCents, summary.refundPotentiallyDueCents],
+      [250000, 40000, 20000, 270000, 100000, 30000, 70000, 200000, 0]);
+    assert.equal(summary.originalAgreedCents + summary.adjustmentChargesCents - summary.adjustmentCreditsCents, summary.obligationCents);
+    assert.equal(summary.paidTotalCents - summary.refundsRecordedCents, summary.netReceivedCents);
+    assert.equal(summary.obligationCents - summary.netReceivedCents, summary.balanceDueCents);
+  });
+
+  test("a payment may not take the customer past what they now owe after a credit", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    await adjust(bookingId, { kind: "credit", amountCents: 20000 });
+    const view = (await billing(bookingId)).body;
+    assert.equal(view.summary.outstandingInvoicedCents, 230000, "an old request never asks for more than is owed");
+    assert.equal(view.summary.nextAmountDueCents, 230000);
+    const over = await pay(bookingId, invoiceId, "2400.00");
+    assert.equal(over.status, 409, over.text);
+    assert.equal((await pay(bookingId, invoiceId, "2300.00")).status, 200);
+  });
+
+  // ------------------------------------------------------------------------------------------------ the database
+  test("migration: additive and idempotent, fabricates nothing, and the database itself refuses rewritten, deleted or malformed entries", async () => {
+    const { bookingId } = await billed();
+    const before = [await rows("catering_booking_invoices", bookingId), await rows("catering_booking_payments", bookingId)];
+    await local.query(adjustmentMigration);
+    await local.query(adjustmentMigration);
+    assert.deepEqual([await rows("catering_booking_invoices", bookingId), await rows("catering_booking_payments", bookingId)], before);
+    assert.equal((await ledger(bookingId)).length, 0);
+    const created = await adjust(bookingId, { kind: "charge", amountCents: 1000 });
+    const id = created.body.adjustments[0].id;
+    await assert.rejects(local.query(`DELETE FROM catering_booking_adjustments WHERE id = $1`, [id]), /never deleted/);
+    for (const column of ["amount_cents = 2", "reason = 'x'", "currency = 'EUR'", "entry_kind = 'credit'", "booking_id = booking_id", "recorded_by = 'customer-a'", "idempotency_key = 'x-key-12345'"]) {
+      if (column === "booking_id = booking_id") continue;
+      await assert.rejects(local.query(`UPDATE catering_booking_adjustments SET ${column} WHERE id = $1`, [id]), /immutable|violates/, column);
+    }
+    await local.query(`UPDATE catering_booking_adjustments SET status = 'reversed', reversed_at = now(), reversed_by = $2, reversal_reason = 'ok' WHERE id = $1`, [id, PROVIDER]);
+    await assert.rejects(local.query(`UPDATE catering_booking_adjustments SET status = 'posted', reversed_at = NULL, reversed_by = NULL, reversal_reason = NULL WHERE id = $1`, [id]), /immutable/, "a reversed entry cannot be revived");
+    await assert.rejects(local.query(`UPDATE catering_booking_adjustments SET reversal_reason = 'rewritten' WHERE id = $1`, [id]), /immutable/);
+    const insert = (columns: string, values: string) => local.query(`INSERT INTO catering_booking_adjustments (booking_id, amount_cents, currency, reason, recorded_by, ${columns}) VALUES ($1, 100, 'USD', 'r', $2, ${values})`, [bookingId, PROVIDER]);
+    await assert.rejects(insert("entry_kind, source", `'charge', 'provider_recorded'`), /provenance/, "a provider entry needs its key");
+    await assert.rejects(insert("entry_kind, source, idempotency_key", `'refund', 'amendment', 'k-0000001'`), /provenance/, "an amendment entry carries no key and is never a refund");
+    await assert.rejects(insert("entry_kind, source, idempotency_key, reference", `'charge', 'provider_recorded', 'k-0000002', 'ref'`), /refund_columns/, "only a refund carries a reference");
+    await assert.rejects(insert("entry_kind, source, idempotency_key", `'bonus', 'provider_recorded', 'k-0000003'`), /kind_check/);
+    await assert.rejects(local.query(`INSERT INTO catering_booking_adjustments (booking_id, entry_kind, amount_cents, currency, reason, recorded_by, idempotency_key) VALUES ($1, 'charge', 0, 'USD', 'r', $2, 'k-0000004')`, [bookingId, PROVIDER]), /amount_check/);
+    await assert.rejects(local.query(`INSERT INTO catering_booking_adjustments (booking_id, entry_kind, amount_cents, currency, reason, recorded_by, idempotency_key) VALUES ($1, 'charge', 100, 'usd', 'r', $2, 'k-0000005')`, [bookingId, PROVIDER]), /currency_check/);
+    await assert.rejects(local.query(`INSERT INTO catering_booking_adjustments (booking_id, entry_kind, amount_cents, currency, reason, recorded_by, idempotency_key, status) VALUES ($1, 'charge', 100, 'USD', 'r', $2, 'k-0000006', 'reversed')`, [bookingId, PROVIDER]), /reversal_check/);
+    await assert.rejects(local.query(`INSERT INTO catering_booking_adjustments (booking_id, entry_kind, amount_cents, currency, reason, recorded_by, idempotency_key) VALUES ($1, 'charge', 100, 'USD', 'r', $2, $3)`, [bookingId, PROVIDER, (await ledger(bookingId))[0].idempotency_key]), /idempotency_uidx/, "one row per attempt key");
+    const columns = (await local.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'catering_booking_adjustments'`)).rows.map((row: { column_name: string }) => row.column_name);
+    assert.equal(columns.some((name: string) => /processor|transaction|external_id/.test(name)), false, "nothing implies ChefSire verified or sent money");
+  });
+
+  test("the invoice kind check accepts `adjustment`, several may be live together, and a second balance still cannot be", async () => {
+    const bookingId = await confirmed();
+    const insert = (kind: string, number: number) => local.query(`INSERT INTO catering_booking_invoices (booking_id, invoice_number, invoice_kind, amount_cents, currency, status, issued_at) VALUES ($1, $2, $3, 100, 'USD', 'issued', now())`, [bookingId, number, kind]);
+    await insert("balance", 1);
+    await insert("adjustment", 2);
+    await insert("adjustment", 3);
+    await assert.rejects(insert("balance", 4), /catering_invoices_live_kind_uidx/);
+    await assert.rejects(insert("surcharge", 5), /catering_invoice_kind_check/);
+  });
+}

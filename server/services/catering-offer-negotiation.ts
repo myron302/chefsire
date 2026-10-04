@@ -1,5 +1,5 @@
 import { and, asc, eq, ne } from "drizzle-orm";
-import { cateringBookingInvoices, cateringBookingPayments, cateringBookings, cateringOfferRevisions, type CateringBooking, type CateringOfferRevision } from "@shared/schema";
+import { cateringBookingAdjustments, cateringBookingInvoices, cateringBookingPayments, cateringBookings, cateringOfferRevisions, type CateringBooking, type CateringOfferRevision } from "@shared/schema";
 import { cateringCentsToDecimal, cateringMoneyToCents } from "@shared/catering-booking-billing";
 import {
   CATERING_OFFER_HISTORY_LIMIT, cateringOfferActions, cateringOfferNegotiationState,
@@ -68,7 +68,10 @@ export async function cateringBillingLedgerActive(executor: Executor, bookingId:
     .where(and(eq(cateringBookingInvoices.bookingId, bookingId), ne(cateringBookingInvoices.status, "void"))).limit(1);
   if (invoice) return true;
   const [payment] = await executor.select({ id: cateringBookingPayments.id }).from(cateringBookingPayments).where(eq(cateringBookingPayments.bookingId, bookingId)).limit(1);
-  return Boolean(payment);
+  if (payment) return true;
+  // Phase 2P: an adjustment-ledger entry is billing history too, so currency stays fail-closed once any exists.
+  const [adjustment] = await executor.select({ id: cateringBookingAdjustments.id }).from(cateringBookingAdjustments).where(eq(cateringBookingAdjustments.bookingId, bookingId)).limit(1);
+  return Boolean(adjustment);
 }
 
 /**

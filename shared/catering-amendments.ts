@@ -16,7 +16,11 @@ import { CATERING_OFFER_GUEST_MAX, CATERING_OFFER_NOTE_MAX_LENGTH, CATERING_OFFE
  */
 export const CATERING_AMENDMENT_FIELDS = ["event_date", "guest_count", "price_cents", "currency", "terms_note"] as const;
 export type CateringAmendmentField = typeof CATERING_AMENDMENT_FIELDS[number];
-/** Price and currency are the only terms an invoice depends on. */
+/**
+ * Price and currency are the only terms an invoice depends on. Once billing exists a PRICE change is reconciled into the
+ * Phase 2P adjustment ledger in the transaction that accepts it; a CURRENCY change stays refused outright, because the
+ * ledger converts nothing.
+ */
 export const CATERING_AMENDMENT_BILLING_FIELDS: readonly CateringAmendmentField[] = ["price_cents", "currency"];
 
 export const CATERING_AMENDMENT_STATUSES = ["pending", "accepted", "declined", "withdrawn", "superseded"] as const;
@@ -52,7 +56,7 @@ export type CateringAmendmentProposalInput = z.infer<typeof cateringAmendmentPro
 export const cateringAmendmentResponseSchema = z.object({}).strict();
 export const cateringAmendmentIdSchema = z.string().uuid();
 
-export const CATERING_AMENDMENT_ERROR_CODES = ["amendment_closed", "amendment_pending", "amendment_not_pending", "stale_terms", "billing_terms_locked", "date_unavailable", "no_change", "history_limit", "not_counterparty", "not_proposer"] as const;
+export const CATERING_AMENDMENT_ERROR_CODES = ["amendment_closed", "amendment_pending", "amendment_not_pending", "stale_terms", "billing_terms_locked", "billing_reconciliation_blocked", "date_unavailable", "no_change", "history_limit", "not_counterparty", "not_proposer"] as const;
 export type CateringAmendmentErrorCode = typeof CATERING_AMENDMENT_ERROR_CODES[number];
 
 export type CateringAmendmentTerms = { eventDate: string; guestCount: number | null; priceCents: number | null; currency: string; termsNote: string | null };
@@ -84,7 +88,10 @@ export type CateringAmendmentsView = {
   pending: CateringAmendmentView | null;
   /** Newest first, at most CATERING_AMENDMENT_HISTORY_LIMIT, pending one included. */
   amendments: CateringAmendmentView[];
-  /** True once billing has started, so price and currency can no longer be amended. */
+  /**
+   * True once billing has started. From then on the currency can no longer change, and a price change is accepted only
+   * between two stated prices and is recorded as an additional charge or a credit; historical invoices never change.
+   */
   billingTermsLocked: boolean;
   actions: { canPropose: boolean; canAccept: boolean; canDecline: boolean; canWithdraw: boolean };
 };

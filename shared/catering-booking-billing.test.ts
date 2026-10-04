@@ -366,11 +366,12 @@ test("no financial status is a booking status, and no booking status is a financ
  * The enums this phase deliberately kept small
  * ------------------------------------------------------------------------------------------------------------- */
 
-test("there are exactly two invoice kinds, and no adjustment kind", () => {
-  assert.deepEqual([...CATERING_INVOICE_KINDS], ["deposit", "balance"]);
-  // An adjustment would bill beyond the agreed price, and `agreed_price` is written once at booking creation and
-  // never updated by anything in the repository -- so there would be no agreement behind the difference.
-  assert.equal((CATERING_INVOICE_KINDS as readonly string[]).includes("adjustment"), false);
+test("there are exactly three invoice kinds: Phase 2P added `adjustment` once there was an agreement behind one", () => {
+  assert.deepEqual([...CATERING_INVOICE_KINDS], ["deposit", "balance", "adjustment"]);
+  // Phase 2L refused a third kind because `agreed_price` was written once and never updated, so an invoice beyond it would
+  // have had no agreement behind the difference. Phase 2O added the agreement (an accepted amendment) and Phase 2P the
+  // ledger that records it; an `adjustment` request is issued only for what that ledger has ADDED, never for headroom alone.
+  assert.equal(CATERING_INVOICE_KINDS.filter((kind) => kind === "adjustment").length, 1);
 });
 
 test("every payment method is something that happened outside ChefSire", () => {

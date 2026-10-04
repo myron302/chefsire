@@ -21,6 +21,7 @@ import {
   type CateringInvoiceView,
   type CateringPaymentMethod,
 } from "@shared/catering-booking-billing";
+import BookingAdjustments from "./BookingAdjustments";
 import { cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
 import {
   activeCateringPaymentForm,
@@ -381,7 +382,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
           : <ul className="space-y-3">{billing.invoices.map((invoice) => <li key={invoice.id} className="min-w-0 rounded-lg border p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="break-words font-medium">{invoice.kind === "deposit" ? "Deposit" : "Remaining balance"} · <span className="tabular-nums">{money(invoice.amountCents)}</span></p>
+                <p className="break-words font-medium">{invoice.kind === "deposit" ? "Deposit" : invoice.kind === "adjustment" ? "Added since the balance" : "Remaining balance"} · <span className="tabular-nums">{money(invoice.amountCents)}</span></p>
                 <p className="break-words text-sm text-muted-foreground">
                   {invoice.reference}{invoice.dueOn ? ` · due ${invoice.dueOn}` : ""}
                   {invoice.paidCents > 0 && invoice.state !== "void" ? ` · ${money(invoice.paidCents)} recorded` : ""}
@@ -412,10 +413,14 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
             {/* The amount is the server's own preview, shown so nothing is requested unseen -- and it is NOT sent
                 back: the request carries the kind and a due date, and the server re-derives the figure under its
                 lock. */}
-            {kind === "deposit" ? "Request deposit" : "Request balance"} · <span className="tabular-nums">{money(amountCents)}</span>
+            {kind === "deposit" ? "Request deposit" : kind === "adjustment" ? "Request added amount" : "Request balance"} · <span className="tabular-nums">{money(amountCents)}</span>
           </Button>
         </div>)}
       </section>
+
+      {/* Phase 2P: later financial changes -- charges, credits and recorded external returns -- as their own ledger, below the
+          requests they never edit. The same section serves both actors; only the provider is given the controls. */}
+      <BookingAdjustments bookingId={bookingId} userId={userId} role={role} billing={billing} />
 
       {/* The payment form. Inline rather than a dialog, so it works the same at 320px as it does on a desktop. */}
       {provider && openPayment && <form onSubmit={submitPayment} className="space-y-3 rounded-lg border p-4">
