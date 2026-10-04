@@ -166,15 +166,24 @@ export function cateringAdjustmentAmountText(entry: Pick<CateringAdjustmentView,
   return entry.kind === "charge" ? `+${money}` : entry.kind === "credit" ? `-${money}` : money;
 }
 
-/** What the entry does, as one sentence for assistive technology and for the row's subtitle. */
+/**
+ * What the entry does, as one sentence for assistive technology and for the row's subtitle.
+ *
+ * An ACTIVE entry says what it does now. A REVERSED entry says only that it was reversed and what it no longer does: it is
+ * never given the active wording as well, which would read as a contradiction. Reversing a refund reverses ChefSire's RECORD
+ * of it -- the external money movement is not something ChefSire can undo, and the copy does not suggest otherwise.
+ */
 export function cateringAdjustmentEffectSentence(entry: Pick<CateringAdjustmentView, "kind" | "amountCents" | "currency" | "status">, role: "provider" | "customer"): string {
   const money = formatCateringMoney(entry.amountCents, entry.currency);
-  const who = role === "provider" ? "you" : "your caterer";
-  const owner = role === "provider" ? "your customer" : "you";
-  const base = entry.kind === "charge" ? `${owner === "you" ? "You owe" : "Your customer owes"} ${money} more.`
-    : entry.kind === "credit" ? `What ${owner === "you" ? "you owe" : "your customer owes"} is reduced by ${money}. This does not mean money was returned.`
-    : `${who === "you" ? "You" : "Your caterer"} recorded ${money} as returned outside ChefSire. ChefSire did not send it.`;
-  return entry.status === "reversed" ? `Reversed. It no longer counts. ${base}` : base;
+  if (entry.status === "reversed") {
+    return entry.kind === "charge" ? `This ${money} charge was reversed and no longer increases the amount owed.`
+      : entry.kind === "credit" ? `This ${money} credit was reversed and no longer reduces the amount owed.`
+      : `This ${money} external refund record was reversed and no longer counts toward recorded refunds. ChefSire reversed its record only; it did not move any money.`;
+  }
+  const who = role === "provider" ? "You" : "Your caterer";
+  return entry.kind === "charge" ? `${role === "provider" ? "Your customer owes" : "You owe"} ${money} more.`
+    : entry.kind === "credit" ? `What ${role === "provider" ? "your customer owes" : "you owe"} is reduced by ${money}. This does not mean money was returned.`
+    : `${who} recorded ${money} as returned outside ChefSire. ChefSire did not send it.`;
 }
 
 export const cateringAdjustmentSourceText = (entry: Pick<CateringAdjustmentView, "source" | "amendmentNumber">): string | null =>

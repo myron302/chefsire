@@ -42,16 +42,16 @@ if (!PG_URL) {
   const SCHEMA = "catering_adjustment_tests";
   const local = new pg.Pool({ ...parseLocalTestDatabaseUrl(PG_URL), options: `-c search_path=${SCHEMA}` });
   const { pool } = await import("../db/index");
-  // A one-shot gate on the amendment-history read, applied to the connection itself so the production code carries no test hook:
-  // when armed, the next SELECT from catering_booking_amendments announces that it has been reached and waits to be released.
+  // A one-shot gate on the adjustment-ledger read, applied to the connection itself so the production code carries no test hook:
+  // when armed, the next SELECT from catering_booking_adjustments announces that it has been reached and waits to be released.
   // That holds a GET between its booking read and its amendment read while a real writer commits on another connection.
-  const gate: { armed: boolean; reached: () => void; release: Promise<void> | null } = { armed: false, reached: () => undefined, release: null };
+  const gate: { armed: boolean; pattern: RegExp; reached: () => void; release: Promise<void> | null } = { armed: false, pattern: /^\s*select\b[\s\S]*\bfrom "catering_booking_adjustments"/i, reached: () => undefined, release: null };
   (pool as never as { connect: unknown }).connect = async () => {
     const client = await local.connect();
     const query = client.query.bind(client) as (...args: unknown[]) => unknown;
     (client as unknown as { query: unknown }).query = async (...args: unknown[]) => {
       const text = typeof args[0] === "string" ? args[0] : (args[0] as { text?: string })?.text ?? "";
-      if (gate.armed && /^\s*select\b[\s\S]*\bfrom "catering_booking_amendments"/i.test(text)) {
+      if (gate.armed && gate.pattern.test(text)) {
         gate.armed = false;
         gate.reached();
         await gate.release;
@@ -174,6 +174,7 @@ if (!PG_URL) {
     call("POST", `/bookings/${bookingId}/billing/adjustments`, tok(who), { currency: "USD", reason: "Agreed with the customer", idempotencyKey: randomUUID(), ...body });
   const reverse = (bookingId: string, entryId: string, who = PROVIDER, body: Record<string, unknown> = { reason: "Entered in error" }) =>
     call("POST", `/bookings/${bookingId}/billing/adjustments/${entryId}/reverse`, tok(who), body);
+  const ledgerPayments = async (bookingId: string) => Number((await local.query(`SELECT count(*) FROM catering_booking_payments WHERE booking_id = $1`, [bookingId])).rows[0].count);
   const setStatus = (bookingId: string, status: string) => local.query(`UPDATE catering_bookings SET status = $2 WHERE id = $1`, [bookingId, status]);
   const ledger = async (bookingId: string) => (await local.query(`SELECT * FROM catering_booking_adjustments WHERE booking_id = $1 ORDER BY created_at, id`, [bookingId])).rows;
   const rows = async (table: string, bookingId: string) => (await local.query(`SELECT * FROM ${table} WHERE booking_id = $1 ORDER BY 1`, [bookingId])).rows;
@@ -774,6 +775,217 @@ if (!PG_URL) {
     assert.equal(survived.status, 201, survived.text);
     assert.equal((await ledger(bookingId)).length, 2, "the committed entry stands");
     assert.equal((await notificationsFor(CUSTOMER_A, "catering_booking_adjustment_posted")).length, 1, "and the failed notification was not retried into a duplicate");
+  });
+
+  // ------------------------------------------------------------------------------------------------ one snapshot (Codex 1)
+  /** Starts the ordinary billing GET, holds it AFTER its booking read and BEFORE its ledger read, runs `during`, then lets it finish. */
+  async function readBillingDuring(bookingId: string, who: string, during: () => Promise<unknown>) {
+    let reached!: () => void;
+    const arrived = new Promise<void>((resolve) => { reached = resolve; });
+    let release!: () => void;
+    gate.release = new Promise<void>((resolve) => { release = resolve; });
+    gate.reached = reached;
+    gate.armed = true;
+    const pendingRead = billing(bookingId, who);
+    await arrived;
+    try { await during(); } finally { release(); }
+    const read = await pendingRead;
+    gate.armed = false;
+    return read;
+  }
+
+  test("snapshot: a price amendment committing between the GET's booking read and its ledger read cannot produce a mixed projection", async () => {
+    for (const reader of [CUSTOMER_A, PROVIDER]) {
+      const { bookingId } = await billed();
+      const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+      const amendmentId = created.body.amendments.pending.id as string;
+      let accepted: Awaited<ReturnType<typeof respond>> | undefined;
+      const read = await readBillingDuring(bookingId, reader, async () => { accepted = await respond(bookingId, amendmentId, "accept", CUSTOMER_A); });
+      assert.equal(accepted?.status, 200, "the writer really committed inside the GET's window");
+      assert.equal((await bookingRow(bookingId)).agreed_price, "2900.00");
+      assert.equal((await ledger(bookingId)).length, 1, "and its ledger entry is committed too");
+      // The GET's snapshot predates the commit, so it is wholly BEFORE: the old price and no entry. Never the old price with
+      // the new reconciliation entry (which would claim an original of 2,100 and an obligation of 2,500 that never existed).
+      const { summary, adjustments } = read.body;
+      assert.deepEqual([summary.agreedTotalCents, summary.originalAgreedCents, summary.obligationCents, summary.adjustmentChargesCents, adjustments.length], [250000, 250000, 250000, 0, 0]);
+      const next = (await billing(bookingId, reader)).body;
+      assert.deepEqual([next.summary.agreedTotalCents, next.summary.originalAgreedCents, next.summary.obligationCents, next.summary.adjustmentChargesCents, next.adjustments.length], [290000, 250000, 290000, 40000, 1], "a later read is wholly AFTER");
+    }
+  });
+
+  test("snapshot: a response is always internally coherent whichever side of the transition it lands on", async () => {
+    const { bookingId } = await billed();
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    const amendmentId = created.body.amendments.pending.id as string;
+    const accept = respond(bookingId, amendmentId, "accept", CUSTOMER_A);
+    const reads = await Promise.all(Array.from({ length: 12 }, () => billing(bookingId, CUSTOMER_A)));
+    await accept;
+    for (const { body } of reads) {
+      const { summary, adjustments } = body;
+      assert.equal(summary.originalAgreedCents + summary.adjustmentChargesCents - summary.adjustmentCreditsCents, summary.obligationCents, JSON.stringify(summary));
+      assert.deepEqual([summary.agreedTotalCents, adjustments.length], summary.agreedTotalCents === 250000 ? [250000, 0] : [290000, 1], "price and ledger from the same moment");
+    }
+  });
+
+  test("snapshot: authorization stays non-enumerating, and a stranger gets the same 404 as a guessed id, even while a transition is in flight", async () => {
+    const { bookingId } = await billed();
+    const guessed = await billing(randomUUID(), CUSTOMER_B);
+    const quiet = await billing(bookingId, CUSTOMER_B);
+    assert.deepEqual([quiet.status, quiet.body], [404, guessed.body]);
+    const created = await propose(bookingId, { priceCents: 290000 }, PROVIDER);
+    // A participant's read is held mid-snapshot while a transition commits; a stranger asking in that window learns nothing.
+    let duringStranger: Awaited<ReturnType<typeof billing>> | undefined;
+    const held = await readBillingDuring(bookingId, CUSTOMER_A, async () => {
+      await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A);
+      duringStranger = await billing(bookingId, CUSTOMER_B);
+    });
+    assert.equal(held.status, 200);
+    assert.deepEqual([duringStranger?.status, duringStranger?.body], [404, guessed.body]);
+    assert.equal(duringStranger?.text.includes("2900") || duringStranger?.text.includes("290000"), false, "no amount reaches a stranger");
+    assert.equal((await billing("not-a-booking", CUSTOMER_B)).status, 400, "a malformed id is rejected exactly as before");
+  });
+
+  // ------------------------------------------------------------------------------------------------ deposit basis (Codex 2)
+  const depositFor = async (priceCents: number, adjust_: (bookingId: string) => Promise<void> = async () => undefined, percent = "50") => {
+    const bookingId = await confirmed({ priceCents, guestCount: 10, note: "Deposit basis" });
+    const saved = await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "percentage", percent });
+    assert.equal(saved.status, 200, saved.text);
+    await adjust_(bookingId);
+    const view = (await billing(bookingId)).body;
+    return { bookingId, view, saved: saved.body.terms.requiredCents as number };
+  };
+
+  test("deposit: 50% of a $1,000 obligation is $500, and legacy bookings with no adjustments behave exactly as before", async () => {
+    const { view, saved, bookingId } = await depositFor(100000);
+    assert.deepEqual([saved, view.terms.requiredCents, view.issuablePreview], [50000, 50000, [{ kind: "deposit", amountCents: 50000 }, { kind: "balance", amountCents: 100000 }]]);
+    assert.equal(view.summary.depositRequiredCents, 50000);
+    const issued = await issue(bookingId, "deposit");
+    assert.equal(issued.body.invoices[0].amountCents, 50000);
+    assert.equal((await ledger(bookingId)).length, 0, "no adjustment row was fabricated");
+  });
+
+  test("deposit: a $200 charge makes the obligation $1,200 and the 50% deposit $600 in the preview, the serialized terms AND the invoice", async () => {
+    const { view, bookingId } = await depositFor(100000, async (id) => { assert.equal((await adjust(id, { kind: "charge", amountCents: 20000 })).status, 201); });
+    assert.equal(view.summary.obligationCents, 120000);
+    assert.deepEqual([view.terms.requiredCents, view.issuablePreview.find((row: { kind: string }) => row.kind === "deposit").amountCents, view.summary.depositRequiredCents], [60000, 60000, 60000], "one basis everywhere");
+    const issued = await issue(bookingId, "deposit");
+    assert.equal(issued.status, 200, issued.text);
+    assert.equal(issued.body.invoices[0].amountCents, 60000, "and the issued invoice agrees");
+    assert.equal(issued.body.terms.requiredCents, 60000);
+    const resaved = await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "percentage", percent: "50", expectedUpdatedAt: issued.body.terms.updatedAt });
+    assert.equal(resaved.body.terms.requiredCents, 60000, "the terms-save answer uses the same basis");
+  });
+
+  test("deposit: a $200 credit makes the obligation $800 and the 50% deposit $400 everywhere", async () => {
+    const { view, bookingId } = await depositFor(100000, async (id) => { assert.equal((await adjust(id, { kind: "credit", amountCents: 20000 })).status, 201); });
+    assert.equal(view.summary.obligationCents, 80000);
+    assert.deepEqual([view.terms.requiredCents, view.issuablePreview.find((row: { kind: string }) => row.kind === "deposit").amountCents], [40000, 40000]);
+    assert.equal((await issue(bookingId, "deposit")).body.invoices[0].amountCents, 40000);
+  });
+
+  test("deposit: a reversed charge and a reversed credit no longer affect the required deposit", async () => {
+    const charged = await depositFor(100000, async (id) => {
+      const entry = await adjust(id, { kind: "charge", amountCents: 20000 });
+      assert.equal((await reverse(id, entry.body.adjustments[0].id)).status, 200);
+    });
+    assert.deepEqual([charged.view.terms.requiredCents, charged.view.summary.obligationCents], [50000, 100000]);
+    assert.equal((await issue(charged.bookingId, "deposit")).body.invoices[0].amountCents, 50000);
+    const credited = await depositFor(100000, async (id) => {
+      const entry = await adjust(id, { kind: "credit", amountCents: 20000 });
+      assert.equal((await reverse(id, entry.body.adjustments[0].id)).status, 200);
+    });
+    assert.deepEqual([credited.view.terms.requiredCents, credited.view.summary.obligationCents], [50000, 100000]);
+  });
+
+  test("deposit: an amendment-generated charge is already in the agreed price, so the deposit is derived from the obligation exactly once", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "percentage", percent: "50" });
+    assert.equal((await issue(bookingId, "balance")).status, 200);
+    const created = await propose(bookingId, { priceCents: 120000 }, PROVIDER);
+    assert.equal((await respond(bookingId, created.body.amendments.pending.id, "accept", CUSTOMER_A)).status, 200);
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([view.summary.obligationCents, view.terms.requiredCents], [120000, 60000], "not 70,000: the +200 is not counted twice");
+  });
+
+  test("deposit: a fixed deposit keeps its established meaning and is capped by the obligation", async () => {
+    const bookingId = await confirmed({ priceCents: 100000, guestCount: 10, note: "x" });
+    const saved = await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "fixed", amount: "300" });
+    assert.equal(saved.body.terms.requiredCents, 30000);
+    await adjust(bookingId, { kind: "charge", amountCents: 20000 });
+    assert.equal((await billing(bookingId)).body.terms.requiredCents, 30000, "a fixed amount is not a percentage of anything");
+    await adjust(bookingId, { kind: "credit", amountCents: 100000 });
+    assert.equal((await billing(bookingId)).body.terms.requiredCents, 20000, "but never more than what is owed");
+  });
+
+  // ------------------------------------------------------------------------------------------------ payable cap (Codex 3)
+  const capOf = (body: { invoices: { id: string; maxPaymentCents?: number; remainingCents: number }[] }, id: string) => body.invoices.find((row) => row.id === id)!;
+
+  test("payable cap: invoice remaining equals booking balance, so the cap is the invoice remaining; a customer is never given it", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    const provider = (await billing(bookingId, PROVIDER)).body;
+    assert.deepEqual([capOf(provider, invoiceId).maxPaymentCents, capOf(provider, invoiceId).remainingCents], [250000, 250000]);
+    const customer = (await billing(bookingId, CUSTOMER_A)).body;
+    assert.equal("maxPaymentCents" in capOf(customer, invoiceId), false);
+  });
+
+  test("payable cap: a credit lowers the cap below the invoice remaining, the server rejects more, and reversing the credit restores it", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 220000 });
+    assert.equal(credit.status, 201);
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([capOf(view, invoiceId).remainingCents, capOf(view, invoiceId).maxPaymentCents, view.summary.balanceDueCents], [250000, 30000, 30000]);
+    const over = await pay(bookingId, invoiceId, "500.00");
+    assert.equal(over.status, 409, over.text);
+    assert.match(over.body.message, /more than your customer now owes/);
+    assert.equal((await ledgerPayments(bookingId)), 0, "nothing was recorded");
+    await reverse(bookingId, credit.body.adjustments[0].id);
+    assert.equal(capOf((await billing(bookingId)).body, invoiceId).maxPaymentCents, 250000, "a reversed credit restores the cap");
+    assert.equal((await pay(bookingId, invoiceId, "300.00")).status, 200);
+  });
+
+  test("payable cap: a smaller invoice is capped by itself, and a charge cannot raise an existing invoice's cap", async () => {
+    const bookingId = await confirmed();
+    await call("PUT", `/bookings/${bookingId}/billing/deposit-terms`, tok(PROVIDER), { mode: "fixed", amount: "200" });
+    const deposit = (await issue(bookingId, "deposit")).body.invoices[0];
+    const before = capOf((await billing(bookingId)).body, deposit.id);
+    assert.deepEqual([before.remainingCents, before.maxPaymentCents], [20000, 20000], "invoice remaining 200, booking balance 2,500");
+    await adjust(bookingId, { kind: "charge", amountCents: 50000 });
+    const after = capOf((await billing(bookingId)).body, deposit.id);
+    assert.equal(after.maxPaymentCents, 20000, "the new money is collected by its own request, not by overpaying this one");
+    assert.equal((await pay(bookingId, deposit.id, "201.00")).status, 409);
+    assert.equal((await pay(bookingId, deposit.id, "200.00")).status, 200);
+  });
+
+  test("payable cap: a credit to zero means no positive payment can be recorded, and nothing is marked paid", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    await adjust(bookingId, { kind: "credit", amountCents: 250000 });
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([capOf(view, invoiceId).maxPaymentCents, view.summary.balanceDueCents, view.summary.paidTotalCents], [0, 0, 0]);
+    assert.equal(view.invoices[0].state, "issued", "not paid merely because nothing is owed");
+    assert.equal((await pay(bookingId, invoiceId, "0.01")).status, 409);
+    assert.equal((await pay(bookingId, invoiceId, "2500.00")).status, 409);
+  });
+
+  test("payable cap: a stale form that was valid when it opened is still rejected by the server after a concurrent credit", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    const staleCap = capOf((await billing(bookingId)).body, invoiceId).maxPaymentCents;
+    assert.equal(staleCap, 250000);
+    await adjust(bookingId, { kind: "credit", amountCents: 200000 });
+    const stale = await pay(bookingId, invoiceId, "2500.00");
+    assert.equal(stale.status, 409, stale.text);
+    assert.equal(await ledgerPayments(bookingId), 0);
+    const [credit, payment] = await Promise.all([adjust(bookingId, { kind: "credit", amountCents: 20000 }), pay(bookingId, invoiceId, "500.00")]);
+    assert.equal(credit.status, 201);
+    assert.equal(payment.status, 409, "500 against a 300 balance, whichever order the two commit");
+  });
+
+  test("payable cap: ordinary Phase 2L payment recording is unchanged on a booking with no adjustments", async () => {
+    const { bookingId, invoiceId } = await billed("1000.00");
+    const view = (await billing(bookingId)).body;
+    assert.deepEqual([capOf(view, invoiceId).maxPaymentCents, capOf(view, invoiceId).remainingCents], [150000, 150000]);
+    assert.equal((await pay(bookingId, invoiceId, "1501.00")).status, 409);
+    assert.equal((await pay(bookingId, invoiceId, "1500.00")).status, 200);
+    assert.equal(capOf((await billing(bookingId)).body, invoiceId).maxPaymentCents, 0);
   });
 
   // ------------------------------------------------------------------------------------------------ the formula

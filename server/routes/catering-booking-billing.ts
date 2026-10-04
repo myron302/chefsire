@@ -26,6 +26,7 @@ import {
   cateringIssuableInvoiceKinds,
   cateringIssuanceKeepsPartition,
   cateringMoneyToCents,
+  cateringObligationCents,
   cateringPaymentRecordSchema,
   cateringPaymentReplayMatches,
   cateringPaymentVoidSchema,
@@ -44,6 +45,7 @@ import {
   CATERING_BILLING_FORBIDDEN_MESSAGE,
   CATERING_BILLING_NOT_AVAILABLE_REFUSAL,
   CATERING_BILLING_NOT_FOUND_REFUSAL,
+  cateringAdjustmentFactOf,
   cateringBillingFacts,
   cateringBillingGuard,
   cateringBillingStateRefusal,
@@ -184,7 +186,7 @@ function billingView(input: {
   const issuable = cateringIssuableInvoiceKinds(facts);
   return {
     ...view,
-    terms: serializeCateringDepositTerms(input.terms, facts.agreedTotalCents),
+    terms: serializeCateringDepositTerms(input.terms, cateringObligationCents(facts)),
     issuable,
     issuablePreview: issuable.map((kind) => ({ kind, amountCents: cateringInvoiceAmountFor(kind, facts) ?? 0 })),
     adjustmentActions: adjustmentActionsFor(adjustmentFactsOf(input.booking, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] })),
@@ -233,13 +235,12 @@ async function notifyCustomer(booking: { providerId: string; customerId: string 
 r.get("/bookings/:id/billing", requireAuth, async (req, res, next) => { try {
   const resolved = await resolveRequest(req as never, res, false);
   if (!resolved) return;
-  const rows = await billingRows(db, resolved.id);
-  res.json(billingView({
-    role: resolved.role,
-    booking: resolved.booking,
-    ...rows,
-    asOfDate: resolved.asOfDate,
-  }));
+  // The early read above is a cheap 404 gate only. What is SENT comes from `snapshotBillingView`, which re-resolves the
+  // participant, re-reads the booking and reads every ledger table inside ONE repeatable-read snapshot, so the response
+  // cannot pair one moment's price with another moment's ledger.
+  const view = await snapshotBillingView(resolved);
+  if (!view) return refuse(res, CATERING_BILLING_NOT_FOUND_REFUSAL);
+  res.json(view);
 } catch (error) { invalid(error, res, next); } });
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -282,7 +283,10 @@ r.put("/bookings/:id/billing/deposit-terms", requireAuth, async (req, res, next)
       .onConflictDoUpdate({ target: cateringBookingBilling.bookingId, set: values }).returning();
     // Terms write NO activity and NO notification. Nothing has been asked of the customer yet -- an issued invoice
     // is the ask, and that is the event they hear about.
-    return { kind: "saved", record: saved as CateringBookingBillingRecord, agreedTotalCents: cateringMoneyToCents(booking.agreedPrice) } as const;
+    // The deposit this would require is stated against the same CURRENT OBLIGATION the preview and the issued invoice use.
+    const ledger = await loadLedgerRows(tx, id);
+    const obligationCents = cateringObligationCents({ agreedTotalCents: cateringMoneyToCents(booking.agreedPrice), adjustments: ledger.adjustments.map(cateringAdjustmentFactOf) });
+    return { kind: "saved", record: saved as CateringBookingBillingRecord, agreedTotalCents: obligationCents } as const;
   });
 
   if (result.kind === "not_available") return refuse(res, CATERING_BILLING_NOT_AVAILABLE_REFUSAL);
@@ -583,23 +587,31 @@ r.post("/bookings/:id/billing/payments/:paymentId/void", requireAuth, async (req
  * response carrying only the new row would leave the client to recompute the rest, which is exactly the
  * client-side arithmetic this phase refuses to have anywhere.
  */
-export async function freshView(resolved: { id: string; userId: string; role: "provider" | "customer"; asOfDate: string }) {
-  // ONE repeatable-read snapshot for the booking and every ledger table, so a payment, a refund and an amendment committing
-  // in between cannot pair one table's old rows with another's new ones. The booking is re-read inside it as well: the one
-  // this request resolved was read before the transaction, and answering with it would report a booking cancelled in the
-  // meantime as still actionable for one render.
+export async function snapshotBillingView(resolved: { id: string; userId: string; asOfDate: string }) {
+  // ONE repeatable-read snapshot, fixed by its first statement, for the participant check, the booking and every ledger
+  // table. The booking is read INSIDE it, not carried in from before: a price amendment committing between a booking read
+  // and a ledger read would otherwise pair the old price with the new reconciliation entry. A user who is not a participant
+  // gets no booking here and therefore no view (null), exactly as the early gate does.
   return db.transaction(async (tx: typeof db) => {
     const booking = await ownedCateringBooking(resolved.id, resolved.userId, tx);
+    if (!booking) return null;
     const rows = await billingRows(tx, resolved.id);
     return billingView({
-      role: resolved.role,
-      booking: booking ?? { status: "cancelled", agreedPrice: null, currency: "USD" },
+      role: cateringWorkspaceRole(booking, resolved.userId) as "provider" | "customer",
+      booking,
       ...rows,
       // The SAME day the request resolved, not a fresh one: the response a mutation answers with must describe the
       // day its own rules were judged against.
       asOfDate: resolved.asOfDate,
     });
   }, { isolationLevel: "repeatable read" });
+}
+
+export async function freshView(resolved: { id: string; userId: string; role: "provider" | "customer"; asOfDate: string }) {
+  return (await snapshotBillingView(resolved)) ?? billingView({
+    role: resolved.role, booking: { status: "cancelled", agreedPrice: null, currency: "USD" },
+    terms: undefined, invoices: [], payments: [], adjustments: [], amendmentNumbers: new Map(), asOfDate: resolved.asOfDate,
+  });
 }
 
 export default r;

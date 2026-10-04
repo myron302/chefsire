@@ -140,9 +140,12 @@ test("the route sends only serialized views, never a row it just read or wrote",
   const responses = [...body.matchAll(/res\.json\(([^\n]*)/g)].map((match) => match[1]);
   assert.ok(responses.length >= 5, `expected every route to answer: ${responses.length}`);
   for (const response of responses) {
-    const safe = response.includes("billingView(") || response.includes("freshView(") || response.includes("serializeCateringDepositTerms(");
+    // `view` is only ever the result of `snapshotBillingView`, which returns `billingView(...)` -- asserted just below.
+    const safe = response.includes("billingView(") || response.includes("freshView(") || response.includes("serializeCateringDepositTerms(") || response === "view);";
     assert.ok(safe, `raw payload: ${response}`);
   }
+  assert.ok(body.includes("const view = await snapshotBillingView(resolved);"), "the bare `view` is the snapshot read's result");
+  assert.ok(body.slice(body.indexOf("export async function snapshotBillingView")).includes("return billingView({"), "which is a serialized view");
   // And the serializers are what the view is built from.
   assert.ok(body.includes("serializeCateringInvoice"));
   assert.ok(body.includes("serializeCateringPayment"));

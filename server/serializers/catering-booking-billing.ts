@@ -4,6 +4,7 @@ import {
   cateringInvoiceIsOverdue,
   cateringInvoiceReference,
   cateringInvoiceState,
+  cateringPayableCents,
   cateringPaidTowards,
   cateringRemainingOnInvoice,
   type CateringBillingFacts,
@@ -61,7 +62,7 @@ export function serializeCateringInvoice(
     remainingCents: cateringRemainingOnInvoice(fact, facts.payments),
   };
   if (role !== "provider") return shared;
-  return { ...shared, updatedAt: row.updatedAt.toISOString() };
+  return { ...shared, maxPaymentCents: cateringPayableCents(fact, facts), updatedAt: row.updatedAt.toISOString() };
 }
 
 export function serializeCateringPayment(row: CateringBookingPayment, role: "provider" | "customer"): CateringPaymentView {

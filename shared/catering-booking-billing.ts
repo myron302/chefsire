@@ -617,6 +617,19 @@ export function cateringRemainingOnInvoice(invoice: CateringInvoiceFact, payment
   return Math.max(0, invoice.amountCents - cateringPaidTowards(invoice.id, payments));
 }
 
+/**
+ * The most a payment against this invoice may be RIGHT NOW: what the invoice has left, and never more than the customer
+ * still owes for the booking after credits and recorded refunds (Phase 2P). One derivation, used by the server's own check
+ * and serialized to the provider so the payment form states the same limit instead of re-inventing the accounting.
+ * Zero when nothing may be recorded: a cancelled booking, a request that is not live, or a booking owing nothing.
+ */
+export function cateringPayableCents(invoice: CateringInvoiceFact, facts: CateringBillingFacts): number {
+  if (!cateringBillingIsActionable(facts.bookingStatus) || !cateringInvoiceCounts(invoice)) return 0;
+  const remaining = cateringRemainingOnInvoice(invoice, facts.payments);
+  const balanceDue = deriveCateringBillingSummary(facts).balanceDueCents;
+  return balanceDue === null ? remaining : Math.min(remaining, balanceDue);
+}
+
 /** Whether a payment may be recorded against this invoice at all. */
 export function cateringInvoiceAcceptsPayment(invoice: CateringInvoiceFact, facts: CateringBillingFacts): boolean {
   return cateringBillingIsActionable(facts.bookingStatus)
@@ -651,6 +664,8 @@ export type CateringInvoiceView = {
   voidedAt: string | null;
   paidCents: number;
   remainingCents: number;
+  /** PROVIDER ONLY: the most a payment may be right now (server-derived; see `cateringPayableCents`). Absent for a customer. */
+  maxPaymentCents?: number;
   /** PROVIDER ONLY: the optimistic-concurrency version. Absent as a key from a customer's payload. */
   updatedAt?: string;
 };

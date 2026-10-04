@@ -110,3 +110,12 @@ test("the request body never names an actor", () => {
   const text = code(component);
   for (const forbidden of ["providerId", "customerId", "recordedBy", "userId:", "role:"]) assert.equal(new RegExp(`body[^\\n]*${forbidden}`).test(text), false, forbidden);
 });
+
+test("the billing card states the payable cap, offers no payment at a zero cap, and says why", () => {
+  assert.ok(billing.includes("cateringPaymentCap(invoice) > 0 && <Button"), "Record a payment is offered only while something may be recorded");
+  assert.ok(billing.includes("cateringPaymentCap(invoice) === 0"));
+  assert.ok(billing.includes("your customer now owes nothing further on this booking"));
+  assert.ok(billing.includes('aria-describedby="catering-payment-amount-help"'));
+  assert.ok(billing.includes("because credits have reduced what your customer owes"));
+  assert.equal(/remainingCents\s*[-+]/.test(billing), false, "no accounting in React");
+});

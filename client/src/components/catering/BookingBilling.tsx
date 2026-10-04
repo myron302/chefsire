@@ -29,6 +29,7 @@ import {
   cateringBillingFailureNotice,
   cateringBillingIdentity,
   cateringMajorUnits,
+  cateringPaymentCap,
   cateringPaymentProvenance,
   cateringPaymentSnapshot,
   cateringTermsFormIsCurrent,
@@ -331,6 +332,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
   const statusCopy = CATERING_FINANCIAL_STATUS_COPY[summary.status];
   const money = (cents: number) => formatCateringMoney(cents, currency);
   const openPayment = activeCateringPaymentForm(paymentForm, identity, actionable);
+  const openPaymentInvoice = openPayment ? billing.invoices.find((row) => row.id === openPayment.invoiceId) : undefined;
   const activeNotice = notice && notice.identity === identity ? notice : null;
   const termsAreCurrent = localStateIsCurrent && cateringTermsFormIsCurrent(termsForm, identity);
 
@@ -394,10 +396,13 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
               </div>
             </div>
             {provider && actionable && invoice.state !== "void" && <div className="mt-3 flex flex-wrap gap-2">
-              {invoice.remainingCents > 0 && <Button className="min-h-11" disabled={pending}
+              {cateringPaymentCap(invoice) > 0 && <Button className="min-h-11" disabled={pending}
                 onClick={() => setPaymentForm(openCateringPaymentForm(identity, invoice, billing.asOfDate, cateringIdempotencyKey()))}>
                 Record a payment
               </Button>}
+              {invoice.remainingCents > 0 && cateringPaymentCap(invoice) === 0 && <p className="text-sm text-muted-foreground">
+                Nothing more can be recorded against this request: your customer now owes nothing further on this booking.
+              </p>}
               {invoice.paidCents === 0 && <Button className="min-h-11" variant="outline" disabled={pending} onClick={() => voidInvoice(invoice)}>Withdraw</Button>}
             </div>}
           </li>)}</ul>}
@@ -429,8 +434,11 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="catering-payment-amount">Amount received</Label>
-            <Input id="catering-payment-amount" className="min-h-11" inputMode="decimal" value={openPayment.amount}
+            <Input id="catering-payment-amount" className="min-h-11" inputMode="decimal" value={openPayment.amount} aria-describedby="catering-payment-amount-help"
               onChange={(event) => setPaymentForm((current) => editCateringPaymentForm(current, identity, { amount: event.target.value }))} />
+            {openPaymentInvoice && <p id="catering-payment-amount-help" className="text-xs text-muted-foreground">
+              At most {money(cateringPaymentCap(openPaymentInvoice))}{openPaymentInvoice.remainingCents > cateringPaymentCap(openPaymentInvoice) ? ", because credits have reduced what your customer owes" : ", what is still outstanding on this request"}.
+            </p>}
           </div>
           <div className="space-y-1">
             <Label htmlFor="catering-payment-date">Date received</Label>

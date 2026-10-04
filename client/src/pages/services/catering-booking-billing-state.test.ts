@@ -6,6 +6,7 @@ import {
   cateringBillingFailureNotice,
   cateringBillingIdentity,
   cateringMajorUnits,
+  cateringPaymentCap,
   cateringPaymentProvenance,
   cateringTermsFormIsCurrent,
   editCateringPaymentForm,
@@ -255,4 +256,47 @@ test("polling continues for every status except cancelled, so a customer learns 
   assert.equal(cateringBillingCanStillChange("completed"), true);
   assert.equal(cateringBillingCanStillChange("cancelled"), false);
   assert.equal(cateringBillingCanStillChange(undefined), false, "and never before a payload has landed");
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Phase 2P: the payment form states the SERVER's payable cap
+ * ------------------------------------------------------------------------------------------------------------- */
+
+const capped = (remainingCents: number, maxPaymentCents?: number): CateringInvoiceView => ({
+  id: "inv-1", number: 1, kind: "balance", reference: "R-001", amountCents: 50_000, currency: "USD", status: "issued", state: "issued", overdue: false,
+  dueOn: null, issuedAt: "2026-01-01T00:00:00.000Z", voidedAt: null, paidCents: 50_000 - remainingCents, remainingCents,
+  ...(maxPaymentCents === undefined ? {} : { maxPaymentCents }),
+});
+
+test("the cap is the server's figure, and an older payload without it falls back to the invoice's own remaining amount", () => {
+  assert.equal(cateringPaymentCap(capped(50_000, 50_000)), 50_000);
+  assert.equal(cateringPaymentCap(capped(50_000, 30_000)), 30_000);
+  assert.equal(cateringPaymentCap(capped(20_000, 20_000)), 20_000);
+  assert.equal(cateringPaymentCap(capped(50_000)), 50_000, "legacy payload: unchanged Phase 2L behaviour");
+  assert.equal(cateringPaymentCap(capped(50_000, 0)), 0);
+  assert.equal(cateringPaymentCap(capped(50_000, -5)), 0, "never negative");
+});
+
+test("the payment form opens at the cap, never above what the server will accept, and empty at a zero cap", () => {
+  assert.equal(openCateringPaymentForm("u:b", capped(50_000, 50_000), "2026-02-01", "key-0001").amount, "500.00");
+  assert.equal(openCateringPaymentForm("u:b", capped(50_000, 30_000), "2026-02-01", "key-0001").amount, "300.00", "credit reduced the booking balance to $300");
+  assert.equal(openCateringPaymentForm("u:b", capped(20_000, 20_000), "2026-02-01", "key-0001").amount, "200.00");
+  assert.equal(openCateringPaymentForm("u:b", capped(50_000), "2026-02-01", "key-0001").amount, "500.00", "legacy booking");
+  assert.equal(openCateringPaymentForm("u:b", capped(50_000, 0), "2026-02-01", "key-0001").amount, "", "no positive amount is offered");
+});
+
+test("client validation uses the same cap: $500 is refused against a $300 cap, $300 is accepted, and a zero cap accepts nothing", () => {
+  const form = (amount: string, invoice: CateringInvoiceView) => ({ ...openCateringPaymentForm("u:b", invoice, "2026-02-01", "key-0001"), amount });
+  const credited = capped(50_000, 30_000);
+  assert.equal(maySubmitCateringPayment(form("500.00", credited), credited, false), false);
+  assert.equal(maySubmitCateringPayment(form("300.01", credited), credited, false), false);
+  assert.equal(maySubmitCateringPayment(form("300.00", credited), credited, false), true);
+  const zero = capped(50_000, 0);
+  assert.equal(maySubmitCateringPayment(form("0.01", zero), zero, false), false);
+  assert.equal(maySubmitCateringPayment(form("500.00", zero), zero, false), false);
+  const smaller = capped(20_000, 20_000);
+  assert.equal(maySubmitCateringPayment(form("200.01", smaller), smaller, false), false, "an invoice cannot receive more than its own remaining amount");
+  const legacy = capped(50_000);
+  assert.equal(maySubmitCateringPayment(form("500.00", legacy), legacy, false), true);
+  assert.equal(maySubmitCateringPayment(form("500.01", legacy), legacy, false), false);
 });

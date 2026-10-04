@@ -26,6 +26,8 @@ import {
   cateringInvoiceAmountFor,
   cateringIssuableInvoiceKinds,
   cateringObligationCents,
+  cateringPayableCents,
+  cateringDepositRequirement,
   deriveCateringBillingSummary,
   type CateringBillingFacts,
   type CateringInvoiceFact,
@@ -357,4 +359,38 @@ test("without a live balance the balance request itself covers whatever the obli
   assert.equal(cateringObligationCents(withCharge), 290_000);
   assert.deepEqual(cateringIssuableInvoiceKinds(withCharge), ["balance"]);
   assert.equal(cateringInvoiceAmountFor("balance", withCharge), 290_000);
+});
+
+test("the payable cap is min(invoice remaining, booking balance due), zero when nothing may be recorded", () => {
+  const inv = invoice({ amountCents: 50_000 });
+  const base = billing({ agreedTotalCents: 50_000, invoices: [inv] });
+  assert.equal(cateringPayableCents(inv, base), 50_000);
+  const credited = { ...base, adjustments: [entry({ kind: "credit", amountCents: 20_000 })] };
+  assert.equal(cateringPayableCents(inv, credited), 30_000, "credit lowered the booking balance below the invoice remaining");
+  const small = invoice({ amountCents: 20_000 });
+  assert.equal(cateringPayableCents(small, billing({ agreedTotalCents: 50_000, invoices: [small] })), 20_000);
+  assert.equal(cateringPayableCents(inv, { ...base, adjustments: [entry({ kind: "credit", amountCents: 50_000 })] }), 0);
+  assert.equal(cateringPayableCents(inv, { ...base, adjustments: [entry({ kind: "credit", amountCents: 50_000, status: "reversed" })] }), 50_000, "reversed credit restores it");
+  assert.equal(cateringPayableCents(inv, { ...base, adjustments: [entry({ kind: "charge", amountCents: 90_000 })] }), 50_000, "a charge cannot raise an existing invoice's cap");
+  assert.equal(cateringPayableCents(invoice({ status: "void" }), base), 0);
+  assert.equal(cateringPayableCents(inv, { ...base, bookingStatus: "cancelled" }), 0);
+  const paid = payment({ invoiceId: inv.id, amountCents: 10_000 });
+  assert.equal(cateringPayableCents(inv, { ...base, payments: [paid] }), 40_000);
+});
+
+test("one deposit basis: the percentage applies to the adjusted obligation, a fixed amount keeps its meaning", () => {
+  const percent = { mode: "percentage" as const, amountCents: null, percentBasisPoints: 5_000, dueOn: null };
+  const fixed = { mode: "fixed" as const, amountCents: 30_000, percentBasisPoints: null, dueOn: null };
+  const obligation = (adjustments: CateringAdjustmentFact[]) => cateringObligationCents({ agreedTotalCents: 100_000, adjustments });
+  assert.equal(cateringDepositRequirement(percent, obligation([])), 50_000);
+  assert.equal(cateringDepositRequirement(percent, obligation([entry({ kind: "charge", amountCents: 20_000 })])), 60_000);
+  assert.equal(cateringDepositRequirement(percent, obligation([entry({ kind: "credit", amountCents: 20_000 })])), 40_000);
+  assert.equal(cateringDepositRequirement(percent, obligation([entry({ kind: "charge", amountCents: 20_000, status: "reversed" })])), 50_000);
+  assert.equal(cateringDepositRequirement(percent, obligation([entry({ kind: "credit", amountCents: 20_000, status: "reversed" })])), 50_000);
+  assert.equal(cateringDepositRequirement(fixed, obligation([entry({ kind: "charge", amountCents: 20_000 })])), 30_000);
+  assert.equal(cateringDepositRequirement(fixed, obligation([entry({ kind: "credit", amountCents: 90_000 })])), 10_000, "capped by what is owed");
+  // The preview and the issued invoice are derived from the same facts.
+  const facts = billing({ agreedTotalCents: 100_000, terms: percent, adjustments: [entry({ kind: "charge", amountCents: 20_000 })] });
+  assert.equal(cateringInvoiceAmountFor("deposit", facts), 60_000);
+  assert.equal(deriveCateringBillingSummary(facts).depositRequiredCents, 60_000);
 });

@@ -129,7 +129,6 @@ test("every entry is conveyed in words and a sign, never by colour alone", () =>
   assert.match(customer("credit"), /reduced by .*does not mean money was returned/);
   assert.match(customer("refund"), /Your caterer recorded .* as returned outside ChefSire\. ChefSire did not send it\./);
   assert.match(cateringAdjustmentEffectSentence(view({ kind: "refund" }), "provider"), /^You recorded .* as returned outside ChefSire/);
-  assert.match(cateringAdjustmentEffectSentence(view({ status: "reversed" }), "customer"), /^Reversed\. It no longer counts\./);
   assert.equal(cateringAdjustmentSourceText(view()), null);
   assert.equal(cateringAdjustmentSourceText(view({ source: "amendment", amendmentNumber: 2 })), "From accepted amendment 2");
 });
@@ -151,4 +150,30 @@ test("a response for a previous booking or account never lands on the one now sh
   assert.equal(isCurrentCateringAdjustmentTarget(A, A), true);
   assert.equal(isCurrentCateringAdjustmentTarget(B, A), false);
   assert.equal(isCurrentCateringAdjustmentTarget(cateringAdjustmentIdentity("user-b", "booking-1"), A), false);
+});
+
+test("a REVERSED entry gets its own wording and never the active effect as well", () => {
+  const reversed = (kind: "charge" | "credit" | "refund", role: "provider" | "customer") => cateringAdjustmentEffectSentence(view({ kind, status: "reversed", amountCents: 10_000 }), role).replace(/\s/g, " ");
+  for (const role of ["provider", "customer"] as const) {
+    assert.match(reversed("charge", role), /^This \$100\.00 charge was reversed and no longer increases the amount owed\.$/);
+    assert.match(reversed("credit", role), /^This \$100\.00 credit was reversed and no longer reduces the amount owed\.$/);
+    const refund = reversed("refund", role);
+    assert.match(refund, /^This \$100\.00 external refund record was reversed and no longer counts toward recorded refunds\./);
+    assert.match(refund, /ChefSire reversed its record only; it did not move any money\./);
+    for (const kind of ["charge", "credit", "refund"] as const) {
+      const text = reversed(kind, role);
+      for (const contradiction of [/You owe/, /Your customer owes/, /is reduced by/, /recorded .* as returned/, /It no longer counts\. /]) assert.equal(contradiction.test(text), false, `${kind}/${role}: ${text}`);
+    }
+  }
+  assert.equal(/clawed|returned to you|refunded/i.test(reversed("refund", "customer")), false, "no claim that external money was taken back");
+});
+
+test("an ACTIVE entry keeps its present-tense meaning", () => {
+  const active = (kind: "charge" | "credit" | "refund", role: "provider" | "customer") => cateringAdjustmentEffectSentence(view({ kind, amountCents: 10_000 }), role).replace(/\s/g, " ");
+  assert.match(active("charge", "customer"), /^You owe \$100\.00 more\.$/);
+  assert.match(active("charge", "provider"), /^Your customer owes \$100\.00 more\.$/);
+  assert.match(active("credit", "customer"), /^What you owe is reduced by \$100\.00\. This does not mean money was returned\.$/);
+  assert.match(active("credit", "provider"), /^What your customer owes is reduced by \$100\.00\./);
+  assert.match(active("refund", "customer"), /^Your caterer recorded \$100\.00 as returned outside ChefSire\. ChefSire did not send it\.$/);
+  assert.match(active("refund", "provider"), /^You recorded \$100\.00 as returned outside ChefSire\. ChefSire did not send it\.$/);
 });
