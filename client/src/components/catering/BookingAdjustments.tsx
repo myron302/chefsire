@@ -102,14 +102,6 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
     setShowErrors(false);
     setNotice({ identity, message: CATERING_ADJUSTMENT_NO_LONGER_AVAILABLE_MESSAGE });
   }, [provider, current, actions, form, identity]);
-  // The same principle for a reversal dialog: when the latest payload no longer calls its entry reversible, close it, clear its
-  // reason, and say why. (The Confirm is already disabled by `reversalActionable` in the render before this runs.)
-  useEffect(() => {
-    if (reversalEntryId === null || !current || reversalActionable) return;
-    setConfirming(null);
-    setReverseReason("");
-    setNotice({ identity, message: cateringReversalNoLongerAvailableMessage(latestReversalEntry) });
-  }, [reversalEntryId, reversalActionable, latestReversalEntry, current, identity]);
 
   const mutation = useMutation({
     mutationFn: async ({ path, body }: Mutation) => {
@@ -161,6 +153,14 @@ export default function BookingAdjustments({ bookingId, userId, role, billing }:
   const latestReversalEntry = reversalEntryId === null ? undefined : billing.adjustments.find((entry) => entry.id === reversalEntryId);
   const reversalActionable = reversalEntryId !== null && provider && cateringReversalDialogStillActionable(latestReversalEntry);
   const open = kindStillAllowed ? activeCateringAdjustmentForm(form, identity, provider && current) : null;
+  // The same principle for a reversal dialog: when the latest payload no longer calls its entry reversible, close it, clear its
+  // reason, and say why. (The Confirm is already disabled by `reversalActionable` in the render before this runs.)
+  useEffect(() => {
+    if (reversalEntryId === null || !current || reversalActionable) return;
+    setConfirming(null);
+    setReverseReason("");
+    setNotice({ identity, message: cateringReversalNoLongerAvailableMessage(latestReversalEntry) });
+  }, [reversalEntryId, reversalActionable, latestReversalEntry, current, identity]);
   const limits = limitsFor(open?.paymentId ?? "");
   const check = open ? checkCateringAdjustmentForm(open, limits) : null;
   const entries = chronologicalCateringAdjustments(billing.adjustments);

@@ -197,7 +197,7 @@ test("an open reversal holds only an entry ID and reads every policy-bearing fie
 test("a stale reversal cannot be confirmed, and closing it clears the reason and tells the provider why", () => {
   assert.ok(component.includes('(reverseReason.trim() === "" || !reversalActionable)'), "Confirm is disabled the moment the latest payload says no");
   assert.ok(component.includes("if (!current || pending || reverseReason.trim() === \"\" || !reversalActionable || latestReversalEntry === undefined) return;"));
-  const effect = component.slice(component.indexOf("if (reversalEntryId === null || !current || reversalActionable) return;"), component.indexOf("const mutation = useMutation"));
+  const effect = component.slice(component.indexOf("if (reversalEntryId === null || !current || reversalActionable) return;"), component.indexOf("const limits = limitsFor("));
   for (const part of ["setConfirming(null);", 'setReverseReason("");', "cateringReversalNoLongerAvailableMessage(latestReversalEntry)"]) assert.ok(effect.includes(part), part);
   assert.ok(component.includes("const reversible = provider && current && entry.reversible === true;"), "a customer never gets the control");
 });
