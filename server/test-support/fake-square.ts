@@ -34,6 +34,8 @@ export type FakeSquareState = {
   merchantFailureBody?: unknown;
   /** Likewise for `/oauth2/revoke` when `failures.revoke` is set. */
   revokeFailureBody?: unknown;
+  /** When set, `/oauth2/revoke` answers 200 with exactly this JSON instead of `{ success: true }` (and invalidates nothing). */
+  revokeResponseBody?: unknown;
   /** When true (default) a revoke invalidates every access token issued so far, as Square does for a merchant. */
   revokeInvalidatesTokens: boolean;
   /** Added to the `/oauth2/revoke` response, to hold a merchant-wide revocation in flight. */
@@ -119,6 +121,10 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
       } else if (req.method === "POST" && path === "/oauth2/revoke") {
         if (state.revokeDelayMs) await new Promise((resolve) => setTimeout(resolve, state.revokeDelayMs));
         if (fail("revoke")) return;
+        if (state.revokeResponseBody !== undefined) {
+          res.end(JSON.stringify(state.revokeResponseBody));
+          return;
+        }
         if (state.revokeInvalidatesTokens) {
           // Square revokes every token of the application for the MERCHANT that owns the one named.
           const merchant = issuedMerchant.get((JSON.parse(body || "{}") as { access_token?: string }).access_token ?? "");

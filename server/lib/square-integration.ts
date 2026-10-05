@@ -184,6 +184,14 @@ function grantFrom(response: { accessToken?: string; refreshToken?: string; expi
   return { accessToken: response.accessToken, refreshToken: response.refreshToken || null, expiresAt, merchantId: response.merchantId || null };
 }
 
+/** Square answered a revoke call 2xx, but not with an explicit `success: true`. The revocation is UNCONFIRMED. */
+export class SquareRevocationUnconfirmedError extends Error {
+  constructor() {
+    super("Square did not confirm the revocation.");
+    this.name = "SquareRevocationUnconfirmedError";
+  }
+}
+
 /** Square answered 2xx but with something this integration cannot rely on. Always treated as a failed attempt. */
 export class SquareProviderResponseError extends Error {
   constructor(message: string) {
@@ -217,10 +225,13 @@ export function createSquareProviderApi(options: SquareSdkOptions = {}): SquareP
     async revokeAccessToken(accessToken) {
       const { clientId, clientSecret } = requireApplication();
       // RevokeToken authenticates with the application secret, not with a bearer token.
-      await createUnauthenticatedSquareClient(options).oAuth.revokeToken(
+      const response = await createUnauthenticatedSquareClient(options).oAuth.revokeToken(
         { clientId, accessToken },
         { maxRetries: 0, headers: { Authorization: `Client ${clientSecret}` } },
       );
+      // A 2xx is not proof of revocation. Only an explicit `success: true` with no response-level errors confirms it; a missing or
+      // false `success`, or any `errors`, is UNCONFIRMED and must be reported as such.
+      if (response.success !== true || (Array.isArray(response.errors) && response.errors.length > 0)) throw new SquareRevocationUnconfirmedError();
     },
     async retrieveTokenStatus(accessToken) {
       const response = await createConnectedSquareClient(accessToken, options).oAuth.retrieveTokenStatus();

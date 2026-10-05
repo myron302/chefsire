@@ -69,6 +69,8 @@ callback fail. It is an explicit **finalization** step.
    plaintext remains; otherwise it locks the table, adds the constraint `NOT VALID`, validates it, and commits. Re-running is a
    no-op. **Validate afterwards:** `--check` reports `enforcementInstalled: true, plaintextRows: 0`, and
    `SELECT convalidated FROM pg_constraint WHERE conname = 'payment_methods_no_plaintext_oauth_token_check'` is `t`.
+   (The conversion script's closing message says exactly this. It never tells an operator to VALIDATE the constraint directly: the
+   migrations do not install it, so the finalizer is the only thing that does.)
 5. **Rollback.** Before finalization, rolling the application back is safe for writes (the old server's plaintext writes are
    accepted) and the new columns are ignored. Two limits are real: a connection the new application already converted no longer
    carries plaintext, so the OLD code cannot use or display it (providers reconnect on the old code); and a plaintext write by the old
@@ -136,10 +138,22 @@ order/payment-read scopes, so those providers see "Needs reconnect" once.
   | --- | --- | --- |
   | Local disconnect; Square confirmed the revocation (or said the token was already invalid) | `revoked` | ChefSire's access to the Square account is revoked. |
   | Local disconnect; another ACTIVE ChefSire account uses the same Square merchant, so revocation was intentionally skipped | `retained_for_shared_connection` | Disconnected here; the other account still uses it, so access in Square was left in place for it. Not an error. |
-  | Local disconnect; Square unavailable, rejected ChefSire's application credentials, or the call could not be confirmed | `unconfirmed` | Disconnected from ChefSire, but we could not confirm Square revoked access; it may still be active; remove ChefSire from the connected apps in your Square account. |
+  | Local disconnect; Square unavailable, rejected ChefSire's application credentials, or answered 2xx WITHOUT an explicit `success: true` (false, missing, or with response-level errors) | `unconfirmed` | Disconnected from ChefSire, but we could not confirm Square revoked access; it may still be active; remove ChefSire from the connected apps in your Square account. |
   | Local disconnect; encryption/configuration fault or no stored credential left to revoke with | `unconfirmed` | Same warning. |
   | Nothing was connected / repeat disconnect | `not_applicable` | Nothing. |
 
+* **Revocation is confirmed only by Square's explicit `success: true`** (no response-level errors). A resolved 2xx without it is
+  unconfirmed: no merchant revocation epoch is recorded and the owner is not told access was revoked.
+* **Configuration outages never trap a provider.** When the encryption key or Square application credentials are unavailable the
+  status is `configuration_error`, and carries `canDisconnect` (true only when a not-yet-disconnected local connection exists; a
+  boolean, never a credential). Local disconnect needs neither configuration: it clears credentials, marks the row disconnected, keeps
+  non-secret history, makes no Square call, and reports `unconfirmed`.
+* **Legacy reconciliation compares token VALUES.** When sealed credentials and plaintext both exist, the sealed pair is opened
+  server-side and compared with the plaintext by value (digests + `timingSafeEqual`; nothing logged or stored). An identical pair is
+  redundant residue and is removed (the sealed credential and its expiry stand, whatever the plaintext's expiry). A different pair
+  is a distinct reconnect and is resealed under the current key as the newer credential (generation advanced, verification facts
+  cleared) even when its expiry is identical. A single plaintext token, or non-string values, is malformed and left untouched. A
+  sealed pair that cannot be opened is a configuration fault: plaintext does not overwrite it.
 * **Merchant-scoped serialization.** Square revokes every token the application holds for a merchant, so "is anyone else still
   connected to this merchant?" must be decided atomically. OAuth persistence and disconnect first take
   `pg_advisory_xact_lock(hashtext('square-merchant:' || merchantId))`; the shared-connection check and the revoke decision run
@@ -148,6 +162,11 @@ order/payment-read scopes, so those providers see "Needs reconnect" once.
   lock and never wait for a merchant lock while holding it, so there is no cycle. Outcomes: the last active connection to
   disconnect revokes exactly once (two concurrent last disconnects: one `retained_for_shared_connection`, one `revoked`); a
   reconnect that commits first makes a concurrent disconnect retain.
+* **Legacy connections count as sharers.** During a rolling deploy an active connection can still hold its only credential as plaintext
+  `account_details.accessToken`. The shared-merchant check therefore counts an active row on the merchant that holds EITHER a sealed
+  access token OR a non-empty string `accessToken` (not merely any JSON), under the same merchant lock; a legacy connection that is
+  itself the last one out is sealed first, in the disconnect transaction, so it can revoke. After finalization no legacy rows exist and
+  the second branch is never true.
 * **Merchant-level revocation history** (`square_merchant_revocations`, keyed by merchant id; no foreign key to users or connection
   rows, so it survives an account moving to another merchant, row reuse, disconnect and status changes; rows are never deleted and
   may only move forward). Because Square's revocation also kills a token issued to a concurrent authorization, a revoking disconnect

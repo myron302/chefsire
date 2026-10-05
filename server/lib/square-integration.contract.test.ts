@@ -21,6 +21,7 @@ import {
   selectPaymentLocation,
   SQUARE_CONNECTION_SCOPES,
   squareOauthAuthorizeUrl,
+  SquareRevocationUnconfirmedError,
   type SquareFailureSurface,
   type SquareLocationFacts,
 } from "./square-integration";
@@ -167,6 +168,43 @@ test("failures from the real SDK are classified from the error CONTENT: only a p
     // A non-Square failure (network down) is never mistaken for a revoked credential.
     assert.equal(classifySquareFailure(new TypeError("fetch failed")), "transient");
     assert.equal(classifySquareFailure(undefined), "transient");
+  } finally {
+    await fake.close();
+  }
+});
+
+test("a revocation is CONFIRMED only by an explicit `success: true` with no errors, judged on the real SDK's response shape", async () => {
+  const fake = await startFakeSquare();
+  try {
+    const api = createSquareProviderApi({ baseUrl: fake.baseUrl });
+    // The real SDK resolves a 2xx with the parsed body; confirm that body is exactly what the wrapper inspects.
+    fake.state.revokeResponseBody = { success: true };
+    await api.revokeAccessToken("AT"); // resolves: confirmed
+
+    const unconfirmed: Array<[string, unknown]> = [
+      ["success: false", { success: false }],
+      ["success missing", {}],
+      ["success null", { success: null }],
+      ["success as a string", { success: "true" }],
+      ["errors only", { errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR", detail: "nope" }] }],
+      ["success true WITH response-level errors", { success: true, errors: [{ category: "API_ERROR", code: "GENERIC_DECLINE" }] }],
+    ];
+    for (const [label, body] of unconfirmed) {
+      fake.state.revokeResponseBody = body;
+      await assert.rejects(api.revokeAccessToken("AT"), (error: unknown) => error instanceof SquareRevocationUnconfirmedError, label);
+    }
+    // A thrown API error and a network failure are failures too (never a confirmation).
+    fake.state.revokeResponseBody = undefined;
+    fake.state.failures.revoke = 401;
+    await assert.rejects(api.revokeAccessToken("AT"), (error: unknown) => error instanceof SquareError);
+    fake.state.failures.revoke = 503;
+    await assert.rejects(api.revokeAccessToken("AT"), (error: unknown) => error instanceof SquareError);
+    fake.state.failures.revoke = undefined;
+    const dead = createSquareProviderApi({ baseUrl: "http://127.0.0.1:9" });
+    await assert.rejects(dead.revokeAccessToken("AT"));
+    // No token or secret in the failure message.
+    fake.state.revokeResponseBody = { success: false };
+    await assert.rejects(api.revokeAccessToken("secret-token-value"), (error: unknown) => !String((error as Error).message).includes("secret-token-value") && !String((error as Error).message).includes("app-secret-test"));
   } finally {
     await fake.close();
   }

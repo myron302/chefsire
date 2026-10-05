@@ -158,7 +158,7 @@ if (!URL_ENV) {
     await withHarness({ fake: { grants: [tokenGrant("access-ready-1", "refresh-ready-1", "2099-01-01T00:00:00Z")] } }, async (h) => {
       await h.connect("provider-1");
       const readiness = await h.service.getSquarePaymentReadiness("provider-1");
-      assert.deepEqual(readiness, { state: "active", paymentReady: true, merchantId: "MERCHANT_1", merchantName: "Test Catering Co", locationId: "LOC_1", locationName: "Main Kitchen", locationCurrency: "USD" });
+      assert.deepEqual(readiness, { state: "active", paymentReady: true, merchantId: "MERCHANT_1", merchantName: "Test Catering Co", locationId: "LOC_1", locationName: "Main Kitchen", locationCurrency: "USD", hasLocalConnection: true });
       assert.equal(JSON.stringify(readiness).includes("access-ready-1"), false);
       const credentials = await h.service.getReadyConnectedCredentials("provider-1");
       assert.equal(credentials?.accessToken, "access-ready-1");
@@ -173,12 +173,12 @@ if (!URL_ENV) {
     await withHarness({ fake: { grants: [tokenGrant("access-view-1", "refresh-view-1", "2099-01-01T00:00:00Z")] } }, async (h) => {
       await h.connect("provider-1");
       const view = await h.service.status("provider-1");
-      assert.deepEqual(view, { state: "active", connected: true, paymentReady: true, needsReauthorization: false, merchantDisplayName: "Test Catering Co", locationDisplayName: "Main Kitchen" });
+      assert.deepEqual(view, { state: "active", connected: true, paymentReady: true, needsReauthorization: false, merchantDisplayName: "Test Catering Co", locationDisplayName: "Main Kitchen", canDisconnect: true });
       const text = JSON.stringify(view);
       for (const forbidden of ["access-view-1", "refresh-view-1", "sqenc", "MERCHANT_1", "LOC_1", "PAYMENTS_WRITE", "accessToken", "refreshToken", "account_details", "app-secret-test", KEY]) {
         assert.equal(text.includes(forbidden), false, forbidden);
       }
-      assert.deepEqual((await h.service.status("nobody")), { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null });
+      assert.deepEqual((await h.service.status("nobody")), { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null, canDisconnect: false });
     });
   });
 

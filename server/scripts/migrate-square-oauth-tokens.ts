@@ -13,6 +13,7 @@
 // Requires DATABASE_URL (as every other script here) and the migration 20261007_square_connection_hardening.sql.
 // Prints counts and payment_methods ids only. It never prints a token, a ciphertext or the key.
 // A malformed row is reported and left exactly as it was; its owner is shown "reconnect" until they re-authorize.
+// FINALIZATION (forbidding plaintext tokens in the database) is a separate, explicit step: finalize-square-plaintext-enforcement.ts.
 import "../lib/load-env";
 import { pool } from "../db";
 import { createSquareConnectionService, type SqlPool } from "../lib/square-connection-service";
@@ -34,8 +35,13 @@ async function main() {
   const summary = await service.convertAllLegacyRows({ dryRun });
   console.warn(JSON.stringify({ event: "square_oauth_token_migration", dryRun, ...summary }));
   if (!dryRun && summary.malformed.length === 0) {
+    // The write-blocking constraint is NOT installed by the automatic migrations (see the doc), so there is nothing to VALIDATE
+    // yet: the explicit finalization script installs and validates it.
     console.warn(
-      "Done. Once this reports found=0 everywhere, run: ALTER TABLE payment_methods VALIDATE CONSTRAINT payment_methods_no_plaintext_oauth_token_check;",
+      "Conversion finished with no malformed rows. To make plaintext tokens impossible to write: (1) make sure every OLD application " +
+        "server is drained; (2) confirm `finalize-square-plaintext-enforcement.ts --check` reports plaintextRows: 0; (3) run " +
+        "`npx tsx server/scripts/finalize-square-plaintext-enforcement.ts --confirm-old-servers-drained`, which installs and validates " +
+        "the constraint (and refuses while any plaintext remains).",
     );
   }
   process.exitCode = summary.malformed.length > 0 ? 2 : 0;

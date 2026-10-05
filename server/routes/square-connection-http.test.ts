@@ -142,7 +142,7 @@ if (!URL_ENV) {
     const status = await call("GET", "/api/square-connection/status", tok("provider-a"));
     assert.equal(status.status, 200);
     assert.equal(status.headers.get("cache-control"), "no-store");
-    assert.deepEqual(status.body, { ok: true, connection: { state: "active", connected: true, paymentReady: true, needsReauthorization: false, merchantDisplayName: "Test Catering Co", locationDisplayName: "Main Kitchen" } });
+    assert.deepEqual(status.body, { ok: true, connection: { state: "active", connected: true, paymentReady: true, needsReauthorization: false, merchantDisplayName: "Test Catering Co", locationDisplayName: "Main Kitchen", canDisconnect: true } });
     for (const forbidden of ["http-access-token-1", "http-refresh-token-1", "sqenc", "app-secret-test", KEY, "MERCHANT_1", "account_details"]) {
       assert.equal(status.text.includes(forbidden), false, forbidden);
     }
@@ -197,7 +197,7 @@ if (!URL_ENV) {
     await authorize("provider-a");
     assert.equal((await call("GET", "/api/square-connection/status")).status, 401);
     const other = await call("GET", "/api/square-connection/status", tok("provider-b"));
-    assert.deepEqual(other.body.connection, { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null });
+    assert.deepEqual(other.body.connection, { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null, canDisconnect: false });
     // Ids supplied in a query or path do nothing, and guessing one finds no route.
     const [row] = await rows("provider-a");
     assert.deepEqual((await call("GET", `/api/square-connection/status?userId=provider-a&paymentMethodId=${row.id}`, tok("provider-b"))).body.connection.state, "not_connected");
@@ -228,7 +228,7 @@ if (!URL_ENV) {
     // The owner, from the app's own origin.
     const own = await call("POST", "/api/square-connection/disconnect", { ...tok("provider-a"), origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}` }, {});
     assert.equal(own.status, 200);
-    assert.deepEqual(own.body, { ok: true, changed: true, providerRevocation: "revoked", providerRevoked: true, connection: { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null } });
+    assert.deepEqual(own.body, { ok: true, changed: true, providerRevocation: "revoked", providerRevoked: true, connection: { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null, canDisconnect: false } });
     const [after] = await rows("provider-a");
     assert.equal(after.account_status, "disconnected");
     assert.equal(after.encrypted_access_token, null);
@@ -271,6 +271,36 @@ if (!URL_ENV) {
     const again = await call("POST", "/api/square-connection/disconnect", tok("provider-b"), {});
     assert.equal(again.body.providerRevocation, "not_applicable");
     for (const body of [unconfirmed.text, shared.text, last.text]) for (const forbidden of ["http-access-token-1", "http-refresh-token-1", "sqenc", KEY]) assert.equal(body.includes(forbidden), false);
+  });
+
+  test("during a configuration outage the owner's connection is reported (safely) as disconnectable, and local disconnect works", async () => {
+    await wipe();
+    await authorize("provider-a");
+    const savedKey = process.env.SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY;
+    delete process.env.SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY;
+    try {
+      const status = await call("GET", "/api/square-connection/status", tok("provider-a"));
+      assert.equal(status.body.connection.state, "configuration_error");
+      assert.equal(status.body.connection.canDisconnect, true);
+      for (const forbidden of ["http-access-token-1", "http-refresh-token-1", "sqenc", "app-secret-test", KEY, "MERCHANT_1"]) assert.equal(status.text.includes(forbidden), false, forbidden);
+      // Someone with no connection is not offered Disconnect.
+      assert.equal((await call("GET", "/api/square-connection/status", tok("provider-b"))).body.connection.canDisconnect, false);
+
+      const revokesBefore = fake.calls("/oauth2/revoke");
+      const disconnected = await call("POST", "/api/square-connection/disconnect", tok("provider-a"), {});
+      assert.equal(disconnected.status, 200);
+      assert.equal(disconnected.body.changed, true);
+      assert.equal(disconnected.body.providerRevocation, "unconfirmed");
+      assert.equal(disconnected.body.providerRevoked, false);
+      assert.equal(disconnected.body.connection.canDisconnect, false);
+      assert.equal(fake.calls("/oauth2/revoke"), revokesBefore);
+      assert.equal(disconnected.text.includes("http-access-token-1"), false);
+      const [row] = await rows("provider-a");
+      assert.equal(row.account_status, "disconnected");
+      assert.equal(row.encrypted_access_token, null);
+    } finally {
+      process.env.SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY = savedKey;
+    }
   });
 
   test("recheck re-asks Square; a connection Square has revoked is reported as needing reauthorization without leaking why", async () => {

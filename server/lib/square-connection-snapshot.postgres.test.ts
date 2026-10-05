@@ -217,7 +217,7 @@ if (!URL_ENV) {
         assert.equal(readiness.locationId, null);
       }
       assert.equal(await h.service.getReadyConnectedCredentials("provider-1"), null);
-      assert.deepEqual(await h.service.status("provider-1"), { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null });
+      assert.deepEqual(await h.service.status("provider-1"), { state: "not_connected", connected: false, paymentReady: false, needsReauthorization: false, merchantDisplayName: null, locationDisplayName: null, canDisconnect: false });
       assert.equal(h.logs.filter((entry) => entry.event === "square_connection_snapshot_changed").length, 0, "nothing was racing");
     });
   });

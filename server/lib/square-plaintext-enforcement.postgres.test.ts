@@ -167,4 +167,16 @@ if (!URL_ENV) {
       }
     }
   });
+
+  test("the migration script's operator guidance points at the real finalization script, not at validating a constraint that does not exist", () => {
+    const script = fs.readFileSync(path.join(root, "server/scripts/migrate-square-oauth-tokens.ts"), "utf8").replace(/"\s*\+\s*\n\s*"/g, "");
+    assert.equal(script.includes("VALIDATE CONSTRAINT"), false, "never tells an operator to VALIDATE a constraint the migrations do not install");
+    assert.equal(script.includes("payment_methods_no_plaintext_oauth_token_check;"), false);
+    for (const required of ["every OLD application server is drained", "finalize-square-plaintext-enforcement.ts --check", "plaintextRows: 0", "finalize-square-plaintext-enforcement.ts --confirm-old-servers-drained", "installs and validates", "refuses while any plaintext remains"]) {
+      assert.ok(script.includes(required), required);
+    }
+    const doc = fs.readFileSync(path.join(root, "docs/square-provider-connection-gate0.md"), "utf8");
+    assert.equal(/Once this reports found=0 everywhere, run: ALTER TABLE/.test(doc), false);
+    assert.ok(doc.includes("finalize-square-plaintext-enforcement.ts --confirm-old-servers-drained"));
+  });
 }

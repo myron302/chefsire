@@ -21,6 +21,8 @@ export type SquareConnectionStatus = {
   needsReauthorization: boolean;
   merchantDisplayName: string | null;
   locationDisplayName: string | null;
+  /** A local connection exists that can be disconnected, even when ChefSire's own Square configuration is broken. */
+  canDisconnect?: boolean;
 };
 
 /** What a disconnect did at Square. Mirrors the server: LOCAL disconnect and SQUARE revocation are different things. */
@@ -89,12 +91,21 @@ export function squareConnectionPresentation(status: SquareConnectionStatus | nu
         actions: ["recheck", "disconnect"],
       };
     case "configuration_error":
-      return {
-        label: "Unavailable",
-        tone: "attention",
-        detail: "Connecting Square isn't available right now. Please try again later.",
-        actions: [],
-      };
+      // ChefSire's own Square configuration is broken. A provider who HAS a local connection can still disconnect it here (local
+      // disconnect needs no Square configuration); one with none is not offered a meaningless button.
+      return status.canDisconnect === true
+        ? {
+          label: "Unavailable",
+          tone: "attention",
+          detail: "ChefSire can't check your Square connection right now. You can still disconnect it from ChefSire; if Square's side can't be confirmed revoked, we'll tell you.",
+          actions: ["disconnect"],
+        }
+        : {
+          label: "Unavailable",
+          tone: "attention",
+          detail: "Connecting Square isn't available right now. Please try again later.",
+          actions: [],
+        };
     case "not_connected":
     default:
       return {

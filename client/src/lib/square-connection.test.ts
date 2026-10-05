@@ -112,3 +112,21 @@ test("the screen renders the disconnect notice from the server's providerRevocat
   assert.equal((page.match(/setDisconnectNotice\(null\)/g) ?? []).length, 2);
   assert.equal(squareCallbackMessage("?error=authorization_superseded")?.tone, "attention");
 });
+
+test("during a Square configuration error, Disconnect is offered only to someone who HAS a local connection", () => {
+  const withConnection = squareConnectionPresentation(status("configuration_error", { canDisconnect: true }));
+  assert.deepEqual([...withConnection.actions], ["disconnect"]);
+  assert.match(withConnection.detail, /still disconnect it from ChefSire/);
+  assert.match(withConnection.detail, /if Square's side can't be confirmed revoked, we'll tell you/);
+  for (const absent of [{ canDisconnect: false }, {}, { canDisconnect: undefined }]) {
+    const view = squareConnectionPresentation(status("configuration_error", absent as Partial<SquareConnectionStatus>));
+    assert.deepEqual([...view.actions], [], JSON.stringify(absent));
+    assert.doesNotMatch(view.detail, /disconnect/i);
+  }
+  // The result of that local disconnect is surfaced as the unconfirmed-revocation warning, not as success.
+  const notice = squareDisconnectNotice({ changed: true, providerRevocation: "unconfirmed", providerRevoked: false });
+  assert.equal(notice?.tone, "attention");
+  assert.match(notice!.text, /Disconnected from ChefSire, but we couldn't confirm that Square has revoked/);
+  // Nothing in any copy or in the status type carries a credential.
+  assert.doesNotMatch(JSON.stringify([withConnection, notice]), /token|secret|sqenc/i);
+});

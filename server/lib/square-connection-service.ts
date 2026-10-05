@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   classifySquareFailure,
   hasRequiredSquareScopes,
@@ -59,6 +59,8 @@ export type SquarePaymentReadiness = {
   locationId: string | null;
   locationName: string | null;
   locationCurrency: string | null;
+  /** Whether a (not yet disconnected) local Square connection exists for the user. Safe: a boolean, never a credential. */
+  hasLocalConnection: boolean;
 };
 
 /** The ONLY shape the status endpoint returns. No id, token, ciphertext, scope list or provider detail. */
@@ -69,6 +71,11 @@ export type SquareConnectionStatusView = {
   needsReauthorization: boolean;
   merchantDisplayName: string | null;
   locationDisplayName: string | null;
+  /**
+   * Whether a local Square connection exists that the owner may disconnect. True even while ChefSire's own Square configuration is
+   * broken (`configuration_error`): local disconnect needs no Square or encryption configuration, so a provider is never trapped.
+   */
+  canDisconnect: boolean;
 };
 
 export const SQUARE_TOKEN_REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -212,6 +219,25 @@ function hasLegacySecrets(details: Record<string, unknown> | null | undefined): 
   return Boolean(details) && (typeof details!.accessToken === "string" || typeof details!.refreshToken === "string");
 }
 
+/**
+ * Equality of two secrets already in memory, without a data-dependent early exit: both are reduced to SHA-256 digests (so the
+ * lengths match) and compared with `timingSafeEqual`. Nothing is logged or stored.
+ */
+function secretsEqual(a: string, b: string): boolean {
+  return timingSafeEqual(createHash("sha256").update(a, "utf8").digest(), createHash("sha256").update(b, "utf8").digest());
+}
+
+/**
+ * SQL predicate (over payment_methods) for "an ACTIVE connection that holds a usable credential", in EITHER representation:
+ * sealed columns, or -- while a rolling deploy or the plaintext migration is still in progress -- a legacy plaintext access token
+ * in account_details. Only a non-empty STRING `accessToken` counts; arbitrary account_details JSON does not. After plaintext has
+ * been finalized no legacy rows can exist and the second branch is simply never true.
+ */
+const ACTIVE_USABLE_CONNECTION_SQL = `account_status = 'active' AND (
+    encrypted_access_token IS NOT NULL
+    OR (jsonb_typeof(account_details -> 'accessToken') = 'string' AND btrim(account_details ->> 'accessToken') <> '')
+  )`;
+
 function emptyReadiness(state: SquareReadinessState, row?: ConnectionRow | null): SquarePaymentReadiness {
   return {
     state,
@@ -221,6 +247,7 @@ function emptyReadiness(state: SquareReadinessState, row?: ConnectionRow | null)
     locationId: row?.location_id ?? null,
     locationName: row?.location_name ?? null,
     locationCurrency: row?.location_currency ?? null,
+    hasLocalConnection: Boolean(row) && row!.account_status !== "disconnected",
   };
 }
 
@@ -234,6 +261,7 @@ export function toSquareConnectionStatusView(readiness: SquarePaymentReadiness):
     needsReauthorization: readiness.state === "needs_reauthorization",
     merchantDisplayName: connected ? readiness.merchantName : null,
     locationDisplayName: connected ? readiness.locationName : null,
+    canDisconnect: readiness.hasLocalConnection,
   };
 }
 
@@ -332,16 +360,31 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
 
     if (row.encrypted_access_token) {
       // Sealed credentials already exist AND plaintext is present. During a rolling deploy an OLD server can write a fresh
-      // plaintext connection (a reconnect) over a row the new application already converted. Plaintext whose expiry differs from
-      // the sealed credential's is such a newer write: it replaces the sealed pair (below). Otherwise it is stale and is removed.
-      const sameCredential = plaintextUsable && row.token_expires_at !== null && Math.abs(row.token_expires_at.getTime() - expiresAt!.getTime()) < 1000;
-      if (!plaintextUsable || sameCredential) {
+      // plaintext connection (a reconnect) over a row the new application already converted. Whether that plaintext is the SAME
+      // credential is decided by the actual token VALUES -- an expiry is not a credential identity: a new authorization can
+      // produce different tokens with the same or nearly the same expiry.
+      if (typeof details?.accessToken === "undefined" && typeof details?.refreshToken === "undefined") {
+        // Only an expiry residue remains: no secret to reconcile.
+        await db.query(`UPDATE payment_methods SET account_details = account_details - 'tokenExpiresAt', updated_at = now() WHERE id = $1`, [rowId]);
+        return { kind: "converted", id: rowId };
+      }
+      if (typeof accessToken !== "string" || !accessToken || typeof refreshToken !== "string" || !refreshToken) {
+        return { kind: "malformed", id: rowId, reason: "missing_or_non_string_token" }; // one-token or non-string plaintext: fail closed
+      }
+      // Opens the sealed pair; if it cannot be opened this throws, and the caller reports a configuration fault rather than
+      // letting plaintext overwrite security state blindly.
+      const sealedAccess = decryptSecret(row.encrypted_access_token, accessAad(rowId));
+      const sealedRefresh = row.encrypted_refresh_token ? decryptSecret(row.encrypted_refresh_token, refreshAad(rowId)) : "";
+      if (secretsEqual(sealedAccess, accessToken) && secretsEqual(sealedRefresh, refreshToken)) {
+        // Redundant legacy residue: the very same pair is already sealed. Remove the plaintext; keep the sealed credential and its expiry.
         await db.query(
           `UPDATE payment_methods SET account_details = account_details - 'accessToken' - 'refreshToken' - 'tokenExpiresAt', updated_at = now() WHERE id = $1`,
           [rowId],
         );
         return { kind: "converted", id: rowId };
       }
+      // A DIFFERENT pair is a distinct credential write (an old server's reconnect): it falls through to be resealed under the
+      // current key as the newer credential, whatever its expiry.
     }
     if (!plaintextUsable) {
       return typeof accessToken !== "string" || !accessToken || typeof refreshToken !== "string" || !refreshToken
@@ -386,7 +429,13 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     const summary = { found: candidates.rows.length, converted: 0, alreadyConverted: 0, malformed: [] as { id: string; reason: string }[] };
     if (options.dryRun) return summary;
     for (const candidate of candidates.rows) {
-      const result = await convertLegacyRowInTransaction(String(candidate.id));
+      let result: LegacyConversionResult;
+      try {
+        result = await convertLegacyRowInTransaction(String(candidate.id));
+      } catch (error) {
+        if (!(error instanceof SecretBoxError)) throw error;
+        result = { kind: "malformed", id: String(candidate.id), reason: "sealed_credential_unreadable" };
+      }
       if (result.kind === "converted") summary.converted += 1;
       else if (result.kind === "malformed") summary.malformed.push({ id: result.id, reason: result.reason });
       else summary.alreadyConverted += 1;
@@ -722,8 +771,13 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    */
   async function evaluate(userId: string, options: { force?: boolean } = {}, attempt = 0): Promise<{ readiness: SquarePaymentReadiness; generation: string | null }> {
     const result = (readiness: SquarePaymentReadiness, row?: ConnectionRow | null) => ({ readiness, generation: row ? String(row.credential_generation) : null });
-    if (!isSecretBoxConfigured() || !squareOauthApplication()) return result(emptyReadiness("configuration_error"));
-    if (attempt >= MAX_SNAPSHOT_RETRIES) return result(emptyReadiness("verification_unavailable"));
+    // A configuration fault is reported with whether a local connection exists, so the owner can still disconnect it.
+    const configurationError = async () => {
+      const present = await loadRow(pool, userId, false);
+      return result({ ...emptyReadiness("configuration_error"), hasLocalConnection: Boolean(present) && present!.account_status !== "disconnected" });
+    };
+    if (!isSecretBoxConfigured() || !squareOauthApplication()) return configurationError();
+    if (attempt >= MAX_SNAPSHOT_RETRIES) return result({ ...emptyReadiness("verification_unavailable"), hasLocalConnection: true });
     try {
       let row = await loadRow(pool, userId, false);
       if (!row || row.account_status === "disconnected") return result(emptyReadiness("not_connected", null));
@@ -751,8 +805,8 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       }
       return result(readinessOf(current), current);
     } catch (error) {
-      if (error instanceof SquareConnectionUnavailableError) return result(emptyReadiness("verification_unavailable"));
-      if (error instanceof SquareApplicationAuthError || error instanceof SquareCredentialError || error instanceof SecretBoxError) return result(emptyReadiness("configuration_error"));
+      if (error instanceof SquareConnectionUnavailableError) return result({ ...emptyReadiness("verification_unavailable"), hasLocalConnection: true });
+      if (error instanceof SquareApplicationAuthError || error instanceof SquareCredentialError || error instanceof SecretBoxError) return configurationError();
       throw error;
     }
   }
@@ -879,10 +933,24 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
           continue;
         }
         let providerRevocation: ProviderRevocation = "unconfirmed";
+        // A connection an OLD server wrote still holds its only credential as plaintext. Seal it first (same transaction, row already
+        // locked) so the revoke decision below can use it; if it cannot be converted the disconnect simply stays unconfirmed.
+        if (!row.encrypted_access_token && hasLegacySecrets(row.account_details) && isSecretBoxConfigured()) {
+          try {
+            const converted = await convertLegacyRow(client, row.id);
+            if (converted.kind === "converted") {
+              const reloaded = await loadRow(client, userId, true);
+              if (reloaded && reloaded.id === row.id) Object.assign(row, reloaded);
+            }
+          } catch (error) {
+            if (!(error instanceof SecretBoxError)) throw error;
+          }
+        }
         if (row.encrypted_access_token && isSecretBoxConfigured() && squareOauthApplication()) {
-          // Authoritative, under the merchant lock: any other ChefSire connection that is active and holds credentials.
+          // Authoritative, under the merchant lock: any other ChefSire connection that is active and holds a usable credential,
+          // sealed OR (during a rolling deploy / migration) still legacy plaintext: revoking would silently kill that one too.
           const sharedMerchant = await client.query(
-            `SELECT 1 FROM payment_methods WHERE provider = 'square' AND provider_id = $1 AND id <> $2 AND account_status = 'active' AND encrypted_access_token IS NOT NULL LIMIT 1`,
+            `SELECT 1 FROM payment_methods WHERE provider = 'square' AND provider_id = $1 AND id <> $2 AND ${ACTIVE_USABLE_CONNECTION_SQL} LIMIT 1`,
             [row.provider_id, row.id],
           );
           if (sharedMerchant.rows.length) {
