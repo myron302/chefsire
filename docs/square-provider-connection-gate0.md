@@ -272,6 +272,12 @@ Requested: `MERCHANT_PROFILE_READ`, `PAYMENTS_WRITE`, `PAYMENTS_READ`, `ORDERS_W
 
 ## Marketplace SDK repair
 
+**Reconciliation listing is paginated, not materialized.** The adapter's `listPayments` returns ONE page and the cursor for the next (the
+legacy contract); `findSquarePaymentByReference` walks pages lazily, matches the exact `referenceId` per page and returns at the first
+match, so a known target is never lost to unrelated payments after it and memory is bounded by one page. An UNMATCHED search is bounded
+by `MAX_RECONCILIATION_PAGES` (100 pages) and then fails closed (an error, never a "no match" verdict). Amount, currency, status,
+location and window filters, and the evidence checks on the found payment, are unchanged.
+
 `server/lib/square-client.ts` built `new Client(...)` from the root `square` export, which does not exist in the installed
 v43, so marketplace capture/refund/reconciliation threw a `TypeError` before any request. It is now a thin adapter that
 keeps the exact call shape those state machines use (`paymentsApi.createPayment/listPayments`, `refundsApi.refundPayment/

@@ -210,7 +210,7 @@ test("a revocation is CONFIRMED only by an explicit `success: true` with no erro
   }
 });
 
-test("the marketplace adapter keeps the legacy call shape on the real SDK: create, list (whole window) and refund", async () => {
+test("the marketplace adapter keeps the legacy call shape on the real SDK: create, list (one page + cursor) and refund", async () => {
   const requests: { method: string; path: string; query: string; body: string }[] = [];
   const http = await import("node:http");
   const server = http.createServer((req, res) => {
@@ -251,10 +251,14 @@ test("the marketplace adapter keeps the legacy call shape on the real SDK: creat
     assert.equal(createBody.idempotency_key, "key-1");
     assert.equal(createBody.amount_money.amount, 1250);
 
-    // Positional arguments, exactly as the reconciliation code passes them; all pages come back in one result.
+    // Positional arguments, exactly as the reconciliation code passes them; ONE page per call, with the cursor for the next (the
+    // reconciliation search walks the pages lazily and stops at its match -- nothing is materialized across pages).
     const listed = await client.paymentsApi.listPayments("2026-01-01T00:00:00Z", "2026-01-01T00:10:00Z", "DESC", undefined, "LOC_1", 1250n, undefined, undefined, 100);
-    assert.deepEqual(listed.result.payments.map((payment) => payment.id), ["PAY_2", "PAY_3"]);
-    assert.equal(listed.result.cursor, undefined);
+    assert.deepEqual(listed.result.payments.map((payment) => payment.id), ["PAY_2"]);
+    assert.equal(listed.result.cursor, "next-page");
+    const second = await client.paymentsApi.listPayments("2026-01-01T00:00:00Z", "2026-01-01T00:10:00Z", "DESC", "next-page", "LOC_1", 1250n, undefined, undefined, 100);
+    assert.deepEqual(second.result.payments.map((payment) => payment.id), ["PAY_3"]);
+    assert.equal(second.result.cursor, undefined);
     const firstList = requests.find((request) => request.path === "/v2/payments" && request.method === "GET")!;
     assert.match(firstList.query, /location_id=LOC_1/);
     assert.match(firstList.query, /total=1250/);

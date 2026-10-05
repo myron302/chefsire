@@ -212,13 +212,21 @@ export type SquarePaymentPage = {
   cursor?: string | null;
 };
 
+/** Pages of up to 100 payments searched for one reference before an unmatched search gives up (fail-closed). */
+export const MAX_RECONCILIATION_PAGES = 100;
+
 export async function findSquarePaymentByReference(options: {
   referenceId: string;
   listPage: (cursor?: string) => Promise<SquarePaymentPage>;
 }) {
   let cursor: string | undefined;
   const seenCursors = new Set<string>();
+  let pages = 0;
   do {
+    // An UNMATCHED search is bounded (fail-closed, never a "no match" verdict) so a misbehaving backend cannot make it scan forever.
+    // A match returns immediately, so this bound can never discard a target that was already found.
+    if (pages >= MAX_RECONCILIATION_PAGES) throw new Error("Square payment pagination exceeded its bound");
+    pages += 1;
     const page = await options.listPage(cursor);
     const matches = (page.payments ?? []).filter((payment) => payment.referenceId === options.referenceId);
     if (matches.length > 1) throw new Error("Square returned duplicate payment references");

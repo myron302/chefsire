@@ -18,9 +18,6 @@ import { createPlatformSquareClient, type SquareSdkOptions } from "./square-inte
  * Environment selection and the platform token come from `square-integration.ts`, shared with every Square caller.
  */
 
-/** A reconciliation window holds a handful of payments; this bound only stops a runaway pagination loop. */
-const MAX_LISTED_PAYMENTS = 1000;
-
 export function getSquareClient(options: SquareSdkOptions = {}) {
   const client = createPlatformSquareClient(options);
   return {
@@ -28,18 +25,21 @@ export function getSquareClient(options: SquareSdkOptions = {}) {
       async createPayment(request: Square.CreatePaymentRequest) {
         return { result: await client.payments.create(request) };
       },
-      /** Same positional arguments as the legacy `listPayments`; returns the whole window, never a partial page. */
+      /**
+       * Same positional arguments as the legacy `listPayments`, and the same contract: ONE page per call, with the `cursor` for the next.
+       * Nothing is materialized across pages here. The reconciliation search (`findSquarePaymentByReference`) walks the pages lazily,
+       * matches the exact reference on each, and stops at the first match, so a known target is never discarded because unrelated
+       * payments follow it, and memory stays bounded by one page.
+       */
       async listPayments(
         beginTime?: string, endTime?: string, sortOrder?: string, cursor?: string, locationId?: string,
         total?: bigint, last4?: string, cardBrand?: string, limit?: number,
       ) {
         const page = await client.payments.list({ beginTime, endTime, sortOrder, cursor, locationId, total, last4, cardBrand, limit });
-        const payments: Square.Payment[] = [];
-        for await (const payment of page) {
-          if (payments.length >= MAX_LISTED_PAYMENTS) throw new Error("Square payment listing exceeded its bound");
-          payments.push(payment);
-        }
-        return { result: { payments, cursor: undefined as string | undefined } };
+        // `Pageable` keeps the raw list response it was built from; its `cursor` names the next page (absent/empty on the last).
+        const response = (page as unknown as { response?: { cursor?: string | null } }).response;
+        const next = response?.cursor || undefined;
+        return { result: { payments: page.data as Square.Payment[], cursor: next as string | undefined } };
       },
     },
     refundsApi: {
