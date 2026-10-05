@@ -419,8 +419,9 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       }
       // Opens the sealed pair; if it cannot be opened this throws, and the caller reports a configuration fault rather than
       // letting plaintext overwrite security state blindly.
-      const sealedAccess = decryptSecret(row.encrypted_access_token, accessAad(rowId));
-      const sealedRefresh = row.encrypted_refresh_token ? decryptSecret(row.encrypted_refresh_token, refreshAad(rowId)) : "";
+      // (sealedComplete guarantees both tokens are present.)
+      const sealedAccess = decryptSecret(row.encrypted_access_token as string, accessAad(rowId));
+      const sealedRefresh = decryptSecret(row.encrypted_refresh_token as string, refreshAad(rowId));
       if (secretsEqual(sealedAccess, accessToken) && secretsEqual(sealedRefresh, refreshToken)) {
         // Redundant legacy residue: the very same pair is already sealed. Remove the plaintext; keep the sealed credential and its expiry.
         await db.query(
