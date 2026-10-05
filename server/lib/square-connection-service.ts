@@ -259,7 +259,25 @@ export function hasCompleteLegacyCredential(details: Record<string, unknown> | n
  * shared connection and suppress a merchant-wide revoke. After plaintext is finalized the legacy branch is simply never true.
  */
 export function isActiveUsableConnection(row: ConnectionRow): boolean {
-  return row.account_status === "active" && (hasCompleteSealedCredential(row) || hasCompleteLegacyCredential(row.account_details));
+  return row.account_status === "active" && (hasUsableSealedCredential(row) || hasCompleteLegacyCredential(row.account_details));
+}
+
+/**
+ * A sealed credential the application could actually USE: structurally complete AND both ciphertexts really open -- authenticated under
+ * the current or previous key, with THIS row's id and each column's own AAD. A prefix, a pair and an expiry prove nothing about a tampered,
+ * corrupted, retired-key or copied-from-another-row ciphertext, and such a sibling must not suppress a merchant-wide revoke. Uses the same
+ * `decryptSecret` as every other Gate 0 path; the plaintext is discarded immediately and nothing is logged.
+ */
+export function hasUsableSealedCredential(row: Pick<ConnectionRow, "id" | "encrypted_access_token" | "encrypted_refresh_token" | "token_expires_at">): boolean {
+  if (!hasCompleteSealedCredential(row)) return false;
+  try {
+    decryptSecret(row.encrypted_access_token as string, accessAad(row.id));
+    decryptSecret(row.encrypted_refresh_token as string, refreshAad(row.id));
+    return true;
+  } catch (error) {
+    if (error instanceof SecretBoxError) return false;
+    throw error;
+  }
 }
 
 function emptyReadiness(state: SquareReadinessState, row?: ConnectionRow | null): SquarePaymentReadiness {
@@ -946,6 +964,13 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
         const found = await client.query(`SELECT ${ROW_COLUMNS} FROM payment_methods WHERE id = $1 FOR UPDATE`, [candidate.id]);
         const row = found.rows[0] as unknown as ConnectionRow | undefined;
         const sealed = [row?.encrypted_access_token, row?.encrypted_refresh_token];
+        // A structurally complete pair is OPENED (both tokens, this row's AAD) before it can be called current: a ciphertext that merely
+        // claims the current key id, or that is malformed/tampered/retired-key, fails here (reported by the catch below as cannot_decrypt)
+        // instead of being counted as healthy. Dry run and real run take this same path.
+        if (row && hasCompleteSealedCredential(row)) {
+          decryptSecret(row.encrypted_access_token as string, accessAad(row.id));
+          decryptSecret(row.encrypted_refresh_token as string, refreshAad(row.id));
+        }
         if (!row || sealed.every((value) => !value || !sealedSecretNeedsRotation(value))) {
           await client.query("COMMIT");
           summary.alreadyCurrent += 1;

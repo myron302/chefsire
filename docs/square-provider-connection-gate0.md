@@ -150,9 +150,11 @@ the local disconnect always completes.
 **What counts as a usable SHARED connection.** The shared-merchant check that can suppress a merchant-wide revoke counts only an ACTIVE
 row holding a credential the application can actually use: a complete sealed pair (BOTH `sqenc:v1:` tokens AND `token_expires_at`) or,
 during the staged rollout, a complete legacy plaintext pair (non-empty string access AND refresh token and a parseable `tokenExpiresAt`).
-A one-token row (which the NOT VALID pair CHECK deliberately leaves in place on upgrade) is not usable by readiness/refresh, so it neither
+A sealed credential counts only if both ciphertexts actually OPEN (current or previous key, this row's own AAD per column): a tampered, malformed, retired-key or copied-from-another-row sibling is unusable and never suppresses the revoke. A one-token row (which the NOT VALID pair CHECK deliberately leaves in place on upgrade) is not usable by readiness/refresh, so it neither
 suppresses the revoke nor is deleted. Key-rotation `--reseal` classifies such a row as `incomplete_credential_pair` BEFORE building any
-UPDATE (dry run and real run agree), never writes it, and keeps rotating the healthy rows after it.
+UPDATE (dry run and real run agree), never writes it, and keeps rotating the healthy rows after it. Every structurally complete pair is
+OPENED before it can be counted `alreadyCurrent`, so corrupted or retired-key ciphertext that merely claims the current key id is reported
+as `cannot_decrypt` instead of a clean rotation.
 
 **Mixed-version reconnect is reconciled BEFORE disconnect chooses anything.** An old server that reconnects a row the new
 application already sealed moves `provider_id` to the new merchant and writes that merchant's tokens as plaintext, leaving the
