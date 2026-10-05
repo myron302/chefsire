@@ -22,6 +22,8 @@ const MIGRATIONS = [
   "server/migrations/20261007_square_connection_hardening.sql",
   "server/migrations/20261008_square_credential_generation.sql",
   "server/migrations/20261009_square_merchant_revocation.sql",
+  "server/migrations/20261010_square_merchant_revocations.sql",
+  "server/migrations/20261011_square_credential_pair_repair.sql",
 ];
 
 export type Gate = { armed: boolean; pattern: RegExp; reached: Promise<void>; release: () => void; before?: () => Promise<void>; _reached: () => void; _released: Promise<void> };

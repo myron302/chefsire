@@ -34,6 +34,8 @@ export type FakeSquareState = {
   merchantFailureBody?: unknown;
   /** Likewise for `/oauth2/revoke` when `failures.revoke` is set. */
   revokeFailureBody?: unknown;
+  /** When true (default) a revoke invalidates every access token issued so far, as Square does for a merchant. */
+  revokeInvalidatesTokens: boolean;
   /** Added to the `/oauth2/revoke` response, to hold a merchant-wide revocation in flight. */
   revokeDelayMs: number;
   /** Added to every token-endpoint response, to make a concurrent refresh overlap observable. */
@@ -59,6 +61,7 @@ export function defaultFakeSquareState(overrides: Partial<FakeSquareState> = {})
     failures: {},
     tokenDelayMs: 0,
     revokeDelayMs: 0,
+    revokeInvalidatesTokens: true,
     ...overrides,
   };
 }
@@ -67,7 +70,14 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
   const state = defaultFakeSquareState(initial);
   const requests: RecordedRequest[] = [];
   let grantIndex = 0;
+  /** access token -> still valid? Tokens the fake never issued (tests passing arbitrary strings) count as valid. */
+  const issued = new Map<string, boolean>();
+  const issuedMerchant = new Map<string, string>();
 
+  const bearerRevoked = (authorization: string | undefined) => {
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+    return token !== undefined && issued.get(token) === false;
+  };
   const failureBody = JSON.stringify({ errors: [{ category: "AUTHENTICATION_ERROR", code: "UNAUTHORIZED", detail: "fake" }] });
 
   const server = http.createServer((req, res) => {
@@ -91,7 +101,12 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
         if (fail("token")) return;
         const grant = state.grants[Math.min(grantIndex, state.grants.length - 1)];
         grantIndex += 1;
+        issued.set(grant.access_token, true);
+        issuedMerchant.set(grant.access_token, grant.merchant_id ?? state.merchantId);
         res.end(JSON.stringify({ token_type: "bearer", ...grant }));
+      } else if (path !== "/oauth2/token" && path !== "/oauth2/revoke" && bearerRevoked(req.headers.authorization)) {
+        res.statusCode = 401;
+        res.end(JSON.stringify({ errors: [{ category: "AUTHENTICATION_ERROR", code: "ACCESS_TOKEN_REVOKED", detail: "revoked" }] }));
       } else if (req.method === "GET" && path === "/v2/merchants/me") {
         if (fail("merchant")) return;
         res.end(JSON.stringify({ merchant: { id: state.profileMerchantId ?? state.merchantId, business_name: state.businessName, main_location_id: state.mainLocationId, country: "US" } }));
@@ -104,6 +119,11 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
       } else if (req.method === "POST" && path === "/oauth2/revoke") {
         if (state.revokeDelayMs) await new Promise((resolve) => setTimeout(resolve, state.revokeDelayMs));
         if (fail("revoke")) return;
+        if (state.revokeInvalidatesTokens) {
+          // Square revokes every token of the application for the MERCHANT that owns the one named.
+          const merchant = issuedMerchant.get((JSON.parse(body || "{}") as { access_token?: string }).access_token ?? "");
+          for (const [token, owner] of Array.from(issuedMerchant.entries())) if (owner === merchant) issued.set(token, false);
+        }
         res.end(JSON.stringify({ success: true }));
       } else {
         res.statusCode = 404;

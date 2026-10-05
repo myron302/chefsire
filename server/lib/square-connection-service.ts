@@ -150,6 +150,17 @@ export class SquareAuthorizationSupersededError extends Error {
 }
 
 /**
+ * ChefSire could not CONFIRM, at persistence time, that the authorization it is about to store is a live grant (Square was
+ * unreachable or rejected ChefSire's own credentials during the liveness check). Nothing is stored; the provider tries again.
+ */
+export class SquareAuthorizationUnconfirmedError extends Error {
+  constructor() {
+    super("The Square authorization could not be confirmed.");
+    this.name = "SquareAuthorizationUnconfirmedError";
+  }
+}
+
+/**
  * What a disconnect did at Square:
  *  - `revoked`                         Square confirmed ChefSire's authorization for the merchant is revoked (including an
  *                                      authoritative "this token is already invalid").
@@ -180,6 +191,8 @@ export type VerifiedAuthorization = {
   location: SquareLocationFacts | null;
   /** When ChefSire began exchanging the authorization code (this service's clock). Compared with merchant-wide revocations. */
   authorizedAt: Date;
+  /** The merchant's revocation epoch as read right after the code exchange (0 = never revoked). Persistence refuses if it has advanced. */
+  revocationEpoch: string;
 };
 
 export type AuthorizationFailure = "provider_rejected" | "merchant_mismatch" | "scopes_insufficient" | "unavailable" | "not_configured";
@@ -261,6 +274,12 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     return changed;
   }
 
+  /** The merchant's revocation epoch from the merchant-level history table (0 when it has never been revoked). */
+  async function merchantRevocationEpoch(db: SqlClient, merchantId: string): Promise<string> {
+    const result = await db.query(`SELECT revocation_epoch FROM square_merchant_revocations WHERE merchant_id = $1`, [merchantId]);
+    return result.rows.length ? String(result.rows[0].revocation_epoch) : "0";
+  }
+
   /**
    * MERCHANT-SCOPED LOCK. Everything that decides or changes which ChefSire accounts are connected to Square merchant M --
    * OAuth persistence, disconnect and the merchant-wide revoke decision -- first takes the transaction-scoped advisory lock
@@ -305,29 +324,41 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     if (!hasLegacySecrets(details) && !(details && "tokenExpiresAt" in details)) {
       return { kind: row.encrypted_access_token ? "already_converted" : "nothing_to_convert", id: rowId };
     }
-    if (row.encrypted_access_token) {
-      // Sealed credentials already exist; only stale plaintext remains, and it is simply removed.
-      await db.query(
-        `UPDATE payment_methods SET account_details = account_details - 'accessToken' - 'refreshToken' - 'tokenExpiresAt', updated_at = now() WHERE id = $1`,
-        [rowId],
-      );
-      return { kind: "converted", id: rowId };
-    }
     const accessToken = details?.accessToken;
     const refreshToken = details?.refreshToken;
     const expiresAt = typeof details?.tokenExpiresAt === "string" ? new Date(details.tokenExpiresAt) : null;
-    if (typeof accessToken !== "string" || !accessToken || typeof refreshToken !== "string" || !refreshToken) {
-      return { kind: "malformed", id: rowId, reason: "missing_or_non_string_token" };
+    const plaintextUsable = typeof accessToken === "string" && accessToken.length > 0 && typeof refreshToken === "string" && refreshToken.length > 0
+      && expiresAt !== null && !Number.isNaN(expiresAt.getTime());
+
+    if (row.encrypted_access_token) {
+      // Sealed credentials already exist AND plaintext is present. During a rolling deploy an OLD server can write a fresh
+      // plaintext connection (a reconnect) over a row the new application already converted. Plaintext whose expiry differs from
+      // the sealed credential's is such a newer write: it replaces the sealed pair (below). Otherwise it is stale and is removed.
+      const sameCredential = plaintextUsable && row.token_expires_at !== null && Math.abs(row.token_expires_at.getTime() - expiresAt!.getTime()) < 1000;
+      if (!plaintextUsable || sameCredential) {
+        await db.query(
+          `UPDATE payment_methods SET account_details = account_details - 'accessToken' - 'refreshToken' - 'tokenExpiresAt', updated_at = now() WHERE id = $1`,
+          [rowId],
+        );
+        return { kind: "converted", id: rowId };
+      }
     }
-    if (!expiresAt || Number.isNaN(expiresAt.getTime())) return { kind: "malformed", id: rowId, reason: "invalid_expiry" };
+    if (!plaintextUsable) {
+      return typeof accessToken !== "string" || !accessToken || typeof refreshToken !== "string" || !refreshToken
+        ? { kind: "malformed", id: rowId, reason: "missing_or_non_string_token" }
+        : { kind: "malformed", id: rowId, reason: "invalid_expiry" };
+    }
     if (row.account_status !== "active") return { kind: "malformed", id: rowId, reason: "inactive_connection_with_secrets" };
+    // The credentials are installed UNVERIFIED: every verification fact on the row (merchant name, scopes, location) described
+    // whatever connection the row held before and is cleared, so readiness must re-verify them with Square before trusting them.
     await db.query(
       `UPDATE payment_methods
        SET encrypted_access_token = $2, encrypted_refresh_token = $3, token_expires_at = $4,
            account_details = account_details - 'accessToken' - 'refreshToken' - 'tokenExpiresAt',
+           granted_scopes = NULL, last_verified_at = NULL, location_id = NULL, location_name = NULL, location_currency = NULL, merchant_name = NULL,
            credential_generation = credential_generation + 1, updated_at = now()
        WHERE id = $1`,
-      [rowId, encryptSecret(accessToken, accessAad(rowId)), encryptSecret(refreshToken, refreshAad(rowId)), expiresAt],
+      [rowId, encryptSecret(accessToken as string, accessAad(rowId)), encryptSecret(refreshToken as string, refreshAad(rowId)), expiresAt],
     );
     return { kind: "converted", id: rowId };
   }
@@ -387,6 +418,7 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       if (tokenStatus.merchantId && tokenStatus.merchantId !== merchant.id) return { ok: false, reason: "merchant_mismatch" };
       if (!hasRequiredSquareScopes(tokenStatus.scopes)) return { ok: false, reason: "scopes_insufficient" };
       const locations = await api.listLocations(grant.accessToken);
+      const revocationEpoch = await merchantRevocationEpoch(pool, merchant.id);
       return {
         ok: true,
         verified: {
@@ -398,6 +430,7 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
           scopes: tokenStatus.scopes,
           location: selectPaymentLocation(locations, merchant.id, { mainLocationId: merchant.mainLocationId }),
           authorizedAt,
+          revocationEpoch,
         },
       };
     } catch (error) {
@@ -423,16 +456,28 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       // The account changed merchant between the two reads. Taking a further merchant lock now could invert the lock order.
       throw new SquareAuthorizationSupersededError();
     }
-    // A merchant-wide revocation that committed after this authorization began has invalidated the token it carries: Square
-    // revokes every token of the application for a merchant, including one issued just before. Refuse to store it.
-    const revoked = await db.query(
-      `SELECT 1 FROM payment_methods WHERE provider = 'square' AND provider_id = $1 AND merchant_revoked_at IS NOT NULL AND merchant_revoked_at > $2 LIMIT 1`,
-      // Strictly after: an authorization that began AFTER the revocation is a fresh grant and is unaffected. (Both times come
-      // from the service clock; across instances their skew is the residual risk, and a token that did slip through is caught
-      // by the next verification, which Square answers with 401.)
-      [verified.merchantId, verified.authorizedAt],
-    );
-    if (revoked.rows.length) throw new SquareAuthorizationSupersededError();
+    // MERCHANT-LEVEL REVOCATION HISTORY (keyed by merchant id, so it is unaffected by this or any account moving merchant).
+    // Square revokes every token of the application for a merchant, including one issued just before. Under the merchant
+    // lock, an authorization may be stored only if ALL of these hold; each closes a gap the others cannot:
+    //  1. the merchant's revocation epoch has not advanced since it was read after the code exchange (no revocation committed
+    //     since then);
+    //  2. no revocation is recorded as having committed after this authorization began (a conservative timestamp check);
+    //  3. Square itself says the token is live RIGHT NOW. This is the proof that the grant is newer than any earlier
+    //     revocation: a token issued before one was killed by it, and a revocation cannot interleave while we hold the lock.
+    const history = await db.query(`SELECT revoked_at, revocation_epoch FROM square_merchant_revocations WHERE merchant_id = $1`, [verified.merchantId]);
+    const recorded = history.rows[0] as { revoked_at: Date; revocation_epoch: string } | undefined;
+    if (String(recorded?.revocation_epoch ?? "0") !== verified.revocationEpoch) throw new SquareAuthorizationSupersededError();
+    if (recorded && recorded.revoked_at.getTime() > verified.authorizedAt.getTime()) throw new SquareAuthorizationSupersededError();
+    try {
+      const live = await api.retrieveTokenStatus(verified.accessToken);
+      if (live.merchantId && live.merchantId !== verified.merchantId) throw new SquareAuthorizationSupersededError();
+    } catch (error) {
+      if (error instanceof SquareAuthorizationSupersededError) throw error;
+      const failure = classifySquareFailure(error, { surface: "bearer" });
+      log.warn("square_authorization_liveness_check_failed", { status: squareFailureStatus(error), kind: failure });
+      // A refused token is exactly what a merchant-wide revocation looks like; anything else simply could not be confirmed.
+      throw failure === "provider_credential_invalid" ? new SquareAuthorizationSupersededError() : new SquareAuthorizationUnconfirmedError();
+    }
     const id = existing?.id ?? randomUUID();
     const sealedAccess = encryptSecret(verified.accessToken, accessAad(id));
     const sealedRefresh = encryptSecret(verified.refreshToken, refreshAad(id));
@@ -682,7 +727,8 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     try {
       let row = await loadRow(pool, userId, false);
       if (!row || row.account_status === "disconnected") return result(emptyReadiness("not_connected", null));
-      if (row.encrypted_access_token === null && hasLegacySecrets(row.account_details)) {
+      // Plaintext on a row (never written by this application) means a legacy or old-server write: convert it before judging the row.
+      if (hasLegacySecrets(row.account_details)) {
         const converted = await convertLegacyRowInTransaction(row.id);
         if (converted.kind === "malformed") return result(emptyReadiness("needs_reauthorization", row));
         row = await loadRow(pool, userId, false);
@@ -861,11 +907,23 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
                encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL,
                account_details = COALESCE(account_details, '{}'::jsonb) - 'accessToken' - 'refreshToken' - 'tokenExpiresAt',
                is_default = false, credential_generation = credential_generation + 1,
-               merchant_revoked_at = CASE WHEN $3::boolean THEN $2 ELSE merchant_revoked_at END,
                status_changed_at = $2, disconnected_at = $2, updated_at = $2
            WHERE id = $1`,
-          [row.id, at, providerRevocation === "revoked"],
+          [row.id, at],
         );
+        if (providerRevocation === "revoked") {
+          // Recorded under the merchant lock held since the start, in the same transaction as the local disconnect, keyed by the
+          // MERCHANT (not this row): it must outlive this row's owner moving to another merchant.
+          await client.query(
+            `INSERT INTO square_merchant_revocations (merchant_id, revoked_at, revocation_epoch, source)
+             VALUES ($1, $2, 1, 'disconnect')
+             ON CONFLICT (merchant_id) DO UPDATE
+             SET revoked_at = GREATEST(square_merchant_revocations.revoked_at, EXCLUDED.revoked_at),
+                 revocation_epoch = square_merchant_revocations.revocation_epoch + 1,
+                 updated_at = $2`,
+            [row.provider_id, at],
+          );
+        }
         await client.query("COMMIT");
         return outcome(true, providerRevocation);
       } catch (error) {

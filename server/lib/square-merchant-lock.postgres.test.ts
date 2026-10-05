@@ -37,6 +37,7 @@ if (!URL_ENV) {
     await h.connect("account-b");
   }
   const revokeCalls = (h: SquareHarness) => h.fake.calls("/oauth2/revoke");
+  const revocationHistory = async (h: SquareHarness) => (await h.pool.query(`SELECT merchant_id, revocation_epoch FROM square_merchant_revocations ORDER BY merchant_id`)).rows;
 
   test("disconnect vs OAuth reconnect for the same merchant: the reconnect that began before the revocation is refused, never left active on a revoked grant", async () => {
     await run(async (h) => {
@@ -135,7 +136,7 @@ if (!URL_ENV) {
       assert.equal(revokeCalls(h), 0);
       assert.equal((await h.service.getSquarePaymentReadiness("account-b")).state, "active");
       assert.equal((await h.row("account-a")).account_status, "disconnected");
-      assert.equal((await h.row("account-a")).merchant_revoked_at, null);
+      assert.deepEqual(await revocationHistory(h), [], "no merchant-wide revocation was recorded");
     });
   });
 
@@ -152,7 +153,7 @@ if (!URL_ENV) {
           assert.equal(row.encrypted_access_token, null);
           assert.equal(row.encrypted_refresh_token, null);
         }
-        assert.equal((await h.rows()).filter((row) => row.merchant_revoked_at).length, 1);
+        assert.deepEqual((await revocationHistory(h)).map((entry) => `${entry.merchant_id}:${entry.revocation_epoch}`), ["MERCHANT_1:1"], "exactly one revocation is on record");
         assert.deepEqual((await h.rows()).filter((row) => row.account_status === "active"), []);
       });
     }
@@ -181,7 +182,7 @@ if (!URL_ENV) {
       assert.equal(revokeCalls(h), 0);
       assert.equal((await h.service.getSquarePaymentReadiness("account-a")).state, "active");
       assert.equal((await h.service.getSquarePaymentReadiness("account-b")).state, "active");
-      assert.equal((await h.row("account-a")).merchant_revoked_at, null);
+      assert.deepEqual(await revocationHistory(h), [], "no merchant-wide revocation was recorded");
     });
   });
 
@@ -191,7 +192,7 @@ if (!URL_ENV) {
       await h.connect("account-a");
       h.fake.state.failures.revoke = 503;
       assert.equal((await h.service.disconnect("account-a")).providerRevocation, "unconfirmed");
-      assert.equal((await h.row("account-a")).merchant_revoked_at, null);
+      assert.deepEqual(await revocationHistory(h), [], "no merchant-wide revocation was recorded");
       h.fake.state.failures.revoke = undefined;
       h.useMerchant("MERCHANT_1", { access: "unc-access-b", refresh: "unc-refresh-b" });
       await h.connect("account-b");

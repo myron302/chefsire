@@ -25,19 +25,56 @@ Rotation: set the new key as `…_KEY`, the old as `…_KEY_PREVIOUS`, deploy, r
 its lock, without changing the credential or its generation; reports unopenable rows by id), and remove the previous key only
 when it reports `failed: []`. A token refresh also always re-seals both the access and refresh token under the current key.
 
-## Schema (`20261007_square_connection_hardening.sql`, `20261008_square_credential_generation.sql`, `20261009_square_merchant_revocation.sql`)
+## Schema and migrations
 
-Additive on `payment_methods`: `encrypted_access_token`, `encrypted_refresh_token`, `token_expires_at`, `last_refreshed_at`,
-`location_id`, `location_name`, `location_currency`, `merchant_name`, `granted_scopes`, `status_changed_at`,
-`disconnected_at`; index `(provider, provider_id)`. Connection state reuses `account_status`:
-`active` | `needs_reauthorization` | `disconnected` (historical `pending|disabled|rejected` remain allowed). Constraints:
-credentials are a sealed pair with an expiry; a `needs_reauthorization`/`disconnected` row holds no secret; a plaintext
-`accessToken`/`refreshToken` can no longer be written to `account_details` (`NOT VALID`, so legacy rows do not block the
-migration). No row is deleted; historical merchant/location identity is kept.
+Applied automatically by `npm run db:migrate`, in order, all safe next to an OLD application server:
 
-Rollback: all columns are nullable and constraints are guarded, so the previous application version keeps running. To remove
-the change, drop the constraints, then the columns. After rows are converted, rolling back loses the (encrypted) tokens and
-providers must reconnect.
+* `20261007_square_connection_hardening.sql`: additive columns on `payment_methods` (`encrypted_access_token`,
+  `encrypted_refresh_token`, `token_expires_at`, `last_refreshed_at`, `location_*`, `merchant_name`, `granted_scopes`,
+  `status_changed_at`, `disconnected_at`), index `(provider, provider_id)`, and constraints: `account_status` allowlist
+  (`NOT VALID`); the **sealed-credential pair** CHECK (below); and "a `needs_reauthorization`/`disconnected` row holds no secret".
+  Connection state reuses `account_status`: `active` | `needs_reauthorization` | `disconnected` (historical `pending|disabled|rejected`
+  stay allowed). **It does NOT install the plaintext-blocking constraint** (see "Staged plaintext enforcement").
+* `20261008_square_credential_generation.sql`: `credential_generation` (below).
+* `20261009_square_merchant_revocation.sql`: `merchant_revoked_at` on `payment_methods`. **Superseded and no longer read or written**;
+  left in place (nullable) so older code keeps working. Anything it holds is copied into the table below.
+* `20261010_square_merchant_revocations.sql`: `square_merchant_revocations`, the merchant-level revocation history (below).
+* `20261011_square_credential_pair_repair.sql`: idempotent repair for a database that applied an earlier revision of 20261007
+  (weak pair CHECK, early plaintext constraint). A no-op on a clean database.
+
+**Sealed-credential pair CHECK.** Exactly two states are valid: neither token stored; or BOTH stored, both `sqenc:v1:%`, with
+`token_expires_at`, on a `square` row. Every `LIKE` is guarded by an explicit `IS NOT NULL`: a CHECK passes on TRUE *or NULL*, so
+the earlier `LIKE`-only form accepted a one-token row. A pre-existing violating row (possible only on a database that applied
+the earlier revision) leaves the repaired constraint `NOT VALID`: enforced for every new write, validated once repaired.
+
+No row is deleted; historical merchant/location identity is kept.
+
+## Staged plaintext enforcement, rolling deploys and rollback
+
+The constraint that forbids plaintext tokens in `account_details` is **not** in the automatic migrations. Even `NOT VALID` a CHECK is
+enforced on every new INSERT/UPDATE, so installing it while an old server still runs the legacy OAuth callback would make that
+callback fail. It is an explicit **finalization** step.
+
+1. **Deploy (migrations + new application).** An old server that is still running (rolling deploy) can keep writing plaintext
+   tokens, INSERT and UPDATE; nothing rejects it. The new application never writes plaintext. It converts legacy rows lazily when an
+   owner is next checked and in bulk with `npx tsx server/scripts/migrate-square-oauth-tokens.ts [--dry-run]`.
+2. **Mixed versions.** If an old server reconnects a provider over a row the new application already converted, the plaintext it
+   writes is newer than the sealed credential (its expiry differs). The next time the new application checks the row it installs
+   that newer credential (advancing the credential generation), clears every verification fact (scopes, location, merchant name)
+   and re-verifies with Square; plaintext that merely repeats the sealed credential is stripped.
+3. **Detect what remains** (ids and counts only, never a token):
+   `npx tsx server/scripts/finalize-square-plaintext-enforcement.ts --check` (exit 2 while any plaintext row remains).
+4. **Finalize, only after every old server is drained and the rollback window is intentionally closed:**
+   `npx tsx server/scripts/finalize-square-plaintext-enforcement.ts --confirm-old-servers-drained`. It refuses (listing row ids) while
+   plaintext remains; otherwise it locks the table, adds the constraint `NOT VALID`, validates it, and commits. Re-running is a
+   no-op. **Validate afterwards:** `--check` reports `enforcementInstalled: true, plaintextRows: 0`, and
+   `SELECT convalidated FROM pg_constraint WHERE conname = 'payment_methods_no_plaintext_oauth_token_check'` is `t`.
+5. **Rollback.** Before finalization, rolling the application back is safe for writes (the old server's plaintext writes are
+   accepted) and the new columns are ignored. Two limits are real: a connection the new application already converted no longer
+   carries plaintext, so the OLD code cannot use or display it (providers reconnect on the old code); and a plaintext write by the old
+   server is only recognised by the new application once it is running again. **After finalization, rolling back to application
+   code that writes plaintext is NOT safe: its OAuth callback is rejected by the constraint.** To roll back past finalization,
+   first `ALTER TABLE payment_methods DROP CONSTRAINT payment_methods_no_plaintext_oauth_token_check;`.
 
 ## Credential generation (snapshot identity)
 
@@ -58,14 +95,11 @@ credential that was rejected; a report about replaced credentials is ignored.
 
 ## Legacy plaintext tokens
 
-1. Deploy with the key set and apply the migration (`npm run db:migrate`).
-2. `npx tsx server/scripts/migrate-square-oauth-tokens.ts --dry-run`, then without `--dry-run`. It seals each row under
-   its row lock, removes the plaintext in the same statement, is idempotent, prints counts and row ids only, and exits 2 if any
-   row was malformed (those are left untouched and shown as "Needs reconnect").
-3. When it reports `found: 0`: `ALTER TABLE payment_methods VALIDATE CONSTRAINT payment_methods_no_plaintext_oauth_token_check;`
-4. Even before step 2, an owner's legacy row is converted lazily when it is next checked. Converted legacy connections are
-   **not trusted** until Square confirms their scopes; the previous scope set lacks the order/payment-read scopes, so those
-   providers see "Needs reconnect" once.
+See "Staged plaintext enforcement" above for the rollout. The conversion (`migrate-square-oauth-tokens.ts`, or lazily per owner) seals
+each row under its row lock, removes the plaintext in the same statement, is idempotent, prints counts and row ids only, and exits 2 if
+any row was malformed (those are left untouched and shown as "Needs reconnect"). Converted legacy connections are installed
+UNVERIFIED and are not trusted until Square confirms their merchant, scopes and location; the previous scope set lacks the
+order/payment-read scopes, so those providers see "Needs reconnect" once.
 
 ## Refresh, revocation, disconnect
 
@@ -113,12 +147,21 @@ credential that was rejected; a report about replaced credentials is ignored.
   (an account moving merchant locks both) -> the `payment_methods` row `FOR UPDATE`. Refresh and verification take only the row
   lock and never wait for a merchant lock while holding it, so there is no cycle. Outcomes: the last active connection to
   disconnect revokes exactly once (two concurrent last disconnects: one `retained_for_shared_connection`, one `revoked`); a
-  reconnect that commits first makes a concurrent disconnect retain; and because a revocation also kills a token issued to a
-  concurrent authorization, a revoking disconnect stamps `merchant_revoked_at` and an authorization for that merchant that began
-  BEFORE it is refused at persistence (`authorization_superseded`; the provider connects again), so no active connection is ever
-  left on a just-revoked grant. Residual risk: that comparison uses the service clock, so skew between instances could let a
-  token through; the next verification (Square answers 401) takes it out of service. A connection Square itself rejects leaves
-  the active set under its row lock only (there is nothing left to revoke for a credential Square has already refused).
+  reconnect that commits first makes a concurrent disconnect retain.
+* **Merchant-level revocation history** (`square_merchant_revocations`, keyed by merchant id; no foreign key to users or connection
+  rows, so it survives an account moving to another merchant, row reuse, disconnect and status changes; rows are never deleted and
+  may only move forward). Because Square's revocation also kills a token issued to a concurrent authorization, a revoking disconnect
+  writes `revoked_at` and increments `revocation_epoch` here, in the same transaction and under the same merchant lock. An
+  authorization reads the merchant's epoch right after its code exchange; persistence, under the merchant lock, stores it only if
+  ALL of: (1) the epoch has not advanced since; (2) no revocation is recorded after the authorization began; (3) Square says the token
+  is live right now (`oauth/token/status`). (3) is the proof that a grant is NEWER than any revocation (a token issued before one is
+  dead, and no revocation can interleave while the lock is held); (1) and (2) refuse early and close gaps in (3) (outage, stale
+  clocks) and each is needed on its own (tests isolate all three). A refused authorization is `authorization_superseded`; one that
+  could not be confirmed (Square unreachable) is not stored and the provider tries again. Residual risk: (2) compares service clocks;
+  skew between instances cannot defeat (1) or (3). A connection Square itself rejects leaves the active set under its row lock only
+  (there is nothing left to revoke for a credential Square has already refused). Merchant-specific facts that live on a connection
+  row (merchant name, scopes, location) describe that row's current connection and are cleared when its credentials are replaced;
+  they are not revocation evidence and are not kept immutably.
 * No `oauth.authorization.revoked` webhook route was added: it needs a dashboard subscription and a verified, replay-safe
   endpoint, which is Phase 2Q webhook work. Revocation is detected on use and on re-check instead.
 

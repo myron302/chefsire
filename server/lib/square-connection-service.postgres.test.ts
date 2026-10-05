@@ -83,6 +83,8 @@ if (!URL_ENV) {
           await applyMigration(client as never, `server:20261007_square_connection_hardening.sql`, migrationSql);
           await applyMigration(client as never, `server:20261008_square_credential_generation.sql`, generationMigrationSql);
           await applyMigration(client as never, `server:20261009_square_merchant_revocation.sql`, revocationMigrationSql);
+          await applyMigration(client as never, `server:20261010_square_merchant_revocations.sql`, fs.readFileSync(path.join(root, "server/migrations/20261010_square_merchant_revocations.sql"), "utf8"));
+          await applyMigration(client as never, `server:20261011_square_credential_pair_repair.sql`, fs.readFileSync(path.join(root, "server/migrations/20261011_square_credential_pair_repair.sql"), "utf8"));
         } finally { client.release(); }
       },
       async user(id: string) { await pool.query(`INSERT INTO users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]); return id; },
@@ -317,8 +319,7 @@ if (!URL_ENV) {
       const sealedBefore = row.encrypted_access_token;
       assert.deepEqual(await h.service.convertAllLegacyRows(), { found: 0, converted: 0, alreadyConverted: 0, malformed: [] });
       assert.equal((await h.row("provider-1")).encrypted_access_token, sealedBefore);
-      // The plaintext guarantee can now be made unconditional.
-      await h.pool.query(`ALTER TABLE payment_methods VALIDATE CONSTRAINT payment_methods_no_plaintext_oauth_token_check`);
+      // The unconditional plaintext guarantee is a separate, explicit finalization step (square-plaintext-enforcement.postgres.test.ts).
     });
   });
 
@@ -374,7 +375,7 @@ if (!URL_ENV) {
     });
   });
 
-  test("the hardening migration is additive, idempotent, and stops plaintext tokens being written again", async () => {
+  test("the hardening migrations are additive and idempotent, and do NOT reject what an old application server writes", async () => {
     await withHarness({ applyHardening: false }, async (h) => {
       await insertLegacy(h, "provider-1", legacyDetails("migration-access-1", "migration-refresh-1"));
       await h.hardening();
@@ -383,12 +384,10 @@ if (!URL_ENV) {
       assert.equal(await h.rowCount(), 1, "no payment_methods row is deleted");
       assert.equal((await h.row("provider-1")).account_details.accessToken, "migration-access-1", "the migration never touches legacy tokens");
       await h.user("provider-2");
-      await assert.rejects(
-        h.pool.query(`INSERT INTO payment_methods (user_id, provider, provider_id, account_details) VALUES ('provider-2', 'square', 'M', '{"accessToken":"x"}'::jsonb)`),
-        (error: { code?: string }) => error.code === "23514",
-      );
-      // Updating a legacy row without removing the plaintext is refused too.
-      await assert.rejects(h.pool.query(`UPDATE payment_methods SET updated_at = now() WHERE user_id = 'provider-1'`), (error: { code?: string }) => error.code === "23514");
+      // The old callback: a plaintext INSERT, then an UPDATE of an existing row that keeps its plaintext. Both still work.
+      await h.pool.query(`INSERT INTO payment_methods (user_id, provider, provider_id, account_status, account_details) VALUES ('provider-2', 'square', 'M', 'active', '{"accessToken":"x","refreshToken":"y","tokenExpiresAt":"2099-01-01T00:00:00Z"}'::jsonb)`);
+      await h.pool.query(`UPDATE payment_methods SET updated_at = now() WHERE user_id = 'provider-1'`);
+      await h.pool.query(`DELETE FROM payment_methods WHERE user_id = 'provider-2'`);
       // A credential must be a sealed pair with an expiry.
       await h.pool.query(`INSERT INTO payment_methods (user_id, provider, provider_id) VALUES ('provider-2', 'square', 'M2')`);
       await assert.rejects(h.pool.query(`UPDATE payment_methods SET encrypted_access_token = 'plain', encrypted_refresh_token = 'plain', token_expires_at = now() WHERE user_id = 'provider-2'`), (error: { code?: string }) => error.code === "23514");
@@ -412,14 +411,8 @@ if (!URL_ENV) {
         assert.equal(readiness.paymentReady, false, label);
         assert.equal(await h.service.getReadyConnectedCredentials(user), null, label);
       }
-      // A token key holding a non-string can no longer be written at all.
-      await h.user("shape-nested");
-      await assert.rejects(
-        h.pool.query(`INSERT INTO payment_methods (user_id, provider, provider_id, account_status, account_details) VALUES ('shape-nested', 'square', 'M', 'active', '{"accessToken":{"a":1}}'::jsonb)`),
-        (error: { code?: string }) => error.code === "23514",
-      );
     });
-    // ...but a historical row of that shape is reported, not converted, and is never trusted.
+    // A row whose token keys hold non-strings is reported, not converted, and is never trusted.
     await withHarness({ applyHardening: false }, async (h) => {
       await insertLegacy(h, "nested", { accessToken: { a: 1 }, refreshToken: ["x"], tokenExpiresAt: "2099-01-01T00:00:00Z" });
       await h.hardening();

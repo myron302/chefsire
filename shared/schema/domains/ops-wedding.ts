@@ -85,8 +85,6 @@ export const paymentMethods = pgTable(
     statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
     disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
     // Advanced with every change to the row's credentials (20261008_square_credential_generation.sql); not a secret.
-    // When a merchant-wide Square revocation made by disconnecting this row committed (20261009_square_merchant_revocation.sql).
-    merchantRevokedAt: timestamp("merchant_revoked_at", { withTimezone: true }),
     credentialGeneration: bigint("credential_generation", { mode: "number" }).notNull().default(1),
     isDefault: boolean("is_default").default(false),
     verifiedAt: timestamp("verified_at"),
