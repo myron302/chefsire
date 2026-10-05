@@ -41,6 +41,9 @@ Applied automatically by `npm run db:migrate`, in order, all safe next to an OLD
 * `20261010_square_merchant_revocations.sql`: `square_merchant_revocations`, the merchant-level revocation history (below).
 * `20261011_square_credential_pair_repair.sql`: idempotent repair for a database that applied an earlier revision of 20261007
   (weak pair CHECK, early plaintext constraint). A no-op on a clean database.
+* `20261012_square_merchant_id_width.sql`: `square_merchant_revocations.merchant_id` and `payment_methods.location_id` are `text`
+  (no length cap), matching `payment_methods.provider_id`. A merchant id longer than the former `varchar(64)` could be stored on a
+  connection but would have made the confirmed-disconnect history INSERT fail after Square had already revoked the grant.
 
 **Sealed-credential pair CHECK.** Exactly two states are valid: neither token stored; or BOTH stored, both `sqenc:v1:%`, with
 `token_expires_at`, on a `square` row. Every `LIKE` is guarded by an explicit `IS NOT NULL`: a CHECK passes on TRUE *or NULL*, so
@@ -104,6 +107,20 @@ UNVERIFIED and are not trusted until Square confirms their merchant, scopes and 
 order/payment-read scopes, so those providers see "Needs reconnect" once.
 
 ## Refresh, revocation, disconnect
+
+**Mixed-version reconnect is reconciled BEFORE disconnect chooses anything.** An old server that reconnects a row the new
+application already sealed moves `provider_id` to the new merchant and writes that merchant's tokens as plaintext, leaving the
+previous merchant's sealed pair in place; a sealed token being present therefore proves nothing about being current. Under the
+row lock, whenever ANY legacy secret key (`accessToken`, `refreshToken`, `tokenExpiresAt`) is on the row, `disconnect` first runs
+`convertLegacyRow` (sealed pair opened and compared with the plaintext by token VALUE: identical -> plaintext stripped; different ->
+the plaintext is the newer authorization, resealed under the current key, generation advanced, verification facts cleared;
+malformed or unreadable -> nothing changes), reloads the row, and requires that no legacy residue remains. Only then are the merchant
+(`provider_id`), the revoke token, the shared-connection decision and the revocation-history target taken, all from that one snapshot.
+If coherence cannot be proven (malformed plaintext, sealed pair unreadable, encryption not configured) NO Square revoke is made and
+no revocation epoch is recorded: the local disconnect still completes with `providerRevocation: "unconfirmed"`. A stale sealed token
+is never used. Lock order is unchanged: (users row) -> merchant advisory lock(s) ascending -> the `payment_methods` row; the
+reconciliation happens inside the row lock already held, so it adds no lock and cannot form a cycle. If the row moved to another
+merchant while waiting, the attempt restarts against the merchant it is on now.
 
 * A token expiring within 7 days is refreshed under the connection row's `FOR UPDATE` lock after re-reading the row, so
   concurrent callers refresh once. Square's code-flow refresh returns the same refresh token; a rotated one is sealed and stored

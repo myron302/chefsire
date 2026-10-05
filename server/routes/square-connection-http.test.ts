@@ -52,6 +52,7 @@ if (!URL_ENV) {
   await local.query(sql("server/migrations/20261009_square_merchant_revocation.sql"));
   await local.query(sql("server/migrations/20261010_square_merchant_revocations.sql"));
   await local.query(sql("server/migrations/20261011_square_credential_pair_repair.sql"));
+  await local.query(sql("server/migrations/20261012_square_merchant_id_width.sql"));
   for (const id of ["provider-a", "provider-b"]) await local.query(`INSERT INTO users (id) VALUES ($1)`, [id]);
 
   const fake = await startFakeSquare({ grants: [{ access_token: "http-access-token-1", refresh_token: "http-refresh-token-1", expires_at: "2099-01-01T00:00:00Z", merchant_id: "MERCHANT_1" }] });

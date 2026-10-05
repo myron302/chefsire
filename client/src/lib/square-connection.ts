@@ -162,6 +162,20 @@ export function squareCallbackMessage(search: string): { tone: "good" | "attenti
   }
 }
 
+const SQUARE_CALLBACK_PARAMS = ["connected", "error"] as const;
+
+/**
+ * The query string with only the OAuth callback parameters (`connected`, `error`) removed, in the `?a=b` form (or "" when nothing
+ * is left). Unrelated parameters are preserved. The page shows the callback notice once and then replaces the URL with this, so
+ * a later disconnect or re-check can never render a stale "Square connected." next to its own result.
+ */
+export function withoutSquareCallbackParams(search: string): string {
+  const params = new URLSearchParams(search);
+  for (const name of SQUARE_CALLBACK_PARAMS) params.delete(name);
+  const rest = params.toString();
+  return rest ? `?${rest}` : "";
+}
+
 /** Only ever navigate to Square itself, whatever a response says. */
 export function isSquareAuthorizeUrl(value: unknown): value is string {
   if (typeof value !== "string") return false;

@@ -8,6 +8,7 @@ import {
   squareCallbackMessage,
   squareConnectionPresentation,
   squareDisconnectNotice,
+  withoutSquareCallbackParams,
   type SquareConnectionState,
   type SquareConnectionStatus,
 } from "./square-connection";
@@ -129,4 +130,28 @@ test("during a Square configuration error, Disconnect is offered only to someone
   assert.match(notice!.text, /Disconnected from ChefSire, but we couldn't confirm that Square has revoked/);
   // Nothing in any copy or in the status type carries a credential.
   assert.doesNotMatch(JSON.stringify([withConnection, notice]), /token|secret|sqenc/i);
+});
+
+test("the OAuth callback parameters are consumed from the URL and unrelated parameters survive", () => {
+  assert.equal(withoutSquareCallbackParams("?connected=true"), "");
+  assert.equal(withoutSquareCallbackParams("?error=merchant_mismatch"), "");
+  assert.equal(withoutSquareCallbackParams("?connected=true&tab=payouts&x=1"), "?tab=payouts&x=1");
+  assert.equal(withoutSquareCallbackParams("?tab=payouts&connected=true&error=callback_failed"), "?tab=payouts");
+  assert.equal(withoutSquareCallbackParams(""), "");
+  // Once consumed, a re-read of the cleaned URL (a refresh, a re-check) yields no notice.
+  assert.equal(squareCallbackMessage(withoutSquareCallbackParams("?connected=true")), null);
+  assert.equal(squareCallbackMessage("?connected=true")?.text, "Square connected.");
+});
+
+test("the screen reads the callback notice once, strips it from the URL, and a later action cannot leave it beside the result", () => {
+  const page = fs.readFileSync(path.join(root, "client/src/pages/square-connection.tsx"), "utf8");
+  // State captured at first render, not recomputed from window.location on each render.
+  assert.match(page, /const \[callback, setCallback\] = useState\(\(\) => squareCallbackMessage\(/);
+  assert.equal(/const callback = squareCallbackMessage/.test(page), false);
+  assert.match(page, /window\.history\.replaceState\(window\.history\.state, "", `\$\{pathname\}\$\{cleaned\}\$\{hash\}`\)/);
+  assert.match(page, /withoutSquareCallbackParams\(search\)/);
+  // Every action clears it: disconnect, re-check and starting a new connection.
+  assert.match(page, /setCallback\(null\); setDisconnectNotice\(squareDisconnectNotice\(data\)\)/);
+  assert.match(page, /onSuccess: \(data\) => \{ setProblem\(null\); setCallback\(null\); refreshWith\(data\); \}/);
+  assert.equal((page.match(/setDisconnectNotice\(null\); setCallback\(null\); start\.mutate\(\)/g) ?? []).length, 2);
 });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
   squareCallbackMessage,
   squareConnectionPresentation,
   squareDisconnectNotice,
+  withoutSquareCallbackParams,
   type SquareConnectionStatus,
   type SquareDisconnectResponse,
 } from "@/lib/square-connection";
@@ -28,7 +29,15 @@ export default function SquareConnectionPage() {
   const [problem, setProblem] = useState<string | null>(null);
   // Shown after a disconnect and kept until the provider acts again: local disconnect is not always a Square revocation.
   const [disconnectNotice, setDisconnectNotice] = useState<{ tone: "good" | "attention"; text: string } | null>(null);
-  const callback = squareCallbackMessage(typeof window === "undefined" ? "" : window.location.search);
+  // Read ONCE, on first render, then consumed: the notice describes the OAuth return that brought the provider here, not
+  // whatever they do next. (Computing it from window.location on every render left "Square connected." beside a later disconnect.)
+  const [callback, setCallback] = useState(() => squareCallbackMessage(typeof window === "undefined" ? "" : window.location.search));
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const { pathname, search, hash } = window.location;
+    const cleaned = withoutSquareCallbackParams(search);
+    if (cleaned !== search) window.history.replaceState(window.history.state, "", `${pathname}${cleaned}${hash}`);
+  }, []);
 
   const status = useQuery<StatusResponse>({
     queryKey: [SQUARE_CONNECTION_STATUS_PATH],
@@ -51,12 +60,12 @@ export default function SquareConnectionPage() {
   });
   const recheck = useMutation({
     mutationFn: async () => (await apiRequest("POST", SQUARE_CONNECTION_RECHECK_PATH, {})).json() as Promise<StatusResponse>,
-    onSuccess: (data) => { setProblem(null); refreshWith(data); },
+    onSuccess: (data) => { setProblem(null); setCallback(null); refreshWith(data); },
     onError: () => setProblem("We couldn't check Square right now. Please try again."),
   });
   const disconnect = useMutation({
     mutationFn: async () => (await apiRequest("POST", SQUARE_CONNECTION_DISCONNECT_PATH, {})).json() as Promise<SquareDisconnectResponse>,
-    onSuccess: (data) => { setProblem(null); setConfirmingDisconnect(false); setDisconnectNotice(squareDisconnectNotice(data)); refreshWith(data); },
+    onSuccess: (data) => { setProblem(null); setConfirmingDisconnect(false); setCallback(null); setDisconnectNotice(squareDisconnectNotice(data)); refreshWith(data); },
     onError: () => setProblem("We couldn't disconnect Square. Please try again."),
   });
 
@@ -99,10 +108,10 @@ export default function SquareConnectionPage() {
           {!status.isLoading && !status.isError && (
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               {presentation.actions.includes("connect") && (
-                <Button className="min-h-11" disabled={busy} onClick={() => { setProblem(null); setDisconnectNotice(null); start.mutate(); }}>Connect Square</Button>
+                <Button className="min-h-11" disabled={busy} onClick={() => { setProblem(null); setDisconnectNotice(null); setCallback(null); start.mutate(); }}>Connect Square</Button>
               )}
               {presentation.actions.includes("reconnect") && (
-                <Button className="min-h-11" disabled={busy} onClick={() => { setProblem(null); setDisconnectNotice(null); start.mutate(); }}>Reconnect Square</Button>
+                <Button className="min-h-11" disabled={busy} onClick={() => { setProblem(null); setDisconnectNotice(null); setCallback(null); start.mutate(); }}>Reconnect Square</Button>
               )}
               {presentation.actions.includes("recheck") && (
                 <Button variant="outline" className="min-h-11" disabled={busy} onClick={() => recheck.mutate()}>Check again</Button>

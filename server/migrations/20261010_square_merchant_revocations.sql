@@ -18,7 +18,7 @@
 -- payment_methods.merchant_revoked_at (added by 20261009) is superseded by this table. It is no longer written or read; any
 -- value it holds is copied here below. The column is left in place so older application versions keep working.
 CREATE TABLE IF NOT EXISTS square_merchant_revocations (
-  merchant_id varchar(64) PRIMARY KEY,
+  merchant_id text PRIMARY KEY,
   revoked_at timestamptz NOT NULL,
   revocation_epoch bigint NOT NULL DEFAULT 1,
   source varchar(24) NOT NULL DEFAULT 'disconnect',

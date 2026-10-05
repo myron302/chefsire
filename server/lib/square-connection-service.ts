@@ -219,6 +219,11 @@ function hasLegacySecrets(details: Record<string, unknown> | null | undefined): 
   return Boolean(details) && (typeof details!.accessToken === "string" || typeof details!.refreshToken === "string");
 }
 
+/** Any legacy secret key at all (even a malformed value): the row is not a clean sealed-only snapshot until it is reconciled. */
+function hasLegacyResidue(details: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(details) && LEGACY_SECRET_KEYS.some((key) => key in details!);
+}
+
 /**
  * Equality of two secrets already in memory, without a data-dependent early exit: both are reduced to SHA-256 digests (so the
  * lengths match) and compared with `timingSafeEqual`. Nothing is logged or stored.
@@ -933,20 +938,32 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
           continue;
         }
         let providerRevocation: ProviderRevocation = "unconfirmed";
-        // A connection an OLD server wrote still holds its only credential as plaintext. Seal it first (same transaction, row already
-        // locked) so the revoke decision below can use it; if it cannot be converted the disconnect simply stays unconfirmed.
-        if (!row.encrypted_access_token && hasLegacySecrets(row.account_details) && isSecretBoxConfigured()) {
-          try {
-            const converted = await convertLegacyRow(client, row.id);
-            if (converted.kind === "converted") {
-              const reloaded = await loadRow(client, userId, true);
-              if (reloaded && reloaded.id === row.id) Object.assign(row, reloaded);
+        // RECONCILE BEFORE ANYTHING IS CHOSEN. An OLD server (rolling deploy) can reconnect a row the new application already sealed:
+        // it moves provider_id to the new merchant and writes that merchant's tokens as plaintext, leaving the previous merchant's
+        // sealed pair in place. So a present sealed token is NOT evidence that the sealed state is current. Whenever ANY legacy
+        // secret key is on the row, it is normalized first -- sealed-vs-plaintext by actual token values (see convertLegacyRow) -- so
+        // the merchant (provider_id), the revoke token and the revocation-history target all come from ONE coherent snapshot. If
+        // that cannot be proven, nothing is revoked at Square and the disconnect stays "unconfirmed"; a stale sealed token is never used.
+        let coherent = true;
+        if (hasLegacyResidue(row.account_details)) {
+          coherent = false;
+          if (isSecretBoxConfigured()) {
+            try {
+              const converted = await convertLegacyRow(client, row.id);
+              if (converted.kind === "converted") {
+                const reloaded = await loadRow(client, userId, true);
+                if (reloaded && reloaded.id === row.id && reloaded.provider_id === row.provider_id && !hasLegacyResidue(reloaded.account_details)) {
+                  Object.assign(row, reloaded);
+                  coherent = true;
+                }
+              }
+            } catch (error) {
+              if (!(error instanceof SecretBoxError)) throw error;
             }
-          } catch (error) {
-            if (!(error instanceof SecretBoxError)) throw error;
           }
+          if (!coherent) log.warn("square_disconnect_credential_state_incoherent", { paymentMethodId: row.id });
         }
-        if (row.encrypted_access_token && isSecretBoxConfigured() && squareOauthApplication()) {
+        if (coherent && row.encrypted_access_token && isSecretBoxConfigured() && squareOauthApplication()) {
           // Authoritative, under the merchant lock: any other ChefSire connection that is active and holds a usable credential,
           // sealed OR (during a rolling deploy / migration) still legacy plaintext: revoking would silently kill that one too.
           const sharedMerchant = await client.query(
