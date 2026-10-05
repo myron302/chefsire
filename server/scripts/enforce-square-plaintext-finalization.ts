@@ -17,11 +17,11 @@ async function main() {
   try {
     const hasTable = await pool.query(`SELECT to_regclass('payment_methods') AS name`);
     if (!hasTable.rows[0]?.name) {
-      console.log("payment_methods absent; Square plaintext enforcement not applicable yet.");
+      console.warn("payment_methods absent; Square plaintext enforcement not applicable yet.");
       return;
     }
     const result = await restoreFinalizedPlaintextEnforcement(pool as unknown as SqlPool);
-    console.log(JSON.stringify({ event: "square_plaintext_enforcement_after_push", ...result }));
+    console.warn(JSON.stringify({ event: "square_plaintext_enforcement_after_push", ...result }));
     if (!result.ok) process.exitCode = 1;
   } finally {
     await pool.end();
