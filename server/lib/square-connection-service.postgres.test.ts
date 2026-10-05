@@ -86,6 +86,7 @@ if (!URL_ENV) {
           await applyMigration(client as never, `server:20261010_square_merchant_revocations.sql`, fs.readFileSync(path.join(root, "server/migrations/20261010_square_merchant_revocations.sql"), "utf8"));
           await applyMigration(client as never, `server:20261011_square_credential_pair_repair.sql`, fs.readFileSync(path.join(root, "server/migrations/20261011_square_credential_pair_repair.sql"), "utf8"));
           await applyMigration(client as never, `server:20261012_square_merchant_id_width.sql`, fs.readFileSync(path.join(root, "server/migrations/20261012_square_merchant_id_width.sql"), "utf8"));
+          await applyMigration(client as never, `server:20261013_square_verification_ordering.sql`, fs.readFileSync(path.join(root, "server/migrations/20261013_square_verification_ordering.sql"), "utf8"));
         } finally { client.release(); }
       },
       async user(id: string) { await pool.query(`INSERT INTO users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [id]); return id; },

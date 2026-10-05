@@ -10,7 +10,7 @@ payment link, webhook, processor refund, payout or platform fee in this change.
 | `SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY` | **Yes** (to connect or to use a connection) | Exactly 32 random bytes, base64 (`openssl rand -base64 32`; 43 chars unpadded base64url or 44 with `=`). Constant-byte keys are refused. Missing or malformed: every operation fails closed. There is no plaintext fallback, in any environment. |
 | `SQUARE_OAUTH_TOKEN_ENCRYPTION_KEY_PREVIOUS` | No | Decrypt-only previous key, for rotation. |
 | `SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET` | Yes | Existing. The secret is now also required to start an authorization. |
-| `SQUARE_ENV` | Existing | `production` or `sandbox` (default). **Now also selects the OAuth authorize host and the SDK environment for the marketplace and provider connections.** Previously the OAuth path keyed off `NODE_ENV`, and always used the production authorize host. |
+| `SQUARE_ENV` | Existing | `production` or `sandbox`; any other value is a configuration ERROR (never guessed; the provider OAuth application then reads as not configured). **Now also selects the OAuth authorize host and the SDK environment for the marketplace and provider connections.** When it is absent the prior `NODE_ENV` fallback is preserved: `NODE_ENV=production` is Square production, anything else is Sandbox, so an existing production deployment is never silently moved to Sandbox. Gate 0 development and tests are Sandbox only. |
 
 ## Encryption
 
@@ -258,7 +258,7 @@ Requested: `MERCHANT_PROFILE_READ`, `PAYMENTS_WRITE`, `PAYMENTS_READ`, `ORDERS_W
 v43, so marketplace capture/refund/reconciliation threw a `TypeError` before any request. It is now a thin adapter that
 keeps the exact call shape those state machines use (`paymentsApi.createPayment/listPayments`, `refundsApi.refundPayment/
 getPaymentRefund`, `{ result }` envelopes) on the supported `SquareClient`. The state machine, idempotency keys,
-reconciliation and amount/currency verification are untouched. Because the environment now follows `SQUARE_ENV`, set it
-explicitly in production.
+reconciliation and amount/currency verification are untouched. `SQUARE_ENV` decides the environment when set; when absent the prior `NODE_ENV` fallback applies (production in
+`NODE_ENV=production`). Setting it explicitly in production is still recommended.
 
 Not changed: `server/lib/square.ts` and the drinks code (already on the v43 API).

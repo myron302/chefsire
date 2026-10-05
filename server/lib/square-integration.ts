@@ -15,9 +15,29 @@ import { SquareClient, SquareEnvironment, SquareError, type BaseClientOptions } 
  * returned to a caller outside the server.
  */
 
-/** Which Square environment ChefSire is configured for. Mirrors `SQUARE_ENV` in `server/lib/square.ts`. */
+/** The Square environment configuration is invalid. Carries no secret. */
+export class SquareEnvironmentConfigError extends Error {
+  constructor() {
+    super("SQUARE_ENV must be 'sandbox' or 'production'.");
+    this.name = "SquareEnvironmentConfigError";
+  }
+}
+
+/**
+ * Which Square environment ChefSire is configured for.
+ *  - `SQUARE_ENV` set: it decides, and must be exactly `sandbox` or `production` (case and surrounding space ignored). Any other
+ *    value THROWS: a typo must never be guessed into an environment.
+ *  - `SQUARE_ENV` absent or blank: the prior `NODE_ENV` fallback of the marketplace client and the provider OAuth path is
+ *    preserved -- `NODE_ENV=production` is Square PRODUCTION, anything else is Sandbox. A production deployment that never set
+ *    SQUARE_ENV is therefore never silently moved to Sandbox (which would send production credentials to Sandbox endpoints).
+ */
 export function squareEnvironmentName(): "production" | "sandbox" {
-  return (process.env.SQUARE_ENV || "sandbox").trim().toLowerCase() === "production" ? "production" : "sandbox";
+  const explicit = process.env.SQUARE_ENV?.trim().toLowerCase();
+  if (explicit) {
+    if (explicit === "production" || explicit === "sandbox") return explicit;
+    throw new SquareEnvironmentConfigError();
+  }
+  return process.env.NODE_ENV === "production" ? "production" : "sandbox";
 }
 
 export function squareApiEnvironment() {
@@ -52,7 +72,10 @@ export const SQUARE_CONNECTION_SCOPES = [
 export function squareOauthApplication(): { clientId: string; clientSecret: string } | null {
   const clientId = process.env.SQUARE_APPLICATION_ID?.trim();
   const clientSecret = process.env.SQUARE_APPLICATION_SECRET?.trim();
-  return clientId && clientSecret ? { clientId, clientSecret } : null;
+  if (!clientId || !clientSecret) return null;
+  // An invalid SQUARE_ENV is a configuration fault: the application is treated as NOT configured (fail closed), never guessed.
+  try { squareEnvironmentName(); } catch { return null; }
+  return { clientId, clientSecret };
 }
 
 /** Test seam only: lets a contract test point the REAL SDK at a local server to drive its request building and parsing. */

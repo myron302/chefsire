@@ -96,6 +96,7 @@ if (!URL_ENV) {
           await applyMigration(client as never, "server:20261010_square_merchant_revocations.sql", sqlOf("server/migrations/20261010_square_merchant_revocations.sql"));
           await applyMigration(client as never, "server:20261011_square_credential_pair_repair.sql", sqlOf("server/migrations/20261011_square_credential_pair_repair.sql"));
           await applyMigration(client as never, "server:20261012_square_merchant_id_width.sql", sqlOf("server/migrations/20261012_square_merchant_id_width.sql"));
+          await applyMigration(client as never, "server:20261013_square_verification_ordering.sql", sqlOf("server/migrations/20261013_square_verification_ordering.sql"));
         } finally { client.release(); }
       },
       async connect(userId: string) {

@@ -753,6 +753,21 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
         ? { kind: "needs_reauthorization", row: outOfService(snapshot) }
         : { kind: "stale" };
 
+    // ORDERING. Take a ticket for this attempt BEFORE asking Square (a short statement; no row lock is held across the network). The
+    // write below applies only while no later-ticketed attempt has already been applied, so an older provider observation can never
+    // overwrite a newer one for the same credential generation. The ticket is bound to the same snapshot as every other write.
+    const ticketed = await pool.query(
+      `UPDATE payment_methods SET verification_attempt = verification_attempt + 1
+       WHERE id = $1 AND provider_id = $2 AND credential_generation = $3::bigint AND account_status = 'active' AND encrypted_access_token IS NOT NULL
+       RETURNING verification_attempt`,
+      [snapshot.id, snapshot.provider_id, snapshot.credential_generation],
+    );
+    if (!ticketed.rows.length) {
+      log.warn("square_connection_snapshot_changed", { paymentMethodId: snapshot.id, attempted: "verification" });
+      return { kind: "stale" };
+    }
+    const ticket = String(ticketed.rows[0].verification_attempt);
+
     let merchant: SquareMerchantProfile;
     let scopes: string[];
     let locations: SquareLocationFacts[];
@@ -775,15 +790,18 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     const written = await pool.query(
       `UPDATE payment_methods
        SET granted_scopes = $4, merchant_name = $5, location_id = $6, location_name = $7, location_currency = $8,
-           last_verified_at = $9, verified_at = COALESCE(verified_at, $9), updated_at = $9
+           last_verified_at = $9, verified_at = COALESCE(verified_at, $9), updated_at = $9, verification_applied = $10::bigint
        WHERE id = $1 AND provider_id = $2 AND credential_generation = $3::bigint
          AND account_status = 'active' AND encrypted_access_token IS NOT NULL
+         AND verification_applied < $10::bigint
        RETURNING ${ROW_COLUMNS}`,
       [snapshot.id, snapshot.provider_id, snapshot.credential_generation, scopes, merchant.businessName,
-        location?.id ?? null, location?.name ?? null, location?.currency ?? null, at],
+        location?.id ?? null, location?.name ?? null, location?.currency ?? null, at, ticket],
     );
     const row = written.rows[0] as unknown as ConnectionRow | undefined;
     if (!row) {
+      // Either the snapshot moved on (reconnect, refresh, disconnect) or a NEWER attempt has already been applied. Both mean this
+      // observation must not be written; the caller re-reads the authoritative row (which carries the newer facts).
       log.warn("square_connection_snapshot_changed", { paymentMethodId: snapshot.id, attempted: "verification" });
       return { kind: "stale" };
     }

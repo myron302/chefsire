@@ -87,6 +87,9 @@ export const paymentMethods = pgTable(
     disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
     // Advanced with every change to the row's credentials (20261008_square_credential_generation.sql); not a secret.
     credentialGeneration: bigint("credential_generation", { mode: "number" }).notNull().default(1),
+    // Verification write ordering (20261013): a ticket taken before the provider calls, and the newest ticket applied. Not secrets.
+    verificationAttempt: bigint("verification_attempt", { mode: "number" }).notNull().default(0),
+    verificationApplied: bigint("verification_applied", { mode: "number" }).notNull().default(0),
     isDefault: boolean("is_default").default(false),
     verifiedAt: timestamp("verified_at"),
     lastVerifiedAt: timestamp("last_verified_at"),
