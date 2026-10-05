@@ -169,8 +169,8 @@ export class SquareAuthorizationUnconfirmedError extends Error {
 
 /**
  * What a disconnect did at Square:
- *  - `revoked`                         Square confirmed ChefSire's authorization for the merchant is revoked (including an
- *                                      authoritative "this token is already invalid").
+ *  - `revoked`                         Square explicitly confirmed (`success: true`) that ChefSire's authorization for the
+ *                                      merchant is revoked. Never inferred from an error, whatever the error says about the token.
  *  - `retained_for_shared_connection`  Intentionally NOT revoked: another active ChefSire connection uses the same Square
  *                                      merchant, and Square revokes every token of the application for a merchant.
  *  - `unconfirmed`                     Square could not confirm a revocation (outage, rejected application credentials,
@@ -934,10 +934,10 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    * disconnects and OAuth reconnects for one merchant are serialized: exactly the LAST active connection revokes, once.
    *
    * What the owner is told (`providerRevocation`) -- in every case the LOCAL disconnect completes and every stored secret is cleared:
-   *  - `revoked`: Square confirmed the revocation (or authoritatively reported the token already invalid).
+   *  - `revoked`: Square explicitly confirmed the revocation (`success: true`). An invalid/expired/revoked access token is NOT a confirmation.
    *  - `retained_for_shared_connection`: another active ChefSire account uses the same Square merchant; revoking would break it,
    *    so Square authorization was intentionally left in place for it.
-   *  - `unconfirmed`: the revoke call failed or could not be confirmed (Square unavailable, ChefSire's application credentials
+   *  - `unconfirmed`: the revoke call failed or could not be confirmed (Square unavailable, the access token rejected or expired, ChefSire's application credentials
    *    rejected, an encryption/configuration fault, or no credential left to revoke with). Square access MAY still be active.
    *  - `not_applicable`: there was nothing connected.
    */
@@ -1003,11 +1003,14 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
               await api.revokeAccessToken(openAccessToken(row));
               providerRevocation = "revoked";
             } catch (error) {
-              // Square saying the token is already invalid is as good as a revocation. Anything else (an outage, rejected
-              // APPLICATION credentials, an unreadable credential) is unconfirmed: the local disconnect still completes.
+              // CONFIRMED ONLY BY AN EXPLICIT `success: true` (api.revokeAccessToken throws otherwise). A failure is never upgraded to
+              // "revoked" by inference: an expired, already-revoked or unauthorized ACCESS token says nothing about the grant itself (an
+              // expired access token can coexist with a live refresh token), and a false epoch would wrongly invalidate newer
+              // authorizations. Every failure -- including a credential Square rejects -- is unconfirmed; the local disconnect still
+              // completes and the owner is told Square-side revocation could not be confirmed. No revocation history is written.
               const failure = error instanceof SquareCredentialError ? "unrecognized" : classifySquareFailure(error, { surface: "revoke" });
-              providerRevocation = failure === "provider_credential_invalid" ? "revoked" : "unconfirmed";
-              log.warn("square_disconnect_revocation_unconfirmed", { paymentMethodId: row.id, status: squareFailureStatus(error), kind: failure, revoked: providerRevocation === "revoked" });
+              providerRevocation = "unconfirmed";
+              log.warn("square_disconnect_revocation_unconfirmed", { paymentMethodId: row.id, status: squareFailureStatus(error), kind: failure });
             }
           }
         }

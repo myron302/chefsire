@@ -835,12 +835,12 @@ if (!URL_ENV) {
     });
   });
 
-  test("disconnecting an already-dead token counts as revoked; disconnecting a needs-reauthorization connection is fine", async () => {
+  test("a revoke rejected for an already-dead access token is UNCONFIRMED, not revoked; disconnecting a needs-reauthorization connection is fine", async () => {
     await withHarness({ fake: { grants: [tokenGrant("dead-access-1", "dead-refresh-1", "2099-01-01T00:00:00Z")] } }, async (h) => {
       await h.connect("provider-1");
       h.fake.state.failures.revoke = 401;
       h.fake.state.revokeFailureBody = { errors: [{ category: "AUTHENTICATION_ERROR", code: "ACCESS_TOKEN_REVOKED", detail: "already revoked" }] };
-      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "revoked", providerRevoked: true });
+      assert.deepEqual(await h.service.disconnect("provider-1"), { changed: true, providerRevocation: "unconfirmed", providerRevoked: false });
     });
     await withHarness({ fake: { grants: [tokenGrant("dead-access-2", "dead-refresh-2", "2099-01-01T00:00:00Z")] } }, async (h) => {
       await h.connect("provider-1");

@@ -168,9 +168,9 @@ merchant while waiting, the attempt restarts against the merchant it is on now.
 
   | Case | `providerRevocation` | What the provider is told |
   | --- | --- | --- |
-  | Local disconnect; Square confirmed the revocation (or said the token was already invalid) | `revoked` | ChefSire's access to the Square account is revoked. |
+  | Local disconnect; Square answered the revoke with an explicit `success: true` | `revoked` | ChefSire's access to the Square account is revoked. |
   | Local disconnect; another ACTIVE ChefSire account uses the same Square merchant, so revocation was intentionally skipped | `retained_for_shared_connection` | Disconnected here; the other account still uses it, so access in Square was left in place for it. Not an error. |
-  | Local disconnect; Square unavailable, rejected ChefSire's application credentials, or answered 2xx WITHOUT an explicit `success: true` (false, missing, or with response-level errors) | `unconfirmed` | Disconnected from ChefSire, but we could not confirm Square revoked access; it may still be active; remove ChefSire from the connected apps in your Square account. |
+  | Local disconnect; Square unavailable, rejected ChefSire's application credentials, rejected the ACCESS TOKEN used for the call (`ACCESS_TOKEN_EXPIRED`, `ACCESS_TOKEN_REVOKED`, `UNAUTHORIZED`, any invalid-credential response: it says nothing about the grant, and an expired access token can coexist with a live refresh token), or answered 2xx WITHOUT an explicit `success: true` (false, missing, or with response-level errors) | `unconfirmed` | Disconnected from ChefSire, but we could not confirm Square revoked access; it may still be active; remove ChefSire from the connected apps in your Square account. |
   | Local disconnect; encryption/configuration fault or no stored credential left to revoke with | `unconfirmed` | Same warning. |
   | Nothing was connected / repeat disconnect | `not_applicable` | Nothing. |
 
