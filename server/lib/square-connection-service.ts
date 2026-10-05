@@ -208,6 +208,10 @@ export type LegacyConversionResult =
   | { kind: "converted" | "already_converted" | "nothing_to_convert"; id: string }
   | { kind: "malformed"; id: string; reason: string };
 
+export type LegacyConversionSummary = { found: number; converted: number; alreadyConverted: number; malformed: { id: string; reason: string }[] };
+/** What `convertAllLegacyRows({ dryRun: true })` reports: the same classification, with `wouldConvert` in place of `converted`. */
+export type LegacyDryRunSummary = { found: number; wouldConvert: number; alreadyConverted: number; malformed: { id: string; reason: string }[] };
+
 export type SquareConnectionServiceDeps = {
   pool: SqlPool;
   api: SquareProviderApi;
@@ -354,8 +358,14 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     const row = found.rows[0] as unknown as ConnectionRow | undefined;
     if (!row) return { kind: "nothing_to_convert", id: rowId };
     const details = row.account_details;
-    if (!hasLegacySecrets(details) && !(details && "tokenExpiresAt" in details)) {
+    if (!hasLegacyResidue(details)) {
       return { kind: row.encrypted_access_token ? "already_converted" : "nothing_to_convert", id: rowId };
+    }
+    if (!row.encrypted_access_token && LEGACY_SECRET_KEYS.every((key) => details?.[key] === undefined || details?.[key] === null)) {
+      // Keys that hold nothing (JSON null) on a row with no sealed credential: no secret to seal or compare, so they are removed. Beside a
+      // sealed pair they prove nothing about which credential is current, so that case stays malformed (fail closed).
+      await db.query(`UPDATE payment_methods SET account_details = account_details - 'accessToken' - 'refreshToken' - 'tokenExpiresAt', updated_at = now() WHERE id = $1`, [rowId]);
+      return { kind: "converted", id: rowId };
     }
     const accessToken = details?.accessToken;
     const refreshToken = details?.refreshToken;
@@ -411,12 +421,17 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     return { kind: "converted", id: rowId };
   }
 
-  async function convertLegacyRowInTransaction(rowId: string): Promise<LegacyConversionResult> {
+  /**
+   * Runs `convertLegacyRow` for one row in its own transaction. With `rollback` the transaction is ALWAYS rolled back, so the
+   * caller learns exactly what the real run would do (the very same parsing, decryption and validation) while nothing at all is
+   * persisted: not tokens, plaintext, generation, status, verification facts nor timestamps.
+   */
+  async function convertLegacyRowInTransaction(rowId: string, options: { rollback?: boolean } = {}): Promise<LegacyConversionResult> {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       const result = await convertLegacyRow(client, rowId);
-      await client.query("COMMIT");
+      await client.query(options.rollback ? "ROLLBACK" : "COMMIT");
       return result;
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -426,26 +441,37 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     }
   }
 
-  /** Converts every legacy row. Reports counts and ids only -- never a token. */
-  async function convertAllLegacyRows(options: { dryRun?: boolean } = {}) {
+  /**
+   * Converts every legacy row. Reports counts and ids only -- never a token.
+   *
+   * `dryRun` performs the SAME classification as the real run, row by row, inside transactions that are always rolled back: it
+   * reports `wouldConvert` (instead of `converted`), `alreadyConverted` and every `malformed` row with its safe reason (including a
+   * sealed credential that cannot be opened), and persists nothing. An operator can therefore trust a clean dry run.
+   */
+  async function convertAllLegacyRows(options: { dryRun: true }): Promise<LegacyDryRunSummary>;
+  async function convertAllLegacyRows(options?: { dryRun?: false }): Promise<LegacyConversionSummary>;
+  async function convertAllLegacyRows(options: { dryRun?: boolean }): Promise<LegacyConversionSummary | LegacyDryRunSummary>;
+  async function convertAllLegacyRows(options: { dryRun?: boolean } = {}): Promise<LegacyConversionSummary | LegacyDryRunSummary> {
     const candidates = await pool.query(
       `SELECT id FROM payment_methods WHERE provider = 'square' AND account_details ?| ARRAY['accessToken', 'refreshToken', 'tokenExpiresAt'] ORDER BY created_at ASC, id ASC`,
     );
-    const summary = { found: candidates.rows.length, converted: 0, alreadyConverted: 0, malformed: [] as { id: string; reason: string }[] };
-    if (options.dryRun) return summary;
+    const malformed: { id: string; reason: string }[] = [];
+    let converted = 0;
+    let alreadyConverted = 0;
     for (const candidate of candidates.rows) {
       let result: LegacyConversionResult;
       try {
-        result = await convertLegacyRowInTransaction(String(candidate.id));
+        result = await convertLegacyRowInTransaction(String(candidate.id), { rollback: Boolean(options.dryRun) });
       } catch (error) {
         if (!(error instanceof SecretBoxError)) throw error;
         result = { kind: "malformed", id: String(candidate.id), reason: "sealed_credential_unreadable" };
       }
-      if (result.kind === "converted") summary.converted += 1;
-      else if (result.kind === "malformed") summary.malformed.push({ id: result.id, reason: result.reason });
-      else summary.alreadyConverted += 1;
+      if (result.kind === "converted") converted += 1;
+      else if (result.kind === "malformed") malformed.push({ id: result.id, reason: result.reason });
+      else alreadyConverted += 1;
     }
-    return summary;
+    const found = candidates.rows.length;
+    return options.dryRun ? { found, wouldConvert: converted, alreadyConverted, malformed } : { found, converted, alreadyConverted, malformed };
   }
 
   /* ----------------------------------------------------------------------------------------------------------- *

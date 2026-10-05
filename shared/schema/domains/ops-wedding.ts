@@ -1,5 +1,5 @@
 import { sql, type SQLWrapper } from "drizzle-orm";
-import { pgTable, text, varchar, integer, bigint, boolean, timestamp, date, bigserial, jsonb, decimal, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, bigint, boolean, timestamp, date, bigserial, jsonb, decimal, index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { orders, products } from "./commerce-billing";
 import type { StoreLayoutConfigV2 } from "../../store/storeLayout";
@@ -77,7 +77,8 @@ export const paymentMethods = pgTable(
     encryptedRefreshToken: text("encrypted_refresh_token"),
     tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
     lastRefreshedAt: timestamp("last_refreshed_at", { withTimezone: true }),
-    locationId: varchar("location_id", { length: 64 }),
+    // text, not varchar(64): widened by 20261012_square_merchant_id_width.sql so a valid longer Square id never fails a verification write.
+    locationId: text("location_id"),
     locationName: text("location_name"),
     locationCurrency: varchar("location_currency", { length: 3 }),
     merchantName: text("merchant_name"),
@@ -96,8 +97,56 @@ export const paymentMethods = pgTable(
     userIdx: index("payment_methods_user_idx").on(t.userId),
     providerIdx: index("payment_methods_provider_idx").on(t.provider),
     statusIdx: index("payment_methods_status_idx").on(t.accountStatus),
+    // 20261007: lookup by Square merchant for the shared-connection check. Declared so a push does not drop it.
+    providerMerchantIdx: index("payment_methods_provider_merchant_idx").on(t.provider, t.providerId),
+    // The Square credential invariants (20261007/20261008/20261011). They are declared HERE as well as in the migrations because
+    // drizzle-kit push treats this schema as authoritative and DROPS any CHECK it does not declare -- which would silently remove
+    // the sealed-pair and dead-connection guarantees. Same expressions as the migrations, so a push proposes nothing for them.
+    accountStatusValid: check(
+      "payment_methods_account_status_check",
+      sql`${t.accountStatus} IS NULL OR ${t.accountStatus} IN ('pending', 'active', 'disabled', 'rejected', 'needs_reauthorization', 'disconnected')`,
+    ),
+    credentialGenerationPositive: check("payment_methods_credential_generation_check", sql`${t.credentialGeneration} >= 1`),
+    squareCredentialPair: check(
+      "payment_methods_square_credentials_check",
+      sql`(${t.encryptedAccessToken} IS NULL AND ${t.encryptedRefreshToken} IS NULL)
+        OR (
+          ${t.encryptedAccessToken} IS NOT NULL AND ${t.encryptedRefreshToken} IS NOT NULL
+          AND ${t.encryptedAccessToken} LIKE 'sqenc:v1:%' AND ${t.encryptedRefreshToken} LIKE 'sqenc:v1:%'
+          AND ${t.tokenExpiresAt} IS NOT NULL
+          AND ${t.provider} IS NOT NULL AND ${t.provider} = 'square'
+        )`,
+    ),
+    squareDeadHoldsNoSecret: check(
+      "payment_methods_square_dead_holds_no_secret_check",
+      sql`${t.accountStatus} IS NULL OR ${t.accountStatus} NOT IN ('needs_reauthorization', 'disconnected')
+        OR (
+          ${t.encryptedAccessToken} IS NULL AND ${t.encryptedRefreshToken} IS NULL
+          AND (${t.accountDetails} IS NULL OR NOT (${t.accountDetails} ?| ARRAY['accessToken', 'refreshToken']))
+        )`,
+    ),
   })
 );
+
+/**
+ * Merchant-level Square revocation history (20261010_square_merchant_revocations.sql, key widened by 20261012). Keyed by the Square
+ * merchant id, NOT by a payment_methods row, so it survives a row moving between merchants. SECURITY-CRITICAL: it is what stops a
+ * credential authorized before a merchant-wide revoke from being trusted again. It MUST stay declared here: drizzle-kit push treats
+ * this schema as authoritative and would otherwise create nothing on a fresh database and propose DROPPING it on a migrated one.
+ * The append-only trigger (enforce_square_merchant_revocation_history) is database-only and is not touched by a push.
+ */
+export const squareMerchantRevocations = pgTable("square_merchant_revocations", {
+  merchantId: text("merchant_id").primaryKey(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }).notNull(),
+  revocationEpoch: bigint("revocation_epoch", { mode: "number" }).notNull().default(1),
+  source: varchar("source", { length: 24 }).notNull().default("disconnect"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  epochPositive: check("square_merchant_revocations_epoch_check", sql`${t.revocationEpoch} >= 1`),
+  sourceValid: check("square_merchant_revocations_source_check", sql`${t.source} IN ('disconnect')`),
+  merchantNotBlank: check("square_merchant_revocations_merchant_check", sql`length(btrim(${t.merchantId})) > 0`),
+}));
 
 /**
  * One-time, browser-bound, server-side binding for a Square seller OAuth

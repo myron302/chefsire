@@ -44,6 +44,15 @@ async function main() {
         "the constraint (and refuses while any plaintext remains).",
     );
   }
+  if (dryRun) {
+    // A dry run classifies every row exactly as the real run would (inside rolled-back transactions) and writes nothing, so its
+    // verdict can be relied on: malformed rows are listed by id and reason, and the exit status is non-zero when there are any.
+    console.warn(
+      summary.malformed.length === 0
+        ? "Dry run: no malformed rows. The real run (without --dry-run) is expected to convert the rows reported as wouldConvert. Nothing was changed."
+        : "Dry run: malformed rows were found (listed above by id and reason). The migration is NOT clean; resolve or accept them before the real run. Nothing was changed.",
+    );
+  }
   process.exitCode = summary.malformed.length > 0 ? 2 : 0;
 }
 

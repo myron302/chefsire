@@ -45,6 +45,15 @@ Applied automatically by `npm run db:migrate`, in order, all safe next to an OLD
   (no length cap), matching `payment_methods.provider_id`. A merchant id longer than the former `varchar(64)` could be stored on a
   connection but would have made the confirmed-disconnect history INSERT fail after Square had already revoked the grant.
 
+**Drizzle parity.** `drizzle-kit push` (`npm run db:push`, `db:push:accept`) treats `shared/schema` as authoritative, so every Gate 0
+database object it could otherwise remove is declared there with the migration's final shape: `square_merchant_revocations` (merchant
+history, `merchant_id text` primary key) and its CHECKs, `payment_methods.location_id text`, the four `payment_methods` CHECKs
+(`account_status`, `credential_generation`, sealed pair, dead-holds-no-secret) and `payment_methods_provider_merchant_idx`. Without
+these a push on a fresh database never creates the history table and a push on a migrated one DROPS it (and the CHECKs and index) and
+narrows `location_id` back to `varchar(64)`. `square-schema-parity.postgres.test.ts` runs the real `drizzle-kit push` on throw-away
+databases (fresh, then migrated with history rows) and asserts nothing is dropped or narrowed. The append-only trigger is
+database-only; a push does not touch triggers.
+
 **Sealed-credential pair CHECK.** Exactly two states are valid: neither token stored; or BOTH stored, both `sqenc:v1:%`, with
 `token_expires_at`, on a `square` row. Every `LIKE` is guarded by an explicit `IS NOT NULL`: a CHECK passes on TRUE *or NULL*, so
 the earlier `LIKE`-only form accepted a one-token row. A pre-existing violating row (possible only on a database that applied
@@ -99,6 +108,12 @@ that retains merchant/location history can never read as active. `reportAuthoriz
 credential that was rejected; a report about replaced credentials is ignored.
 
 ## Legacy plaintext tokens
+
+**`migrate-square-oauth-tokens.ts --dry-run` is trustworthy.** It runs the real classification (`convertLegacyRow`) row by row inside
+transactions that are always rolled back, so it reports `found`, `wouldConvert`, `alreadyConverted` and every `malformed` row (id and a
+safe reason: `missing_or_non_string_token`, `invalid_expiry`, `inactive_connection_with_secrets`, `sealed_credential_unreadable`)
+without persisting anything, and exits 2 when any row is malformed, like the real run. A row whose pair is already sealed and has no
+plaintext residue is not a candidate. Only a dry run that reports no malformed rows means the migration is clean.
 
 See "Staged plaintext enforcement" above for the rollout. The conversion (`migrate-square-oauth-tokens.ts`, or lazily per owner) seals
 each row under its row lock, removes the plaintext in the same statement, is idempotent, prints counts and row ids only, and exits 2 if

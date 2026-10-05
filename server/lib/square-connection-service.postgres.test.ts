@@ -299,7 +299,7 @@ if (!URL_ENV) {
       await h.hardening();
 
       const dry = await h.service.convertAllLegacyRows({ dryRun: true });
-      assert.deepEqual(dry, { found: 2, converted: 0, alreadyConverted: 0, malformed: [] });
+      assert.deepEqual(dry, { found: 2, wouldConvert: 2, alreadyConverted: 0, malformed: [] });
       assert.equal((await h.row("provider-1")).account_details.accessToken, "legacy-access-1", "a dry run changes nothing");
 
       const summary = await h.service.convertAllLegacyRows();
