@@ -133,6 +133,20 @@ order/payment-read scopes, so those providers see "Needs reconnect" once.
 
 ## Refresh, revocation, disconnect
 
+**Verification tickets apply to destructive outcomes too.** A verification attempt takes a ticket (`verification_attempt`) before it asks
+Square. A success write applies only while `verification_applied < ticket`. A verification-derived DESTRUCTIVE outcome (invalid
+credential, merchant mismatch, lost scope -> `needs_reauthorization`, tokens cleared, generation advanced) applies only if the attempt is
+also the newest ticket issued (`verification_attempt = ticket`) and no newer attempt was applied. An older observation therefore can
+neither undo a newer success nor demote a connection a newer attempt is verifying; a newer destructive outcome still applies. Refresh
+and payment-call rejections carry no ticket and stay bound to the credential generation alone.
+
+**Incomplete sealed rows are classified before any UPDATE.** `convertLegacyRow` decides whether the sealed state is complete
+(`hasCompleteSealedCredential`) before touching a row: an access-only, refresh-only or expiry-less sealed row (left in place by the NOT
+VALID pair CHECK, and which would raise 23514 on ANY update of it) is reported as `incomplete_sealed_credential` and left as it is, unless
+it carries a COMPLETE plaintext pair, which reseals both tokens and the expiry in one statement. Expiry-only residue on a row with no
+sealed credential is still removed. A 23514 on one row is reported per row; during disconnect the reconciliation runs in a savepoint so
+the local disconnect always completes.
+
 **What counts as a usable SHARED connection.** The shared-merchant check that can suppress a merchant-wide revoke counts only an ACTIVE
 row holding a credential the application can actually use: a complete sealed pair (BOTH `sqenc:v1:` tokens AND `token_expires_at`) or,
 during the staged rollout, a complete legacy plaintext pair (non-empty string access AND refresh token and a parseable `tokenExpiresAt`).

@@ -309,16 +309,23 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    * generation. It applies ONLY to the exact snapshot the caller judged (id + generation + still active): a stale attempt
    * matches nothing, changes nothing and returns false, so it can never clear credentials that replaced the ones it saw.
    */
-  async function markNeedsReauthorization(db: SqlClient, snapshot: Pick<ConnectionRow, "id" | "credential_generation">, reason: string): Promise<boolean> {
+  async function markNeedsReauthorization(db: SqlClient, snapshot: Pick<ConnectionRow, "id" | "credential_generation">, reason: string, options: { ticket?: string } = {}): Promise<boolean> {
+    // A VERIFICATION-derived outcome carries its attempt ticket and obeys the same ordering rule as a successful verification write:
+    // it applies only if no newer attempt has been applied (`verification_applied < ticket`) and none is newer in flight
+    // (`verification_attempt = ticket`, i.e. this is the newest attempt). An older observation can therefore never clear credentials,
+    // advance the generation or demote a connection that a newer attempt verified (or is verifying). Non-verification callers
+    // (refresh, payment-call rejection) pass no ticket and stay bound to the credential generation alone.
     const result = await db.query(
       `UPDATE payment_methods
        SET account_status = 'needs_reauthorization',
            encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL,
            account_details = COALESCE(account_details, '{}'::jsonb) - 'accessToken' - 'refreshToken' - 'tokenExpiresAt',
            credential_generation = credential_generation + 1,
+           verification_applied = GREATEST(verification_applied, COALESCE($4::bigint, verification_applied)),
            status_changed_at = $3, updated_at = $3
-       WHERE id = $1 AND account_status = 'active' AND credential_generation = $2::bigint`,
-      [snapshot.id, snapshot.credential_generation, now()],
+       WHERE id = $1 AND account_status = 'active' AND credential_generation = $2::bigint
+         AND ($4::bigint IS NULL OR (verification_applied < $4::bigint AND verification_attempt = $4::bigint))`,
+      [snapshot.id, snapshot.credential_generation, now(), options.ticket ?? null],
     );
     const changed = Boolean(result.rowCount);
     if (changed) log.warn("square_connection_needs_reauthorization", { paymentMethodId: snapshot.id, reason });
@@ -376,9 +383,14 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     if (!hasLegacyResidue(details)) {
       return { kind: row.encrypted_access_token ? "already_converted" : "nothing_to_convert", id: rowId };
     }
-    if (!row.encrypted_access_token && LEGACY_SECRET_KEYS.every((key) => details?.[key] === undefined || details?.[key] === null)) {
-      // Keys that hold nothing (JSON null) on a row with no sealed credential: no secret to seal or compare, so they are removed. Beside a
-      // sealed pair they prove nothing about which credential is current, so that case stays malformed (fail closed).
+    // CLASSIFY THE WHOLE CREDENTIAL ROW BEFORE ANY UPDATE. PostgreSQL re-checks the pair CHECK on every UPDATE of the row, and an
+    // incomplete sealed state (a one-token or expiry-less row the NOT VALID constraint left in place) fails it with 23514 even for an
+    // "incidental" cleanup of account_details. Such a row is reported and left exactly as it is; nothing is fabricated or deleted.
+    const sealedPresent = Boolean(row.encrypted_access_token || row.encrypted_refresh_token);
+    const sealedComplete = hasCompleteSealedCredential(row);
+    if (!sealedPresent && ["accessToken", "refreshToken"].every((key) => details?.[key] === undefined || details?.[key] === null)) {
+      // No secret-bearing key holds a value (only an expiry and/or JSON nulls) on a row with NO sealed credential: nothing to seal or compare, so the residue is removed. Beside
+      // a sealed credential they prove nothing about which credential is current, so that case stays malformed (fail closed).
       await db.query(`UPDATE payment_methods SET account_details = account_details - 'accessToken' - 'refreshToken' - 'tokenExpiresAt', updated_at = now() WHERE id = $1`, [rowId]);
       return { kind: "converted", id: rowId };
     }
@@ -388,7 +400,11 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     const plaintextUsable = typeof accessToken === "string" && accessToken.length > 0 && typeof refreshToken === "string" && refreshToken.length > 0
       && expiresAt !== null && !Number.isNaN(expiresAt.getTime());
 
-    if (row.encrypted_access_token) {
+    // An incomplete sealed credential can only be superseded by a COMPLETE plaintext pair (which reseals both tokens and the expiry in one
+    // statement, satisfying the CHECK). Anything else -- expiry-only residue, a partial or identical-but-unusable pair -- is not touched.
+    if (sealedPresent && !sealedComplete && !plaintextUsable) return { kind: "malformed", id: rowId, reason: "incomplete_sealed_credential" };
+
+    if (sealedComplete) {
       // Sealed credentials already exist AND plaintext is present. During a rolling deploy an OLD server can write a fresh
       // plaintext connection (a reconnect) over a row the new application already converted. Whether that plaintext is the SAME
       // credential is decided by the actual token VALUES -- an expiry is not a credential identity: a new authorization can
@@ -478,8 +494,14 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       try {
         result = await convertLegacyRowInTransaction(String(candidate.id), { rollback: Boolean(options.dryRun) });
       } catch (error) {
-        if (!(error instanceof SecretBoxError)) throw error;
-        result = { kind: "malformed", id: String(candidate.id), reason: "sealed_credential_unreadable" };
+        if ((error as { code?: string } | null)?.code === "23514") {
+          // Defensive: a check violation on one row (rolled back with its transaction) is reported, never allowed to abort the run.
+          result = { kind: "malformed", id: String(candidate.id), reason: "credential_constraint_violation" };
+        } else if (error instanceof SecretBoxError) {
+          result = { kind: "malformed", id: String(candidate.id), reason: "sealed_credential_unreadable" };
+        } else {
+          throw error;
+        }
       }
       if (result.kind === "converted") converted += 1;
       else if (result.kind === "malformed") malformed.push({ id: result.id, reason: result.reason });
@@ -749,7 +771,7 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    */
   async function verifyConnection(snapshot: ConnectionRow, accessToken: string): Promise<VerificationOutcome> {
     const needsReauthorization = async (reason: string): Promise<VerificationOutcome> =>
-      (await markNeedsReauthorization(pool, snapshot, reason))
+      (await markNeedsReauthorization(pool, snapshot, reason, { ticket }))
         ? { kind: "needs_reauthorization", row: outOfService(snapshot) }
         : { kind: "stale" };
 
@@ -1020,6 +1042,9 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
         if (hasLegacyResidue(row.account_details)) {
           coherent = false;
           if (isSecretBoxConfigured()) {
+            // A SAVEPOINT so a failure inside reconciliation (an unreadable sealed pair, or a check violation on a partial historical
+            // row) undoes only the reconciliation: the local disconnect still completes and is never rolled back by it.
+            await client.query("SAVEPOINT square_reconcile");
             try {
               const converted = await convertLegacyRow(client, row.id);
               if (converted.kind === "converted") {
@@ -1029,8 +1054,11 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
                   coherent = true;
                 }
               }
+              await client.query("RELEASE SAVEPOINT square_reconcile");
             } catch (error) {
-              if (!(error instanceof SecretBoxError)) throw error;
+              const code = (error as { code?: string } | null)?.code;
+              if (!(error instanceof SecretBoxError) && code !== "23514") throw error;
+              await client.query("ROLLBACK TO SAVEPOINT square_reconcile");
             }
           }
           if (!coherent) log.warn("square_disconnect_credential_state_incoherent", { paymentMethodId: row.id });
