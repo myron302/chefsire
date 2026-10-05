@@ -153,8 +153,14 @@ export function classifySquareFailure(error: unknown, options: { surface?: Squar
   const codes = errors.map((item) => String(item.code ?? "").toUpperCase());
   const text = errors.map((item) => `${item.code ?? ""} ${item.detail ?? ""}`).join(" ");
 
-  // Application authentication is decided FIRST: if ChefSire could not authenticate itself, Square said nothing about the grant.
-  if (codes.some((code) => APPLICATION_AUTH_CODES.has(code)) || APPLICATION_AUTH_TEXT.test(text)) return "application_auth";
+  // The surface decides what an authentication failure MEANS. Bearer-authenticated calls (merchant, token status, locations, payments)
+  // send the PROVIDER's access token and never ChefSire's application secret, so a 401 or any "not authorized" wording there is a
+  // statement about the provider's token -- it must never be read as ChefSire's own configuration being wrong. Application
+  // authentication by TEXT is therefore decided only on the surfaces that actually present the application credentials (token grant /
+  // refresh and revoke), and there FIRST: if ChefSire could not authenticate itself, Square said nothing about the grant.
+  // On a bearer surface ONLY the explicit application-identity CODES (INVALID_CLIENT / CLIENT_DISABLED) still count; free text such as
+  // "not authorized" or "service.not_authorized" never does.
+  if (codes.some((code) => APPLICATION_AUTH_CODES.has(code)) || (surface !== "bearer" && APPLICATION_AUTH_TEXT.test(text))) return "application_auth";
 
   if (surface === "bearer") {
     const authCategory = errors.some((item) => item.category === "AUTHENTICATION_ERROR");

@@ -180,7 +180,11 @@ merchant while waiting, the attempt restarts against the merchant it is on now.
     generation that failed.
   * `application_auth`: ChefSire's own application credentials are rejected (`INVALID_CLIENT`, `CLIENT_DISABLED`, "Not
     Authorized" / `service.not_authorized`, client-authentication text). Stored credentials are left untouched; readiness reports
-    `configuration_error`; the log line is `square_application_auth_failed` (status and class only). Checked before anything else.
+    `configuration_error`; the log line is `square_application_auth_failed` (status and class only). Decided FIRST on the surfaces that present the application
+    credentials (token grant / refresh, revoke). On a BEARER call (merchant, token status, locations, payments), which sends only the
+    provider's access token, "not authorized" / `service.not_authorized` wording is the provider's token failing and classifies as
+    `provider_credential_invalid` (-> `needs_reauthorization`, reconnect offered); only an explicit `INVALID_CLIENT` / `CLIENT_DISABLED` code
+    still reads as `application_auth` there.
   * `transient`: network faults, timeouts, 5xx, 408, 429, whatever the body says. Nothing changes; `verification_unavailable`.
   * `unrecognized`: any other Square answer. Fails closed: nothing changes; `verification_unavailable`.
   The same classifier serves the authorization-code exchange (application-auth means "not configured", a bad grant means the
