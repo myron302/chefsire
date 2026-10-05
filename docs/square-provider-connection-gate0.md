@@ -133,6 +133,13 @@ order/payment-read scopes, so those providers see "Needs reconnect" once.
 
 ## Refresh, revocation, disconnect
 
+**What counts as a usable SHARED connection.** The shared-merchant check that can suppress a merchant-wide revoke counts only an ACTIVE
+row holding a credential the application can actually use: a complete sealed pair (BOTH `sqenc:v1:` tokens AND `token_expires_at`) or,
+during the staged rollout, a complete legacy plaintext pair (non-empty string access AND refresh token and a parseable `tokenExpiresAt`).
+A one-token row (which the NOT VALID pair CHECK deliberately leaves in place on upgrade) is not usable by readiness/refresh, so it neither
+suppresses the revoke nor is deleted. Key-rotation `--reseal` classifies such a row as `incomplete_credential_pair` BEFORE building any
+UPDATE (dry run and real run agree), never writes it, and keeps rotating the healthy rows after it.
+
 **Mixed-version reconnect is reconciled BEFORE disconnect chooses anything.** An old server that reconnects a row the new
 application already sealed moves `provider_id` to the new merchant and writes that merchant's tokens as plaintext, leaving the
 previous merchant's sealed pair in place; a sealed token being present therefore proves nothing about being current. Under the

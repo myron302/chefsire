@@ -9,7 +9,7 @@ import {
   type SquareMerchantProfile,
   type SquareProviderApi,
 } from "./square-integration";
-import {
+import { isSealedSecret,
   assertSecretBoxConfigured,
   decryptSecret,
   encryptSecret,
@@ -236,16 +236,31 @@ function secretsEqual(a: string, b: string): boolean {
   return timingSafeEqual(createHash("sha256").update(a, "utf8").digest(), createHash("sha256").update(b, "utf8").digest());
 }
 
+const validDate = (value: unknown): boolean => (value instanceof Date || typeof value === "string") && !Number.isNaN(new Date(value).getTime());
+const nonEmptyString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+
+/** A sealed credential the application could actually use: BOTH tokens, in the sealed format, and the expiry the refresh path needs. */
+export function hasCompleteSealedCredential(row: Pick<ConnectionRow, "encrypted_access_token" | "encrypted_refresh_token" | "token_expires_at">): boolean {
+  return isSealedSecret(row.encrypted_access_token) && isSealedSecret(row.encrypted_refresh_token) && validDate(row.token_expires_at);
+}
+
 /**
- * SQL predicate (over payment_methods) for "an ACTIVE connection that holds a usable credential", in EITHER representation:
- * sealed columns, or -- while a rolling deploy or the plaintext migration is still in progress -- a legacy plaintext access token
- * in account_details. Only a non-empty STRING `accessToken` counts; arbitrary account_details JSON does not. After plaintext has
- * been finalized no legacy rows can exist and the second branch is simply never true.
+ * A complete LEGACY plaintext credential (what an old server writes, and what `convertLegacyRow` would seal): a non-empty string
+ * access token, a non-empty string refresh token and a parseable expiry. A partial or malformed pair is not usable.
  */
-const ACTIVE_USABLE_CONNECTION_SQL = `account_status = 'active' AND (
-    encrypted_access_token IS NOT NULL
-    OR (jsonb_typeof(account_details -> 'accessToken') = 'string' AND btrim(account_details ->> 'accessToken') <> '')
-  )`;
+export function hasCompleteLegacyCredential(details: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(details) && nonEmptyString(details!.accessToken) && nonEmptyString(details!.refreshToken) && validDate(details!.tokenExpiresAt);
+}
+
+/**
+ * "An ACTIVE connection that holds a usable credential", in EITHER representation: a complete sealed pair, or -- while a rolling
+ * deploy or the plaintext migration is still in progress -- a complete legacy plaintext pair. A one-token row (which the NOT VALID
+ * pair constraint deliberately leaves in place on upgrade) cannot be used by the readiness/refresh path, so it must not count as a
+ * shared connection and suppress a merchant-wide revoke. After plaintext is finalized the legacy branch is simply never true.
+ */
+export function isActiveUsableConnection(row: ConnectionRow): boolean {
+  return row.account_status === "active" && (hasCompleteSealedCredential(row) || hasCompleteLegacyCredential(row.account_details));
+}
 
 function emptyReadiness(state: SquareReadinessState, row?: ConnectionRow | null): SquarePaymentReadiness {
   return {
@@ -895,6 +910,14 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
           summary.alreadyCurrent += 1;
           continue;
         }
+        // An incomplete pair (a one-token row the NOT VALID pair CHECK left in place) is classified BEFORE any UPDATE is built: it is
+        // reported, in a dry run too, never written (the UPDATE would violate the CHECK), never completed with a fabricated token, and
+        // never deleted. It does not stop later healthy rows from rotating.
+        if (!hasCompleteSealedCredential(row)) {
+          await client.query("ROLLBACK");
+          summary.failed.push({ id: String(candidate.id), reason: "incomplete_credential_pair" });
+          continue;
+        }
         // Open both first: a row that cannot be opened is reported, in a dry run too, and never half re-sealed.
         const access = row.encrypted_access_token ? encryptSecret(decryptSecret(row.encrypted_access_token, accessAad(row.id)), accessAad(row.id)) : null;
         const refresh = row.encrypted_refresh_token ? encryptSecret(decryptSecret(row.encrypted_refresh_token, refreshAad(row.id)), refreshAad(row.id)) : null;
@@ -911,6 +934,11 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
         summary.resealed += 1;
       } catch (error) {
         await client.query("ROLLBACK").catch(() => undefined);
+        // A check violation (SQLSTATE 23514) on this row must not abort the whole rotation either: report it and carry on.
+        if ((error as { code?: string } | null)?.code === "23514") {
+          summary.failed.push({ id: String(candidate.id), reason: "credential_constraint_violation" });
+          continue;
+        }
         if (!(error instanceof SecretBoxError)) throw error;
         summary.failed.push({ id: String(candidate.id), reason: "cannot_decrypt" });
       } finally {
@@ -992,11 +1020,11 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
         if (coherent && row.encrypted_access_token && isSecretBoxConfigured() && squareOauthApplication()) {
           // Authoritative, under the merchant lock: any other ChefSire connection that is active and holds a usable credential,
           // sealed OR (during a rolling deploy / migration) still legacy plaintext: revoking would silently kill that one too.
-          const sharedMerchant = await client.query(
-            `SELECT 1 FROM payment_methods WHERE provider = 'square' AND provider_id = $1 AND id <> $2 AND ${ACTIVE_USABLE_CONNECTION_SQL} LIMIT 1`,
+          const siblings = await client.query(
+            `SELECT ${ROW_COLUMNS} FROM payment_methods WHERE provider = 'square' AND provider_id = $1 AND id <> $2 AND account_status = 'active'`,
             [row.provider_id, row.id],
           );
-          if (sharedMerchant.rows.length) {
+          if ((siblings.rows as unknown as ConnectionRow[]).some(isActiveUsableConnection)) {
             providerRevocation = "retained_for_shared_connection";
           } else {
             try {
