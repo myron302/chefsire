@@ -42,3 +42,6 @@ run(["exec", "--", "tsx", "server/scripts/enforce-marketplace-checkout-atomicity
 // Reassert the database invariant in case a Drizzle version treats CHECK
 // constraints as drift, matching the payout/marketplace defense-in-depth path.
 run(["exec", "--", "tsx", "server/scripts/enforce-meal-plan-payment-integrity.ts"]);
+// A finalized Square plaintext-token enforcement (a CHECK Drizzle cannot represent, and must not install early) is restored from
+// its durable marker after every push, and the push FAILS if it cannot be. A no-op on a database that is not finalized.
+run(["exec", "--", "tsx", "server/scripts/enforce-square-plaintext-finalization.ts"]);

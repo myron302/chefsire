@@ -149,6 +149,21 @@ export const squareMerchantRevocations = pgTable("square_merchant_revocations", 
 }));
 
 /**
+ * Durable, one-way record that an operator FINALIZED Square plaintext-token enforcement
+ * (server/scripts/finalize-square-plaintext-enforcement.ts). The enforcing CHECK (payment_methods_no_plaintext_oauth_token_check)
+ * is deliberately NOT declared in this schema: installing it from here would enforce it before old servers are drained. This marker IS
+ * declared so drizzle-kit push never drops it; server/scripts/enforce-square-plaintext-finalization.ts (run by push-schema.ts after
+ * every push) reads it and re-establishes the CHECK on a finalized database. The row is written only by the finalizer, and a trigger
+ * forbids UPDATE/DELETE. An empty table means "not finalized".
+ */
+export const squarePlaintextEnforcementState = pgTable("square_plaintext_enforcement_state", {
+  id: boolean("id").primaryKey().default(true),
+  finalizedAt: timestamp("finalized_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  singleton: check("square_plaintext_enforcement_state_singleton_check", sql`${t.id} = true`),
+}));
+
+/**
  * One-time, browser-bound, server-side binding for a Square seller OAuth
  * authorization. Only SHA-256 digests of the state nonce and the
  * browser-binding secret are retained server-side; the browser holds the raw

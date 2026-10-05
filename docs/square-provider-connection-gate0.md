@@ -63,6 +63,16 @@ No row is deleted; historical merchant/location identity is kept.
 
 ## Staged plaintext enforcement, rolling deploys and rollback
 
+**Finalization is durable across `db:push` / `db:push:accept`.** `drizzle-kit push` treats `shared/schema` as authoritative and cannot
+represent the plaintext CHECK (declaring it there would enforce it BEFORE old servers are drained), so a push would otherwise drop a
+finalized database's enforcement. The finalizer therefore records a one-way marker row in `square_plaintext_enforcement_state` (declared
+in the Drizzle schema so a push never drops it; a trigger forbids UPDATE/DELETE) in the same transaction that installs and validates the
+constraint. `push-schema.ts` runs `enforce-square-plaintext-finalization.ts` after every push: if the marker is empty (not finalized) it
+does nothing, preserving the staged rollout; if finalized it verifies the validated constraint and reinstalls it if the push removed it,
+and the push FAILS (non-zero) if plaintext tokens are present and it cannot. An absent constraint is never read as "finalized": only the
+marker is. Re-running the finalizer or the push is idempotent. Test: `square-plaintext-finalization-durability.postgres.test.ts` (runs the
+real `db:push` and `db:push:accept` script on throw-away databases).
+
 The constraint that forbids plaintext tokens in `account_details` is **not** in the automatic migrations. Even `NOT VALID` a CHECK is
 enforced on every new INSERT/UPDATE, so installing it while an old server still runs the legacy OAuth callback would make that
 callback fail. It is an explicit **finalization** step.
