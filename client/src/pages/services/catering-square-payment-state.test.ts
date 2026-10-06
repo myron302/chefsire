@@ -6,6 +6,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CATERING_ATTEMPT_LOOKUP_FAILED_COPY,
+  CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY,
+  cateringAttemptLookupStatus,
+  cateringAttemptPollIdentity,
+  createConsecutiveFailureCounter,
   CATERING_ATTEMPT_LOOKUP_MAX_FAILURES,
   CATERING_SQUARE_POLL_MS,
   CateringAttemptLookupError,
@@ -119,7 +123,7 @@ test("with no data yet it polls, but only until something has gone wrong", () =>
 
 test("a 404 (unknown, stale or someone else's attempt, which look identical) stops polling at once, even with no data", () => {
   assert.equal(cateringAttemptPollInterval({ error: lookupError(404) }), false);
-  assert.equal(cateringAttemptPollInterval({ error: lookupError(404), errorUpdateCount: 1 }), false);
+  assert.equal(cateringAttemptPollInterval({ error: lookupError(404), consecutiveFailures: 1 }), false);
 });
 
 test("every deterministic 4xx stops polling: unauthorized, forbidden, malformed", () => {
@@ -132,15 +136,15 @@ test("every deterministic 4xx stops polling: unauthorized, forbidden, malformed"
 test("transient failures (network, 5xx, 408, 429) are not terminal, and are retried only a bounded number of times", () => {
   for (const status of [null, 500, 502, 503, 408, 429]) {
     assert.equal(cateringAttemptLookupIsTerminal(lookupError(status)), false, String(status));
-    assert.equal(cateringAttemptPollInterval({ error: lookupError(status), errorUpdateCount: 1 }), CATERING_SQUARE_POLL_MS, `${status} retried`);
-    assert.equal(cateringAttemptPollInterval({ error: lookupError(status), errorUpdateCount: CATERING_ATTEMPT_LOOKUP_MAX_FAILURES }), false, `${status} bounded`);
+    assert.equal(cateringAttemptPollInterval({ error: lookupError(status), consecutiveFailures: 1 }), CATERING_SQUARE_POLL_MS, `${status} retried`);
+    assert.equal(cateringAttemptPollInterval({ error: lookupError(status), consecutiveFailures: CATERING_ATTEMPT_LOOKUP_MAX_FAILURES }), false, `${status} bounded`);
   }
   assert.equal(cateringAttemptLookupIsTerminal(new Error("no status")), false);
   assert.equal(cateringAttemptLookupIsTerminal(null), false);
 });
 
 test("a transient failure does not leave a permanent false terminal state: once data arrives polling follows the attempt again", () => {
-  assert.equal(cateringAttemptPollInterval({ error: lookupError(503), errorUpdateCount: 1, data: attempt() }), CATERING_SQUARE_POLL_MS);
+  assert.equal(cateringAttemptPollInterval({ error: lookupError(503), consecutiveFailures: 1, data: attempt() }), CATERING_SQUARE_POLL_MS);
 });
 
 test("no endless fetching after a deterministic 404: simulate the interval loop and count fetches", () => {
@@ -149,7 +153,7 @@ test("no endless fetching after a deterministic 404: simulate the interval loop 
   for (let tick = 0; tick < 50; tick += 1) {
     if (cateringAttemptPollInterval(state) === false) break;
     fetches += 1;
-    state = { error: lookupError(404), errorUpdateCount: (state.errorUpdateCount ?? 0) + 1 };
+    state = { error: lookupError(404), consecutiveFailures: (state.consecutiveFailures ?? 0) + 1 };
   }
   assert.equal(fetches, 1, "one lookup, then silence");
   let transient = 0;
@@ -157,7 +161,7 @@ test("no endless fetching after a deterministic 404: simulate the interval loop 
   for (let tick = 0; tick < 50; tick += 1) {
     if (cateringAttemptPollInterval(state) === false) break;
     transient += 1;
-    state = { error: lookupError(503), errorUpdateCount: (state.errorUpdateCount ?? 0) + 1 };
+    state = { error: lookupError(503), consecutiveFailures: (state.consecutiveFailures ?? 0) + 1 };
   }
   assert.equal(transient, CATERING_ATTEMPT_LOOKUP_MAX_FAILURES, "and a persistent outage is bounded too");
 });
@@ -170,8 +174,9 @@ test("the failure copy is safe: it does not say whether the attempt exists and n
 const component = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "components", "catering", "BookingSquarePayments.tsx"), "utf8");
 
 test("the component stops polling through the pure interval, retries only transient failures, and renders a dismissible error", () => {
-  assert.ok(component.includes("refetchInterval: (polled: { state: { data?: CateringPaymentAttemptView; error?: unknown; errorUpdateCount?: number } }) => cateringAttemptPollInterval(polled.state)"));
-  assert.ok(component.includes("retry: (failures: number, error: unknown) => !cateringAttemptLookupIsTerminal(error) && failures < 2"));
+  assert.ok(component.includes("cateringAttemptPollInterval({ data: polled.state.data, error: polled.state.error, consecutiveFailures: counter.count() })"));
+  assert.ok(component.includes("retry: false"), "the poll interval is the retry, bounded by the consecutive-failure cutoff");
+  assert.equal(component.includes("errorUpdateCount"), false, "the cumulative counter is never consulted");
   assert.ok(component.includes("throw new CateringAttemptLookupError("));
   assert.ok(component.includes("response.status"), "the HTTP status is what classifies the failure");
   const failedBranch = component.slice(component.indexOf("{failed ? <>"), component.indexOf(": polled ? <>"));
@@ -318,4 +323,93 @@ test("the component wires it all: the timer is the scheduler's, unmount and iden
   assert.ok(onError.indexOf("isCurrent(request.identity)") < onError.indexOf("setMessage"), "a stale failure cannot write a message either");
   assert.ok(component.includes("cateringInvoicePayPath(request.bookingId, request.invoiceId)"), "the request names the booking and invoice it was started for");
   assert.ok(component.includes("const MAX") === false && component.includes("retries.current < CATERING_SQUARE_CREATE_RETRIES"), "the retry count stays bounded");
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Codex repair pass 4: CONSECUTIVE failures, reset by a success
+ * ------------------------------------------------------------------------------------------------------------- */
+
+/** Runs a sequence of fetch outcomes through the same counter + interval logic the hook uses, returning each decision. */
+function simulate(outcomes: ("ok" | "fail" | 404)[], counter = createConsecutiveFailureCounter()) {
+  const decisions: (number | false)[] = [];
+  let data: ReturnType<typeof attempt> | undefined;
+  let error: unknown;
+  for (const outcome of outcomes) {
+    if (outcome === "ok") { counter.succeeded(); data = attempt(); error = undefined; }
+    else { counter.failed(); error = lookupError(outcome === 404 ? 404 : 503); }
+    decisions.push(cateringAttemptPollInterval({ data, error, consecutiveFailures: counter.count() }));
+  }
+  return { decisions, counter, data, error };
+}
+
+test("three CONSECUTIVE failures reach the cutoff", () => {
+  const { decisions } = simulate(["fail", "fail", "fail"]);
+  assert.deepEqual(decisions, [CATERING_SQUARE_POLL_MS, CATERING_SQUARE_POLL_MS, false]);
+});
+
+test("failure, success, failure is NOT two consecutive failures", () => {
+  const { decisions, counter } = simulate(["fail", "ok", "fail"]);
+  assert.equal(counter.count(), 1);
+  assert.deepEqual(decisions, [CATERING_SQUARE_POLL_MS, CATERING_SQUARE_POLL_MS, CATERING_SQUARE_POLL_MS]);
+});
+
+test("many separated transient failure episodes never disable polling: the old cumulative count would have", () => {
+  const counter = createConsecutiveFailureCounter();
+  const episodes = Array.from({ length: 10 }, () => ["fail", "ok"] as const).flat();
+  const { decisions } = simulate([...episodes, "fail"], counter);
+  assert.equal(decisions.every((decision) => decision === CATERING_SQUARE_POLL_MS), true, "ten failures in total, never three in a row");
+  assert.equal(counter.count(), 1);
+  assert.equal(cateringAttemptLookupStatus({ error: lookupError(503), consecutiveFailures: counter.count() }), null, "and no error state is shown");
+});
+
+test("a successful fetch resets the consecutive failure count to zero", () => {
+  const counter = createConsecutiveFailureCounter();
+  counter.failed(); counter.failed();
+  assert.equal(counter.count(), 2);
+  counter.succeeded();
+  assert.equal(counter.count(), 0);
+  assert.equal(counter.failed(), 1);
+});
+
+test("a terminal lookup error still stops polling immediately, whatever the count", () => {
+  assert.equal(simulate([404]).decisions[0], false);
+  assert.equal(simulate(["ok", 404]).decisions[1], false);
+  assert.equal(cateringAttemptLookupStatus({ error: lookupError(404), consecutiveFailures: 0 }), "terminal");
+});
+
+test("reaching the threshold is a truthful recoverable state, not an endless 'Checking your payment'", () => {
+  assert.equal(cateringAttemptLookupStatus({ error: lookupError(503), consecutiveFailures: CATERING_ATTEMPT_LOOKUP_MAX_FAILURES }), "exhausted");
+  assert.equal(cateringAttemptLookupStatus({ error: lookupError(503), consecutiveFailures: CATERING_ATTEMPT_LOOKUP_MAX_FAILURES - 1 }), null);
+  // even with a cached earlier success, the exhausted state is what is reported
+  const { data, error, counter } = simulate(["ok", "fail", "fail", "fail"]);
+  assert.ok(data);
+  assert.equal(cateringAttemptLookupStatus({ error, consecutiveFailures: counter.count() }), "exhausted");
+  assert.match(CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY, /Check again/);
+  assert.match(CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY, /Nothing has been marked as paid/);
+  assert.equal(/not found|does not exist|unauthori[sz]ed|forbidden|404/i.test(CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY), false);
+  const banner = component.slice(component.indexOf("{failed ? <>"), component.indexOf(": polled ? <>"));
+  const exhaustedBranch = banner.slice(banner.indexOf(": exhausted ? <>"));
+  assert.ok(exhaustedBranch.includes("CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY") && exhaustedBranch.includes("onClick={recheck}") && exhaustedBranch.includes("onClick={dismiss}"), "a recovery action and a dismiss");
+});
+
+test("the recheck action resets the lifecycle, then asks again; it never marks anything paid or creates an attempt", () => {
+  const recheck = component.slice(component.indexOf("const recheck = () =>"), component.indexOf("return { attempt: query.data"));
+  assert.ok(recheck.includes("counter.reset()") && recheck.includes("query.refetch()"));
+  for (const forbidden of [/mutate\(/, /\bfetch\(/, /setQueryData/, /start\./]) assert.equal(forbidden.test(recheck), false, String(forbidden));
+});
+
+test("a different attempt, invoice, booking or viewer gets a fresh failure lifecycle; an unmount leaves nothing behind", () => {
+  const base = cateringAttemptPollIdentity("user-1", "booking-1", "attempt-1");
+  for (const other of [cateringAttemptPollIdentity("user-1", "booking-1", "attempt-2"), cateringAttemptPollIdentity("user-1", "booking-2", "attempt-1"), cateringAttemptPollIdentity("user-2", "booking-1", "attempt-1"), cateringAttemptPollIdentity("user-1", "booking-1", null)]) {
+    assert.notEqual(other, base);
+  }
+  // a counter is created per identity, so a new identity cannot inherit the previous one's failures
+  assert.ok(component.includes("useMemo(() => createConsecutiveFailureCounter(), [identity])"));
+  const first = createConsecutiveFailureCounter();
+  first.failed(); first.failed();
+  const second = createConsecutiveFailureCounter();
+  assert.equal(second.count(), 0);
+  assert.equal(first.count(), 2, "and the old one is untouched by the new one");
+  // the query key also names the attempt, so TanStack never shares one query between two attempts
+  assert.ok(component.includes("queryKey: attemptKey(userId, bookingId, attemptId ?? \"none\")"));
 });

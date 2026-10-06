@@ -646,3 +646,339 @@ if (URL_ENV) {
     });
   });
 }
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Codex repair pass 4: amendments, disconnect/reconnect and the stale-checkout lifecycle
+ * ------------------------------------------------------------------------------------------------------------- */
+
+if (URL_ENV) {
+  const { pool: globalPool } = await import("../db/index");
+  const { createCateringSquarePaymentsRouter } = await import("./catering-square-payments");
+  const { default: bookingsRouter } = await import("./catering-bookings");
+  const { default: billingRouter } = await import("./catering-booking-billing");
+  const { default: amendmentsRouter } = await import("./catering-booking-amendments");
+  const { cateringSquarePayments } = await import("../services/catering-square-payments-instance");
+  const { SquareCredentialDiscardBlockedError } = await import("../lib/square-connection-service");
+  const { randomUUID } = await import("node:crypto");
+
+  async function withLifecycleApp(fn: (ctx: { h: CateringSquareHarness; base: string }) => Promise<void>) {
+    const h = await createCateringSquareHarness(URL_ENV!);
+    let server: ReturnType<ReturnType<typeof express>["listen"]> | undefined;
+    try {
+      (globalPool as never as { connect: unknown }).connect = () => h.pool.connect();
+      (globalPool as never as { query: unknown }).query = (q: unknown, params?: unknown[]) => h.pool.query(q as string, params);
+      Object.assign(cateringSquarePayments, h.payments);
+      const app = express();
+      app.use(cookieParser());
+      app.use(express.json());
+      app.use("/api/catering", bookingsRouter);
+      app.use("/api/catering", billingRouter);
+      app.use("/api/catering", amendmentsRouter);
+      app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => null, payLimiter: (_req, _res, next) => next(), statusLimiter: (_req, _res, next) => next() }));
+      server = app.listen(0);
+      await fn({ h, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` });
+    } finally { server?.close(); await h.cleanup(); }
+  }
+  async function scene(h: CateringSquareHarness, base: string) {
+    const providerId = await h.user("provider");
+    const customerId = await h.user("customer");
+    const connection = await h.connectProvider(providerId);
+    const { bookingId, invoiceIds } = await h.booking({ providerId, customerId, invoices: [{ kind: "deposit", amountCents: 40000 }, { kind: "balance", amountCents: 60000 }] });
+    const open = async (index: number) => (await (await post(`${base}/api/catering/bookings/${bookingId}/billing/invoices/${invoiceIds[index]}/pay`, tok(customerId))).json()).attempt.id as string;
+    return { providerId, customerId, connection, bookingId, invoiceIds, open };
+  }
+  const amend = async (base: string, s: { bookingId: string; providerId: string; customerId: string }, body: Record<string, unknown>) => {
+    const proposed = await post(`${base}/api/catering/bookings/${s.bookingId}/amendments`, tok(s.providerId), { expectedBaseAmendmentId: null, clientRequestId: randomUUID(), ...body });
+    assert.ok(proposed.status === 201, `proposal ${proposed.status}`);
+    const { amendments } = await proposed.json() as { amendments: { pending: { id: string } } };
+    const id = amendments.pending.id;
+    const accepted = await post(`${base}/api/catering/bookings/${s.bookingId}/amendments/${id}/accept`, tok(s.customerId), {});
+    if (accepted.status !== 200 && process.env.DEBUG_AMEND) console.error(await accepted.clone().text());
+    return { id, accepted };
+  };
+  const billingView = async (base: string, bookingId: string, userId: string) => (await fetch(`${base}/api/catering/bookings/${bookingId}/billing`, { headers: tok(userId) })).json() as Promise<{ paymentAttempts: { id: string; state: string; checkoutUrl?: string }[]; invoices: { id: string; payableCents: number }[] }>;
+  const later = (h: CateringSquareHarness, seconds: number) => h.setClock(new Date(Date.now() + seconds * 1000));
+
+  // NOTE on what an amendment can and cannot do: billing refuses a price change that would leave the live invoices asking for more than is owed
+  // (`billing_reconciliation_blocked`), so an accepted price REDUCTION never takes an invoice's payable below its remaining balance. What an accepted
+  // amendment can do is change the ledger under a checkout that an earlier credit/payment had already made stale without a sweep having run. The
+  // hook judges every open checkout against the NEW ledger after the amendment commits, and these tests prove exactly that, plus that a reduction
+  // that leaves a checkout valid does not destroy it.
+
+  test("P1 amendment: accepting an amendment closes a checkout the ledger no longer supports (local state and the Square link), and a fresh one uses the new amount", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const balance = await s.open(1);
+      const row = await h.attempt(balance);
+      assert.equal(Number(row.amount_cents), 60000);
+      // a credit lands WITHOUT any sweep running (written straight to the ledger), so the $600 checkout is stale and still live
+      await h.adjustment(s.bookingId, s.providerId, "credit", 30000);
+      assert.equal((await h.attempt(balance)).state, "pending");
+      const { accepted } = await amend(base, s, { guestCount: 120 }); // any accepted amendment re-judges the booking's open checkouts
+      assert.equal(accepted.status, 200);
+      const after = await h.attempt(balance);
+      assert.equal(after.state, "cancelled", "the stale checkout was identified against the NEW ledger and closed");
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true);
+      assert.ok(after.square_link_closed_at);
+      const view = await billingView(base, s.bookingId, s.customerId);
+      assert.equal(view.paymentAttempts.some((attempt) => attempt.state === "pending" || attempt.checkoutUrl), false, "never offered again");
+      const fresh = await s.open(1);
+      assert.notEqual(fresh, balance);
+      assert.equal(Number((await h.attempt(fresh)).amount_cents), view.invoices.find((invoice) => invoice.id === s.invoiceIds[1])!.payableCents);
+      assert.equal((await h.attempt(fresh)).state, "pending");
+    });
+  });
+
+  test("P1 amendment: a price reduction that leaves the checkout valid does NOT destroy it, and replaying the acceptance or the cleanup changes nothing", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const providerId = await h.user("provider");
+      const customerId = await h.user("customer");
+      const connection = await h.connectProvider(providerId);
+      const { bookingId, invoiceIds } = await h.booking({ providerId, customerId, invoices: [{ kind: "deposit", amountCents: 40000 }] });
+      const s = { providerId, customerId, bookingId, connection };
+      const deposit = (await (await post(`${base}/api/catering/bookings/${bookingId}/billing/invoices/${invoiceIds[0]}/pay`, tok(customerId))).json()).attempt.id as string;
+      const { id, accepted } = await amend(base, s, { priceCents: 50000 }); // $1000 -> $500: still covers the $400 deposit
+      assert.equal(accepted.status, 200);
+      const credits = await h.q(`SELECT entry_kind, amount_cents FROM catering_booking_adjustments WHERE booking_id = $1`, [bookingId]);
+      assert.deepEqual(credits.map((entry) => [entry.entry_kind, Number(entry.amount_cents)]), [["credit", 50000]]);
+      assert.equal((await h.attempt(deposit)).state, "pending", "still exactly what is payable, so it stays");
+      const replay = await post(`${base}/api/catering/bookings/${bookingId}/amendments/${id}/accept`, tok(customerId), {});
+      assert.equal(replay.status, 200);
+      for (let i = 0; i < 3; i += 1) { await h.payments.closeStaleOpenAttempts(bookingId); await billingView(base, bookingId, customerId); }
+      assert.equal(Number((await h.q(`SELECT count(*) AS n FROM catering_booking_adjustments WHERE booking_id = $1`, [bookingId]))[0].n), 1, "no duplicate credit");
+      assert.equal((await h.attempt(deposit)).state, "pending");
+      assert.equal(h.fake.requests.filter((request) => request.method === "DELETE").length, 0);
+      assert.equal((await h.attempts(bookingId)).length, 1);
+    });
+  });
+
+  test("P1 amendment: an amendment that changes nothing money-related leaves every valid checkout open; only the stale one is closed", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const deposit = await s.open(0);
+      const balance = await s.open(1);
+      await amend(base, s, { guestCount: 80 });
+      assert.equal((await h.attempt(deposit)).state, "pending");
+      assert.equal((await h.attempt(balance)).state, "pending");
+      await h.adjustment(s.bookingId, s.providerId, "credit", 30000); // makes only the balance checkout stale
+      const latest = (await h.q(`SELECT id FROM catering_booking_amendments WHERE booking_id = $1 ORDER BY amendment_number DESC LIMIT 1`, [s.bookingId]))[0].id;
+      const second = await post(`${base}/api/catering/bookings/${s.bookingId}/amendments`, tok(s.providerId), { expectedBaseAmendmentId: latest, clientRequestId: randomUUID(), guestCount: 90 });
+      assert.equal(second.status, 201);
+      const pendingId = (await second.json() as { amendments: { pending: { id: string } } }).amendments.pending.id;
+      assert.equal((await post(`${base}/api/catering/bookings/${s.bookingId}/amendments/${pendingId}/accept`, tok(s.customerId), {})).status, 200);
+      assert.equal((await h.attempt(deposit)).state, "pending", "the deposit checkout is still exactly what is payable");
+      assert.equal((await h.attempt(balance)).state, "cancelled");
+    });
+  });
+
+  test("P1 amendment: if Square cannot be reached the stale checkout is still closed locally, never shown as current, and its link keeps being retried", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const balance = await s.open(1);
+      await h.adjustment(s.bookingId, s.providerId, "credit", 30000);
+      h.fake.state.linkDeleteFailure = 503;
+      await amend(base, s, { guestCount: 120 });
+      const row = await h.attempt(balance);
+      assert.equal(row.state, "cancelled");
+      assert.equal(row.square_link_closed_at, null, "unconfirmed, and not claimed otherwise");
+      assert.equal((await billingView(base, s.bookingId, s.customerId)).paymentAttempts.some((attempt) => attempt.checkoutUrl), false);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 60);
+      await billingView(base, s.bookingId, s.customerId);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      assert.ok((await h.attempt(balance)).square_link_closed_at);
+    });
+  });
+
+  test("a billing view never OFFERS an open checkout the ledger no longer supports, even before the sweep has closed it", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const balance = await s.open(1);
+      await h.adjustment(s.bookingId, s.providerId, "credit", 30000);
+      // read through the view WITHOUT the stale sweep having a chance: the snapshot itself filters
+      const { snapshotBillingView } = await import("./catering-booking-billing");
+      const view = await snapshotBillingView({ id: s.bookingId, userId: s.customerId, asOfDate: "2030-01-01" }) as { paymentAttempts: { id: string }[] };
+      assert.equal(view.paymentAttempts.some((attempt) => attempt.id === balance), false);
+      const providerView = await snapshotBillingView({ id: s.bookingId, userId: s.providerId, asOfDate: "2030-01-01" }) as { paymentAttempts: { id: string }[] };
+      assert.equal(providerView.paymentAttempts.some((attempt) => attempt.id === balance), true, "the provider still sees it, truthfully");
+    });
+  });
+
+  test("P1 cross-cutting: a credit, a recorded payment and an invoice withdrawal each leave no obsolete checkout on offer", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const deposit = await s.open(0);
+      const balance = await s.open(1);
+      await h.adjustment(s.bookingId, s.providerId, "credit", 30000);       // balance payable 600 -> 300
+      await h.recordProviderPayment(s.bookingId, s.invoiceIds[0], s.providerId, 40000); // deposit paid elsewhere
+      const view = await billingView(base, s.bookingId, s.customerId);
+      assert.equal(view.paymentAttempts.some((attempt) => (attempt.id === deposit || attempt.id === balance) && (attempt.state === "pending" || attempt.checkoutUrl !== undefined)), false);
+      assert.equal((await h.attempt(deposit)).state, "cancelled");
+      assert.equal((await h.attempt(balance)).state, "cancelled");
+      const third = await s.open(1);
+      await h.voidInvoice(s.invoiceIds[1], s.providerId);
+      await billingView(base, s.bookingId, s.customerId);
+      assert.equal((await h.attempt(third)).state, "cancelled");
+    });
+  });
+
+  /* ------------------------------- disconnect / reconnect ------------------------------- */
+
+  test("P1 disconnect: a live pending checkout is closed with the OLD credential BEFORE it is discarded, the attempt is non-payable, and the customer is not handed it", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const attemptId = await s.open(0);
+      const row = await h.attempt(attemptId);
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      const del = h.fake.requests.find((request) => request.method === "DELETE")!;
+      assert.equal(del.authorization, `Bearer ${s.connection.accessToken}`, "deleted with the provider's OLD credential");
+      const revokeIndex = h.fake.requests.findIndex((request) => request.path === "/oauth2/revoke");
+      assert.ok(h.fake.requests.indexOf(del) < revokeIndex, "the link was deleted before the credential was revoked");
+      const after = await h.attempt(attemptId);
+      assert.equal(after.state, "cancelled");
+      assert.ok(after.square_link_closed_at);
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true);
+      const status = await (await fetch(`${base}/api/catering/bookings/${s.bookingId}/billing/payment-attempts/${attemptId}`, { headers: tok(s.customerId) })).json();
+      assert.equal(status.attempt.state, "cancelled");
+      assert.equal(status.attempt.checkoutUrl, undefined);
+      assert.equal((await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId))).status, 409, "and nothing new can be opened on a disconnected provider");
+    });
+  });
+
+  test("P1 disconnect: if the checkout cannot be closed the disconnect is REFUSED, the credential is untouched, and nothing is orphaned; it succeeds once Square answers", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const attemptId = await s.open(0);
+      const before = await h.row(s.providerId);
+      h.fake.state.linkDeleteFailure = 503;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      const after = await h.row(s.providerId);
+      assert.equal(after.account_status, "active");
+      assert.equal(after.encrypted_access_token, before.encrypted_access_token, "the old credential was not discarded");
+      assert.equal(h.fake.calls("/oauth2/revoke"), 0, "nothing was revoked at Square");
+      assert.equal((await h.attempt(attemptId)).state, "cancelled", "locally non-payable already");
+      assert.equal((await h.attempt(attemptId)).square_link_closed_at, null);
+      // refused again, still safely (repeated disconnect)
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      h.fake.state.linkDeleteFailure = undefined;
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      assert.ok((await h.attempt(attemptId)).square_link_closed_at);
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, false, "a repeat after success is a no-op");
+    });
+  });
+
+  test("P1 disconnect over HTTP: the provider is told it is refused with a stable code, and no token is exposed", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      await s.open(0);
+      h.fake.state.linkDeleteFailure = 503;
+      const { createSquareConnectionRouter } = await import("./square-connection");
+      const app = express();
+      app.use(express.json());
+      app.use("/api/square-connection", createSquareConnectionRouter(h.connections));
+      const server = app.listen(0);
+      try {
+        const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/square-connection/disconnect`;
+        const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", ...tok(s.providerId) }, body: "{}" });
+        assert.equal(response.status, 409);
+        const body = await response.json();
+        assert.equal(body.code, "connection_in_use");
+        assert.equal(JSON.stringify(body).includes(s.connection.accessToken), false);
+        assert.equal((await h.row(s.providerId)).account_status, "active");
+      } finally { server.close(); }
+    });
+  });
+
+  test("P1 reconnect to a DIFFERENT merchant: the old checkout is closed with the old credential first and can never be used or settled under the new merchant", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const attemptId = await s.open(0);
+      const row = await h.attempt(attemptId);
+      h.fake.payOrder(row.square_order_id);
+      // the callback's guard, exactly as the route calls it
+      assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW"), { allowed: true });
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true, "closed under the OLD merchant");
+      const after = await h.attempt(attemptId);
+      assert.equal(after.state, "cancelled");
+      assert.equal(after.merchant_id, s.connection.merchantId, "the attempt keeps the merchant it was created for");
+      await h.connectProvider(s.providerId, "MERCHANT_NEW", { access: "access-new", refresh: "refresh-new" });
+      const settled = await h.payments.settleAttempt(attemptId);
+      assert.equal(settled.outcome === "unavailable" && settled.reason, "merchant_changed", "the new merchant's credential is never used to judge the old order");
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+      const fresh = await (await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId))).json();
+      assert.notEqual(fresh.attempt.id, attemptId);
+      assert.equal((await h.attempt(fresh.attempt.id)).merchant_id, "MERCHANT_NEW");
+    });
+  });
+
+  test("P1 reconnect to a different merchant is refused while the old checkout cannot be closed, and the old connection stays exactly as it was", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      await s.open(0);
+      h.fake.state.linkDeleteFailure = 503;
+      assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW"), { allowed: false });
+      const row = await h.row(s.providerId);
+      assert.equal(row.provider_id, s.connection.merchantId);
+      assert.equal(row.account_status, "active");
+    });
+  });
+
+  test("P1 reconnect: re-authorizing the SAME merchant never closes or revives anything, and repeating the callback is harmless", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const live = await s.open(0);
+      const closed = await s.open(1);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now() WHERE id = $1`, [closed]);
+      for (let i = 0; i < 3; i += 1) {
+        assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, s.connection.merchantId), { allowed: true });
+        await h.connectProvider(s.providerId, s.connection.merchantId, { access: `access-again-${i}`, refresh: `refresh-again-${i}` });
+      }
+      assert.equal((await h.attempt(live)).state, "pending", "a same-merchant re-authorization does not touch a live checkout");
+      assert.equal((await h.attempt(closed)).state, "cancelled", "and never revives a closed one");
+      assert.equal(h.fake.requests.filter((request) => request.method === "DELETE").length, 0);
+      // and the live checkout can still be settled with the new credential, because it is the same merchant
+      h.fake.payOrder((await h.attempt(live)).square_order_id);
+      assert.equal((await h.payments.settleAttempt(live)).outcome, "completed");
+    });
+  });
+
+  test("P1 isolation: one provider's disconnect never closes or touches another provider's checkouts or connection", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const a = await scene(h, base);
+      const b = await scene(h, base);
+      const attemptA = await a.open(0);
+      const attemptB = await b.open(0);
+      await h.connections.disconnect(a.providerId);
+      assert.equal((await h.attempt(attemptA)).state, "cancelled");
+      assert.equal((await h.attempt(attemptB)).state, "pending");
+      assert.equal((await h.row(b.providerId)).account_status, "active");
+      assert.deepEqual(await h.connections.guardCredentialReplacement(b.providerId, b.connection.merchantId), { allowed: true });
+    });
+  });
+
+  test("P1 disconnect: a provider with no usable credential can still disconnect (nothing to close with), and its attempts are non-payable", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const attemptId = await s.open(0);
+      await h.q(`UPDATE payment_methods SET account_status = 'needs_reauthorization', encrypted_access_token = NULL, encrypted_refresh_token = NULL WHERE user_id = $1`, [s.providerId]);
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      assert.equal((await h.attempt(attemptId)).state, "cancelled");
+    });
+  });
+
+  test("P1: no token or secret appears in any log, row or response across the amendment and disconnect cleanup", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      await s.open(1);
+      h.fake.state.linkDeleteFailure = 503;
+      await amend(base, s, { priceCents: 90000 });
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      const everything = JSON.stringify([h.logs, await h.attempts(s.bookingId), await billingView(base, s.bookingId, s.customerId)]);
+      assert.equal(everything.includes(s.connection.accessToken), false);
+      assert.equal(everything.includes(`refresh-${s.providerId}`), false);
+    });
+  });
+}

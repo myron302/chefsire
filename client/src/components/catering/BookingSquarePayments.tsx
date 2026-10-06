@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,11 @@ import {
 import {
   CATERING_ATTEMPT_LOOKUP_FAILED_COPY,
   CateringAttemptLookupError,
-  cateringAttemptLookupIsTerminal,
+  CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY,
+  cateringAttemptLookupStatus,
+  cateringAttemptPollIdentity,
   cateringAttemptPollInterval,
+  createConsecutiveFailureCounter,
   CATERING_SQUARE_CREATE_RETRIES,
   CATERING_SQUARE_CREATE_RETRY_MS,
   cateringCheckoutIdentity,
@@ -136,21 +139,30 @@ export function InvoiceSquarePayment({ bookingId, userId, billing, invoice }: { 
  * billing view when it settles. Polling is not authority: the server asks Square and answers with what Square showed it.
  */
 function useAttemptPolling(bookingId: string, userId: string, attemptId: string | null, onSettled: () => void) {
+  // ONE failure counter per polling identity (viewer + booking + attempt): a different invoice, booking or attempt starts from zero, and a
+  // success resets it. It is deliberately not the query library's cumulative error tally, which a success never resets.
+  const identity = cateringAttemptPollIdentity(userId, bookingId, attemptId);
+  const counter = useMemo(() => createConsecutiveFailureCounter(), [identity]);
   const query = useQuery({
     queryKey: attemptKey(userId, bookingId, attemptId ?? "none"),
     enabled: attemptId !== null,
-    // A deterministic 4xx (unknown, stale or inaccessible attempt) is never retried and ends polling at once; transient failures are retried
-    // a bounded number of times. Absent data never means "keep polling forever".
-    retry: (failures: number, error: unknown) => !cateringAttemptLookupIsTerminal(error) && failures < 2,
-    refetchInterval: (polled: { state: { data?: CateringPaymentAttemptView; error?: unknown; errorUpdateCount?: number } }) => cateringAttemptPollInterval(polled.state),
+    // The poll interval IS the retry (bounded by the consecutive-failure cutoff below), so one failed fetch is one failure.
+    retry: false,
+    refetchInterval: (polled: { state: { data?: CateringPaymentAttemptView; error?: unknown } }) => cateringAttemptPollInterval({ data: polled.state.data, error: polled.state.error, consecutiveFailures: counter.count() }),
     queryFn: async (): Promise<CateringPaymentAttemptView> => {
-      let response: Response;
-      try { response = await fetch(cateringPaymentAttemptPath(bookingId, attemptId!), { credentials: "include" }); }
-      catch { throw new CateringAttemptLookupError("This payment could not be checked right now.", null); }
-      const body = await readJson(response);
-      if (!response.ok) throw new CateringAttemptLookupError("This payment could not be checked right now.", response.status);
-      if (typeof body.attempt !== "object" || body.attempt === null) throw new CateringAttemptLookupError("This payment could not be checked right now.", null);
-      return body.attempt as CateringPaymentAttemptView;
+      try {
+        let response: Response;
+        try { response = await fetch(cateringPaymentAttemptPath(bookingId, attemptId!), { credentials: "include" }); }
+        catch { throw new CateringAttemptLookupError("This payment could not be checked right now.", null); }
+        const body = await readJson(response);
+        if (!response.ok) throw new CateringAttemptLookupError("This payment could not be checked right now.", response.status);
+        if (typeof body.attempt !== "object" || body.attempt === null) throw new CateringAttemptLookupError("This payment could not be checked right now.", null);
+        counter.succeeded();
+        return body.attempt as CateringPaymentAttemptView;
+      } catch (error) {
+        counter.failed();
+        throw error;
+      }
     },
   });
   const state = query.data?.state;
@@ -160,7 +172,10 @@ function useAttemptPolling(bookingId: string, userId: string, attemptId: string 
     settled.current = `${attemptId}:${state}`;
     onSettled();
   }, [state, attemptId]);
-  return { attempt: query.data, failed: query.isError && !query.data };
+  // Judged AFTER the latest fetch: an error with a success since is no error at all (react-query clears `error` on success).
+  const lookup = query.isError ? cateringAttemptLookupStatus({ error: query.error, consecutiveFailures: counter.count() }) : null;
+  const recheck = () => { counter.reset(); void query.refetch(); };
+  return { attempt: query.data, failed: lookup === "terminal", exhausted: lookup === "exhausted", recheck };
 }
 
 /**
@@ -172,7 +187,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
   const customer = billing.role === "customer";
   const [returned, setReturned] = useState<string | null>(() => (typeof window === "undefined" ? null : cateringReturnedAttemptId(window.location.search)));
   const refreshBilling = () => cache.invalidateQueries({ queryKey: cateringBookingBillingKey(userId, bookingId) });
-  const { attempt: polled, failed } = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
+  const { attempt: polled, failed, exhausted, recheck } = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
   const money = (cents: number, currency: string) => formatCateringMoney(cents, currency);
 
   const dismiss = () => {
@@ -194,6 +209,12 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
       {failed ? <>
         <p role="alert" className="break-words">{CATERING_ATTEMPT_LOOKUP_FAILED_COPY}</p>
         <Button variant="outline" className="mt-2 min-h-11" onClick={dismiss}>Dismiss</Button>
+      </> : exhausted ? <>
+        <p role="alert" className="break-words">{CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY}</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button className="min-h-11" onClick={recheck}>Check again</Button>
+          <Button variant="outline" className="min-h-11" onClick={dismiss}>Dismiss</Button>
+        </div>
       </> : polled ? <>
         <p className="break-words font-medium">{polled.state === "pending" ? CATERING_SQUARE_COPY.verifying : cateringSquareDisplay(polled, "customer").label}</p>
         {polled.state === "reconciliation_required" && <p className="mt-1 break-words text-muted-foreground">{cateringSquareReconciliationCopy(polled.reconciliationReason, "customer")}</p>}

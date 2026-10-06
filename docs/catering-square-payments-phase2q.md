@@ -168,3 +168,19 @@ refund has since moved `updated_at`. A missing, malformed or future time is neve
 The uncertain-checkout retry timer belongs to a scheduler keyed by viewer + booking + invoice. It is cleared on unmount and whenever that
 identity changes, a retry re-sends the request it was scheduled for, and every success/error callback checks that its identity is still
 the one on screen before it sets state, retries or redirects.
+
+## Stale checkouts after amendments, and the Square connection lifecycle (Codex repair pass 4)
+
+* An accepted amendment re-judges the booking's open checkouts against the NEW ledger, after its transaction commits (same
+  `closeStaleOpenAttempts` every billing change uses). Billing itself refuses a price reduction that would leave live invoices asking for more
+  than is owed, so a reduction cannot lower an invoice's payable; what the hook protects is a checkout already made stale by an earlier credit or
+  payment. The billing view also refuses to OFFER any open checkout the ledger no longer supports, even before the sweep has closed it.
+* Before the provider's Square credential is discarded (disconnect) or replaced by a DIFFERENT merchant's (OAuth callback), every open checkout
+  is closed locally and its Square link is deleted with the OLD credential, with no backoff. If a link cannot be closed the change is REFUSED
+  (`409 connection_in_use`, or `?error=connection_in_use` on the callback) with the credential untouched; it succeeds when Square answers.
+  A provider with no usable credential can still disconnect (nothing to close with). Re-authorizing the SAME merchant touches nothing. Attempts
+  keep the merchant they were created for, and settlement refuses to judge an order with a different merchant's credential. Residual window: a
+  customer opening a NEW checkout in the instants between the guard and the credential change; it is bounded by that being one request, and such
+  a checkout would be closed locally and retried if the same merchant reconnects.
+* The attempt-status poll counts CONSECUTIVE failures (a success resets them), per viewer + booking + attempt. At the threshold the screen says
+  so, with "Check again" and "Dismiss", instead of sitting on "Checking your payment".

@@ -90,17 +90,35 @@ export function cateringAttemptLookupIsTerminal(error: unknown): boolean {
 export const CATERING_ATTEMPT_LOOKUP_MAX_FAILURES = 3;
 
 /**
- * The polling interval for ONE attempt's status query, as a pure function of the query state.
+ * CONSECUTIVE lookup failures for ONE attempt: a failure adds one, a success resets to zero. TanStack Query's `errorUpdateCount` is NOT this --
+ * it is cumulative over the cached query's whole life and is never reset by a success -- so it must not drive the cutoff. One counter belongs to
+ * one checkout identity (viewer + booking + attempt); a different identity gets a fresh one.
+ */
+export function createConsecutiveFailureCounter() {
+  let failures = 0;
+  return {
+    failed(): number { failures += 1; return failures; },
+    succeeded(): void { failures = 0; },
+    reset(): void { failures = 0; },
+    count: () => failures,
+  };
+}
+
+/** The identity a polling lifecycle (and so its failure counter) belongs to. */
+export const cateringAttemptPollIdentity = (userId: string, bookingId: string, attemptId: string | null) => `${userId}:${bookingId}:${attemptId ?? "none"}`;
+
+/**
+ * The polling interval for ONE attempt's status query, as a pure function of the query state and the CONSECUTIVE failure count.
  *  - a pending (or still-creating) attempt: keep asking;
  *  - any other settled attempt: stop;
- *  - NO data yet: keep asking only while nothing has gone wrong. A terminal error stops at once, and transient errors stop after a bounded
- *    number of consecutive failures, so absent data can never mean an endless loop.
+ *  - a terminal error (deterministic 4xx) stops at once;
+ *  - transient errors stop only once the threshold of CONSECUTIVE failures is reached, and any success resets that, so an old failure can never
+ *    contribute to a later cutoff;
+ *  - NO data yet: keep asking only while nothing has gone wrong.
  */
-export function cateringAttemptPollInterval(state: { data?: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl">; error?: unknown; errorUpdateCount?: number }): number | false {
-  if (state.error !== undefined && state.error !== null) {
-    if (cateringAttemptLookupIsTerminal(state.error)) return false;
-    if ((state.errorUpdateCount ?? 0) >= CATERING_ATTEMPT_LOOKUP_MAX_FAILURES) return false;
-  }
+export function cateringAttemptPollInterval(state: { data?: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl">; error?: unknown; consecutiveFailures?: number }): number | false {
+  if (cateringAttemptLookupIsTerminal(state.error)) return false;
+  if ((state.consecutiveFailures ?? 0) >= CATERING_ATTEMPT_LOOKUP_MAX_FAILURES) return false;
   if (state.data) {
     const display = cateringSquareDisplay(state.data, "customer");
     return display.polling || state.data.state === "creating" ? CATERING_SQUARE_POLL_MS : false;
@@ -108,6 +126,16 @@ export function cateringAttemptPollInterval(state: { data?: Pick<CateringPayment
   return CATERING_SQUARE_POLL_MS;
 }
 
+/**
+ * Why a lookup has stopped being trusted, or null while it is healthy. `terminal`: the server said this attempt can never be read. `exhausted`:
+ * the threshold of CONSECUTIVE failures was reached, so polling stopped and the screen must say so rather than sit on "Checking your payment".
+ */
+export function cateringAttemptLookupStatus(state: { error?: unknown; consecutiveFailures?: number }): "terminal" | "exhausted" | null {
+  if (cateringAttemptLookupIsTerminal(state.error)) return "terminal";
+  return (state.consecutiveFailures ?? 0) >= CATERING_ATTEMPT_LOOKUP_MAX_FAILURES ? "exhausted" : null;
+}
+
+export const CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY = "We couldn't reach ChefSire to check this payment. If you paid on Square, your payment is safe and will be applied once ChefSire can confirm it. Check again, or reload the page. Nothing has been marked as paid here.";
 export const CATERING_ATTEMPT_LOOKUP_FAILED_COPY = "We couldn't verify this payment attempt. Refresh your billing page, or start again if a payment is still due. Nothing has been marked as paid.";
 
 /** Checkout creation answered `creating`: Square's answer was uncertain. The same request again resumes the same checkout. */

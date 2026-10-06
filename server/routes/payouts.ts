@@ -296,6 +296,12 @@ router.get("/square-callback", async (req, res) => {
       return res.redirect(SQUARE_CALLBACK_FAILURE_REDIRECTS[verification.reason]);
     }
 
+    // A reconnect to a DIFFERENT merchant would discard the credential that can read and close this seller's outstanding checkouts. They are
+    // wound down FIRST, with that old credential; if that cannot be done the new connection is not stored and the old one stays exactly as it was.
+    if (!(await squareConnections.guardCredentialReplacement(sellerId, verification.verified.merchantId)).allowed) {
+      return res.redirect("/settings/payouts?error=connection_in_use");
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");

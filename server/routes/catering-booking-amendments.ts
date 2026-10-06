@@ -8,6 +8,7 @@ import { requireAuth } from "../middleware";
 import { ownedCateringBooking } from "../services/catering-booking-access";
 import { bookingActor } from "../services/catering-booking-policy";
 import { CATERING_CUSTOMER_BOOKINGS_URL, CATERING_PROVIDER_BOOKINGS_URL } from "../services/catering-booking-links";
+import { cateringSquarePayments } from "../services/catering-square-payments-instance";
 import { buildCateringAmendmentsView, proposeCateringAmendment, respondToCateringAmendment, type AmendmentAction } from "../services/catering-booking-amendments";
 
 /**
@@ -71,6 +72,10 @@ for (const action of ["accept", "decline", "withdraw"] as const) {
     });
     if (result.kind === "refused") return res.status(result.status).json({ message: result.message, ...(result.code ? { code: result.code } : {}) });
     if (result.kind === "done") {
+      // An accepted amendment can lower the price (and write the credit that explains it) in the transaction above. Only AFTER that commit are
+      // the booking's open Square checkouts judged against the NEW ledger: any that now asks for more than is payable is closed here, through
+      // the same cleanup every other billing change uses. Never able to fail the response; the checkout view and the settlement judge again.
+      if (action === "accept") await cateringSquarePayments.closeStaleOpenAttempts(bookingId.data).catch(() => undefined);
       const note = RESPONSES[action];
       // The recipient is always the party who did not act: the proposer for accept / decline, the other party for a withdrawal.
       await notifyCounterparty(result.booking, result.role, note.type, note.title, note.message);

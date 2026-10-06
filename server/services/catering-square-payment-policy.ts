@@ -51,6 +51,16 @@ export function deriveCateringSquareAmount(input: { invoice: CateringInvoiceFact
   return { ok: true, amountCents: payable, currency: CATERING_SQUARE_CURRENCY };
 }
 
+/**
+ * Whether an OPEN checkout now asks for more than the ledger lets be paid, or for something no longer payable at all (booking cancelled, invoice
+ * withdrawn or fully paid). Such a checkout is closed by the stale sweep; until that has happened, no view may OFFER it.
+ */
+export function cateringAttemptIsObsolete(attempt: { state: string; amountCents: number }, invoice: CateringInvoiceFact | undefined, facts: CateringBillingFacts): boolean {
+  if (attempt.state !== "creating" && attempt.state !== "pending") return false;
+  const decision = deriveCateringSquareAmount({ invoice, facts });
+  return !(decision.ok && decision.amountCents >= attempt.amountCents);
+}
+
 /** Whether an existing open attempt is the same checkout the server would create now, so it is returned instead of a duplicate. */
 export function cateringAttemptMatches(
   attempt: { amountCents: number; currency: string; merchantId: string; locationId: string },

@@ -668,7 +668,7 @@ if (!URL_ENV) {
     });
   });
 
-  test("provider connection unavailable at settlement: nothing is lost, the attempt waits, and settles once the same merchant is reconnected", async () => {
+  test("provider connection unavailable at settlement: money that already moved is not lost, and is recognised once the same merchant is reconnected", async () => {
     await run(async (h) => {
       const s = await scene(h);
       const attempt = await open(h, s);
@@ -676,7 +676,9 @@ if (!URL_ENV) {
       await h.connections.disconnect(s.providerId);
       const outcome = await h.payments.settleAttempt(attempt.id);
       assert.deepEqual(outcome.outcome === "unavailable" && outcome.reason, "connection_not_ready");
-      assert.equal((await h.attempt(attempt.id)).state, "pending");
+      // the disconnect closed the checkout locally (and deleted its link) while the old credential still worked; the attempt is not payable any more,
+      // but money that had ALREADY moved is still recognised once the same merchant is back
+      assert.equal((await h.attempt(attempt.id)).state, "cancelled");
       assert.equal((await h.ledger(s.bookingId)).length, 0);
 
       await h.connectProvider(s.providerId, s.connection.merchantId, { access: "access-reconnected", refresh: "refresh-reconnected" });

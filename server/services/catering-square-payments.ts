@@ -320,7 +320,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * nothing ever claims a closure Square did not confirm. If money lands on a link that could not be removed in time, settlement still
    * recognises it and routes it to reconciliation.
    */
-  async function sweepClosedLinks(bookingId: string): Promise<number> {
+  async function sweepClosedLinks(bookingId: string, options: { force?: boolean } = {}): Promise<number> {
     if (!enabled()) return 0;
     // The DURABLE external-link state is `square_link_closed_at`, deliberately separate from the attempt's business state: a locally
     // terminal attempt (cancelled, superseded, expired) whose link Square has not confirmed gone still needs work, whatever its state says.
@@ -340,7 +340,8 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         eq(cateringBookingPaymentAttempts.bookingId, bookingId),
         inArray(cateringBookingPaymentAttempts.state, [...CLOSED_WITH_LINK_STATES]),
         sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NULL`,
-        sql`(${cateringBookingPaymentAttempts.squareLinkCloseAttemptedAt} IS NULL OR ${cateringBookingPaymentAttempts.squareLinkCloseAttemptedAt} + make_interval(secs => least(900, 30 * power(2, greatest(${cateringBookingPaymentAttempts.squareLinkCloseAttempts} - 1, 0)))) <= ${at})`,
+        // `force` is for a caller that is about to discard the credential and so cannot wait out the backoff.
+        options.force ? sql`true` : sql`(${cateringBookingPaymentAttempts.squareLinkCloseAttemptedAt} IS NULL OR ${cateringBookingPaymentAttempts.squareLinkCloseAttemptedAt} + make_interval(secs => least(900, 30 * power(2, greatest(${cateringBookingPaymentAttempts.squareLinkCloseAttempts} - 1, 0)))) <= ${at})`,
       )).returning() as CateringBookingPaymentAttempt[];
     let confirmed = 0;
     for (const attempt of claimed) {
@@ -607,13 +608,13 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * withdrawn, or the amount payable fell below what the checkout would take -- and deletes their Square links best-effort so no
    * more money can be taken on them. A payment that lands anyway is still recognised by `settleAttempt`.
    */
-  async function closeStaleOpenAttempts(bookingId: string): Promise<number> {
+  async function closeStaleOpenAttempts(bookingId: string, options: { sweep?: boolean } = {}): Promise<number> {
     if (!enabled()) return 0;
     // The common case is a booking with no open checkout: answer it with one cheap read, before taking any lock. Closed checkouts whose
     // Square removal is still unconfirmed (a cancellation while Square was down) are retried here too.
     const [anyOpen] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts)
       .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), inArray(cateringBookingPaymentAttempts.state, [...OPEN]))).limit(1);
-    if (!anyOpen) { await sweepClosedLinks(bookingId); return 0; }
+    if (!anyOpen) { if (options.sweep !== false) await sweepClosedLinks(bookingId); return 0; }
     const closed = await db.transaction(async (tx: Executor) => {
       await lockCateringBilling(tx, bookingId);
       const booking = await lockedBooking(tx, bookingId);
@@ -634,8 +635,46 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       }
       return result;
     });
-    await sweepClosedLinks(bookingId);
+    if (options.sweep !== false) await sweepClosedLinks(bookingId);
     return closed.length;
+  }
+
+  /**
+   * Winds down EVERY open Square checkout of one provider, while the provider's Square credential still works. The Square connection service
+   * calls this before it discards or replaces that credential (a disconnect, or a reconnect to a DIFFERENT merchant).
+   *
+   *  1. every open attempt of the provider becomes locally non-payable (database only, under each booking's billing lock);
+   *  2. every locally closed attempt of the provider whose Square link is unconfirmed, on the merchant the credential belongs to, has its link
+   *     deleted at Square NOW (no backoff);
+   *  3. `safe` is false -- and the credential change is refused -- if any such link is still unconfirmed afterwards: ChefSire will not
+   *     knowingly leave a customer holding a live checkout it is about to lose the ability to settle.
+   *
+   * With no usable credential (already revoked, never verified) there is nothing to close WITH and refusing would help nobody, so it is safe;
+   * the attempts are closed locally either way and can still be closed later if the SAME merchant is reconnected. Idempotent.
+   */
+  async function closeProviderCheckouts(providerId: string): Promise<{ safe: boolean }> {
+    if (!enabled()) return { safe: true };
+    const open = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts)
+      .where(and(eq(cateringBookingPaymentAttempts.providerId, providerId), inArray(cateringBookingPaymentAttempts.state, [...OPEN]))) as { bookingId: string }[];
+    for (const { bookingId } of open) {
+      await db.transaction(async (tx: Executor) => {
+        await lockCateringBilling(tx, bookingId);
+        await closeOpenAttemptsInTransaction(tx, bookingId, now());
+      });
+    }
+    const credentials = await connections.getReadyConnectedCredentials(providerId).catch(() => null);
+    if (!credentials) return { safe: true };
+    const unconfirmed = () => and(
+      eq(cateringBookingPaymentAttempts.providerId, providerId),
+      eq(cateringBookingPaymentAttempts.merchantId, credentials.merchantId),
+      inArray(cateringBookingPaymentAttempts.state, [...CLOSED_WITH_LINK_STATES]),
+      sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NULL`,
+    );
+    const due = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts).where(unconfirmed()) as { bookingId: string }[];
+    for (const { bookingId } of due) await sweepClosedLinks(bookingId, { force: true });
+    const [remaining] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(unconfirmed()).limit(1);
+    if (remaining) log.warn("catering_square_connection_change_refused", { providerId });
+    return { safe: !remaining };
   }
 
   /* --------------------------------------------------------------------------------------------------------- *
@@ -759,7 +798,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     return attempts.map((attempt) => ({ ...attempt, processorPayments: rows.filter((row) => row.attemptId === attempt.id) }));
   }
 
-  return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, sweepClosedLinks, attemptsForBooking };
+  return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, sweepClosedLinks, closeProviderCheckouts, attemptsForBooking };
 }
 
 /**

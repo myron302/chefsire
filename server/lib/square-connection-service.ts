@@ -212,11 +212,27 @@ export type LegacyConversionSummary = { found: number; converted: number; alread
 /** What `convertAllLegacyRows({ dryRun: true })` reports: the same classification, with `wouldConvert` in place of `converted`. */
 export type LegacyDryRunSummary = { found: number; wouldConvert: number; alreadyConverted: number; malformed: { id: string; reason: string }[] };
 
+/**
+ * Asked BEFORE a stored credential is discarded or replaced (a disconnect, or a reconnect to a DIFFERENT merchant), while the old credential is
+ * still usable. `safe: false` refuses the change: whatever depends on that credential could not be wound down, and proceeding would strand it.
+ * The service knows nothing about what the guard protects; it only refuses when told to (and when the guard itself fails).
+ */
+export type CredentialDiscardGuard = (context: { userId: string; reason: "disconnect" | "merchant_change" }) => Promise<{ safe: boolean }>;
+
+/** A disconnect or merchant change was refused because the guard could not wind down what depends on the credential. Nothing was changed. */
+export class SquareCredentialDiscardBlockedError extends Error {
+  constructor() {
+    super("The Square connection cannot be changed while something that depends on it cannot be wound down.");
+    this.name = "SquareCredentialDiscardBlockedError";
+  }
+}
+
 export type SquareConnectionServiceDeps = {
   pool: SqlPool;
   api: SquareProviderApi;
   now?: () => Date;
   log?: SquareConnectionLogger;
+  credentialDiscardGuard?: CredentialDiscardGuard;
 };
 
 function hasLegacySecrets(details: Record<string, unknown> | null | undefined): boolean {
@@ -311,6 +327,27 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
   const { pool, api } = deps;
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? defaultLogger;
+  let discardGuard: CredentialDiscardGuard | null = deps.credentialDiscardGuard ?? null;
+
+  /** FAIL CLOSED: a guard that says "not safe", or that throws, refuses the change. No guard registered means nothing depends on the credential. */
+  async function mayDiscardCredential(userId: string, reason: "disconnect" | "merchant_change"): Promise<boolean> {
+    if (!discardGuard) return true;
+    try {
+      return (await discardGuard({ userId, reason })).safe === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Called by the OAuth callback after the new authorization is verified and BEFORE it is stored. Only a change of MERCHANT discards what the
+   * old credential could see; re-authorizing the same merchant keeps every dependent reconcilable, so it is always allowed.
+   */
+  async function guardCredentialReplacement(userId: string, incomingMerchantId: string): Promise<{ allowed: boolean }> {
+    const row = await loadRow(pool, userId, false);
+    if (!row || row.account_status === "disconnected" || row.provider_id === incomingMerchantId) return { allowed: true };
+    return { allowed: await mayDiscardCredential(userId, "merchant_change") };
+  }
 
   async function loadRow(db: SqlClient, userId: string, forUpdate: boolean): Promise<ConnectionRow | null> {
     const result = await db.query(
@@ -1037,6 +1074,10 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    */
   async function disconnect(userId: string): Promise<{ changed: boolean; providerRevocation: ProviderRevocation; providerRevoked: boolean }> {
     const outcome = (changed: boolean, providerRevocation: ProviderRevocation) => ({ changed, providerRevocation, providerRevoked: providerRevocation === "revoked" });
+    // The old credential is still usable here. Whatever depends on it is wound down FIRST; if that cannot be done the disconnect is refused
+    // and nothing -- no secret, no status -- has been touched.
+    const existing = await loadRow(pool, userId, false);
+    if (existing && existing.account_status !== "disconnected" && !(await mayDiscardCredential(userId, "disconnect"))) throw new SquareCredentialDiscardBlockedError();
     for (let attempt = 0; attempt < MAX_SNAPSHOT_RETRIES; attempt += 1) {
       const preview = await loadRow(pool, userId, false);
       if (!preview || preview.account_status === "disconnected") return outcome(false, "not_applicable");
@@ -1158,6 +1199,9 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     convertAllLegacyRows,
     resealRotatedCredentials,
     disconnect,
+    guardCredentialReplacement,
+    /** Registers the guard after construction (the production wiring cannot import its dependents here without a cycle). */
+    setCredentialDiscardGuard: (guard: CredentialDiscardGuard | null) => { discardGuard = guard; },
     /** The reusable gate Catering Phase 2Q consults: tokens are never part of the result. */
     getSquarePaymentReadiness: async (userId: string, options: { force?: boolean } = {}) => (await evaluate(userId, options)).readiness,
     /**

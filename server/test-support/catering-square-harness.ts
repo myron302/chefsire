@@ -119,6 +119,9 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
     ...options.deps,
   });
 
+  // The production wiring (services/catering-square-payments-instance.ts) registers exactly this: open checkouts are wound down before a credential is discarded.
+  connections.setCredentialDiscardGuard(({ userId }) => payments.closeProviderCheckouts(userId));
+
   const h = {
     db, pool, fake, connections, payments, notifications, logs, database,
     setClock(value: Date | null) { clock = value; },
@@ -197,6 +200,7 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
       await pool.query(`UPDATE catering_booking_invoices SET status = 'void', voided_at = now(), voided_by = $2 WHERE id = $1`, [invoiceId, providerId]);
     },
     async cancelBooking(bookingId: string) { await pool.query(`UPDATE catering_bookings SET status = 'cancelled' WHERE id = $1`, [bookingId]); },
+    row: async (userId: string) => (await h.q(`SELECT * FROM payment_methods WHERE user_id = $1`, [userId]))[0],
     ledger: async (bookingId: string) => h.q(`SELECT * FROM catering_booking_payments WHERE booking_id = $1 ORDER BY created_at, id`, [bookingId]),
     processorLedger: async (bookingId: string) => h.q(`SELECT * FROM catering_booking_payments WHERE booking_id = $1 AND payment_source = 'processor'`, [bookingId]),
     attempts: async (bookingId: string) => h.q(`SELECT * FROM catering_booking_payment_attempts WHERE booking_id = $1 ORDER BY created_at, id`, [bookingId]),

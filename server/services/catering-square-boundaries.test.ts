@@ -185,3 +185,26 @@ test("external link cleanup is decided by the durable link state, never by the a
   const list = body.slice(body.indexOf("async function attemptsForBooking"), body.indexOf("return { enabled,"));
   assert.ok(list.includes('eq(cateringBookingPaymentAttempts.state, "reconciliation_required")') && list.includes("ATTEMPT_HISTORY_LIMIT"));
 });
+
+test("a credential is never discarded or replaced before the provider's open checkouts are wound down with it, and the Gate 0 service stays Catering-agnostic", () => {
+  const gate0 = read("server/lib/square-connection-service.ts");
+  const disconnect = gate0.slice(gate0.indexOf("async function disconnect(userId: string)"), gate0.indexOf("for (let attempt = 0; attempt < MAX_SNAPSHOT_RETRIES", gate0.indexOf("async function disconnect(userId: string)")));
+  assert.ok(disconnect.includes("mayDiscardCredential(userId, \"disconnect\")") && disconnect.includes("throw new SquareCredentialDiscardBlockedError()"), "refused BEFORE the transaction that clears secrets");
+  assert.ok(gate0.includes("catch {\n      return false;"), "a failing guard refuses (fail closed)");
+  assert.equal(/catering/i.test(gate0.slice(gate0.indexOf("export type CredentialDiscardGuard"), gate0.indexOf("export type SquareConnectionServiceDeps"))), false);
+  const callback = read("server/routes/payouts.ts");
+  const guard = callback.indexOf("guardCredentialReplacement(sellerId, verification.verified.merchantId)");
+  assert.ok(guard !== -1 && guard < callback.indexOf("persistVerifiedConnection(client, sellerId"), "the merchant-change guard precedes the stored replacement");
+  assert.ok(callback.includes("error=connection_in_use"));
+  assert.ok(sources.instance.includes("setCredentialDiscardGuard(({ userId }) => cateringSquarePayments.closeProviderCheckouts(userId))"));
+  const close = sources.service.slice(sources.service.indexOf("async function closeProviderCheckouts"), sources.service.indexOf("Status\n"));
+  assert.ok(close.indexOf("closeOpenAttemptsInTransaction") < close.indexOf("getReadyConnectedCredentials") && close.indexOf("getReadyConnectedCredentials") < close.indexOf("{ force: true }"));
+  assert.ok(close.includes("merchantId, credentials.merchantId"), "only the merchant the credential belongs to");
+});
+
+test("an accepted amendment re-judges the booking's open checkouts only after its transaction commits", () => {
+  const route = code(read("server/routes/catering-booking-amendments.ts"));
+  const respond = route.slice(route.indexOf("const result = await db.transaction"), route.indexOf("res.json({ amendments: result.view })", route.indexOf("const result = await db.transaction")));
+  assert.ok(respond.indexOf("closeStaleOpenAttempts(bookingId.data)") > respond.indexOf("});\n    if (result.kind === \"refused\")") , "after the transaction has returned");
+  assert.ok(respond.includes('action === "accept"'));
+});

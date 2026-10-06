@@ -67,6 +67,7 @@ import {
 import { serializeCateringAdjustment } from "../serializers/catering-booking-adjustment";
 import { serializeCateringPaymentAttempt, visibleCateringPaymentAttempts } from "../serializers/catering-booking-payment-attempt";
 import { cateringSquarePaymentsEnabled } from "../lib/square-checkout";
+import { cateringAttemptIsObsolete } from "../services/catering-square-payment-policy";
 import { cateringSquarePayments } from "../services/catering-square-payments-instance";
 import type { CateringAttemptWithPayments } from "../services/catering-square-payments";
 import {
@@ -193,7 +194,11 @@ function billingView(input: {
       input.role === "provider" ? paymentVoidOutlook(row, input.booking.status, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] }) : undefined)),
     // PROVIDER ONLY: whether THIS entry can be reversed right now, judged by the very policy the reversal endpoint applies.
     adjustments: input.adjustments.map((row) => serializeCateringAdjustment(row, input.role, input.amendmentNumbers, input.role === "provider" ? reversalOutlook(row.id, adjustmentFactsOf(input.booking, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] })) : undefined)),
-    paymentAttempts: visibleCateringPaymentAttempts(input.attempts, input.role, input.viewerId).map((row) => serializeCateringPaymentAttempt(row, input.role)),
+    // A customer is never OFFERED an open checkout that now asks for more than is payable: the stale sweep closes it, and until it has, the view
+    // simply does not carry it (so the invoice offers a fresh checkout at the current amount instead).
+    paymentAttempts: visibleCateringPaymentAttempts(input.attempts, input.role, input.viewerId)
+      .filter((row) => input.role === "provider" || !cateringAttemptIsObsolete(row, input.invoices.map(cateringInvoiceFactOf).find((invoice) => invoice.id === row.invoiceId), facts))
+      .map((row) => serializeCateringPaymentAttempt(row, input.role)),
     squareCheckout: { enabled: cateringSquarePaymentsEnabled() },
   };
   if (input.role !== "provider") return view;
@@ -249,6 +254,9 @@ async function notifyCustomer(booking: { providerId: string; customerId: string 
 r.get("/bookings/:id/billing", requireAuth, async (req, res, next) => { try {
   const resolved = await resolveRequest(req as never, res, false);
   if (!resolved) return;
+  // Phase 2Q: close any open Square checkout the ledger no longer supports BEFORE the view is read. One lock-free SELECT decides whether there is
+  // anything to do. Best effort; the view itself also refuses to offer such a checkout.
+  await cateringSquarePayments.closeStaleOpenAttempts(resolved.id, { sweep: false }).catch(() => undefined);
   // The early read above is a cheap 404 gate only. What is SENT comes from `snapshotBillingView`, which re-resolves the
   // participant, re-reads the booking and reads every ledger table inside ONE repeatable-read snapshot, so the response
   // cannot pair one moment's price with another moment's ledger.
