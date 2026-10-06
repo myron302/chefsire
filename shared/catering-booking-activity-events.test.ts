@@ -32,6 +32,8 @@ const closeoutMigration = fs.readFileSync(path.join(repoRoot, "server", "migrati
  * quietly disappear from the history.
  */
 const migration = fs.readFileSync(path.join(repoRoot, "server", "migrations", "20260913_catering_booking_billing.sql"), "utf8");
+/** Phase 2Q widened the allowlist by exactly one event, so ITS migration is now the last to redefine the constraint. */
+const squareMigration = fs.readFileSync(path.join(repoRoot, "server", "migrations", "20261014_catering_square_payments.sql"), "utf8");
 const schema = fs.readFileSync(path.join(repoRoot, "shared", "schema", "domains", "social-content.ts"), "utf8");
 
 /** The event values inside a `... IN ('a', 'b') ...` clause, in order. */
@@ -41,7 +43,7 @@ function eventsInClause(source: string, from: number): string[] {
   return source.slice(open + 1, close).split(",").map((value) => value.trim().replace(/^'|'$/g, "")).filter((value) => value !== "");
 }
 
-test("the canonical allowlist is exactly the twenty-seven events through Phase 2L, in order and with no extras", () => {
+test("the canonical allowlist is exactly the twenty-eight events through Phase 2Q, in order and with no extras", () => {
   assert.deepEqual([...CATERING_BOOKING_ACTIVITY_EVENT_TYPES], [
     "booking_offered", "customer_confirmed", "booking_cancelled", "booking_completed", "details_updated",
     "shared_requirement_added", "shared_requirement_updated", "shared_requirement_completed", "shared_requirement_deleted",
@@ -50,6 +52,7 @@ test("the canonical allowlist is exactly the twenty-seven events through Phase 2
     "shared_equipment_added", "shared_equipment_status_changed", "execution_access_updated", "provider_execution_milestone_completed",
     "booking_closed_out", "booking_closeout_reopened",
     "billing_invoice_issued", "billing_invoice_voided", "billing_payment_recorded", "billing_payment_voided",
+    "billing_processor_payment_confirmed",
   ]);
   assert.equal(new Set(CATERING_BOOKING_ACTIVITY_EVENT_TYPES).size, CATERING_BOOKING_ACTIVITY_EVENT_TYPES.length);
 });
@@ -120,10 +123,24 @@ test("the Drizzle CHECK constraint is generated from the allowlist, not restated
 });
 
 test("the migration constraint carries exactly the same events as the allowlist", () => {
-  const at = migration.indexOf("ADD CONSTRAINT catering_booking_activity_event_type_check");
+  // The LAST migration to redefine the constraint is the one a fresh database ends up with: Phase 2Q's.
+  const at = squareMigration.indexOf("ADD CONSTRAINT catering_booking_activity_event_type_check");
   assert.notEqual(at, -1);
-  const events = eventsInClause(migration, migration.indexOf("event_type IN", at));
+  const events = eventsInClause(squareMigration, squareMigration.indexOf("event_type IN", at));
   assert.deepEqual(events, [...CATERING_BOOKING_ACTIVITY_EVENT_TYPES]);
+});
+
+test("Phase 2L's own migration still carries exactly the twenty-seven events it introduced, and Phase 2Q adds one", () => {
+  const at = migration.indexOf("ADD CONSTRAINT catering_booking_activity_event_type_check");
+  const events = eventsInClause(migration, migration.indexOf("event_type IN", at));
+  assert.deepEqual(events, CATERING_BOOKING_ACTIVITY_EVENT_TYPES.filter((event) => event !== "billing_processor_payment_confirmed"));
+});
+
+test("the Phase 2Q event is accepted by every layer and is shared", () => {
+  assert.equal((CATERING_BOOKING_ACTIVITY_EVENT_TYPES as readonly string[]).includes("billing_processor_payment_confirmed"), true);
+  assert.equal(CATERING_BOOKING_ACTIVITY_EVENT_SQL_LIST.includes("'billing_processor_payment_confirmed'"), true);
+  assert.equal(squareMigration.includes("'billing_processor_payment_confirmed'"), true);
+  assert.ok("billing_processor_payment_confirmed".length <= 40, "fits event_type varchar(40)");
 });
 
 test("each Phase 2I file event is accepted by every layer", () => {

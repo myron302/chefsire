@@ -334,7 +334,9 @@ export function cateringMajorUnits(cents: number): string {
  * word chosen for a different kind of fact.
  */
 export function cateringPaymentProvenance(source: string, role: "provider" | "customer"): string {
-  if (source === "processor") return "Paid through ChefSire";
+  // Phase 2Q: Square CONFIRMED this payment, and it settled to the caterer's own Square account. ChefSire neither received nor holds it,
+  // so the wording says Square and never says "ChefSire", which would claim a custody that does not exist.
+  if (source === "processor") return role === "provider" ? "Paid by your customer through Square (settled to your Square account)" : "Paid through Square, directly to your caterer";
   return role === "provider" ? "Recorded by you" : "Recorded by your caterer";
 }
 
@@ -343,6 +345,8 @@ export function cateringPaymentProvenance(source: string, role: "provider" | "cu
  * Judged from the status AND, for a cancelled booking, from the payload itself: Phase 2P still accepts an external refund record
  * (and its reversal) after cancellation, so a cancelled booking that holds recorded money keeps refreshing. Polling is not authority.
  */
-export function cateringBillingCanStillChange(status: string | undefined, view?: { payments: readonly { status: string }[]; adjustments: readonly { kind: string; status: string }[] }): boolean {
+export function cateringBillingCanStillChange(status: string | undefined, view?: { payments: readonly { status: string }[]; adjustments: readonly { kind: string; status: string }[]; paymentAttempts?: readonly { state: string }[] }): boolean {
+  // Phase 2Q: a Square checkout that is still open can complete at any moment, on any booking status, so it keeps the section refreshing.
+  if (view?.paymentAttempts?.some((attempt) => attempt.state === "creating" || attempt.state === "pending")) return true;
   return cateringBillingViewMayStillChange(status, view);
 }

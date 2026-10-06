@@ -2,6 +2,7 @@ import { z } from "zod";
 import { calendarDateSchema } from "./catering-availability";
 import { cateringBookingWorkspacePath } from "./catering-booking-operations";
 import type { CateringBookingStatus } from "./catering-bookings";
+import type { CateringPaymentAttemptView, CateringSquareCheckoutAvailability } from "./catering-square-payments";
 import { CATERING_INVOICE_MAXIMUM_CENTS, deriveCateringLedgerPosition, type CateringAdjustmentFact, type CateringAdjustmentView, type CateringAdjustmentActions } from "./catering-billing-adjustments";
 
 /**
@@ -156,7 +157,13 @@ export type CateringInvoiceState = typeof CATERING_INVOICE_STATES[number];
  * Every one of these is something that happened OUTSIDE ChefSire. There is no `chefsire` or `online` value, because
  * this phase processes nothing, and offering one would be the first lie in the ledger.
  */
-export const CATERING_PAYMENT_METHODS = ["cash", "bank_transfer", "card_in_person", "cheque", "other"] as const;
+export const CATERING_PROVIDER_PAYMENT_METHODS = ["cash", "bank_transfer", "card_in_person", "cheque", "other"] as const;
+/**
+ * Phase 2Q adds `card_online`: a card payment made on the Square hosted checkout and CONFIRMED BY SQUARE. It is deliberately not in
+ * `CATERING_PROVIDER_PAYMENT_METHODS`, which is what a provider may record: a database CHECK ties `card_online` to source
+ * `processor`, so a provider can neither record nor forge one.
+ */
+export const CATERING_PAYMENT_METHODS = [...CATERING_PROVIDER_PAYMENT_METHODS, "card_online"] as const;
 export type CateringPaymentMethod = typeof CATERING_PAYMENT_METHODS[number];
 
 /**
@@ -736,6 +743,12 @@ export type CateringInvoiceView = {
   voidedAt: string | null;
   paidCents: number;
   remainingCents: number;
+  /**
+   * What is payable on this request RIGHT NOW (Phase 2P effective payable): what a customer's Square checkout would be for.
+   * Server-derived and shared, because it is the customer's own amount owed; a snapshot for the screen, judged again by the
+   * pay endpoint under its lock. Zero when nothing is payable.
+   */
+  payableCents: number;
   /** PROVIDER ONLY: the most a payment may be right now (server-derived; see `cateringPayableCents`). Absent for a customer. */
   maxPaymentCents?: number;
   /** PROVIDER ONLY: the optimistic-concurrency version. Absent as a key from a customer's payload. */
@@ -794,6 +807,10 @@ export type CateringBookingBillingView = {
   payments: CateringPaymentView[];
   /** Phase 2P: the adjustment ledger, oldest first, reversed entries included. Empty for a booking with none. */
   adjustments: CateringAdjustmentView[];
+  /** Phase 2Q: Square checkout attempts, newest first. A customer sees their own; the provider sees all, without checkout URLs. */
+  paymentAttempts: CateringPaymentAttemptView[];
+  /** Phase 2Q: whether this deployment offers Square checkout at all (sandbox only). Says nothing about any provider's account. */
+  squareCheckout: CateringSquareCheckoutAvailability;
   /** Absent keys rather than empty values: a customer's payload carries no provider-only object at all. */
   terms?: CateringDepositTermsView;
   issuable?: CateringInvoiceKind[];
@@ -899,6 +916,7 @@ export const CATERING_PAYMENT_METHOD_COPY: Record<CateringPaymentMethod, string>
   card_in_person: "Card in person",
   cheque: "Cheque",
   other: "Other",
+  card_online: "Card online (Square)",
 };
 
 /**
@@ -985,7 +1003,7 @@ export const cateringInvoiceVoidSchema = z.object({
 export const cateringPaymentRecordSchema = z.object({
   invoiceId: z.string().trim().min(1).max(64),
   amount: z.string().trim().regex(/^\d{1,12}(\.\d{1,2})?$/, "Enter an amount like 250 or 250.00"),
-  method: z.enum(CATERING_PAYMENT_METHODS),
+  method: z.enum(CATERING_PROVIDER_PAYMENT_METHODS),
   receivedOn: cateringBillingDateSchema,
   reference: z.string().trim().max(64).optional(),
   /**

@@ -64,6 +64,9 @@ export function serializeCateringInvoice(
     voidedAt: row.voidedAt?.toISOString() ?? null,
     paidCents: cateringPaidTowards(row.id, facts.payments),
     remainingCents: cateringRemainingOnInvoice(fact, facts.payments),
+    // The amount a Square checkout would be for right now: the same effective payable the provider's own limit is, shared because it is
+    // the customer's own figure owed.
+    payableCents: cateringPayableCents(fact, facts),
   };
   if (role !== "provider") return shared;
   return { ...shared, maxPaymentCents: cateringPayableCents(fact, facts), updatedAt: row.updatedAt.toISOString() };

@@ -112,30 +112,36 @@ test("no earlier phase imports Phase 2L, so none of their behaviour can change w
  * No money moves, and nothing says it did
  * ------------------------------------------------------------------------------------------------------------- */
 
-test("this phase touches no payment processor at all", () => {
+test("the billing module touches no payment processor SDK, credential or webhook", () => {
+  // Phase 2Q (processor-backed Square payments) now exists, but it lives in its own modules. The Phase 2L billing route, contract,
+  // policy and component still contain no processor SDK call, no credential, no webhook handling and no platform Square client.
   for (const source of [route, contract, policy, component]) {
     const body = code(source);
-    for (const forbidden of ["square", "Square", "stripe", "Stripe", "paymentLinks", "WebhooksHelper", "getSquareClient", "SQUARE_"]) {
+    for (const forbidden of ["stripe", "Stripe", "paymentLinks", "WebhooksHelper", "getSquareClient", "createPlatformSquareClient", "createConnectedSquareClient", "SQUARE_", "accessToken"]) {
       assert.equal(body.includes(forbidden), false, forbidden);
     }
   }
 });
 
-test("no webhook, checkout session or client success claim exists to be trusted", () => {
+test("no webhook handling, checkout creation or client success claim lives in the billing route", () => {
   const body = code(route);
-  for (const forbidden of ["webhook", "checkout", "paymentIntent", "sourceId", "nonce", "verifySignature"]) {
+  for (const forbidden of ["webhook", "createPaymentLink", "checkoutUrl", "paymentIntent", "sourceId", "nonce", "verifySignature"]) {
     assert.equal(body.toLowerCase().includes(forbidden.toLowerCase()), false, forbidden);
   }
 });
 
-test("the customer is given no payment button, because there is nothing behind one", () => {
+test("the customer's one payment control is a handoff to Square's own page: no amount, no card fields, and it lives outside the billing component", () => {
   const body = code(component);
-  // Every mutation call site is inside a `provider &&` branch or a provider-only handler; the customer's view is
-  // read-only by construction. The word "Pay" never appears as a control.
-  for (const forbidden of [">Pay<", "Pay now", "Pay deposit", "Pay balance", "Checkout", "Card details"]) {
+  for (const forbidden of [">Pay<", "Pay now", "Pay deposit", "Pay balance", "Card details", "cardNumber", "cvv", "type=\"password\""]) {
     assert.equal(body.includes(forbidden), false, forbidden);
   }
   assert.ok(body.includes("const provider = role === \"provider\";"));
+  const square = code(read("client/src/components/catering/BookingSquarePayments.tsx"));
+  assert.ok(square.includes("CATERING_SQUARE_COPY.payAction"));
+  for (const forbidden of ["cardNumber", "cvv", "<Input", "inputMode", "autoComplete=\"cc-", "amount:", "amountCents:"]) {
+    assert.equal(square.includes(forbidden), false, `the Square component has no ${forbidden}`);
+  }
+  assert.ok(square.includes('body: "{}"'), "the pay request is an empty object");
 });
 
 test("the disclosure is unambiguous for both actors and is rendered on every view", () => {

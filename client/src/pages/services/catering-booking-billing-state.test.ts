@@ -239,8 +239,18 @@ test("a conflict and a state refusal refetch; a transport failure does not", () 
 test("a recorded payment is never described as paid through ChefSire", () => {
   assert.equal(cateringPaymentProvenance("provider_recorded", "customer"), "Recorded by your caterer");
   assert.equal(cateringPaymentProvenance("provider_recorded", "provider"), "Recorded by you");
-  // Unreachable today -- nothing writes one -- and handled so the day it exists it reads truthfully.
-  assert.equal(cateringPaymentProvenance("processor", "customer"), "Paid through ChefSire");
+  // Phase 2Q: a Square-confirmed payment settled to the caterer's OWN Square account. ChefSire neither received nor holds it, so
+  // the wording names Square and never ChefSire -- "paid through ChefSire" would claim a custody that does not exist.
+  assert.equal(cateringPaymentProvenance("processor", "customer"), "Paid through Square, directly to your caterer");
+  assert.equal(cateringPaymentProvenance("processor", "provider"), "Paid by your customer through Square (settled to your Square account)");
+  for (const role of ["customer", "provider"] as const) assert.equal(/chefsire/i.test(cateringPaymentProvenance("processor", role)), false, role);
+});
+
+test("an open Square checkout keeps the section refreshing on any booking status, because it can complete at any moment", () => {
+  const view = { payments: [], adjustments: [], paymentAttempts: [{ state: "pending" }] };
+  assert.equal(cateringBillingCanStillChange("cancelled", view), true);
+  assert.equal(cateringBillingCanStillChange("confirmed", { ...view, paymentAttempts: [{ state: "creating" }] }), true);
+  assert.equal(cateringBillingCanStillChange("cancelled", { ...view, paymentAttempts: [{ state: "completed" }, { state: "cancelled" }] }), false);
 });
 
 test("cents render as major units by integer arithmetic", () => {

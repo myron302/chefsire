@@ -11,7 +11,7 @@ import {
   CATERING_FINANCIAL_STATUS_COPY,
   CATERING_INVOICE_STATE_COPY,
   CATERING_PAYMENT_METHOD_COPY,
-  CATERING_PAYMENT_METHODS,
+  CATERING_PROVIDER_PAYMENT_METHODS,
   cateringBookingBillingKey,
   cateringBookingBillingPath,
   formatCateringMoney,
@@ -22,6 +22,7 @@ import {
   type CateringPaymentMethod,
 } from "@shared/catering-booking-billing";
 import BookingAdjustments from "./BookingAdjustments";
+import { InvoiceSquarePayment, SquarePaymentsPanel } from "./BookingSquarePayments";
 import { cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
 import {
   activeCateringPaymentForm,
@@ -64,8 +65,9 @@ import {
  * the component's only arithmetic-shaped act is turning the server's own `remainingCents` into the string that
  * prefills one form field. Issuing an invoice sends a kind and never an amount.
  *
- * WHAT IT NEVER SAYS. There is no customer payment button, because ChefSire processes no catering payment and a
- * button with nothing behind it would be the first lie on the page. Every payment is labelled with whose record it
+ * WHAT IT NEVER SAYS. ChefSire does not take catering money, so nothing here claims it does. The one payment control a customer
+ * has (Phase 2Q, `BookingSquarePayments.tsx`) sends them to Square's own hosted checkout on their caterer's Square account, sends no
+ * amount, and shows a payment as confirmed only when the server says Square did. Every payment is labelled with whose record it
  * is, and the disclosure sits above the section for both actors.
  */
 export default function BookingBilling({ bookingId, userId, role }: { bookingId: string; userId: string; role: "provider" | "customer" }) {
@@ -411,6 +413,8 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
               </p>}
               {invoice.paidCents === 0 && <Button className="min-h-11" variant="outline" disabled={pending} onClick={() => voidInvoice(invoice)}>Withdraw</Button>}
             </div>}
+            {/* Phase 2Q: a customer pays an issued request through Square's hosted checkout. Renders nothing for a provider. */}
+            {!provider && <InvoiceSquarePayment bookingId={bookingId} userId={userId} billing={billing} invoice={invoice} />}
           </li>)}</ul>}
 
         {provider && actionable && (billing.issuablePreview ?? []).map(({ kind, amountCents }) => <div key={kind} className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed p-3">
@@ -431,6 +435,9 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
           </p>}
         </div>)}
       </section>
+
+      {/* Phase 2Q: where a customer lands after Square (a status banner), and the provider's list of Square payments. */}
+      <SquarePaymentsPanel bookingId={bookingId} userId={userId} billing={billing} />
 
       {/* Phase 2P: later financial changes -- charges, credits and recorded external returns -- as their own ledger, below the
           requests they never edit. The same section serves both actors; only the provider is given the controls. */}
@@ -458,7 +465,7 @@ export default function BookingBilling({ bookingId, userId, role }: { bookingId:
             <Label htmlFor="catering-payment-method">How it was paid</Label>
             <select id="catering-payment-method" className="min-h-11 w-full rounded-md border bg-background px-3" value={openPayment.method}
               onChange={(event) => setPaymentForm((current) => editCateringPaymentForm(current, identity, { method: event.target.value as CateringPaymentMethod }))}>
-              {CATERING_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{CATERING_PAYMENT_METHOD_COPY[method]}</option>)}
+              {CATERING_PROVIDER_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{CATERING_PAYMENT_METHOD_COPY[method]}</option>)}
             </select>
           </div>
           <div className="space-y-1">

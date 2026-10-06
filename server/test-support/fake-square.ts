@@ -46,7 +46,19 @@ export type FakeSquareState = {
   profileMerchantId?: string;
   /** The merchant id `/oauth2/token/status` reports; defaults to `merchantId`. */
   statusMerchantId?: string;
+  /** Phase 2Q: when set, `POST /v2/online-checkout/payment-links` answers with this status (an errors body for 4xx, a 5xx envelope otherwise). */
+  checkoutCreateFailure?: number;
+  /** Phase 2Q: when true the payment link IS created (and remembered under its idempotency key) but the response is a 500, as an uncertain network result would be. */
+  checkoutCreateLosesResponse?: boolean;
+  /** Phase 2Q: hold the create response, to make concurrent creates overlap. */
+  checkoutCreateDelayMs?: number;
+  /** Phase 2Q: when set, `GET /v2/orders/:id` and `GET /v2/payments/:id` answer with this status. */
+  evidenceFailure?: number;
 };
+
+/** Phase 2Q: the fake's checkout/order/payment world. Every field is plain JSON in Square's own snake_case shape. */
+export type FakeOrder = { id: string; location_id: string; reference_id?: string; state: string; total_money: { amount: number; currency: string }; tenders: { id: string; payment_id: string }[]; line_items?: unknown[] };
+export type FakePayment = { id: string; order_id?: string; location_id?: string; status: string; amount_money: { amount: number; currency: string }; total_money: { amount: number; currency: string }; tip_money?: { amount: number; currency: string } };
 
 export type RecordedRequest = { method: string; path: string; authorization: string | undefined; body: string };
 
@@ -81,6 +93,12 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
     return token !== undefined && issued.get(token) === false;
   };
   const failureBody = JSON.stringify({ errors: [{ category: "AUTHENTICATION_ERROR", code: "UNAUTHORIZED", detail: "fake" }] });
+
+  const orders = new Map<string, FakeOrder>();
+  const payments = new Map<string, FakePayment>();
+  const links = new Map<string, { id: string; order_id: string; url: string; deleted: boolean }>();
+  const linkByKey = new Map<string, string>();
+  let sequence = 0;
 
   const server = http.createServer((req, res) => {
     let body = "";
@@ -131,6 +149,52 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
           for (const [token, owner] of Array.from(issuedMerchant.entries())) if (owner === merchant) issued.set(token, false);
         }
         res.end(JSON.stringify({ success: true }));
+      } else if (req.method === "POST" && path === "/v2/online-checkout/payment-links") {
+        if (state.checkoutCreateDelayMs) await new Promise((resolve) => setTimeout(resolve, state.checkoutCreateDelayMs));
+        if (state.checkoutCreateFailure) {
+          res.statusCode = state.checkoutCreateFailure;
+          res.end(state.checkoutCreateFailure >= 500
+            ? JSON.stringify({ errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR" }] })
+            : JSON.stringify({ errors: [{ category: "INVALID_REQUEST_ERROR", code: "INVALID_VALUE", detail: "fake refusal" }] }));
+          return;
+        }
+        const request = JSON.parse(body || "{}") as { idempotency_key?: string; order?: { location_id: string; reference_id?: string; line_items?: { base_price_money: { amount: number; currency: string }; quantity: string }[] } };
+        // Square's idempotency: the same key returns the SAME link and order, never a second one.
+        const existingId = request.idempotency_key ? linkByKey.get(request.idempotency_key) : undefined;
+        let link = existingId ? links.get(existingId)! : undefined;
+        if (!link) {
+          sequence += 1;
+          const orderId = `ORDER_${sequence}`;
+          const line = request.order?.line_items?.[0];
+          orders.set(orderId, {
+            id: orderId, location_id: request.order?.location_id ?? "", reference_id: request.order?.reference_id, state: "OPEN",
+            total_money: { amount: Number(line?.base_price_money.amount ?? 0), currency: line?.base_price_money.currency ?? "USD" }, tenders: [], line_items: request.order?.line_items,
+          });
+          link = { id: `LINK_${sequence}`, order_id: orderId, url: `https://sandbox.fake.square/checkout/LINK_${sequence}`, deleted: false };
+          links.set(link.id, link);
+          if (request.idempotency_key) linkByKey.set(request.idempotency_key, link.id);
+        }
+        if (state.checkoutCreateLosesResponse) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR" }] }));
+          return;
+        }
+        res.end(JSON.stringify({ payment_link: { id: link.id, version: 1, order_id: link.order_id, url: link.url, long_url: link.url } }));
+      } else if (req.method === "DELETE" && path.startsWith("/v2/online-checkout/payment-links/")) {
+        const link = links.get(path.split("/").pop()!);
+        if (!link) { res.statusCode = 404; res.end(JSON.stringify({ errors: [{ category: "INVALID_REQUEST_ERROR", code: "NOT_FOUND" }] })); return; }
+        link.deleted = true;
+        res.end(JSON.stringify({ id: link.id, cancelled_order_id: link.order_id }));
+      } else if (req.method === "GET" && path.startsWith("/v2/orders/")) {
+        if (state.evidenceFailure) { res.statusCode = state.evidenceFailure; res.end(state.evidenceFailure >= 500 ? JSON.stringify({ errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR" }] }) : failureBody); return; }
+        const order = orders.get(path.split("/").pop()!);
+        if (!order) { res.statusCode = 404; res.end(JSON.stringify({ errors: [{ category: "INVALID_REQUEST_ERROR", code: "NOT_FOUND" }] })); return; }
+        res.end(JSON.stringify({ order }));
+      } else if (req.method === "GET" && path.startsWith("/v2/payments/")) {
+        if (state.evidenceFailure) { res.statusCode = state.evidenceFailure; res.end(state.evidenceFailure >= 500 ? JSON.stringify({ errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR" }] }) : failureBody); return; }
+        const payment = payments.get(path.split("/").pop()!);
+        if (!payment) { res.statusCode = 404; res.end(JSON.stringify({ errors: [{ category: "INVALID_REQUEST_ERROR", code: "NOT_FOUND" }] })); return; }
+        res.end(JSON.stringify({ payment }));
       } else {
         res.statusCode = 404;
         res.end(JSON.stringify({ errors: [{ category: "INVALID_REQUEST_ERROR", code: "NOT_FOUND" }] }));
@@ -145,6 +209,27 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
     baseUrl,
     calls: (path: string) => requests.filter((request) => request.path === path).length,
     resetGrants() { grantIndex = 0; },
+    /** Phase 2Q: the world Square would hold. Tests drive it directly, exactly as a real customer paying would. */
+    orders,
+    payments,
+    links,
+    /** The most recent order created through a payment link. */
+    lastOrder: () => Array.from(orders.values()).pop(),
+    /** A customer completes a payment on `orderId`: a payment exists, the order has its tender and is COMPLETED. Overrides model wrong facts. */
+    payOrder(orderId: string, overrides: Partial<FakePayment> & { orderState?: string } = {}) {
+      const order = orders.get(orderId)!;
+      sequence += 1;
+      const paymentId = overrides.id ?? `PAYMENT_${sequence}`;
+      const { orderState, ...rest } = overrides;
+      const payment: FakePayment = {
+        id: paymentId, order_id: orderId, location_id: order.location_id, status: "COMPLETED",
+        amount_money: { ...order.total_money }, total_money: { ...order.total_money }, ...rest,
+      };
+      payments.set(paymentId, payment);
+      order.tenders.push({ id: `TENDER_${sequence}`, payment_id: paymentId });
+      order.state = orderState ?? (payment.status === "COMPLETED" ? "COMPLETED" : order.state);
+      return payment;
+    },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }

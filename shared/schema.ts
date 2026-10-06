@@ -3,6 +3,7 @@ import { z } from "zod";
 
 
 import { users } from "./schema/domains/users-auth";
+import { cateringBookingPaymentAttempts, cateringSquareWebhookEvents } from "./schema/domains/catering-square-payments";
 import {
   posts,
   recipes,
@@ -52,6 +53,7 @@ import {
 } from "./schema/domains/commerce-billing";
 
 export { users } from "./schema/domains/users-auth";
+export { cateringBookingPaymentAttempts, cateringSquareWebhookEvents } from "./schema/domains/catering-square-payments";
 export {
   posts,
   recipes,
@@ -875,6 +877,8 @@ export type CateringBookingCloseoutRecord = typeof cateringBookingCloseout.$infe
 export type CateringBookingBillingRecord = typeof cateringBookingBilling.$inferSelect;
 export type CateringBookingInvoice = typeof cateringBookingInvoices.$inferSelect;
 export type CateringBookingPayment = typeof cateringBookingPayments.$inferSelect;
+export type CateringBookingPaymentAttempt = typeof cateringBookingPaymentAttempts.$inferSelect;
+export type CateringSquareWebhookEvent = typeof cateringSquareWebhookEvents.$inferSelect;
 export type CateringBookingAdjustment = typeof cateringBookingAdjustments.$inferSelect;
 export type CateringBookingCloseoutItem = typeof cateringBookingCloseoutItems.$inferSelect;
 export type CateringReview = typeof cateringReviews.$inferSelect;

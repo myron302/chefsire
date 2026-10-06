@@ -1029,7 +1029,10 @@ export const cateringBookingPayments = pgTable("catering_booking_payments", {
   processorUnique: uniqueIndex("catering_payments_processor_uidx").on(t.processor, t.processorPaymentId).where(sql`${t.processorPaymentId} IS NOT NULL`),
   invoiceIdx: index("catering_payments_invoice_idx").on(t.invoiceId, t.status),
   bookingIdx: index("catering_payments_booking_idx").on(t.bookingId, t.receivedOn, t.id),
-  methodCheck: check("catering_payment_method_check", sql`${t.paymentMethod} IN ('cash', 'bank_transfer', 'card_in_person', 'cheque', 'other')`),
+  methodCheck: check("catering_payment_method_check", sql`${t.paymentMethod} IN ('cash', 'bank_transfer', 'card_in_person', 'cheque', 'other', 'card_online')`),
+  // Phase 2Q: a Square-confirmed payment is the only 'card_online' payment, and a processor id can only be Square's.
+  onlineMethodCheck: check("catering_payment_online_method_check", sql`(${t.paymentMethod} = 'card_online') = (${t.paymentSource} = 'processor')`),
+  processorCheck: check("catering_payment_processor_check", sql`${t.processor} IS NULL OR ${t.processor} = 'square'`),
   sourceCheck: check("catering_payment_source_check", sql`${t.paymentSource} IN ('provider_recorded', 'processor')`),
   statusCheck: check("catering_payment_status_check", sql`${t.status} IN ('recorded', 'voided')`),
   amountCheck: check("catering_payment_amount_check", sql`${t.amountCents} > 0 AND ${t.amountCents} <= 9999999999`),
