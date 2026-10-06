@@ -111,10 +111,14 @@ export type WebhookResult =
   | { kind: "retry"; reason: string };
 
 const WEBHOOK_EVENT_TYPES = new Set(["payment.created", "payment.updated", "order.created", "order.updated"]);
+/** How many ordinary (non-reconciliation) attempts a billing view carries; unresolved reconciliations are never subject to it. */
+export const ATTEMPT_HISTORY_LIMIT = 50;
 const STALE_PROCESSING_MS = 2 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 
 const OPEN: readonly string[] = ["creating", "pending"];
+/** Locally terminal states whose Square payment link may still be live until Square confirms otherwise. */
+const CLOSED_WITH_LINK_STATES: readonly string[] = ["cancelled", "superseded", "expired"];
 const CONSUMED: readonly string[] = ["completed", "reconciliation_required"];
 
 export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
@@ -314,13 +318,28 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    */
   async function sweepClosedLinks(bookingId: string): Promise<number> {
     if (!enabled()) return 0;
-    const pending = await db.select().from(cateringBookingPaymentAttempts).where(and(
+    // The DURABLE external-link state is `square_link_closed_at`, deliberately separate from the attempt's business state: a locally
+    // terminal attempt (cancelled, superseded, expired) whose link Square has not confirmed gone still needs work, whatever its state says.
+    // Each attempt is CLAIMED atomically with exponential backoff (30s, 60s, ... capped at 15 min) so concurrent sweeps share one Square call
+    // and an outage is not hammered -- but the claims never stop while the link is unconfirmed.
+    // The overwhelmingly common case has nothing to do, and a plain read must stay a read: one lock-free SELECT decides, before any UPDATE.
+    const [due] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(and(
       eq(cateringBookingPaymentAttempts.bookingId, bookingId),
-      inArray(cateringBookingPaymentAttempts.state, ["cancelled", "superseded"]),
+      inArray(cateringBookingPaymentAttempts.state, [...CLOSED_WITH_LINK_STATES]),
       sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NULL`,
-    )) as CateringBookingPaymentAttempt[];
+    )).limit(1);
+    if (!due) return 0;
+    const at = now();
+    const claimed = await db.update(cateringBookingPaymentAttempts)
+      .set({ squareLinkCloseAttempts: sql`${cateringBookingPaymentAttempts.squareLinkCloseAttempts} + 1`, squareLinkCloseAttemptedAt: at })
+      .where(and(
+        eq(cateringBookingPaymentAttempts.bookingId, bookingId),
+        inArray(cateringBookingPaymentAttempts.state, [...CLOSED_WITH_LINK_STATES]),
+        sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NULL`,
+        sql`(${cateringBookingPaymentAttempts.squareLinkCloseAttemptedAt} IS NULL OR ${cateringBookingPaymentAttempts.squareLinkCloseAttemptedAt} + make_interval(secs => least(900, 30 * power(2, greatest(${cateringBookingPaymentAttempts.squareLinkCloseAttempts} - 1, 0)))) <= ${at})`,
+      )).returning() as CateringBookingPaymentAttempt[];
     let confirmed = 0;
-    for (const attempt of pending) {
+    for (const attempt of claimed) {
       const credentials = await connections.getReadyConnectedCredentials(attempt.providerId).catch(() => null);
       if (!credentials || credentials.merchantId !== attempt.merchantId) { log.warn("catering_square_link_close_deferred", { attemptId: attempt.id }); continue; }
       try {
@@ -548,6 +567,12 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     let attempt = await attemptById(db, input.attemptId);
     if (!attempt || attempt.bookingId !== booking.id) return { kind: "not_found" };
     if (role === "customer" && attempt.customerId !== input.userId) return { kind: "not_found" };
+    // Whatever the attempt's own state, a closed attempt whose Square link removal is unconfirmed keeps being retried (rate-limited by the
+    // sweep's own backoff). This is a retry path for BOTH participants' reads; it never depends on the attempt still being open.
+    const sweepIfUnconfirmed = async () => {
+      if (!CONSUMED.includes(attempt!.state)) await sweepClosedLinks(attempt!.bookingId).catch(() => 0);
+    };
+    if (role === "provider") await sweepIfUnconfirmed();
     if (role === "customer" && !CONSUMED.includes(attempt.state)) {
       const claimed = await db.update(cateringBookingPaymentAttempts).set({ lastCheckedAt: now() })
         .where(and(
@@ -556,7 +581,9 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         )).returning({ id: cateringBookingPaymentAttempts.id });
       if (claimed.length > 0) {
         if (attempt.squareOrderId) await settleAttempt(attempt.id);
-        if (OPEN.includes((await attemptById(db, attempt.id))?.state ?? "")) await closeStaleOpenAttempts(attempt.bookingId);
+        const refreshed = await attemptById(db, attempt.id);
+        if (OPEN.includes(refreshed?.state ?? "")) await closeStaleOpenAttempts(attempt.bookingId);
+        else await sweepIfUnconfirmed();
         attempt = (await attemptById(db, attempt.id)) ?? attempt;
       }
     }
@@ -617,9 +644,18 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
   }
 
   /** Attempts for a booking's billing view, newest first and bounded. The caller filters by role. */
+  /**
+   * A booking's attempts for its billing view: EVERY `reconciliation_required` attempt (unresolved money that moved, whose attempt row may be
+   * the only provider-visible record of it) PLUS a bounded window of the most recent other attempts. The history cap can therefore never
+   * hide an unresolved financial exception, however many newer attempts exist. Newest first.
+   */
   async function attemptsForBooking(executor: Executor, bookingId: string) {
-    return executor.select().from(cateringBookingPaymentAttempts).where(eq(cateringBookingPaymentAttempts.bookingId, bookingId))
-      .orderBy(desc(cateringBookingPaymentAttempts.createdAt), asc(cateringBookingPaymentAttempts.id)).limit(50) as Promise<CateringBookingPaymentAttempt[]>;
+    const unresolved = await executor.select().from(cateringBookingPaymentAttempts)
+      .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), eq(cateringBookingPaymentAttempts.state, "reconciliation_required"))) as CateringBookingPaymentAttempt[];
+    const recent = await executor.select().from(cateringBookingPaymentAttempts)
+      .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), sql`${cateringBookingPaymentAttempts.state} <> 'reconciliation_required'`))
+      .orderBy(desc(cateringBookingPaymentAttempts.createdAt), asc(cateringBookingPaymentAttempts.id)).limit(ATTEMPT_HISTORY_LIMIT) as CateringBookingPaymentAttempt[];
+    return [...unresolved, ...recent].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.id.localeCompare(right.id));
   }
 
   return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, sweepClosedLinks, attemptsForBooking };

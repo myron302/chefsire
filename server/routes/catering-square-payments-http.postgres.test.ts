@@ -289,6 +289,7 @@ if (URL_ENV) {
   const { pool: globalPool } = await import("../db/index");
   const { createCateringSquarePaymentsRouter } = await import("./catering-square-payments");
   const { default: bookingsRouter } = await import("./catering-bookings");
+  const { default: billingRouter } = await import("./catering-booking-billing");
   const { cateringSquarePayments } = await import("../services/catering-square-payments-instance");
 
   /** The REAL booking router and the REAL cancel route, pointed at the harness database and the fake-Square-backed payment service. */
@@ -303,7 +304,8 @@ if (URL_ENV) {
     app.use(cookieParser());
     app.use(express.json());
     app.use("/api/catering", bookingsRouter);
-    app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => null }));
+    app.use("/api/catering", billingRouter);
+    app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => null, payLimiter: (_req, _res, next) => next(), statusLimiter: (_req, _res, next) => next() }));
     server = app.listen(0);
     await fn({ h, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` });
     } finally { server?.close(); await h.cleanup(); }
@@ -358,8 +360,9 @@ if (URL_ENV) {
       assert.equal(row.state, "cancelled");
       assert.equal(row.square_link_closed_at, null, "unconfirmed: never claimed closed");
       assert.equal(h.fake.links.get(s.linkId)!.deleted, false);
-      // A later sweep retries, and only then records the confirmation.
+      // A later sweep retries (after its backoff), and only then records the confirmation.
       h.fake.state.linkDeleteFailure = undefined;
+      h.setClock(new Date(Date.now() + 60_000));
       assert.equal(await h.payments.sweepClosedLinks(s.bookingId), 1);
       assert.ok((await h.attempt(s.attemptId)).square_link_closed_at);
       assert.equal(h.fake.links.get(s.linkId)!.deleted, true);
@@ -373,6 +376,7 @@ if (URL_ENV) {
       await cancel(base, s.bookingId, s.providerId);
       assert.equal((await h.attempt(s.attemptId)).square_link_closed_at, null);
       h.fake.state.linkDeleteFailure = 404;
+      h.setClock(new Date(Date.now() + 60_000));
       assert.equal(await h.payments.sweepClosedLinks(s.bookingId), 1);
       assert.ok((await h.attempt(s.attemptId)).square_link_closed_at);
     });
@@ -433,6 +437,212 @@ if (URL_ENV) {
       assert.ok(row.state === "completed" || row.state === "reconciliation_required", row.state);
       const credits = await h.processorLedger(s.bookingId);
       assert.equal(credits.length, row.state === "completed" ? 1 : 0);
+    });
+  });
+}
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Codex repair pass 2: a locally closed attempt keeps retrying its Square link removal until Square confirms
+ * ------------------------------------------------------------------------------------------------------------- */
+
+if (URL_ENV) {
+  const { pool: globalPool } = await import("../db/index");
+  const { createCateringSquarePaymentsRouter } = await import("./catering-square-payments");
+  const { default: bookingsRouter } = await import("./catering-bookings");
+  const { default: billingRouter } = await import("./catering-booking-billing");
+  const { cateringSquarePayments } = await import("../services/catering-square-payments-instance");
+
+  async function withCleanupApp(fn: (ctx: { h: CateringSquareHarness; base: string }) => Promise<void>) {
+    const h = await createCateringSquareHarness(URL_ENV!);
+    let server: ReturnType<ReturnType<typeof express>["listen"]> | undefined;
+    try {
+      (globalPool as never as { connect: unknown }).connect = () => h.pool.connect();
+      (globalPool as never as { query: unknown }).query = (q: unknown, params?: unknown[]) => h.pool.query(q as string, params);
+      Object.assign(cateringSquarePayments, h.payments);
+      const app = express();
+      app.use(cookieParser());
+      app.use(express.json());
+      app.use("/api/catering", bookingsRouter);
+      app.use("/api/catering", billingRouter);
+      app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => null, payLimiter: (_req, _res, next) => next(), statusLimiter: (_req, _res, next) => next() }));
+      server = app.listen(0);
+      await fn({ h, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` });
+    } finally { server?.close(); await h.cleanup(); }
+  }
+  async function cancelledDuringOutage(h: CateringSquareHarness, base: string) {
+    const providerId = await h.user("provider");
+    const customerId = await h.user("customer");
+    const connection = await h.connectProvider(providerId);
+    const { bookingId, invoiceIds } = await h.booking({ providerId, customerId, invoices: [{ kind: "deposit", amountCents: 40000 }] });
+    const created = await (await post(`${base}/api/catering/bookings/${bookingId}/billing/invoices/${invoiceIds[0]}/pay`, tok(customerId))).json();
+    const attemptId = created.attempt.id as string;
+    const row = await h.attempt(attemptId);
+    h.fake.state.linkDeleteFailure = 503;
+    const cancelled = await post(`${base}/api/catering/bookings/${bookingId}/cancel`, tok(providerId), {});
+    return { providerId, customerId, bookingId, connection, attemptId, orderId: row.square_order_id as string, linkId: row.square_payment_link_id as string, cancelled };
+  }
+  const deleteCalls = (h: CateringSquareHarness) => h.fake.requests.filter((request) => request.method === "DELETE").length;
+  const later = (h: CateringSquareHarness, seconds: number) => h.setClock(new Date(Date.now() + seconds * 1000));
+  const statusOf = (base: string, s: { bookingId: string; attemptId: string }, userId: string) =>
+    fetch(`${base}/api/catering/bookings/${s.bookingId}/billing/payment-attempts/${s.attemptId}`, { headers: tok(userId) });
+  const until = async (condition: () => Promise<boolean>) => { for (let i = 0; i < 100; i += 1) { if (await condition()) return true; await new Promise((resolve) => setTimeout(resolve, 50)); } return false; };
+
+  test("P1: a Square outage during cancellation leaves the attempt locally cancelled with external cleanup UNCONFIRMED, and the cancellation stands", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const s = await cancelledDuringOutage(h, base);
+      assert.equal(s.cancelled.status, 200);
+      const row = await h.attempt(s.attemptId);
+      assert.equal(row.state, "cancelled");
+      assert.equal(row.square_link_closed_at, null);
+      assert.equal(Number(row.square_link_close_attempts), 1);
+      assert.equal(h.fake.links.get(s.linkId)!.deleted, false, "the saved checkout URL is still live at Square");
+    });
+  });
+
+  test("P1: a later customer status check retries the Square deletion although the attempt is already cancelled, and only then records closure", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const s = await cancelledDuringOutage(h, base);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 60);
+      const status = await (await statusOf(base, s, s.customerId)).json();
+      assert.equal(status.attempt.state, "cancelled");
+      assert.equal(status.attempt.checkoutUrl, undefined);
+      assert.equal(h.fake.links.get(s.linkId)!.deleted, true, "the live link was finally closed");
+      const row = await h.attempt(s.attemptId);
+      assert.ok(row.square_link_closed_at);
+      assert.equal(Number(row.square_link_close_attempts), 2);
+    });
+  });
+
+  test("P1: a provider's status read and a billing read by either participant are retry paths too", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const a = await cancelledDuringOutage(h, base);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 60);
+      assert.equal((await statusOf(base, a, a.providerId)).status, 200);
+      assert.equal(h.fake.links.get(a.linkId)!.deleted, true, "provider status read");
+
+      const b = await cancelledDuringOutage(h, base);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 7200);
+      assert.equal((await fetch(`${base}/api/catering/bookings/${b.bookingId}/billing`, { headers: tok(b.customerId) })).status, 200);
+      assert.ok(await until(async () => Boolean((await h.attempt(b.attemptId)).square_link_closed_at)), "customer billing read");
+
+      const c = await cancelledDuringOutage(h, base);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 14400);
+      assert.equal((await fetch(`${base}/api/catering/bookings/${c.bookingId}/billing`, { headers: tok(c.providerId) })).status, 200);
+      assert.ok(await until(async () => Boolean((await h.attempt(c.attemptId)).square_link_closed_at)), "provider billing read");
+    });
+  });
+
+  test("P1: retries are rate-limited with growing backoff, never hammer Square, yet never stop while the link is unconfirmed", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const s = await cancelledDuringOutage(h, base);
+      assert.equal(deleteCalls(h), 1);
+      for (let i = 0; i < 5; i += 1) await statusOf(base, s, s.customerId);
+      assert.equal(deleteCalls(h), 1, "inside the backoff window no further call is made");
+      later(h, 31);
+      await statusOf(base, s, s.customerId);
+      assert.equal(deleteCalls(h), 2, "after 30s one retry");
+      later(h, 31 + 31);
+      await statusOf(base, s, s.customerId);
+      assert.equal(deleteCalls(h), 2, "the second backoff is 60s, not 30s");
+      later(h, 31 + 61);
+      await statusOf(base, s, s.customerId);
+      assert.equal(deleteCalls(h), 3);
+      later(h, 100_000);
+      for (let i = 0; i < 3; i += 1) await statusOf(base, s, s.customerId);
+      assert.equal(deleteCalls(h), 4, "capped at 15 minutes, and still retrying long after");
+      assert.equal(Number((await h.attempt(s.attemptId)).square_link_close_attempts), 4);
+    });
+  });
+
+  test("P1: concurrent sweeps share one Square call, and a repeat after success is a no-op (idempotent)", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const s = await cancelledDuringOutage(h, base);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 60);
+      const results = await Promise.all(Array.from({ length: 6 }, () => h.payments.sweepClosedLinks(s.bookingId)));
+      assert.equal(results.reduce((total, n) => total + n, 0), 1);
+      assert.equal(deleteCalls(h), 2, "the failed first call and exactly one retry");
+      const closedAt = (await h.attempt(s.attemptId)).square_link_closed_at;
+      later(h, 100_000);
+      assert.equal(await h.payments.sweepClosedLinks(s.bookingId), 0);
+      assert.equal(deleteCalls(h), 2);
+      assert.deepEqual((await h.attempt(s.attemptId)).square_link_closed_at, closedAt);
+    });
+  });
+
+  test("P1: Square reporting the link already gone (404) closes the external state; any other refusal keeps it open", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const s = await cancelledDuringOutage(h, base);
+      h.fake.state.linkDeleteFailure = 422;
+      later(h, 60);
+      await statusOf(base, s, s.customerId);
+      assert.equal((await h.attempt(s.attemptId)).square_link_closed_at, null);
+      h.fake.state.linkDeleteFailure = 404;
+      later(h, 200);
+      await statusOf(base, s, s.customerId);
+      assert.ok((await h.attempt(s.attemptId)).square_link_closed_at);
+    });
+  });
+
+  test("P1: a supersession and a withdrawn invoice also leave retryable external state, not just a cancellation", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const providerId = await h.user("provider");
+      const customerId = await h.user("customer");
+      await h.connectProvider(providerId);
+      const { bookingId, invoiceIds } = await h.booking({ providerId, customerId, invoices: [{ kind: "deposit", amountCents: 40000 }, { kind: "balance", amountCents: 60000 }] });
+      const open = async (index: number) => (await (await post(`${base}/api/catering/bookings/${bookingId}/billing/invoices/${invoiceIds[index]}/pay`, tok(customerId))).json()).attempt.id as string;
+      const first = await open(0);
+      h.fake.state.linkDeleteFailure = 503;
+      await h.recordProviderPayment(bookingId, invoiceIds[0], providerId, 10000);
+      const second = await open(0); // supersedes `first`; its link removal fails
+      assert.equal((await h.attempt(first)).state, "superseded");
+      assert.equal((await h.attempt(first)).square_link_closed_at, null);
+      const balance = await open(1);
+      await h.voidInvoice(invoiceIds[1], providerId);
+      await h.payments.closeStaleOpenAttempts(bookingId);
+      assert.equal((await h.attempt(balance)).state, "cancelled");
+      assert.equal((await h.attempt(balance)).square_link_closed_at, null);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 3600);
+      await h.payments.sweepClosedLinks(bookingId);
+      assert.ok((await h.attempt(first)).square_link_closed_at && (await h.attempt(balance)).square_link_closed_at);
+      assert.equal((await h.attempt(second)).square_link_closed_at, null, "an attempt that is still open is untouched");
+      assert.equal((await h.attempt(second)).state, "pending");
+    });
+  });
+
+  test("P1: if money moves before a cleanup retry succeeds the authoritative evidence goes to reconciliation: one record, no credit, no refund, no clamp", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const s = await cancelledDuringOutage(h, base);
+      const payment = h.fake.payOrder(s.orderId);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 60);
+      await Promise.all([statusOf(base, s, s.customerId), statusOf(base, s, s.customerId), h.payments.settleAttempt(s.attemptId)]);
+      const row = await h.attempt(s.attemptId);
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal(row.reconciliation_reason, "booking_cancelled");
+      assert.equal(row.square_payment_id, payment.id);
+      assert.equal(Number(row.processor_amount_cents), 40000);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+      assert.equal(h.fake.requests.some((request) => request.method === "POST" && /refund/.test(request.path)), false);
+      const provider = await (await statusOf(base, s, s.providerId)).json();
+      assert.equal(provider.attempt.squarePaymentId, payment.id);
+      assert.equal(provider.attempt.processorAmountCents, 40000);
+    });
+  });
+
+  test("P1: no token or secret appears in any log, response or row during the failed and retried cleanup", async () => {
+    await withCleanupApp(async ({ h, base }) => {
+      const s = await cancelledDuringOutage(h, base);
+      h.fake.state.linkDeleteFailure = undefined;
+      later(h, 60);
+      const body = JSON.stringify([await (await statusOf(base, s, s.customerId)).json(), await (await statusOf(base, s, s.providerId)).json(), h.logs, await h.attempts(s.bookingId)]);
+      assert.equal(body.includes(s.connection.accessToken), false);
+      assert.equal(body.includes(`refresh-${s.providerId}`), false);
     });
   });
 }

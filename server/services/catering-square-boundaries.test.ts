@@ -169,3 +169,19 @@ test("booking cancellation closes open checkouts in its OWN transaction (databas
   assert.ok(sweep.indexOf("deletePaymentLink") < sweep.indexOf("squareLinkClosedAt: now()"));
   assert.ok(sweep.includes("squareFailureStatus(error) !== 404"));
 });
+
+test("external link cleanup is decided by the durable link state, never by the attempt's business state, and has retry paths for both participants", () => {
+  const body = sources.service;
+  const sweep = body.slice(body.indexOf("async function sweepClosedLinks"), body.indexOf("async function fetchEvidence"));
+  assert.ok(sweep.includes("squareLinkClosedAt} IS NULL") && sweep.includes("squarePaymentLinkId} IS NOT NULL"));
+  assert.ok(sweep.includes('CLOSED_WITH_LINK_STATES'));
+  assert.equal(/OPEN\.includes|state, \[\.\.\.OPEN\]/.test(sweep), false, "the sweep never requires the attempt to still be open");
+  assert.ok(sweep.includes("make_interval") && sweep.includes("least(900"), "bounded backoff, capped, with no maximum number of attempts");
+  const status = body.slice(body.indexOf("async function getAttempt"), body.indexOf("async function handleWebhookEvent"));
+  assert.ok(status.includes("sweepIfUnconfirmed") && status.includes('if (role === "provider") await sweepIfUnconfirmed();'));
+  assert.ok(status.includes("else await sweepIfUnconfirmed();"), "a customer's check retries even when the attempt is already cancelled");
+  const billing = code(read("server/routes/catering-booking-billing.ts"));
+  assert.ok(billing.includes("void cateringSquarePayments.sweepClosedLinks(resolved.id).catch(() => undefined);"));
+  const list = body.slice(body.indexOf("async function attemptsForBooking"), body.indexOf("return { enabled,"));
+  assert.ok(list.includes('eq(cateringBookingPaymentAttempts.state, "reconciliation_required")') && list.includes("ATTEMPT_HISTORY_LIMIT"));
+});

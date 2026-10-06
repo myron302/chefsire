@@ -801,4 +801,104 @@ if (!URL_ENV) {
       await assert.rejects(insert("card_online", "processor", "'stripe', 'P2'"), /catering_payment_processor_check/);
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 2 (P2): unresolved reconciliation can never be hidden by the history cap
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const ATTEMPT_COLUMNS = "booking_id, invoice_id, customer_id, provider_id, merchant_id, location_id, currency, amount_cents, idempotency_key, state, created_at";
+  /** Inserts historical attempts directly (the open-invoice index only constrains creating/pending, so closed ones may be many). */
+  async function seedHistory(h: CateringSquareHarness, s: Scene, count: number, state: string, startDaysAgo: number) {
+    for (let i = 0; i < count; i += 1) {
+      await h.q(`INSERT INTO catering_booking_payment_attempts (${ATTEMPT_COLUMNS}) VALUES ($1, $2, $3, $4, 'M', 'L', 'USD', 100, $5, $6, now() - ($7 * interval '1 minute'))`,
+        [s.bookingId, s.invoiceIds[0], s.customerId, s.providerId, `hist-${state}-${startDaysAgo}-${i}-${Math.random()}`, state, startDaysAgo - i]);
+    }
+  }
+  async function seedReconciliation(h: CateringSquareHarness, s: Scene, label: string, minutesAgo: number, amountCents = 60000) {
+    const row = await h.q(`INSERT INTO catering_booking_payment_attempts (${ATTEMPT_COLUMNS}, square_payment_id, processor_amount_cents, processor_currency, reconciliation_reason)
+      VALUES ($1, $2, $3, $4, 'M', 'L', 'USD', $5, $6, 'reconciliation_required', now() - ($7 * interval '1 minute'), $8, $5, 'USD', 'payable_changed') RETURNING id`,
+      [s.bookingId, s.invoiceIds[1], s.customerId, s.providerId, amountCents, `recon-${label}`, minutesAgo, `PAYMENT_${label}`]);
+    return row[0].id as string;
+  }
+
+  test("P2: more than 50 newer attempts cannot hide an older unresolved reconciliation: it is listed, with every field the provider needs", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const oldReconciliation = await seedReconciliation(h, s, "OLD", 100_000);
+      await seedHistory(h, s, 60, "superseded", 5_000);
+      await seedHistory(h, s, 30, "failed", 4_000);
+      await seedHistory(h, s, 30, "cancelled", 3_000);
+      const total = Number((await h.q(`SELECT count(*) AS n FROM catering_booking_payment_attempts WHERE booking_id = $1`, [s.bookingId]))[0].n);
+      assert.equal(total, 121);
+      const listed = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      assert.ok(listed.some((row: { id: string }) => row.id === oldReconciliation), "the older reconciliation is still listed");
+      const view = serializeCateringPaymentAttempt(listed.find((row: { id: string }) => row.id === oldReconciliation), "provider");
+      assert.equal(view.state, "reconciliation_required");
+      assert.equal(view.processorAmountCents, 60000);
+      assert.equal(view.currency, "USD");
+      assert.equal(view.reconciliationReason, "payable_changed");
+      assert.equal(view.squarePaymentId, "PAYMENT_OLD");
+      assert.ok(view.createdAt && view.updatedAt && view.id === oldReconciliation);
+    });
+  });
+
+  test("P2: every unresolved reconciliation is listed, however many there are and however old", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const ids: string[] = [];
+      for (let i = 0; i < 7; i += 1) ids.push(await seedReconciliation(h, s, `R${i}`, 200_000 + i));
+      await seedHistory(h, s, 80, "cancelled", 1_000);
+      const listed = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      for (const id of ids) assert.ok(listed.some((row: { id: string }) => row.id === id), id);
+    });
+  });
+
+  test("P2: ordinary history stays bounded, newest first, whatever its size", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await seedHistory(h, s, 200, "superseded", 10_000);
+      const listed = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      assert.equal(listed.length, 50, "bounded");
+      const times = listed.map((row: { createdAt: Date }) => row.createdAt.getTime());
+      assert.deepEqual([...times].sort((a, b) => b - a), times, "newest first");
+      const withRecon = await seedReconciliation(h, s, "X", 500_000);
+      const again = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      assert.equal(again.length, 51, "the cap bounds history only; exceptions are added on top");
+      assert.ok(again.some((row: { id: string }) => row.id === withRecon));
+    });
+  });
+
+  test("P2: the customer's own reconciliation is still shown to them without provider-only fields, and others' are not", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const mine = await seedReconciliation(h, s, "MINE", 100_000);
+      const otherCustomer = await h.user("other-customer");
+      await h.q(`INSERT INTO catering_booking_payment_attempts (${ATTEMPT_COLUMNS}, square_payment_id, processor_amount_cents, processor_currency, reconciliation_reason)
+        VALUES ($1, $2, $3, $4, 'M', 'L', 'USD', 500, 'recon-theirs', 'reconciliation_required', now(), 'PAYMENT_THEIRS', 500, 'USD', 'payable_changed')`, [s.bookingId, s.invoiceIds[1], otherCustomer, s.providerId]);
+      await seedHistory(h, s, 60, "cancelled", 1_000);
+      const { visibleCateringPaymentAttempts } = await import("../serializers/catering-booking-payment-attempt");
+      const listed = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      const customerRows = visibleCateringPaymentAttempts(listed, "customer", s.customerId);
+      assert.ok(customerRows.some((row) => row.id === mine));
+      assert.equal(customerRows.some((row) => row.customerId === otherCustomer), false);
+      const customerView = customerRows.filter((row) => row.id === mine).map((row) => serializeCateringPaymentAttempt(row, "customer"))[0];
+      assert.equal(customerView.squarePaymentId, undefined);
+      assert.equal(customerView.reconciliationReason, "payable_changed");
+      const providerRows = visibleCateringPaymentAttempts(listed, "provider", s.providerId);
+      assert.ok(providerRows.some((row) => row.customerId === otherCustomer), "the provider sees all");
+    });
+  });
+
+  test("P2: only safe fields leave the service: no credential, idempotency key, Square order/link id or merchant/location", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await seedReconciliation(h, s, "SAFE", 100_000);
+      const listed = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      for (const role of ["provider", "customer"] as const) {
+        const text = JSON.stringify(listed.map((row: never) => serializeCateringPaymentAttempt(row, role)));
+        assert.equal(/idempotency|recon-SAFE|merchantId|locationId|squareOrderId|squarePaymentLinkId|accessToken|refresh/i.test(text), false, role);
+        assert.equal(text.includes(s.connection.accessToken), false);
+      }
+    });
+  });
 }

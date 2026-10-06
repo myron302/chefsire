@@ -255,6 +255,9 @@ r.get("/bookings/:id/billing", requireAuth, async (req, res, next) => { try {
   const view = await snapshotBillingView(resolved);
   if (!view) return refuse(res, CATERING_BILLING_NOT_FOUND_REFUSAL);
   res.json(view);
+  // Phase 2Q retry path: a closed checkout whose Square link removal is still unconfirmed is retried on a later read by either participant.
+  // After the response, never awaited, never able to fail it; the sweep rate-limits itself.
+  void cateringSquarePayments.sweepClosedLinks(resolved.id).catch(() => undefined);
 } catch (error) { invalid(error, res, next); } });
 
 /* ------------------------------------------------------------------------------------------------------------- *

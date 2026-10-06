@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS catering_booking_payment_attempts (
   -- Set ONLY when Square confirmed the payment link is gone (or reported it already absent). NULL on a closed attempt means the external
   -- cleanup is unconfirmed and will be retried; it is never set optimistically.
   square_link_closed_at timestamptz,
+  -- Bounded retry bookkeeping for that cleanup: how many times Square deletion was tried and when last. Used only to back off retries; they
+  -- never stop while a locally closed attempt still has an unconfirmed live link.
+  square_link_close_attempts integer NOT NULL DEFAULT 0,
+  square_link_close_attempted_at timestamptz,
   last_checked_at timestamptz,
   verified_at timestamptz,
   completed_at timestamptz,
@@ -56,6 +60,7 @@ CREATE TABLE IF NOT EXISTS catering_booking_payment_attempts (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT catering_attempt_processor_check CHECK (processor = 'square'),
+  CONSTRAINT catering_attempt_link_close_attempts_check CHECK (square_link_close_attempts >= 0),
   CONSTRAINT catering_attempt_environment_check CHECK (processor_environment = 'sandbox'),
   CONSTRAINT catering_attempt_currency_check CHECK (currency = 'USD'),
   CONSTRAINT catering_attempt_amount_check CHECK (amount_cents > 0 AND amount_cents <= 9999999999),

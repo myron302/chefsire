@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type RequestHandler } from "express";
 import { z } from "zod";
 import { WebhooksHelper } from "square";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
@@ -67,13 +67,16 @@ export function squareWebhookInputOf(body: unknown): SquareWebhookInput | null {
   };
 }
 
-export function createCateringSquarePaymentsRouter(service: CateringSquarePayments, options: { webhookConfig?: () => CateringSquareWebhookConfig | null } = {}) {
+export function createCateringSquarePaymentsRouter(service: CateringSquarePayments, options: { webhookConfig?: () => CateringSquareWebhookConfig | null; payLimiter?: RequestHandler; statusLimiter?: RequestHandler } = {}) {
+  // The shared in-memory limiters by default; a suite that makes many calls from one address passes its own.
+  const payLimiter = options.payLimiter ?? cateringSquarePayLimiter;
+  const statusLimiter = options.statusLimiter ?? cateringSquareStatusLimiter;
   const router = Router();
   const webhookConfig = options.webhookConfig ?? cateringSquareWebhookConfig;
   const userId = (req: Request) => (req.user as { id: string }).id;
   const unavailable = { message: "Online payment is not available right now.", code: CATERING_ATTEMPT_UNAVAILABLE_CODE };
 
-  router.post("/bookings/:id/billing/invoices/:invoiceId/pay", cateringSquarePayLimiter, requireAuth, requireSameOriginJson, async (req, res, next) => {
+  router.post("/bookings/:id/billing/invoices/:invoiceId/pay", payLimiter, requireAuth, requireSameOriginJson, async (req, res, next) => {
     try {
       res.set("Cache-Control", "no-store");
       const bookingId = cateringBookingIdSchema.parse(req.params.id);
@@ -96,7 +99,7 @@ export function createCateringSquarePaymentsRouter(service: CateringSquarePaymen
     }
   });
 
-  router.get("/bookings/:id/billing/payment-attempts/:attemptId", cateringSquareStatusLimiter, requireAuth, async (req, res, next) => {
+  router.get("/bookings/:id/billing/payment-attempts/:attemptId", statusLimiter, requireAuth, async (req, res, next) => {
     try {
       res.set("Cache-Control", "no-store");
       const bookingId = cateringBookingIdSchema.parse(req.params.id);

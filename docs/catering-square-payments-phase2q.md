@@ -99,7 +99,11 @@ Booking cancellation closes the booking's open checkouts **in the cancellation t
 update → local close, one commit), database only, so a cancelled booking never has a live checkout in the database and a Square outage
 cannot roll back or block a cancellation. After the commit the Square links are removed best-effort (`sweepClosedLinks`);
 `square_link_closed_at` is written **only** once Square confirms the link is gone (a delete, or a 404 meaning already absent), so an
-unconfirmed closure is never recorded as confirmed and is retried by later sweeps (status checks and billing mutations). Money that
+unconfirmed closure is never recorded as confirmed. That durable external-link state is separate from the attempt's business state: a
+locally `cancelled`/`superseded`/`expired` attempt whose link is unconfirmed keeps being retried, from customer and provider status reads,
+billing reads by either participant, billing mutations and stale sweeps, with atomic claiming and exponential backoff (30s doubling to a
+15-minute cap; `square_link_close_attempts` / `_attempted_at`) so concurrent paths share one Square call and an outage is not hammered, but
+retries never stop while the link is unconfirmed. Money that
 still lands on a link that could not be removed is recognised by settlement and routed to `reconciliation_required`.
 A withdrawn invoice or a payable that fell below the checkout amount closes the checkout the same way, on the customer's next status
 check and after every billing mutation.
@@ -137,3 +141,6 @@ no-op). They use the real Gate 0 connection service with real sealed credentials
 The Phase 2L/2P/2N real-Postgres suites gated on `CATERING_TEST_PG_URL` (`catering-billing-adjustments-http`,
 `catering-offer-negotiation-http`) build their schema from the migrations, so they now also apply `20261014_catering_square_payments.sql`:
 the billing read lists Square checkout attempts, so that table is part of what the billing routes require.
+
+The billing view lists **every** `reconciliation_required` attempt plus a bounded window (50) of the most recent other attempts, so the
+history cap can never hide unresolved money that moved (that attempt row may be the only provider-visible record of it).
