@@ -18,6 +18,9 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const route = fs.readFileSync(path.join(root, "server/routes/payouts.ts"), "utf8");
 const schema = fs.readFileSync(path.join(root, "shared/schema/domains/ops-wedding.ts"), "utf8");
+// Since Phase 2Q Gate 0 the post-claim work (code exchange, merchant/scope/location verification and the sealed write)
+// lives in the connection service; the route keeps the state/claim/consume protections.
+const service = fs.readFileSync(path.join(root, "server/lib/square-connection-service.ts"), "utf8");
 const freshMigration = fs.readFileSync(
   path.join(root, "server/migrations/20260927_square_oauth_transactions.sql"),
   "utf8",
@@ -134,7 +137,7 @@ test("forwarded authorization URL opened in another browser fails: correct state
   const initiation = route.indexOf('router.get("/connect-square"');
   const callback = route.indexOf('router.get("/square-callback"');
   const claim = route.indexOf("SET claim_id = $3, claimed_at = now()", callback);
-  const exchange = route.indexOf('fetch("https://connect.squareup.com/oauth2/token"', callback);
+  const exchange = route.indexOf("squareConnections.verifyAuthorizationCode(code)", callback);
   assert.ok(initiation > 0 && callback > initiation && claim > callback && exchange > claim);
   assert.match(route, /if \(claim\.rowCount !== 1\)[\s\S]{0,260}return res\.status\(400\)/);
 });
@@ -237,15 +240,20 @@ test("one conditional claim makes replay and concurrent callbacks fail closed", 
 
 test("missing code and provider denial consume the claimed transaction without connecting", () => {
   assert.match(route, /if \(oauthError \|\| !code\)[\s\S]*SET consumed_at = now\(\)[\s\S]*square_auth_failed/);
-  const providerExchange = route.indexOf('await fetch("https://connect.squareup.com/oauth2/token"');
-  const persistence = route.indexOf("UPDATE payment_methods", providerExchange);
+  const providerExchange = route.indexOf("squareConnections.verifyAuthorizationCode(code)");
+  const persistence = route.indexOf("squareConnections.persistVerifiedConnection");
   assert.ok(providerExchange > 0 && persistence > providerExchange);
 });
 
 test("provider exchange failures log neither code nor provider response body and persist nothing", () => {
-  assert.doesNotMatch(route, /tokenResponse\.text\(\)/);
-  assert.match(route, /tokenResponse\.status/);
-  assert.ok(route.indexOf("if (!tokenResponse.ok)") < route.indexOf("UPDATE payment_methods"));
+  // The route never touches the provider response: it only learns pass/fail from the service.
+  assert.doesNotMatch(route, /tokenResponse|tokenData|\.text\(\)|\bfetch\(/);
+  assert.match(route, /if \(!verification\.ok\) \{\s*return res\.redirect\(SQUARE_CALLBACK_FAILURE_REDIRECTS\[verification\.reason\]\);/);
+  assert.ok(route.indexOf("if (!verification.ok)") < route.indexOf("persistVerifiedConnection"));
+  // The service logs only an HTTP status and a classification, never an error message or body (which can echo credentials).
+  const logCalls = [...service.matchAll(/log\.warn\([^;]*\);/g)].map((match) => match[0]);
+  assert.ok(logCalls.length >= 5);
+  for (const call of logCalls) assert.doesNotMatch(call, /error\.message|\.body|accessToken|refreshToken|\bcode\b/);
 });
 
 test("final persistence lookup verifies claimed ownership by immutable identifiers, not a second expiration check", () => {
@@ -270,9 +278,10 @@ test("final persistence lookup verifies claimed ownership by immutable identifie
 });
 
 test("credential write and state consumption commit atomically", () => {
-  const finalTransaction = route.indexOf('await client.query("BEGIN")', route.indexOf("const accountDetails"));
+  const finalTransaction = route.indexOf('await client.query("BEGIN")', route.indexOf("squareConnections.verifyAuthorizationCode(code)"));
   assert.ok(finalTransaction > 0);
-  assert.ok(route.indexOf("UPDATE payment_methods", finalTransaction) > finalTransaction);
+  // The sealed credential write runs on the SAME transaction client, between BEGIN and the consume + COMMIT.
+  assert.ok(route.indexOf("squareConnections.persistVerifiedConnection(client,", finalTransaction) > finalTransaction);
   assert.ok(route.indexOf("SET consumed_at = now()", finalTransaction) > finalTransaction);
   assert.ok(route.indexOf('await client.query("COMMIT")', finalTransaction) > finalTransaction);
 });
@@ -286,7 +295,11 @@ test("callback does not require a browser session but does require server-held s
 test("callback redirects are fixed local paths and cannot use a state return URL", () => {
   const redirects = [...route.matchAll(/res\.redirect\(([^)]+)\)/g)].map((match) => match[1]);
   assert.ok(redirects.length >= 3);
-  assert.ok(redirects.every((value) => value.startsWith('"/settings/payouts?')));
+  // Every redirect is either a literal local path or a lookup in a constant table of literal local paths.
+  assert.ok(redirects.every((value) => value.startsWith('"/settings/payouts?') || value === "SQUARE_CALLBACK_FAILURE_REDIRECTS[verification.reason]"));
+  const table = route.slice(route.indexOf("SQUARE_CALLBACK_FAILURE_REDIRECTS: Record"), route.indexOf("};", route.indexOf("SQUARE_CALLBACK_FAILURE_REDIRECTS: Record")));
+  const destinations = [...table.matchAll(/:\s*(".*?")/g)].map((match) => match[1]);
+  assert.ok(destinations.length >= 5 && destinations.every((value) => value.startsWith('"/settings/payouts?')));
   assert.doesNotMatch(route, /returnUrl|return_url|redirect_uri\s*:\s*req/);
 });
 
@@ -388,41 +401,36 @@ test("the ten-minute TTL is expressed as milliseconds added to an absolute Date,
 // MERCHANT VERIFICATION
 // ---------------------------------------------------------------------------
 
-test("merchant verification fails closed on every missing/mismatched condition, never `profileMerchantId &&`", () => {
-  assert.doesNotMatch(route, /profileMerchantId && profileMerchantId !== tokenData\.merchant_id/);
-  const guard = route.slice(
-    route.indexOf("const locationId = merchant?.mainLocationId"),
-    route.indexOf("return res.redirect(\"/settings/payouts?error=square_auth_failed\");", route.indexOf("const locationId = merchant?.mainLocationId")),
-  );
+test("merchant verification fails closed on every missing/mismatched condition", () => {
+  const verify = service.slice(service.indexOf("async function verifyAuthorizationCode"), service.indexOf("async function persistVerifiedConnection"));
   for (const condition of [
-    "!tokenData.access_token",
-    "!tokenData.refresh_token",
-    "!tokenData.merchant_id",
-    "!merchant",
-    "!profileMerchantId",
-    "profileMerchantId !== tokenData.merchant_id",
+    "!grant.refreshToken || !grant.merchantId",
+    "merchant.id !== grant.merchantId",
+    "tokenStatus.merchantId && tokenStatus.merchantId !== merchant.id",
+    "!hasRequiredSquareScopes(tokenStatus.scopes)",
   ]) {
-    assert.ok(guard.includes(condition), `missing fail-closed condition: ${condition}`);
+    assert.ok(verify.includes(condition), `missing fail-closed condition: ${condition}`);
   }
+  // The merchant profile id must exist (the SDK wrapper refuses a response without one) and may never be waved through by `&&`.
+  assert.doesNotMatch(verify, /profileMerchantId &&/);
+  const integration = fs.readFileSync(path.join(root, "server/lib/square-integration.ts"), "utf8");
+  assert.match(integration, /if \(!merchant\?\.id\) throw new SquareProviderResponseError/);
 });
 
 test("merchant lookup exceptions are caught and fail closed without activating credentials", () => {
-  const lookup = route.indexOf("retrieveMerchant(\"me\")");
-  const tryStart = route.lastIndexOf("try {", lookup);
-  const catchIdx = route.indexOf("} catch (_merchantError)", lookup);
-  assert.ok(tryStart > 0 && catchIdx > lookup);
-  const catchBlock = route.slice(catchIdx, route.indexOf("}", route.indexOf("return res.redirect", catchIdx)));
-  assert.match(catchBlock, /return res\.redirect\("\/settings\/payouts\?error=square_auth_failed"\)/);
+  const verify = service.slice(service.indexOf("async function verifyAuthorizationCode"), service.indexOf("async function persistVerifiedConnection"));
+  assert.match(verify, /catch \(error\) \{[\s\S]*return \{ ok: false, reason:/);
+  assert.ok(verify.indexOf("api.retrieveMerchant") < verify.indexOf("} catch (error)"));
 });
 
 test("provider denial and token exchange failure never reach merchant lookup or persistence", () => {
   const denial = route.indexOf("if (oauthError || !code)");
-  const exchangeFailure = route.indexOf("if (!tokenResponse.ok)");
-  const merchantLookup = route.indexOf('retrieveMerchant("me")');
-  const persistence = route.indexOf("UPDATE payment_methods");
-  assert.ok(denial > 0 && denial < exchangeFailure);
-  assert.ok(exchangeFailure < merchantLookup);
-  assert.ok(merchantLookup < persistence);
+  const verification = route.indexOf("squareConnections.verifyAuthorizationCode(code)");
+  const persistence = route.indexOf("squareConnections.persistVerifiedConnection");
+  assert.ok(denial > 0 && denial < verification && verification < persistence);
+  const verify = service.slice(service.indexOf("async function verifyAuthorizationCode"), service.indexOf("async function persistVerifiedConnection"));
+  assert.ok(verify.indexOf("api.exchangeAuthorizationCode") < verify.indexOf("api.retrieveMerchant"));
+  assert.doesNotMatch(verify, /payment_methods|\.query\(/, "verification touches no database");
 });
 
 // ---------------------------------------------------------------------------
@@ -443,11 +451,13 @@ test("hardening migration only discards short-lived OAuth attempts, never paymen
 // TOKEN / OUTPUT SAFETY
 // ---------------------------------------------------------------------------
 
-test("tokens remain server-side in account_details and are never returned by payout APIs or logged", () => {
-  assert.match(route, /accessToken: tokenData\.access_token/);
-  assert.match(route, /refreshToken: tokenData\.refresh_token/);
+test("tokens are sealed before storage and are never returned by payout APIs or logged", () => {
+  // Plaintext tokens are no longer written anywhere; the typed encrypted columns hold sealed values.
+  assert.doesNotMatch(route, /accessToken: tokenData|refreshToken: tokenData|account_details = \$3::jsonb/);
+  assert.match(service, /encryptSecret\(verified\.accessToken, accessAad\(id\)\)/);
+  assert.match(service, /encryptSecret\(verified\.refreshToken, refreshAad\(id\)\)/);
   assert.doesNotMatch(route, /res\.(?:json|send)\([^)]*(?:accessToken|refreshToken)/s);
-  assert.doesNotMatch(route, /console\.(?:log|error)\([^)]*(?:tokenData|access_token|refresh_token|\bcode\b)/s);
+  assert.doesNotMatch(route, /console\.(?:log|error)\([^)]*(?:tokenData|access_token|refresh_token|\bcode\b|verification)/s);
 });
 
 test("the OAuth repair leaves fail-closed payout execution and eligibility intact", () => {
