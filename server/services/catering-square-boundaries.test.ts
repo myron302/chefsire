@@ -72,8 +72,9 @@ test("SANDBOX ONLY: every Square call is behind the sandbox gate, and every entr
   }
   const body = sources.service;
   assert.ok(body.includes("if (!enabled()) return { kind: \"unavailable\" };"), "create");
-  assert.ok(body.includes("if (!enabled()) return CONSUMED.includes(first.state) ? { outcome: \"already_settled\", attempt: first } : { outcome: \"unavailable\", reason: \"sandbox_only\", attempt: first };"), "settle");
-  assert.ok(body.includes("if (!enabled()) return { kind: \"retry\", reason: \"sandbox_only\" };"), "webhook");
+  assert.ok(body.includes("if (!sandboxReady()) return { outcome: \"unavailable\", reason: \"sandbox_only\", attempt: first };"), "settle: unreadable evidence is retryable, never 'already settled', even for a consumed attempt");
+  assert.ok(body.includes("if (!sandboxReady()) return { kind: \"retry\", reason: \"sandbox_only\" };"), "webhook");
+  assert.ok(checkoutSection.includes("return cateringSquareSandboxReady() && cateringSquareWebhookConfig() !== null;"), "checkout readiness = sandbox AND webhook configuration");
   assert.ok(sources.route.includes("if (!service.enabled()) return res.status(503)"), "webhook route");
   assert.ok(sources.service.includes("processorEnvironment: \"sandbox\""));
   // No code path configures or names production Square credentials.
@@ -115,7 +116,9 @@ test("the webhook is guarded by Square's signature over the raw body and the exa
   assert.ok(order.every((at) => at !== -1), JSON.stringify(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.ok(handler.includes("requestBody: rawBody") && handler.includes("notificationUrl: config.notificationUrl") && handler.includes("signatureKey: config.signatureKey"));
-  assert.ok(route.includes("SQUARE_CATERING_WEBHOOK_NOTIFICATION_URL") && route.includes("SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY"));
+  // the route and the readiness helper share ONE config contract, defined once in the checkout library
+  assert.ok(checkoutSection.includes("SQUARE_CATERING_WEBHOOK_NOTIFICATION_URL") && checkoutSection.includes("SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY"));
+  assert.ok(route.includes("cateringSquareWebhookConfig") && route.includes("../lib/square-checkout") && !route.includes("process.env.SQUARE_CATERING_WEBHOOK"));
   assert.equal(handler.includes("req.get(\"host\")") || handler.includes("req.originalUrl") || handler.includes("req.protocol"), false, "the URL is configured, never derived from the request");
 });
 
@@ -198,8 +201,11 @@ test("a credential is never discarded or replaced before the provider's open che
   assert.ok(callback.includes("error=connection_in_use"));
   assert.ok(sources.instance.includes("setCredentialDiscardGuard(({ userId }) => cateringSquarePayments.closeProviderCheckouts(userId))"));
   const close = sources.service.slice(sources.service.indexOf("async function closeProviderCheckouts"), sources.service.indexOf("Status\n"));
-  assert.ok(close.indexOf("closeOpenAttemptsInTransaction") < close.indexOf("getReadyConnectedCredentials") && close.indexOf("getReadyConnectedCredentials") < close.indexOf("{ force: true }"));
-  assert.ok(close.includes("merchantId, credentials.merchantId"), "only the merchant the credential belongs to");
+  assert.ok(close.indexOf("closeOpenAttemptsInTransaction") < close.indexOf("storedCredentialState") && close.indexOf("storedCredentialState") < close.indexOf("getReadyConnectedCredentials") && close.indexOf("getReadyConnectedCredentials") < close.indexOf("{ force: true }"));
+  assert.ok(close.includes("eq(cateringBookingPaymentAttempts.merchantId, merchantId)"), "only the merchant the stored credential belongs to");
+  // not-ready credentials are NOT proof of safety: with links unconfirmed and no usable credential the answer is { safe: false }
+  assert.ok(/if \(!credentials \|\| credentials\.merchantId !== merchantId\) \{[\s\S]*?return \{ safe: false \};/.test(close), "fail closed");
+  assert.equal(/getReadyConnectedCredentials\(providerId\)\.catch\(\(\) => null\);\s*if \(!credentials\) return \{ safe: true \}/.test(close), false);
 });
 
 test("an accepted amendment re-judges the booking's open checkouts only after its transaction commits", () => {

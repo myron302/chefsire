@@ -89,7 +89,7 @@ export function createSquareConnectionRouter(service: SquareConnectionService) {
     } catch (error) {
       // Refused BEFORE anything was changed: something that depends on this connection could not be wound down while its credential still works.
       if (error instanceof SquareCredentialDiscardBlockedError) {
-        return res.status(409).json({ ok: false, code: "connection_in_use", error: "Square can't be disconnected right now because a customer checkout on it couldn't be closed. Try again in a moment." });
+        return res.status(409).json({ ok: false, code: "connection_in_use", error: "Square can't be disconnected yet because an existing Catering checkout still needs to be closed or verified. Try again shortly." });
       }
       console.error("Square disconnect error:", error instanceof Error ? error.name : "unknown");
       res.status(500).json({ ok: false, error: "Failed to disconnect Square" });

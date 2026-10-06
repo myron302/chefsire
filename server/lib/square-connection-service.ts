@@ -349,6 +349,20 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     return { allowed: await mayDiscardCredential(userId, "merchant_change") };
   }
 
+  /**
+   * What PERSISTED state says about a user's stored Square credential, with no network call, no decryption and no token returned. Answers "could
+   * anything still use a credential that is on file?" -- NOT "is it payment-ready", which can be false (verification unavailable, a failed refresh,
+   * a configuration fault) while the credential is still stored and still the only thing able to reach the merchant's Square account.
+   * `present` is false only when there is no connection, it is disconnected, or every secret has been removed (needs re-authorization).
+   * A database failure throws, so a caller deciding whether to discard fails closed.
+   */
+  async function storedCredentialState(userId: string): Promise<{ present: boolean; merchantId: string | null }> {
+    const row = await loadRow(pool, userId, false);
+    if (!row || row.account_status === "disconnected") return { present: false, merchantId: null };
+    const present = Boolean(row.encrypted_access_token) || Boolean(row.encrypted_refresh_token) || hasLegacySecrets(row.account_details);
+    return { present, merchantId: present ? row.provider_id : null };
+  }
+
   async function loadRow(db: SqlClient, userId: string, forUpdate: boolean): Promise<ConnectionRow | null> {
     const result = await db.query(
       `SELECT ${ROW_COLUMNS} FROM payment_methods
@@ -1200,6 +1214,7 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     resealRotatedCredentials,
     disconnect,
     guardCredentialReplacement,
+    storedCredentialState,
     /** Registers the guard after construction (the production wiring cannot import its dependents here without a cycle). */
     setCredentialDiscardGuard: (guard: CredentialDiscardGuard | null) => { discardGuard = guard; },
     /** The reusable gate Catering Phase 2Q consults: tokens are never part of the result. */

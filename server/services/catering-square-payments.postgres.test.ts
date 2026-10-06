@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareCateringSquareEnvironment, withCateringSquareHarness, withTimeout, type CateringSquareHarness } from "../test-support/catering-square-harness";
 import { createSquareCheckoutApi, SquareSandboxOnlyError } from "../lib/square-checkout";
+import { SquareCredentialDiscardBlockedError } from "../lib/square-connection-service";
 import { serializeCateringPaymentAttempt } from "../serializers/catering-booking-payment-attempt";
 
 prepareCateringSquareEnvironment();
@@ -1286,5 +1287,276 @@ if (!URL_ENV) {
     assert.equal(/return \{ kind: "already", attempt \};\s*\n\s*\n\s*\/\/ A Square payment/.test(confirmed), false, "no unconditional early return before the audit");
     const audit = source.slice(source.indexOf("async function auditAdditionalPaymentsInTx"), source.indexOf("async function notifyCompleted"));
     assert.equal(/checkout\.|fetchEvidence|retrieveOrder|retrievePayment/.test(audit), false, "no Square network call inside the locks");
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 4, finding 1: unreadable Square evidence is never "already settled"
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const hook = (h: CateringSquareHarness, s: Scene, attempt: { squareOrderId: string | null }, eventId: string, paymentId: string | null = null) =>
+    h.payments.handleWebhookEvent({ eventId, eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId });
+  const eventRow = async (h: CateringSquareHarness, eventId: string) => (await h.q(`SELECT * FROM catering_square_webhook_events WHERE event_id = $1`, [eventId]))[0];
+  const p2Body = { total_money: { amount: 15000, currency: "USD" }, amount_money: { amount: 15000, currency: "USD" }, updated_at: "2030-05-01T11:30:00Z", created_at: "2030-05-01T11:30:00Z" };
+
+  test("EVIDENCE: completed attempt + webhook + Square read succeeds with NO new payment -> already_settled (no new evidence), event processed", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "EV_P1", ...first });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      assert.deepEqual(await hook(h, s, attempt, "evt-nonew"), { kind: "processed", outcome: "already_settled" });
+      assert.equal((await eventRow(h, "evt-nonew")).state, "processed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await evidenceRows(h, attempt.id)).length, 1);
+    });
+  });
+
+  test("EVIDENCE: completed attempt + webhook + a NEW payment -> preserved exactly once, event processed as reconciliation_required, no second credit", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "EV_P1", ...first });
+      await h.payments.settleAttempt(attempt.id);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "EV_P2", ...p2Body });
+      assert.deepEqual(await hook(h, s, attempt, "evt-new", "EV_P2"), { kind: "processed", outcome: "reconciliation_required" });
+      assert.equal((await eventRow(h, "evt-new")).state, "processed");
+      assert.deepEqual((await evidenceRows(h, attempt.id)).map((row) => row.square_payment_id), ["EV_P1", "EV_P2"]);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+    });
+  });
+
+  for (const consumedAs of ["completed", "reconciliation_required"] as const) {
+    test(`EVIDENCE: ${consumedAs} attempt + webhook + transient Square failure -> RETRYABLE (not already_settled); the event is NOT processed; a later retry audits the new payment; retries are idempotent`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const attempt = await open(h, s, consumedAs === "completed" ? 0 : 1);
+        h.setClock(new Date("2030-05-02T09:00:00Z"));
+        if (consumedAs === "reconciliation_required") await h.adjustment(s.bookingId, s.providerId, "credit", 30000);
+        h.fake.payOrder(attempt.squareOrderId!, { id: "RT_P1", ...(consumedAs === "completed" ? first : { updated_at: "2030-05-01T10:00:00Z", created_at: "2030-05-01T10:00:00Z", total_money: { amount: 60000, currency: "USD" }, amount_money: { amount: 60000, currency: "USD" } }) });
+        await h.payments.settleAttempt(attempt.id);
+        assert.equal((await h.attempt(attempt.id)).state, consumedAs);
+        const ledgerBefore = await h.processorLedger(s.bookingId);
+
+        // a NEW payment lands, but the fresh read fails
+        h.fake.payOrder(attempt.squareOrderId!, { id: "RT_P2", ...p2Body });
+        h.fake.state.evidenceFailure = 503;
+        const direct = await h.payments.settleAttempt(attempt.id);
+        assert.equal(direct.outcome === "unavailable" && direct.reason, "square_unreachable", "not already_settled");
+        const failed = await hook(h, s, attempt, "evt-retry", "RT_P2");
+        assert.deepEqual(failed, { kind: "retry", reason: "square_unreachable" });
+        const stored = await eventRow(h, "evt-retry");
+        assert.equal(stored.state, "failed", "NOT processed: Square will redeliver");
+        assert.equal(stored.processed_at, null);
+        assert.deepEqual((await evidenceRows(h, attempt.id)).map((row) => row.square_payment_id), ["RT_P1"], "nothing was lost or invented while Square was unreadable");
+
+        // Square is readable again: the SAME event is retried and now audits P2
+        h.fake.state.evidenceFailure = undefined;
+        assert.deepEqual(await hook(h, s, attempt, "evt-retry", "RT_P2"), { kind: "processed", outcome: "reconciliation_required" });
+        assert.equal((await eventRow(h, "evt-retry")).state, "processed");
+        assert.deepEqual((await evidenceRows(h, attempt.id)).map((row) => row.square_payment_id), ["RT_P1", "RT_P2"]);
+        // idempotent: the same event again, a fresh event and a poll add nothing
+        assert.deepEqual(await hook(h, s, attempt, "evt-retry", "RT_P2"), { kind: "duplicate" });
+        assert.deepEqual(await hook(h, s, attempt, "evt-retry-2"), { kind: "processed", outcome: "already_settled" });
+        await h.payments.settleAttempt(attempt.id);
+        assert.equal((await evidenceRows(h, attempt.id)).length, 2);
+        assert.deepEqual(await h.processorLedger(s.bookingId), consumedAs === "completed" ? ledgerBefore : [], "no duplicate normal credit");
+        assert.equal((await h.processorLedger(s.bookingId)).length, consumedAs === "completed" ? 1 : 0);
+      });
+    });
+  }
+
+  test("EVIDENCE: a consumed attempt whose connection is not ready, or now belongs to another merchant, is also retryable rather than already_settled", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "NR_P1", ...first });
+      await h.payments.settleAttempt(attempt.id);
+      await h.q(`UPDATE payment_methods SET account_status = 'needs_reauthorization', encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL WHERE user_id = $1`, [s.providerId]);
+      const outcome = await h.payments.settleAttempt(attempt.id);
+      assert.equal(outcome.outcome === "unavailable" && outcome.reason, "connection_not_ready");
+      assert.equal((await hook(h, s, attempt, "evt-nr")).kind, "retry");
+      assert.equal((await eventRow(h, "evt-nr")).state, "failed");
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 4, finding 2: a credential that is on file is never discarded while a live link depends on it
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  /** An attempt that is locally closed but whose Square link removal is NOT confirmed (the state a failed delete leaves). */
+  async function unconfirmedLink(h: CateringSquareHarness, s: Scene, invoiceIndex = 0) {
+    const attempt = await open(h, s, invoiceIndex);
+    await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now() WHERE id = $1`, [attempt.id]);
+    assert.equal((await h.attempt(attempt.id)).square_link_closed_at, null);
+    return attempt;
+  }
+  const stillConnected = async (h: CateringSquareHarness, s: Scene) => {
+    const row = await h.row(s.providerId);
+    assert.equal(row.account_status, "active");
+    assert.ok(row.encrypted_access_token && row.encrypted_refresh_token, "the credential was kept for a later retry");
+  };
+
+  test("DISPOSAL: a live checkout + a ready credential -> the link is closed WITH the credential before it is discarded", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      assert.equal(h.fake.links.get(attempt.squarePaymentLinkId!)!.deleted, true);
+      assert.ok((await h.attempt(attempt.id)).square_link_closed_at);
+      assert.equal((await h.row(s.providerId)).account_status, "disconnected");
+    });
+  });
+
+  const notReady: { name: string; apply: (h: CateringSquareHarness, s: Scene) => Promise<() => Promise<void> | void> }[] = [
+    {
+      name: "verification temporarily unavailable",
+      apply: async (h, s) => {
+        await h.q(`UPDATE payment_methods SET last_verified_at = now() - interval '2 days' WHERE user_id = $1`, [s.providerId]);
+        h.fake.state.failures.merchant = 503; h.fake.state.failures.tokenStatus = 503; h.fake.state.failures.locations = 503;
+        return () => { h.fake.state.failures.merchant = undefined; h.fake.state.failures.tokenStatus = undefined; h.fake.state.failures.locations = undefined; };
+      },
+    },
+    {
+      name: "token refresh failing",
+      apply: async (h, s) => {
+        await h.q(`UPDATE payment_methods SET token_expires_at = now() + interval '1 hour' WHERE user_id = $1`, [s.providerId]);
+        h.fake.state.failures.token = 503;
+        return () => { h.fake.state.failures.token = undefined; };
+      },
+    },
+    {
+      name: "configuration_error with the encrypted credential still persisted",
+      apply: async () => {
+        const saved = process.env.SQUARE_APPLICATION_SECRET;
+        delete process.env.SQUARE_APPLICATION_SECRET;
+        return () => { process.env.SQUARE_APPLICATION_SECRET = saved; };
+      },
+    },
+  ];
+  for (const scenario of notReady) {
+    test(`DISPOSAL: an unconfirmed link + ${scenario.name} (credentials not obtainable) -> disconnect and merchant replacement are BLOCKED, the credential is kept, and a later retry succeeds`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const attempt = await unconfirmedLink(h, s);
+        const undo = await scenario.apply(h, s);
+        assert.equal(await h.connections.getReadyConnectedCredentials(s.providerId).catch(() => null), null, "precondition: not payment-ready");
+        await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+        await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "repeating stays refused");
+        assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW"), { allowed: false }, "a replacement cannot orphan the live link either");
+        assert.equal(h.fake.links.get(attempt.squarePaymentLinkId!)!.deleted, false);
+        assert.equal((await h.attempt(attempt.id)).square_link_closed_at, null);
+        const row = await h.row(s.providerId);
+        assert.equal(row.account_status === "disconnected", false);
+        assert.ok(row.encrypted_access_token && row.encrypted_refresh_token, "the credential is preserved for cleanup and reconciliation");
+        assert.equal(JSON.stringify({ logs: h.logs }).includes(s.connection.accessToken), false, "no secret leaks into logs");
+
+        await undo();
+        const result = await h.connections.disconnect(s.providerId);
+        assert.equal(result.changed, true, "the retry proceeds once the credential works");
+        assert.equal(h.fake.links.get(attempt.squarePaymentLinkId!)!.deleted, true);
+        assert.ok((await h.attempt(attempt.id)).square_link_closed_at);
+        assert.equal((await h.connections.disconnect(s.providerId)).changed, false, "repeat after success is a no-op");
+      });
+    });
+  }
+
+  test("DISPOSAL: a failed cleanup with a READY credential also preserves the credential for a later retry", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await unconfirmedLink(h, s);
+      h.fake.state.linkDeleteFailure = 503;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      await stillConnected(h, s);
+      h.fake.state.linkDeleteFailure = undefined;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      assert.ok((await h.attempt(attempt.id)).square_link_closed_at);
+    });
+  });
+
+  test("DISPOSAL: no Catering checkout at all -> disconnect proceeds under the Gate 0 rules, even when the credential is not ready", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await h.q(`UPDATE payment_methods SET token_expires_at = now() + interval '1 hour' WHERE user_id = $1`, [s.providerId]);
+      h.fake.state.failures.token = 503;
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      assert.equal((await h.row(s.providerId)).account_status, "disconnected");
+    });
+  });
+
+  test("DISPOSAL: every link already confirmed closed -> disconnect proceeds even when the credential is not ready", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now() WHERE id = $1`, [attempt.id]);
+      await h.q(`UPDATE payment_methods SET token_expires_at = now() + interval '1 hour' WHERE user_id = $1`, [s.providerId]);
+      h.fake.state.failures.token = 503;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+    });
+  });
+
+  test("DISPOSAL: persisted state proving NO credential is on file (needs re-authorization) never traps the provider, even with an unconfirmed link", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await unconfirmedLink(h, s);
+      await h.q(`UPDATE payment_methods SET account_status = 'needs_reauthorization', encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL WHERE user_id = $1`, [s.providerId]);
+      assert.deepEqual(await h.connections.storedCredentialState(s.providerId), { present: false, merchantId: null });
+      assert.deepEqual(await h.payments.closeProviderCheckouts(s.providerId), { safe: true });
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+    });
+  });
+
+  test("DISPOSAL: storedCredentialState reports only presence and merchant, never a token", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const state = await h.connections.storedCredentialState(s.providerId);
+      assert.deepEqual(state, { present: true, merchantId: s.connection.merchantId });
+      assert.equal(JSON.stringify(state).includes(s.connection.accessToken), false);
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 4, finding 3: checkout needs the webhook configured
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  async function withoutWebhookConfig<T>(variable: string, fn: () => Promise<T>): Promise<T> {
+    const saved = process.env[variable];
+    delete process.env[variable];
+    try { return await fn(); } finally { process.env[variable] = saved; }
+  }
+  for (const variable of ["SQUARE_CATERING_WEBHOOK_NOTIFICATION_URL", "SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY"]) {
+    test(`READINESS: without ${variable} the pay path fails closed: no attempt, no Square link, no request to Square`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const callsBefore = h.fake.requests.length;
+        const outcome = await withoutWebhookConfig(variable, () => pay(h, s));
+        assert.equal(outcome.kind, "unavailable");
+        assert.equal((await h.attempts(s.bookingId)).length, 0);
+        assert.equal(h.fake.links.size, 0);
+        assert.equal(h.fake.requests.length, callsBefore, "Square was not called at all");
+        // and with the configuration present it works again
+        assert.equal((await pay(h, s)).kind, "ok");
+      });
+    });
+  }
+
+  test("READINESS: missing webhook configuration stops NEW checkouts but never stops closing a live link or recognising money that already moved", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CFG_P1", ...first });
+      const second = await unconfirmedLink(h, s, 1);
+      await withoutWebhookConfig("SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY", async () => {
+        assert.equal(h.payments.enabled(), false);
+        assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed", "existing evidence is still recognised");
+        assert.equal(await h.payments.sweepClosedLinks(s.bookingId, { force: true }), 1, "the live link is still closed");
+        assert.equal(h.fake.links.get(second.squarePaymentLinkId!)!.deleted, true);
+      });
+    });
   });
 }

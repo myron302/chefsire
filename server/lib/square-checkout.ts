@@ -27,14 +27,46 @@ export function assertSquareSandboxOnly(): void {
   if (squareEnvironmentName() !== "sandbox") throw new SquareSandboxOnlyError();
 }
 
-/** Whether Catering Square payments may run in this process at all. Never throws. */
-export function cateringSquarePaymentsEnabled(): boolean {
+export type CateringSquareWebhookConfig = { signatureKey: string; notificationUrl: string };
+
+/**
+ * The webhook subscription's signature key and the EXACT notification URL registered in Square. Both are required; neither has a default and the
+ * URL is never derived from a request. The URL must be an absolute https URL without credentials or a fragment (Square only delivers to https,
+ * and the signature is computed over this exact string). Null when either is absent or invalid. Never logs or returns the key except to the
+ * webhook route that verifies with it.
+ *
+ * This ONE function is the contract: the webhook route verifies deliveries with it and `cateringSquarePaymentsEnabled` requires it, so checkout
+ * can never be offered when the durable server-side completion path (the webhook) cannot verify a delivery.
+ */
+export function cateringSquareWebhookConfig(): CateringSquareWebhookConfig | null {
+  const signatureKey = process.env.SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY?.trim();
+  const notificationUrl = process.env.SQUARE_CATERING_WEBHOOK_NOTIFICATION_URL?.trim();
+  if (!signatureKey || !notificationUrl) return null;
+  try {
+    const parsed = new URL(notificationUrl);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash || !parsed.hostname) return null;
+  } catch {
+    return null;
+  }
+  return { signatureKey, notificationUrl };
+}
+
+/** Whether Square is configured for the SANDBOX. Enough to read, settle and clean up what already exists; never to create anything new. Never throws. */
+export function cateringSquareSandboxReady(): boolean {
   try {
     assertSquareSandboxOnly();
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether Catering Square checkout may be OFFERED and CREATED in this process. Never throws. ALL of: Square is configured for the SANDBOX, and the
+ * Catering webhook is configured (a customer may pay and never return to the browser, so the webhook is the durable completion path).
+ */
+export function cateringSquarePaymentsEnabled(): boolean {
+  return cateringSquareSandboxReady() && cateringSquareWebhookConfig() !== null;
 }
 
 export type SquareCheckoutLink = { paymentLinkId: string; orderId: string; url: string };

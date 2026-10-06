@@ -33,6 +33,7 @@ import { classifySquareFailure, squareFailureStatus } from "../lib/square-integr
 import {
   SquareSandboxOnlyError,
   cateringSquarePaymentsEnabled,
+  cateringSquareSandboxReady,
   type SquareCheckoutApi,
   type SquareOrderFacts,
   type SquarePaymentFacts,
@@ -71,6 +72,8 @@ type Executor = typeof Database;
 
 export type CateringSquareConnections = {
   getReadyConnectedCredentials(userId: string): Promise<{ accessToken: string; merchantId: string; locationId: string; currency: string; credentialGeneration: string } | null>;
+  /** Persisted state only (no network, no token): whether a credential is on file for the user, and for which merchant. Throws if it cannot be read. */
+  storedCredentialState(userId: string): Promise<{ present: boolean; merchantId: string | null }>;
   reportAuthorizationFailure(userId: string, credentialGeneration: string): Promise<void>;
 };
 
@@ -81,8 +84,14 @@ export type CateringSquarePaymentsDeps = {
   connections: CateringSquareConnections;
   checkout: SquareCheckoutApi;
   now?: () => Date;
-  /** Whether Square payments may run at all (sandbox configured). Overridable by tests; production wiring never overrides it. */
+  /** Whether NEW Square checkouts may be offered and created: sandbox AND webhook configured. Overridable by tests; production wiring never overrides it. */
   enabled?: () => boolean;
+  /**
+   * Whether existing attempts may still be read, settled and cleaned up: sandbox only. Deliberately weaker than `enabled`: missing webhook
+   * configuration stops new checkouts, but must never stop closing a live link or recognising money that already moved. When a test overrides
+   * `enabled` and not this, `enabled` governs both.
+   */
+  sandboxReady?: () => boolean;
   appBaseUrl?: () => string | null;
   /** Minimum gap between two status-triggered Square reads of one attempt. */
   pollIntervalMs?: number;
@@ -129,6 +138,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
   const { db, connections, checkout } = deps;
   const now = deps.now ?? (() => new Date());
   const enabled = deps.enabled ?? cateringSquarePaymentsEnabled;
+  const sandboxReady = deps.sandboxReady ?? (deps.enabled ?? cateringSquareSandboxReady);
   const log: CateringSquareLogger = deps.log ?? { warn: (event, fields) => console.warn(JSON.stringify({ event, ...fields })) };
   const pollIntervalMs = deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const appBaseUrl = deps.appBaseUrl ?? (() => (process.env.APP_BASE_URL?.trim() || process.env.CLIENT_URL?.trim() || null));
@@ -321,7 +331,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * recognises it and routes it to reconciliation.
    */
   async function sweepClosedLinks(bookingId: string, options: { force?: boolean } = {}): Promise<number> {
-    if (!enabled()) return 0;
+    if (!sandboxReady()) return 0;
     // The DURABLE external-link state is `square_link_closed_at`, deliberately separate from the attempt's business state: a locally
     // terminal attempt (cancelled, superseded, expired) whose link Square has not confirmed gone still needs work, whatever its state says.
     // Each attempt is CLAIMED atomically with exponential backoff (30s, 60s, ... capped at 15 min) so concurrent sweeps share one Square call
@@ -378,29 +388,31 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
   async function settleAttempt(attemptId: string): Promise<SettleOutcome> {
     const first = await attemptById(db, attemptId);
     if (!first) return { outcome: "not_found" };
-    if (!enabled()) return CONSUMED.includes(first.state) ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "sandbox_only", attempt: first };
+    if (!sandboxReady()) return { outcome: "unavailable", reason: "sandbox_only", attempt: first };
     if (!first.squareOrderId) return { outcome: "no_checkout", attempt: first };
 
     // An attempt that already consumed a payment is not finished with: Square may show MORE completed payments on the same order later,
-    // and those are money that moved too. `auditConsumedAttempt` keeps that evidence; it never changes what was already credited.
+    // and those are money that moved too. A consumed attempt's LOCAL state proves nothing about Square: when fresh evidence cannot be read, the
+    // answer is `unavailable` (retryable), never `already_settled`. Only evidence that WAS read and holds nothing new is `already_settled`.
     const consumed = CONSUMED.includes(first.state);
+    const unavailable = (reason: "sandbox_only" | "connection_not_ready" | "merchant_changed" | "square_unreachable"): SettleOutcome => ({ outcome: "unavailable", reason, attempt: first });
     const credentials = await connections.getReadyConnectedCredentials(first.providerId);
-    if (!credentials) return consumed ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "connection_not_ready", attempt: first };
+    if (!credentials) return unavailable("connection_not_ready");
     // The attempt was created for ONE merchant. A connection that now belongs to another merchant cannot see (and must never be
     // used to judge) this attempt's order.
-    if (credentials.merchantId !== first.merchantId) return consumed ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "merchant_changed", attempt: first };
+    if (credentials.merchantId !== first.merchantId) return unavailable("merchant_changed");
 
     let verdict: CateringEvidenceVerdict;
     try {
       const { order, payments } = await fetchEvidence(first, credentials.accessToken);
       verdict = evaluateSquareEvidence({ attemptId: first.id, squareOrderId: first.squareOrderId, locationId: first.locationId, amountCents: first.amountCents, currency: first.currency }, order, payments);
     } catch (error) {
-      if (error instanceof SquareSandboxOnlyError) return consumed ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "sandbox_only", attempt: first };
+      if (error instanceof SquareSandboxOnlyError) return unavailable("sandbox_only");
       if (classifySquareFailure(error) === "provider_credential_invalid") {
         await connections.reportAuthorizationFailure(first.providerId, credentials.credentialGeneration).catch(() => undefined);
       }
       log.warn("catering_square_evidence_unavailable", { attemptId: first.id, errorName: error instanceof Error ? error.name : "unknown" });
-      return consumed ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "square_unreachable", attempt: first };
+      return unavailable("square_unreachable");
     }
 
     if (consumed) {
@@ -623,7 +635,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * more money can be taken on them. A payment that lands anyway is still recognised by `settleAttempt`.
    */
   async function closeStaleOpenAttempts(bookingId: string, options: { sweep?: boolean } = {}): Promise<number> {
-    if (!enabled()) return 0;
+    if (!sandboxReady()) return 0;
     // The common case is a booking with no open checkout: answer it with one cheap read, before taking any lock. Closed checkouts whose
     // Square removal is still unconfirmed (a cancellation while Square was down) are retried here too.
     const [anyOpen] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts)
@@ -663,11 +675,11 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    *  3. `safe` is false -- and the credential change is refused -- if any such link is still unconfirmed afterwards: ChefSire will not
    *     knowingly leave a customer holding a live checkout it is about to lose the ability to settle.
    *
-   * With no usable credential (already revoked, never verified) there is nothing to close WITH and refusing would help nobody, so it is safe;
+   * With NO credential on file (persisted state: disconnected, or every secret removed) there is nothing to close WITH and refusing would help nobody, so it is safe;
+ * a credential that is on file but not ready (outage, failed refresh, configuration fault) is NOT safe to discard while a link remains unconfirmed;
    * the attempts are closed locally either way and can still be closed later if the SAME merchant is reconnected. Idempotent.
    */
   async function closeProviderCheckouts(providerId: string): Promise<{ safe: boolean }> {
-    if (!enabled()) return { safe: true };
     const open = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts)
       .where(and(eq(cateringBookingPaymentAttempts.providerId, providerId), inArray(cateringBookingPaymentAttempts.state, [...OPEN]))) as { bookingId: string }[];
     for (const { bookingId } of open) {
@@ -676,18 +688,29 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         await closeOpenAttemptsInTransaction(tx, bookingId, now());
       });
     }
-    const credentials = await connections.getReadyConnectedCredentials(providerId).catch(() => null);
-    if (!credentials) return { safe: true };
+    // WHAT DEPENDS ON THE STORED CREDENTIAL, from persisted state only: a checkout link whose removal at Square is not yet confirmed. Such a link
+    // can still take a payment, and only that merchant's credential can delete it or read what it took. "Not payment-ready right now" is NOT
+    // "safe to destroy": a verification outage, a failed refresh or a configuration fault all leave the credential on file and still needed.
+    const stored = await connections.storedCredentialState(providerId);
+    if (!stored.present || !stored.merchantId) return { safe: true }; // nothing usable is on file, so nothing is lost by discarding it
+    const merchantId = stored.merchantId;
     const unconfirmed = () => and(
       eq(cateringBookingPaymentAttempts.providerId, providerId),
-      eq(cateringBookingPaymentAttempts.merchantId, credentials.merchantId),
+      eq(cateringBookingPaymentAttempts.merchantId, merchantId),
       inArray(cateringBookingPaymentAttempts.state, [...CLOSED_WITH_LINK_STATES]),
       sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NULL`,
     );
     const due = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts).where(unconfirmed()) as { bookingId: string }[];
+    if (due.length === 0) return { safe: true }; // no live or unconfirmed link depends on the credential
+    // Links remain: the credential must still work to close them. If it cannot be obtained, FAIL CLOSED (the credential is kept for a retry).
+    const credentials = await connections.getReadyConnectedCredentials(providerId).catch(() => null);
+    if (!credentials || credentials.merchantId !== merchantId) {
+      log.warn("catering_square_connection_change_refused", { providerId, reason: "credential_unavailable" });
+      return { safe: false };
+    }
     for (const { bookingId } of due) await sweepClosedLinks(bookingId, { force: true });
     const [remaining] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(unconfirmed()).limit(1);
-    if (remaining) log.warn("catering_square_connection_change_refused", { providerId });
+    if (remaining) log.warn("catering_square_connection_change_refused", { providerId, reason: "links_unconfirmed" });
     return { safe: !remaining };
   }
 
@@ -743,7 +766,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * are kept, and what the ledger records is whatever fresh Square evidence says, never the payload.
    */
   async function handleWebhookEvent(event: SquareWebhookInput): Promise<WebhookResult> {
-    if (!enabled()) return { kind: "retry", reason: "sandbox_only" };
+    if (!sandboxReady()) return { kind: "retry", reason: "sandbox_only" };
     await db.insert(cateringSquareWebhookEvents).values({
       eventId: event.eventId, eventType: event.eventType.slice(0, 64), merchantId: event.merchantId,
       squareOrderId: event.orderId, squarePaymentId: event.paymentId,

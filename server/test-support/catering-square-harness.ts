@@ -32,6 +32,9 @@ export function prepareCateringSquareEnvironment() {
   process.env.SQUARE_APPLICATION_SECRET ||= "app-secret-test";
   process.env[SECRET_BOX_KEY_ENV] ||= randomBytes(32).toString("base64");
   process.env.SQUARE_ENV = "sandbox";
+  // Checkout is only enabled with the webhook configured (the durable completion path), so every suite that expects it enabled has it.
+  process.env.SQUARE_CATERING_WEBHOOK_NOTIFICATION_URL ||= "https://chefsire.test/api/catering/webhooks/square";
+  process.env.SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY ||= "catering-webhook-signature-key-test";
 }
 
 function walk(directory: string, files: string[] = []): string[] {

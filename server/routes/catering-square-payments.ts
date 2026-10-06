@@ -8,6 +8,7 @@ import {
   cateringSquarePayRequestSchema,
   cateringSquarePaymentAttemptIdSchema,
 } from "@shared/catering-square-payments";
+import { cateringSquareWebhookConfig, type CateringSquareWebhookConfig } from "../lib/square-checkout";
 import { requireAuth } from "../middleware";
 import { cateringSquarePayLimiter, cateringSquareStatusLimiter } from "../middleware/rate-limit";
 import { serializeCateringPaymentAttempt } from "../serializers/catering-booking-payment-attempt";
@@ -29,15 +30,7 @@ import { requireSameOriginJson } from "./square-connection";
  * configured notification URL. A verified delivery is only a trigger: nothing it contains is used as payment evidence.
  */
 
-export type CateringSquareWebhookConfig = { signatureKey: string; notificationUrl: string };
-
-/** The webhook subscription's signature key and the exact notification URL registered in Square. Both are required; neither has a default. */
-export function cateringSquareWebhookConfig(): CateringSquareWebhookConfig | null {
-  const signatureKey = process.env.SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY?.trim();
-  const notificationUrl = process.env.SQUARE_CATERING_WEBHOOK_NOTIFICATION_URL?.trim();
-  if (!signatureKey || !notificationUrl) return null;
-  return { signatureKey, notificationUrl };
-}
+export { cateringSquareWebhookConfig, type CateringSquareWebhookConfig };
 
 const webhookEnvelope = z.object({
   event_id: z.string().trim().min(1).max(128),

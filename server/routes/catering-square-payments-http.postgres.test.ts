@@ -981,4 +981,22 @@ if (URL_ENV) {
       assert.equal(everything.includes(`refresh-${s.providerId}`), false);
     });
   });
+
+  test("READINESS over HTTP: with the webhook configuration missing, POST pay answers 503 with the stable unavailable code, creates nothing, and the secret is never returned", async () => {
+    await withLifecycleApp(async ({ h, base }) => {
+      const s = await scene(h, base);
+      const saved = process.env.SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY;
+      delete process.env.SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY;
+      try {
+        const before = h.fake.requests.length;
+        const response = await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId));
+        assert.equal(response.status, 503);
+        const text = await response.text();
+        assert.equal(JSON.parse(text).code, "catering_square_unavailable");
+        assert.equal(text.includes(String(saved)), false);
+        assert.equal((await h.attempts(s.bookingId)).length, 0);
+        assert.equal(h.fake.requests.length, before, "no Square call, so no payment link");
+      } finally { process.env.SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY = saved; }
+    });
+  });
 }
