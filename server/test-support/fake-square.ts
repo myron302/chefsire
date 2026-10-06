@@ -54,6 +54,8 @@ export type FakeSquareState = {
   checkoutCreateDelayMs?: number;
   /** Phase 2Q: when set, `GET /v2/orders/:id` and `GET /v2/payments/:id` answer with this status. */
   evidenceFailure?: number;
+  /** Phase 2Q: when set, `DELETE /v2/online-checkout/payment-links/:id` answers with this status instead of deleting. */
+  linkDeleteFailure?: number;
 };
 
 /** Phase 2Q: the fake's checkout/order/payment world. Every field is plain JSON in Square's own snake_case shape. */
@@ -181,6 +183,7 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
         }
         res.end(JSON.stringify({ payment_link: { id: link.id, version: 1, order_id: link.order_id, url: link.url, long_url: link.url } }));
       } else if (req.method === "DELETE" && path.startsWith("/v2/online-checkout/payment-links/")) {
+        if (state.linkDeleteFailure) { res.statusCode = state.linkDeleteFailure; res.end(state.linkDeleteFailure >= 500 ? JSON.stringify({ errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR" }] }) : JSON.stringify({ errors: [{ category: "INVALID_REQUEST_ERROR", code: "NOT_FOUND" }] })); return; }
         const link = links.get(path.split("/").pop()!);
         if (!link) { res.statusCode = 404; res.end(JSON.stringify({ errors: [{ category: "INVALID_REQUEST_ERROR", code: "NOT_FOUND" }] })); return; }
         link.deleted = true;

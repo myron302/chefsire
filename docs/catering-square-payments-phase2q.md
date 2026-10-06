@@ -95,8 +95,14 @@ add a normal ledger credit. The attempt becomes `reconciliation_required` with `
 section and is notified; the customer sees a safe explanation and is told not to pay again. Reasons: `payable_changed`,
 `invoice_not_payable`, `booking_cancelled`, `amount_mismatch` (incl. a tip), `currency_mismatch`, `multiple_payments`.
 
-Stale checkouts are closed (and their Square links deleted best-effort) when the booking is cancelled, the invoice is withdrawn,
-or the payable falls below what the checkout would take — on the customer's next status check and after every billing mutation.
+Booking cancellation closes the booking's open checkouts **in the cancellation transaction itself** (billing advisory lock → booking
+update → local close, one commit), database only, so a cancelled booking never has a live checkout in the database and a Square outage
+cannot roll back or block a cancellation. After the commit the Square links are removed best-effort (`sweepClosedLinks`);
+`square_link_closed_at` is written **only** once Square confirms the link is gone (a delete, or a 404 meaning already absent), so an
+unconfirmed closure is never recorded as confirmed and is retried by later sweeps (status checks and billing mutations). Money that
+still lands on a link that could not be removed is recognised by settlement and routed to `reconciliation_required`.
+A withdrawn invoice or a payable that fell below the checkout amount closes the checkout the same way, on the customer's next status
+check and after every billing mutation.
 
 ## What did not change
 

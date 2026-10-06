@@ -155,3 +155,17 @@ test("the environment example documents the sandbox-only Catering webhook settin
   assert.ok(example.includes("SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY") && example.includes("SQUARE_CATERING_WEBHOOK_NOTIFICATION_URL"));
   for (const line of example.split("\n").filter((entry) => /CATERING_WEBHOOK/.test(entry) && !entry.trim().startsWith("#"))) assert.match(line, /=\s*$/, "no value is committed");
 });
+
+test("booking cancellation closes open checkouts in its OWN transaction (database only) and removes Square links only after it commits", () => {
+  const route = code(read("server/routes/catering-bookings.ts"));
+  const cancel = route.slice(route.indexOf('r.post("/bookings/:id/cancel"'), route.indexOf("res.json({ booking: serializeCateringBooking(updated) });", route.indexOf('r.post("/bookings/:id/cancel"')));
+  const order = ["lockCateringBilling(tx, id)", "update(cateringBookings)", "closeOpenAttemptsInTransaction(tx, id, now)", "if (!updated)", "cateringSquarePayments.sweepClosedLinks(id).catch(() => undefined)"].map((needle) => cancel.indexOf(needle));
+  assert.ok(order.every((at) => at !== -1), JSON.stringify(order));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "billing lock, booking update, local close (same transaction), then Square cleanup after commit and never fatal");
+  const inTransaction = sources.service.slice(sources.service.indexOf("export async function closeOpenAttemptsInTransaction"));
+  for (const call of ["checkout.", "connections.", "fetch("]) assert.equal(inTransaction.includes(call), false, `no ${call} in the cancellation transaction`);
+  // the closure timestamp is written only after a Square confirmation, and a 404 (already gone) is the only failure treated as one
+  const sweep = sources.service.slice(sources.service.indexOf("async function sweepClosedLinks"), sources.service.indexOf("async function fetchEvidence"));
+  assert.ok(sweep.indexOf("deletePaymentLink") < sweep.indexOf("squareLinkClosedAt: now()"));
+  assert.ok(sweep.includes("squareFailureStatus(error) !== 404"));
+});

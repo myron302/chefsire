@@ -10,9 +10,12 @@ import {
   type CateringPaymentAttemptView,
 } from "@shared/catering-square-payments";
 import {
+  CATERING_ATTEMPT_LOOKUP_FAILED_COPY,
+  CateringAttemptLookupError,
+  cateringAttemptLookupIsTerminal,
+  cateringAttemptPollInterval,
   CATERING_SQUARE_CREATE_RETRIES,
   CATERING_SQUARE_CREATE_RETRY_MS,
-  CATERING_SQUARE_POLL_MS,
   cateringOpenAttemptFor,
   cateringProviderVisibleAttempts,
   cateringReturnedAttemptId,
@@ -109,11 +112,17 @@ function useAttemptPolling(bookingId: string, userId: string, attemptId: string 
   const query = useQuery({
     queryKey: attemptKey(userId, bookingId, attemptId ?? "none"),
     enabled: attemptId !== null,
-    refetchInterval: (polled: { state: { data?: CateringPaymentAttemptView } }) => (polled.state.data && !cateringSquareDisplay(polled.state.data, "customer").polling && polled.state.data.state !== "creating" ? false : CATERING_SQUARE_POLL_MS),
+    // A deterministic 4xx (unknown, stale or inaccessible attempt) is never retried and ends polling at once; transient failures are retried
+    // a bounded number of times. Absent data never means "keep polling forever".
+    retry: (failures: number, error: unknown) => !cateringAttemptLookupIsTerminal(error) && failures < 2,
+    refetchInterval: (polled: { state: { data?: CateringPaymentAttemptView; error?: unknown; errorUpdateCount?: number } }) => cateringAttemptPollInterval(polled.state),
     queryFn: async (): Promise<CateringPaymentAttemptView> => {
-      const response = await fetch(cateringPaymentAttemptPath(bookingId, attemptId!), { credentials: "include" });
+      let response: Response;
+      try { response = await fetch(cateringPaymentAttemptPath(bookingId, attemptId!), { credentials: "include" }); }
+      catch { throw new CateringAttemptLookupError("This payment could not be checked right now.", null); }
       const body = await readJson(response);
-      if (!response.ok || typeof body.attempt !== "object" || body.attempt === null) throw new Error("This payment could not be checked right now.");
+      if (!response.ok) throw new CateringAttemptLookupError("This payment could not be checked right now.", response.status);
+      if (typeof body.attempt !== "object" || body.attempt === null) throw new CateringAttemptLookupError("This payment could not be checked right now.", null);
       return body.attempt as CateringPaymentAttemptView;
     },
   });
@@ -124,7 +133,7 @@ function useAttemptPolling(bookingId: string, userId: string, attemptId: string 
     settled.current = `${attemptId}:${state}`;
     onSettled();
   }, [state, attemptId]);
-  return query.data;
+  return { attempt: query.data, failed: query.isError && !query.data };
 }
 
 /**
@@ -136,7 +145,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
   const customer = billing.role === "customer";
   const [returned, setReturned] = useState<string | null>(() => (typeof window === "undefined" ? null : cateringReturnedAttemptId(window.location.search)));
   const refreshBilling = () => cache.invalidateQueries({ queryKey: cateringBookingBillingKey(userId, bookingId) });
-  const polled = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
+  const { attempt: polled, failed } = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
   const money = (cents: number, currency: string) => formatCateringMoney(cents, currency);
 
   const dismiss = () => {
@@ -155,7 +164,10 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
 
   return <section className="space-y-3" aria-live="polite">
     {showBanner && <div className="rounded-md border p-3 text-sm" role="status">
-      {polled ? <>
+      {failed ? <>
+        <p role="alert" className="break-words">{CATERING_ATTEMPT_LOOKUP_FAILED_COPY}</p>
+        <Button variant="outline" className="mt-2 min-h-11" onClick={dismiss}>Dismiss</Button>
+      </> : polled ? <>
         <p className="break-words font-medium">{polled.state === "pending" ? CATERING_SQUARE_COPY.verifying : cateringSquareDisplay(polled, "customer").label}</p>
         {polled.state === "reconciliation_required" && <p className="mt-1 break-words text-muted-foreground">{cateringSquareReconciliationCopy(polled.reconciliationReason, "customer")}</p>}
         {polled.state !== "pending" && <Button variant="outline" className="mt-2 min-h-11" onClick={dismiss}>Dismiss</Button>}

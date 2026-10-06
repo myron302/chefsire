@@ -32,6 +32,7 @@ export const cateringBookingPaymentAttempts = pgTable("catering_booking_payment_
   paymentId: varchar("payment_id").references(() => cateringBookingPayments.id, { onDelete: "restrict" }),
   reconciliationReason: varchar("reconciliation_reason", { length: 40 }),
   failureCode: varchar("failure_code", { length: 40 }),
+  squareLinkClosedAt: timestamp("square_link_closed_at", { withTimezone: true }),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),

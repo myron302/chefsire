@@ -72,6 +72,44 @@ export function cateringReturnedAttemptId(search: string): string | null {
   return value && /^[A-Za-z0-9-]{1,64}$/.test(value) ? value : null;
 }
 
+/** The error a failed attempt lookup throws: the HTTP status (or null for a network failure) so polling can tell terminal from transient. */
+export class CateringAttemptLookupError extends Error {
+  constructor(message: string, readonly status: number | null) { super(message); this.name = "CateringAttemptLookupError"; }
+}
+
+/**
+ * Whether a failed lookup can never succeed by asking again: Square-independent, deterministic 4xx answers -- an unknown, stale, deleted or
+ * someone else's attempt (all the same non-enumerating 404), a refused session, a malformed id. Network faults, 5xx, 408 and 429 are
+ * transient and may be retried a bounded number of times.
+ */
+export function cateringAttemptLookupIsTerminal(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" && status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+export const CATERING_ATTEMPT_LOOKUP_MAX_FAILURES = 3;
+
+/**
+ * The polling interval for ONE attempt's status query, as a pure function of the query state.
+ *  - a pending (or still-creating) attempt: keep asking;
+ *  - any other settled attempt: stop;
+ *  - NO data yet: keep asking only while nothing has gone wrong. A terminal error stops at once, and transient errors stop after a bounded
+ *    number of consecutive failures, so absent data can never mean an endless loop.
+ */
+export function cateringAttemptPollInterval(state: { data?: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl">; error?: unknown; errorUpdateCount?: number }): number | false {
+  if (state.error !== undefined && state.error !== null) {
+    if (cateringAttemptLookupIsTerminal(state.error)) return false;
+    if ((state.errorUpdateCount ?? 0) >= CATERING_ATTEMPT_LOOKUP_MAX_FAILURES) return false;
+  }
+  if (state.data) {
+    const display = cateringSquareDisplay(state.data, "customer");
+    return display.polling || state.data.state === "creating" ? CATERING_SQUARE_POLL_MS : false;
+  }
+  return CATERING_SQUARE_POLL_MS;
+}
+
+export const CATERING_ATTEMPT_LOOKUP_FAILED_COPY = "We couldn't verify this payment attempt. Refresh your billing page, or start again if a payment is still due. Nothing has been marked as paid.";
+
 /** Checkout creation answered `creating`: Square's answer was uncertain. The same request again resumes the same checkout. */
 export const CATERING_SQUARE_CREATE_RETRIES = 3;
 export const CATERING_SQUARE_CREATE_RETRY_MS = 2_000;

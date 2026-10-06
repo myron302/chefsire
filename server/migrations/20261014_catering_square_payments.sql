@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS catering_booking_payment_attempts (
   payment_id varchar REFERENCES catering_booking_payments(id) ON DELETE RESTRICT,
   reconciliation_reason varchar(40),
   failure_code varchar(40),
+  -- Set ONLY when Square confirmed the payment link is gone (or reported it already absent). NULL on a closed attempt means the external
+  -- cleanup is unconfirmed and will be retried; it is never set optimistically.
+  square_link_closed_at timestamptz,
   last_checked_at timestamptz,
   verified_at timestamptz,
   completed_at timestamptz,

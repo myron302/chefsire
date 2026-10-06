@@ -234,7 +234,8 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
 
     if (prepared.kind === "not_found") return { kind: "not_found" };
     if (prepared.kind === "refused") return prepared;
-    for (const stale of prepared.superseded) await deleteLinkBestEffort(credentials.accessToken, stale);
+    // The superseded checkouts are already closed locally; their Square links are removed (and the removal recorded only once Square confirms it).
+    if (prepared.superseded.length > 0) await sweepClosedLinks(booking.id);
 
     let attempt = prepared.attempt;
     if (attempt.state === "creating") {
@@ -283,8 +284,16 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), eq(cateringBookingPaymentAttempts.state, "creating"))).returning();
     if (pending) return { kind: "ok", attempt: pending as CateringBookingPaymentAttempt };
     // Another request resumed it first, or it was closed while Square was creating it. Report what is true now.
-    const current = (await attemptById(db, attempt.id)) ?? attempt;
-    if (current.state === "superseded" || current.state === "cancelled") await deleteLinkBestEffort(credentials.accessToken, { ...current, squarePaymentLinkId: link.paymentLinkId });
+    let current = (await attemptById(db, attempt.id)) ?? attempt;
+    if ((current.state === "superseded" || current.state === "cancelled") && !current.squarePaymentLinkId) {
+      // Closed while Square was creating it. Keep the link and order it produced ON the closed attempt, so a payment that still lands on that
+      // link is recognised by settlement, and so the link can be removed and that removal confirmed.
+      const [kept] = await db.update(cateringBookingPaymentAttempts)
+        .set({ squarePaymentLinkId: link.paymentLinkId, squareOrderId: link.orderId, updatedAt: now() })
+        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), inArray(cateringBookingPaymentAttempts.state, ["superseded", "cancelled"]))).returning();
+      current = (kept as CateringBookingPaymentAttempt | undefined) ?? current;
+      await sweepClosedLinks(bookingId);
+    }
     return { kind: "ok", attempt: current };
   }
 
@@ -294,13 +303,37 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     return number > 0 ? `Catering invoice ${cateringInvoiceReference(attempt.bookingId, number)}` : "Catering invoice";
   }
 
-  async function deleteLinkBestEffort(accessToken: string, attempt: Pick<CateringBookingPaymentAttempt, "id" | "squarePaymentLinkId">) {
-    if (!attempt.squarePaymentLinkId) return;
-    try {
-      await checkout.deletePaymentLink(accessToken, attempt.squarePaymentLinkId);
-    } catch (error) {
-      log.warn("catering_square_link_delete_failed", { attemptId: attempt.id, errorName: error instanceof Error ? error.name : "unknown" });
+  /**
+   * Removes the Square payment links of CLOSED attempts (cancelled or superseded) whose removal Square has not yet confirmed.
+   *
+   * Best effort and idempotent. It never decides whether an attempt is closed -- that is already settled, locally and authoritatively, in
+   * the transaction that closed it -- so a Square outage cannot undo a cancellation. `square_link_closed_at` is written ONLY after Square
+   * confirms the link is gone (a delete, or a 404 saying it is already absent); a failure leaves it NULL so the next sweep retries and
+   * nothing ever claims a closure Square did not confirm. If money lands on a link that could not be removed in time, settlement still
+   * recognises it and routes it to reconciliation.
+   */
+  async function sweepClosedLinks(bookingId: string): Promise<number> {
+    if (!enabled()) return 0;
+    const pending = await db.select().from(cateringBookingPaymentAttempts).where(and(
+      eq(cateringBookingPaymentAttempts.bookingId, bookingId),
+      inArray(cateringBookingPaymentAttempts.state, ["cancelled", "superseded"]),
+      sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NULL`,
+    )) as CateringBookingPaymentAttempt[];
+    let confirmed = 0;
+    for (const attempt of pending) {
+      const credentials = await connections.getReadyConnectedCredentials(attempt.providerId).catch(() => null);
+      if (!credentials || credentials.merchantId !== attempt.merchantId) { log.warn("catering_square_link_close_deferred", { attemptId: attempt.id }); continue; }
+      try {
+        await checkout.deletePaymentLink(credentials.accessToken, attempt.squarePaymentLinkId!);
+      } catch (error) {
+        // Square saying the link does not exist is a confirmation that it is gone; anything else is unconfirmed.
+        if (squareFailureStatus(error) !== 404) { log.warn("catering_square_link_delete_failed", { attemptId: attempt.id, errorName: error instanceof Error ? error.name : "unknown" }); continue; }
+      }
+      await db.update(cateringBookingPaymentAttempts).set({ squareLinkClosedAt: now() })
+        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), sql`${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NULL`));
+      confirmed += 1;
     }
+    return confirmed;
   }
 
   /* --------------------------------------------------------------------------------------------------------- *
@@ -466,10 +499,11 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    */
   async function closeStaleOpenAttempts(bookingId: string): Promise<number> {
     if (!enabled()) return 0;
-    // The common case is a booking with no open checkout: answer it with one cheap read, before taking any lock.
+    // The common case is a booking with no open checkout: answer it with one cheap read, before taking any lock. Closed checkouts whose
+    // Square removal is still unconfirmed (a cancellation while Square was down) are retried here too.
     const [anyOpen] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts)
       .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), inArray(cateringBookingPaymentAttempts.state, [...OPEN]))).limit(1);
-    if (!anyOpen) return 0;
+    if (!anyOpen) { await sweepClosedLinks(bookingId); return 0; }
     const closed = await db.transaction(async (tx: Executor) => {
       await lockCateringBilling(tx, bookingId);
       const booking = await lockedBooking(tx, bookingId);
@@ -490,12 +524,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       }
       return result;
     });
-    if (closed.length === 0) return 0;
-    const withLinks = closed.filter((attempt: CateringBookingPaymentAttempt) => attempt.squarePaymentLinkId);
-    if (withLinks.length > 0) {
-      const credentials = await connections.getReadyConnectedCredentials(withLinks[0].providerId).catch(() => null);
-      if (credentials && credentials.merchantId === withLinks[0].merchantId) for (const attempt of withLinks) await deleteLinkBestEffort(credentials.accessToken, attempt);
-    }
+    await sweepClosedLinks(bookingId);
     return closed.length;
   }
 
@@ -593,7 +622,20 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       .orderBy(desc(cateringBookingPaymentAttempts.createdAt), asc(cateringBookingPaymentAttempts.id)).limit(50) as Promise<CateringBookingPaymentAttempt[]>;
   }
 
-  return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, attemptsForBooking };
+  return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, sweepClosedLinks, attemptsForBooking };
+}
+
+/**
+ * Closes a booking's open Square checkouts LOCALLY, inside the caller's transaction. Called by the booking-cancellation transaction, under
+ * the billing advisory lock it has already taken, so the booking's status and its open checkouts change in one commit: there is no moment
+ * at which a cancelled booking still has a live checkout in the database. Database only -- no Square call is made here, so a Square outage
+ * can never roll back or block a cancellation. The Square links are removed afterwards by `sweepClosedLinks`.
+ */
+export async function closeOpenAttemptsInTransaction(tx: Executor, bookingId: string, at: Date): Promise<number> {
+  const closed = await tx.update(cateringBookingPaymentAttempts)
+    .set({ state: "cancelled", closedAt: at, updatedAt: at })
+    .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), inArray(cateringBookingPaymentAttempts.state, [...OPEN]))).returning({ id: cateringBookingPaymentAttempts.id });
+  return closed.length;
 }
 
 export type CateringSquarePayments = ReturnType<typeof createCateringSquarePayments>;

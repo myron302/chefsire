@@ -3,6 +3,7 @@
  * Drizzle schema, the REAL Gate 0 connection service and the REAL `square` SDK against a local fake Square. Set TEST_DATABASE_URL to a
  * loopback database whose name contains "test"; skipped otherwise.
  */
+import "../test-support/placeholder-database-url";
 import "../test-support/accept-test-sessions";
 import "../test-support/auth-test-env";
 import test from "node:test";
@@ -21,6 +22,8 @@ const tok = (id: string) => ({ authorization: `Bearer ${signAuthToken({ id, av: 
 
 const WEBHOOK_URL = "https://chefsire.test/api/catering/webhooks/square";
 const WEBHOOK_KEY = "catering-webhook-signature-key";
+const post = (url: string, headers: Record<string, string>, body: unknown = {}) =>
+  fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
 const sign = (body: string, url = WEBHOOK_URL, key = WEBHOOK_KEY) => createHmac("sha256", key).update(url + body).digest("base64");
 
 if (!URL_ENV) {
@@ -47,8 +50,6 @@ if (!URL_ENV) {
     const { bookingId, invoiceIds } = await h.booking({ providerId, customerId, invoices: [{ kind: "deposit", amountCents: 40000 }, { kind: "balance", amountCents: 60000 }] });
     return { providerId, customerId, bookingId, invoiceIds, connection };
   }
-  const post = (url: string, headers: Record<string, string>, body: unknown = {}) =>
-    fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
   const event = (id: string, merchantId: string, orderId: string, type = "payment.updated") => JSON.stringify({
     merchant_id: merchantId, type, event_id: id, created_at: new Date().toISOString(),
     data: { type: "payment", id: "PAYMENT_X", object: { payment: { id: "PAYMENT_X", order_id: orderId, status: "COMPLETED", amount_money: { amount: 999999, currency: "USD" } } } },
@@ -276,6 +277,162 @@ if (!URL_ENV) {
     await withApp(async ({ h }) => {
       const columns = (await h.q(`SELECT column_name FROM information_schema.columns WHERE table_name = 'catering_square_webhook_events' ORDER BY column_name`)).map((row) => row.column_name);
       assert.deepEqual(columns, ["attempt_count", "attempt_id", "event_id", "event_type", "id", "merchant_id", "outcome", "processed_at", "received_at", "square_order_id", "square_payment_id", "state", "updated_at"]);
+    });
+  });
+}
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Booking cancellation closes open Square checkouts (Codex repair pass 1)
+ * ------------------------------------------------------------------------------------------------------------- */
+
+if (URL_ENV) {
+  const { pool: globalPool } = await import("../db/index");
+  const { createCateringSquarePaymentsRouter } = await import("./catering-square-payments");
+  const { default: bookingsRouter } = await import("./catering-bookings");
+  const { cateringSquarePayments } = await import("../services/catering-square-payments-instance");
+
+  /** The REAL booking router and the REAL cancel route, pointed at the harness database and the fake-Square-backed payment service. */
+  async function withBookingApp(fn: (ctx: { h: CateringSquareHarness; base: string }) => Promise<void>) {
+    const h = await createCateringSquareHarness(URL_ENV!);
+    let server: ReturnType<ReturnType<typeof express>["listen"]> | undefined;
+    try {
+    (globalPool as never as { connect: unknown }).connect = () => h.pool.connect();
+    (globalPool as never as { query: unknown }).query = (q: unknown, params?: unknown[]) => h.pool.query(q as string, params);
+    Object.assign(cateringSquarePayments, h.payments);
+    const app = express();
+    app.use(cookieParser());
+    app.use(express.json());
+    app.use("/api/catering", bookingsRouter);
+    app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => null }));
+    server = app.listen(0);
+    await fn({ h, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` });
+    } finally { server?.close(); await h.cleanup(); }
+  }
+  async function pendingScene(h: CateringSquareHarness, base: string) {
+    const providerId = await h.user("provider");
+    const customerId = await h.user("customer");
+    const connection = await h.connectProvider(providerId);
+    const { bookingId, invoiceIds } = await h.booking({ providerId, customerId, invoices: [{ kind: "deposit", amountCents: 40000 }, { kind: "balance", amountCents: 60000 }] });
+    const created = await (await post(`${base}/api/catering/bookings/${bookingId}/billing/invoices/${invoiceIds[0]}/pay`, tok(customerId))).json();
+    return { providerId, customerId, bookingId, invoiceIds, connection, attemptId: created.attempt.id as string, orderId: h.fake.lastOrder()!.id, linkId: (await h.attempt(created.attempt.id)).square_payment_link_id as string };
+  }
+  const cancel = (base: string, bookingId: string, userId: string) => post(`${base}/api/catering/bookings/${bookingId}/cancel`, tok(userId), {});
+  const deletes = (h: CateringSquareHarness) => h.fake.requests.filter((request) => request.method === "DELETE").length;
+
+  test("cancelling a booking closes its pending Square attempt in the same commit and removes the Square link", async () => {
+    await withBookingApp(async ({ h, base }) => {
+      const s = await pendingScene(h, base);
+      assert.equal((await h.attempt(s.attemptId)).state, "pending");
+      const response = await cancel(base, s.bookingId, s.providerId);
+      assert.equal(response.status, 200);
+      const row = await h.attempt(s.attemptId);
+      assert.equal(row.state, "cancelled");
+      assert.ok(row.closed_at);
+      assert.equal(h.fake.links.get(s.linkId)!.deleted, true, "Square was asked to close the checkout");
+      assert.ok(row.square_link_closed_at, "recorded only because Square confirmed it");
+      assert.equal((await h.q(`SELECT status FROM catering_bookings WHERE id = $1`, [s.bookingId]))[0].status, "cancelled");
+    });
+  });
+
+  test("after cancellation the customer is no longer offered 'Continue to Square checkout': no open attempt and no checkout URL", async () => {
+    await withBookingApp(async ({ h, base }) => {
+      const s = await pendingScene(h, base);
+      await cancel(base, s.bookingId, s.customerId);
+      const status = await (await fetch(`${base}/api/catering/bookings/${s.bookingId}/billing/payment-attempts/${s.attemptId}`, { headers: tok(s.customerId) })).json();
+      assert.equal(status.attempt.state, "cancelled");
+      assert.equal(status.attempt.checkoutUrl, undefined);
+      const attempts = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      assert.equal(attempts.some((attempt: { state: string }) => attempt.state === "pending" || attempt.state === "creating"), false);
+      const again = await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId));
+      assert.equal(again.status, 409, "and a new checkout cannot be opened");
+    });
+  });
+
+  test("a Square outage during cleanup does not block or undo the cancellation, and the closure is NOT recorded as confirmed", async () => {
+    await withBookingApp(async ({ h, base }) => {
+      const s = await pendingScene(h, base);
+      h.fake.state.linkDeleteFailure = 503;
+      const response = await cancel(base, s.bookingId, s.providerId);
+      assert.equal(response.status, 200, "cancellation is authoritative");
+      const row = await h.attempt(s.attemptId);
+      assert.equal(row.state, "cancelled");
+      assert.equal(row.square_link_closed_at, null, "unconfirmed: never claimed closed");
+      assert.equal(h.fake.links.get(s.linkId)!.deleted, false);
+      // A later sweep retries, and only then records the confirmation.
+      h.fake.state.linkDeleteFailure = undefined;
+      assert.equal(await h.payments.sweepClosedLinks(s.bookingId), 1);
+      assert.ok((await h.attempt(s.attemptId)).square_link_closed_at);
+      assert.equal(h.fake.links.get(s.linkId)!.deleted, true);
+    });
+  });
+
+  test("Square's 'already gone' (404) counts as confirmed; any other refusal does not", async () => {
+    await withBookingApp(async ({ h, base }) => {
+      const s = await pendingScene(h, base);
+      h.fake.state.linkDeleteFailure = 422;
+      await cancel(base, s.bookingId, s.providerId);
+      assert.equal((await h.attempt(s.attemptId)).square_link_closed_at, null);
+      h.fake.state.linkDeleteFailure = 404;
+      assert.equal(await h.payments.sweepClosedLinks(s.bookingId), 1);
+      assert.ok((await h.attempt(s.attemptId)).square_link_closed_at);
+    });
+  });
+
+  test("cancellation and cleanup are idempotent: a repeat is refused, and a repeated sweep makes no further Square calls", async () => {
+    await withBookingApp(async ({ h, base }) => {
+      const s = await pendingScene(h, base);
+      assert.equal((await cancel(base, s.bookingId, s.providerId)).status, 200);
+      const after = deletes(h);
+      assert.equal(after, 1);
+      assert.equal((await cancel(base, s.bookingId, s.providerId)).status, 409);
+      assert.equal(await h.payments.sweepClosedLinks(s.bookingId), 0);
+      assert.equal(await h.payments.closeStaleOpenAttempts(s.bookingId), 0);
+      assert.equal(deletes(h), after, "nothing is deleted twice");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+    });
+  });
+
+  test("a webhook or poll after cancellation with no money moved stays terminal and credits nothing", async () => {
+    await withBookingApp(async ({ h, base }) => {
+      const s = await pendingScene(h, base);
+      await cancel(base, s.bookingId, s.providerId);
+      for (let i = 0; i < 2; i += 1) {
+        assert.equal((await h.payments.handleWebhookEvent({ eventId: `evt-nomoney-${i}`, eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: s.orderId, paymentId: null })).kind, "processed");
+        await h.payments.getAttempt({ bookingId: s.bookingId, attemptId: s.attemptId, userId: s.customerId });
+      }
+      assert.equal((await h.attempt(s.attemptId)).state, "cancelled");
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+  });
+
+  test("money confirmed after cancellation (the link could not be closed in time) keeps its evidence and enters reconciliation, once", async () => {
+    await withBookingApp(async ({ h, base }) => {
+      const s = await pendingScene(h, base);
+      h.fake.state.linkDeleteFailure = 503;
+      await cancel(base, s.bookingId, s.providerId);
+      const payment = h.fake.payOrder(s.orderId);
+      const results = await Promise.all([1, 2, 3].map(() => h.payments.settleAttempt(s.attemptId)));
+      assert.ok(results.every((result) => result.outcome === "reconciliation_required" || result.outcome === "already_settled"));
+      const row = await h.attempt(s.attemptId);
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal(row.reconciliation_reason, "booking_cancelled");
+      assert.equal(row.square_payment_id, payment.id);
+      assert.equal(Number(row.processor_amount_cents), 40000);
+      assert.equal((await h.ledger(s.bookingId)).length, 0, "no normal credit against a cancelled booking, and no duplicate");
+      assert.equal(h.fake.requests.some((request) => request.method === "POST" && /refund/.test(request.path)), false);
+    });
+  });
+
+  test("cancellation racing a settlement ends consistently: one credit or one reconciliation, never both, never two", async () => {
+    await withBookingApp(async ({ h, base }) => {
+      const s = await pendingScene(h, base);
+      h.fake.payOrder(s.orderId);
+      const [cancelled] = await Promise.all([cancel(base, s.bookingId, s.providerId), h.payments.settleAttempt(s.attemptId), h.payments.settleAttempt(s.attemptId)]);
+      assert.equal(cancelled.status, 200);
+      const row = await h.attempt(s.attemptId);
+      assert.ok(row.state === "completed" || row.state === "reconciliation_required", row.state);
+      const credits = await h.processorLedger(s.bookingId);
+      assert.equal(credits.length, row.state === "completed" ? 1 : 0);
     });
   });
 }

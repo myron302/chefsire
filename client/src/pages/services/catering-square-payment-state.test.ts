@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CateringPaymentAttemptView } from "@shared/catering-square-payments";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+  CATERING_ATTEMPT_LOOKUP_FAILED_COPY,
+  CATERING_ATTEMPT_LOOKUP_MAX_FAILURES,
+  CATERING_SQUARE_POLL_MS,
+  CateringAttemptLookupError,
+  cateringAttemptLookupIsTerminal,
+  cateringAttemptPollInterval,
   cateringOpenAttemptFor,
   cateringProviderVisibleAttempts,
   cateringReturnedAttemptId,
@@ -82,4 +91,98 @@ test("the browser is only ever sent to an https Square host", () => {
   for (const ok of ["https://square.link/u/abc", "https://sandbox.square.link/u/abc", "https://connect.squareupsandbox.com/v2/checkout?x=1", "https://checkout.square.site/pay/abc"]) assert.ok(cateringSafeCheckoutUrl(ok), ok);
   for (const bad of ["http://square.link/u/abc", "https://evil.example/square.link", "https://square.link.evil.example/u", "javascript:alert(1)", "not a url", ""]) assert.equal(cateringSafeCheckoutUrl(bad), null, bad);
   assert.equal(cateringSafeCheckoutUrl(undefined), null);
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Codex repair pass 1: a failed attempt lookup must never poll forever
+ * ------------------------------------------------------------------------------------------------------------- */
+
+const lookupError = (status: number | null) => new CateringAttemptLookupError("x", status);
+
+test("a pending or creating attempt keeps being polled", () => {
+  assert.equal(cateringAttemptPollInterval({ data: attempt() }), CATERING_SQUARE_POLL_MS);
+  assert.equal(cateringAttemptPollInterval({ data: attempt({ state: "creating" }) }), CATERING_SQUARE_POLL_MS);
+});
+
+test("a completed or other terminal attempt stops polling", () => {
+  for (const state of ["completed", "reconciliation_required", "failed", "expired", "cancelled", "superseded"] as const) {
+    assert.equal(cateringAttemptPollInterval({ data: attempt({ state }) }), false, state);
+  }
+});
+
+test("with no data yet it polls, but only until something has gone wrong", () => {
+  assert.equal(cateringAttemptPollInterval({}), CATERING_SQUARE_POLL_MS);
+});
+
+test("a 404 (unknown, stale or someone else's attempt, which look identical) stops polling at once, even with no data", () => {
+  assert.equal(cateringAttemptPollInterval({ error: lookupError(404) }), false);
+  assert.equal(cateringAttemptPollInterval({ error: lookupError(404), errorUpdateCount: 1 }), false);
+});
+
+test("every deterministic 4xx stops polling: unauthorized, forbidden, malformed", () => {
+  for (const status of [400, 401, 403, 404, 410, 422]) {
+    assert.equal(cateringAttemptLookupIsTerminal(lookupError(status)), true, String(status));
+    assert.equal(cateringAttemptPollInterval({ error: lookupError(status) }), false, String(status));
+  }
+});
+
+test("transient failures (network, 5xx, 408, 429) are not terminal, and are retried only a bounded number of times", () => {
+  for (const status of [null, 500, 502, 503, 408, 429]) {
+    assert.equal(cateringAttemptLookupIsTerminal(lookupError(status)), false, String(status));
+    assert.equal(cateringAttemptPollInterval({ error: lookupError(status), errorUpdateCount: 1 }), CATERING_SQUARE_POLL_MS, `${status} retried`);
+    assert.equal(cateringAttemptPollInterval({ error: lookupError(status), errorUpdateCount: CATERING_ATTEMPT_LOOKUP_MAX_FAILURES }), false, `${status} bounded`);
+  }
+  assert.equal(cateringAttemptLookupIsTerminal(new Error("no status")), false);
+  assert.equal(cateringAttemptLookupIsTerminal(null), false);
+});
+
+test("a transient failure does not leave a permanent false terminal state: once data arrives polling follows the attempt again", () => {
+  assert.equal(cateringAttemptPollInterval({ error: lookupError(503), errorUpdateCount: 1, data: attempt() }), CATERING_SQUARE_POLL_MS);
+});
+
+test("no endless fetching after a deterministic 404: simulate the interval loop and count fetches", () => {
+  let fetches = 0;
+  let state: Parameters<typeof cateringAttemptPollInterval>[0] = {};
+  for (let tick = 0; tick < 50; tick += 1) {
+    if (cateringAttemptPollInterval(state) === false) break;
+    fetches += 1;
+    state = { error: lookupError(404), errorUpdateCount: (state.errorUpdateCount ?? 0) + 1 };
+  }
+  assert.equal(fetches, 1, "one lookup, then silence");
+  let transient = 0;
+  state = {};
+  for (let tick = 0; tick < 50; tick += 1) {
+    if (cateringAttemptPollInterval(state) === false) break;
+    transient += 1;
+    state = { error: lookupError(503), errorUpdateCount: (state.errorUpdateCount ?? 0) + 1 };
+  }
+  assert.equal(transient, CATERING_ATTEMPT_LOOKUP_MAX_FAILURES, "and a persistent outage is bounded too");
+});
+
+test("the failure copy is safe: it does not say whether the attempt exists and never claims payment", () => {
+  assert.equal(/not found|does not exist|unauthori[sz]ed|forbidden|404/i.test(CATERING_ATTEMPT_LOOKUP_FAILED_COPY), false);
+  assert.match(CATERING_ATTEMPT_LOOKUP_FAILED_COPY, /Nothing has been marked as paid/);
+});
+
+const component = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "components", "catering", "BookingSquarePayments.tsx"), "utf8");
+
+test("the component stops polling through the pure interval, retries only transient failures, and renders a dismissible error", () => {
+  assert.ok(component.includes("refetchInterval: (polled: { state: { data?: CateringPaymentAttemptView; error?: unknown; errorUpdateCount?: number } }) => cateringAttemptPollInterval(polled.state)"));
+  assert.ok(component.includes("retry: (failures: number, error: unknown) => !cateringAttemptLookupIsTerminal(error) && failures < 2"));
+  assert.ok(component.includes("throw new CateringAttemptLookupError("));
+  assert.ok(component.includes("response.status"), "the HTTP status is what classifies the failure");
+  const failedBranch = component.slice(component.indexOf("{failed ? <>"), component.indexOf(": polled ? <>"));
+  assert.ok(failedBranch.includes("CATERING_ATTEMPT_LOOKUP_FAILED_COPY") && failedBranch.includes("onClick={dismiss}") && failedBranch.includes('role="alert"'));
+});
+
+test("dismissing only hides the banner and consumes the URL hint: no request, no mutation, nothing marked paid, no new attempt", () => {
+  const dismiss = component.slice(component.indexOf("const dismiss = () => {"), component.indexOf("const attempts = customer"));
+  assert.ok(dismiss.includes("setReturned(null)"));
+  assert.ok(dismiss.includes('url.searchParams.delete("squareAttempt")') && dismiss.includes("window.history.replaceState"));
+  for (const forbidden of ["fetch(", "mutate(", "mutation", "setQueryData", "invalidateQueries", "start."]) assert.equal(dismiss.includes(forbidden), false, forbidden);
+  // with the hint cleared the attempt query is disabled, so it cannot fire again
+  assert.ok(component.includes("useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling)"));
+  assert.ok(component.includes("enabled: attemptId !== null"));
+  // and the invoice's own pay control is a separate component, untouched by the banner
+  assert.ok(component.includes("export function InvoiceSquarePayment"));
 });
