@@ -61,6 +61,11 @@ export type SquarePaymentFacts = {
   totalCents: number | null;
   tipCents: number;
   currency: string | null;
+  /** Square's own `created_at` / `updated_at` for the payment, as ISO strings (null when absent). */
+  createdAt: string | null;
+  updatedAt: string | null;
+  /** Whether Square shows any refund against it (a refund moves `updated_at`, so it is no longer the completion time). */
+  hasRefunds: boolean;
 };
 
 export interface SquareCheckoutApi {
@@ -138,6 +143,9 @@ export function createSquareCheckoutApi(options: SquareSdkOptions = {}): SquareC
         totalCents: cents(total?.amount),
         tipCents: cents(payment.tipMoney?.amount) ?? 0,
         currency: total?.currency ?? null,
+        createdAt: payment.createdAt ?? null,
+        updatedAt: payment.updatedAt ?? null,
+        hasRefunds: (payment.refundIds?.length ?? 0) > 0 || (cents(payment.refundedMoney?.amount) ?? 0) > 0,
       };
     },
   };

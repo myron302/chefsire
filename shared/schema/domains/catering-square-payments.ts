@@ -29,6 +29,7 @@ export const cateringBookingPaymentAttempts = pgTable("catering_booking_payment_
   squarePaymentId: text("square_payment_id"),
   processorAmountCents: bigint("processor_amount_cents", { mode: "number" }),
   processorCurrency: varchar("processor_currency", { length: 3 }),
+  processorPaymentCount: integer("processor_payment_count").default(0).notNull(),
   paymentId: varchar("payment_id").references(() => cateringBookingPayments.id, { onDelete: "restrict" }),
   reconciliationReason: varchar("reconciliation_reason", { length: 40 }),
   failureCode: varchar("failure_code", { length: 40 }),
@@ -59,10 +60,11 @@ export const cateringBookingPaymentAttempts = pgTable("catering_booking_payment_
   processorAmountCheck: check("catering_attempt_processor_amount_check", sql`${t.processorAmountCents} IS NULL OR (${t.processorAmountCents} > 0 AND ${t.processorAmountCents} <= 9999999999)`),
   processorCurrencyCheck: check("catering_attempt_processor_currency_check", sql`${t.processorCurrency} IS NULL OR ${t.processorCurrency} ~ '^[A-Z]{3}$'`),
   pendingCheck: check("catering_attempt_pending_check", sql`${t.state} <> 'pending' OR (${t.squareOrderId} IS NOT NULL AND ${t.squarePaymentLinkId} IS NOT NULL AND ${t.checkoutUrl} IS NOT NULL)`),
-  completedCheck: check("catering_attempt_completed_check", sql`${t.state} <> 'completed' OR (${t.paymentId} IS NOT NULL AND ${t.squarePaymentId} IS NOT NULL AND ${t.processorAmountCents} IS NOT NULL AND ${t.processorCurrency} IS NOT NULL AND ${t.completedAt} IS NOT NULL)`),
-  ledgerLinkCheck: check("catering_attempt_ledger_link_check", sql`${t.paymentId} IS NULL OR ${t.state} = 'completed'`),
-  reconciliationCheck: check("catering_attempt_reconciliation_check", sql`${t.state} <> 'reconciliation_required' OR (${t.paymentId} IS NULL AND ${t.squarePaymentId} IS NOT NULL AND ${t.processorAmountCents} IS NOT NULL AND ${t.processorCurrency} IS NOT NULL AND ${t.reconciliationReason} IS NOT NULL)`),
+  completedCheck: check("catering_attempt_completed_check", sql`${t.state} <> 'completed' OR (${t.paymentId} IS NOT NULL AND ${t.squarePaymentId} IS NOT NULL AND ${t.processorAmountCents} IS NOT NULL AND ${t.processorCurrency} IS NOT NULL AND ${t.completedAt} IS NOT NULL AND ${t.processorPaymentCount} = 1)`),
+  ledgerLinkCheck: check("catering_attempt_ledger_link_check", sql`${t.paymentId} IS NULL OR ${t.state} = 'completed' OR (${t.state} = 'reconciliation_required' AND ${t.reconciliationReason} = 'multiple_payments')`),
+  reconciliationCheck: check("catering_attempt_reconciliation_check", sql`${t.state} <> 'reconciliation_required' OR (${t.reconciliationReason} IS NOT NULL AND ${t.processorPaymentCount} >= 1 AND ((${t.processorPaymentCount} = 1 AND ${t.paymentId} IS NULL AND ${t.squarePaymentId} IS NOT NULL AND ${t.processorAmountCents} IS NOT NULL AND ${t.processorCurrency} IS NOT NULL) OR (${t.processorPaymentCount} > 1 AND ${t.squarePaymentId} IS NULL)))`),
   reconciliationReasonCheck: check("catering_attempt_reconciliation_reason_check", sql`${t.reconciliationReason} IS NULL OR ${t.state} = 'reconciliation_required'`),
+  paymentCountCheck: check("catering_attempt_payment_count_check", sql`(${t.state} IN ('completed', 'reconciliation_required') AND ${t.processorPaymentCount} >= 1) OR (${t.state} NOT IN ('completed', 'reconciliation_required') AND ${t.processorPaymentCount} = 0)`),
   paymentEvidenceCheck: check("catering_attempt_payment_evidence_check", sql`${t.squarePaymentId} IS NULL OR ${t.state} IN ('completed', 'reconciliation_required')`),
 }));
 
@@ -90,4 +92,27 @@ export const cateringSquareWebhookEvents = pgTable("catering_square_webhook_even
   retryIdx: index("catering_square_webhook_retry_idx").on(t.state, t.updatedAt).where(sql`${t.state} IN ('received', 'processing', 'failed')`),
   stateCheck: check("catering_square_webhook_state_check", sql`${t.state} IN ('received', 'processing', 'processed', 'ignored', 'failed')`),
   attemptCountCheck: check("catering_square_webhook_attempt_count_check", sql`${t.attemptCount} >= 0`),
+}));
+
+/**
+ * Phase 2Q: every COMPLETED Square payment an attempt's order showed, one row each. Nothing here is merged or chosen between: a
+ * `multiple_payments` reconciliation lists every payment Square says moved, with its own amount, currency and timestamps.
+ */
+export const cateringAttemptSquarePayments = pgTable("catering_attempt_square_payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  attemptId: varchar("attempt_id").references(() => cateringBookingPaymentAttempts.id, { onDelete: "restrict" }).notNull(),
+  squarePaymentId: text("square_payment_id").notNull(),
+  amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+  tipCents: bigint("tip_cents", { mode: "number" }).default(0).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull(),
+  squareCreatedAt: timestamp("square_created_at", { withTimezone: true }),
+  squareUpdatedAt: timestamp("square_updated_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  paymentUnique: uniqueIndex("catering_attempt_square_payments_payment_uidx").on(t.squarePaymentId),
+  attemptIdx: index("catering_attempt_square_payments_attempt_idx").on(t.attemptId, t.completedAt, t.id),
+  amountCheck: check("catering_attempt_square_payment_amount_check", sql`${t.amountCents} > 0 AND ${t.amountCents} <= 9999999999`),
+  tipCheck: check("catering_attempt_square_payment_tip_check", sql`${t.tipCents} >= 0 AND ${t.tipCents} <= ${t.amountCents}`),
+  currencyCheck: check("catering_attempt_square_payment_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
 }));

@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { parseLocalTestDatabaseUrl } from "../test-support/local-test-database";
 import { getTableConfig } from "drizzle-orm/pg-core";
-import { cateringBookingPaymentAttempts, cateringSquareWebhookEvents } from "../../shared/schema";
+import { cateringAttemptSquarePayments, cateringBookingPaymentAttempts, cateringSquareWebhookEvents } from "../../shared/schema";
 import * as barrel from "../../shared/schema";
 import { prepareCateringSquareEnvironment, withCateringSquareHarness, type CateringSquareHarness } from "../test-support/catering-square-harness";
 
@@ -28,11 +28,13 @@ test("the barrel exports both Phase 2Q tables, which is how drizzle-kit finds th
   assert.equal((barrel as Record<string, unknown>).cateringSquareWebhookEvents, cateringSquareWebhookEvents);
   assert.equal(getTableConfig(cateringBookingPaymentAttempts).name, "catering_booking_payment_attempts");
   assert.equal(getTableConfig(cateringSquareWebhookEvents).name, "catering_square_webhook_events");
+  assert.equal(getTableConfig(cateringAttemptSquarePayments).name, "catering_attempt_square_payments");
+  assert.equal((barrel as Record<string, unknown>).cateringAttemptSquarePayments, cateringAttemptSquarePayments);
 });
 
 test("money columns in the new tables are bigint cents, read as numbers: no decimal, float or numeric", () => {
   assert.equal(/decimal|numeric|real\b|double precision|float/i.test(migration.replace(/--.*$/gm, "")), false);
-  for (const table of [cateringBookingPaymentAttempts]) {
+  for (const table of [cateringBookingPaymentAttempts, cateringAttemptSquarePayments]) {
     for (const column of getTableConfig(table).columns.filter((candidate) => /cents/.test(candidate.name))) {
       assert.equal(column.getSQLType(), "bigint", column.name);
       assert.equal((column as unknown as { mapFromDriverValue(value: unknown): unknown }).mapFromDriverValue("12345"), 12345, `${column.name} reads as a number`);
@@ -65,15 +67,16 @@ if (!URL_ENV) {
   test("the SQL migration produces exactly the catalog drizzle-kit push produces, for both new tables and every widened constraint", async () => {
     await run(async (h) => {
       const tables = ["catering_booking_payment_attempts", "catering_square_webhook_events"];
-      const before = { attempts: await describeTable(h, tables[0]), webhooks: await describeTable(h, tables[1]), payments: await describeTable(h, "catering_booking_payments"), activity: await describeTable(h, "catering_booking_activity") };
+      const before = { evidence: await describeTable(h, "catering_attempt_square_payments"), attempts: await describeTable(h, tables[0]), webhooks: await describeTable(h, tables[1]), payments: await describeTable(h, "catering_booking_payments"), activity: await describeTable(h, "catering_booking_activity") };
       assert.ok(before.attempts.columns.length >= 28 && before.webhooks.columns.length === 13, "the push built both tables");
 
       // Rebuild everything Phase 2Q owns from its SQL migration alone.
-      await h.pool.query(`DROP TABLE catering_square_webhook_events; DROP TABLE catering_booking_payment_attempts;`);
+      await h.pool.query(`DROP TABLE catering_attempt_square_payments; DROP TABLE catering_square_webhook_events; DROP TABLE catering_booking_payment_attempts;`);
       await h.pool.query(migration);
-      const after = { attempts: await describeTable(h, tables[0]), webhooks: await describeTable(h, tables[1]), payments: await describeTable(h, "catering_booking_payments"), activity: await describeTable(h, "catering_booking_activity") };
+      const after = { evidence: await describeTable(h, "catering_attempt_square_payments"), attempts: await describeTable(h, tables[0]), webhooks: await describeTable(h, tables[1]), payments: await describeTable(h, "catering_booking_payments"), activity: await describeTable(h, "catering_booking_activity") };
 
       assert.deepEqual(after.attempts, before.attempts, "catering_booking_payment_attempts: migration == drizzle push");
+      assert.deepEqual(after.evidence, before.evidence, "catering_attempt_square_payments: migration == drizzle push");
       assert.deepEqual(after.webhooks, before.webhooks, "catering_square_webhook_events: migration == drizzle push");
       assert.deepEqual(after.payments, before.payments, "catering_booking_payments: widened/added checks are identical");
       assert.deepEqual(after.activity, before.activity, "catering_booking_activity: the widened event check is identical");
@@ -98,8 +101,8 @@ if (!URL_ENV) {
 
   test("db:push over a database built from the SQL migration is a no-op for Phase 2Q: nothing it owns is dropped or narrowed", async () => {
     await run(async (h) => {
-      const tables = ["catering_booking_payment_attempts", "catering_square_webhook_events", "catering_booking_payments", "catering_booking_activity"];
-      await h.pool.query(`DROP TABLE catering_square_webhook_events; DROP TABLE catering_booking_payment_attempts;`);
+      const tables = ["catering_attempt_square_payments", "catering_booking_payment_attempts", "catering_square_webhook_events", "catering_booking_payments", "catering_booking_activity"];
+      await h.pool.query(`DROP TABLE catering_attempt_square_payments; DROP TABLE catering_square_webhook_events; DROP TABLE catering_booking_payment_attempts;`);
       await h.pool.query(migration);
       const before = await Promise.all(tables.map((table) => describeTable(h, table)));
       const config = parseLocalTestDatabaseUrl(URL_ENV);

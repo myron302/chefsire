@@ -129,3 +129,51 @@ export function cateringSafeCheckoutUrl(url: string | undefined): string | null 
     return null;
   }
 }
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * The uncertain-checkout retry lifecycle
+ * ------------------------------------------------------------------------------------------------------------- */
+
+/** One checkout's identity: the viewer, the booking and the invoice. A retry belongs to exactly one of these and to no other. */
+export const cateringCheckoutIdentity = (userId: string, bookingId: string, invoiceId: string) => `${userId}:${bookingId}:${invoiceId}`;
+
+export type CheckoutTimers = { setTimeout(run: () => void, ms: number): unknown; clearTimeout(handle: unknown): void };
+
+/**
+ * Owns the ONE pending "ask again" timer of an uncertain checkout, and the identity it belongs to.
+ *
+ * The handle is stored so it can be cleared; `setIdentity` cancels it whenever the booking, invoice or viewer changes; `dispose` cancels
+ * it on unmount; and even a timer that somehow fires re-checks that its identity is still current before it runs anything. So a retry
+ * can never POST against an invoice the customer has left.
+ */
+export function createCheckoutRetryScheduler(timers: CheckoutTimers = { setTimeout: (run, ms) => setTimeout(run, ms), clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>) }) {
+  let handle: unknown = null;
+  let identity: string | null = null;
+  const cancel = () => { if (handle !== null) { timers.clearTimeout(handle); handle = null; } };
+  return {
+    /** Adopts the identity currently on screen; a change cancels whatever was pending for the previous one. */
+    setIdentity(next: string | null) { if (next !== identity) { cancel(); identity = next; } },
+    isCurrent(candidate: string): boolean { return identity !== null && identity === candidate; },
+    /** Schedules ONE retry for `forIdentity`; refused (false) if that is not the identity on screen. Replaces any earlier pending retry. */
+    schedule(forIdentity: string, run: () => void, ms: number): boolean {
+      if (identity === null || forIdentity !== identity) return false;
+      cancel();
+      handle = timers.setTimeout(() => { handle = null; if (identity === forIdentity) run(); }, ms);
+      return true;
+    },
+    pending(): boolean { return handle !== null; },
+    cancel,
+    /** Unmount: nothing may fire afterwards, and nothing is current. */
+    dispose() { cancel(); identity = null; },
+  };
+}
+
+/**
+ * Where, if anywhere, a finished pay request may send the browser. Only to a checkout the SAME identity asked for, only while that identity
+ * is still on screen, and only to a Square URL: a response that lands after the customer moved on changes nothing and goes nowhere.
+ */
+export function cateringCheckoutRedirectTarget(input: { startedFor: string; isCurrent: (identity: string) => boolean; attempt: { state: string; checkoutUrl?: string } | undefined }): string | null {
+  if (!input.isCurrent(input.startedFor)) return null;
+  if (input.attempt?.state !== "pending") return null;
+  return cateringSafeCheckoutUrl(input.attempt.checkoutUrl);
+}

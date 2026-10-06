@@ -11,7 +11,6 @@ import {
   notifications,
   type CateringBookingAdjustment,
   type CateringBookingBillingRecord,
-  type CateringBookingPaymentAttempt,
   type CateringBookingInvoice,
   type CateringBookingPayment,
 } from "@shared/schema";
@@ -69,6 +68,7 @@ import { serializeCateringAdjustment } from "../serializers/catering-booking-adj
 import { serializeCateringPaymentAttempt, visibleCateringPaymentAttempts } from "../serializers/catering-booking-payment-attempt";
 import { cateringSquarePaymentsEnabled } from "../lib/square-checkout";
 import { cateringSquarePayments } from "../services/catering-square-payments-instance";
+import type { CateringAttemptWithPayments } from "../services/catering-square-payments";
 import {
   serializeCateringDepositTerms,
   serializeCateringInvoice,
@@ -145,7 +145,7 @@ async function billingRows(tx: typeof db, bookingId: string): Promise<{
   invoices: CateringBookingInvoice[];
   payments: CateringBookingPayment[];
   adjustments: CateringBookingAdjustment[];
-  attempts: CateringBookingPaymentAttempt[];
+  attempts: CateringAttemptWithPayments[];
   amendmentNumbers: Map<string, number>;
 }> {
   const [terms] = await tx.select().from(cateringBookingBilling).where(eq(cateringBookingBilling.bookingId, bookingId)).limit(1);
@@ -175,7 +175,7 @@ function billingView(input: {
   invoices: readonly CateringBookingInvoice[];
   payments: readonly CateringBookingPayment[];
   adjustments: readonly CateringBookingAdjustment[];
-  attempts: readonly CateringBookingPaymentAttempt[];
+  attempts: readonly CateringAttemptWithPayments[];
   amendmentNumbers: ReadonlyMap<string, number>;
   asOfDate: string;
 }): CateringBookingBillingView {

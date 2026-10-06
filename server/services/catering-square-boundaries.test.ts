@@ -72,7 +72,7 @@ test("SANDBOX ONLY: every Square call is behind the sandbox gate, and every entr
   }
   const body = sources.service;
   assert.ok(body.includes("if (!enabled()) return { kind: \"unavailable\" };"), "create");
-  assert.ok(body.includes("if (!enabled()) return { outcome: \"unavailable\", reason: \"sandbox_only\", attempt: first };"), "settle");
+  assert.ok(body.includes("if (!enabled()) return CONSUMED.includes(first.state) ? { outcome: \"already_settled\", attempt: first } : { outcome: \"unavailable\", reason: \"sandbox_only\", attempt: first };"), "settle");
   assert.ok(body.includes("if (!enabled()) return { kind: \"retry\", reason: \"sandbox_only\" };"), "webhook");
   assert.ok(sources.route.includes("if (!service.enabled()) return res.status(503)"), "webhook route");
   assert.ok(sources.service.includes("processorEnvironment: \"sandbox\""));
@@ -90,7 +90,7 @@ test("exactly ONE function can write a processor payment into the ledger, and it
   const order = ["lockCateringBilling(tx", "lockedBooking(tx", "FOR UPDATE", "lockedFacts(tx", "insert(cateringBookingPayments)"].map((needle) => inside.indexOf(needle));
   assert.ok(order.every((at) => at !== -1), JSON.stringify(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order, "lock order, then the CURRENT payable, then the credit");
-  assert.ok(inside.includes('paymentSource: "processor"') && inside.includes('paymentMethod: "card_online"') && inside.includes("processorPaymentId: confirmed.paymentId"));
+  assert.ok(inside.includes('paymentSource: "processor"') && inside.includes('paymentMethod: "card_online"') && inside.includes("processorPaymentId: only.paymentId"));
   assert.ok(inside.includes("recordedBy: null"));
   // and nothing else in the codebase inserts a processor payment
   for (const file of ["server/routes/catering-booking-billing.ts", "server/routes/catering-square-payments.ts", "server/services/catering-booking-adjustments.ts"]) {

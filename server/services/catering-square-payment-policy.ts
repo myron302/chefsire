@@ -81,8 +81,53 @@ export type CateringEvidenceVerdict =
   | { kind: "cancelled" }
   /** The facts do not belong to this attempt (wrong order, location, reference, payment link). Never credited, never trusted. */
   | { kind: "rejected"; code: "order_mismatch" | "location_mismatch" | "reference_mismatch" | "payment_order_mismatch" | "payment_location_mismatch" | "order_total_mismatch" }
-  /** A COMPLETED Square payment for exactly this attempt's order. `mismatch` is set when it is not exactly what was asked for. */
-  | { kind: "confirmed"; paymentId: string; amountCents: number; currency: string; mismatch: CateringReconciliationReason | null };
+  /**
+   * Every COMPLETED Square payment on exactly this attempt's order, in a deterministic order, each with its own id, amount, currency and
+   * timestamps. `mismatch` is set when the evidence is not exactly one payment of exactly what was asked for, with a usable time.
+   */
+  | { kind: "confirmed"; payments: ConfirmedSquarePayment[]; mismatch: CateringReconciliationReason | null };
+
+/** One completed Square payment as evidence. Never merged with another, and never chosen over another. */
+export type ConfirmedSquarePayment = {
+  paymentId: string;
+  amountCents: number;
+  tipCents: number;
+  currency: string;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+  /** Square's completion time for THIS payment (see `squareCompletionTime`), or null when Square gave no usable one. */
+  completedAt: Date | null;
+};
+
+function parseSquareTime(value: string | null): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * The time Square completed a payment, which is what its accounting date derives from.
+ *
+ * A COMPLETED payment's `updated_at` is when it reached that state -- UNLESS a refund has since been issued, which also moves
+ * `updated_at`; then only `created_at` is still the original movement, so that is used. A payment-link checkout charges and completes at
+ * once, so the two agree in the ordinary case. Missing or unparseable: null, which the settlement turns into an explicit reconciliation
+ * (`payment_timestamp_invalid`) rather than dating the money by when ChefSire happened to look.
+ */
+export function squareCompletionTime(payment: Pick<SquarePaymentFacts, "createdAt" | "updatedAt" | "hasRefunds">): Date | null {
+  return payment.hasRefunds ? parseSquareTime(payment.createdAt) : parseSquareTime(payment.updatedAt);
+}
+
+/** What a set of completed payments adds up to, honestly: the amount only when they share one currency, a reference only when there is one. */
+export function summarizeConfirmedPayments(payments: readonly ConfirmedSquarePayment[]): { count: number; amountCents: number | null; currency: string | null; singlePaymentId: string | null } {
+  const currencies = new Set(payments.map((payment) => payment.currency));
+  const currency = currencies.size === 1 ? payments[0].currency : null;
+  return {
+    count: payments.length,
+    amountCents: currency === null ? null : payments.reduce((total, payment) => total + payment.amountCents, 0),
+    currency,
+    singlePaymentId: payments.length === 1 ? payments[0].paymentId : null,
+  };
+}
 
 /**
  * Judges FRESH Square facts against what the attempt was created for. Every identifier is compared, not assumed:
@@ -110,14 +155,19 @@ export function evaluateSquareEvidence(target: CateringAttemptTarget, order: Squ
     if (order.state === "CANCELED") return { kind: "cancelled" };
     return { kind: "awaiting" };
   }
-  // The order total was not what ChefSire asked for. With no money moved it is simply not ours to trust.
-  const first = completed[0];
-  if (first.totalCents === null || first.currency === null) return { kind: "rejected", code: "order_total_mismatch" };
+  // A completed payment whose amount or currency Square did not report is not evidence we can trust at all.
+  if (completed.some((payment) => payment.totalCents === null || payment.currency === null)) return { kind: "rejected", code: "order_total_mismatch" };
+  const confirmed: ConfirmedSquarePayment[] = completed.map((payment) => ({
+    paymentId: payment.id, amountCents: payment.totalCents!, tipCents: payment.tipCents, currency: payment.currency!,
+    createdAt: parseSquareTime(payment.createdAt), updatedAt: parseSquareTime(payment.updatedAt), completedAt: squareCompletionTime(payment),
+  })).sort((left, right) => (left.completedAt?.getTime() ?? Infinity) - (right.completedAt?.getTime() ?? Infinity) || left.paymentId.localeCompare(right.paymentId));
+  const only = confirmed[0];
   let mismatch: CateringReconciliationReason | null = null;
-  if (completed.length > 1) mismatch = "multiple_payments";
-  else if (first.currency !== target.currency) mismatch = "currency_mismatch";
-  else if (first.totalCents !== target.amountCents || first.tipCents !== 0) mismatch = "amount_mismatch";
-  return { kind: "confirmed", paymentId: first.id, amountCents: first.totalCents, currency: first.currency, mismatch };
+  if (confirmed.length > 1) mismatch = "multiple_payments";
+  else if (only.currency !== target.currency) mismatch = "currency_mismatch";
+  else if (only.amountCents !== target.amountCents || only.tipCents !== 0) mismatch = "amount_mismatch";
+  else if (only.completedAt === null) mismatch = "payment_timestamp_invalid";
+  return { kind: "confirmed", payments: confirmed, mismatch };
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *

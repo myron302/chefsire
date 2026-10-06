@@ -60,7 +60,7 @@ export type FakeSquareState = {
 
 /** Phase 2Q: the fake's checkout/order/payment world. Every field is plain JSON in Square's own snake_case shape. */
 export type FakeOrder = { id: string; location_id: string; reference_id?: string; state: string; total_money: { amount: number; currency: string }; tenders: { id: string; payment_id: string }[]; line_items?: unknown[] };
-export type FakePayment = { id: string; order_id?: string; location_id?: string; status: string; amount_money: { amount: number; currency: string }; total_money: { amount: number; currency: string }; tip_money?: { amount: number; currency: string } };
+export type FakePayment = { id: string; order_id?: string; location_id?: string; status: string; amount_money: { amount: number; currency: string }; total_money: { amount: number; currency: string }; tip_money?: { amount: number; currency: string }; created_at?: string; updated_at?: string; refund_ids?: string[] };
 
 export type RecordedRequest = { method: string; path: string; authorization: string | undefined; body: string };
 
@@ -226,7 +226,8 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
       const { orderState, ...rest } = overrides;
       const payment: FakePayment = {
         id: paymentId, order_id: orderId, location_id: order.location_id, status: "COMPLETED",
-        amount_money: { ...order.total_money }, total_money: { ...order.total_money }, ...rest,
+        amount_money: { ...order.total_money }, total_money: { ...order.total_money },
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...rest,
       };
       payments.set(paymentId, payment);
       order.tenders.push({ id: `TENDER_${sequence}`, payment_id: paymentId });

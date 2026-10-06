@@ -144,3 +144,27 @@ the billing read lists Square checkout attempts, so that table is part of what t
 
 The billing view lists **every** `reconciliation_required` attempt plus a bounded window (50) of the most recent other attempts, so the
 history cap can never hide unresolved money that moved (that attempt row may be the only provider-visible record of it).
+
+## Every completed Square payment is kept (Codex repair pass 3)
+
+An order can show more than one completed payment. `catering_attempt_square_payments` holds **one row per completed Square payment**
+(unique `square_payment_id`, so a payment is evidence for exactly one attempt), with its own amount, tip, currency, Square
+`created_at`/`updated_at` and the completion time the accounting date derives from. They are written in the same transaction, **before** the
+attempt can become terminal, and nothing is merged or chosen between: with more than one payment the attempt's `square_payment_id` is NULL
+(there is no single reference), `processor_payment_count` says how many, and the amount is shown only when the payments share one currency.
+A new webhook for an attempt that already consumed a payment audits Square again; a completed payment not yet recorded is added as evidence
+and the attempt becomes `reconciliation_required` / `multiple_payments` while the ledger row already credited is left untouched. A replay
+finds nothing new. The provider view lists every payment with its Square reference; the customer view lists amounts and times, never ids.
+
+## The accounting date is Square's date
+
+`received_on` is the day SQUARE completed the payment, in the provider's calendar (the same `cateringBillingDay` every billing date uses),
+not the day ChefSire verified it. The completion time is the payment's `updated_at` (when it reached `COMPLETED`), or `created_at` if a
+refund has since moved `updated_at`. A missing, malformed or future time is never replaced by ChefSire's clock: the money is kept as
+`reconciliation_required` / `payment_timestamp_invalid`, with the evidence.
+
+## Client retry lifecycle
+
+The uncertain-checkout retry timer belongs to a scheduler keyed by viewer + booking + invoice. It is cleared on unmount and whenever that
+identity changes, a retry re-sends the request it was scheduled for, and every success/error callback checks that its identity is still
+the one on screen before it sets state, retries or redirects.

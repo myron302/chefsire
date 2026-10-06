@@ -782,9 +782,11 @@ if (!URL_ENV) {
       const base = (state: string, extra = "") => h.q(
         `INSERT INTO catering_booking_payment_attempts (booking_id, invoice_id, customer_id, provider_id, merchant_id, location_id, currency, amount_cents, idempotency_key, state ${extra ? ", " + extra.split("|")[0] : ""})
          VALUES ($1, $2, $3, $4, 'M', 'L', 'USD', 100, $5, '${state}' ${extra ? ", " + extra.split("|")[1] : ""})`, [s.bookingId, s.invoiceIds[0], s.customerId, s.providerId, `k-${Math.random()}`]);
-      await assert.rejects(base("completed"), /catering_attempt_completed_check/);
+      await assert.rejects(base("completed"), /catering_attempt_(completed|payment_count)_check/);
       await assert.rejects(base("pending"), /catering_attempt_pending_check/);
-      await assert.rejects(base("reconciliation_required"), /catering_attempt_reconciliation_check/);
+      await assert.rejects(base("reconciliation_required"), /catering_attempt_(reconciliation|payment_count)_check/);
+      await assert.rejects(base("reconciliation_required", "processor_payment_count, square_payment_id, processor_amount_cents, processor_currency, reconciliation_reason|2, 'ONE_OF_TWO', 100, 'USD', 'multiple_payments'"), /catering_attempt_reconciliation_check/, "several payments never name one of them as THE payment");
+      await assert.rejects(base("failed", "processor_payment_count|1"), /catering_attempt_payment_count_check/, "a non-money state carries no payments");
       await assert.rejects(base("failed", "square_payment_id|'PAY'"), /catering_attempt_payment_evidence_check/);
       await assert.rejects(base("banana"), /catering_attempt_state_check/);
     });
@@ -807,6 +809,7 @@ if (!URL_ENV) {
    * ----------------------------------------------------------------------------------------------------------- */
 
   const ATTEMPT_COLUMNS = "booking_id, invoice_id, customer_id, provider_id, merchant_id, location_id, currency, amount_cents, idempotency_key, state, created_at";
+  const RECONCILIATION_COLUMNS = "square_payment_id, processor_amount_cents, processor_currency, reconciliation_reason, processor_payment_count";
   /** Inserts historical attempts directly (the open-invoice index only constrains creating/pending, so closed ones may be many). */
   async function seedHistory(h: CateringSquareHarness, s: Scene, count: number, state: string, startDaysAgo: number) {
     for (let i = 0; i < count; i += 1) {
@@ -815,8 +818,8 @@ if (!URL_ENV) {
     }
   }
   async function seedReconciliation(h: CateringSquareHarness, s: Scene, label: string, minutesAgo: number, amountCents = 60000) {
-    const row = await h.q(`INSERT INTO catering_booking_payment_attempts (${ATTEMPT_COLUMNS}, square_payment_id, processor_amount_cents, processor_currency, reconciliation_reason)
-      VALUES ($1, $2, $3, $4, 'M', 'L', 'USD', $5, $6, 'reconciliation_required', now() - ($7 * interval '1 minute'), $8, $5, 'USD', 'payable_changed') RETURNING id`,
+    const row = await h.q(`INSERT INTO catering_booking_payment_attempts (${ATTEMPT_COLUMNS}, ${RECONCILIATION_COLUMNS})
+      VALUES ($1, $2, $3, $4, 'M', 'L', 'USD', $5, $6, 'reconciliation_required', now() - ($7 * interval '1 minute'), $8, $5, 'USD', 'payable_changed', 1) RETURNING id`,
       [s.bookingId, s.invoiceIds[1], s.customerId, s.providerId, amountCents, `recon-${label}`, minutesAgo, `PAYMENT_${label}`]);
     return row[0].id as string;
   }
@@ -873,8 +876,8 @@ if (!URL_ENV) {
       const s = await scene(h);
       const mine = await seedReconciliation(h, s, "MINE", 100_000);
       const otherCustomer = await h.user("other-customer");
-      await h.q(`INSERT INTO catering_booking_payment_attempts (${ATTEMPT_COLUMNS}, square_payment_id, processor_amount_cents, processor_currency, reconciliation_reason)
-        VALUES ($1, $2, $3, $4, 'M', 'L', 'USD', 500, 'recon-theirs', 'reconciliation_required', now(), 'PAYMENT_THEIRS', 500, 'USD', 'payable_changed')`, [s.bookingId, s.invoiceIds[1], otherCustomer, s.providerId]);
+      await h.q(`INSERT INTO catering_booking_payment_attempts (${ATTEMPT_COLUMNS}, ${RECONCILIATION_COLUMNS})
+        VALUES ($1, $2, $3, $4, 'M', 'L', 'USD', 500, 'recon-theirs', 'reconciliation_required', now(), 'PAYMENT_THEIRS', 500, 'USD', 'payable_changed', 1)`, [s.bookingId, s.invoiceIds[1], otherCustomer, s.providerId]);
       await seedHistory(h, s, 60, "cancelled", 1_000);
       const { visibleCateringPaymentAttempts } = await import("../serializers/catering-booking-payment-attempt");
       const listed = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
@@ -899,6 +902,209 @@ if (!URL_ENV) {
         assert.equal(/idempotency|recon-SAFE|merchantId|locationId|squareOrderId|squarePaymentLinkId|accessToken|refresh/i.test(text), false, role);
         assert.equal(text.includes(s.connection.accessToken), false);
       }
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 3: every completed Square payment is preserved; Square's date is the accounting date
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const receivedOn = async (h: CateringSquareHarness, bookingId: string) => String((await h.q(`SELECT received_on::text AS d FROM catering_booking_payments WHERE booking_id = $1 AND payment_source = 'processor'`, [bookingId]))[0].d);
+  const evidenceRows = (h: CateringSquareHarness, attemptId: string) => h.q(`SELECT * FROM catering_attempt_square_payments WHERE attempt_id = $1 ORDER BY completed_at, square_payment_id`, [attemptId]);
+
+  test("P1: two completed Square payments on one order are BOTH preserved, with their own ids, amounts and times, and the attempt is reconciliation_required", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      const first = h.fake.payOrder(attempt.squareOrderId!, { id: "PAY_FIRST", updated_at: "2030-05-01T10:00:00Z", created_at: "2030-05-01T10:00:00Z" });
+      const second = h.fake.payOrder(attempt.squareOrderId!, { id: "PAY_SECOND", total_money: { amount: 15000, currency: "USD" }, amount_money: { amount: 15000, currency: "USD" }, updated_at: "2030-05-01T11:30:00Z", created_at: "2030-05-01T11:30:00Z" });
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      const outcome = await h.payments.settleAttempt(attempt.id);
+      assert.equal(outcome.outcome, "reconciliation_required");
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal(row.reconciliation_reason, "multiple_payments");
+      assert.equal(Number(row.processor_payment_count), 2);
+      assert.equal(row.square_payment_id, null, "no single payment is named as THE payment");
+      assert.equal(Number(row.processor_amount_cents), 55000, "the total that moved, summed from the evidence");
+      const evidence = await evidenceRows(h, attempt.id);
+      assert.deepEqual(evidence.map((entry) => [entry.square_payment_id, Number(entry.amount_cents), entry.currency, entry.completed_at.toISOString()]), [
+        [first.id, 40000, "USD", "2030-05-01T10:00:00.000Z"], [second.id, 15000, "USD", "2030-05-01T11:30:00.000Z"],
+      ]);
+      assert.equal((await h.ledger(s.bookingId)).length, 0, "neither payment was credited, and the invoice is NOT marked paid");
+      assert.equal((await h.activity(s.bookingId)).length, 0);
+      // the provider is shown exactly what Square says moved; the customer is not given Square ids
+      const asProvider = await h.payments.getAttempt({ bookingId: s.bookingId, attemptId: attempt.id, userId: s.providerId });
+      const asCustomer = await h.payments.getAttempt({ bookingId: s.bookingId, attemptId: attempt.id, userId: s.customerId });
+      assert.ok(asProvider.kind === "ok" && asCustomer.kind === "ok");
+      if (asProvider.kind !== "ok" || asCustomer.kind !== "ok") return;
+      const providerView = serializeCateringPaymentAttempt(asProvider.attempt, "provider");
+      const customerView = serializeCateringPaymentAttempt(asCustomer.attempt, "customer");
+      assert.equal(providerView.squarePaymentId, undefined);
+      assert.deepEqual(providerView.processorPayments?.map((payment) => [payment.squarePaymentId, payment.amountCents, payment.completedAt]), [["PAY_FIRST", 40000, "2030-05-01T10:00:00.000Z"], ["PAY_SECOND", 15000, "2030-05-01T11:30:00.000Z"]]);
+      assert.equal(providerView.processorPaymentCount, 2);
+      assert.deepEqual(customerView.processorPayments?.map((payment) => payment.amountCents), [40000, 15000]);
+      assert.equal(JSON.stringify(customerView).includes("PAY_FIRST"), false);
+    });
+  });
+
+  test("P1: replaying the webhook, the poll and the settlement over a multiple-payment attempt creates no duplicate evidence and loses none", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "PAY_A" });
+      h.fake.payOrder(attempt.squareOrderId!, { id: "PAY_B", total_money: { amount: 1000, currency: "USD" }, amount_money: { amount: 1000, currency: "USD" } });
+      await h.payments.settleAttempt(attempt.id);
+      const before = await evidenceRows(h, attempt.id);
+      for (let i = 0; i < 3; i += 1) {
+        await h.payments.handleWebhookEvent({ eventId: `evt-multi-${i}`, eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId: null });
+        await h.payments.handleWebhookEvent({ eventId: "evt-multi-0", eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId: null });
+        await h.payments.settleAttempt(attempt.id);
+        await h.payments.getAttempt({ bookingId: s.bookingId, attemptId: attempt.id, userId: s.customerId });
+      }
+      await Promise.all([h.payments.settleAttempt(attempt.id), h.payments.settleAttempt(attempt.id), h.payments.settleAttempt(attempt.id)]);
+      const after = await evidenceRows(h, attempt.id);
+      assert.equal(after.length, 2);
+      assert.deepEqual(after.map((entry) => entry.id), before.map((entry) => entry.id), "the same rows, untouched");
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+      assert.equal(h.notifications.filter((n) => n.type === "catering_booking_square_payment_reconciliation_required").length, 1, "one notification, not one per replay");
+    });
+  });
+
+  test("P1: a second completed payment that shows up AFTER the attempt was credited is preserved; the credited ledger row is never touched", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "PAY_CREDITED" });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      const ledgerBefore = await h.processorLedger(s.bookingId);
+      assert.equal(ledgerBefore.length, 1);
+      assert.equal((await evidenceRows(h, attempt.id)).length, 1, "the credited payment is evidence too");
+
+      h.fake.payOrder(attempt.squareOrderId!, { id: "PAY_LATE", total_money: { amount: 40000, currency: "USD" }, amount_money: { amount: 40000, currency: "USD" } });
+      // a NEW webhook for the order makes ChefSire look again, although the attempt is terminal
+      const result = await h.payments.handleWebhookEvent({ eventId: "evt-late", eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId: "PAY_LATE" });
+      assert.deepEqual(result, { kind: "processed", outcome: "reconciliation_required" });
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal(row.reconciliation_reason, "multiple_payments");
+      assert.equal(Number(row.processor_payment_count), 2);
+      assert.equal(row.payment_id, ledgerBefore[0].id, "the ledger link to the credited payment is kept");
+      assert.deepEqual((await evidenceRows(h, attempt.id)).map((entry) => entry.square_payment_id).sort(), ["PAY_CREDITED", "PAY_LATE"]);
+      assert.deepEqual(await h.processorLedger(s.bookingId), ledgerBefore, "the ledger is byte-for-byte what it was");
+      // replays of the audit add nothing
+      await h.payments.handleWebhookEvent({ eventId: "evt-late-2", eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId: null });
+      await h.payments.settleAttempt(attempt.id);
+      assert.equal((await evidenceRows(h, attempt.id)).length, 2);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+    });
+  });
+
+  test("P1: a second payment arriving after a single-payment RECONCILIATION is kept too, and cannot turn the attempt into a credit", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s, 1);
+      await h.adjustment(s.bookingId, s.providerId, "credit", 30000);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "PAY_ONE" });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+      assert.equal((await h.attempt(attempt.id)).square_payment_id, "PAY_ONE");
+      h.fake.payOrder(attempt.squareOrderId!, { id: "PAY_TWO", total_money: { amount: 500, currency: "USD" }, amount_money: { amount: 500, currency: "USD" } });
+      await h.payments.handleWebhookEvent({ eventId: "evt-two", eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId: null });
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal(Number(row.processor_payment_count), 2);
+      assert.equal(row.square_payment_id, null);
+      assert.equal(Number(row.processor_amount_cents), 60500);
+      assert.deepEqual((await evidenceRows(h, attempt.id)).map((entry) => entry.square_payment_id).sort(), ["PAY_ONE", "PAY_TWO"]);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+  });
+
+  test("P1: a Square payment already recorded as evidence for another attempt cannot be claimed by this one, by the audit or by settlement", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const a = await open(h, s, 0);
+      const b = await open(h, s, 1);
+      h.fake.payOrder(a.squareOrderId!, { id: "PAY_SHARED" });
+      await h.payments.settleAttempt(a.id);
+      // order B is (wrongly) shown with A's payment id
+      const order = h.fake.orders.get(b.squareOrderId!)!;
+      order.tenders.push({ id: "T_X", payment_id: "PAY_SHARED" });
+      h.fake.payments.set("PAY_SHARED", { ...h.fake.payments.get("PAY_SHARED")!, order_id: b.squareOrderId!, total_money: { ...order.total_money }, amount_money: { ...order.total_money } });
+      assert.equal((await h.payments.settleAttempt(b.id)).outcome, "rejected");
+      assert.equal((await evidenceRows(h, b.id)).length, 0);
+      await assert.rejects(h.q(`INSERT INTO catering_attempt_square_payments (attempt_id, square_payment_id, amount_cents, currency) VALUES ($1, 'PAY_SHARED', 100, 'USD')`, [b.id]), /catering_attempt_square_payments_payment_uidx/);
+    });
+  });
+
+  test("P2: Square completed the payment before midnight and ChefSire verified after it: received-on is the SQUARE date, in the provider's calendar", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { updated_at: "2030-06-01T23:50:00Z", created_at: "2030-06-01T23:50:00Z" });
+      h.setClock(new Date("2030-06-02T00:40:00Z"));
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      assert.equal(await receivedOn(h, s.bookingId), "2030-06-01", "not 2030-06-02, the day ChefSire verified it");
+      const [evidence] = await evidenceRows(h, attempt.id);
+      assert.equal(evidence.completed_at.toISOString(), "2030-06-01T23:50:00.000Z", "the full Square timestamp is kept for audit");
+      assert.equal(evidence.square_created_at.toISOString(), "2030-06-01T23:50:00.000Z");
+    });
+  });
+
+  test("P2: the provider's own timezone decides the date: a payment at 03:00Z is still the previous evening for a Los Angeles caterer", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await h.q(`INSERT INTO catering_availability_settings (provider_id, timezone) VALUES ($1, 'America/Los_Angeles')`, [s.providerId]);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { updated_at: "2030-06-02T03:00:00Z", created_at: "2030-06-02T03:00:00Z" });
+      h.setClock(new Date("2030-06-02T20:00:00Z"));
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      assert.equal(await receivedOn(h, s.bookingId), "2030-06-01");
+    });
+  });
+
+  test("P2: a refund moves Square's updated_at, so the original created_at dates the payment", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { created_at: "2030-06-01T12:00:00Z", updated_at: "2030-06-09T12:00:00Z", refund_ids: ["R1"] });
+      h.setClock(new Date("2030-06-10T12:00:00Z"));
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      assert.equal(await receivedOn(h, s.bookingId), "2030-06-01");
+    });
+  });
+
+  test("P2: a missing, malformed or future Square time is never replaced by ChefSire's date: the money is kept as payment_timestamp_invalid reconciliation", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      h.setClock(new Date("2030-06-02T00:40:00Z"));
+      for (const [index, times] of ([[{ updated_at: "not-a-date", created_at: "also bad" }], [{ updated_at: "", created_at: "" }], [{ updated_at: "2031-01-01T00:00:00Z", created_at: "2031-01-01T00:00:00Z" }]] as const).entries()) {
+        const invoiceIndex = index === 0 ? 0 : 1;
+        const attempt = index <= 1 ? await open(h, s, index === 0 ? 0 : 1) : await (async () => { await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now() WHERE booking_id = $1 AND state = 'pending'`, [s.bookingId]); return open(h, s, 0); })();
+        void invoiceIndex;
+        h.fake.payOrder(attempt.squareOrderId!, times[0]);
+        const outcome = await h.payments.settleAttempt(attempt.id);
+        assert.equal(outcome.outcome, "reconciliation_required", JSON.stringify(times));
+        const row = await h.attempt(attempt.id);
+        assert.equal(row.reconciliation_reason, "payment_timestamp_invalid");
+        assert.equal(Number(row.processor_amount_cents), Number(row.amount_cents), "the money that moved is kept");
+        assert.equal((await evidenceRows(h, attempt.id)).length, 1);
+      }
+      assert.equal((await h.ledger(s.bookingId)).length, 0, "nothing was dated by ChefSire's clock");
+    });
+  });
+
+  test("P2: with several payments each keeps its OWN Square time, independently", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "T1", updated_at: "2030-06-01T23:59:00Z", created_at: "2030-06-01T23:59:00Z" });
+      h.fake.payOrder(attempt.squareOrderId!, { id: "T2", updated_at: "garbage", created_at: "garbage" });
+      h.setClock(new Date("2030-06-03T00:00:00Z"));
+      await h.payments.settleAttempt(attempt.id);
+      const evidence = await h.q(`SELECT square_payment_id, completed_at FROM catering_attempt_square_payments WHERE attempt_id = $1 ORDER BY square_payment_id`, [attempt.id]);
+      assert.equal(evidence[0].completed_at.toISOString(), "2030-06-01T23:59:00.000Z");
+      assert.equal(evidence[1].completed_at, null, "an unusable time is stored as unusable, not borrowed from its sibling or from the clock");
     });
   });
 }

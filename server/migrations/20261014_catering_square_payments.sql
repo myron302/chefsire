@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS catering_booking_payment_attempts (
   square_payment_id text,
   processor_amount_cents bigint,
   processor_currency varchar(3),
+  -- How many COMPLETED Square payments this attempt's order showed. Each one is a row of catering_attempt_square_payments; the three columns
+  -- above summarise them only when they are unambiguous (exactly one payment, or one currency for the amount). With more than one payment
+  -- there is NO single Square reference: square_payment_id is NULL rather than naming one of them.
+  processor_payment_count integer NOT NULL DEFAULT 0,
   -- The ledger row this attempt credited. NULL for every state except 'completed'.
   payment_id varchar REFERENCES catering_booking_payments(id) ON DELETE RESTRICT,
   reconciliation_reason varchar(40),
@@ -70,13 +74,17 @@ CREATE TABLE IF NOT EXISTS catering_booking_payment_attempts (
   -- A pending attempt always has a checkout the customer can open and the order that reconciles it.
   CONSTRAINT catering_attempt_pending_check CHECK (state <> 'pending' OR (square_order_id IS NOT NULL AND square_payment_link_id IS NOT NULL AND checkout_url IS NOT NULL)),
   -- A completed attempt always names the ledger row it credited and the Square payment that justified it.
-  CONSTRAINT catering_attempt_completed_check CHECK (state <> 'completed' OR (payment_id IS NOT NULL AND square_payment_id IS NOT NULL AND processor_amount_cents IS NOT NULL AND processor_currency IS NOT NULL AND completed_at IS NOT NULL)),
+  -- A completed attempt always names the ledger row it credited and the ONE Square payment that justified it.
+  CONSTRAINT catering_attempt_completed_check CHECK (state <> 'completed' OR (payment_id IS NOT NULL AND square_payment_id IS NOT NULL AND processor_amount_cents IS NOT NULL AND processor_currency IS NOT NULL AND completed_at IS NOT NULL AND processor_payment_count = 1)),
   -- A ledger link exists only on a completed attempt.
-  CONSTRAINT catering_attempt_ledger_link_check CHECK (payment_id IS NULL OR state = 'completed'),
+  -- A ledger link exists only on a completed attempt, or on a reconciliation that found MORE Square payments than the one credited.
+  CONSTRAINT catering_attempt_ledger_link_check CHECK (payment_id IS NULL OR state = 'completed' OR (state = 'reconciliation_required' AND reconciliation_reason = 'multiple_payments')),
   -- Money that moved but could not be credited keeps its evidence and never carries a ledger link.
-  CONSTRAINT catering_attempt_reconciliation_check CHECK (state <> 'reconciliation_required' OR (payment_id IS NULL AND square_payment_id IS NOT NULL AND processor_amount_cents IS NOT NULL AND processor_currency IS NOT NULL AND reconciliation_reason IS NOT NULL)),
+  -- Money that moved but could not be credited keeps its evidence. One payment: its reference, amount and currency, and no ledger link. More than one: no single reference, every payment in catering_attempt_square_payments.
+  CONSTRAINT catering_attempt_reconciliation_check CHECK (state <> 'reconciliation_required' OR (reconciliation_reason IS NOT NULL AND processor_payment_count >= 1 AND ((processor_payment_count = 1 AND payment_id IS NULL AND square_payment_id IS NOT NULL AND processor_amount_cents IS NOT NULL AND processor_currency IS NOT NULL) OR (processor_payment_count > 1 AND square_payment_id IS NULL)))),
   CONSTRAINT catering_attempt_reconciliation_reason_check CHECK (reconciliation_reason IS NULL OR state = 'reconciliation_required'),
   -- A Square payment id is only ever recorded on the two states that represent money that moved.
+  CONSTRAINT catering_attempt_payment_count_check CHECK ((state IN ('completed', 'reconciliation_required') AND processor_payment_count >= 1) OR (state NOT IN ('completed', 'reconciliation_required') AND processor_payment_count = 0)),
   CONSTRAINT catering_attempt_payment_evidence_check CHECK (square_payment_id IS NULL OR state IN ('completed', 'reconciliation_required'))
 );
 
@@ -90,6 +98,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS catering_attempts_ledger_uidx ON catering_book
 CREATE UNIQUE INDEX IF NOT EXISTS catering_attempts_open_invoice_uidx ON catering_booking_payment_attempts (invoice_id) WHERE state IN ('creating', 'pending');
 CREATE INDEX IF NOT EXISTS catering_attempts_booking_idx ON catering_booking_payment_attempts (booking_id, created_at, id);
 CREATE INDEX IF NOT EXISTS catering_attempts_invoice_idx ON catering_booking_payment_attempts (invoice_id, state);
+
+-- Every COMPLETED Square payment an attempt's order showed, one row each, so no movement of money is ever dropped or merged into another.
+-- square_payment_id is unique across all attempts: a payment is evidence for exactly one. completed_at is the Square timestamp the accounting
+-- date derives from (see the service); the raw created/updated timestamps are kept for audit.
+CREATE TABLE IF NOT EXISTS catering_attempt_square_payments (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  attempt_id varchar NOT NULL REFERENCES catering_booking_payment_attempts(id) ON DELETE RESTRICT,
+  square_payment_id text NOT NULL,
+  amount_cents bigint NOT NULL,
+  tip_cents bigint NOT NULL DEFAULT 0,
+  currency varchar(3) NOT NULL,
+  square_created_at timestamptz,
+  square_updated_at timestamptz,
+  completed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT catering_attempt_square_payment_amount_check CHECK (amount_cents > 0 AND amount_cents <= 9999999999),
+  CONSTRAINT catering_attempt_square_payment_tip_check CHECK (tip_cents >= 0 AND tip_cents <= amount_cents),
+  CONSTRAINT catering_attempt_square_payment_currency_check CHECK (currency ~ '^[A-Z]{3}$')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS catering_attempt_square_payments_payment_uidx ON catering_attempt_square_payments (square_payment_id);
+CREATE INDEX IF NOT EXISTS catering_attempt_square_payments_attempt_idx ON catering_attempt_square_payments (attempt_id, completed_at, id);
 
 -- Square webhook deliveries, for replay protection and retry. A row is a TRIGGER record, never evidence: only the identifiers
 -- needed to find the attempt are kept, never the payload. event_id is Square's own and is unique, so a redelivery cannot be

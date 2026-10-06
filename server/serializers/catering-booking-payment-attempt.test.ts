@@ -7,11 +7,11 @@ const row = (overrides: Partial<CateringBookingPaymentAttempt> = {}): CateringBo
   id: "att-1", bookingId: "b-1", invoiceId: "inv-1", customerId: "cust-1", providerId: "prov-1", processor: "square", processorEnvironment: "sandbox",
   merchantId: "MERCHANT_SECRET", locationId: "LOC_SECRET", currency: "USD", amountCents: 40000, idempotencyKey: "chefsire-cat-att-1", state: "pending",
   squarePaymentLinkId: "LINK_SECRET", squareOrderId: "ORDER_SECRET", checkoutUrl: "https://square.link/u/abc", squarePaymentId: null, processorAmountCents: null,
-  processorCurrency: null, paymentId: null, reconciliationReason: null, failureCode: "square_refused", lastCheckedAt: null, verifiedAt: null, completedAt: null, closedAt: null,
+  processorCurrency: null, processorPaymentCount: 0, paymentId: null, reconciliationReason: null, failureCode: "square_refused", lastCheckedAt: null, verifiedAt: null, completedAt: null, closedAt: null,
   createdAt: new Date("2030-01-01T00:00:00Z"), updatedAt: new Date("2030-01-01T00:00:00Z"), ...overrides,
 });
-const completed = row({ state: "completed", checkoutUrl: "https://square.link/u/abc", squarePaymentId: "PAYMENT_REF", processorAmountCents: 40000, processorCurrency: "USD", paymentId: "ledger-1", completedAt: new Date("2030-01-02T00:00:00Z") });
-const reconciled = row({ state: "reconciliation_required", squarePaymentId: "PAYMENT_REF", processorAmountCents: 60000, processorCurrency: "USD", reconciliationReason: "payable_changed" });
+const completed = row({ state: "completed", checkoutUrl: "https://square.link/u/abc", squarePaymentId: "PAYMENT_REF", processorAmountCents: 40000, processorCurrency: "USD", processorPaymentCount: 1, paymentId: "ledger-1", completedAt: new Date("2030-01-02T00:00:00Z") });
+const reconciled = row({ state: "reconciliation_required", squarePaymentId: "PAYMENT_REF", processorAmountCents: 60000, processorCurrency: "USD", processorPaymentCount: 1, reconciliationReason: "payable_changed" });
 const SECRETS = ["MERCHANT_SECRET", "LOC_SECRET", "LINK_SECRET", "ORDER_SECRET", "chefsire-cat-att-1", "idempotency", "square_refused", "cust-1", "prov-1", "merchantId", "locationId"];
 
 test("a customer's pending attempt carries the checkout URL and nothing from Square's internals", () => {
@@ -91,4 +91,23 @@ test("every invoice view carries the server-derived payable, and it follows the 
   }
   const voided = serializeCateringInvoice(invoiceRow({ status: "void", voidedAt: new Date(), voidedBy: "prov-1" }), facts, "customer");
   assert.equal(voided.payableCents, 0, "nothing is payable on a withdrawn request");
+});
+
+test("a multiple-payments reconciliation lists EVERY Square payment; the provider sees each id, the customer sees none, and no single reference is invented", () => {
+  const evidence = [
+    { id: "e1", attemptId: "att-1", squarePaymentId: "PAY_ONE", amountCents: 40000, tipCents: 0, currency: "USD", squareCreatedAt: new Date("2030-05-01T10:00:00Z"), squareUpdatedAt: new Date("2030-05-01T10:00:00Z"), completedAt: new Date("2030-05-01T10:00:00Z"), createdAt: new Date() },
+    { id: "e2", attemptId: "att-1", squarePaymentId: "PAY_TWO", amountCents: 15000, tipCents: 0, currency: "USD", squareCreatedAt: null, squareUpdatedAt: null, completedAt: null, createdAt: new Date() },
+  ];
+  const multi = { ...row({ state: "reconciliation_required", reconciliationReason: "multiple_payments", processorPaymentCount: 2, processorAmountCents: 55000, processorCurrency: "USD", squarePaymentId: null }), processorPayments: evidence };
+  const provider = serializeCateringPaymentAttempt(multi, "provider");
+  const customer = serializeCateringPaymentAttempt(multi, "customer");
+  assert.equal(provider.squarePaymentId, undefined);
+  assert.equal(provider.processorPaymentCount, 2);
+  assert.deepEqual(provider.processorPayments, [
+    { amountCents: 40000, tipCents: 0, currency: "USD", completedAt: "2030-05-01T10:00:00.000Z", squarePaymentId: "PAY_ONE" },
+    { amountCents: 15000, tipCents: 0, currency: "USD", completedAt: null, squarePaymentId: "PAY_TWO" },
+  ]);
+  assert.deepEqual(customer.processorPayments?.map((payment) => payment.amountCents), [40000, 15000]);
+  const text = JSON.stringify(customer);
+  assert.equal(text.includes("PAY_ONE") || text.includes("PAY_TWO"), false);
 });

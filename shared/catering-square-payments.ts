@@ -52,7 +52,8 @@ export const CATERING_RECONCILIATION_REASONS = [
   "booking_cancelled",    // the booking was cancelled after checkout was created
   "amount_mismatch",      // Square's payment total is not the amount ChefSire asked for (e.g. a tip)
   "currency_mismatch",    // Square's payment is in another currency
-  "multiple_payments",    // Square shows more than one completed payment on the one order
+  "multiple_payments",    // Square shows more than one completed payment on the one order; EVERY one is kept, none is chosen
+  "payment_timestamp_invalid", // Square's completion time is missing, malformed or in the future, so no honest received-on date exists
 ] as const;
 export type CateringReconciliationReason = typeof CATERING_RECONCILIATION_REASONS[number];
 
@@ -85,11 +86,25 @@ export type CateringPaymentAttemptView = {
   checkoutUrl?: string;
   /** What actually moved at Square, once Square has confirmed a payment. Absent before that. */
   processorAmountCents?: number;
+  /** How many completed Square payments the order showed. Present once money moved. More than one is always a reconciliation. */
+  processorPaymentCount?: number;
+  /** Every completed Square payment, each with its own amount and time. Present once money moved. A customer is not given the Square ids. */
+  processorPayments?: CateringProcessorPaymentView[];
   /** Present only on `reconciliation_required`. */
   reconciliationReason?: CateringReconciliationReason;
   /** The ledger payment this attempt credited. Present only on `completed`. */
   paymentId?: string;
-  /** PROVIDER ONLY, only on `completed` / `reconciliation_required`. */
+  /** PROVIDER ONLY, only when exactly ONE Square payment moved. With several there is no single reference: see `processorPayments`. */
+  squarePaymentId?: string;
+};
+
+export type CateringProcessorPaymentView = {
+  amountCents: number;
+  tipCents: number;
+  currency: string;
+  /** Square's own completion time for this payment, or null if Square did not give a usable one. */
+  completedAt: string | null;
+  /** PROVIDER ONLY. */
   squarePaymentId?: string;
 };
 
@@ -139,7 +154,11 @@ export const CATERING_SQUARE_RECONCILIATION_COPY: Record<CateringReconciliationR
   },
   multiple_payments: {
     customer: "More than one payment was taken, so your caterer needs to sort it out.",
-    provider: "Square shows more than one completed payment on the one checkout order.",
+    provider: "Square shows more than one completed payment on the one checkout order. Every one is listed below with its own Square reference; none was added to the ledger on the others' behalf.",
+  },
+  payment_timestamp_invalid: {
+    customer: "Square took your payment, but your caterer needs to confirm it before it is applied.",
+    provider: "Square confirmed a payment but its completion time was missing or invalid, so ChefSire could not date it honestly and did not add it to the ledger.",
   },
 };
 

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
+  cateringAttemptSquarePayments,
   cateringBookingActivity,
   cateringBookingBilling,
   cateringBookingPaymentAttempts,
@@ -8,6 +9,7 @@ import {
   cateringBookings,
   cateringSquareWebhookEvents,
   notifications,
+  type CateringAttemptSquarePayment,
   type CateringBookingPaymentAttempt,
 } from "@shared/schema";
 import {
@@ -43,6 +45,8 @@ import {
   decideCateringSettlement,
   deriveCateringSquareAmount,
   evaluateSquareEvidence,
+  summarizeConfirmedPayments,
+  type ConfirmedSquarePayment,
   type CateringEvidenceVerdict,
 } from "./catering-square-payment-policy";
 
@@ -373,27 +377,37 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
   async function settleAttempt(attemptId: string): Promise<SettleOutcome> {
     const first = await attemptById(db, attemptId);
     if (!first) return { outcome: "not_found" };
-    if (CONSUMED.includes(first.state)) return { outcome: "already_settled", attempt: first };
-    if (!enabled()) return { outcome: "unavailable", reason: "sandbox_only", attempt: first };
+    if (!enabled()) return CONSUMED.includes(first.state) ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "sandbox_only", attempt: first };
     if (!first.squareOrderId) return { outcome: "no_checkout", attempt: first };
 
+    // An attempt that already consumed a payment is not finished with: Square may show MORE completed payments on the same order later,
+    // and those are money that moved too. `auditConsumedAttempt` keeps that evidence; it never changes what was already credited.
+    const consumed = CONSUMED.includes(first.state);
     const credentials = await connections.getReadyConnectedCredentials(first.providerId);
-    if (!credentials) return { outcome: "unavailable", reason: "connection_not_ready", attempt: first };
+    if (!credentials) return consumed ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "connection_not_ready", attempt: first };
     // The attempt was created for ONE merchant. A connection that now belongs to another merchant cannot see (and must never be
     // used to judge) this attempt's order.
-    if (credentials.merchantId !== first.merchantId) return { outcome: "unavailable", reason: "merchant_changed", attempt: first };
+    if (credentials.merchantId !== first.merchantId) return consumed ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "merchant_changed", attempt: first };
 
     let verdict: CateringEvidenceVerdict;
     try {
       const { order, payments } = await fetchEvidence(first, credentials.accessToken);
       verdict = evaluateSquareEvidence({ attemptId: first.id, squareOrderId: first.squareOrderId, locationId: first.locationId, amountCents: first.amountCents, currency: first.currency }, order, payments);
     } catch (error) {
-      if (error instanceof SquareSandboxOnlyError) return { outcome: "unavailable", reason: "sandbox_only", attempt: first };
+      if (error instanceof SquareSandboxOnlyError) return consumed ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "sandbox_only", attempt: first };
       if (classifySquareFailure(error) === "provider_credential_invalid") {
         await connections.reportAuthorizationFailure(first.providerId, credentials.credentialGeneration).catch(() => undefined);
       }
       log.warn("catering_square_evidence_unavailable", { attemptId: first.id, errorName: error instanceof Error ? error.name : "unknown" });
-      return { outcome: "unavailable", reason: "square_unreachable", attempt: first };
+      return consumed ? { outcome: "already_settled", attempt: first } : { outcome: "unavailable", reason: "square_unreachable", attempt: first };
+    }
+
+    if (consumed) {
+      // Only a COMPLETED payment we have not yet recorded matters here; every other verdict leaves the settled attempt exactly as it is.
+      if (verdict.kind !== "confirmed") return { outcome: "already_settled", attempt: first };
+      const audited = await recordAdditionalPayments(first.id, verdict.payments);
+      if (audited.changed) await notifyReconciliation(audited.attempt);
+      return audited.changed ? { outcome: "reconciliation_required", attempt: audited.attempt } : { outcome: "already_settled", attempt: audited.attempt };
     }
 
     if (verdict.kind === "rejected") {
@@ -426,12 +440,34 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
 
   type Confirmed = Extract<CateringEvidenceVerdict, { kind: "confirmed" }>;
 
+  /** Writes one evidence row per completed Square payment. Idempotent: a payment already recorded (by anyone) is left exactly as it is. */
+  async function insertPaymentEvidence(tx: Executor, attemptId: string, payments: readonly ConfirmedSquarePayment[]) {
+    for (const payment of payments) {
+      await tx.insert(cateringAttemptSquarePayments).values({
+        attemptId, squarePaymentId: payment.paymentId, amountCents: payment.amountCents, tipCents: payment.tipCents, currency: payment.currency,
+        squareCreatedAt: payment.createdAt, squareUpdatedAt: payment.updatedAt, completedAt: payment.completedAt,
+      }).onConflictDoNothing({ target: cateringAttemptSquarePayments.squarePaymentId });
+    }
+  }
+
+  /** The evidence rows of an attempt, read back (so every summary is computed from what was PERSISTED, not from what was in memory). */
+  async function paymentEvidenceOf(executor: Executor, attemptId: string): Promise<CateringAttemptSquarePayment[]> {
+    return executor.select().from(cateringAttemptSquarePayments).where(eq(cateringAttemptSquarePayments.attemptId, attemptId))
+      .orderBy(asc(cateringAttemptSquarePayments.completedAt), asc(cateringAttemptSquarePayments.squarePaymentId)) as Promise<CateringAttemptSquarePayment[]>;
+  }
+
+  const evidenceSummary = (rows: readonly CateringAttemptSquarePayment[]) => summarizeConfirmedPayments(rows.map((row) => ({
+    paymentId: row.squarePaymentId, amountCents: row.amountCents, tipCents: row.tipCents, currency: row.currency,
+    createdAt: row.squareCreatedAt, updatedAt: row.squareUpdatedAt, completedAt: row.completedAt,
+  })));
+
   /**
    * THE ATOMIC LEDGER CREDIT.
    *
    * One transaction: billing lock, booking row, attempt row; recompute the CURRENT payable from the locked ledger; then either
    * insert the processor payment and complete the attempt (and write the activity row) together, or keep the Square evidence on
-   * the attempt as `reconciliation_required`. A concurrent webhook/poll waits on the attempt row, then finds it consumed.
+   * the attempt as `reconciliation_required`. EVERY completed Square payment is persisted as its own evidence row in the same commit,
+   * before the attempt can become terminal. A concurrent webhook/poll waits on the attempt row, then finds it consumed.
    */
   async function recordConfirmedPayment(attemptId: string, confirmed: Confirmed): Promise<
     { kind: "completed" | "reconciliation" | "already" | "duplicate"; attempt: CateringBookingPaymentAttempt }
@@ -445,23 +481,40 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       const attempt = (await attemptById(tx, attemptId))!;
       if (CONSUMED.includes(attempt.state)) return { kind: "already", attempt };
 
-      // A Square payment is consumed AT MOST ONCE, by whichever attempt or ledger row got there first. Checked here as well as by the
-      // unique indexes, so a replayed or foreign payment id is a clean refusal and not a constraint error that aborts the settlement.
+      // A Square payment is evidence for AT MOST ONE attempt and credited at most once. Checked here as well as by the unique indexes, so a
+      // replayed or foreign payment id is a clean refusal and not a constraint error that aborts the settlement.
+      const ids = confirmed.payments.map((payment) => payment.paymentId);
       const [consumedByLedger] = await tx.select({ id: cateringBookingPayments.id }).from(cateringBookingPayments)
-        .where(and(eq(cateringBookingPayments.processor, CATERING_SQUARE_PROCESSOR), eq(cateringBookingPayments.processorPaymentId, confirmed.paymentId))).limit(1);
+        .where(and(eq(cateringBookingPayments.processor, CATERING_SQUARE_PROCESSOR), inArray(cateringBookingPayments.processorPaymentId, ids))).limit(1);
       const [consumedByAttempt] = await tx.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts)
-        .where(and(eq(cateringBookingPaymentAttempts.squarePaymentId, confirmed.paymentId), sql`${cateringBookingPaymentAttempts.id} <> ${attemptId}`)).limit(1);
-      if (consumedByLedger || consumedByAttempt) return { kind: "duplicate", attempt };
+        .where(and(inArray(cateringBookingPaymentAttempts.squarePaymentId, ids), sql`${cateringBookingPaymentAttempts.id} <> ${attemptId}`)).limit(1);
+      const [elsewhere] = await tx.select({ id: cateringAttemptSquarePayments.id }).from(cateringAttemptSquarePayments)
+        .where(and(inArray(cateringAttemptSquarePayments.squarePaymentId, ids), sql`${cateringAttemptSquarePayments.attemptId} <> ${attemptId}`)).limit(1);
+      if (consumedByLedger || consumedByAttempt || elsewhere) return { kind: "duplicate", attempt };
 
+      const summary = summarizeConfirmedPayments(confirmed.payments);
       const { facts, rows, asOfDate } = await lockedFacts(tx, attempt.bookingId, booking);
       const invoiceRow = rows.invoices.find((invoice) => invoice.id === attempt.invoiceId);
-      const decision = decideCateringSettlement({
-        confirmed: { amountCents: confirmed.amountCents, currency: confirmed.currency, mismatch: confirmed.mismatch },
+      let decision = decideCateringSettlement({
+        confirmed: { amountCents: summary.amountCents ?? 0, currency: summary.currency ?? "", mismatch: confirmed.mismatch },
         invoice: invoiceRow ? cateringInvoiceFactOf(invoiceRow) : undefined,
         facts,
       });
 
+      // THE ACCOUNTING DATE is the day SQUARE completed the payment, in the PROVIDER's calendar (the one every other billing date uses) --
+      // not the day ChefSire happened to verify it. A time that is in the future of the billing day cannot be a received-on date.
+      let receivedOn: string | null = null;
       if (decision.kind === "credit") {
+        const completedAt = confirmed.payments[0].completedAt;
+        receivedOn = completedAt ? await cateringBillingDay(tx, booking.providerId, completedAt) : null;
+        if (!receivedOn || receivedOn > asOfDate) decision = { kind: "reconcile", reason: "payment_timestamp_invalid" };
+      }
+
+      // The evidence is persisted FIRST, whatever happens next: it is what keeps every movement of money visible.
+      await insertPaymentEvidence(tx, attemptId, confirmed.payments);
+
+      if (decision.kind === "credit") {
+        const only = confirmed.payments[0];
         const [payment] = await tx.insert(cateringBookingPayments).values({
           bookingId: attempt.bookingId,
           invoiceId: attempt.invoiceId,
@@ -470,14 +523,14 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
           paymentMethod: "card_online",
           paymentSource: "processor",
           status: "recorded",
-          receivedOn: asOfDate,
+          receivedOn: receivedOn!,
           recordedBy: null,
           processor: CATERING_SQUARE_PROCESSOR,
-          processorPaymentId: confirmed.paymentId,
+          processorPaymentId: only.paymentId,
         }).returning();
         const [completed] = await tx.update(cateringBookingPaymentAttempts).set({
-          state: "completed", paymentId: payment.id, squarePaymentId: confirmed.paymentId,
-          processorAmountCents: confirmed.amountCents, processorCurrency: confirmed.currency,
+          state: "completed", paymentId: payment.id, squarePaymentId: only.paymentId,
+          processorAmountCents: only.amountCents, processorCurrency: only.currency, processorPaymentCount: 1,
           verifiedAt: now(), completedAt: now(), closedAt: now(), lastCheckedAt: now(), updatedAt: now(),
         }).where(eq(cateringBookingPaymentAttempts.id, attemptId)).returning();
         await tx.insert(cateringBookingActivity).values({
@@ -489,12 +542,50 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       }
 
       // Money moved but the ledger cannot take it as a normal credit. KEEP THE EVIDENCE; credit nothing, clamp nothing, refund nothing.
+      // With ONE payment its reference is the attempt's; with several there is no single reference and none is named as "the" payment.
       const [reconciled] = await tx.update(cateringBookingPaymentAttempts).set({
-        state: "reconciliation_required", reconciliationReason: decision.reason, squarePaymentId: confirmed.paymentId,
-        processorAmountCents: confirmed.amountCents, processorCurrency: confirmed.currency,
+        state: "reconciliation_required", reconciliationReason: decision.reason, processorPaymentCount: summary.count,
+        squarePaymentId: summary.singlePaymentId, processorAmountCents: summary.amountCents, processorCurrency: summary.currency,
         verifiedAt: now(), closedAt: now(), lastCheckedAt: now(), updatedAt: now(),
       }).where(eq(cateringBookingPaymentAttempts.id, attemptId)).returning();
       return { kind: "reconciliation", attempt: reconciled as CateringBookingPaymentAttempt };
+    });
+  }
+
+  /**
+   * An attempt that ALREADY consumed a payment is audited against Square again (on a new webhook): any completed payment on its order that
+   * is not yet recorded is added as evidence in its own row, and the attempt becomes `reconciliation_required` / `multiple_payments`.
+   * What was already credited to the ledger is never touched, rewritten or removed; the ledger link stays; a replay finds nothing new.
+   */
+  async function recordAdditionalPayments(attemptId: string, payments: readonly ConfirmedSquarePayment[]): Promise<{ changed: boolean; attempt: CateringBookingPaymentAttempt }> {
+    return db.transaction(async (tx: Executor) => {
+      const seen = await attemptById(tx, attemptId);
+      if (!seen) throw new Error("payment attempt vanished");
+      await lockCateringBilling(tx, seen.bookingId);
+      await lockedBooking(tx, seen.bookingId);
+      await tx.execute(sql`SELECT id FROM catering_booking_payment_attempts WHERE id = ${attemptId} FOR UPDATE`);
+      const attempt = (await attemptById(tx, attemptId))!;
+      if (!CONSUMED.includes(attempt.state)) return { changed: false, attempt };
+      const known = new Set((await paymentEvidenceOf(tx, attemptId)).map((row) => row.squarePaymentId));
+      if (attempt.squarePaymentId) known.add(attempt.squarePaymentId);
+      const fresh = payments.filter((payment) => !known.has(payment.paymentId));
+      if (fresh.length === 0) return { changed: false, attempt };
+      // A payment already recorded as evidence for ANOTHER attempt, or credited to the ledger, is not this attempt's to claim.
+      const ids = fresh.map((payment) => payment.paymentId);
+      const taken = new Set([
+        ...(await tx.select({ id: cateringAttemptSquarePayments.squarePaymentId }).from(cateringAttemptSquarePayments).where(inArray(cateringAttemptSquarePayments.squarePaymentId, ids))).map((row: { id: string }) => row.id),
+        ...(await tx.select({ id: cateringBookingPayments.processorPaymentId }).from(cateringBookingPayments).where(and(eq(cateringBookingPayments.processor, CATERING_SQUARE_PROCESSOR), inArray(cateringBookingPayments.processorPaymentId, ids)))).map((row: { id: string | null }) => row.id),
+      ]);
+      const claimable = fresh.filter((payment) => !taken.has(payment.paymentId));
+      if (claimable.length === 0) return { changed: false, attempt };
+      await insertPaymentEvidence(tx, attemptId, claimable);
+      const stored = evidenceSummary(await paymentEvidenceOf(tx, attemptId));
+      const [updated] = await tx.update(cateringBookingPaymentAttempts).set({
+        state: "reconciliation_required", reconciliationReason: "multiple_payments", processorPaymentCount: stored.count,
+        squarePaymentId: null, processorAmountCents: stored.amountCents, processorCurrency: stored.currency,
+        verifiedAt: now(), lastCheckedAt: now(), updatedAt: now(),
+      }).where(eq(cateringBookingPaymentAttempts.id, attemptId)).returning();
+      return { changed: true, attempt: updated as CateringBookingPaymentAttempt };
     });
   }
 
@@ -553,7 +644,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
 
   type StatusResult =
     | { kind: "not_found" }
-    | { kind: "ok"; role: "provider" | "customer"; attempt: CateringBookingPaymentAttempt };
+    | { kind: "ok"; role: "provider" | "customer"; attempt: CateringAttemptWithPayments };
 
   /**
    * A participant's view of one attempt. The CUSTOMER's read first asks Square (throttled), because a browser returning from
@@ -587,7 +678,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         attempt = (await attemptById(db, attempt.id)) ?? attempt;
       }
     }
-    return { kind: "ok", role, attempt };
+    return { kind: "ok", role, attempt: (await withPaymentEvidence(db, [attempt]))[0] };
   }
 
   /* --------------------------------------------------------------------------------------------------------- *
@@ -649,13 +740,23 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * the only provider-visible record of it) PLUS a bounded window of the most recent other attempts. The history cap can therefore never
    * hide an unresolved financial exception, however many newer attempts exist. Newest first.
    */
-  async function attemptsForBooking(executor: Executor, bookingId: string) {
+  async function attemptsForBooking(executor: Executor, bookingId: string): Promise<CateringAttemptWithPayments[]> {
     const unresolved = await executor.select().from(cateringBookingPaymentAttempts)
       .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), eq(cateringBookingPaymentAttempts.state, "reconciliation_required"))) as CateringBookingPaymentAttempt[];
     const recent = await executor.select().from(cateringBookingPaymentAttempts)
       .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), sql`${cateringBookingPaymentAttempts.state} <> 'reconciliation_required'`))
       .orderBy(desc(cateringBookingPaymentAttempts.createdAt), asc(cateringBookingPaymentAttempts.id)).limit(ATTEMPT_HISTORY_LIMIT) as CateringBookingPaymentAttempt[];
-    return [...unresolved, ...recent].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.id.localeCompare(right.id));
+    const merged = [...unresolved, ...recent].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.id.localeCompare(right.id));
+    return withPaymentEvidence(executor, merged);
+  }
+
+  /** Attaches each money-moved attempt's per-payment evidence (one query for the whole list). */
+  async function withPaymentEvidence(executor: Executor, attempts: CateringBookingPaymentAttempt[]): Promise<CateringAttemptWithPayments[]> {
+    const ids = attempts.filter((attempt) => CONSUMED.includes(attempt.state)).map((attempt) => attempt.id);
+    if (ids.length === 0) return attempts.map((attempt) => ({ ...attempt, processorPayments: [] }));
+    const rows = await executor.select().from(cateringAttemptSquarePayments).where(inArray(cateringAttemptSquarePayments.attemptId, ids))
+      .orderBy(asc(cateringAttemptSquarePayments.completedAt), asc(cateringAttemptSquarePayments.squarePaymentId)) as CateringAttemptSquarePayment[];
+    return attempts.map((attempt) => ({ ...attempt, processorPayments: rows.filter((row) => row.attemptId === attempt.id) }));
   }
 
   return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, sweepClosedLinks, attemptsForBooking };
@@ -673,6 +774,9 @@ export async function closeOpenAttemptsInTransaction(tx: Executor, bookingId: st
     .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), inArray(cateringBookingPaymentAttempts.state, [...OPEN]))).returning({ id: cateringBookingPaymentAttempts.id });
   return closed.length;
 }
+
+/** An attempt together with its per-payment Square evidence (empty until money moved). */
+export type CateringAttemptWithPayments = CateringBookingPaymentAttempt & { processorPayments: CateringAttemptSquarePayment[] };
 
 export type CateringSquarePayments = ReturnType<typeof createCateringSquarePayments>;
 

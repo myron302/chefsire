@@ -11,6 +11,9 @@ import {
   CateringAttemptLookupError,
   cateringAttemptLookupIsTerminal,
   cateringAttemptPollInterval,
+  cateringCheckoutIdentity,
+  cateringCheckoutRedirectTarget,
+  createCheckoutRetryScheduler,
   cateringOpenAttemptFor,
   cateringProviderVisibleAttempts,
   cateringReturnedAttemptId,
@@ -185,4 +188,134 @@ test("dismissing only hides the banner and consumes the URL hint: no request, no
   assert.ok(component.includes("enabled: attemptId !== null"));
   // and the invoice's own pay control is a separate component, untouched by the banner
   assert.ok(component.includes("export function InvoiceSquarePayment"));
+});
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Codex repair pass 3: the uncertain-checkout retry cannot outlive the checkout it belongs to
+ * ------------------------------------------------------------------------------------------------------------- */
+
+/** A controllable clock: timers fire only when the test says so, so "before it fires" and "after it fires" are exact. */
+function fakeTimers() {
+  let next = 1;
+  const pending = new Map<number, () => void>();
+  return {
+    timers: { setTimeout: (run: () => void) => { const id = next++; pending.set(id, run); return id; }, clearTimeout: (handle: unknown) => { pending.delete(handle as number); } },
+    fireAll() { for (const [id, run] of [...pending]) { pending.delete(id); run(); } },
+    count: () => pending.size,
+  };
+}
+const identityA = cateringCheckoutIdentity("user-1", "booking-1", "invoice-1");
+const identityOtherInvoice = cateringCheckoutIdentity("user-1", "booking-1", "invoice-2");
+const identityOtherBooking = cateringCheckoutIdentity("user-1", "booking-2", "invoice-1");
+
+test("the current checkout's legitimate retry still fires exactly once", () => {
+  const clock = fakeTimers();
+  const scheduler = createCheckoutRetryScheduler(clock.timers);
+  scheduler.setIdentity(identityA);
+  let posts = 0;
+  assert.equal(scheduler.schedule(identityA, () => { posts += 1; }, 2000), true);
+  assert.equal(scheduler.pending(), true);
+  clock.fireAll();
+  assert.equal(posts, 1);
+  assert.equal(scheduler.pending(), false);
+  clock.fireAll();
+  assert.equal(posts, 1, "one timer, one retry");
+});
+
+test("unmounting before the retry fires cancels it: the handle is cleared and nothing posts", () => {
+  const clock = fakeTimers();
+  const scheduler = createCheckoutRetryScheduler(clock.timers);
+  scheduler.setIdentity(identityA);
+  let posts = 0;
+  scheduler.schedule(identityA, () => { posts += 1; }, 2000);
+  scheduler.dispose();
+  assert.equal(clock.count(), 0, "the timer itself was cleared, not merely ignored");
+  clock.fireAll();
+  assert.equal(posts, 0);
+  assert.equal(scheduler.isCurrent(identityA), false);
+  assert.equal(scheduler.schedule(identityA, () => { posts += 1; }, 1), false, "and nothing can be scheduled after unmount");
+});
+
+test("switching to another invoice before the retry fires cancels the old retry", () => {
+  const clock = fakeTimers();
+  const scheduler = createCheckoutRetryScheduler(clock.timers);
+  scheduler.setIdentity(identityA);
+  let posts: string[] = [];
+  scheduler.schedule(identityA, () => posts.push("old invoice"), 2000);
+  scheduler.setIdentity(identityOtherInvoice);
+  assert.equal(clock.count(), 0);
+  clock.fireAll();
+  assert.deepEqual(posts, []);
+  // the new invoice's own retry works
+  scheduler.schedule(identityOtherInvoice, () => posts.push("new invoice"), 2000);
+  clock.fireAll();
+  assert.deepEqual(posts, ["new invoice"]);
+});
+
+test("switching to another booking before the retry fires cancels the old retry", () => {
+  const clock = fakeTimers();
+  const scheduler = createCheckoutRetryScheduler(clock.timers);
+  scheduler.setIdentity(identityA);
+  const posts: string[] = [];
+  scheduler.schedule(identityA, () => posts.push("old booking"), 2000);
+  scheduler.setIdentity(identityOtherBooking);
+  clock.fireAll();
+  assert.deepEqual(posts, []);
+});
+
+test("even a timer that fires anyway re-checks its identity first: a stale callback cannot run", () => {
+  // A timer implementation that cannot be cleared (the worst case) must still not run a stale retry.
+  const stuck: (() => void)[] = [];
+  const scheduler = createCheckoutRetryScheduler({ setTimeout: (run) => { stuck.push(run); return stuck.length; }, clearTimeout: () => undefined });
+  scheduler.setIdentity(identityA);
+  let posts = 0;
+  scheduler.schedule(identityA, () => { posts += 1; }, 2000);
+  scheduler.setIdentity(identityOtherInvoice);
+  for (const run of stuck) run();
+  assert.equal(posts, 0);
+});
+
+test("a retry for an identity that is not on screen is refused outright, and scheduling replaces rather than stacks", () => {
+  const clock = fakeTimers();
+  const scheduler = createCheckoutRetryScheduler(clock.timers);
+  scheduler.setIdentity(identityA);
+  assert.equal(scheduler.schedule(identityOtherInvoice, () => undefined, 1), false);
+  assert.equal(clock.count(), 0);
+  let posts = 0;
+  scheduler.schedule(identityA, () => { posts += 1; }, 1);
+  scheduler.schedule(identityA, () => { posts += 1; }, 1);
+  assert.equal(clock.count(), 1, "never two retries pending for one checkout");
+  clock.fireAll();
+  assert.equal(posts, 1, "so a retry cannot become a second checkout request");
+});
+
+test("a stale callback cannot redirect to an old checkout: the target exists only for the identity still on screen, a pending attempt and a Square URL", () => {
+  const scheduler = createCheckoutRetryScheduler(fakeTimers().timers);
+  scheduler.setIdentity(identityA);
+  const attemptFor = { state: "pending", checkoutUrl: "https://square.link/u/old" };
+  const isCurrent = (identity: string) => scheduler.isCurrent(identity);
+  assert.equal(cateringCheckoutRedirectTarget({ startedFor: identityA, isCurrent, attempt: attemptFor }), "https://square.link/u/old", "the legitimate redirect");
+  scheduler.setIdentity(identityOtherInvoice);
+  assert.equal(cateringCheckoutRedirectTarget({ startedFor: identityA, isCurrent, attempt: attemptFor }), null, "the customer left that invoice");
+  scheduler.dispose();
+  assert.equal(cateringCheckoutRedirectTarget({ startedFor: identityOtherInvoice, isCurrent, attempt: attemptFor }), null, "or left the page");
+  scheduler.setIdentity(identityA);
+  assert.equal(cateringCheckoutRedirectTarget({ startedFor: identityA, isCurrent, attempt: { state: "creating" } }), null);
+  assert.equal(cateringCheckoutRedirectTarget({ startedFor: identityA, isCurrent, attempt: { state: "pending", checkoutUrl: "https://evil.example/x" } }), null);
+  assert.equal(cateringCheckoutRedirectTarget({ startedFor: identityA, isCurrent, attempt: undefined }), null);
+});
+
+test("the component wires it all: the timer is the scheduler's, unmount and identity changes dispose it, and every callback is identity-guarded", () => {
+  assert.equal(/setTimeout\(/.test(component), false, "no raw timer in the component");
+  assert.ok(component.includes("retryScheduler.setIdentity(identity)") && component.includes("return () => retryScheduler.dispose();"));
+  assert.ok(component.includes("[identity, retryScheduler]"), "the effect re-runs, and so cleans up, whenever the viewer, booking or invoice changes");
+  assert.ok(component.includes("retryScheduler.schedule(request.identity, () => start.mutate(request), CATERING_SQUARE_CREATE_RETRY_MS)"), "the retry re-sends the request it was scheduled for, never the screen's current invoice");
+  const onSuccess = component.slice(component.indexOf("onSuccess: async (body, request)"), component.indexOf("onError: async (error: Error, request)"));
+  assert.ok(onSuccess.indexOf("if (!retryScheduler.isCurrent(request.identity)) return;") < onSuccess.indexOf("window.location.assign"), "the identity check precedes any redirect");
+  assert.ok(onSuccess.indexOf("if (!retryScheduler.isCurrent(request.identity)) return;") < onSuccess.indexOf("retryScheduler.schedule"), "and any further retry");
+  assert.ok(onSuccess.includes("cateringCheckoutRedirectTarget("));
+  const onError = component.slice(component.indexOf("onError: async (error: Error, request)"), component.indexOf("const pressPay"));
+  assert.ok(onError.indexOf("isCurrent(request.identity)") < onError.indexOf("setMessage"), "a stale failure cannot write a message either");
+  assert.ok(component.includes("cateringInvoicePayPath(request.bookingId, request.invoiceId)"), "the request names the booking and invoice it was started for");
+  assert.ok(component.includes("const MAX") === false && component.includes("retries.current < CATERING_SQUARE_CREATE_RETRIES"), "the retry count stays bounded");
 });

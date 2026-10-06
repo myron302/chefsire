@@ -16,6 +16,9 @@ import {
   cateringAttemptPollInterval,
   CATERING_SQUARE_CREATE_RETRIES,
   CATERING_SQUARE_CREATE_RETRY_MS,
+  cateringCheckoutIdentity,
+  cateringCheckoutRedirectTarget,
+  createCheckoutRetryScheduler,
   cateringOpenAttemptFor,
   cateringProviderVisibleAttempts,
   cateringReturnedAttemptId,
@@ -49,38 +52,62 @@ export function InvoiceSquarePayment({ bookingId, userId, billing, invoice }: { 
   const [message, setMessage] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const retries = useRef(0);
+  const identity = cateringCheckoutIdentity(userId, bookingId, invoice.id);
+  // ONE scheduler per mounted control. It holds the pending retry's handle, drops it when the identity (viewer, booking or invoice)
+  // changes, and on unmount; and it is the single source of truth for "is this still the checkout on screen".
+  const scheduler = useRef<ReturnType<typeof createCheckoutRetryScheduler>>();
+  if (!scheduler.current) scheduler.current = createCheckoutRetryScheduler();
+  const retryScheduler = scheduler.current;
+  useEffect(() => {
+    retryScheduler.setIdentity(identity);
+    retries.current = 0;
+    setCreating(false);
+    setMessage(null);
+    return () => retryScheduler.dispose();
+  }, [identity, retryScheduler]);
   const open = cateringOpenAttemptFor(billing.paymentAttempts, invoice.id);
   const available = cateringSquarePayAvailable({ role: billing.role, billing, invoice });
-  const refreshBilling = () => cache.invalidateQueries({ queryKey: cateringBookingBillingKey(userId, bookingId) });
+  const refreshBilling = (target: { userId: string; bookingId: string }) => cache.invalidateQueries({ queryKey: cateringBookingBillingKey(target.userId, target.bookingId) });
 
+  type PayRequest = { identity: string; userId: string; bookingId: string; invoiceId: string };
   const start = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (request: PayRequest) => {
       let response: Response;
       try {
-        // An empty object: there is no field in which an amount, merchant or location could be sent.
-        response = await fetch(cateringInvoicePayPath(bookingId, invoice.id), { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" });
+        // An empty object: there is no field in which an amount, merchant or location could be sent. The request names the booking and
+        // invoice it was STARTED for, never whatever is on screen when it runs.
+        response = await fetch(cateringInvoicePayPath(request.bookingId, request.invoiceId), { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" });
       } catch { throw new Error("We couldn't reach ChefSire. Nothing was charged. Please try again."); }
       const body = await readJson(response);
       if (!response.ok) throw new Error(typeof body.message === "string" && body.message ? body.message : "We could not open a Square checkout. Nothing was charged.");
       return body as { attempt?: CateringPaymentAttemptView };
     },
-    onSuccess: async (body) => {
+    onSuccess: async (body, request) => {
+      // Always refresh the billing view that request was for; it is harmless for any identity.
+      await refreshBilling(request);
+      // But nothing else -- no message, no spinner, no retry, no REDIRECT -- unless that request's checkout is still the one on screen.
+      if (!retryScheduler.isCurrent(request.identity)) return;
       setMessage(null);
       const attempt = body.attempt;
-      const url = cateringSafeCheckoutUrl(attempt?.checkoutUrl);
-      await refreshBilling();
-      if (attempt?.state === "pending" && url) { setCreating(false); window.location.assign(url); return; }
+      const target = cateringCheckoutRedirectTarget({ startedFor: request.identity, isCurrent: (candidate) => retryScheduler.isCurrent(candidate), attempt });
+      if (target) { setCreating(false); window.location.assign(target); return; }
       if (attempt?.state === "creating" && retries.current < CATERING_SQUARE_CREATE_RETRIES) {
-        // Square's answer was uncertain; asking again resumes the SAME checkout rather than creating another.
+        // Square's answer was uncertain; asking again resumes the SAME checkout (same server-side idempotency key) rather than creating another.
         retries.current += 1;
-        setTimeout(() => start.mutate(), CATERING_SQUARE_CREATE_RETRY_MS);
+        retryScheduler.schedule(request.identity, () => start.mutate(request), CATERING_SQUARE_CREATE_RETRY_MS);
         return;
       }
       setCreating(false);
       if (attempt?.state === "failed") setMessage(CATERING_SQUARE_COPY.failed);
     },
-    onError: async (error: Error) => { setCreating(false); setMessage(error.message); await refreshBilling(); },
+    onError: async (error: Error, request) => {
+      await refreshBilling(request);
+      if (!retryScheduler.isCurrent(request.identity)) return;
+      setCreating(false);
+      setMessage(error.message);
+    },
   });
+  const pressPay = () => { retries.current = 0; setCreating(true); setMessage(null); start.mutate({ identity, userId, bookingId, invoiceId: invoice.id }); };
 
   if (billing.role !== "customer") return null;
   if (!available && !open) return null;
@@ -90,7 +117,7 @@ export function InvoiceSquarePayment({ bookingId, userId, billing, invoice }: { 
 
   return <div className="mt-3 space-y-2 rounded-md border border-dashed p-3" aria-live="polite">
     {available && <>
-      <Button className="min-h-11" disabled={busy} onClick={() => { retries.current = 0; setCreating(true); setMessage(null); start.mutate(); }}>
+      <Button className="min-h-11" disabled={busy} onClick={pressPay}>
         {busy ? CATERING_SQUARE_COPY.creating : `${CATERING_SQUARE_COPY.payAction} · ${formatCateringMoney(invoice.payableCents, invoice.currency)}`}
       </Button>
       <p className="text-xs text-muted-foreground">{CATERING_SQUARE_COPY.disclosure}</p>
@@ -98,7 +125,7 @@ export function InvoiceSquarePayment({ bookingId, userId, billing, invoice }: { 
     {open && display && <div className="space-y-2">
       <p className="break-words text-sm">{display.label}</p>
       {display.canContinue && url && <Button className="min-h-11" asChild><a href={url}>Continue to Square checkout</a></Button>}
-      {display.phase === "creating" && !busy && <Button className="min-h-11" variant="outline" onClick={() => { retries.current = 0; start.mutate(); }}>Try again</Button>}
+      {display.phase === "creating" && !busy && <Button className="min-h-11" variant="outline" onClick={pressPay}>Try again</Button>}
     </div>}
     {message && <p role="alert" className="break-words text-sm text-destructive">{message}</p>}
   </div>;
@@ -187,7 +214,15 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
           </div>
           <p className="mt-1 break-words text-sm text-muted-foreground">{display.label}</p>
           {attempt.state === "reconciliation_required" && <p className="mt-1 break-words text-sm">{cateringSquareReconciliationCopy(attempt.reconciliationReason, "provider")}</p>}
-          {attempt.squarePaymentId && <p className="mt-1 break-all text-xs text-muted-foreground">Square payment reference: {attempt.squarePaymentId}</p>}
+          {attempt.squarePaymentId && !attempt.processorPayments?.length && <p className="mt-1 break-all text-xs text-muted-foreground">Square payment reference: {attempt.squarePaymentId}</p>}
+          {attempt.processorPayments && attempt.processorPayments.length > 0 && <div className="mt-2 space-y-1" aria-label="Completed Square payments">
+            <p className="text-xs font-medium">{attempt.processorPayments.length === 1 ? "Square payment" : `${attempt.processorPayments.length} completed Square payments`}</p>
+            <ul className="space-y-1">{attempt.processorPayments.map((payment, index) => <li key={payment.squarePaymentId ?? index} className="break-all text-xs text-muted-foreground">
+              <span className="tabular-nums">{money(payment.amountCents, payment.currency)}</span>
+              {payment.completedAt ? ` · ${payment.completedAt}` : " · no usable Square time"}
+              {payment.squarePaymentId ? ` · ${payment.squarePaymentId}` : ""}
+            </li>)}</ul>
+          </div>}
         </li>;
       })}</ul>
     </>}

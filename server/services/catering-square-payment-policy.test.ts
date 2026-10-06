@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CateringBillingFacts, CateringInvoiceFact, CateringPaymentFact } from "@shared/catering-booking-billing";
-import type { SquareOrderFacts, SquarePaymentFacts } from "../lib/square-integration";
+import type { SquareOrderFacts, SquarePaymentFacts } from "../lib/square-checkout";
 import {
   cateringAttemptMatches,
   decideCateringSettlement,
   deriveCateringSquareAmount,
   evaluateSquareEvidence,
+  squareCompletionTime,
+  summarizeConfirmedPayments,
 } from "./catering-square-payment-policy";
 
 /** The pure rules of Phase 2Q, exactly as the service runs them. */
@@ -71,7 +73,7 @@ test("an open attempt is reused only when amount, currency, merchant and locatio
 
 const target = { attemptId: "att-1", squareOrderId: "ORDER_1", locationId: "LOC_1", amountCents: 40000, currency: "USD" };
 const order = (overrides: Partial<SquareOrderFacts> = {}): SquareOrderFacts => ({ id: "ORDER_1", locationId: "LOC_1", referenceId: "att-1", state: "OPEN", totalCents: 40000, currency: "USD", paymentIds: [], ...overrides });
-const squarePayment = (overrides: Partial<SquarePaymentFacts> = {}): SquarePaymentFacts => ({ id: "PAY_1", orderId: "ORDER_1", locationId: "LOC_1", status: "COMPLETED", totalCents: 40000, tipCents: 0, currency: "USD", ...overrides });
+const squarePayment = (overrides: Partial<SquarePaymentFacts> = {}): SquarePaymentFacts => ({ id: "PAY_1", orderId: "ORDER_1", locationId: "LOC_1", status: "COMPLETED", totalCents: 40000, tipCents: 0, currency: "USD", createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-01-01T10:00:01Z", hasRefunds: false, ...overrides });
 
 test("an unpaid open order is awaiting; approved is processing; a cancelled unpaid order is cancelled", () => {
   assert.deepEqual(evaluateSquareEvidence(target, order(), []), { kind: "awaiting" });
@@ -81,29 +83,54 @@ test("an unpaid open order is awaiting; approved is processing; a cancelled unpa
   assert.deepEqual(evaluateSquareEvidence(target, order({ state: "CANCELED" }), []), { kind: "cancelled" });
 });
 
-test("only a COMPLETED payment that exactly matches is confirmed without a mismatch", () => {
-  assert.deepEqual(evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"] }), [squarePayment()]), { kind: "confirmed", paymentId: "PAY_1", amountCents: 40000, currency: "USD", mismatch: null });
+const evidence = (id: string, amountCents: number, currency = "USD", at = "2030-01-01T10:00:01.000Z", tipCents = 0) => ({
+  paymentId: id, amountCents, tipCents, currency, createdAt: new Date("2030-01-01T10:00:00Z"), updatedAt: new Date(at), completedAt: new Date(at),
 });
 
-test("every identifier is compared: wrong order, location, reference, or a payment for another order/location is rejected", () => {
-  const paid = (o: Partial<SquareOrderFacts>, p: Partial<SquarePaymentFacts> = {}) => evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"], ...o }), [squarePayment(p)]);
-  assert.deepEqual(paid({ id: "ORDER_OTHER" }), { kind: "rejected", code: "order_mismatch" });
-  assert.deepEqual(paid({ locationId: "LOC_2" }), { kind: "rejected", code: "location_mismatch" });
-  assert.deepEqual(paid({ locationId: null }), { kind: "rejected", code: "location_mismatch" });
-  assert.deepEqual(paid({ referenceId: "other" }), { kind: "rejected", code: "reference_mismatch" });
-  assert.deepEqual(paid({ referenceId: null }), { kind: "rejected", code: "reference_mismatch" });
-  assert.deepEqual(paid({}, { orderId: "ORDER_OTHER" }), { kind: "rejected", code: "payment_order_mismatch" });
-  assert.deepEqual(paid({}, { orderId: null }), { kind: "rejected", code: "payment_order_mismatch" });
-  assert.deepEqual(paid({}, { locationId: "LOC_2" }), { kind: "rejected", code: "payment_location_mismatch" });
+test("only a COMPLETED payment that exactly matches is confirmed without a mismatch, carrying Square's own timestamps", () => {
+  assert.deepEqual(evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"] }), [squarePayment()]), { kind: "confirmed", payments: [evidence("PAY_1", 40000)], mismatch: null });
+});
+
+test("every completed payment is kept: two are two pieces of evidence, each with its own id, amount, currency and time, never merged or chosen between", () => {
+  const verdict = evaluateSquareEvidence(target, order({ paymentIds: ["PAY_2", "PAY_1"] }), [
+    squarePayment({ id: "PAY_2", totalCents: 15000, updatedAt: "2030-01-01T12:00:00Z" }),
+    squarePayment({ id: "PAY_1", totalCents: 40000, updatedAt: "2030-01-01T10:00:01Z" }),
+  ]);
+  assert.equal(verdict.kind, "confirmed");
+  if (verdict.kind !== "confirmed") return;
+  assert.equal(verdict.mismatch, "multiple_payments");
+  assert.deepEqual(verdict.payments.map((payment) => [payment.paymentId, payment.amountCents, payment.completedAt?.toISOString()]), [["PAY_1", 40000, "2030-01-01T10:00:01.000Z"], ["PAY_2", 15000, "2030-01-01T12:00:00.000Z"]], "deterministic: by Square time, then id");
+  // three payments, mixed currencies: still all there
+  const three = evaluateSquareEvidence(target, order({ paymentIds: ["A", "B", "C"] }), [squarePayment({ id: "A" }), squarePayment({ id: "B", currency: "CAD" }), squarePayment({ id: "C", totalCents: 100 })]);
+  assert.equal(three.kind === "confirmed" && three.payments.length, 3);
+});
+
+test("a summary is honest: an amount only when the currency is one, a reference only when there is exactly one payment", () => {
+  assert.deepEqual(summarizeConfirmedPayments([evidence("A", 100)]), { count: 1, amountCents: 100, currency: "USD", singlePaymentId: "A" });
+  assert.deepEqual(summarizeConfirmedPayments([evidence("A", 100), evidence("B", 250)]), { count: 2, amountCents: 350, currency: "USD", singlePaymentId: null });
+  assert.deepEqual(summarizeConfirmedPayments([evidence("A", 100), evidence("B", 250, "CAD")]), { count: 2, amountCents: null, currency: null, singlePaymentId: null });
+});
+
+test("Square's completion time is updated_at, or created_at once a refund has moved updated_at; missing or garbage is null, never 'now'", () => {
+  assert.equal(squareCompletionTime({ createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-01-01T10:00:05Z", hasRefunds: false })?.toISOString(), "2030-01-01T10:00:05.000Z");
+  assert.equal(squareCompletionTime({ createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-02-01T00:00:00Z", hasRefunds: true })?.toISOString(), "2030-01-01T10:00:00.000Z");
+  for (const bad of [null, "", "not a date"]) {
+    assert.equal(squareCompletionTime({ createdAt: bad, updatedAt: bad, hasRefunds: false }), null, String(bad));
+    assert.equal(squareCompletionTime({ createdAt: bad, updatedAt: "2030-01-01T10:00:00Z", hasRefunds: true }), null, `refunded and created_at ${String(bad)}`);
+  }
+});
+
+test("a single payment with no usable Square time is confirmed as a payment_timestamp_invalid reconciliation, not dated by when ChefSire looked", () => {
+  const verdict = evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"] }), [squarePayment({ updatedAt: null, createdAt: "2030-01-01T10:00:00Z" })]);
+  assert.equal(verdict.kind === "confirmed" && verdict.mismatch, "payment_timestamp_invalid");
+  assert.equal(verdict.kind === "confirmed" && verdict.payments[0].completedAt, null);
 });
 
 test("money that moved but is not what was asked for is CONFIRMED with a mismatch, never dropped and never treated as a match", () => {
   const confirmed = (p: Partial<SquarePaymentFacts>) => evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"] }), [squarePayment(p)]);
-  assert.deepEqual(confirmed({ totalCents: 45000 }), { kind: "confirmed", paymentId: "PAY_1", amountCents: 45000, currency: "USD", mismatch: "amount_mismatch" });
-  assert.deepEqual(confirmed({ totalCents: 42000, tipCents: 2000 }), { kind: "confirmed", paymentId: "PAY_1", amountCents: 42000, currency: "USD", mismatch: "amount_mismatch" });
-  assert.deepEqual(confirmed({ currency: "CAD" }), { kind: "confirmed", paymentId: "PAY_1", amountCents: 40000, currency: "CAD", mismatch: "currency_mismatch" });
-  const two = evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1", "PAY_2"] }), [squarePayment(), squarePayment({ id: "PAY_2" })]);
-  assert.equal(two.kind === "confirmed" && two.mismatch, "multiple_payments");
+  assert.deepEqual(confirmed({ totalCents: 45000 }), { kind: "confirmed", payments: [evidence("PAY_1", 45000)], mismatch: "amount_mismatch" });
+  assert.deepEqual(confirmed({ totalCents: 42000, tipCents: 2000 }), { kind: "confirmed", payments: [evidence("PAY_1", 42000, "USD", "2030-01-01T10:00:01.000Z", 2000)], mismatch: "amount_mismatch" });
+  assert.deepEqual(confirmed({ currency: "CAD" }), { kind: "confirmed", payments: [evidence("PAY_1", 40000, "CAD")], mismatch: "currency_mismatch" });
   // a completed payment whose amount Square did not report is not trusted
   assert.deepEqual(confirmed({ totalCents: null }), { kind: "rejected", code: "order_total_mismatch" });
 });
