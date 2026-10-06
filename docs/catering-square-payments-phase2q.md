@@ -184,3 +184,7 @@ the one on screen before it sets state, retries or redirects.
   a checkout would be closed locally and retried if the same merchant reconnects.
 * The attempt-status poll counts CONSECUTIVE failures (a success resets them), per viewer + booking + attempt. At the threshold the screen says
   so, with "Check again" and "Dismiss", instead of sitting on "Checking your payment".
+
+## Overlapping settlements and consumed attempts
+
+A consumed attempt (`completed` / `reconciliation_required`) means only "do not credit the ledger a second time". It never means "ignore newer completed Square payments". When two settlements overlap, the one that takes the attempt row lock second may hold fresher evidence than the winner (for example P1+P2 against P1). Inside `recordConfirmedPayment`, after the billing lock, booking row and attempt row are held, a consumed attempt routes the evidence it already fetched through `auditAdditionalPaymentsInTx`: every completed payment not yet recorded is stored as its own evidence row (unique by Square payment id), the attempt becomes `reconciliation_required` / `multiple_payments`, and nothing is credited, clamped or merged. The result is `reconciliation_required` (webhook: `processed` with that outcome); `already_settled` is returned only when there is no new evidence. No Square call happens under the locks, and lock order is unchanged.

@@ -1109,4 +1109,182 @@ if (!URL_ENV) {
       assert.equal(evidence[1].completed_at, null, "an unusable time is stored as unusable, not borrowed from its sibling or from the clock");
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 3 (round 3): a consumed attempt never discards fresher Square evidence
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  /** Lets ONE settlement read Square, then stops it just before it locks anything, while other settlements run to completion. */
+  function raceControl() {
+    const ctl = {
+      pauseOn: null as string | null,
+      hidden: new Set<string>(),
+      reached: Promise.resolve(),
+      release: () => undefined as void,
+      armed: null as { reached: () => void; gate: Promise<void> } | null,
+      wrap: (api: ReturnType<typeof createSquareCheckoutApi>): ReturnType<typeof createSquareCheckoutApi> => ({
+        ...api,
+        retrieveOrder: async (token, id) => {
+          const order = await api.retrieveOrder(token, id);
+          return ctl.hidden.size ? { ...order, paymentIds: order.paymentIds.filter((paymentId) => !ctl.hidden.has(paymentId)) } : order;
+        },
+        retrievePayment: async (token, id) => {
+          const payment = await api.retrievePayment(token, id);
+          if (ctl.armed && ctl.pauseOn === id) {
+            const { reached, gate } = ctl.armed;
+            ctl.armed = null;
+            reached();
+            await gate;
+          }
+          return payment;
+        },
+      }),
+      arm(paymentId: string) {
+        ctl.pauseOn = paymentId;
+        ctl.reached = new Promise<void>((resolve) => {
+          const gate = new Promise<void>((open) => { ctl.release = open as () => void; });
+          ctl.armed = { reached: resolve, gate };
+        });
+      },
+    };
+    return ctl;
+  }
+  const raceRun = (fn: (h: CateringSquareHarness, ctl: ReturnType<typeof raceControl>) => Promise<void>) => {
+    const ctl = raceControl();
+    return withCateringSquareHarness(URL_ENV!, { wrapCheckout: ctl.wrap }, (h) => fn(h, ctl));
+  };
+  const second = { total_money: { amount: 15000, currency: "USD" }, amount_money: { amount: 15000, currency: "USD" }, updated_at: "2030-05-01T11:30:00Z", created_at: "2030-05-01T11:30:00Z" };
+  const first = { updated_at: "2030-05-01T10:00:00Z", created_at: "2030-05-01T10:00:00Z" };
+
+  /** B reads P1+P2; A reads only P1 and commits first; B then takes the locks second. `finishB` releases B and returns what it settled to. */
+  async function lostRace(h: CateringSquareHarness, ctl: ReturnType<typeof raceControl>, how: "poll" | "webhook") {
+    const s = await scene(h);
+    const attempt = await open(h, s);
+    h.setClock(new Date("2030-05-02T09:00:00Z"));
+    h.fake.payOrder(attempt.squareOrderId!, { id: "RACE_P1", ...first });
+    h.fake.payOrder(attempt.squareOrderId!, { id: "RACE_P2", ...second });
+    ctl.arm("RACE_P2");
+    const webhook = (eventId: string) => h.payments.handleWebhookEvent({ eventId, eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId: null });
+    const b = how === "poll" ? h.payments.settleAttempt(attempt.id) : webhook("evt-race-b");
+    await withTimeout(ctl.reached, "B reached Square");
+    ctl.hidden.add("RACE_P2"); // A's read of Square shows only P1
+    const a = await withTimeout(h.payments.settleAttempt(attempt.id), "A settles");
+    ctl.hidden.clear();
+    assert.equal(a.outcome, "completed", "A holds only P1 and credits it");
+    ctl.release();
+    return { s, attempt, b: await withTimeout(b, "B settles"), webhook };
+  }
+
+  test("RACE: B (P1+P2) locks second after A committed P1 and STILL audits P2; P1 is credited once, P2 is evidence and never a credit", async () => {
+    await raceRun(async (h, ctl) => {
+      const { s, attempt, b } = await lostRace(h, ctl, "poll");
+      assert.equal((b as { outcome: string }).outcome, "reconciliation_required", "not reduced to already_settled");
+      const ledger = await h.processorLedger(s.bookingId);
+      assert.equal(ledger.length, 1, "P1 credited exactly once");
+      assert.equal(ledger[0].processor_payment_id, "RACE_P1");
+      assert.equal(Number(ledger[0].amount_cents), 40000);
+      assert.equal((await h.ledger(s.bookingId)).length, 1, "P2 got no normal credit, was not clamped or merged into P1");
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal(row.reconciliation_reason, "multiple_payments");
+      assert.equal(row.payment_id, ledger[0].id, "the link to the original credit is kept");
+      assert.equal(Number(row.processor_payment_count), 2);
+      const evidence = await evidenceRows(h, attempt.id);
+      assert.deepEqual(evidence.map((entry) => [entry.square_payment_id, Number(entry.amount_cents), entry.currency, entry.completed_at.toISOString()]), [
+        ["RACE_P1", 40000, "USD", "2030-05-01T10:00:00.000Z"], ["RACE_P2", 15000, "USD", "2030-05-01T11:30:00.000Z"],
+      ]);
+      // the provider's reconciliation view exposes P2 with its own reference and amount
+      const asProvider = await h.payments.getAttempt({ bookingId: s.bookingId, attemptId: attempt.id, userId: s.providerId });
+      assert.ok(asProvider.kind === "ok");
+      if (asProvider.kind !== "ok") return;
+      const view = serializeCateringPaymentAttempt(asProvider.attempt, "provider");
+      assert.deepEqual(view.processorPayments?.map((payment) => [payment.squarePaymentId, payment.amountCents]), [["RACE_P1", 40000], ["RACE_P2", 15000]]);
+      assert.equal(h.notifications.filter((n) => n.type === "catering_booking_square_payment_reconciliation_required").length, 1);
+      // repeating B (poll, webhook, concurrently) duplicates nothing
+      await Promise.all([h.payments.settleAttempt(attempt.id), h.payments.settleAttempt(attempt.id)]);
+      assert.equal((await evidenceRows(h, attempt.id)).length, 2);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal(h.notifications.filter((n) => n.type === "catering_booking_square_payment_reconciliation_required").length, 1, "one notification, not one per replay");
+    });
+  });
+
+  test("RACE: the WEBHOOK that lost the race is recorded as processed/reconciliation_required, never as harmless already_settled; replays are idempotent", async () => {
+    await raceRun(async (h, ctl) => {
+      const { s, attempt, b, webhook } = await lostRace(h, ctl, "webhook");
+      assert.deepEqual(b, { kind: "processed", outcome: "reconciliation_required" });
+      const stored = await h.q(`SELECT * FROM catering_square_webhook_events WHERE event_id = 'evt-race-b'`);
+      assert.equal(stored.length, 1);
+      assert.equal(stored[0].state, "processed");
+      assert.equal(stored[0].outcome, "reconciliation_required");
+      assert.equal((await evidenceRows(h, attempt.id)).length, 2);
+      const again = await webhook("evt-race-b");
+      assert.equal((await evidenceRows(h, attempt.id)).length, 2, "the same event again changes nothing");
+      void again;
+      const fresh = await webhook("evt-race-c");
+      assert.deepEqual(fresh, { kind: "processed", outcome: "already_settled" }, "with NO new evidence the outcome is the quiet one");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+    });
+  });
+
+  test("RACE: a later P1+P2+P3 preserves P3 exactly once, and the same id arriving by webhook and by poll is one row", async () => {
+    await raceRun(async (h, ctl) => {
+      const { s, attempt } = await lostRace(h, ctl, "poll");
+      h.fake.payOrder(attempt.squareOrderId!, { id: "RACE_P3", total_money: { amount: 700, currency: "USD" }, amount_money: { amount: 700, currency: "USD" }, updated_at: "2030-05-01T12:00:00Z", created_at: "2030-05-01T12:00:00Z" });
+      const hook = () => h.payments.handleWebhookEvent({ eventId: `evt-p3-${Math.random()}`, eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId: "RACE_P3" });
+      const results = await Promise.all([hook(), h.payments.settleAttempt(attempt.id), hook(), h.payments.settleAttempt(attempt.id)]);
+      assert.ok(results.length === 4);
+      assert.deepEqual((await evidenceRows(h, attempt.id)).map((entry) => entry.square_payment_id), ["RACE_P1", "RACE_P2", "RACE_P3"]);
+      assert.equal(Number((await h.attempt(attempt.id)).processor_amount_cents), 40000 + 15000 + 700);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+    });
+  });
+
+  test("RACE: concurrent webhook + poll settling P1 and P2 together lose nothing and credit once", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CC_P1", ...first });
+      const hook = (id: string) => h.payments.handleWebhookEvent({ eventId: id, eventType: "payment.updated", merchantId: s.connection.merchantId, orderId: attempt.squareOrderId, paymentId: null });
+      const early = Promise.all([hook("cc-1"), h.payments.settleAttempt(attempt.id), hook("cc-2")]);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CC_P2", ...second });
+      await early;
+      await Promise.all([hook("cc-3"), h.payments.settleAttempt(attempt.id), hook("cc-4"), h.payments.settleAttempt(attempt.id)]);
+      const ids = (await evidenceRows(h, attempt.id)).map((entry) => entry.square_payment_id);
+      assert.ok(ids.includes("CC_P1") && ids.includes("CC_P2") || (await h.processorLedger(s.bookingId)).length === 0, "every completed payment is evidence");
+      assert.equal(new Set(ids).size, ids.length);
+      assert.ok((await h.processorLedger(s.bookingId)).length <= 1, "never two normal credits");
+      assert.ok(ids.includes("CC_P2"), "P2 was never lost");
+    });
+  });
+
+  test("RACE: wrong reference / location / currency / status evidence is still rejected on a consumed attempt, and no secret is stored or logged", async () => {
+    await raceRun(async (h, ctl) => {
+      const { s, attempt } = await lostRace(h, ctl, "poll");
+      const before = await evidenceRows(h, attempt.id);
+      // a foreign payment (other location) appears on the order: the whole read is rejected, nothing is added
+      h.fake.payOrder(attempt.squareOrderId!, { id: "RACE_BAD_LOC", location_id: "SOME_OTHER_LOCATION", ...second });
+      const rejected = await h.payments.settleAttempt(attempt.id);
+      assert.equal(rejected.outcome, "already_settled");
+      // an unfinished payment is not money in hand
+      h.fake.payOrder(attempt.squareOrderId!, { id: "RACE_PENDING", status: "PENDING", ...second });
+      await h.payments.settleAttempt(attempt.id);
+      const ids = (await evidenceRows(h, attempt.id)).map((entry) => entry.square_payment_id);
+      assert.deepEqual(ids, before.map((entry) => entry.square_payment_id));
+      assert.equal(ids.includes("RACE_BAD_LOC") || ids.includes("RACE_PENDING"), false);
+      const everything = JSON.stringify([await h.q(`SELECT * FROM catering_attempt_square_payments`), await h.q(`SELECT * FROM catering_square_webhook_events`), h.logs]);
+      assert.equal(everything.includes(s.connection.accessToken), false);
+      assert.equal(/refresh-|access_token|accessToken/.test(everything), false);
+    });
+  });
+
+  test("RACE (static): the consumed branch audits the evidence it already holds, under the held locks, with no Square call", async () => {
+    const { readFileSync } = await import("node:fs");
+    const source = readFileSync(new URL("./catering-square-payments.ts", import.meta.url), "utf8");
+    const confirmed = source.slice(source.indexOf("async function recordConfirmedPayment"), source.indexOf("async function recordAdditionalPayments"));
+    assert.match(confirmed, /if \(CONSUMED\.includes\(attempt\.state\)\) \{\s*const audited = await auditAdditionalPaymentsInTx\(tx, attempt, confirmed\.payments\)/);
+    assert.equal(/return \{ kind: "already", attempt \};\s*\n\s*\n\s*\/\/ A Square payment/.test(confirmed), false, "no unconditional early return before the audit");
+    const audit = source.slice(source.indexOf("async function auditAdditionalPaymentsInTx"), source.indexOf("async function notifyCompleted"));
+    assert.equal(/checkout\.|fetchEvidence|retrieveOrder|retrievePayment/.test(audit), false, "no Square network call inside the locks");
+  });
 }

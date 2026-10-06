@@ -80,6 +80,8 @@ export type CateringSquareHarnessOptions = {
   fake?: Partial<FakeSquareState>;
   /** Replaces pieces of the payment service's dependencies (a clock, a notifier, `enabled`). Production wiring is the default. */
   deps?: Partial<CateringSquarePaymentsDeps>;
+  /** Wraps the real Square checkout adapter (which needs the fake server's URL), e.g. to pause one caller between reading Square and settling. */
+  wrapCheckout?: (api: ReturnType<typeof createSquareCheckoutApi>) => ReturnType<typeof createSquareCheckoutApi>;
 };
 
 export async function createCateringSquareHarness(databaseUrl: string, options: CateringSquareHarnessOptions = {}) {
@@ -110,7 +112,7 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
   const payments = createCateringSquarePayments({
     db: db as never,
     connections,
-    checkout: createSquareCheckoutApi({ baseUrl: fake.baseUrl }),
+    checkout: (options.wrapCheckout ?? ((api) => api))(createSquareCheckoutApi({ baseUrl: fake.baseUrl })),
     now,
     pollIntervalMs: -1,
     appBaseUrl: () => "https://app.test",
