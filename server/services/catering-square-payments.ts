@@ -939,7 +939,15 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     if (ids.length === 0) return attempts.map((attempt) => ({ ...attempt, processorPayments: [] }));
     const rows = await executor.select().from(cateringAttemptSquarePayments).where(inArray(cateringAttemptSquarePayments.attemptId, ids))
       .orderBy(asc(cateringAttemptSquarePayments.completedAt), asc(cateringAttemptSquarePayments.squarePaymentId)) as CateringAttemptSquarePayment[];
-    return attempts.map((attempt) => ({ ...attempt, processorPayments: rows.filter((row) => row.attemptId === attempt.id) }));
+    // Which Square payment backs an attempt's Catering ledger payment: the Square id stored ON that ledger row (written by the settlement credit).
+    const ledgerIds = attempts.map((attempt) => attempt.paymentId).filter((id): id is string => Boolean(id));
+    const ledger = ledgerIds.length === 0 ? [] : await executor.select({ id: cateringBookingPayments.id, processorPaymentId: cateringBookingPayments.processorPaymentId }).from(cateringBookingPayments)
+      .where(and(inArray(cateringBookingPayments.id, ledgerIds), eq(cateringBookingPayments.processor, CATERING_SQUARE_PROCESSOR))) as { id: string; processorPaymentId: string | null }[];
+    return attempts.map((attempt) => ({
+      ...attempt,
+      processorPayments: rows.filter((row) => row.attemptId === attempt.id),
+      creditedSquarePaymentId: attempt.paymentId ? (ledger.find((row) => row.id === attempt.paymentId)?.processorPaymentId ?? null) : null,
+    }));
   }
 
   return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, sweepClosedLinks, closeProviderCheckouts, credentialStillNeeded, attemptsForBooking };
@@ -959,7 +967,7 @@ export async function closeOpenAttemptsInTransaction(tx: Executor, bookingId: st
 }
 
 /** An attempt together with its per-payment Square evidence (empty until money moved). */
-export type CateringAttemptWithPayments = CateringBookingPaymentAttempt & { processorPayments: CateringAttemptSquarePayment[] };
+export type CateringAttemptWithPayments = CateringBookingPaymentAttempt & { processorPayments: CateringAttemptSquarePayment[]; creditedSquarePaymentId?: string | null };
 
 export type CateringSquarePayments = ReturnType<typeof createCateringSquarePayments>;
 

@@ -1763,4 +1763,99 @@ if (!URL_ENV) {
       if (status.kind === "ok") assert.equal(/create_?started|create_?resolved|squareCreate/i.test(JSON.stringify(serializeCateringPaymentAttempt(status.attempt, "provider"))), false);
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 6: what the provider is told about currency and about which payment is in the ledger
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const providerView = async (h: CateringSquareHarness, s: Scene, attemptId: string) => {
+    const status = await h.payments.getAttempt({ bookingId: s.bookingId, attemptId, userId: s.providerId });
+    assert.ok(status.kind === "ok");
+    if (status.kind !== "ok") throw new Error("not ok");
+    return serializeCateringPaymentAttempt(status.attempt, "provider");
+  };
+  const customerView = async (h: CateringSquareHarness, s: Scene, attemptId: string) => {
+    const status = await h.payments.getAttempt({ bookingId: s.bookingId, attemptId, userId: s.customerId });
+    assert.ok(status.kind === "ok");
+    if (status.kind !== "ok") throw new Error("not ok");
+    return serializeCateringPaymentAttempt(status.attempt, "customer");
+  };
+
+  test("VIEW: a USD invoice that Square took in EUR is reported in EUR, with nothing credited", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "EUR_PAY", ...first, total_money: { amount: 40000, currency: "EUR" }, amount_money: { amount: 40000, currency: "EUR" } });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+      const view = await providerView(h, s, attempt.id);
+      assert.equal(view.reconciliationReason, "currency_mismatch");
+      assert.equal(view.currency, "USD");
+      assert.equal(view.processorAmountCents, 40000);
+      assert.equal(view.processorCurrency, "EUR", "the processor amount is never read in the invoice's currency");
+      assert.deepEqual(view.processorPayments?.map((payment) => [payment.amountCents, payment.currency]), [[40000, "EUR"]]);
+      assert.equal(view.ledgerCredited, undefined, "nothing from this attempt is in the ledger");
+      assert.equal(view.processorPayments?.[0].creditedToLedger, undefined);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+      const customer = await customerView(h, s, attempt.id);
+      assert.equal(JSON.stringify(customer).includes("EUR_PAY"), false);
+      assert.equal(customer.ledgerCredited, undefined);
+    });
+  });
+
+  test("VIEW: P1 credited, then P2 and P3 discovered: only P1 is ledger-backed (by stored id, not amount); P2 and P3 are additional; the accounting is unchanged", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "V_P1", ...first });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      const completedView = await providerView(h, s, attempt.id);
+      assert.equal(completedView.ledgerCredited, true);
+      assert.deepEqual(completedView.processorPayments?.map((payment) => [payment.squarePaymentId, payment.creditedToLedger === true]), [["V_P1", true]]);
+
+      // P2 has EXACTLY P1's amount: amount alone must not make it look credited
+      h.fake.payOrder(attempt.squareOrderId!, { id: "V_P2", updated_at: "2030-05-01T11:00:00Z", created_at: "2030-05-01T11:00:00Z" });
+      h.fake.payOrder(attempt.squareOrderId!, { id: "V_P3", total_money: { amount: 700, currency: "USD" }, amount_money: { amount: 700, currency: "USD" }, updated_at: "2030-05-01T12:00:00Z", created_at: "2030-05-01T12:00:00Z" });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+      const ledgerBefore = await h.processorLedger(s.bookingId);
+      const view = await providerView(h, s, attempt.id);
+      assert.equal(view.state, "reconciliation_required");
+      assert.equal(view.ledgerCredited, true, "something WAS credited");
+      assert.equal(view.paymentId, ledgerBefore[0].id);
+      assert.deepEqual(view.processorPayments?.map((payment) => [payment.squarePaymentId, Number(payment.amountCents), payment.creditedToLedger === true]), [["V_P1", 40000, true], ["V_P2", 40000, false], ["V_P3", 700, false]]);
+      assert.equal(view.processorCurrency, "USD");
+      // listing view (the billing panel's source) agrees
+      const listed = (await h.payments.attemptsForBooking(h.db as never, s.bookingId)).find((row) => row.id === attempt.id)!;
+      assert.deepEqual(serializeCateringPaymentAttempt(listed, "provider").processorPayments?.map((payment) => payment.creditedToLedger === true), [true, false, false]);
+      // presentation only: one credit, no new ledger row, evidence untouched
+      assert.equal(ledgerBefore.length, 1);
+      assert.equal(Number(ledgerBefore[0].amount_cents), 40000);
+      assert.equal((await h.ledger(s.bookingId)).length, 1);
+      assert.equal((await evidenceRows(h, attempt.id)).length, 3);
+      // the customer's view is safe and non-enumerating
+      const customer = await customerView(h, s, attempt.id);
+      const text = JSON.stringify(customer);
+      assert.equal(/V_P[123]|creditedToLedger|ledgerCredited|creditedSquarePaymentId/.test(text), false);
+      assert.equal(customer.state, "reconciliation_required");
+    });
+  });
+
+  test("VIEW: a single reconciled payment that was never credited has no ledger-backed row", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s, 1);
+      await h.adjustment(s.bookingId, s.providerId, "credit", 30000);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "NC_P1", ...first, total_money: { amount: 60000, currency: "USD" }, amount_money: { amount: 60000, currency: "USD" } });
+      await h.payments.settleAttempt(attempt.id);
+      const view = await providerView(h, s, attempt.id);
+      assert.equal(view.state, "reconciliation_required");
+      assert.equal(view.ledgerCredited, undefined);
+      assert.equal(view.processorPayments?.some((payment) => payment.creditedToLedger), false);
+      const text = JSON.stringify(view);
+      assert.equal(text.includes(s.connection.accessToken), false);
+      assert.equal(/idempotency|merchantId|locationId|squareOrderId|squarePaymentLink/i.test(text), false);
+    });
+  });
 }

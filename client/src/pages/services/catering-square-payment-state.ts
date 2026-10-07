@@ -22,12 +22,12 @@ export type CateringSquareDisplay = {
   canContinue: boolean;
 };
 
-export function cateringSquareDisplay(attempt: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl">, role: "provider" | "customer"): CateringSquareDisplay {
+export function cateringSquareDisplay(attempt: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl"> & { ledgerCredited?: boolean }, role: "provider" | "customer"): CateringSquareDisplay {
   switch (attempt.state) {
     case "creating": return { phase: "creating", label: CATERING_SQUARE_COPY.creating, polling: false, canContinue: false };
     case "pending": return { phase: "awaiting", label: role === "customer" ? CATERING_SQUARE_COPY.pending : "A customer has opened a Square checkout for this request.", polling: true, canContinue: role === "customer" && Boolean(attempt.checkoutUrl) };
     case "completed": return { phase: "confirmed", label: CATERING_SQUARE_COPY.completed, polling: false, canContinue: false };
-    case "reconciliation_required": return { phase: "reconciliation", label: role === "customer" ? CATERING_SQUARE_COPY.reconciliation : CATERING_SQUARE_COPY.reconciliationProvider, polling: false, canContinue: false };
+    case "reconciliation_required": return { phase: "reconciliation", label: role === "customer" ? CATERING_SQUARE_COPY.reconciliation : attempt.ledgerCredited ? CATERING_SQUARE_COPY.reconciliationProviderPartlyCredited : CATERING_SQUARE_COPY.reconciliationProviderNothingCredited, polling: false, canContinue: false };
     case "failed": return { phase: "failed", label: CATERING_SQUARE_COPY.failed, polling: false, canContinue: false };
     // expired, cancelled and superseded are all a checkout that was closed before any money moved.
     default: return { phase: "closed", label: CATERING_SQUARE_COPY.closed, polling: false, canContinue: false };
@@ -36,6 +36,36 @@ export function cateringSquareDisplay(attempt: Pick<CateringPaymentAttemptView, 
 
 export function cateringSquareReconciliationCopy(reason: CateringReconciliationReason | undefined, role: "provider" | "customer"): string | null {
   return reason ? CATERING_SQUARE_RECONCILIATION_COPY[reason][role] : null;
+}
+
+/**
+ * The headline amount of an attempt in the provider's list, formatted by `format(cents, currency)`.
+ *
+ * Processor money is ONLY ever shown in the currency Square reported for it: one evidence row uses its own amount and currency; several rows of
+ * ONE currency show their total with the count; several rows of different currencies are NEVER summed or relabelled, and get a neutral headline
+ * (each payment is listed on its own row below). Before any money moved the figure is the amount ASKED for, in the invoice's currency.
+ */
+export function cateringSquareHeadline(
+  attempt: Pick<CateringPaymentAttemptView, "amountCents" | "currency" | "processorAmountCents" | "processorCurrency" | "processorPayments">,
+  format: (cents: number, currency: string) => string,
+): string {
+  const payments = attempt.processorPayments ?? [];
+  if (payments.length === 1) return format(payments[0].amountCents, payments[0].currency);
+  if (payments.length > 1) {
+    const currencies = new Set(payments.map((payment) => payment.currency));
+    if (currencies.size === 1) return `${format(payments.reduce((total, payment) => total + payment.amountCents, 0), payments[0].currency)} across ${payments.length} Square payments`;
+    return CATERING_SQUARE_COPY.reconciliationNeutralHeadline;
+  }
+  if (attempt.processorAmountCents !== undefined) {
+    return attempt.processorCurrency ? format(attempt.processorAmountCents, attempt.processorCurrency) : CATERING_SQUARE_COPY.reconciliationNeutralHeadline;
+  }
+  return format(attempt.amountCents, attempt.currency);
+}
+
+/** How a provider-facing evidence row is labelled: backs the ledger payment, is an additional unresolved payment, or simply was not credited. */
+export function cateringSquareEvidenceLabel(payment: { creditedToLedger?: boolean }, ledgerCredited: boolean | undefined): string {
+  if (payment.creditedToLedger) return CATERING_SQUARE_COPY.evidenceCredited;
+  return ledgerCredited ? CATERING_SQUARE_COPY.evidenceAdditional : CATERING_SQUARE_COPY.evidenceNotCredited;
 }
 
 /** The attempt that is this invoice's open checkout, if any. */

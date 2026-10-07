@@ -413,3 +413,57 @@ test("a different attempt, invoice, booking or viewer gets a fresh failure lifec
   // the query key also names the attempt, so TanStack never shares one query between two attempts
   assert.ok(component.includes("queryKey: attemptKey(userId, bookingId, attemptId ?? \"none\")"));
 });
+
+/* Codex repair pass 6 */
+import { CATERING_SQUARE_COPY } from "@shared/catering-square-payments";
+import { cateringSquareEvidenceLabel, cateringSquareHeadline } from "./catering-square-payment-state";
+const fmt = (cents: number, currency: string) => `${currency} ${(cents / 100).toFixed(2)}`;
+const ev = (id: string, amountCents: number, currency: string, extra: Record<string, unknown> = {}) => ({ squarePaymentId: id, amountCents, tipCents: 0, currency, completedAt: "2030-05-01T10:00:00.000Z", ...extra });
+
+test("headline: an ordinary USD payment is shown in USD", () => {
+  assert.equal(cateringSquareHeadline(attempt({ state: "completed", processorAmountCents: 40000, processorCurrency: "USD", processorPayments: [ev("P", 40000, "USD")] }), fmt), "USD 400.00");
+  assert.equal(cateringSquareHeadline(attempt(), fmt), "USD 400.00", "before money moved: the amount asked for, in the invoice's currency");
+});
+
+test("headline: an invoice in USD that Square took in EUR shows EUR, never USD", () => {
+  const view = attempt({ state: "reconciliation_required", currency: "USD", amountCents: 10000, processorAmountCents: 10000, processorCurrency: "EUR", processorPayments: [ev("PAY_EUR", 10000, "EUR")] });
+  assert.equal(cateringSquareHeadline(view, fmt), "EUR 100.00");
+  // with no evidence rows the amount is still read with ITS currency, and is never relabelled as the invoice's
+  assert.equal(cateringSquareHeadline(attempt({ currency: "USD", processorAmountCents: 10000, processorCurrency: "EUR" }), fmt), "EUR 100.00");
+  assert.equal(cateringSquareHeadline(attempt({ currency: "USD", processorAmountCents: 10000 }), fmt), CATERING_SQUARE_COPY.reconciliationNeutralHeadline, "an unknown processor currency is not guessed");
+});
+
+test("headline: several payments in one currency show the total and the count; mixed currencies are never summed or relabelled", () => {
+  assert.equal(cateringSquareHeadline(attempt({ processorPayments: [ev("A", 40000, "USD"), ev("B", 700, "USD")] }), fmt), "USD 407.00 across 2 Square payments");
+  const mixed = cateringSquareHeadline(attempt({ currency: "USD", processorAmountCents: 99999, processorCurrency: "USD", processorPayments: [ev("A", 10000, "EUR"), ev("B", 5000, "USD")] }), fmt);
+  assert.equal(mixed, CATERING_SQUARE_COPY.reconciliationNeutralHeadline);
+  assert.equal(/EUR|USD|\d/.test(mixed), false);
+});
+
+test("provider copy states whether anything was credited, and never says nothing was credited when a payment was", () => {
+  const nothing = cateringSquareDisplay({ state: "reconciliation_required" }, "provider").label;
+  const partly = cateringSquareDisplay({ state: "reconciliation_required", ledgerCredited: true }, "provider").label;
+  assert.match(nothing, /No payment from this checkout was added to the Catering ledger/);
+  assert.match(partly, /already credited to the Catering ledger/);
+  assert.match(partly, /NOT credited automatically/);
+  assert.match(partly, /do not apply the credited payment again/i);
+  assert.equal(/No payment from this checkout was added|NOT added to the ledger/i.test(partly), false);
+  assert.equal(/already credited/i.test(nothing), false);
+  // the customer's copy is unchanged and never asks them to pay again
+  const customer = cateringSquareDisplay({ state: "reconciliation_required", ledgerCredited: true }, "customer").label;
+  assert.equal(customer, CATERING_SQUARE_COPY.reconciliation);
+  assert.match(customer, /do not need to pay again/);
+});
+
+test("evidence rows: the ledger-backed payment is marked credited; every other is additional; with nothing credited none is", () => {
+  assert.equal(cateringSquareEvidenceLabel({ creditedToLedger: true }, true), CATERING_SQUARE_COPY.evidenceCredited);
+  assert.equal(cateringSquareEvidenceLabel({}, true), CATERING_SQUARE_COPY.evidenceAdditional);
+  assert.equal(cateringSquareEvidenceLabel({}, undefined), CATERING_SQUARE_COPY.evidenceNotCredited);
+  assert.notEqual(CATERING_SQUARE_COPY.evidenceCredited, CATERING_SQUARE_COPY.evidenceAdditional);
+});
+
+test("the provider panel formats the headline and labels through these helpers, not attempt.currency with processor cents", () => {
+  const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../components/catering/BookingSquarePayments.tsx"), "utf8");
+  assert.equal(/processorAmountCents \?\? attempt\.amountCents/.test(source), false);
+  assert.ok(source.includes("cateringSquareHeadline(attempt, money)") && source.includes("cateringSquareEvidenceLabel(payment, attempt.ledgerCredited)"));
+});

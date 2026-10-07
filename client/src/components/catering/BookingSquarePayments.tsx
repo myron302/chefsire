@@ -27,6 +27,8 @@ import {
   cateringReturnedAttemptId,
   cateringSafeCheckoutUrl,
   cateringSquareDisplay,
+  cateringSquareEvidenceLabel,
+  cateringSquareHeadline,
   cateringSquarePayAvailable,
   cateringSquareReconciliationCopy,
 } from "@/pages/services/catering-square-payment-state";
@@ -228,7 +230,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
         const display = cateringSquareDisplay(attempt, "provider");
         return <li key={attempt.id} className="min-w-0 rounded-lg border p-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <p className="break-words font-medium tabular-nums">{money(attempt.processorAmountCents ?? attempt.amountCents, attempt.currency)}</p>
+            <p className="break-words font-medium tabular-nums">{cateringSquareHeadline(attempt, money)}</p>
             <Badge variant={display.phase === "reconciliation" ? "destructive" : display.phase === "confirmed" ? "default" : "outline"}>
               {display.phase === "reconciliation" ? "Needs your attention" : display.phase === "confirmed" ? "Confirmed by Square" : display.phase === "awaiting" ? "Awaiting payment" : display.phase === "creating" ? "Opening checkout" : display.phase === "failed" ? "Could not open" : "Closed"}
             </Badge>
@@ -242,6 +244,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
               <span className="tabular-nums">{money(payment.amountCents, payment.currency)}</span>
               {payment.completedAt ? ` · ${payment.completedAt}` : " · no usable Square time"}
               {payment.squarePaymentId ? ` · ${payment.squarePaymentId}` : ""}
+              {attempt.state === "reconciliation_required" || attempt.state === "completed" ? <span className={`ml-1 font-medium ${payment.creditedToLedger ? "text-foreground" : ""}`}> · {cateringSquareEvidenceLabel(payment, attempt.ledgerCredited)}</span> : null}
             </li>)}</ul>
           </div>}
         </li>;

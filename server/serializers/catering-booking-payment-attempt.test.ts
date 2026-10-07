@@ -111,3 +111,42 @@ test("a multiple-payments reconciliation lists EVERY Square payment; the provide
   const text = JSON.stringify(customer);
   assert.equal(text.includes("PAY_ONE") || text.includes("PAY_TWO"), false);
 });
+
+/* Codex repair pass 6: processor currency, and which Square payment backs the Catering ledger payment */
+const evidence = (id: string, amountCents: number, currency: string, completedAt = "2030-05-01T10:00:00Z") =>
+  ({ id: `ev-${id}`, attemptId: "att-1", squarePaymentId: id, amountCents, tipCents: 0, currency, squareCreatedAt: new Date(completedAt), squareUpdatedAt: new Date(completedAt), completedAt: new Date(completedAt), createdAt: new Date(completedAt) });
+
+test("processor money carries the currency Square reported, never the invoice's", () => {
+  const view = serializeCateringPaymentAttempt({ ...reconciled, reconciliationReason: "currency_mismatch", processorAmountCents: 10000, processorCurrency: "EUR", currency: "USD", processorPayments: [evidence("PAY_EUR", 10000, "EUR")] }, "provider");
+  assert.equal(view.currency, "USD");
+  assert.equal(view.processorCurrency, "EUR");
+  assert.deepEqual(view.processorPayments?.map((payment) => [payment.amountCents, payment.currency]), [[10000, "EUR"]]);
+  const customer = serializeCateringPaymentAttempt({ ...reconciled, processorAmountCents: 10000, processorCurrency: "EUR", processorPayments: [evidence("PAY_EUR", 10000, "EUR")] }, "customer");
+  assert.equal(customer.processorCurrency, "EUR");
+  assert.equal(JSON.stringify(customer).includes("PAY_EUR"), false, "a customer is still not given the Square id");
+  // mixed currencies: there is no single processor currency to report
+  const mixed = serializeCateringPaymentAttempt({ ...reconciled, processorAmountCents: null, processorCurrency: null, processorPaymentCount: 2, processorPayments: [evidence("A", 100, "EUR"), evidence("B", 50, "USD")] }, "provider");
+  assert.equal(mixed.processorCurrency, undefined);
+  assert.equal(mixed.processorAmountCents, undefined);
+});
+
+test("the ledger-backed Square payment is the one whose id is STORED on the ledger payment, never one that merely has the same amount", () => {
+  const base = { ...reconciled, squarePaymentId: null, paymentId: "ledger-1", processorPaymentCount: 3, reconciliationReason: "multiple_payments" as const };
+  const payments = [evidence("P1", 40000, "USD", "2030-05-01T10:00:00Z"), evidence("P2", 40000, "USD", "2030-05-01T11:00:00Z"), evidence("P3", 700, "USD", "2030-05-01T12:00:00Z")];
+  const provider = serializeCateringPaymentAttempt({ ...base, processorPayments: payments, creditedSquarePaymentId: "P1" }, "provider");
+  assert.equal(provider.ledgerCredited, true);
+  assert.deepEqual(provider.processorPayments?.map((payment) => [payment.squarePaymentId, payment.creditedToLedger === true]), [["P1", true], ["P2", false], ["P3", false]], "P2 has P1's amount and is still NOT the credited one");
+  // no stored ledger processor id: nothing is marked, whatever the amounts
+  const unknown = serializeCateringPaymentAttempt({ ...base, processorPayments: payments, creditedSquarePaymentId: null }, "provider");
+  assert.equal(unknown.processorPayments?.some((payment) => payment.creditedToLedger), false);
+  // never marks anything for a customer, and never exposes the flag or ids
+  const customer = serializeCateringPaymentAttempt({ ...base, processorPayments: payments, creditedSquarePaymentId: "P1" }, "customer");
+  const text = JSON.stringify(customer);
+  assert.equal(/creditedToLedger|ledgerCredited|"P1"|"P2"|creditedSquarePaymentId/.test(text), false);
+});
+
+test("no payment from the attempt was credited: not ledgerCredited, no evidence row is marked", () => {
+  const view = serializeCateringPaymentAttempt({ ...reconciled, paymentId: null, processorPayments: [evidence("ONLY", 60000, "USD")], creditedSquarePaymentId: null }, "provider");
+  assert.equal(view.ledgerCredited, undefined);
+  assert.equal(view.processorPayments?.[0].creditedToLedger, undefined);
+});

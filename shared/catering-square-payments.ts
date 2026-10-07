@@ -84,8 +84,15 @@ export type CateringPaymentAttemptView = {
   completedAt: string | null;
   /** CUSTOMER ONLY, and only while `state` is `pending`. */
   checkoutUrl?: string;
-  /** What actually moved at Square, once Square has confirmed a payment. Absent before that. */
+  /** What actually moved at Square, once Square has confirmed a payment. Absent before that. Always read WITH `processorCurrency`, never with `currency` (the invoice's). */
   processorAmountCents?: number;
+  /** The currency of `processorAmountCents`, as Square reported it. Present when it is unambiguous (every completed payment shares one currency). */
+  processorCurrency?: string;
+  /**
+   * PROVIDER ONLY. Whether a payment from this attempt WAS credited to the Catering ledger (the attempt's ledger payment exists). With it, the
+   * evidence row that backs that ledger payment says so (`creditedToLedger`); every other completed payment is an additional, uncredited one.
+   */
+  ledgerCredited?: boolean;
   /** How many completed Square payments the order showed. Present once money moved. More than one is always a reconciliation. */
   processorPaymentCount?: number;
   /** Every completed Square payment, each with its own amount and time. Present once money moved. A customer is not given the Square ids. */
@@ -106,6 +113,8 @@ export type CateringProcessorPaymentView = {
   completedAt: string | null;
   /** PROVIDER ONLY. */
   squarePaymentId?: string;
+  /** PROVIDER ONLY. True only for the payment whose Square id is the one stored on the attempt's Catering ledger payment (matched by id, never by amount). */
+  creditedToLedger?: boolean;
 };
 
 export type CateringSquareCheckoutAvailability = {
@@ -126,7 +135,14 @@ export const CATERING_SQUARE_COPY = {
   failed: "We could not open a Square checkout. Nothing was charged. Please try again.",
   closed: "This Square checkout was closed before any payment was made.",
   reconciliation: "Square received your payment, but what you owe changed while you were paying. Your caterer has been told and will sort out how it applies. You do not need to pay again.",
-  reconciliationProvider: "Square confirmed a payment that could not be credited automatically. It was NOT added to the ledger. Resolve it in your Square account and with your customer.",
+  /** Nothing from this checkout is in the Catering ledger. */
+  reconciliationProviderNothingCredited: "Square confirmed payment activity that could not be credited automatically. No payment from this checkout was added to the Catering ledger. Review the Square payment evidence below.",
+  /** One payment WAS credited normally; later Square payments are unresolved. Must never say nothing was credited. */
+  reconciliationProviderPartlyCredited: "One Square payment was already credited to the Catering ledger. Additional Square payment activity was detected and was NOT credited automatically. Review the payment evidence below before taking any action, and do not apply the credited payment again.",
+  evidenceCredited: "Credited to Catering ledger",
+  evidenceAdditional: "Additional Square payment: not credited automatically",
+  evidenceNotCredited: "Not credited to the Catering ledger",
+  reconciliationNeutralHeadline: "Square payments require reconciliation",
   disclosure: "Card payments are made on Square and go directly to your caterer. ChefSire does not receive or hold this money.",
   notReady: "This caterer cannot take Square payments right now. You can pay them directly instead.",
 } as const;
@@ -154,7 +170,7 @@ export const CATERING_SQUARE_RECONCILIATION_COPY: Record<CateringReconciliationR
   },
   multiple_payments: {
     customer: "More than one payment was taken, so your caterer needs to sort it out.",
-    provider: "Square shows more than one completed payment on the one checkout order. Every one is listed below with its own Square reference; none was added to the ledger on the others' behalf.",
+    provider: "Square shows more than one completed payment on the one checkout order. Every one is listed below with its own Square reference and whether it was credited to the Catering ledger; no payment is credited on another's behalf.",
   },
   payment_timestamp_invalid: {
     customer: "Square took your payment, but your caterer needs to confirm it before it is applied.",

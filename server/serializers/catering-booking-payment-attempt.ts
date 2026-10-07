@@ -10,7 +10,7 @@ import type { CateringPaymentAttemptState, CateringPaymentAttemptView, CateringR
  *  - PROVIDER: the same, never the checkout URL (a provider is not the payer), and -- only once Square confirmed money moved --
  *    the Square payment reference, so they can find it in their own Square dashboard and remediate a reconciliation.
  */
-export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttempt & { processorPayments?: readonly CateringAttemptSquarePayment[] }, role: "provider" | "customer"): CateringPaymentAttemptView {
+export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttempt & { processorPayments?: readonly CateringAttemptSquarePayment[]; creditedSquarePaymentId?: string | null }, role: "provider" | "customer"): CateringPaymentAttemptView {
   const state = row.state as CateringPaymentAttemptState;
   const view: CateringPaymentAttemptView = {
     id: row.id,
@@ -22,7 +22,13 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
     updatedAt: row.updatedAt.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,
   };
-  if (row.processorAmountCents !== null && row.processorAmountCents !== undefined) view.processorAmountCents = row.processorAmountCents;
+  if (row.processorAmountCents !== null && row.processorAmountCents !== undefined) {
+    view.processorAmountCents = row.processorAmountCents;
+    // The currency Square reported for that amount (null when the payments disagree): the amount is never to be read in the invoice's currency.
+    if (row.processorCurrency) view.processorCurrency = row.processorCurrency;
+  }
+  const ledgerCredited = Boolean(row.paymentId) && (state === "completed" || state === "reconciliation_required");
+  if (role === "provider" && ledgerCredited) view.ledgerCredited = true;
   // The ledger payment, when one was credited -- including the one credited before a LATER extra Square payment turned it into a reconciliation.
   if (row.paymentId) view.paymentId = row.paymentId;
   if (row.processorPaymentCount > 0) view.processorPaymentCount = row.processorPaymentCount;
@@ -30,7 +36,8 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
   if ((state === "completed" || state === "reconciliation_required") && row.processorPayments && row.processorPayments.length > 0) {
     view.processorPayments = row.processorPayments.map((payment) => ({
       amountCents: payment.amountCents, tipCents: payment.tipCents, currency: payment.currency, completedAt: payment.completedAt?.toISOString() ?? null,
-      ...(role === "provider" ? { squarePaymentId: payment.squarePaymentId } : {}),
+      // The ledger-backed payment is identified by the Square id STORED on the ledger payment, never by comparing amounts.
+      ...(role === "provider" ? { squarePaymentId: payment.squarePaymentId, ...(row.creditedSquarePaymentId && payment.squarePaymentId === row.creditedSquarePaymentId ? { creditedToLedger: true } : {}) } : {}),
     }));
   }
   if (state === "reconciliation_required" && row.reconciliationReason) view.reconciliationReason = row.reconciliationReason as CateringReconciliationReason;
