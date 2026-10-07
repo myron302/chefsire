@@ -56,6 +56,9 @@ export type FakeSquareState = {
   evidenceFailure?: number;
   /** Phase 2Q: when set, `DELETE /v2/online-checkout/payment-links/:id` answers with this status instead of deleting. */
   linkDeleteFailure?: number;
+  /** Phase 2Q: pad generated order / payment-link ids to this many characters (Square's documented maximum is 192), to exercise long identifiers. */
+  orderIdLength?: number;
+  linkIdLength?: number;
 };
 
 /** Phase 2Q: the fake's checkout/order/payment world. Every field is plain JSON in Square's own snake_case shape. */
@@ -166,13 +169,13 @@ export async function startFakeSquare(initial: Partial<FakeSquareState> = {}) {
         let link = existingId ? links.get(existingId)! : undefined;
         if (!link) {
           sequence += 1;
-          const orderId = `ORDER_${sequence}`;
+          const orderId = `ORDER_${sequence}`.padEnd(state.orderIdLength ?? 0, "o");
           const line = request.order?.line_items?.[0];
           orders.set(orderId, {
             id: orderId, location_id: request.order?.location_id ?? "", reference_id: request.order?.reference_id, state: "OPEN",
             total_money: { amount: Number(line?.base_price_money.amount ?? 0), currency: line?.base_price_money.currency ?? "USD" }, tenders: [], line_items: request.order?.line_items,
           });
-          link = { id: `LINK_${sequence}`, order_id: orderId, url: `https://sandbox.fake.square/checkout/LINK_${sequence}`, deleted: false };
+          link = { id: `LINK_${sequence}`.padEnd(state.linkIdLength ?? 0, "l"), order_id: orderId, url: `https://sandbox.fake.square/checkout/LINK_${sequence}`, deleted: false };
           links.set(link.id, link);
           if (request.idempotency_key) linkByKey.set(request.idempotency_key, link.id);
         }

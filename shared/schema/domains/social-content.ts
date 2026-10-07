@@ -1020,7 +1020,8 @@ export const cateringBookingPayments = pgTable("catering_booking_payments", {
   /** The client's key for ONE attempt, unique per booking: a replay resolves to the first attempt's payment. */
   idempotencyKey: varchar("idempotency_key", { length: 64 }),
   processor: varchar("processor", { length: 24 }),
-  processorPaymentId: varchar("processor_payment_id", { length: 128 }),
+  // 255, not 128: Square payment ids run to 192 characters (see CATERING_LEDGER_PROCESSOR_PAYMENT_ID_COLUMN_LENGTH). Kept in step with the SQL migration.
+  processorPaymentId: varchar("processor_payment_id", { length: 255 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

@@ -1858,4 +1858,71 @@ if (!URL_ENV) {
       assert.equal(/idempotency|merchantId|locationId|squareOrderId|squarePaymentLink/i.test(text), false);
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 7: long Square identifiers persist, settle and survive lookups
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  for (const length of [128, 129, 192]) {
+    test(`LONGID: a ${length}-character Square payment id settles, is credited once, is stored in full on the ledger and evidence, and is shown to the provider`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const attempt = await open(h, s);
+        h.setClock(new Date("2030-05-02T09:00:00Z"));
+        const paymentId = `PAY_${"p".repeat(length)}`.slice(0, length);
+        assert.equal(paymentId.length, length);
+        h.fake.payOrder(attempt.squareOrderId!, { id: paymentId, ...first });
+        assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+        const ledger = await h.processorLedger(s.bookingId);
+        assert.equal(ledger.length, 1, "credited exactly once");
+        assert.equal(ledger[0].processor_payment_id, paymentId);
+        assert.deepEqual((await evidenceRows(h, attempt.id)).map((row) => row.square_payment_id), [paymentId]);
+        const view = await providerView(h, s, attempt.id);
+        assert.equal(view.squarePaymentId, paymentId);
+        assert.equal(view.processorPayments?.[0].squarePaymentId, paymentId);
+        assert.equal(view.processorPayments?.[0].creditedToLedger, true);
+        // replays do not credit again
+        await h.payments.settleAttempt(attempt.id);
+        await hook(h, s, attempt, `evt-long-pay-${length}`, paymentId);
+        assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      });
+    });
+  }
+
+  test("LONGID: a duplicate long payment id on another attempt is still refused by the uniqueness invariant, and never credited twice", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const one = await open(h, s, 0);
+      const two = await open(h, s, 1);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      const paymentId = `PAY_${"d".repeat(188)}`;
+      h.fake.payOrder(one.squareOrderId!, { id: paymentId, ...first });
+      assert.equal((await h.payments.settleAttempt(one.id)).outcome, "completed");
+      h.fake.payOrder(two.squareOrderId!, { id: paymentId, total_money: { amount: 60000, currency: "USD" }, amount_money: { amount: 60000, currency: "USD" } });
+      const outcome = await h.payments.settleAttempt(two.id);
+      assert.equal(outcome.outcome === "rejected" && outcome.code, "payment_already_consumed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await h.attempt(two.id)).state, "pending");
+      // and the database itself blocks it
+      await assert.rejects(h.pool.query(
+        `INSERT INTO catering_booking_payments (booking_id, invoice_id, amount_cents, currency, payment_method, payment_source, status, received_on, processor, processor_payment_id)
+         VALUES ($1, $2, 100, 'USD', 'card_online', 'processor', 'recorded', current_date, 'square', $3)`, [s.bookingId, s.invoiceIds[1], paymentId]), /catering_payments_processor_uidx/);
+    });
+  });
+
+  test("LONGID: 192-character order and payment-link ids from Square are stored, found by webhook, and closed with the link", async () => {
+    await run(async (h) => {
+      h.fake.state.orderIdLength = 192;
+      h.fake.state.linkIdLength = 192;
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      assert.equal(attempt.squareOrderId!.length, 192);
+      assert.equal(attempt.squarePaymentLinkId!.length, 192);
+      assert.equal((await h.attempt(attempt.id)).square_order_id.length, 192);
+      assert.deepEqual(await hook(h, s, attempt, "evt-long-order"), { kind: "processed", outcome: "awaiting" });
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now() WHERE id = $1`, [attempt.id]);
+      assert.equal(await h.payments.sweepClosedLinks(s.bookingId, { force: true }), 1);
+      assert.equal(h.fake.links.get(attempt.squarePaymentLinkId!)!.deleted, true);
+    });
+  });
 }

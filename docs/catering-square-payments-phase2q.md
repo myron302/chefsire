@@ -208,3 +208,19 @@ A consumed attempt (`completed` / `reconciliation_required`) means only "do not 
 
 - Processor money is shown only in the currency Square reported (`processorCurrency`, or each evidence row's own `currency`). One row uses its own amount and currency; several rows of one currency show the total with a count; mixed currencies are never summed or relabelled (neutral headline, each payment on its own row).
 - The provider view says whether anything was credited: `ledgerCredited` (the attempt has a ledger payment) and, per evidence row, `creditedToLedger`, true only for the payment whose Square id is STORED on that ledger payment (matched by id, never by amount). Copy differs: nothing credited vs. "one payment was already credited, additional payments were NOT credited automatically; do not apply the credited payment again". Customers receive neither flag nor Square ids. Presentation only: the accounting is unchanged.
+
+## Square identifier lengths (repair pass 7)
+
+Square documents payment, order and payment-link ids of up to 192 characters. Audited for this phase:
+
+| Identifier | Persisted as | Parsed with |
+| --- | --- | --- |
+| payment id | `catering_attempt_square_payments.square_payment_id`, `catering_booking_payment_attempts.square_payment_id`, webhook rows: `text`. **`catering_booking_payments.processor_payment_id`: was `varchar(128)`, now `varchar(255)`** | `squarePaymentId` (max 192) |
+| order id | `text` (attempts, webhook rows) | `squareOrderId` (max 192) |
+| payment-link id | `text` | not parsed from webhooks |
+| event id | `text` | zod, max 128 (UUID) |
+| merchant id | `text` | zod, max 128 (Square's are far shorter) |
+| location id | `text` | not parsed from webhooks |
+| idempotency key | `varchar(64)` (`chefsire-cat-` + UUID = 49) | generated |
+
+Only the Phase 2L ledger column was too narrow: a valid 129-192 character payment id would have rolled the settlement back after the customer was charged. The migration widens it in place (no rewrite, the unique `(processor, processor_payment_id)` index is rebuilt over the same data). The webhook parser used one generic 128-character helper for every id, which turned a valid long order id into "no order reference" and lost the trigger; it is now per-field (`SQUARE_*_MAX_LENGTH` in `shared/catering-square-payments.ts`), returns ids exactly as received, and refuses anything longer than the documented maximum.

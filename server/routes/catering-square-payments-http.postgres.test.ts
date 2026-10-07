@@ -279,6 +279,90 @@ if (!URL_ENV) {
       assert.deepEqual(columns, ["attempt_count", "attempt_id", "event_id", "event_type", "id", "merchant_id", "outcome", "processed_at", "received_at", "square_order_id", "square_payment_id", "state", "updated_at"]);
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 7: Square identifiers keep their FULL valid length in webhooks
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const { squareWebhookInputOf, squareIdentifier } = await import("./catering-square-payments");
+  const shared = await import("@shared/catering-square-payments");
+  const idOf = (length: number, ch = "o") => `ORDER_`.padEnd(length, ch);
+  const envelope = (orderId: unknown, paymentId: unknown = "PAYMENT_1", where: "payment" | "order_updated" | "order_created" | "order" = "payment") => ({
+    merchant_id: "MERCHANT_1", type: "payment.updated", event_id: "evt-id-1",
+    data: { object: where === "payment" ? { payment: { id: paymentId, order_id: orderId } } : where === "order" ? { order: { id: orderId } } : { [where]: { order_id: orderId } } },
+  });
+
+  test("webhook parsing: order and payment ids are accepted through 192 characters, exactly as received, and refused beyond", () => {
+    assert.equal(shared.SQUARE_ORDER_ID_MAX_LENGTH, 192);
+    assert.equal(shared.SQUARE_PAYMENT_ID_MAX_LENGTH, 192);
+    for (const length of [1, 128, 129, 191, 192]) {
+      const id = idOf(Math.max(length, 6), "x");
+      for (const where of ["payment", "order_updated", "order_created", "order"] as const) assert.equal(squareWebhookInputOf(envelope(id, "P", where))?.orderId, id, `${length} ${where}`);
+      assert.equal(squareWebhookInputOf(envelope("ORDER_1", id.replace("ORDER_", "PAY___")))?.paymentId, id.replace("ORDER_", "PAY___"));
+    }
+    assert.equal(squareWebhookInputOf(envelope(idOf(193)))?.orderId, null, "one over the documented maximum");
+    assert.equal(squareWebhookInputOf(envelope(idOf(5000)))?.orderId, null);
+    assert.equal(squareWebhookInputOf(envelope("ORDER_1", "P".repeat(193)))?.paymentId, null);
+    for (const bad of ["", 12345, null, undefined, {}, ["ORDER_1"], true]) assert.equal(squareWebhookInputOf(envelope(bad))?.orderId, null, String(JSON.stringify(bad)));
+    // exact: never trimmed or altered
+    assert.equal(squareWebhookInputOf(envelope(" ORDER_1 "))?.orderId, " ORDER_1 ");
+    // identifiers are validated per field, not by one generic length
+    assert.equal(squareIdentifier("x".repeat(64), 64), "x".repeat(64));
+    assert.equal(squareIdentifier("x".repeat(65), 64), null);
+    // an oversized event id or merchant id is still refused (the whole delivery is not an event)
+    assert.equal(squareWebhookInputOf({ ...envelope("ORDER_1"), event_id: "e".repeat(129) }), null);
+    assert.equal(squareWebhookInputOf({ ...envelope("ORDER_1"), merchant_id: "m".repeat(129) }), null);
+  });
+
+  for (const length of [128, 129, 192]) {
+    test(`webhook: a signed delivery whose order id is ${length} characters reaches authoritative settlement, is replay-safe, and never becomes no_order_reference`, async () => {
+      await withApp(async ({ h, base }) => {
+        h.fake.state.orderIdLength = length;
+        const s = await scene(h);
+        await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId));
+        const order = h.fake.lastOrder()!;
+        assert.equal(order.id.length, length);
+        h.fake.payOrder(order.id);
+        const orderReads = () => h.fake.requests.filter((request) => request.path.startsWith("/v2/orders/")).length;
+        const before = orderReads();
+        const body = event(`evt-long-${length}`, s.connection.merchantId, order.id);
+        const response = await deliver(base, body);
+        assert.equal(response.status, 200);
+        const text = await response.text();
+        assert.equal(text.includes(order.id) || text.includes(s.connection.accessToken), false, "nothing is echoed back");
+        assert.ok(orderReads() > before, "the order was fetched fresh from Square");
+        const rows = await h.q(`SELECT state, outcome, attempt_count FROM catering_square_webhook_events WHERE event_id = $1`, [`evt-long-${length}`]);
+        assert.deepEqual(rows.map((row) => ({ ...row })), [{ state: "processed", outcome: "completed", attempt_count: 1 }], "not no_order_reference");
+        const ledger = await h.processorLedger(s.bookingId);
+        assert.equal(ledger.length, 1);
+        const after = orderReads();
+        for (let i = 0; i < 2; i += 1) assert.equal((await deliver(base, body)).status, 200);
+        assert.equal(orderReads(), after, "a replay does not go back to Square");
+        assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      });
+    });
+  }
+
+  test("webhook: an oversized order id (193) is refused safely: ignored, no Square lookup, nothing credited, nothing echoed", async () => {
+    await withApp(async ({ h, base }) => {
+      const s = await scene(h);
+      await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId));
+      const order = h.fake.lastOrder()!;
+      h.fake.payOrder(order.id);
+      const huge = idOf(193);
+      const reads = () => h.fake.requests.filter((request) => request.path.startsWith("/v2/orders/") || request.path.startsWith("/v2/payments/")).length;
+      const before = reads();
+      const response = await deliver(base, event("evt-huge", s.connection.merchantId, huge));
+      assert.equal(response.status, 200);
+      assert.equal((await response.text()).includes(huge), false);
+      assert.equal(reads(), before, "no processor lookup was made for an unusable reference");
+      const rows = await h.q(`SELECT state, outcome, square_order_id FROM catering_square_webhook_events WHERE event_id = 'evt-huge'`);
+      assert.deepEqual(rows.map((row) => ({ ...row })), [{ state: "ignored", outcome: "no_order_reference", square_order_id: null }], "the oversized value is not even stored");
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+      assert.equal(JSON.stringify(h.logs).includes(huge), false);
+    });
+  });
+
 }
 
 /* ------------------------------------------------------------------------------------------------------------- *

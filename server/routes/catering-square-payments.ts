@@ -7,6 +7,10 @@ import {
   CATERING_SQUARE_COPY,
   cateringSquarePayRequestSchema,
   cateringSquarePaymentAttemptIdSchema,
+  SQUARE_EVENT_ID_MAX_LENGTH,
+  SQUARE_MERCHANT_ID_MAX_LENGTH,
+  SQUARE_ORDER_ID_MAX_LENGTH,
+  SQUARE_PAYMENT_ID_MAX_LENGTH,
 } from "@shared/catering-square-payments";
 import { cateringSquareWebhookConfig, type CateringSquareWebhookConfig } from "../lib/square-checkout";
 import { requireAuth } from "../middleware";
@@ -33,13 +37,16 @@ import { requireSameOriginJson } from "./square-connection";
 export { cateringSquareWebhookConfig, type CateringSquareWebhookConfig };
 
 const webhookEnvelope = z.object({
-  event_id: z.string().trim().min(1).max(128),
+  event_id: z.string().trim().min(1).max(SQUARE_EVENT_ID_MAX_LENGTH),
   type: z.string().trim().min(1).max(64),
-  merchant_id: z.string().trim().min(1).max(128).optional(),
+  merchant_id: z.string().trim().min(1).max(SQUARE_MERCHANT_ID_MAX_LENGTH).optional(),
   data: z.object({ object: z.record(z.unknown()).optional() }).passthrough().optional(),
 }).passthrough();
 
-const text = (value: unknown): string | null => (typeof value === "string" && value.length > 0 && value.length <= 128 ? value : null);
+/** A Square identifier: a non-empty string of at most `max` characters, returned exactly as received (never trimmed or altered), else null. */
+export const squareIdentifier = (value: unknown, max: number): string | null => (typeof value === "string" && value.length > 0 && value.length <= max ? value : null);
+export const squareOrderId = (value: unknown) => squareIdentifier(value, SQUARE_ORDER_ID_MAX_LENGTH);
+export const squarePaymentId = (value: unknown) => squareIdentifier(value, SQUARE_PAYMENT_ID_MAX_LENGTH);
 const record = (value: unknown): Record<string, unknown> => (value && typeof value === "object" ? value as Record<string, unknown> : {});
 
 /** Pulls only the identifiers needed to FIND the attempt out of a delivery. The rest of the payload is ignored and never stored. */
@@ -55,8 +62,8 @@ export function squareWebhookInputOf(body: unknown): SquareWebhookInput | null {
     eventId: parsed.data.event_id,
     eventType: parsed.data.type,
     merchantId: parsed.data.merchant_id ?? null,
-    orderId: text(payment.order_id) ?? text(orderUpdated.order_id) ?? text(orderCreated.order_id) ?? text(order.id),
-    paymentId: text(payment.id),
+    orderId: squareOrderId(payment.order_id) ?? squareOrderId(orderUpdated.order_id) ?? squareOrderId(orderCreated.order_id) ?? squareOrderId(order.id),
+    paymentId: squarePaymentId(payment.id),
   };
 }
 

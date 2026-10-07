@@ -21,6 +21,19 @@ export const CATERING_SQUARE_PROCESSOR = "square" as const;
 export const CATERING_SQUARE_CURRENCY = "USD" as const;
 
 /**
+ * Square identifier maximums, one per field (never one generic length). Square documents payment, order and payment-link ids of up to 192
+ * characters; event ids are UUIDs and merchant/location ids are short, so those keep a generous 128. The persisted columns that hold them are
+ * `text` (unbounded) except the Phase 2L ledger column `catering_booking_payments.processor_payment_id`, which is `varchar(255)`: it must hold
+ * the longest valid payment id, and a test pins that the column is never narrower than SQUARE_PAYMENT_ID_MAX_LENGTH.
+ */
+export const SQUARE_PAYMENT_ID_MAX_LENGTH = 192;
+export const SQUARE_ORDER_ID_MAX_LENGTH = 192;
+export const SQUARE_PAYMENT_LINK_ID_MAX_LENGTH = 192;
+export const SQUARE_EVENT_ID_MAX_LENGTH = 128;
+export const SQUARE_MERCHANT_ID_MAX_LENGTH = 128;
+export const CATERING_LEDGER_PROCESSOR_PAYMENT_ID_COLUMN_LENGTH = 255;
+
+/**
  * The attempt state machine. FAIL CLOSED: a new state is `creating`, and the only way to `completed` is the single settlement
  * transaction that also writes the ledger row.
  *

@@ -149,6 +149,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS catering_square_webhook_event_uidx ON catering
 CREATE INDEX IF NOT EXISTS catering_square_webhook_attempt_idx ON catering_square_webhook_events (attempt_id) WHERE attempt_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS catering_square_webhook_retry_idx ON catering_square_webhook_events (state, updated_at) WHERE state IN ('received', 'processing', 'failed');
 
+-- Square payment ids may be up to 192 characters; the Phase 2L column was varchar(128), so a valid id of 129-192 characters would be rejected and
+-- roll the settlement back after the customer was charged. WIDENING only: no value is rewritten or truncated, and the unique index on
+-- (processor, processor_payment_id) is rebuilt over the same data by Postgres, so duplicate prevention is unchanged. Idempotent.
+ALTER TABLE catering_booking_payments ALTER COLUMN processor_payment_id TYPE varchar(255);
+
 -- A processor-confirmed payment gets its own method, which a provider can never record: the pair of CHECKs below makes
 -- 'card_online' and source 'processor' imply each other, and a processor id can only be Square's.
 ALTER TABLE catering_booking_payments DROP CONSTRAINT IF EXISTS catering_payment_method_check;
