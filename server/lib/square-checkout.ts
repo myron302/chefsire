@@ -136,7 +136,9 @@ export function createSquareCheckoutApi(options: SquareSdkOptions = {}): SquareC
           enableLoyalty: false,
           ...(input.redirectUrl ? { redirectUrl: input.redirectUrl } : {}),
         },
-      }, { maxRetries: 0 });
+      // No automatic retry, and a client-side deadline well inside the service's create lease (CREATE_IN_FLIGHT_MS): once the lease has passed, no
+      // earlier invocation of this call can still be waiting on Square, so a second one never overlaps it.
+      }, { maxRetries: 0, timeoutInSeconds: 30 });
       const link = response.paymentLink;
       const url = link?.url ?? link?.longUrl;
       if (!link?.id || !link.orderId || !url) throw new SquareProviderResponseError("Square returned an incomplete payment link.");

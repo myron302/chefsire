@@ -135,7 +135,8 @@ const DEFAULT_POLL_INTERVAL_MS = 2_000;
 
 const OPEN: readonly string[] = ["creating", "pending"];
 /** Locally terminal states whose Square payment link may still be live until Square confirms otherwise. */
-const CLOSED_WITH_LINK_STATES: readonly string[] = ["cancelled", "superseded", "expired"];
+// `failed` is included: a create that Square refused/lost locally can still deliver a LATE link, which must be recorded and removed like any other.
+const CLOSED_WITH_LINK_STATES: readonly string[] = ["cancelled", "superseded", "expired", "failed"];
 const CONSUMED: readonly string[] = ["completed", "reconciliation_required"];
 
 export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
@@ -300,7 +301,14 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         }
         return { go: false, attempt: current };
       }
-      if (mode === "create" ? current.state !== "creating" : (current.state === "failed" || CONSUMED.includes(current.state) || current.squarePaymentLinkId !== null)) return { go: false, attempt: current };
+      if (mode === "create" ? current.state !== "creating" : (CONSUMED.includes(current.state) || current.squarePaymentLinkId !== null)) return { go: false, attempt: current };
+      // ONE external create call per attempt at a time. While an earlier call is unresolved and inside its lease it may still be waiting on Square
+      // (its client deadline is shorter than the lease), so a second one is NOT issued: it would be a second, conflicting outcome for the same attempt.
+      // Once the lease has passed that call is over, and this one (same idempotency key) either recovers its link or learns it was refused.
+      // A call that has already ENDED uncertain (its client-side wait is over; `square_create_uncertain_at` is at or after its start) is not in flight: the
+      // retry is how it is recovered.
+      const lastCallEnded = current.squareCreateUncertainAt !== null && current.squareCreateStartedAt !== null && current.squareCreateUncertainAt.getTime() >= current.squareCreateStartedAt.getTime();
+      if (current.squareCreateStartedAt && !current.squareCreateResolvedAt && !lastCallEnded && now().getTime() - current.squareCreateStartedAt.getTime() < CREATE_IN_FLIGHT_MS) return { go: false, attempt: current };
       // A reconcile re-sends a call that was ALREADY marked: it keeps the original start time, so repeated reconciles are not mistaken for a fresh
       // in-flight call and cannot postpone themselves forever.
       if (mode === "reconcile") return { go: true, attempt: current };
@@ -353,13 +361,26 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         // Square may or may not have created it. The marker stays UNRESOLVED and an open attempt stays `creating`: the customer's retry (or a
         // reconcile) resumes it with the same key.
         log.warn("catering_square_checkout_uncertain", { attemptId: attempt.id, errorName: error instanceof Error ? error.name : "unknown" });
+        // Recorded on EVERY uncertain end (never cleared): it says both "this attempt has had an unknown outcome" and "that call is over".
+        await db.update(cateringBookingPaymentAttempts).set({ squareCreateUncertainAt: now() }).where(eq(cateringBookingPaymentAttempts.id, attempt.id));
         return { kind: "ok", attempt: (await attemptById(db, attempt.id)) ?? attempt };
       }
+      const credentialRefusal = disposition === "provider_credential_invalid" || classifySquareFailure(error) === "application_auth";
       if (disposition === "provider_credential_invalid") await connections.reportAuthorizationFailure(attempt.providerId, credentials.credentialGeneration).catch(() => undefined);
+      // A refusal from THIS call does not prove an EARLIER, uncertain call created nothing. A refusal about the request itself (Square answers the
+      // same idempotency key with the same outcome) accounts for the earlier call too; a refusal of the CREDENTIAL says nothing about it, because
+      // the earlier call may have succeeded before the credential stopped working. In that case the creation stays unresolved and the attempt is not failed.
+      if (credentialRefusal && attempt.squareCreateUncertainAt) {
+        log.warn("catering_square_checkout_refusal_inconclusive", { attemptId: attempt.id });
+        return { kind: "ok", attempt: (await attemptById(db, attempt.id)) ?? attempt };
+      }
+      // Only if no NEWER call has begun since this one (its marker is still the one this call wrote) is the refusal the last word.
+      const stillThisCall = eq(cateringBookingPaymentAttempts.squareCreateStartedAt, attempt.squareCreateStartedAt!);
       const [failed] = await db.update(cateringBookingPaymentAttempts)
         .set({ state: "failed", failureCode: disposition === "provider_credential_invalid" ? "provider_credential_rejected" : "square_refused", closedAt: now(), updatedAt: now() })
-        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), eq(cateringBookingPaymentAttempts.state, "creating"))).returning();
-      await resolveCreateCall(attempt.id); // Square refused: no external object exists, whatever the attempt's local state became meanwhile
+        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), eq(cateringBookingPaymentAttempts.state, "creating"), stillThisCall)).returning();
+      await db.update(cateringBookingPaymentAttempts).set({ squareCreateResolvedAt: now() })
+        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), sql`${cateringBookingPaymentAttempts.squareCreateResolvedAt} IS NULL`, stillThisCall));
       return { kind: "ok", attempt: (failed as CateringBookingPaymentAttempt | undefined) ?? (await attemptById(db, attempt.id)) ?? attempt };
     }
 
@@ -369,12 +390,12 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     if (pending) return { kind: "ok", attempt: pending as CateringBookingPaymentAttempt };
     // Another request resumed it first, or it was closed while Square was creating it. Report what is true now.
     let current = (await attemptById(db, attempt.id)) ?? attempt;
-    if (!current.squarePaymentLinkId && (current.state === "superseded" || current.state === "cancelled" || current.state === "expired")) {
+    if (!current.squarePaymentLinkId && !CONSUMED.includes(current.state) && current.state !== "pending" && current.state !== "creating") {
       // Closed while Square was creating it. Keep the link and order it produced ON the closed attempt (and resolve the create in the same write),
       // so a payment that still lands on that link is recognised by settlement and the link is removed with the credential that made it.
       const [kept] = await db.update(cateringBookingPaymentAttempts)
         .set({ squarePaymentLinkId: link.paymentLinkId, squareOrderId: link.orderId, squareCreateResolvedAt: now(), updatedAt: now() })
-        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), inArray(cateringBookingPaymentAttempts.state, ["superseded", "cancelled", "expired"]))).returning();
+        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), inArray(cateringBookingPaymentAttempts.state, [...CLOSED_WITH_LINK_STATES]))).returning();
       current = (kept as CateringBookingPaymentAttempt | undefined) ?? current;
       await sweepClosedLinks(bookingId, { force: true });
     } else {
@@ -775,7 +796,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     const unresolvedCreates = () => and(
       eq(cateringBookingPaymentAttempts.providerId, providerId),
       eq(cateringBookingPaymentAttempts.merchantId, merchantId),
-      sql`${cateringBookingPaymentAttempts.state} <> 'failed' AND ${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NULL
+      sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NULL
         AND ${cateringBookingPaymentAttempts.squareCreateStartedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareCreateResolvedAt} IS NULL`,
     );
     const due = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts).where(unconfirmed()) as { bookingId: string }[];
@@ -813,8 +834,8 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       `SELECT 1 FROM catering_booking_payment_attempts
        WHERE provider_id = $1 AND merchant_id = $2 AND (
          state IN ('creating', 'pending')
-         OR (state IN ('cancelled', 'superseded', 'expired') AND square_payment_link_id IS NOT NULL AND square_link_closed_at IS NULL)
-         OR (state <> 'failed' AND square_payment_link_id IS NULL AND square_create_started_at IS NOT NULL AND square_create_resolved_at IS NULL)
+         OR (state IN ('cancelled', 'superseded', 'expired', 'failed') AND square_payment_link_id IS NOT NULL AND square_link_closed_at IS NULL)
+         OR (square_payment_link_id IS NULL AND square_create_started_at IS NOT NULL AND square_create_resolved_at IS NULL)
        ) LIMIT 1`,
       [context.userId, context.merchantId],
     );

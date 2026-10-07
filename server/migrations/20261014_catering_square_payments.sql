@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS catering_booking_payment_attempts (
   -- appear whatever the local state says, so the credential that made the call must not be discarded.
   square_create_started_at timestamptz,
   square_create_resolved_at timestamptz,
+  -- Set (never cleared; refreshed each time) when a create call ended UNCERTAIN: Square may hold a link ChefSire has not recorded.
+  square_create_uncertain_at timestamptz,
   last_checked_at timestamptz,
   verified_at timestamptz,
   completed_at timestamptz,

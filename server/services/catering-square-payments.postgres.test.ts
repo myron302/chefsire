@@ -2067,4 +2067,154 @@ if (!URL_ENV) {
       assert.equal((await h.ledger(s.bookingId)).length, 0);
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 9: one external create per attempt; no late link is ever left unrecorded
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const createRequests = (h: CateringSquareHarness) => h.fake.requests.filter((request) => request.method === "POST" && request.path === "/v2/online-checkout/payment-links");
+
+  test("CREATE-RACE A: while one create call is in flight a retry issues NO second Square create; when it succeeds the link is recorded and the attempt is pending; no orphan", async () => {
+    await holdRun(async (h, ctl) => {
+      const s = await scene(h);
+      hold(ctl);
+      const first = pay(h, s);
+      await withTimeout(ctl.entered, "create in flight");
+      const attempt = await creatingRow(h, s.bookingId);
+      for (let i = 0; i < 3; i += 1) {
+        const retry = await pay(h, s);                     // the customer presses Pay again
+        assert.ok(retry.kind === "ok" && retry.reused && retry.attempt.id === attempt.id && retry.attempt.state === "creating");
+      }
+      assert.equal(createRequests(h).length, 0, "no second external create while the first is unresolved");
+      ctl.release();
+      const done = await withTimeout(first, "first create completes");
+      assert.ok(done.kind === "ok" && done.attempt.state === "pending");
+      const row = await h.attempt(attempt.id);
+      assert.ok(row.square_payment_link_id && row.square_order_id && row.checkout_url, "link and order identifiers persisted");
+      assert.ok(row.square_create_resolved_at);
+      assert.equal(h.fake.links.size, 1, "one checkout");
+      assert.equal(createRequests(h).length, 1);
+      const again = await pay(h, s);
+      assert.ok(again.kind === "ok" && again.attempt.id === attempt.id && again.attempt.state === "pending");
+      assert.equal(createRequests(h).length, 1, "a pending attempt is never re-created");
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+  });
+
+  for (const terminal of ["failed", "cancelled", "superseded", "expired"] as const) {
+    test(`CREATE-RACE: a LATE Square success after the attempt became ${terminal} is persisted and its link is cleaned up with the old credential; the checkout is never offered`, async () => {
+      await holdRun(async (h, ctl) => {
+        const s = await scene(h);
+        hold(ctl);
+        const paying = pay(h, s);
+        await withTimeout(ctl.entered, "create in flight");
+        const attempt = await creatingRow(h, s.bookingId);
+        await h.q(`UPDATE catering_booking_payment_attempts SET state = $2, closed_at = now() WHERE id = $1`, [attempt.id, terminal]);
+        ctl.release();
+        await withTimeout(paying, "create completes");
+        const row = await h.attempt(attempt.id);
+        assert.equal(row.state, terminal, "not reactivated");
+        assert.ok(row.square_payment_link_id && row.square_order_id, "the late link is recorded, so a charge on it can be matched");
+        assert.ok(row.square_create_resolved_at);
+        assert.equal(row.checkout_url, null, "never offered to the customer");
+        assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true, "cleaned up");
+        assert.ok(row.square_link_closed_at);
+        // a charge that still lands on it is routed into authoritative settlement, never lost
+        const settled = await h.payments.settleAttempt(attempt.id);
+        assert.equal(settled.outcome, "awaiting");
+        assert.equal((await h.connections.disconnect(s.providerId)).changed, true, "once resolved and cleaned up, disposal proceeds");
+        assert.equal(JSON.stringify({ logs: h.logs, row }).includes(s.connection.accessToken), false);
+      });
+    });
+  }
+
+  test("CREATE-RACE B: a second call (lease long over) that Square REFUSES does not lose a late success from the first: the link is still recorded and removed", async () => {
+    await holdRun(async (h, ctl) => {
+      const s = await scene(h);
+      hold(ctl);
+      const first = pay(h, s);
+      await withTimeout(ctl.entered, "A in flight");
+      const attempt = await creatingRow(h, s.bookingId);
+      await h.q(`UPDATE catering_booking_payment_attempts SET square_create_started_at = now() - interval '10 minutes' WHERE id = $1`, [attempt.id]);
+      h.fake.state.checkoutCreateFailure = 422;            // call B starts (the lease has passed) and is definitively refused
+      const second = await pay(h, s);
+      assert.ok(second.kind === "ok" && second.attempt.state === "failed");
+      h.fake.state.checkoutCreateFailure = undefined;
+      ctl.release();                                       // call A, still outstanding, now succeeds at Square
+      await withTimeout(first, "A completes");
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "failed");
+      assert.ok(row.square_payment_link_id && row.square_order_id, "A's late link was NOT dropped because B failed the attempt");
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true);
+      assert.ok(row.square_link_closed_at);
+      assert.equal(h.fake.links.size, 1);
+    });
+  });
+
+  test("CREATE-RACE: a lone definitive refusal fails the attempt and resolves creation; a refusal after an earlier UNCERTAIN call (a refusal about the request) accounts for it and resolves too", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      h.fake.state.checkoutCreateFailure = 422;
+      const refused = await pay(h, s, 0);
+      assert.ok(refused.kind === "ok" && refused.attempt.state === "failed");
+      const lone = await h.attempt(refused.attempt.id);
+      assert.ok(lone.square_create_resolved_at);
+      assert.equal(lone.square_create_uncertain_at, null);
+      assert.equal(h.fake.links.size, 0);
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+    });
+    await run(async (h) => {
+      const s = await scene(h);
+      h.fake.state.checkoutCreateFailure = 503;
+      const uncertain = await pay(h, s, 0);
+      assert.ok(uncertain.kind === "ok" && uncertain.attempt.state === "creating");
+      const before = await h.attempt(uncertain.attempt.id);
+      assert.ok(before.square_create_uncertain_at && before.square_create_resolved_at === null);
+      h.fake.state.checkoutCreateFailure = 422;
+      const refused = await pay(h, s, 0);
+      assert.ok(refused.kind === "ok" && refused.attempt.id === before.id && refused.attempt.state === "failed");
+      const row = await h.attempt(before.id);
+      assert.ok(row.square_create_resolved_at, "all possible calls are accounted for");
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true, "and disposal is no longer blocked");
+    });
+  });
+
+  test("CREATE-RACE: a CREDENTIAL refusal after an earlier uncertain call is inconclusive: the attempt is not failed and creation stays unresolved", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      h.fake.state.checkoutCreateLosesResponse = true;
+      const uncertain = await pay(h, s, 0);
+      assert.ok(uncertain.kind === "ok" && uncertain.attempt.state === "creating");
+      assert.equal(h.fake.links.size, 1, "Square DID create a link ChefSire has not recorded");
+      h.fake.state.checkoutCreateLosesResponse = false;
+      h.fake.state.checkoutCreateFailure = 401;
+      await pay(h, s, 0);
+      const row = await h.attempt(uncertain.attempt.id);
+      assert.equal(row.state, "creating", "not failed: that would orphan the link");
+      assert.equal(row.square_create_resolved_at, null);
+      assert.ok(row.square_create_uncertain_at);
+    });
+  });
+
+  test("CREATE-RACE: repeated retries after an uncertain call recover the SAME link under the SAME idempotency key; never a duplicate checkout or ledger credit", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      h.fake.state.checkoutCreateLosesResponse = true;
+      const uncertain = await pay(h, s, 0);
+      assert.ok(uncertain.kind === "ok");
+      h.fake.state.checkoutCreateLosesResponse = false;
+      for (let i = 0; i < 3; i += 1) {
+        const retry = await pay(h, s, 0);
+        assert.ok(retry.kind === "ok" && retry.attempt.id === uncertain.attempt.id && retry.attempt.state === "pending");
+      }
+      assert.equal(h.fake.links.size, 1);
+      const keys = new Set(createRequests(h).map((request) => (JSON.parse(request.body) as { idempotency_key: string }).idempotency_key));
+      assert.deepEqual([...keys], [`chefsire-cat-${uncertain.attempt.id}`], "one durable identity for every call");
+      assert.equal(createRequests(h).length, 2, "the lost one and ONE recovery");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+      const row = await h.attempt(uncertain.attempt.id);
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.order_id, row.square_order_id, "order and link recorded for webhook matching");
+    });
+  });
 }

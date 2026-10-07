@@ -41,6 +41,8 @@ export const cateringBookingPaymentAttempts = pgTable("catering_booking_payment_
   // resolved means a hosted checkout may still appear, whatever the attempt's local state says, and the credential that made the call is needed.
   squareCreateStartedAt: timestamp("square_create_started_at", { withTimezone: true }),
   squareCreateResolvedAt: timestamp("square_create_resolved_at", { withTimezone: true }),
+  // Set (never cleared; refreshed on every such end) when a create call ended with an UNCERTAIN outcome: Square may hold a link ChefSire has not recorded.
+  squareCreateUncertainAt: timestamp("square_create_uncertain_at", { withTimezone: true }),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
