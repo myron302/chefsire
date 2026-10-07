@@ -103,6 +103,21 @@ export function cateringReturnedAttemptId(search: string): string | null {
   return value && /^[A-Za-z0-9-]{1,64}$/.test(value) ? value : null;
 }
 
+/** The identity a returned attempt (and so its dismissal) belongs to: the viewer, the booking AND the attempt. Nothing is shared across two of them. */
+export const cateringReturnedAttemptIdentity = (userId: string, bookingId: string, attemptId: string) => `${userId}|${bookingId}|${attemptId}`;
+
+/**
+ * The returned Square attempt to act on RIGHT NOW, derived (on every render) from the CURRENT URL search and the current viewer and booking.
+ * It is never stored from an earlier URL, so navigating to another booking, to a URL with no attempt, or to a different attempt cannot leave a
+ * previous one behind. A dismissal hides exactly the identity (viewer + booking + attempt) that was dismissed, never a different booking's attempt.
+ * The value is only a hint of what to ask the server about: the server decides whether this viewer may see it, and what Square showed.
+ */
+export function cateringActiveReturnedAttempt(input: { search: string; userId: string; bookingId: string; dismissedIdentity: string | null }): string | null {
+  const attemptId = cateringReturnedAttemptId(input.search);
+  if (!attemptId) return null;
+  return cateringReturnedAttemptIdentity(input.userId, input.bookingId, attemptId) === input.dismissedIdentity ? null : attemptId;
+}
+
 /** The error a failed attempt lookup throws: the HTTP status (or null for a network failure) so polling can tell terminal from transient. */
 export class CateringAttemptLookupError extends Error {
   constructor(message: string, readonly status: number | null) { super(message); this.name = "CateringAttemptLookupError"; }

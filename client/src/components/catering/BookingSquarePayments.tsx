@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearch } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cateringBookingBillingKey, formatCateringMoney, type CateringBookingBillingView, type CateringInvoiceView } from "@shared/catering-booking-billing";
@@ -24,7 +25,8 @@ import {
   createCheckoutRetryScheduler,
   cateringOpenAttemptFor,
   cateringProviderVisibleAttempts,
-  cateringReturnedAttemptId,
+  cateringActiveReturnedAttempt,
+  cateringReturnedAttemptIdentity,
   cateringSafeCheckoutUrl,
   cateringSquareDisplay,
   cateringSquareEvidenceLabel,
@@ -187,13 +189,18 @@ function useAttemptPolling(bookingId: string, userId: string, attemptId: string 
 export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId: string; userId: string; billing: CateringBookingBillingView }) {
   const cache = useQueryClient();
   const customer = billing.role === "customer";
-  const [returned, setReturned] = useState<string | null>(() => (typeof window === "undefined" ? null : cateringReturnedAttemptId(window.location.search)));
+  // The returned attempt is DERIVED from the router's reactive search string on every render, never copied into state from the URL as it was at
+  // mount: the workspace keeps this panel mounted across bookings, so a copy would carry one booking's attempt (and its polling) into the next, or
+  // miss an attempt that appears later. Only the dismissal is state, and it names the exact viewer + booking + attempt it hides.
+  const search = useSearch();
+  const [dismissedIdentity, setDismissedIdentity] = useState<string | null>(null);
+  const returned = cateringActiveReturnedAttempt({ search, userId, bookingId, dismissedIdentity });
   const refreshBilling = () => cache.invalidateQueries({ queryKey: cateringBookingBillingKey(userId, bookingId) });
   const { attempt: polled, failed, exhausted, recheck } = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
   const money = (cents: number, currency: string) => formatCateringMoney(cents, currency);
 
   const dismiss = () => {
-    setReturned(null);
+    if (returned) setDismissedIdentity(cateringReturnedAttemptIdentity(userId, bookingId, returned));
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.delete("squareAttempt");

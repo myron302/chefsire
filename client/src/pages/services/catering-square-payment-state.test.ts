@@ -185,7 +185,7 @@ test("the component stops polling through the pure interval, retries only transi
 
 test("dismissing only hides the banner and consumes the URL hint: no request, no mutation, nothing marked paid, no new attempt", () => {
   const dismiss = component.slice(component.indexOf("const dismiss = () => {"), component.indexOf("const attempts = customer"));
-  assert.ok(dismiss.includes("setReturned(null)"));
+  assert.ok(dismiss.includes("setDismissedIdentity(cateringReturnedAttemptIdentity(userId, bookingId, returned))"), "the dismissal names the exact viewer + booking + attempt");
   assert.ok(dismiss.includes('url.searchParams.delete("squareAttempt")') && dismiss.includes("window.history.replaceState"));
   for (const forbidden of ["fetch(", "mutate(", "mutation", "setQueryData", "invalidateQueries", "start."]) assert.equal(dismiss.includes(forbidden), false, forbidden);
   // with the hint cleared the attempt query is disabled, so it cannot fire again
@@ -470,4 +470,75 @@ test("the provider panel formats the headline and labels through these helpers, 
   const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../components/catering/BookingSquarePayments.tsx"), "utf8");
   assert.equal(/processorAmountCents \?\? attempt\.amountCents/.test(source), false);
   assert.ok(source.includes("cateringSquareHeadline(attempt, money)") && source.includes("cateringSquareEvidenceLabel(payment, attempt.ledgerCredited)"));
+});
+
+/* Codex repair pass 10: the returned Square attempt follows the CURRENT navigation */
+import { cateringActiveReturnedAttempt, cateringReturnedAttemptIdentity } from "./catering-square-payment-state";
+const A = "aaaaaaaa-1111-4222-8333-444455556666";
+const B = "bbbbbbbb-1111-4222-8333-444455556666";
+const nav = (search: string, bookingId: string, dismissedIdentity: string | null = null, userId = "user-1") => cateringActiveReturnedAttempt({ search, userId, bookingId, dismissedIdentity });
+
+test("nav: Booking A with squareAttempt=A uses A, and only A", () => {
+  assert.equal(nav(`?squareAttempt=${A}`, "booking-A"), A);
+  assert.equal(cateringAttemptPollIdentity("user-1", "booking-A", nav(`?squareAttempt=${A}`, "booking-A")), cateringAttemptPollIdentity("user-1", "booking-A", A));
+});
+
+test("nav: A + attempt A -> Booking B with NO attempt clears it: nothing is polled or shown for B, and A's poll identity is gone", () => {
+  const onA = nav(`?squareAttempt=${A}`, "booking-A");
+  const onB = nav("", "booking-B");
+  assert.equal(onA, A);
+  assert.equal(onB, null, "no stale attempt");
+  assert.notEqual(cateringAttemptPollIdentity("user-1", "booking-B", onB), cateringAttemptPollIdentity("user-1", "booking-A", onA), "a different polling identity: its failure counter starts from zero");
+});
+
+test("nav: A + attempt A -> Booking B + attempt B adopts B; A is never asked about under B", () => {
+  const onB = nav(`?squareAttempt=${B}`, "booking-B");
+  assert.equal(onB, B);
+  assert.notEqual(cateringAttemptPollIdentity("user-1", "booking-B", onB), cateringAttemptPollIdentity("user-1", "booking-A", A));
+  // the attempt can only ever be paired with the CURRENT booking: there is no input that yields A for booking B
+  assert.equal(nav(`?squareAttempt=${B}`, "booking-B") === A, false);
+});
+
+test("nav: a panel that started with no attempt notices one that appears later (no reload needed)", () => {
+  assert.equal(nav("", "booking-B"), null);
+  assert.equal(nav(`?squareAttempt=${B}`, "booking-B"), B);
+});
+
+test("nav: dismissing A on Booking A does NOT suppress B on Booking B, and does not bring A back", () => {
+  const dismissedA = cateringReturnedAttemptIdentity("user-1", "booking-A", A);
+  assert.equal(nav(`?squareAttempt=${A}`, "booking-A", dismissedA), null, "A stays dismissed");
+  assert.equal(nav(`?squareAttempt=${B}`, "booking-B", dismissedA), B, "B is not suppressed");
+  assert.equal(nav("", "booking-B", dismissedA), null, "and nothing stale is shown on a booking with no attempt");
+  // the dismissal is for that booking: the SAME attempt id under another booking or viewer is a different identity
+  assert.equal(nav(`?squareAttempt=${A}`, "booking-C", dismissedA), A);
+  assert.equal(nav(`?squareAttempt=${A}`, "booking-A", dismissedA, "user-2"), A);
+});
+
+test("nav: changing the attempt on the SAME booking (A -> B) switches to B, and A's dismissal does not hide B", () => {
+  const dismissedA = cateringReturnedAttemptIdentity("user-1", "booking-A", A);
+  assert.equal(nav(`?squareAttempt=${A}`, "booking-A"), A);
+  assert.equal(nav(`?squareAttempt=${B}`, "booking-A"), B);
+  assert.equal(nav(`?squareAttempt=${B}`, "booking-A", dismissedA), B);
+});
+
+test("nav: malformed squareAttempt values are rejected exactly as before, whatever the navigation", () => {
+  for (const bad of ["?squareAttempt=../../x", "?squareAttempt=", "?squareAttempt=a b", `?squareAttempt=${"x".repeat(65)}`, "?squareAttempt=a%2Fb", "?other=1"]) assert.equal(nav(bad, "booking-A"), null, bad);
+});
+
+test("nav: the URL only ever selects what to ASK the server about; the component cannot turn it into a payment or reach another booking", () => {
+  const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../components/catering/BookingSquarePayments.tsx"), "utf8");
+  // derived from the reactive router search, never captured once at mount, and never from window.location in state initialisation
+  assert.ok(source.includes('import { useSearch } from "wouter"') && source.includes("const search = useSearch();"));
+  assert.ok(source.includes("cateringActiveReturnedAttempt({ search, userId, bookingId, dismissedIdentity })"));
+  assert.equal(/useState<string \| null>\(\(\) => \(typeof window/.test(source), false, "no useState initialiser reading the URL");
+  assert.equal(/setReturned/.test(source), false);
+  // the lookup is always for the CURRENT booking and attempt, under a key scoped by viewer, booking and attempt
+  assert.ok(source.includes('["catering", "square-attempt", userId, bookingId, attemptId]'));
+  assert.ok(source.includes("fetch(cateringPaymentAttemptPath(bookingId, attemptId!), { credentials: \"include\" })"));
+  assert.ok(source.includes("enabled: attemptId !== null"));
+  // no cache-wide deletion, and the client only ever READS an attempt: it never posts a payment or writes a ledger row from the return
+  assert.equal(/removeQueries|resetQueries|clear\(\)/.test(source), false);
+  const polling = source.slice(source.indexOf("function useAttemptPolling"), source.indexOf("export function SquarePaymentsPanel"));
+  assert.equal(/method: "POST"/.test(polling), false);
+  assert.ok(source.includes('"confirmed" is\n *    shown only when the server says an attempt is `completed`') || source.includes("shown only when the server says an attempt is `completed`"));
 });
