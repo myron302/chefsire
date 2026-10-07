@@ -85,7 +85,7 @@ test("an unpaid open order is awaiting; approved is processing; a cancelled unpa
 
 // completedAt is Square's created_at (the transaction time); updatedAt is carried as evidence only and never dates anything.
 const evidence = (id: string, amountCents: number, currency = "USD", at = "2030-01-01T10:00:00.000Z", tipCents = 0) => ({
-  paymentId: id, amountCents, tipCents, currency, createdAt: new Date(at), updatedAt: new Date("2030-01-01T10:00:01Z"), completedAt: new Date(at),
+  paymentId: id, amountCents, tipCents, currency, createdAt: new Date(at), updatedAt: new Date("2030-01-01T10:00:01Z"), completedAt: new Date(at), hasRefunds: false,
 });
 
 test("only a COMPLETED payment that exactly matches is confirmed without a mismatch, carrying Square's own timestamps", () => {
@@ -178,4 +178,21 @@ test("a withdrawn invoice, a cancelled booking, a mismatch or another currency a
   assert.deepEqual(decideCateringSettlement({ confirmed: confirmed(), invoice: cancelled.invoices[0], facts: cancelled }), { kind: "reconcile", reason: "booking_cancelled" });
   assert.deepEqual(decideCateringSettlement({ confirmed: confirmed(45000, "amount_mismatch"), invoice: base.invoices[0], facts: base }), { kind: "reconcile", reason: "amount_mismatch" });
   assert.deepEqual(decideCateringSettlement({ confirmed: { amountCents: 40000, currency: "CAD", mismatch: null }, invoice: base.invoices[0], facts: base }), { kind: "reconcile", reason: "currency_mismatch" });
+});
+
+test("a COMPLETED payment with refund activity is confirmed money but never a clean match: it is a payment_refunded reconciliation, whatever else is right about it", () => {
+  const confirmed = (p: Partial<SquarePaymentFacts>) => evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"] }), [squarePayment(p)]);
+  const refunded = confirmed({ hasRefunds: true });
+  assert.equal(refunded.kind === "confirmed" && refunded.mismatch, "payment_refunded");
+  assert.equal(refunded.kind === "confirmed" && refunded.payments[0].hasRefunds, true);
+  assert.equal(refunded.kind === "confirmed" && refunded.payments[0].amountCents, 40000, "the original amount is kept as evidence, never netted or clamped");
+  // refund beats the other reasons: a refunded payment of the wrong amount is still reported as refunded first
+  assert.equal((confirmed({ hasRefunds: true, totalCents: 45000 }) as { mismatch: string }).mismatch, "payment_refunded");
+  // a clean one is unaffected
+  const clean = confirmed({ hasRefunds: false });
+  assert.equal(clean.kind === "confirmed" && clean.mismatch, null);
+  // several payments stay a multiple_payments reconciliation, each row carrying its own refund flag
+  const several = evaluateSquareEvidence(target, order({ paymentIds: ["A", "B"] }), [squarePayment({ id: "A" }), squarePayment({ id: "B", hasRefunds: true })]);
+  assert.equal(several.kind === "confirmed" && several.mismatch, "multiple_payments");
+  assert.deepEqual(several.kind === "confirmed" && several.payments.map((payment) => [payment.paymentId, payment.hasRefunds]), [["A", false], ["B", true]]);
 });

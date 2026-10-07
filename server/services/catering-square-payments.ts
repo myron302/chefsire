@@ -547,7 +547,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     for (const payment of payments) {
       await tx.insert(cateringAttemptSquarePayments).values({
         attemptId, squarePaymentId: payment.paymentId, amountCents: payment.amountCents, tipCents: payment.tipCents, currency: payment.currency,
-        squareCreatedAt: payment.createdAt, squareUpdatedAt: payment.updatedAt, completedAt: payment.completedAt,
+        squareCreatedAt: payment.createdAt, squareUpdatedAt: payment.updatedAt, completedAt: payment.completedAt, hasRefunds: payment.hasRefunds,
       }).onConflictDoNothing({ target: cateringAttemptSquarePayments.squarePaymentId });
     }
   }
@@ -560,7 +560,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
 
   const evidenceSummary = (rows: readonly CateringAttemptSquarePayment[]) => summarizeConfirmedPayments(rows.map((row) => ({
     paymentId: row.squarePaymentId, amountCents: row.amountCents, tipCents: row.tipCents, currency: row.currency,
-    createdAt: row.squareCreatedAt, updatedAt: row.squareUpdatedAt, completedAt: row.completedAt,
+    createdAt: row.squareCreatedAt, updatedAt: row.squareUpdatedAt, completedAt: row.completedAt, hasRefunds: row.hasRefunds,
   })));
 
   /**
@@ -683,8 +683,16 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
   async function auditAdditionalPaymentsInTx(tx: Executor, attempt: CateringBookingPaymentAttempt, payments: readonly ConfirmedSquarePayment[]): Promise<{ changed: boolean; attempt: CateringBookingPaymentAttempt }> {
     if (!CONSUMED.includes(attempt.state)) return { changed: false, attempt };
     const attemptId = attempt.id;
-    const known = new Set((await paymentEvidenceOf(tx, attemptId)).map((row) => row.squarePaymentId));
+    const existing = await paymentEvidenceOf(tx, attemptId);
+    const known = new Set(existing.map((row) => row.squarePaymentId));
     if (attempt.squarePaymentId) known.add(attempt.squarePaymentId);
+    // A payment already recorded (and perhaps credited) can be refunded LATER. The credit is never touched, netted or reversed here; the evidence row
+    // only records that Square now reports refund activity, so the provider can see it. Idempotent, and only ever false -> true.
+    for (const payment of payments) {
+      if (!payment.hasRefunds) continue;
+      await tx.update(cateringAttemptSquarePayments).set({ hasRefunds: true })
+        .where(and(eq(cateringAttemptSquarePayments.attemptId, attemptId), eq(cateringAttemptSquarePayments.squarePaymentId, payment.paymentId), eq(cateringAttemptSquarePayments.hasRefunds, false)));
+    }
     const fresh = payments.filter((payment) => !known.has(payment.paymentId));
     if (fresh.length === 0) return { changed: false, attempt };
     // A payment already recorded as evidence for ANOTHER attempt, or credited to the ledger, is not this attempt's to claim.

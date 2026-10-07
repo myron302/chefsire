@@ -73,6 +73,7 @@ export const CATERING_RECONCILIATION_REASONS = [
   "amount_mismatch",      // Square's payment total is not the amount ChefSire asked for (e.g. a tip)
   "currency_mismatch",    // Square's payment is in another currency
   "multiple_payments",    // Square shows more than one completed payment on the one order; EVERY one is kept, none is chosen
+  "payment_refunded",     // Square's authoritative payment shows refund activity (refund ids or refunded money): COMPLETED no longer means the full amount stands
   "payment_timestamp_invalid", // Square's completion time is missing, malformed or in the future, so no honest received-on date exists
 ] as const;
 export type CateringReconciliationReason = typeof CATERING_RECONCILIATION_REASONS[number];
@@ -133,6 +134,8 @@ export type CateringProcessorPaymentView = {
   completedAt: string | null;
   /** PROVIDER ONLY. */
   squarePaymentId?: string;
+  /** PROVIDER ONLY. True when Square's own payment object showed refund activity (a refund id or refunded money) when ChefSire read it. */
+  refunded?: boolean;
   /** PROVIDER ONLY. True only for the payment whose Square id is the one stored on the attempt's Catering ledger payment (matched by id, never by amount). */
   creditedToLedger?: boolean;
 };
@@ -161,6 +164,7 @@ export const CATERING_SQUARE_COPY = {
   reconciliationProviderPartlyCredited: "One Square payment was already credited to the Catering ledger. Additional Square payment activity was detected and was NOT credited automatically. Review the payment evidence below before taking any action, and do not apply the credited payment again.",
   evidenceCredited: "Credited to Catering ledger",
   evidenceAdditional: "Additional Square payment: not credited automatically",
+  evidenceRefunded: "Square reports refund activity on this payment",
   evidenceNotCredited: "Not credited to the Catering ledger",
   reconciliationNeutralHeadline: "Square payments require reconciliation",
   disclosure: "Card payments are made on Square and go directly to your caterer. ChefSire does not receive or hold this money.",
@@ -191,6 +195,10 @@ export const CATERING_SQUARE_RECONCILIATION_COPY: Record<CateringReconciliationR
   multiple_payments: {
     customer: "More than one payment was taken, so your caterer needs to sort it out.",
     provider: "Square shows more than one completed payment on the one checkout order. Every one is listed below with its own Square reference and whether it was credited to the Catering ledger; no payment is credited on another's behalf.",
+  },
+  payment_refunded: {
+    customer: "Square shows that part or all of your payment was returned, so your caterer needs to review it before anything is applied.",
+    provider: "Square reports refund activity on this payment (a refund or refunded money). ChefSire did NOT credit it to the Catering ledger as a normal payment and made no refund of its own. Review the payment in your Square account and with your customer.",
   },
   payment_timestamp_invalid: {
     customer: "Square took your payment, but your caterer needs to confirm it before it is applied.",

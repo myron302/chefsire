@@ -108,6 +108,8 @@ export type ConfirmedSquarePayment = {
   updatedAt: Date | null;
   /** Square's completion time for THIS payment (see `squareCompletionTime`), or null when Square gave no usable one. */
   completedAt: Date | null;
+  /** Square's own payment object showed refund activity (a refund id or refunded money). COMPLETED then no longer means the full amount stands. */
+  hasRefunds: boolean;
 };
 
 function parseSquareTime(value: string | null): Date | null {
@@ -186,11 +188,13 @@ export function evaluateSquareEvidence(target: CateringAttemptTarget, order: Squ
   if (completed.some((payment) => payment.totalCents === null || payment.currency === null)) return { kind: "rejected", code: "order_total_mismatch" };
   const confirmed: ConfirmedSquarePayment[] = completed.map((payment) => ({
     paymentId: payment.id, amountCents: payment.totalCents!, tipCents: payment.tipCents, currency: payment.currency!,
-    createdAt: parseSquareTime(payment.createdAt), updatedAt: parseSquareTime(payment.updatedAt), completedAt: squareCompletionTime(payment),
+    createdAt: parseSquareTime(payment.createdAt), updatedAt: parseSquareTime(payment.updatedAt), completedAt: squareCompletionTime(payment), hasRefunds: payment.hasRefunds,
   })).sort((left, right) => (left.completedAt?.getTime() ?? Infinity) - (right.completedAt?.getTime() ?? Infinity) || left.paymentId.localeCompare(right.paymentId));
   const only = confirmed[0];
   let mismatch: CateringReconciliationReason | null = null;
   if (confirmed.length > 1) mismatch = "multiple_payments";
+  // A COMPLETED payment can have been refunded since: its full amount no longer stands, and ChefSire does not net, clamp or refund. Checked first.
+  else if (only.hasRefunds) mismatch = "payment_refunded";
   else if (only.currency !== target.currency) mismatch = "currency_mismatch";
   else if (only.amountCents !== target.amountCents || only.tipCents !== 0) mismatch = "amount_mismatch";
   else if (only.completedAt === null) mismatch = "payment_timestamp_invalid";

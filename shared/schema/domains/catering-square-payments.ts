@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, index, integer, pgTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { cateringBookingInvoices, cateringBookingPayments, cateringBookings } from "./social-content";
 
@@ -115,6 +115,8 @@ export const cateringAttemptSquarePayments = pgTable("catering_attempt_square_pa
   squareCreatedAt: timestamp("square_created_at", { withTimezone: true }),
   squareUpdatedAt: timestamp("square_updated_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  // Square's payment object showed refund activity when it was read. Evidence only: never nets, clamps or refunds anything.
+  hasRefunds: boolean("has_refunds").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   paymentUnique: uniqueIndex("catering_attempt_square_payments_payment_uidx").on(t.squarePaymentId),

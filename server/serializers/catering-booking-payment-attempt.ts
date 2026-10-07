@@ -37,7 +37,7 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
     view.processorPayments = row.processorPayments.map((payment) => ({
       amountCents: payment.amountCents, tipCents: payment.tipCents, currency: payment.currency, completedAt: payment.completedAt?.toISOString() ?? null,
       // The ledger-backed payment is identified by the Square id STORED on the ledger payment, never by comparing amounts.
-      ...(role === "provider" ? { squarePaymentId: payment.squarePaymentId, ...(row.creditedSquarePaymentId && payment.squarePaymentId === row.creditedSquarePaymentId ? { creditedToLedger: true } : {}) } : {}),
+      ...(role === "provider" ? { squarePaymentId: payment.squarePaymentId, ...(payment.hasRefunds ? { refunded: true } : {}), ...(row.creditedSquarePaymentId && payment.squarePaymentId === row.creditedSquarePaymentId ? { creditedToLedger: true } : {}) } : {}),
     }));
   }
   if (state === "reconciliation_required" && row.reconciliationReason) view.reconciliationReason = row.reconciliationReason as CateringReconciliationReason;

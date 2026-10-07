@@ -251,7 +251,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
               <span className="tabular-nums">{money(payment.amountCents, payment.currency)}</span>
               {payment.completedAt ? ` · ${payment.completedAt}` : " · no usable Square time"}
               {payment.squarePaymentId ? ` · ${payment.squarePaymentId}` : ""}
-              {attempt.state === "reconciliation_required" || attempt.state === "completed" ? <span className={`ml-1 font-medium ${payment.creditedToLedger ? "text-foreground" : ""}`}> · {cateringSquareEvidenceLabel(payment, attempt.ledgerCredited)}</span> : null}
+              {attempt.state === "reconciliation_required" || attempt.state === "completed" ? <span className={`ml-1 font-medium ${payment.creditedToLedger ? "text-foreground" : ""}`}> · {cateringSquareEvidenceLabel(payment, attempt.ledgerCredited)}{payment.refunded ? ` · ${CATERING_SQUARE_COPY.evidenceRefunded}` : ""}</span> : null}
             </li>)}</ul>
           </div>}
         </li>;

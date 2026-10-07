@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS catering_attempt_square_payments (
   square_created_at timestamptz,
   square_updated_at timestamptz,
   completed_at timestamptz,
+  -- Square's payment object showed refund activity when it was read. Evidence only: never nets, clamps or refunds anything.
+  has_refunds boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT catering_attempt_square_payment_amount_check CHECK (amount_cents > 0 AND amount_cents <= 9999999999),
   CONSTRAINT catering_attempt_square_payment_tip_check CHECK (tip_cents >= 0 AND tip_cents <= amount_cents),

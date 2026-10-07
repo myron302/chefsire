@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareCateringSquareEnvironment, withCateringSquareHarness, withTimeout, type CateringSquareHarness } from "../test-support/catering-square-harness";
 import { createSquareCheckoutApi, SquareSandboxOnlyError } from "../lib/square-checkout";
+import { CATERING_SQUARE_RECONCILIATION_COPY } from "../../shared/catering-square-payments";
 import { SquareCredentialDiscardBlockedError } from "../lib/square-connection-service";
 import { serializeCateringPaymentAttempt } from "../serializers/catering-booking-payment-attempt";
 
@@ -1066,16 +1067,7 @@ if (!URL_ENV) {
     });
   });
 
-  test("P2: a refund moves Square's updated_at, so the original created_at dates the payment", async () => {
-    await run(async (h) => {
-      const s = await scene(h);
-      const attempt = await open(h, s);
-      h.fake.payOrder(attempt.squareOrderId!, { created_at: "2030-06-01T12:00:00Z", updated_at: "2030-06-09T12:00:00Z", refund_ids: ["R1"] });
-      h.setClock(new Date("2030-06-10T12:00:00Z"));
-      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
-      assert.equal(await receivedOn(h, s.bookingId), "2030-06-01");
-    });
-  });
+
 
   test("P2: a missing, malformed or future Square time is never replaced by ChefSire's date: the money is kept as payment_timestamp_invalid reconciliation", async () => {
     await run(async (h) => {
@@ -2033,7 +2025,7 @@ if (!URL_ENV) {
     });
   });
 
-  test("DATE: created and updated on the same day agree; a later refund update does not move the original date; a Los Angeles caterer's midnight is honoured", async () => {
+  test("DATE: created and updated on the same day agree; a later unrelated update does not move the original date; a Los Angeles caterer's midnight is honoured", async () => {
     await run(async (h) => {
       const s = await scene(h);
       const attempt = await open(h, s, 0);
@@ -2047,7 +2039,7 @@ if (!URL_ENV) {
       await h.q(`INSERT INTO catering_availability_settings (provider_id, timezone) VALUES ($1, 'America/Los_Angeles')`, [s.providerId]);
       const attempt = await open(h, s);
       // 06:30Z on the 4th is 23:30 on the 3rd in Los Angeles; the later refund-related update (the 9th) must not matter
-      h.fake.payOrder(attempt.squareOrderId!, { id: "D_LA", created_at: "2030-06-04T06:30:00Z", updated_at: "2030-06-09T12:00:00Z", refund_ids: ["R1"] });
+      h.fake.payOrder(attempt.squareOrderId!, { id: "D_LA", created_at: "2030-06-04T06:30:00Z", updated_at: "2030-06-09T12:00:00Z" });
       h.setClock(new Date("2030-06-10T12:00:00Z"));
       await h.payments.settleAttempt(attempt.id);
       assert.equal(await receivedOn(h, s.bookingId), "2030-06-03");
@@ -2215,6 +2207,113 @@ if (!URL_ENV) {
       assert.equal((await h.ledger(s.bookingId)).length, 0);
       const row = await h.attempt(uncertain.attempt.id);
       assert.equal(h.fake.links.get(row.square_payment_link_id)!.order_id, row.square_order_id, "order and link recorded for webhook matching");
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 11: refunded Square payments never auto-credit
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const refundShapes: { name: string; overrides: Record<string, unknown> }[] = [
+    { name: "partial refund (refund id and refunded money)", overrides: { refund_ids: ["R_PART"], refunded_money: { amount: 20000, currency: "USD" } } },
+    { name: "full refund (refund id and refunded money)", overrides: { refund_ids: ["R_FULL"], refunded_money: { amount: 40000, currency: "USD" } } },
+    { name: "refund id only", overrides: { refund_ids: ["R_ID"] } },
+    { name: "refunded money only", overrides: { refunded_money: { amount: 100, currency: "USD" } } },
+  ];
+
+  for (const shape of refundShapes) {
+    test(`REFUND: a COMPLETED payment with a ${shape.name} is NOT auto-credited: payment_refunded reconciliation, evidence kept, no ledger row, no pay-again advice`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const attempt = await open(h, s);
+        h.setClock(new Date("2030-05-02T09:00:00Z"));
+        h.fake.payOrder(attempt.squareOrderId!, { id: "RF_P1", ...first, ...shape.overrides });
+        assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+        const row = await h.attempt(attempt.id);
+        assert.equal(row.state, "reconciliation_required");
+        assert.equal(row.reconciliation_reason, "payment_refunded");
+        assert.equal(row.payment_id, null);
+        assert.equal(Number(row.processor_amount_cents), 40000, "the original amount is evidence, not a net figure");
+        assert.equal((await h.ledger(s.bookingId)).length, 0, "no normal ledger payment");
+        const [evidence] = await evidenceRows(h, attempt.id);
+        assert.equal(evidence.has_refunds, true);
+        assert.equal(Number(evidence.amount_cents), 40000);
+        const view = await providerView(h, s, attempt.id);
+        assert.equal(view.reconciliationReason, "payment_refunded");
+        assert.equal(view.processorPayments?.[0].refunded, true);
+        assert.equal(view.ledgerCredited, undefined);
+        const customer = await customerView(h, s, attempt.id);
+        const text = JSON.stringify(customer);
+        assert.equal(/RF_P1|R_PART|R_FULL|R_ID|\"refunded\"|creditedToLedger/.test(text), false, "no Square internals reach the customer");
+        assert.equal(/pay again|try again/i.test(JSON.stringify(CATERING_SQUARE_RECONCILIATION_COPY.payment_refunded)), false);
+        assert.equal(JSON.stringify({ view, logs: h.logs }).includes(s.connection.accessToken), false);
+      });
+    });
+  }
+
+  test("REFUND: the webhook path and the browser-poll path both see the refund and neither credits; replays are idempotent", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const viaWebhook = await open(h, s, 0);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(viaWebhook.squareOrderId!, { id: "RF_W", ...first, refund_ids: ["R1"], refunded_money: { amount: 40000, currency: "USD" } });
+      assert.deepEqual(await hook(h, s, viaWebhook, "evt-refund-w", "RF_W"), { kind: "processed", outcome: "reconciliation_required" });
+      for (let i = 0; i < 2; i += 1) await hook(h, s, viaWebhook, `evt-refund-w-${i}`);
+      await Promise.all([h.payments.settleAttempt(viaWebhook.id), h.payments.settleAttempt(viaWebhook.id)]);
+
+      const viaPoll = await open(h, s, 1);
+      h.fake.payOrder(viaPoll.squareOrderId!, { id: "RF_P", ...first, ...money(60000), refund_ids: ["R2"], refunded_money: { amount: 20000, currency: "USD" } });
+      await h.q(`UPDATE catering_booking_payment_attempts SET last_checked_at = NULL WHERE id = $1`, [viaPoll.id]);
+      const polled = await h.payments.getAttempt({ bookingId: s.bookingId, attemptId: viaPoll.id, userId: s.customerId });
+      assert.ok(polled.kind === "ok" && polled.attempt.state === "reconciliation_required" && polled.attempt.reconciliationReason === "payment_refunded");
+
+      assert.equal((await h.ledger(s.bookingId)).length, 0, "neither path credited");
+      assert.equal((await evidenceRows(h, viaWebhook.id)).length, 1, "replays add nothing");
+      assert.equal((await evidenceRows(h, viaPoll.id)).length, 1);
+    });
+  });
+
+  test("REFUND: a clean payment already credited stays credited exactly once; a later refunded additional payment is kept as evidence only; a later refund of the credited payment is flagged, never reversed", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CR_P1", ...first });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      const ledgerBefore = await h.processorLedger(s.bookingId);
+      assert.equal(ledgerBefore.length, 1);
+
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CR_P2", ...at("2030-05-01T11:00:00Z"), refund_ids: ["R3"], refunded_money: { amount: 40000, currency: "USD" } });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+      // P1 is refunded afterwards in Square
+      h.fake.payments.set("CR_P1", { ...h.fake.payments.get("CR_P1")!, refund_ids: ["R4"], refunded_money: { amount: 40000, currency: "USD" } } as never);
+      await h.payments.settleAttempt(attempt.id);
+
+      assert.deepEqual(await h.processorLedger(s.bookingId), ledgerBefore, "the original ledger row is untouched and not duplicated");
+      const rows = await evidenceRows(h, attempt.id);
+      assert.deepEqual(rows.map((row) => [row.square_payment_id, row.has_refunds]), [["CR_P1", true], ["CR_P2", true]]);
+      const view = await providerView(h, s, attempt.id);
+      assert.equal(view.ledgerCredited, true);
+      assert.deepEqual(view.processorPayments?.map((payment) => [payment.squarePaymentId, payment.creditedToLedger === true, payment.refunded === true]), [["CR_P1", true, true], ["CR_P2", false, true]]);
+      // replays do not move anything
+      for (let i = 0; i < 2; i += 1) await h.payments.settleAttempt(attempt.id);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await evidenceRows(h, attempt.id)).length, 2);
+    });
+  });
+
+  test("REFUND: processor payment uniqueness still holds for a refunded payment seen on a second attempt", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const one = await open(h, s, 0);
+      const two = await open(h, s, 1);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(one.squareOrderId!, { id: "UQ_P", ...first, refund_ids: ["R5"] });
+      await h.payments.settleAttempt(one.id);
+      h.fake.payOrder(two.squareOrderId!, { id: "UQ_P", ...first, ...money(60000), refund_ids: ["R5"] });
+      const outcome = await h.payments.settleAttempt(two.id);
+      assert.equal(outcome.outcome === "rejected" && outcome.code, "payment_already_consumed");
+      await assert.rejects(h.q(`INSERT INTO catering_attempt_square_payments (attempt_id, square_payment_id, amount_cents, currency) VALUES ($1, 'UQ_P', 100, 'USD')`, [two.id]), /catering_attempt_square_payments_payment_uidx/);
     });
   });
 }
