@@ -57,6 +57,11 @@ CREATE TABLE IF NOT EXISTS catering_booking_payment_attempts (
   -- never stop while a locally closed attempt still has an unconfirmed live link.
   square_link_close_attempts integer NOT NULL DEFAULT 0,
   square_link_close_attempted_at timestamptz,
+  -- Durable record of the EXTERNAL create call: started_at is committed BEFORE Square is asked to create the checkout; resolved_at only once the
+  -- outcome is known (link ids recorded, Square definitively refused, or never sent). Started and not resolved means a hosted checkout may still
+  -- appear whatever the local state says, so the credential that made the call must not be discarded.
+  square_create_started_at timestamptz,
+  square_create_resolved_at timestamptz,
   last_checked_at timestamptz,
   verified_at timestamptz,
   completed_at timestamptz,

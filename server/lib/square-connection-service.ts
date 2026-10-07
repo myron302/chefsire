@@ -1,3 +1,4 @@
+import { sql, type SQL } from "drizzle-orm";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   classifySquareFailure,
@@ -219,6 +220,14 @@ export type LegacyDryRunSummary = { found: number; wouldConvert: number; already
  */
 export type CredentialDiscardGuard = (context: { userId: string; reason: "disconnect" | "merchant_change" }) => Promise<{ safe: boolean }>;
 
+/**
+ * Asked a SECOND time, INSIDE the transaction that holds the connection row's lock, immediately before the credential is cleared or replaced.
+ * The first question (above) runs without that lock, so something that depends on the credential can start in between; this one cannot be
+ * overtaken, because whatever starts to use the credential must first take a shared lock on the same row. `query` runs in the transaction.
+ * `safe: false` aborts the change; a throw does too.
+ */
+export type CredentialDiscardFinalCheck = (context: { userId: string; merchantId: string; reason: "disconnect" | "merchant_change"; query: SqlClient["query"] }) => Promise<{ safe: boolean }>;
+
 /** A disconnect or merchant change was refused because the guard could not wind down what depends on the credential. Nothing was changed. */
 export class SquareCredentialDiscardBlockedError extends Error {
   constructor() {
@@ -323,11 +332,36 @@ export function toSquareConnectionStatusView(readiness: SquarePaymentReadiness):
   };
 }
 
+/**
+ * The statement a caller that is ABOUT TO USE a provider's stored credential runs, inside its own short transaction, to take a SHARED lock on the
+ * connection row and read what is stored. A disconnect or merchant change holds that row exclusively while it clears the credential and re-checks
+ * what depends on it, so the two cannot interleave unseen. Returns presence, merchant, generation and whether tokens exist: never a token.
+ */
+export function squareCredentialShareLockQuery(userId: string): SQL {
+  return sql`SELECT account_status, provider_id, credential_generation::text AS generation, (encrypted_access_token IS NOT NULL) AS has_token
+    FROM payment_methods WHERE user_id = ${userId} AND provider = 'square' ORDER BY created_at ASC, id ASC LIMIT 1 FOR SHARE`;
+}
+
 export function createSquareConnectionService(deps: SquareConnectionServiceDeps) {
   const { pool, api } = deps;
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? defaultLogger;
   let discardGuard: CredentialDiscardGuard | null = deps.credentialDiscardGuard ?? null;
+  let discardFinalCheck: CredentialDiscardFinalCheck | null = null;
+
+  /** FAIL CLOSED, inside the locked transaction. No final check registered means nothing depends on the credential. */
+  async function assertFinalDiscardCheck(client: SqlClient, row: ConnectionRow, reason: "disconnect" | "merchant_change") {
+    if (!discardFinalCheck) return;
+    // Nothing is on file to destroy (every secret was already removed): the same rule the first question applies.
+    if (!row.encrypted_access_token && !row.encrypted_refresh_token && !hasLegacySecrets(row.account_details)) return;
+    let safe = false;
+    try {
+      safe = (await discardFinalCheck({ userId: row.user_id, merchantId: row.provider_id, reason, query: (text, params) => client.query(text, params) })).safe === true;
+    } catch {
+      safe = false;
+    }
+    if (!safe) throw new SquareCredentialDiscardBlockedError();
+  }
 
   /** FAIL CLOSED: a guard that says "not safe", or that throws, refuses the change. No guard registered means nothing depends on the credential. */
   async function mayDiscardCredential(userId: string, reason: "disconnect" | "merchant_change"): Promise<boolean> {
@@ -643,6 +677,8 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       // The account changed merchant between the two reads. Taking a further merchant lock now could invert the lock order.
       throw new SquareAuthorizationSupersededError();
     }
+    // A change of MERCHANT discards the old credential: re-asked under the row lock, where nothing can start using it unseen.
+    if (existing && existing.account_status !== "disconnected" && existing.provider_id !== verified.merchantId) await assertFinalDiscardCheck(db, existing, "merchant_change");
     // MERCHANT-LEVEL REVOCATION HISTORY (keyed by merchant id, so it is unaffected by this or any account moving merchant).
     // Square revokes every token of the application for a merchant, including one issued just before. Under the merchant
     // lock, an authorization may be stored only if ALL of these hold; each closes a gap the others cannot:
@@ -1112,6 +1148,8 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
           await client.query("ROLLBACK");
           continue;
         }
+        // Under the row lock: something that started to use this credential after the first question was asked is seen here, and aborts.
+        await assertFinalDiscardCheck(client, row, "disconnect");
         let providerRevocation: ProviderRevocation = "unconfirmed";
         // RECONCILE BEFORE ANYTHING IS CHOSEN. An OLD server (rolling deploy) can reconnect a row the new application already sealed:
         // it moves provider_id to the new merchant and writes that merchant's tokens as plaintext, leaving the previous merchant's
@@ -1215,8 +1253,9 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     disconnect,
     guardCredentialReplacement,
     storedCredentialState,
+    credentialShareLockQuery: squareCredentialShareLockQuery,
     /** Registers the guard after construction (the production wiring cannot import its dependents here without a cycle). */
-    setCredentialDiscardGuard: (guard: CredentialDiscardGuard | null) => { discardGuard = guard; },
+    setCredentialDiscardGuard: (guard: CredentialDiscardGuard | null, finalCheck?: CredentialDiscardFinalCheck | null) => { discardGuard = guard; discardFinalCheck = finalCheck ?? null; },
     /** The reusable gate Catering Phase 2Q consults: tokens are never part of the result. */
     getSquarePaymentReadiness: async (userId: string, options: { force?: boolean } = {}) => (await evaluate(userId, options)).readiness,
     /**

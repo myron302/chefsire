@@ -18,7 +18,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "../../shared/schema";
 import { parseLocalTestDatabaseUrl, type LocalTestDbConfig } from "./local-test-database";
 import { startFakeSquare, type FakeSquareState } from "./fake-square";
-import { createSquareConnectionService, type SqlPool } from "../lib/square-connection-service";
+import { createSquareConnectionService, SquareCredentialDiscardBlockedError, type SqlPool } from "../lib/square-connection-service";
 import { createSquareProviderApi } from "../lib/square-integration";
 import { createSquareCheckoutApi } from "../lib/square-checkout";
 import { createCateringSquarePayments, type CateringSquarePaymentsDeps } from "../services/catering-square-payments";
@@ -84,6 +84,8 @@ export type CateringSquareHarnessOptions = {
   /** Replaces pieces of the payment service's dependencies (a clock, a notifier, `enabled`). Production wiring is the default. */
   deps?: Partial<CateringSquarePaymentsDeps>;
   /** Wraps the real Square checkout adapter (which needs the fake server's URL), e.g. to pause one caller between reading Square and settling. */
+  /** Wraps the connection service the payment code is given, e.g. to run something right after credentials were obtained. */
+  wrapConnections?: <T extends object>(connections: T) => T;
   wrapCheckout?: (api: ReturnType<typeof createSquareCheckoutApi>) => ReturnType<typeof createSquareCheckoutApi>;
 };
 
@@ -114,7 +116,7 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
   });
   const payments = createCateringSquarePayments({
     db: db as never,
-    connections,
+    connections: (options.wrapConnections ?? ((value) => value))(connections),
     checkout: (options.wrapCheckout ?? ((api) => api))(createSquareCheckoutApi({ baseUrl: fake.baseUrl })),
     now,
     pollIntervalMs: -1,
@@ -125,7 +127,7 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
   });
 
   // The production wiring (services/catering-square-payments-instance.ts) registers exactly this: open checkouts are wound down before a credential is discarded.
-  connections.setCredentialDiscardGuard(({ userId }) => payments.closeProviderCheckouts(userId));
+  connections.setCredentialDiscardGuard(({ userId }) => payments.closeProviderCheckouts(userId), (context) => payments.credentialStillNeeded(context));
 
   const h = {
     db, pool, fake, connections, payments, notifications, logs, database,
@@ -149,6 +151,8 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
       const verification = await connections.verifyAuthorizationCode("auth-code");
       assert.equal(verification.ok, true);
       if (!verification.ok) throw new Error("verification failed");
+      // The OAuth callback asks the guard before it stores a different merchant's credential; the harness does exactly that.
+      if (!(await connections.guardCredentialReplacement(providerId, verification.verified.merchantId)).allowed) throw new SquareCredentialDiscardBlockedError();
       const tx = await pool.connect();
       try {
         await tx.query("BEGIN");

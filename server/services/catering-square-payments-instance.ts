@@ -8,4 +8,4 @@ export const cateringSquarePayments = createCateringSquarePayments({ db, connect
 
 // Before the provider's Square credential is discarded (a disconnect) or replaced by another merchant's, every open checkout made with it is
 // wound down while it still works. Registered here because this module is where the connection and the payments meet.
-squareConnections.setCredentialDiscardGuard(({ userId }) => cateringSquarePayments.closeProviderCheckouts(userId));
+squareConnections.setCredentialDiscardGuard(({ userId }) => cateringSquarePayments.closeProviderCheckouts(userId), (context) => cateringSquarePayments.credentialStillNeeded(context));

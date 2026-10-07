@@ -73,6 +73,8 @@ type Executor = typeof Database;
 export type CateringSquareConnections = {
   getReadyConnectedCredentials(userId: string): Promise<{ accessToken: string; merchantId: string; locationId: string; currency: string; credentialGeneration: string } | null>;
   /** Persisted state only (no network, no token): whether a credential is on file for the user, and for which merchant. Throws if it cannot be read. */
+  /** A statement (run in the caller's short transaction) that share-locks the user's connection row and reads its identity: see `squareCredentialShareLockQuery`. */
+  credentialShareLockQuery(userId: string): ReturnType<typeof sql>;
   storedCredentialState(userId: string): Promise<{ present: boolean; merchantId: string | null }>;
   reportAuthorizationFailure(userId: string, credentialGeneration: string): Promise<void>;
 };
@@ -127,6 +129,8 @@ const WEBHOOK_EVENT_TYPES = new Set(["payment.created", "payment.updated", "orde
 /** How many ordinary (non-reconciliation) attempts a billing view carries; unresolved reconciliations are never subject to it. */
 export const ATTEMPT_HISTORY_LIMIT = 50;
 const STALE_PROCESSING_MS = 2 * 60 * 1000;
+/** How long an external create call may be presumed still in flight. Past it, the call is reconciled (same idempotency key) instead of waited for. */
+const CREATE_IN_FLIGHT_MS = 2 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 
 const OPEN: readonly string[] = ["creating", "pending"];
@@ -264,12 +268,71 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     return { kind: "ok", attempt, reused: prepared.reused };
   }
 
-  /** Asks Square to create the checkout under the provider's credential, then records it. Safe to repeat: the idempotency key is fixed. */
+  /**
+   * The durable "an external create call may now be in flight" marker, written and COMMITTED before Square is asked anything.
+   *
+   * One short transaction (no Square call inside it): the booking's billing lock, then a SHARED lock on the provider's connection row, so a
+   * disconnect or merchant change (which takes that row exclusively, and re-checks for unresolved creations while holding it) cannot clear the
+   * credential between this check and the marker; it either waits for this commit and then SEES the marker, or has already cleared the credential,
+   * in which case no call is made. The marker is `square_create_started_at` with `square_create_resolved_at` cleared.
+   *
+   * `create` mode sends only for an attempt that is still `creating`; `reconcile` mode re-sends the SAME idempotency key for an unresolved one in
+   * any local state (a closed attempt's create may still have produced a link).
+   */
+  async function beginCreateCall(
+    attempt: CateringBookingPaymentAttempt,
+    credentials: { credentialGeneration: string },
+    mode: "create" | "reconcile",
+  ): Promise<{ go: boolean; attempt: CateringBookingPaymentAttempt }> {
+    return db.transaction(async (tx: Executor) => {
+      await lockCateringBilling(tx, attempt.bookingId);
+      const result = await tx.execute(connections.credentialShareLockQuery(attempt.providerId));
+      const row = (result as unknown as { rows: { account_status: string | null; provider_id: string; generation: string; has_token: boolean }[] }).rows[0];
+      const current = (await attemptById(tx, attempt.id)) ?? attempt;
+      const credentialStillCurrent = Boolean(row) && row.account_status === "active" && row.has_token && row.provider_id === current.merchantId && row.generation === credentials.credentialGeneration;
+      if (!credentialStillCurrent) {
+        // Nothing was sent, so nothing external can appear: a `creating` attempt is simply failed (its idempotency key is never used).
+        if (mode === "create" && current.state === "creating") {
+          const [failed] = await tx.update(cateringBookingPaymentAttempts)
+            .set({ state: "failed", failureCode: "provider_credential_changed", closedAt: now(), updatedAt: now() })
+            .where(and(eq(cateringBookingPaymentAttempts.id, current.id), eq(cateringBookingPaymentAttempts.state, "creating"))).returning();
+          return { go: false, attempt: (failed as CateringBookingPaymentAttempt | undefined) ?? current };
+        }
+        return { go: false, attempt: current };
+      }
+      if (mode === "create" ? current.state !== "creating" : (current.state === "failed" || CONSUMED.includes(current.state) || current.squarePaymentLinkId !== null)) return { go: false, attempt: current };
+      // A reconcile re-sends a call that was ALREADY marked: it keeps the original start time, so repeated reconciles are not mistaken for a fresh
+      // in-flight call and cannot postpone themselves forever.
+      if (mode === "reconcile") return { go: true, attempt: current };
+      const [marked] = await tx.update(cateringBookingPaymentAttempts)
+        .set({ squareCreateStartedAt: now(), squareCreateResolvedAt: null })
+        .where(eq(cateringBookingPaymentAttempts.id, current.id)).returning();
+      return { go: true, attempt: marked as CateringBookingPaymentAttempt };
+    });
+  }
+
+  /** Records that the create call's outcome is known (a link recorded, or Square definitively refused). Never set while the outcome is uncertain. */
+  async function resolveCreateCall(attemptId: string) {
+    await db.update(cateringBookingPaymentAttempts).set({ squareCreateResolvedAt: now() })
+      .where(and(eq(cateringBookingPaymentAttempts.id, attemptId), sql`${cateringBookingPaymentAttempts.squareCreateResolvedAt} IS NULL`));
+  }
+
+  /**
+   * Asks Square to create the checkout under the provider's credential, then records it. Safe to repeat: the idempotency key is fixed.
+   *
+   * The external call is bracketed by the durable marker (`beginCreateCall`, before) and `resolveCreateCall` (after the outcome is KNOWN).
+   * An uncertain outcome (timeout, network fault, 5xx) is NOT resolved: the marker stays, the credential cannot be discarded, and the same call
+   * is reconciled later with the same key. A closed attempt whose create returns a link keeps that link and enters the cleanup flow.
+   */
   async function completeCreation(
     attempt: CateringBookingPaymentAttempt,
     credentials: { accessToken: string; credentialGeneration: string },
     bookingId: string,
+    mode: "create" | "reconcile" = "create",
   ): Promise<{ kind: "ok"; attempt: CateringBookingPaymentAttempt } | { kind: "unavailable" }> {
+    const began = await beginCreateCall(attempt, credentials, mode);
+    if (!began.go) return { kind: "ok", attempt: began.attempt };
+    attempt = began.attempt;
     let link;
     try {
       const baseUrl = appBaseUrl();
@@ -283,36 +346,41 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         redirectUrl: baseUrl ? `${baseUrl.replace(/\/$/, "")}${cateringBillingSectionPath("customer", bookingId).replace("#", `?squareAttempt=${attempt.id}#`)}` : null,
       });
     } catch (error) {
-      if (error instanceof SquareSandboxOnlyError) return { kind: "unavailable" };
+      // The sandbox guard throws BEFORE any request is made: nothing was sent, so the marker is resolved and the attempt can be retried.
+      if (error instanceof SquareSandboxOnlyError) { await resolveCreateCall(attempt.id); return { kind: "unavailable" }; }
       const disposition = squareFailureDisposition(error);
       if (disposition === "uncertain") {
-        // Square may or may not have created it. Leave the attempt `creating`: the customer's retry resumes it with the same key.
+        // Square may or may not have created it. The marker stays UNRESOLVED and an open attempt stays `creating`: the customer's retry (or a
+        // reconcile) resumes it with the same key.
         log.warn("catering_square_checkout_uncertain", { attemptId: attempt.id, errorName: error instanceof Error ? error.name : "unknown" });
-        return { kind: "ok", attempt };
+        return { kind: "ok", attempt: (await attemptById(db, attempt.id)) ?? attempt };
       }
       if (disposition === "provider_credential_invalid") await connections.reportAuthorizationFailure(attempt.providerId, credentials.credentialGeneration).catch(() => undefined);
       const [failed] = await db.update(cateringBookingPaymentAttempts)
         .set({ state: "failed", failureCode: disposition === "provider_credential_invalid" ? "provider_credential_rejected" : "square_refused", closedAt: now(), updatedAt: now() })
         .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), eq(cateringBookingPaymentAttempts.state, "creating"))).returning();
+      await resolveCreateCall(attempt.id); // Square refused: no external object exists, whatever the attempt's local state became meanwhile
       return { kind: "ok", attempt: (failed as CateringBookingPaymentAttempt | undefined) ?? (await attemptById(db, attempt.id)) ?? attempt };
     }
 
     const [pending] = await db.update(cateringBookingPaymentAttempts)
-      .set({ state: "pending", squarePaymentLinkId: link.paymentLinkId, squareOrderId: link.orderId, checkoutUrl: link.url, updatedAt: now() })
+      .set({ state: "pending", squarePaymentLinkId: link.paymentLinkId, squareOrderId: link.orderId, checkoutUrl: link.url, squareCreateResolvedAt: now(), updatedAt: now() })
       .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), eq(cateringBookingPaymentAttempts.state, "creating"))).returning();
     if (pending) return { kind: "ok", attempt: pending as CateringBookingPaymentAttempt };
     // Another request resumed it first, or it was closed while Square was creating it. Report what is true now.
     let current = (await attemptById(db, attempt.id)) ?? attempt;
-    if ((current.state === "superseded" || current.state === "cancelled") && !current.squarePaymentLinkId) {
-      // Closed while Square was creating it. Keep the link and order it produced ON the closed attempt, so a payment that still lands on that
-      // link is recognised by settlement, and so the link can be removed and that removal confirmed.
+    if (!current.squarePaymentLinkId && (current.state === "superseded" || current.state === "cancelled" || current.state === "expired")) {
+      // Closed while Square was creating it. Keep the link and order it produced ON the closed attempt (and resolve the create in the same write),
+      // so a payment that still lands on that link is recognised by settlement and the link is removed with the credential that made it.
       const [kept] = await db.update(cateringBookingPaymentAttempts)
-        .set({ squarePaymentLinkId: link.paymentLinkId, squareOrderId: link.orderId, updatedAt: now() })
-        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), inArray(cateringBookingPaymentAttempts.state, ["superseded", "cancelled"]))).returning();
+        .set({ squarePaymentLinkId: link.paymentLinkId, squareOrderId: link.orderId, squareCreateResolvedAt: now(), updatedAt: now() })
+        .where(and(eq(cateringBookingPaymentAttempts.id, attempt.id), inArray(cateringBookingPaymentAttempts.state, ["superseded", "cancelled", "expired"]))).returning();
       current = (kept as CateringBookingPaymentAttempt | undefined) ?? current;
-      await sweepClosedLinks(bookingId);
+      await sweepClosedLinks(bookingId, { force: true });
+    } else {
+      await resolveCreateCall(attempt.id);
     }
-    return { kind: "ok", attempt: current };
+    return { kind: "ok", attempt: (await attemptById(db, attempt.id)) ?? current };
   }
 
   async function checkoutItemName(attempt: CateringBookingPaymentAttempt): Promise<string> {
@@ -688,9 +756,13 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         await closeOpenAttemptsInTransaction(tx, bookingId, now());
       });
     }
-    // WHAT DEPENDS ON THE STORED CREDENTIAL, from persisted state only: a checkout link whose removal at Square is not yet confirmed. Such a link
-    // can still take a payment, and only that merchant's credential can delete it or read what it took. "Not payment-ready right now" is NOT
-    // "safe to destroy": a verification outage, a failed refresh or a configuration fault all leave the credential on file and still needed.
+    // WHAT DEPENDS ON THE STORED CREDENTIAL, from persisted state only:
+    //  (a) a checkout link whose removal at Square is not yet confirmed -- it can still take a payment, and only that merchant's credential can
+    //      delete it or read what it took; and
+    //  (b) an UNRESOLVED CREATE CALL -- Square was (or may have been) asked to create a checkout and the outcome is not recorded. No link id exists
+    //      yet, so (a) cannot see it, but a hosted checkout may still appear, whatever the attempt's local state now says.
+    // "Not payment-ready right now" is NOT "safe to destroy": a verification outage, a failed refresh or a configuration fault all leave the
+    // credential on file and still needed.
     const stored = await connections.storedCredentialState(providerId);
     if (!stored.present || !stored.merchantId) return { safe: true }; // nothing usable is on file, so nothing is lost by discarding it
     const merchantId = stored.merchantId;
@@ -700,18 +772,53 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       inArray(cateringBookingPaymentAttempts.state, [...CLOSED_WITH_LINK_STATES]),
       sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NULL`,
     );
+    const unresolvedCreates = () => and(
+      eq(cateringBookingPaymentAttempts.providerId, providerId),
+      eq(cateringBookingPaymentAttempts.merchantId, merchantId),
+      sql`${cateringBookingPaymentAttempts.state} <> 'failed' AND ${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NULL
+        AND ${cateringBookingPaymentAttempts.squareCreateStartedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareCreateResolvedAt} IS NULL`,
+    );
     const due = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts).where(unconfirmed()) as { bookingId: string }[];
-    if (due.length === 0) return { safe: true }; // no live or unconfirmed link depends on the credential
-    // Links remain: the credential must still work to close them. If it cannot be obtained, FAIL CLOSED (the credential is kept for a retry).
+    const creating = await db.select().from(cateringBookingPaymentAttempts).where(unresolvedCreates()) as CateringBookingPaymentAttempt[];
+    if (due.length === 0 && creating.length === 0) return { safe: true }; // nothing live or possibly-live depends on the credential
+    // Something does: the credential must still work to wind it down. If it cannot be obtained, FAIL CLOSED (the credential is kept for a retry).
     const credentials = await connections.getReadyConnectedCredentials(providerId).catch(() => null);
     if (!credentials || credentials.merchantId !== merchantId) {
       log.warn("catering_square_connection_change_refused", { providerId, reason: "credential_unavailable" });
       return { safe: false };
     }
-    for (const { bookingId } of due) await sweepClosedLinks(bookingId, { force: true });
-    const [remaining] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(unconfirmed()).limit(1);
-    if (remaining) log.warn("catering_square_connection_change_refused", { providerId, reason: "links_unconfirmed" });
-    return { safe: !remaining };
+    // A create call that is plausibly still in flight is WAITED for (its own completion records the link and starts the cleanup, with this very
+    // credential still in place). One that has outlived any plausible call is RECONCILED: the same idempotency key is sent again, which returns
+    // the link if Square made one (never a second), and which is then closed like any other.
+    for (const attempt of creating) {
+      if (now().getTime() - (attempt.squareCreateStartedAt?.getTime() ?? 0) < CREATE_IN_FLIGHT_MS) continue;
+      await completeCreation(attempt, credentials, attempt.bookingId, "reconcile").catch(() => undefined);
+    }
+    const afterReconcile = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts).where(unconfirmed()) as { bookingId: string }[];
+    for (const { bookingId } of afterReconcile) await sweepClosedLinks(bookingId, { force: true });
+    const [remainingLink] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(unconfirmed()).limit(1);
+    const [remainingCreate] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(unresolvedCreates()).limit(1);
+    if (remainingLink || remainingCreate) log.warn("catering_square_connection_change_refused", { providerId, reason: remainingCreate ? "create_unresolved" : "links_unconfirmed" });
+    return { safe: !remainingLink && !remainingCreate };
+  }
+
+  /**
+   * The SECOND question, asked by the Gate 0 service inside the transaction that holds the connection row's lock, right before the credential is
+   * cleared or replaced. It uses the transaction's own `query` and reads only: anything open, any unconfirmed link, any unresolved create call
+   * for this provider and merchant means the credential is still needed. Because creating a checkout takes a SHARED lock on that same row before
+   * it marks a call as started, nothing can begin using the credential between this check and the change.
+   */
+  async function credentialStillNeeded(context: { userId: string; merchantId: string; query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }> }): Promise<{ safe: boolean }> {
+    const result = await context.query(
+      `SELECT 1 FROM catering_booking_payment_attempts
+       WHERE provider_id = $1 AND merchant_id = $2 AND (
+         state IN ('creating', 'pending')
+         OR (state IN ('cancelled', 'superseded', 'expired') AND square_payment_link_id IS NOT NULL AND square_link_closed_at IS NULL)
+         OR (state <> 'failed' AND square_payment_link_id IS NULL AND square_create_started_at IS NOT NULL AND square_create_resolved_at IS NULL)
+       ) LIMIT 1`,
+      [context.userId, context.merchantId],
+    );
+    return { safe: result.rows.length === 0 };
   }
 
   /* --------------------------------------------------------------------------------------------------------- *
@@ -835,7 +942,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     return attempts.map((attempt) => ({ ...attempt, processorPayments: rows.filter((row) => row.attemptId === attempt.id) }));
   }
 
-  return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, sweepClosedLinks, closeProviderCheckouts, attemptsForBooking };
+  return { enabled, createPayment, settleAttempt, getAttempt, handleWebhookEvent, closeStaleOpenAttempts, sweepClosedLinks, closeProviderCheckouts, credentialStillNeeded, attemptsForBooking };
 }
 
 /**

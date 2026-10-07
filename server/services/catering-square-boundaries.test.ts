@@ -199,7 +199,7 @@ test("a credential is never discarded or replaced before the provider's open che
   const guard = callback.indexOf("guardCredentialReplacement(sellerId, verification.verified.merchantId)");
   assert.ok(guard !== -1 && guard < callback.indexOf("persistVerifiedConnection(client, sellerId"), "the merchant-change guard precedes the stored replacement");
   assert.ok(callback.includes("error=connection_in_use"));
-  assert.ok(sources.instance.includes("setCredentialDiscardGuard(({ userId }) => cateringSquarePayments.closeProviderCheckouts(userId))"));
+  assert.ok(sources.instance.includes("setCredentialDiscardGuard(({ userId }) => cateringSquarePayments.closeProviderCheckouts(userId), (context) => cateringSquarePayments.credentialStillNeeded(context))"));
   const close = sources.service.slice(sources.service.indexOf("async function closeProviderCheckouts"), sources.service.indexOf("Status\n"));
   assert.ok(close.indexOf("closeOpenAttemptsInTransaction") < close.indexOf("storedCredentialState") && close.indexOf("storedCredentialState") < close.indexOf("getReadyConnectedCredentials") && close.indexOf("getReadyConnectedCredentials") < close.indexOf("{ force: true }"));
   assert.ok(close.includes("eq(cateringBookingPaymentAttempts.merchantId, merchantId)"), "only the merchant the stored credential belongs to");
@@ -213,4 +213,23 @@ test("an accepted amendment re-judges the booking's open checkouts only after it
   const respond = route.slice(route.indexOf("const result = await db.transaction"), route.indexOf("res.json({ amendments: result.view })", route.indexOf("const result = await db.transaction")));
   assert.ok(respond.indexOf("closeStaleOpenAttempts(bookingId.data)") > respond.indexOf("});\n    if (result.kind === \"refused\")") , "after the transaction has returned");
   assert.ok(respond.includes('action === "accept"'));
+});
+
+test("an external create call is durably marked BEFORE Square is asked, resolved only once its outcome is known, and the credential guard reads the marker, not just link ids", () => {
+  const service = sources.service;
+  const create = service.slice(service.indexOf("async function completeCreation"), service.indexOf("async function checkoutItemName"));
+  assert.ok(create.indexOf("beginCreateCall(") !== -1 && create.indexOf("beginCreateCall(") < create.indexOf("checkout.createPaymentLink("), "marker committed first");
+  const begin = service.slice(service.indexOf("async function beginCreateCall"), service.indexOf("async function resolveCreateCall"));
+  assert.ok(begin.indexOf("lockCateringBilling(tx") < begin.indexOf("credentialShareLockQuery") && begin.indexOf("credentialShareLockQuery") < begin.indexOf("squareCreateStartedAt: now()"), "billing lock, then the connection row's shared lock, then the marker");
+  assert.equal(/checkout\./.test(begin), false, "no Square call inside the transaction");
+  // an uncertain outcome is never resolved
+  const uncertain = create.slice(create.indexOf('disposition === "uncertain"'), create.indexOf("provider_credential_invalid\") await"));
+  assert.equal(uncertain.includes("resolveCreateCall"), false);
+  const close = service.slice(service.indexOf("async function closeProviderCheckouts"), service.indexOf("async function credentialStillNeeded"));
+  assert.ok(close.includes("unresolvedCreates()") && close.includes("squareCreateStartedAt") && close.includes("squareCreateResolvedAt"));
+  assert.ok(service.includes("async function credentialStillNeeded") && sources.instance.includes("credentialStillNeeded"), "the in-transaction second question is wired");
+  const gate0 = read("server/lib/square-connection-service.ts");
+  const disconnect = gate0.slice(gate0.indexOf("async function disconnect(userId: string)"));
+  assert.ok(disconnect.indexOf("loadRow(client, userId, true)") < disconnect.indexOf('assertFinalDiscardCheck(client, row, "disconnect")') && disconnect.indexOf('assertFinalDiscardCheck(client, row, "disconnect")') < disconnect.indexOf("encrypted_access_token = NULL"), "re-checked under the row lock, before secrets are cleared");
+  assert.equal(/catering/i.test(gate0.slice(gate0.indexOf("export type CredentialDiscardFinalCheck"), gate0.indexOf("export type SquareConnectionServiceDeps"))), false, "Gate 0 stays Catering-agnostic");
 });

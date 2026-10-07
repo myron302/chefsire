@@ -36,6 +36,11 @@ export const cateringBookingPaymentAttempts = pgTable("catering_booking_payment_
   squareLinkClosedAt: timestamp("square_link_closed_at", { withTimezone: true }),
   squareLinkCloseAttempts: integer("square_link_close_attempts").default(0).notNull(),
   squareLinkCloseAttemptedAt: timestamp("square_link_close_attempted_at", { withTimezone: true }),
+  // Durable record of the EXTERNAL create call. `started_at` is set (and committed) BEFORE Square is asked to create the checkout; `resolved_at`
+  // only once the outcome is known: the link ids were recorded, or Square definitively refused, or the call was never sent. Started and not
+  // resolved means a hosted checkout may still appear, whatever the attempt's local state says, and the credential that made the call is needed.
+  squareCreateStartedAt: timestamp("square_create_started_at", { withTimezone: true }),
+  squareCreateResolvedAt: timestamp("square_create_resolved_at", { withTimezone: true }),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),

@@ -1559,4 +1559,208 @@ if (!URL_ENV) {
       });
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 5: a credential is never discarded while a checkout CREATE call may still produce a live link
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  /** Holds the Square create call in flight (after the durable marker is committed, before Square is reached) until `release()`. */
+  function createHold() {
+    const ctl = {
+      held: false,
+      entered: Promise.resolve(),
+      release: () => undefined as void,
+      arm() {
+        ctl.held = true;
+        ctl.entered = new Promise<void>((resolve) => { ctl.enter = resolve; });
+        return new Promise<void>((open) => { ctl.release = open as () => void; });
+      },
+      enter: () => undefined as void,
+      gate: Promise.resolve(),
+      wrap: (api: ReturnType<typeof createSquareCheckoutApi>): ReturnType<typeof createSquareCheckoutApi> => ({
+        ...api,
+        createPaymentLink: async (token, input) => {
+          if (ctl.held) { ctl.held = false; ctl.enter(); await ctl.gate; }
+          return api.createPaymentLink(token, input);
+        },
+      }),
+    };
+    return ctl;
+  }
+  const holdRun = (fn: (h: CateringSquareHarness, ctl: ReturnType<typeof createHold>) => Promise<void>) => {
+    const ctl = createHold();
+    return withCateringSquareHarness(URL_ENV!, { wrapCheckout: ctl.wrap }, (h) => fn(h, ctl));
+  };
+  const hold = (ctl: ReturnType<typeof createHold>) => { ctl.gate = ctl.arm(); };
+  const creatingRow = async (h: CateringSquareHarness, bookingId: string) => (await h.attempts(bookingId))[0];
+
+  test("INFLIGHT: while Square's create is held, disconnect and merchant replacement are BLOCKED; when it succeeds the link is kept, closed with the OLD credential, and only then may the credential go", async () => {
+    await holdRun(async (h, ctl) => {
+      const s = await scene(h);
+      hold(ctl);
+      const paying = pay(h, s);                       // 1-2: attempt created, Square call in flight
+      await withTimeout(ctl.entered, "create in flight");
+      const inflight = await creatingRow(h, s.bookingId);
+      assert.equal(inflight.state, "creating");
+      assert.equal(inflight.square_payment_link_id, null, "4: no link id exists yet");
+      assert.ok(inflight.square_create_started_at, "the external call is durably marked");
+      assert.equal(inflight.square_create_resolved_at, null);
+
+      // 3, 5, 15, 16: B starts; the guard cannot rely on a link id, and refuses
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW"), { allowed: false });
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "14: repeated attempts stay refused");
+      assert.equal((await h.attempt(inflight.id)).state, "cancelled", "locally non-payable already");
+      const row = await h.row(s.providerId);
+      assert.equal(row.account_status, "active");
+      assert.ok(row.encrypted_access_token && row.encrypted_refresh_token, "16: the old credential is untouched");
+      assert.equal(row.provider_id, s.connection.merchantId);
+
+      ctl.release();                                   // 6: Square returns the link
+      const created = await withTimeout(paying, "create completes");
+      assert.equal(created.kind, "ok");
+      const after = await h.attempt(inflight.id);
+      assert.ok(after.square_payment_link_id && after.square_order_id, "7: identifiers persisted on the closed attempt");
+      assert.ok(after.square_create_resolved_at, "creation is resolved");
+      assert.equal(after.state, "cancelled");
+      assert.equal(h.fake.links.get(after.square_payment_link_id)!.deleted, true, "8-9: cleaned up with the old credential still present");
+      assert.ok(after.square_link_closed_at);
+      assert.equal(after.checkout_url, null, "the stale checkout is never exposed to the customer");
+      if (created.kind === "ok") assert.equal(serializeCateringPaymentAttempt({ ...(created.attempt as never), processorPayments: [] } as never, "customer").checkoutUrl, undefined);
+
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true, "10: now disposal may proceed");
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, false, "14: idempotent");
+      assert.equal(h.fake.links.size, 1, "17: one checkout, never a duplicate");
+      assert.equal((await h.ledger(s.bookingId)).length, 0, "18");
+      assert.equal(JSON.stringify({ logs: h.logs, a: await h.attempts(s.bookingId) }).includes(s.connection.accessToken), false, "20");
+    });
+  });
+
+  test("INFLIGHT: a create that Square definitively refuses resolves the marker, and disposal may then proceed", async () => {
+    await holdRun(async (h, ctl) => {
+      const s = await scene(h);
+      hold(ctl);
+      const paying = pay(h, s);
+      await withTimeout(ctl.entered, "create in flight");
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      h.fake.state.checkoutCreateFailure = 400;
+      ctl.release();
+      await withTimeout(paying, "create completes");
+      const row = await creatingRow(h, s.bookingId);
+      assert.ok(row.square_create_resolved_at, "11: the refusal resolves the creation");
+      assert.equal(row.square_payment_link_id, null);
+      assert.equal(h.fake.links.size, 0, "no external object exists");
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+    });
+  });
+
+  test("INFLIGHT: an UNCERTAIN create keeps disposal blocked; once stale it is reconciled with the SAME idempotency key (no second link), cleaned up, and only then may the credential go", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      h.fake.state.checkoutCreateLosesResponse = true;       // Square creates the link but the answer is lost
+      const created = await pay(h, s);
+      assert.ok(created.kind === "ok");
+      const row = await creatingRow(h, s.bookingId);
+      assert.equal(row.state, "creating");
+      assert.equal(row.square_payment_link_id, null);
+      assert.equal(row.square_create_resolved_at, null, "uncertain is never resolved");
+      assert.equal(h.fake.links.size, 1, "Square did create one");
+
+      // recent: presumed in flight, waited for
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      assert.equal(h.fake.links.size, 1);
+      // stale, and Square still unreachable: reconcile is uncertain too, so it stays blocked
+      await h.q(`UPDATE catering_booking_payment_attempts SET square_create_started_at = now() - interval '10 minutes' WHERE id = $1`, [row.id]);
+      h.fake.state.checkoutCreateFailure = 503;
+      h.fake.state.checkoutCreateLosesResponse = false;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "12");
+      assert.equal((await h.row(s.providerId)).account_status, "active");
+      assert.equal((await h.attempt(row.id)).square_create_resolved_at, null);
+
+      // Square answers again: the same key returns the existing link (13), which is closed before the credential goes
+      h.fake.state.checkoutCreateFailure = undefined;
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      const after = await h.attempt(row.id);
+      assert.ok(after.square_payment_link_id && after.square_create_resolved_at && after.square_link_closed_at);
+      assert.equal(h.fake.links.size, 1, "17: the SAME link, no duplicate checkout");
+      assert.equal(h.fake.links.get(after.square_payment_link_id)!.deleted, true);
+      assert.equal(after.state, "cancelled");
+    });
+  });
+
+  test("INFLIGHT: a customer who pays on the held link before cleanup completes is preserved by authoritative evidence and never lost", async () => {
+    await holdRun(async (h, ctl) => {
+      const s = await scene(h);
+      hold(ctl);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      const paying = pay(h, s);
+      await withTimeout(ctl.entered, "create in flight");
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      h.fake.state.linkDeleteFailure = 503;            // cleanup cannot finish
+      ctl.release();
+      await withTimeout(paying, "create completes");
+      const row = await creatingRow(h, s.bookingId);
+      assert.ok(row.square_payment_link_id);
+      assert.equal(row.square_link_closed_at, null, "the delete failed, so the link is still live");
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "still blocked: a live link remains");
+      h.fake.payOrder(row.square_order_id, { id: "INFL_PAY", ...first });
+      const settled = await h.payments.settleAttempt(row.id);
+      assert.ok(settled.outcome === "completed" || settled.outcome === "reconciliation_required", settled.outcome);
+      assert.deepEqual((await evidenceRows(h, row.id)).map((entry) => entry.square_payment_id), ["INFL_PAY"], "19: moved money is preserved");
+      assert.ok((await h.processorLedger(s.bookingId)).length <= 1, "18: never a duplicate credit");
+    });
+  });
+
+  test("INFLIGHT: the second question inside the credential transaction refuses a change the first question missed (disconnect and merchant replacement)", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      // a guard that wrongly says "safe": only the in-transaction re-check stands between the credential and its destruction
+      h.connections.setCredentialDiscardGuard(async () => ({ safe: true }), (context) => h.payments.credentialStillNeeded(context));
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      await assert.rejects(h.connectProvider(s.providerId, "MERCHANT_NEW", { access: "access-new", refresh: "refresh-new" }), SquareCredentialDiscardBlockedError);
+      const row = await h.row(s.providerId);
+      assert.equal(row.account_status, "active");
+      assert.equal(row.provider_id, s.connection.merchantId, "the old merchant is never replaced while still needed");
+      assert.equal((await h.attempt(attempt.id)).state, "pending");
+    });
+  });
+
+  test("INFLIGHT: a checkout is never created with a credential that was discarded after it was read: the attempt fails without calling Square", async () => {
+    let afterCredentials: (() => Promise<void>) | null = null;
+    await withCateringSquareHarness(URL_ENV!, {
+      wrapConnections: (connections) => new Proxy(connections, {
+        get(target, property, receiver) {
+          const value = Reflect.get(target, property, receiver);
+          if (property !== "getReadyConnectedCredentials") return value;
+          return async (...args: unknown[]) => {
+            const result = await (value as (...inner: unknown[]) => Promise<unknown>).apply(target, args);
+            if (afterCredentials) { const run = afterCredentials; afterCredentials = null; await run(); }
+            return result;
+          };
+        },
+      }),
+    }, async (h) => {
+      const s = await scene(h);
+      afterCredentials = async () => { await h.connections.disconnect(s.providerId); };
+      const createCalls = () => h.fake.requests.filter((request) => request.path.startsWith("/v2/online-checkout")).length;
+      const before = createCalls();
+      const outcome = await pay(h, s);
+      assert.ok(outcome.kind === "ok" && outcome.attempt.state === "failed");
+      assert.equal(createCalls(), before, "Square was never asked");
+      assert.equal(h.fake.links.size, 0);
+      assert.equal((await creatingRow(h, s.bookingId)).failure_code, "provider_credential_changed");
+    });
+  });
+
+  test("INFLIGHT: the new columns are durable bookkeeping only: no secret, and nothing about them reaches a client view", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      const status = await h.payments.getAttempt({ bookingId: s.bookingId, attemptId: attempt.id, userId: s.providerId });
+      assert.ok(status.kind === "ok");
+      if (status.kind === "ok") assert.equal(/create_?started|create_?resolved|squareCreate/i.test(JSON.stringify(serializeCateringPaymentAttempt(status.attempt, "provider"))), false);
+    });
+  });
 }
