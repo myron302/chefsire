@@ -1020,7 +1020,8 @@ export const cateringBookingPayments = pgTable("catering_booking_payments", {
   /** The client's key for ONE attempt, unique per booking: a replay resolves to the first attempt's payment. */
   idempotencyKey: varchar("idempotency_key", { length: 64 }),
   processor: varchar("processor", { length: 24 }),
-  processorPaymentId: varchar("processor_payment_id", { length: 128 }),
+  // 255, not 128: Square payment ids run to 192 characters (see CATERING_LEDGER_PROCESSOR_PAYMENT_ID_COLUMN_LENGTH). Kept in step with the SQL migration.
+  processorPaymentId: varchar("processor_payment_id", { length: 255 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
@@ -1029,7 +1030,10 @@ export const cateringBookingPayments = pgTable("catering_booking_payments", {
   processorUnique: uniqueIndex("catering_payments_processor_uidx").on(t.processor, t.processorPaymentId).where(sql`${t.processorPaymentId} IS NOT NULL`),
   invoiceIdx: index("catering_payments_invoice_idx").on(t.invoiceId, t.status),
   bookingIdx: index("catering_payments_booking_idx").on(t.bookingId, t.receivedOn, t.id),
-  methodCheck: check("catering_payment_method_check", sql`${t.paymentMethod} IN ('cash', 'bank_transfer', 'card_in_person', 'cheque', 'other')`),
+  methodCheck: check("catering_payment_method_check", sql`${t.paymentMethod} IN ('cash', 'bank_transfer', 'card_in_person', 'cheque', 'other', 'card_online')`),
+  // Phase 2Q: a Square-confirmed payment is the only 'card_online' payment, and a processor id can only be Square's.
+  onlineMethodCheck: check("catering_payment_online_method_check", sql`(${t.paymentMethod} = 'card_online') = (${t.paymentSource} = 'processor')`),
+  processorCheck: check("catering_payment_processor_check", sql`${t.processor} IS NULL OR ${t.processor} = 'square'`),
   sourceCheck: check("catering_payment_source_check", sql`${t.paymentSource} IN ('provider_recorded', 'processor')`),
   statusCheck: check("catering_payment_status_check", sql`${t.status} IN ('recorded', 'voided')`),
   amountCheck: check("catering_payment_amount_check", sql`${t.amountCents} > 0 AND ${t.amountCents} <= 9999999999`),

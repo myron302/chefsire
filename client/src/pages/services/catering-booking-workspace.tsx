@@ -28,7 +28,9 @@ const activityLabels: Record<string, string> = { booking_offered: "Booking terms
   // RECORDED by the caterer, not processed, captured or completed by ChefSire -- and withdrawing one is not a
   // refund, because no money moved through ChefSire when it was recorded and none moves now.
   billing_invoice_issued: "Payment requested", billing_invoice_voided: "Payment request withdrawn",
-  billing_payment_recorded: "Payment recorded by caterer", billing_payment_voided: "Payment record withdrawn" };
+  billing_payment_recorded: "Payment recorded by caterer", billing_payment_voided: "Payment record withdrawn",
+  // Phase 2Q: CONFIRMED by Square, to the caterer's own Square account. Not "recorded by caterer", and not received by ChefSire.
+  billing_processor_payment_confirmed: "Payment confirmed by Square" };
 type WorkspaceMutation = { path: string; method: string; body?: unknown; formIdentity?: string; submittedProviderDraft?: ProviderDetailsDraft; submittedCustomerNotes?: string; submittedTaskDraft?: CateringTaskDraft; submittedTaskEdit?: SubmittedTaskEdit };
 type WorkspaceMutate = (value: WorkspaceMutation) => void;
 

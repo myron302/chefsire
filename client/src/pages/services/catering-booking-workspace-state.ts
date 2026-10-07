@@ -331,7 +331,7 @@ export function cateringActivityBillingAmount(activity: { eventType: string; met
   return kind === "deposit" ? `Deposit · ${money}` : kind === "balance" ? `Remaining balance · ${money}` : kind === "adjustment" ? `Further balance request · ${money}` : money;
 }
 const CATERING_BILLING_ACTIVITY_EVENT_TYPES: readonly string[] = [
-  "billing_invoice_issued", "billing_invoice_voided", "billing_payment_recorded", "billing_payment_voided",
+  "billing_invoice_issued", "billing_invoice_voided", "billing_payment_recorded", "billing_payment_voided", "billing_processor_payment_confirmed",
 ];
 
 export function cateringActivityTaskTitle(activity: { eventType: string; metadata?: unknown }): string | null {

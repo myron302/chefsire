@@ -103,3 +103,24 @@ export const squareConnectionLimiter = rateLimit({
   legacyHeaders: false,
   message: { ok: false, error: "Too many Square connection requests. Please try again later." },
 });
+
+/**
+ * Catering Phase 2Q: starting a Square checkout. Each accepted call may create a checkout at Square, so it is bounded.
+ * 30 per 15 minutes per IP.
+ */
+export const cateringSquarePayLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many payment requests. Please try again shortly." },
+});
+
+/** Catering Phase 2Q: a customer's payment-status poll, which may read Square (itself throttled per attempt). 600 per 15 minutes per IP. */
+export const cateringSquareStatusLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 600,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many status checks. Please try again shortly." },
+});

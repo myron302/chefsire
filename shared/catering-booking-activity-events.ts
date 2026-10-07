@@ -61,6 +61,9 @@ export const CATERING_BOOKING_ACTIVITY_EVENT_TYPES = [
   "billing_invoice_voided",
   "billing_payment_recorded",
   "billing_payment_voided",
+  // Phase 2Q: a payment CONFIRMED by Square from authoritative evidence, written with 'shared' visibility by the settlement
+  // transaction in the same commit as the ledger credit. It carries the amount and currency only: no Square identifier.
+  "billing_processor_payment_confirmed",
 ] as const;
 
 export type CateringBookingActivityEventType = typeof CATERING_BOOKING_ACTIVITY_EVENT_TYPES[number];

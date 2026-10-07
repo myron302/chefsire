@@ -93,6 +93,7 @@ import cateringBookingFilesRouter from "./catering-booking-files";
 import cateringBookingExecutionRouter from "./catering-booking-execution";
 import cateringBookingCloseoutRouter from "./catering-booking-closeout";
 import cateringBookingBillingRouter from "./catering-booking-billing";
+import cateringSquarePaymentsRouter from "./catering-square-payments";
 import cateringBookingAdjustmentsRouter from "./catering-booking-adjustments";
 
 // Recipe imports (Paprika / AnyList / Plan to Eat / URL import)
@@ -226,6 +227,7 @@ r.use("/catering", cateringBookingFilesRouter);
 r.use("/catering", cateringBookingExecutionRouter);
 r.use("/catering", cateringBookingCloseoutRouter);
 r.use("/catering", cateringBookingBillingRouter);
+r.use("/catering", cateringSquarePaymentsRouter);
 r.use("/catering", cateringBookingAdjustmentsRouter);
 r.use("/catering", cateringRouter);
 

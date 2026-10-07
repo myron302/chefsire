@@ -20,7 +20,7 @@ import {
   squareOauthBrowserBindingCookieOptions,
 } from "../lib/square-oauth-state";
 import { squareConnections } from "../lib/square-connection";
-import { SquareAuthorizationSupersededError, SquareAuthorizationUnconfirmedError, type AuthorizationFailure } from "../lib/square-connection-service";
+import { SquareAuthorizationSupersededError, SquareAuthorizationUnconfirmedError, SquareCredentialDiscardBlockedError, type AuthorizationFailure } from "../lib/square-connection-service";
 import { isSecretBoxConfigured } from "../lib/secret-box";
 import { SQUARE_CONNECTION_SCOPES, squareOauthApplication, squareOauthAuthorizeUrl } from "../lib/square-integration";
 
@@ -296,6 +296,12 @@ router.get("/square-callback", async (req, res) => {
       return res.redirect(SQUARE_CALLBACK_FAILURE_REDIRECTS[verification.reason]);
     }
 
+    // A reconnect to a DIFFERENT merchant would discard the credential that can read and close this seller's outstanding checkouts. They are
+    // wound down FIRST, with that old credential; if that cannot be done the new connection is not stored and the old one stays exactly as it was.
+    if (!(await squareConnections.guardCredentialReplacement(sellerId, verification.verified.merchantId)).allowed) {
+      return res.redirect("/settings/payouts?error=connection_in_use");
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -337,6 +343,7 @@ router.get("/square-callback", async (req, res) => {
     res.redirect("/settings/payouts?connected=true");
   } catch (error) {
     console.error("Square callback error:", error instanceof Error ? error.name : "unknown"); // never the error object: a database error can echo the row it rejected
+    if (error instanceof SquareCredentialDiscardBlockedError) return res.redirect("/settings/payouts?error=connection_in_use");
     if (error instanceof SquareAuthorizationSupersededError) return res.redirect("/settings/payouts?error=authorization_superseded");
     if (error instanceof SquareAuthorizationUnconfirmedError) return res.redirect("/settings/payouts?error=square_auth_failed");
     res.redirect("/settings/payouts?error=callback_failed");

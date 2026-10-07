@@ -65,6 +65,11 @@ import {
   reversalOutlook,
 } from "../services/catering-booking-adjustments";
 import { serializeCateringAdjustment } from "../serializers/catering-booking-adjustment";
+import { serializeCateringPaymentAttempt, visibleCateringPaymentAttempts } from "../serializers/catering-booking-payment-attempt";
+import { cateringSquarePaymentsEnabled } from "../lib/square-checkout";
+import { cateringAttemptIsObsolete } from "../services/catering-square-payment-policy";
+import { cateringSquarePayments } from "../services/catering-square-payments-instance";
+import type { CateringAttemptWithPayments } from "../services/catering-square-payments";
 import {
   serializeCateringDepositTerms,
   serializeCateringInvoice,
@@ -141,6 +146,7 @@ async function billingRows(tx: typeof db, bookingId: string): Promise<{
   invoices: CateringBookingInvoice[];
   payments: CateringBookingPayment[];
   adjustments: CateringBookingAdjustment[];
+  attempts: CateringAttemptWithPayments[];
   amendmentNumbers: Map<string, number>;
 }> {
   const [terms] = await tx.select().from(cateringBookingBilling).where(eq(cateringBookingBilling.bookingId, bookingId)).limit(1);
@@ -151,7 +157,8 @@ async function billingRows(tx: typeof db, bookingId: string): Promise<{
     .where(eq(cateringBookingPayments.bookingId, bookingId)).orderBy(asc(cateringBookingPayments.receivedOn), asc(cateringBookingPayments.id)) as CateringBookingPayment[];
   const adjustments = await tx.select().from(cateringBookingAdjustments).where(eq(cateringBookingAdjustments.bookingId, bookingId))
     .orderBy(asc(cateringBookingAdjustments.createdAt), asc(cateringBookingAdjustments.id)) as CateringBookingAdjustment[];
-  return { terms: terms as CateringBookingBillingRecord | undefined, invoices, payments, adjustments, amendmentNumbers: await amendmentNumbersFor(tx, adjustments) };
+  const attempts = await cateringSquarePayments.attemptsForBooking(tx, bookingId);
+  return { terms: terms as CateringBookingBillingRecord | undefined, invoices, payments, adjustments, attempts, amendmentNumbers: await amendmentNumbersFor(tx, adjustments) };
 }
 
 /**
@@ -163,11 +170,13 @@ async function billingRows(tx: typeof db, bookingId: string): Promise<{
  */
 function billingView(input: {
   role: "provider" | "customer";
+  viewerId: string;
   booking: { status: string; agreedPrice: string | null; currency: string };
   terms: CateringBookingBillingRecord | undefined;
   invoices: readonly CateringBookingInvoice[];
   payments: readonly CateringBookingPayment[];
   adjustments: readonly CateringBookingAdjustment[];
+  attempts: readonly CateringAttemptWithPayments[];
   amendmentNumbers: ReadonlyMap<string, number>;
   asOfDate: string;
 }): CateringBookingBillingView {
@@ -185,6 +194,12 @@ function billingView(input: {
       input.role === "provider" ? paymentVoidOutlook(row, input.booking.status, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] }) : undefined)),
     // PROVIDER ONLY: whether THIS entry can be reversed right now, judged by the very policy the reversal endpoint applies.
     adjustments: input.adjustments.map((row) => serializeCateringAdjustment(row, input.role, input.amendmentNumbers, input.role === "provider" ? reversalOutlook(row.id, adjustmentFactsOf(input.booking, { adjustments: [...input.adjustments], payments: [...input.payments], invoices: [...input.invoices] })) : undefined)),
+    // A customer is never OFFERED an open checkout that now asks for more than is payable: the stale sweep closes it, and until it has, the view
+    // simply does not carry it (so the invoice offers a fresh checkout at the current amount instead).
+    paymentAttempts: visibleCateringPaymentAttempts(input.attempts, input.role, input.viewerId)
+      .filter((row) => input.role === "provider" || !cateringAttemptIsObsolete(row, input.invoices.map(cateringInvoiceFactOf).find((invoice) => invoice.id === row.invoiceId), facts))
+      .map((row) => serializeCateringPaymentAttempt(row, input.role)),
+    squareCheckout: { enabled: cateringSquarePaymentsEnabled() },
   };
   if (input.role !== "provider") return view;
   const issuable = cateringIssuableInvoiceKinds(facts);
@@ -239,12 +254,18 @@ async function notifyCustomer(booking: { providerId: string; customerId: string 
 r.get("/bookings/:id/billing", requireAuth, async (req, res, next) => { try {
   const resolved = await resolveRequest(req as never, res, false);
   if (!resolved) return;
+  // Phase 2Q: close any open Square checkout the ledger no longer supports BEFORE the view is read. One lock-free SELECT decides whether there is
+  // anything to do. Best effort; the view itself also refuses to offer such a checkout.
+  await cateringSquarePayments.closeStaleOpenAttempts(resolved.id, { sweep: false }).catch(() => undefined);
   // The early read above is a cheap 404 gate only. What is SENT comes from `snapshotBillingView`, which re-resolves the
   // participant, re-reads the booking and reads every ledger table inside ONE repeatable-read snapshot, so the response
   // cannot pair one moment's price with another moment's ledger.
   const view = await snapshotBillingView(resolved);
   if (!view) return refuse(res, CATERING_BILLING_NOT_FOUND_REFUSAL);
   res.json(view);
+  // Phase 2Q retry path: a closed checkout whose Square link removal is still unconfirmed is retried on a later read by either participant.
+  // After the response, never awaited, never able to fail it; the sweep rate-limits itself.
+  void cateringSquarePayments.sweepClosedLinks(resolved.id).catch(() => undefined);
 } catch (error) { invalid(error, res, next); } });
 
 /* ------------------------------------------------------------------------------------------------------------- *
@@ -602,6 +623,7 @@ export async function snapshotBillingView(resolved: { id: string; userId: string
     const rows = await billingRows(tx, resolved.id);
     return billingView({
       role: cateringWorkspaceRole(booking, resolved.userId) as "provider" | "customer",
+      viewerId: resolved.userId,
       booking,
       ...rows,
       // The SAME day the request resolved, not a fresh one: the response a mutation answers with must describe the
@@ -612,9 +634,13 @@ export async function snapshotBillingView(resolved: { id: string; userId: string
 }
 
 export async function freshView(resolved: { id: string; userId: string; role: "provider" | "customer"; asOfDate: string }) {
+  // Phase 2Q: a billing change (a withdrawn invoice, a recorded payment, a credit) can leave a customer's open Square checkout asking
+  // for more than is now payable. Close such checkouts before the response is read, so the view never offers one. Best effort: the
+  // settlement path judges the ledger again if money still arrives on a link that could not be closed.
+  await cateringSquarePayments.closeStaleOpenAttempts(resolved.id).catch(() => undefined);
   return (await snapshotBillingView(resolved)) ?? billingView({
-    role: resolved.role, booking: { status: "cancelled", agreedPrice: null, currency: "USD" },
-    terms: undefined, invoices: [], payments: [], adjustments: [], amendmentNumbers: new Map(), asOfDate: resolved.asOfDate,
+    role: resolved.role, viewerId: resolved.userId, booking: { status: "cancelled", agreedPrice: null, currency: "USD" },
+    terms: undefined, invoices: [], payments: [], adjustments: [], attempts: [], amendmentNumbers: new Map(), asOfDate: resolved.asOfDate,
   });
 }
 

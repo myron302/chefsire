@@ -3,7 +3,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { requireAuth } from "../middleware";
 import { squareConnectionLimiter } from "../middleware/rate-limit";
 import { squareConnections } from "../lib/square-connection";
-import type { SquareConnectionService } from "../lib/square-connection-service";
+import { SquareCredentialDiscardBlockedError, type SquareConnectionService } from "../lib/square-connection-service";
 
 /** The authenticated user's id, as set by `requireAuth`. Never read from a request body, query or path. */
 function currentUserId(req: Request): string {
@@ -87,6 +87,10 @@ export function createSquareConnectionRouter(service: SquareConnectionService) {
         connection: await service.status(currentUserId(req)),
       });
     } catch (error) {
+      // Refused BEFORE anything was changed: something that depends on this connection could not be wound down while its credential still works.
+      if (error instanceof SquareCredentialDiscardBlockedError) {
+        return res.status(409).json({ ok: false, code: "connection_in_use", error: "Square can't be disconnected yet because an existing Catering checkout still needs to be closed or verified. Try again shortly." });
+      }
       console.error("Square disconnect error:", error instanceof Error ? error.name : "unknown");
       res.status(500).json({ ok: false, error: "Failed to disconnect Square" });
     }

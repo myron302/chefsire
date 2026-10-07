@@ -1,3 +1,4 @@
+import { sql, type SQL } from "drizzle-orm";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   classifySquareFailure,
@@ -212,11 +213,35 @@ export type LegacyConversionSummary = { found: number; converted: number; alread
 /** What `convertAllLegacyRows({ dryRun: true })` reports: the same classification, with `wouldConvert` in place of `converted`. */
 export type LegacyDryRunSummary = { found: number; wouldConvert: number; alreadyConverted: number; malformed: { id: string; reason: string }[] };
 
+/**
+ * Asked BEFORE a stored credential is discarded or replaced (a disconnect, or a reconnect to a DIFFERENT merchant), while the old credential is
+ * still usable. `safe: false` refuses the change: whatever depends on that credential could not be wound down, and proceeding would strand it.
+ * The service knows nothing about what the guard protects; it only refuses when told to (and when the guard itself fails).
+ */
+export type CredentialDiscardGuard = (context: { userId: string; reason: "disconnect" | "merchant_change" }) => Promise<{ safe: boolean }>;
+
+/**
+ * Asked a SECOND time, INSIDE the transaction that holds the connection row's lock, immediately before the credential is cleared or replaced.
+ * The first question (above) runs without that lock, so something that depends on the credential can start in between; this one cannot be
+ * overtaken, because whatever starts to use the credential must first take a shared lock on the same row. `query` runs in the transaction.
+ * `safe: false` aborts the change; a throw does too.
+ */
+export type CredentialDiscardFinalCheck = (context: { userId: string; merchantId: string; reason: "disconnect" | "merchant_change"; query: SqlClient["query"] }) => Promise<{ safe: boolean }>;
+
+/** A disconnect or merchant change was refused because the guard could not wind down what depends on the credential. Nothing was changed. */
+export class SquareCredentialDiscardBlockedError extends Error {
+  constructor() {
+    super("The Square connection cannot be changed while something that depends on it cannot be wound down.");
+    this.name = "SquareCredentialDiscardBlockedError";
+  }
+}
+
 export type SquareConnectionServiceDeps = {
   pool: SqlPool;
   api: SquareProviderApi;
   now?: () => Date;
   log?: SquareConnectionLogger;
+  credentialDiscardGuard?: CredentialDiscardGuard;
 };
 
 function hasLegacySecrets(details: Record<string, unknown> | null | undefined): boolean {
@@ -307,10 +332,70 @@ export function toSquareConnectionStatusView(readiness: SquarePaymentReadiness):
   };
 }
 
+/**
+ * The statement a caller that is ABOUT TO USE a provider's stored credential runs, inside its own short transaction, to take a SHARED lock on the
+ * connection row and read what is stored. A disconnect or merchant change holds that row exclusively while it clears the credential and re-checks
+ * what depends on it, so the two cannot interleave unseen. Returns presence, merchant, generation and whether tokens exist: never a token.
+ */
+export function squareCredentialShareLockQuery(userId: string): SQL {
+  return sql`SELECT account_status, provider_id, credential_generation::text AS generation, (encrypted_access_token IS NOT NULL) AS has_token
+    FROM payment_methods WHERE user_id = ${userId} AND provider = 'square' ORDER BY created_at ASC, id ASC LIMIT 1 FOR SHARE`;
+}
+
 export function createSquareConnectionService(deps: SquareConnectionServiceDeps) {
   const { pool, api } = deps;
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? defaultLogger;
+  let discardGuard: CredentialDiscardGuard | null = deps.credentialDiscardGuard ?? null;
+  let discardFinalCheck: CredentialDiscardFinalCheck | null = null;
+
+  /** FAIL CLOSED, inside the locked transaction. No final check registered means nothing depends on the credential. */
+  async function assertFinalDiscardCheck(client: SqlClient, row: ConnectionRow, reason: "disconnect" | "merchant_change") {
+    if (!discardFinalCheck) return;
+    // Nothing is on file to destroy (every secret was already removed): the same rule the first question applies.
+    if (!row.encrypted_access_token && !row.encrypted_refresh_token && !hasLegacySecrets(row.account_details)) return;
+    let safe = false;
+    try {
+      safe = (await discardFinalCheck({ userId: row.user_id, merchantId: row.provider_id, reason, query: (text, params) => client.query(text, params) })).safe === true;
+    } catch {
+      safe = false;
+    }
+    if (!safe) throw new SquareCredentialDiscardBlockedError();
+  }
+
+  /** FAIL CLOSED: a guard that says "not safe", or that throws, refuses the change. No guard registered means nothing depends on the credential. */
+  async function mayDiscardCredential(userId: string, reason: "disconnect" | "merchant_change"): Promise<boolean> {
+    if (!discardGuard) return true;
+    try {
+      return (await discardGuard({ userId, reason })).safe === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Called by the OAuth callback after the new authorization is verified and BEFORE it is stored. Only a change of MERCHANT discards what the
+   * old credential could see; re-authorizing the same merchant keeps every dependent reconcilable, so it is always allowed.
+   */
+  async function guardCredentialReplacement(userId: string, incomingMerchantId: string): Promise<{ allowed: boolean }> {
+    const row = await loadRow(pool, userId, false);
+    if (!row || row.account_status === "disconnected" || row.provider_id === incomingMerchantId) return { allowed: true };
+    return { allowed: await mayDiscardCredential(userId, "merchant_change") };
+  }
+
+  /**
+   * What PERSISTED state says about a user's stored Square credential, with no network call, no decryption and no token returned. Answers "could
+   * anything still use a credential that is on file?" -- NOT "is it payment-ready", which can be false (verification unavailable, a failed refresh,
+   * a configuration fault) while the credential is still stored and still the only thing able to reach the merchant's Square account.
+   * `present` is false only when there is no connection, it is disconnected, or every secret has been removed (needs re-authorization).
+   * A database failure throws, so a caller deciding whether to discard fails closed.
+   */
+  async function storedCredentialState(userId: string): Promise<{ present: boolean; merchantId: string | null }> {
+    const row = await loadRow(pool, userId, false);
+    if (!row || row.account_status === "disconnected") return { present: false, merchantId: null };
+    const present = Boolean(row.encrypted_access_token) || Boolean(row.encrypted_refresh_token) || hasLegacySecrets(row.account_details);
+    return { present, merchantId: present ? row.provider_id : null };
+  }
 
   async function loadRow(db: SqlClient, userId: string, forUpdate: boolean): Promise<ConnectionRow | null> {
     const result = await db.query(
@@ -592,6 +677,8 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
       // The account changed merchant between the two reads. Taking a further merchant lock now could invert the lock order.
       throw new SquareAuthorizationSupersededError();
     }
+    // A change of MERCHANT discards the old credential: re-asked under the row lock, where nothing can start using it unseen.
+    if (existing && existing.account_status !== "disconnected" && existing.provider_id !== verified.merchantId) await assertFinalDiscardCheck(db, existing, "merchant_change");
     // MERCHANT-LEVEL REVOCATION HISTORY (keyed by merchant id, so it is unaffected by this or any account moving merchant).
     // Square revokes every token of the application for a merchant, including one issued just before. Under the merchant
     // lock, an authorization may be stored only if ALL of these hold; each closes a gap the others cannot:
@@ -1037,6 +1124,10 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
    */
   async function disconnect(userId: string): Promise<{ changed: boolean; providerRevocation: ProviderRevocation; providerRevoked: boolean }> {
     const outcome = (changed: boolean, providerRevocation: ProviderRevocation) => ({ changed, providerRevocation, providerRevoked: providerRevocation === "revoked" });
+    // The old credential is still usable here. Whatever depends on it is wound down FIRST; if that cannot be done the disconnect is refused
+    // and nothing -- no secret, no status -- has been touched.
+    const existing = await loadRow(pool, userId, false);
+    if (existing && existing.account_status !== "disconnected" && !(await mayDiscardCredential(userId, "disconnect"))) throw new SquareCredentialDiscardBlockedError();
     for (let attempt = 0; attempt < MAX_SNAPSHOT_RETRIES; attempt += 1) {
       const preview = await loadRow(pool, userId, false);
       if (!preview || preview.account_status === "disconnected") return outcome(false, "not_applicable");
@@ -1057,6 +1148,8 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
           await client.query("ROLLBACK");
           continue;
         }
+        // Under the row lock: something that started to use this credential after the first question was asked is seen here, and aborts.
+        await assertFinalDiscardCheck(client, row, "disconnect");
         let providerRevocation: ProviderRevocation = "unconfirmed";
         // RECONCILE BEFORE ANYTHING IS CHOSEN. An OLD server (rolling deploy) can reconnect a row the new application already sealed:
         // it moves provider_id to the new merchant and writes that merchant's tokens as plaintext, leaving the previous merchant's
@@ -1158,6 +1251,11 @@ export function createSquareConnectionService(deps: SquareConnectionServiceDeps)
     convertAllLegacyRows,
     resealRotatedCredentials,
     disconnect,
+    guardCredentialReplacement,
+    storedCredentialState,
+    credentialShareLockQuery: squareCredentialShareLockQuery,
+    /** Registers the guard after construction (the production wiring cannot import its dependents here without a cycle). */
+    setCredentialDiscardGuard: (guard: CredentialDiscardGuard | null, finalCheck?: CredentialDiscardFinalCheck | null) => { discardGuard = guard; discardFinalCheck = finalCheck ?? null; },
     /** The reusable gate Catering Phase 2Q consults: tokens are never part of the result. */
     getSquarePaymentReadiness: async (userId: string, options: { force?: boolean } = {}) => (await evaluate(userId, options)).readiness,
     /**

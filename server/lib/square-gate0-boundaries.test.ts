@@ -23,15 +23,36 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const GATE0_SERVER = ["server/lib/secret-box.ts", "server/lib/square-integration.ts", "server/lib/square-connection-service.ts", "server/lib/square-connection.ts", "server/routes/square-connection.ts", "server/scripts/migrate-square-oauth-tokens.ts"];
 
-test("no Catering source (server, shared or client) uses the Square connection, so no Catering payment path exists", () => {
+/**
+ * Catering Phase 2Q is the first (and so far only) Catering code allowed to use the Square connection, and only through the Gate 0
+ * service's `getReadyConnectedCredentials`. Every OTHER Catering file still may not, and no Catering file may open a stored
+ * credential itself (`secret-box`, `payment_methods`) or ask for readiness directly.
+ */
+const PHASE_2Q_MAY_REFERENCE: Record<string, readonly string[]> = {
+  "server/services/catering-square-payments-instance.ts": ["square-connection", "squareConnections"],
+  "server/services/catering-square-payments.ts": ["square-integration"],
+  "server/services/catering-square-payment-policy.ts": ["square-integration"],
+  // `requireSameOriginJson` is the Gate 0 router's own same-origin guard, reused so the pay route is held to the same CSRF rule.
+  "server/routes/catering-square-payments.ts": ["square-connection"],
+  "server/lib/square-checkout.ts": ["square-integration"],
+};
+
+test("no Catering source uses the Square connection except the Phase 2Q payment modules, and none opens a credential itself", () => {
   const catering = [...walk("server"), ...walk("shared"), ...walk("client/src")]
-    .filter((file) => /catering/i.test(file) && !/\.test\.tsx?$/.test(file));
+    .filter((file) => (/catering/i.test(file) || file === "server/lib/square-checkout.ts") && !/\.test\.tsx?$/.test(file) && !file.startsWith("server/test-support/"));
   assert.ok(catering.length > 20);
   for (const file of catering) {
     const body = code(read(file));
+    const allowed = PHASE_2Q_MAY_REFERENCE[file] ?? [];
     for (const forbidden of ["square-connection", "square-integration", "secret-box", "getSquarePaymentReadiness", "squareConnections", "payment_methods"]) {
+      if (allowed.includes(forbidden)) continue;
       assert.equal(body.includes(forbidden), false, `${file} references ${forbidden}`);
     }
+  }
+  // ...and the allowlist is not a loophole: these Phase 2Q modules may name the connection, never its secrets or its table.
+  for (const file of Object.keys(PHASE_2Q_MAY_REFERENCE)) {
+    const body = code(read(file));
+    for (const never of ["secret-box", "decryptSecret", "encrypted_access_token", "payment_methods", "getSquarePaymentReadiness"]) assert.equal(body.includes(never), false, `${file} references ${never}`);
   }
 });
 

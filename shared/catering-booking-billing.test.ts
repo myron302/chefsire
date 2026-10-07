@@ -7,6 +7,8 @@ import {
   CATERING_INVOICE_KINDS,
   CATERING_INVOICE_STATUSES,
   CATERING_PAYMENT_METHODS,
+  CATERING_PROVIDER_PAYMENT_METHODS,
+  cateringPaymentRecordSchema,
   CATERING_PAYMENT_SOURCES,
   cateringAdjustmentRequestCents,
   cateringBalanceAmount,
@@ -376,11 +378,17 @@ test("there are exactly three invoice kinds: Phase 2P added `adjustment` once th
   assert.equal(CATERING_INVOICE_KINDS.filter((kind) => kind === "adjustment").length, 1);
 });
 
-test("every payment method is something that happened outside ChefSire", () => {
-  assert.deepEqual([...CATERING_PAYMENT_METHODS], ["cash", "bank_transfer", "card_in_person", "cheque", "other"]);
-  for (const forbidden of ["chefsire", "online", "card", "square", "stripe"]) {
-    assert.equal((CATERING_PAYMENT_METHODS as readonly string[]).includes(forbidden), false, forbidden);
+test("every payment method a PROVIDER can record is something that happened outside ChefSire", () => {
+  assert.deepEqual([...CATERING_PROVIDER_PAYMENT_METHODS], ["cash", "bank_transfer", "card_in_person", "cheque", "other"]);
+  for (const forbidden of ["chefsire", "online", "card", "square", "stripe", "card_online"]) {
+    assert.equal((CATERING_PROVIDER_PAYMENT_METHODS as readonly string[]).includes(forbidden), false, forbidden);
   }
+});
+
+test("Phase 2Q adds exactly one method, card_online, which only a Square-confirmed payment can carry", () => {
+  assert.deepEqual([...CATERING_PAYMENT_METHODS], [...CATERING_PROVIDER_PAYMENT_METHODS, "card_online"]);
+  assert.equal(cateringPaymentRecordSchema.safeParse({ invoiceId: "i", amount: "1.00", method: "card_online", receivedOn: "2030-01-01", idempotencyKey: "abcdefgh" }).success, false, "a provider cannot record one");
+  assert.equal(cateringPaymentRecordSchema.safeParse({ invoiceId: "i", amount: "1.00", method: "cash", receivedOn: "2030-01-01", idempotencyKey: "abcdefgh" }).success, true);
 });
 
 test("the deposit modes and payment sources are exactly what the constraints allow", () => {

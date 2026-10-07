@@ -13,6 +13,9 @@ import { evaluateBookingDateForConfirmation, evaluateBookingDateForOffer } from 
 import { bookingActor, mayCancel, mayComplete, mayConfirm, mayInquiryProduceBooking, nextConfirmationStatus } from "../services/catering-booking-policy";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { CATERING_CUSTOMER_BOOKINGS_URL, CATERING_PROVIDER_BOOKINGS_URL } from "../services/catering-booking-links";
+import { lockCateringBilling } from "../services/catering-booking-adjustments";
+import { closeOpenAttemptsInTransaction } from "../services/catering-square-payments";
+import { cateringSquarePayments } from "../services/catering-square-payments-instance";
 import { lockCateringInquiry } from "../services/catering-inquiry-withdrawal";
 import { lockCateringReviewRelationship } from "../services/catering-review-relationship-lock";
 import { acceptanceRetryContradictsAccepted, acceptanceWouldContradictBilling, bookingTermsFromRevision, CATERING_OFFER_ALREADY_EXISTS_MESSAGE, createProviderOfferRevision, firstOfferRetryMatches, listCateringOfferRevisions, resolveCateringOfferAcceptance, stampCateringOfferAccepted } from "../services/catering-offer-negotiation";
@@ -117,8 +120,10 @@ r.post("/bookings/:id/cancel", requireAuth, async (req, res, next) => { try {
   const [current] = await db.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.providerId, userId), eq(cateringBookings.customerId, userId)))).limit(1);
   if (!current) return res.status(404).json({ message: "Booking not found" }); const actor = bookingActor(current, userId)!;
   if (!mayCancel(current.status)) return res.status(409).json({ message: "Completed or cancelled bookings cannot be cancelled" });
-  const updated = await db.transaction(async (tx: typeof db) => { const [row] = await tx.update(cateringBookings).set({ status: "cancelled", cancelledAt: now, cancelledBy: actor, cancellationReason: input.reason ?? null, updatedAt: now }).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.status, "pending_confirmation"), eq(cateringBookings.status, "confirmed")))).returning(); if (row) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: userId, eventType: "booking_cancelled", visibility: "shared", metadata: {} }); return row; });
+  const updated = await db.transaction(async (tx: typeof db) => { await lockCateringBilling(tx, id); const [row] = await tx.update(cateringBookings).set({ status: "cancelled", cancelledAt: now, cancelledBy: actor, cancellationReason: input.reason ?? null, updatedAt: now }).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.status, "pending_confirmation"), eq(cateringBookings.status, "confirmed")))).returning(); if (row) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: userId, eventType: "booking_cancelled", visibility: "shared", metadata: {} }); if (row) await closeOpenAttemptsInTransaction(tx, id, now); return row; });
   if (!updated) return res.status(409).json({ message: "Booking changed before cancellation completed" });
+  // Phase 2Q: the cancellation is already committed and authoritative. Removing the Square links is best effort and can never undo it.
+  await cateringSquarePayments.sweepClosedLinks(id).catch(() => undefined);
   const recipient = actor === "provider" ? updated.customerId : updated.providerId; await db.insert(notifications).values({ userId: recipient, type: "catering_booking_cancelled", title: "Catering booking cancelled", message: "The catering booking was cancelled. Open it for current status.", linkUrl: actor === "provider" ? CATERING_CUSTOMER_BOOKINGS_URL : CATERING_PROVIDER_BOOKINGS_URL }).catch(() => undefined);
   res.json({ booking: serializeCateringBooking(updated) });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });

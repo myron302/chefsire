@@ -84,6 +84,8 @@ if (!PG_URL) {
   const amendmentMigration = sqlFile("server/migrations/20261005_catering_booking_amendments.sql");
   await local.query(amendmentMigration);
   await local.query(sqlFile("server/migrations/20261006_catering_billing_adjustments.sql"));
+  // Cancelling a booking now also closes its open Square checkouts (Phase 2Q), so that table must exist.
+  await local.query(sqlFile("server/migrations/20261014_catering_square_payments.sql"));
 
   const { default: cateringRouter } = await import("./catering");
   const { default: bookingsRouter } = await import("./catering-bookings");
