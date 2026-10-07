@@ -159,8 +159,7 @@ finds nothing new. The provider view lists every payment with its Square referen
 ## The accounting date is Square's date
 
 `received_on` is the day SQUARE completed the payment, in the provider's calendar (the same `cateringBillingDay` every billing date uses),
-not the day ChefSire verified it. The completion time is the payment's `updated_at` (when it reached `COMPLETED`), or `created_at` if a
-refund has since moved `updated_at`. A missing, malformed or future time is never replaced by ChefSire's clock: the money is kept as
+not the day ChefSire verified it. The date derives from the payment's `created_at` (the transaction time; `updated_at` never dates it, see repair pass 8). A missing, malformed or future time is never replaced by ChefSire's clock: the money is kept as
 `reconciliation_required` / `payment_timestamp_invalid`, with the evidence.
 
 ## Client retry lifecycle
@@ -224,3 +223,8 @@ Square documents payment, order and payment-link ids of up to 192 characters. Au
 | idempotency key | `varchar(64)` (`chefsire-cat-` + UUID = 49) | generated |
 
 Only the Phase 2L ledger column was too narrow: a valid 129-192 character payment id would have rolled the settlement back after the customer was charged. The migration widens it in place (no rewrite, the unique `(processor, processor_payment_id)` index is rebuilt over the same data). The webhook parser used one generic 128-character helper for every id, which turned a valid long order id into "no order reference" and lost the trigger; it is now per-field (`SQUARE_*_MAX_LENGTH` in `shared/catering-square-payments.ts`), returns ids exactly as received, and refuses anything longer than the documented maximum.
+
+## Aggregate amounts and payment dates (repair pass 8)
+
+- **The aggregate is optional metadata; evidence rows are the authority.** `processor_amount_cents` holds a total only when every completed payment shares one currency AND the exact integer sum is a safe integer within the column's ceiling (9,999,999,999). Otherwise it is NULL (mixed currencies, or a total that cannot fit) while the payment count and every evidence row (id, amount, currency, Square time) are kept, so a summary can never roll valid moved-money evidence back. No floating point, clamping or capping. The provider view omits the amount and currency then and shows a neutral headline plus one row per payment.
+- **Dates.** Audit of the installed SDK's `Payment`: it has `created_at`, `updated_at` and `delayed_until`; there is no completion or approval timestamp. A hosted-checkout payment charges and completes at once, so `received_on` is derived from `created_at` (parsed, then converted to the provider's calendar date). `updated_at` is stored as evidence only: Square moves it for unrelated later changes (customer association, metadata, refund bookkeeping) and it never dates a payment. A missing or malformed `created_at` is `payment_timestamp_invalid` reconciliation, never replaced by `updated_at` or ChefSire's clock.

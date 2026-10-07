@@ -1925,4 +1925,146 @@ if (!URL_ENV) {
       assert.equal(h.fake.links.get(attempt.squarePaymentLinkId!)!.deleted, true);
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Codex repair pass 8: the aggregate is optional metadata; payments are dated from created_at
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const money = (amount: number, currency = "USD") => ({ total_money: { amount, currency }, amount_money: { amount, currency } });
+  const at = (iso: string) => ({ created_at: iso, updated_at: iso });
+
+  test("AGGREGATE: one payment stores its amount; two same-currency payments within the ceiling store the sum, exactly at the ceiling included", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const one = await open(h, s, 0);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(one.squareOrderId!, { id: "AG_ONE", ...first });
+      await h.payments.settleAttempt(one.id);
+      assert.equal(Number((await h.attempt(one.id)).processor_amount_cents), 40000);
+
+      const two = await open(h, s, 1);
+      h.fake.payOrder(two.squareOrderId!, { id: "AG_A", ...at("2030-05-01T10:00:00Z"), ...money(5_000_000_000) });
+      h.fake.payOrder(two.squareOrderId!, { id: "AG_B", ...at("2030-05-01T11:00:00Z"), ...money(4_999_999_999) });
+      assert.equal((await h.payments.settleAttempt(two.id)).outcome, "reconciliation_required");
+      const row = await h.attempt(two.id);
+      assert.equal(Number(row.processor_amount_cents), 9_999_999_999, "exactly at the ceiling is accepted");
+      assert.equal(row.processor_currency, "USD");
+      assert.equal((await evidenceRows(h, two.id)).length, 2);
+    });
+  });
+
+  test("AGGREGATE: two 6,000,000,000-cent payments persist as reconciliation with a NULL aggregate and BOTH evidence rows; replays are idempotent and nothing is credited", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "OV_A", ...at("2030-05-01T10:00:00Z"), ...money(6_000_000_000) });
+      h.fake.payOrder(attempt.squareOrderId!, { id: "OV_B", ...at("2030-05-01T11:00:00Z"), ...money(6_000_000_000) });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required", "persists; the summary overflow does not roll the evidence back");
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal(row.reconciliation_reason, "multiple_payments");
+      assert.equal(Number(row.processor_payment_count), 2);
+      assert.equal(row.processor_amount_cents, null);
+      const evidence = await evidenceRows(h, attempt.id);
+      assert.deepEqual(evidence.map((entry) => [entry.square_payment_id, Number(entry.amount_cents), entry.currency, entry.completed_at.toISOString()]), [["OV_A", 6_000_000_000, "USD", "2030-05-01T10:00:00.000Z"], ["OV_B", 6_000_000_000, "USD", "2030-05-01T11:00:00.000Z"]]);
+      // the provider sees each payment and no invented total
+      const view = await providerView(h, s, attempt.id);
+      assert.equal(view.processorAmountCents, undefined);
+      assert.equal(view.processorCurrency, undefined);
+      assert.deepEqual(view.processorPayments?.map((payment) => [payment.squarePaymentId, payment.amountCents]), [["OV_A", 6_000_000_000], ["OV_B", 6_000_000_000]]);
+      // repeated webhook / poll / concurrent: the same rows, still no credit
+      for (let i = 0; i < 2; i += 1) await hook(h, s, attempt, `evt-ov-${i}`);
+      await Promise.all([h.payments.settleAttempt(attempt.id), h.payments.settleAttempt(attempt.id)]);
+      assert.deepEqual((await evidenceRows(h, attempt.id)).map((entry) => entry.id), evidence.map((entry) => entry.id));
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+  });
+
+  test("AGGREGATE: one cent over the ceiling, and mixed currencies, store no aggregate and keep every evidence row; a later payment pushing a stored total over the ceiling nulls it without losing anything", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const over = await open(h, s, 0);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(over.squareOrderId!, { id: "OC_A", ...at("2030-05-01T10:00:00Z"), ...money(5_000_000_000) });
+      h.fake.payOrder(over.squareOrderId!, { id: "OC_B", ...at("2030-05-01T11:00:00Z"), ...money(5_000_000_000) });
+      await h.payments.settleAttempt(over.id);
+      assert.equal((await h.attempt(over.id)).processor_amount_cents, null);
+      assert.equal((await evidenceRows(h, over.id)).length, 2);
+
+      const mixed = await open(h, s, 1);
+      h.fake.payOrder(mixed.squareOrderId!, { id: "MX_A", ...at("2030-05-01T10:00:00Z"), ...money(10000, "EUR") });
+      h.fake.payOrder(mixed.squareOrderId!, { id: "MX_B", ...at("2030-05-01T11:00:00Z"), ...money(5000, "USD") });
+      await h.payments.settleAttempt(mixed.id);
+      const mixedRow = await h.attempt(mixed.id);
+      assert.equal(mixedRow.processor_amount_cents, null);
+      assert.equal(mixedRow.processor_currency, null);
+      assert.deepEqual((await evidenceRows(h, mixed.id)).map((entry) => [entry.square_payment_id, entry.currency]), [["MX_A", "EUR"], ["MX_B", "USD"]]);
+    });
+    await run(async (h) => {
+      // audit path: a single mismatched payment is already reconciled with its amount; a second one takes the total past the ceiling
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "AU_A", ...at("2030-05-01T10:00:00Z"), ...money(6_000_000_000) });
+      await h.payments.settleAttempt(attempt.id);
+      assert.equal(Number((await h.attempt(attempt.id)).processor_amount_cents), 6_000_000_000);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "AU_B", ...at("2030-05-01T11:00:00Z"), ...money(6_000_000_000) });
+      assert.deepEqual(await hook(h, s, attempt, "evt-au"), { kind: "processed", outcome: "reconciliation_required" });
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.processor_amount_cents, null);
+      assert.equal(Number(row.processor_payment_count), 2);
+      assert.equal((await evidenceRows(h, attempt.id)).length, 2);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+  });
+
+  test("DATE: updated_at never dates a payment: created Monday, later updated Tuesday (customer association, metadata, refund bookkeeping) is still Monday, even verified a day later", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "D_1", created_at: "2030-06-03T23:55:00Z", updated_at: "2030-06-04T09:00:00Z" });
+      h.setClock(new Date("2030-06-04T15:00:00Z"));
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      assert.equal(await receivedOn(h, s.bookingId), "2030-06-03", "Monday, not Tuesday");
+      const [evidence] = await evidenceRows(h, attempt.id);
+      assert.equal(evidence.completed_at.toISOString(), "2030-06-03T23:55:00.000Z");
+      assert.equal(evidence.square_updated_at.toISOString(), "2030-06-04T09:00:00.000Z", "updated_at is kept as evidence only");
+    });
+  });
+
+  test("DATE: created and updated on the same day agree; a later refund update does not move the original date; a Los Angeles caterer's midnight is honoured", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s, 0);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "D_SAME", ...at("2030-06-03T12:00:00Z") });
+      h.setClock(new Date("2030-06-03T13:00:00Z"));
+      await h.payments.settleAttempt(attempt.id);
+      assert.equal(await receivedOn(h, s.bookingId), "2030-06-03");
+    });
+    await run(async (h) => {
+      const s = await scene(h);
+      await h.q(`INSERT INTO catering_availability_settings (provider_id, timezone) VALUES ($1, 'America/Los_Angeles')`, [s.providerId]);
+      const attempt = await open(h, s);
+      // 06:30Z on the 4th is 23:30 on the 3rd in Los Angeles; the later refund-related update (the 9th) must not matter
+      h.fake.payOrder(attempt.squareOrderId!, { id: "D_LA", created_at: "2030-06-04T06:30:00Z", updated_at: "2030-06-09T12:00:00Z", refund_ids: ["R1"] });
+      h.setClock(new Date("2030-06-10T12:00:00Z"));
+      await h.payments.settleAttempt(attempt.id);
+      assert.equal(await receivedOn(h, s.bookingId), "2030-06-03");
+    });
+  });
+
+  test("DATE: a missing or malformed created_at is never replaced by updated_at or ChefSire's clock: payment_timestamp_invalid reconciliation, nothing credited", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-06-02T00:40:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "D_BAD", created_at: "garbage", updated_at: "2030-06-01T12:00:00Z" });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.reconciliation_reason, "payment_timestamp_invalid");
+      assert.equal((await evidenceRows(h, attempt.id)).length, 1, "the money is kept");
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+  });
 }

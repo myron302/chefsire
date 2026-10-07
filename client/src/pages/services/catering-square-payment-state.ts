@@ -42,8 +42,8 @@ export function cateringSquareReconciliationCopy(reason: CateringReconciliationR
  * The headline amount of an attempt in the provider's list, formatted by `format(cents, currency)`.
  *
  * Processor money is ONLY ever shown in the currency Square reported for it: one evidence row uses its own amount and currency; several rows of
- * ONE currency show their total with the count; several rows of different currencies are NEVER summed or relabelled, and get a neutral headline
- * (each payment is listed on its own row below). Before any money moved the figure is the amount ASKED for, in the invoice's currency.
+ * ONE currency show the SERVER's aggregate with the count, when it has one; when it has none (mixed currencies, or a total that cannot be represented) nothing is
+ * summed here and the headline is neutral (each payment is listed on its own row below). Before any money moved the figure is the amount ASKED for, in the invoice's currency.
  */
 export function cateringSquareHeadline(
   attempt: Pick<CateringPaymentAttemptView, "amountCents" | "currency" | "processorAmountCents" | "processorCurrency" | "processorPayments">,
@@ -52,8 +52,9 @@ export function cateringSquareHeadline(
   const payments = attempt.processorPayments ?? [];
   if (payments.length === 1) return format(payments[0].amountCents, payments[0].currency);
   if (payments.length > 1) {
-    const currencies = new Set(payments.map((payment) => payment.currency));
-    if (currencies.size === 1) return `${format(payments.reduce((total, payment) => total + payment.amountCents, 0), payments[0].currency)} across ${payments.length} Square payments`;
+    // The aggregate is the SERVER's: it exists only for one currency and a total that fits. When it is absent (mixed currencies, or a total that
+    // cannot be represented) nothing is summed here either: a neutral headline, with every payment listed on its own row.
+    if (attempt.processorAmountCents !== undefined && attempt.processorCurrency) return `${format(attempt.processorAmountCents, attempt.processorCurrency)} across ${payments.length} Square payments`;
     return CATERING_SQUARE_COPY.reconciliationNeutralHeadline;
   }
   if (attempt.processorAmountCents !== undefined) {

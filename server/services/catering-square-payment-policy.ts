@@ -8,6 +8,7 @@ import {
 } from "@shared/catering-booking-billing";
 import type { CateringBookingStatus } from "@shared/catering-bookings";
 import {
+  CATERING_ATTEMPT_PROCESSOR_AMOUNT_MAX_CENTS,
   CATERING_SQUARE_CURRENCY,
   type CateringReconciliationReason,
 } from "@shared/catering-square-payments";
@@ -116,27 +117,43 @@ function parseSquareTime(value: string | null): Date | null {
 }
 
 /**
- * The time Square completed a payment, which is what its accounting date derives from.
+ * The time a payment is DATED from: Square's `created_at` for it.
  *
- * A COMPLETED payment's `updated_at` is when it reached that state -- UNLESS a refund has since been issued, which also moves
- * `updated_at`; then only `created_at` is still the original movement, so that is used. A payment-link checkout charges and completes at
- * once, so the two agree in the ordinary case. Missing or unparseable: null, which the settlement turns into an explicit reconciliation
- * (`payment_timestamp_invalid`) rather than dating the money by when ChefSire happened to look.
+ * Audit of the installed SDK's `Payment` object: it exposes `created_at`, `updated_at` and `delayed_until` (a delayed-capture deadline), and NO
+ * completion or approval timestamp. A hosted-checkout (payment link) payment charges and completes at once, so `created_at` is the transaction
+ * time. `updated_at` is NOT: Square moves it for unrelated later changes (a customer profile attached, metadata, a refund), which would move a
+ * Monday-night payment's date to Tuesday. So `updated_at` is never used, and neither is any time ChefSire happened to look. Missing or
+ * unparseable: null, which settlement turns into an explicit reconciliation (`payment_timestamp_invalid`).
  */
-export function squareCompletionTime(payment: Pick<SquarePaymentFacts, "createdAt" | "updatedAt" | "hasRefunds">): Date | null {
-  return payment.hasRefunds ? parseSquareTime(payment.createdAt) : parseSquareTime(payment.updatedAt);
+export function squareCompletionTime(payment: Pick<SquarePaymentFacts, "createdAt">): Date | null {
+  return parseSquareTime(payment.createdAt);
 }
 
-/** What a set of completed payments adds up to, honestly: the amount only when they share one currency, a reference only when there is one. */
+/**
+ * What a set of completed payments adds up to, honestly. Individual evidence rows are the authority; this is optional summary metadata.
+ * The aggregate amount exists only when ALL payments share one currency AND the exact integer sum is representable and within the attempt column's
+ * ceiling; otherwise it is null. Never floating point, never wrapped, clamped or capped. A reference only when there is exactly one payment.
+ */
 export function summarizeConfirmedPayments(payments: readonly ConfirmedSquarePayment[]): { count: number; amountCents: number | null; currency: string | null; singlePaymentId: string | null } {
   const currencies = new Set(payments.map((payment) => payment.currency));
   const currency = currencies.size === 1 ? payments[0].currency : null;
   return {
     count: payments.length,
-    amountCents: currency === null ? null : payments.reduce((total, payment) => total + payment.amountCents, 0),
+    amountCents: currency === null ? null : safeSumCents(payments.map((payment) => payment.amountCents)),
     currency,
     singlePaymentId: payments.length === 1 ? payments[0].paymentId : null,
   };
+}
+
+/** Exact integer sum, or null if any term is not a safe positive integer or the total passes the attempt ceiling (checked at every step: no overflow). */
+function safeSumCents(values: readonly number[]): number | null {
+  let total = 0;
+  for (const value of values) {
+    if (!Number.isSafeInteger(value) || value < 0) return null;
+    total += value;
+    if (total > CATERING_ATTEMPT_PROCESSOR_AMOUNT_MAX_CENTS) return null;
+  }
+  return total > 0 ? total : null;
 }
 
 /**

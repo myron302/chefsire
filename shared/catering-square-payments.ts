@@ -26,6 +26,13 @@ export const CATERING_SQUARE_CURRENCY = "USD" as const;
  * `text` (unbounded) except the Phase 2L ledger column `catering_booking_payments.processor_payment_id`, which is `varchar(255)`: it must hold
  * the longest valid payment id, and a test pins that the column is never narrower than SQUARE_PAYMENT_ID_MAX_LENGTH.
  */
+/**
+ * The largest value `catering_booking_payment_attempts.processor_amount_cents` may hold (the `<= 9999999999` CHECK; the same ceiling as every
+ * Catering money row). An attempt-level AGGREGATE of several payments is optional summary metadata: when it cannot fit, it is NULL and the
+ * individual evidence rows (each within this ceiling) remain the authority.
+ */
+export const CATERING_ATTEMPT_PROCESSOR_AMOUNT_MAX_CENTS = 9_999_999_999;
+
 export const SQUARE_PAYMENT_ID_MAX_LENGTH = 192;
 export const SQUARE_ORDER_ID_MAX_LENGTH = 192;
 export const SQUARE_PAYMENT_LINK_ID_MAX_LENGTH = 192;

@@ -83,8 +83,9 @@ test("an unpaid open order is awaiting; approved is processing; a cancelled unpa
   assert.deepEqual(evaluateSquareEvidence(target, order({ state: "CANCELED" }), []), { kind: "cancelled" });
 });
 
-const evidence = (id: string, amountCents: number, currency = "USD", at = "2030-01-01T10:00:01.000Z", tipCents = 0) => ({
-  paymentId: id, amountCents, tipCents, currency, createdAt: new Date("2030-01-01T10:00:00Z"), updatedAt: new Date(at), completedAt: new Date(at),
+// completedAt is Square's created_at (the transaction time); updatedAt is carried as evidence only and never dates anything.
+const evidence = (id: string, amountCents: number, currency = "USD", at = "2030-01-01T10:00:00.000Z", tipCents = 0) => ({
+  paymentId: id, amountCents, tipCents, currency, createdAt: new Date(at), updatedAt: new Date("2030-01-01T10:00:01Z"), completedAt: new Date(at),
 });
 
 test("only a COMPLETED payment that exactly matches is confirmed without a mismatch, carrying Square's own timestamps", () => {
@@ -93,13 +94,13 @@ test("only a COMPLETED payment that exactly matches is confirmed without a misma
 
 test("every completed payment is kept: two are two pieces of evidence, each with its own id, amount, currency and time, never merged or chosen between", () => {
   const verdict = evaluateSquareEvidence(target, order({ paymentIds: ["PAY_2", "PAY_1"] }), [
-    squarePayment({ id: "PAY_2", totalCents: 15000, updatedAt: "2030-01-01T12:00:00Z" }),
-    squarePayment({ id: "PAY_1", totalCents: 40000, updatedAt: "2030-01-01T10:00:01Z" }),
+    squarePayment({ id: "PAY_2", totalCents: 15000, createdAt: "2030-01-01T12:00:00Z", updatedAt: "2030-01-05T00:00:00Z" }),
+    squarePayment({ id: "PAY_1", totalCents: 40000, createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-01-01T10:00:01Z" }),
   ]);
   assert.equal(verdict.kind, "confirmed");
   if (verdict.kind !== "confirmed") return;
   assert.equal(verdict.mismatch, "multiple_payments");
-  assert.deepEqual(verdict.payments.map((payment) => [payment.paymentId, payment.amountCents, payment.completedAt?.toISOString()]), [["PAY_1", 40000, "2030-01-01T10:00:01.000Z"], ["PAY_2", 15000, "2030-01-01T12:00:00.000Z"]], "deterministic: by Square time, then id");
+  assert.deepEqual(verdict.payments.map((payment) => [payment.paymentId, payment.amountCents, payment.completedAt?.toISOString()]), [["PAY_1", 40000, "2030-01-01T10:00:00.000Z"], ["PAY_2", 15000, "2030-01-01T12:00:00.000Z"]], "deterministic: by Square time, then id");
   // three payments, mixed currencies: still all there
   const three = evaluateSquareEvidence(target, order({ paymentIds: ["A", "B", "C"] }), [squarePayment({ id: "A" }), squarePayment({ id: "B", currency: "CAD" }), squarePayment({ id: "C", totalCents: 100 })]);
   assert.equal(three.kind === "confirmed" && three.payments.length, 3);
@@ -111,25 +112,37 @@ test("a summary is honest: an amount only when the currency is one, a reference 
   assert.deepEqual(summarizeConfirmedPayments([evidence("A", 100), evidence("B", 250, "CAD")]), { count: 2, amountCents: null, currency: null, singlePaymentId: null });
 });
 
-test("Square's completion time is updated_at, or created_at once a refund has moved updated_at; missing or garbage is null, never 'now'", () => {
-  assert.equal(squareCompletionTime({ createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-01-01T10:00:05Z", hasRefunds: false })?.toISOString(), "2030-01-01T10:00:05.000Z");
-  assert.equal(squareCompletionTime({ createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-02-01T00:00:00Z", hasRefunds: true })?.toISOString(), "2030-01-01T10:00:00.000Z");
-  for (const bad of [null, "", "not a date"]) {
-    assert.equal(squareCompletionTime({ createdAt: bad, updatedAt: bad, hasRefunds: false }), null, String(bad));
-    assert.equal(squareCompletionTime({ createdAt: bad, updatedAt: "2030-01-01T10:00:00Z", hasRefunds: true }), null, `refunded and created_at ${String(bad)}`);
-  }
+test("a payment is dated from Square's created_at; updated_at (customer association, metadata, refunds) never moves it; missing or garbage is null, never 'now'", () => {
+  assert.equal(squareCompletionTime({ createdAt: "2030-01-01T10:00:00Z" })?.toISOString(), "2030-01-01T10:00:00.000Z");
+  // updated_at is not even an input
+  assert.equal(squareCompletionTime({ createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-02-01T00:00:00Z", hasRefunds: true } as never)?.toISOString(), "2030-01-01T10:00:00.000Z");
+  for (const bad of [null, "", "not a date", "2030-13-45T99:00:00Z"]) assert.equal(squareCompletionTime({ createdAt: bad }), null, String(bad));
 });
 
+test("an aggregate processor amount exists only for ONE currency and an exactly representable total within the attempt ceiling; otherwise null, never clamped", () => {
+  const pay = (id: string, amountCents: number, currency = "USD") => ({ paymentId: id, amountCents, tipCents: 0, currency, createdAt: null, updatedAt: null, completedAt: null });
+  assert.deepEqual(summarizeConfirmedPayments([pay("A", 40000)]), { count: 1, amountCents: 40000, currency: "USD", singlePaymentId: "A" });
+  assert.equal(summarizeConfirmedPayments([pay("A", 40000), pay("B", 700)]).amountCents, 40700);
+  assert.equal(summarizeConfirmedPayments([pay("A", 5_000_000_000), pay("B", 4_999_999_999)]).amountCents, 9_999_999_999, "exactly at the ceiling is accepted");
+  assert.equal(summarizeConfirmedPayments([pay("A", 5_000_000_000), pay("B", 5_000_000_000)]).amountCents, null, "one cent over");
+  const over = summarizeConfirmedPayments([pay("A", 6_000_000_000), pay("B", 6_000_000_000)]);
+  assert.deepEqual([over.count, over.amountCents, over.currency], [2, null, "USD"]);
+  assert.equal(summarizeConfirmedPayments([pay("A", 100, "EUR"), pay("B", 50)]).amountCents, null, "mixed currency");
+  assert.equal(summarizeConfirmedPayments([pay("A", Number.MAX_SAFE_INTEGER), pay("B", Number.MAX_SAFE_INTEGER)]).amountCents, null, "no overflow, no precision loss");
+  assert.equal(summarizeConfirmedPayments([pay("A", 1.5), pay("B", 1)]).amountCents, null, "not an integer");
+});
+
+
 test("a single payment with no usable Square time is confirmed as a payment_timestamp_invalid reconciliation, not dated by when ChefSire looked", () => {
-  const verdict = evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"] }), [squarePayment({ updatedAt: null, createdAt: "2030-01-01T10:00:00Z" })]);
-  assert.equal(verdict.kind === "confirmed" && verdict.mismatch, "payment_timestamp_invalid");
+  const verdict = evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"] }), [squarePayment({ createdAt: null, updatedAt: "2030-01-01T10:00:00Z" })]);
+  assert.equal(verdict.kind === "confirmed" && verdict.mismatch, "payment_timestamp_invalid", "a valid updated_at never stands in for a missing created_at");
   assert.equal(verdict.kind === "confirmed" && verdict.payments[0].completedAt, null);
 });
 
 test("money that moved but is not what was asked for is CONFIRMED with a mismatch, never dropped and never treated as a match", () => {
   const confirmed = (p: Partial<SquarePaymentFacts>) => evaluateSquareEvidence(target, order({ paymentIds: ["PAY_1"] }), [squarePayment(p)]);
   assert.deepEqual(confirmed({ totalCents: 45000 }), { kind: "confirmed", payments: [evidence("PAY_1", 45000)], mismatch: "amount_mismatch" });
-  assert.deepEqual(confirmed({ totalCents: 42000, tipCents: 2000 }), { kind: "confirmed", payments: [evidence("PAY_1", 42000, "USD", "2030-01-01T10:00:01.000Z", 2000)], mismatch: "amount_mismatch" });
+  assert.deepEqual(confirmed({ totalCents: 42000, tipCents: 2000 }), { kind: "confirmed", payments: [evidence("PAY_1", 42000, "USD", "2030-01-01T10:00:00.000Z", 2000)], mismatch: "amount_mismatch" });
   assert.deepEqual(confirmed({ currency: "CAD" }), { kind: "confirmed", payments: [evidence("PAY_1", 40000, "CAD")], mismatch: "currency_mismatch" });
   // a completed payment whose amount Square did not report is not trusted
   assert.deepEqual(confirmed({ totalCents: null }), { kind: "rejected", code: "order_total_mismatch" });

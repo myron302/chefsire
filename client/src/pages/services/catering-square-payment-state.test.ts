@@ -434,8 +434,12 @@ test("headline: an invoice in USD that Square took in EUR shows EUR, never USD",
 });
 
 test("headline: several payments in one currency show the total and the count; mixed currencies are never summed or relabelled", () => {
-  assert.equal(cateringSquareHeadline(attempt({ processorPayments: [ev("A", 40000, "USD"), ev("B", 700, "USD")] }), fmt), "USD 407.00 across 2 Square payments");
-  const mixed = cateringSquareHeadline(attempt({ currency: "USD", processorAmountCents: 99999, processorCurrency: "USD", processorPayments: [ev("A", 10000, "EUR"), ev("B", 5000, "USD")] }), fmt);
+  assert.equal(cateringSquareHeadline(attempt({ processorAmountCents: 40700, processorCurrency: "USD", processorPayments: [ev("A", 40000, "USD"), ev("B", 700, "USD")] }), fmt), "USD 407.00 across 2 Square payments");
+  // same currency but the server has no aggregate (the total cannot be represented): nothing is summed or invented client-side
+  const overflow = cateringSquareHeadline(attempt({ processorPayments: [ev("A", 6_000_000_000, "USD"), ev("B", 6_000_000_000, "USD")] }), fmt);
+  assert.equal(overflow, CATERING_SQUARE_COPY.reconciliationNeutralHeadline);
+  assert.equal(/\$|USD|\d|^0/.test(overflow), false, "not $0, not an unknown total, not the invoice amount");
+  const mixed = cateringSquareHeadline(attempt({ currency: "USD", processorPayments: [ev("A", 10000, "EUR"), ev("B", 5000, "USD")] }), fmt);
   assert.equal(mixed, CATERING_SQUARE_COPY.reconciliationNeutralHeadline);
   assert.equal(/EUR|USD|\d/.test(mixed), false);
 });
