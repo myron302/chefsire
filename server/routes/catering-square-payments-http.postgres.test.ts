@@ -37,7 +37,7 @@ if (!URL_ENV) {
     const app = express();
     app.use(cookieParser());
     app.use(express.json({ verify: (req, _res, buf) => { (req as { rawBody?: string }).rawBody = buf.toString("utf8"); } }));
-    app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => (configured.value ? { signatureKey: WEBHOOK_KEY, notificationUrl: WEBHOOK_URL } : null), ...(options.ownLimiter ? { payLimiter: (_req, _res, next) => next() } : {}) }));
+    app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => (configured.value ? { signatureKey: WEBHOOK_KEY, notificationUrl: WEBHOOK_URL } : null), ...(options.ownLimiter ? { payLimiter: (_req, _res, next) => next(), statusLimiter: (_req, _res, next) => next() } : {}) }));
     const server = app.listen(0);
     try { await fn({ h, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, configured }); }
     finally { server.close(); await h.cleanup(); }
@@ -137,6 +137,80 @@ if (!URL_ENV) {
       assert.equal((await post(url(0), tok(s.providerId))).status, 403, "the provider cannot start or bypass it");
       const other = await post(url(1), tok(s.customerId));
       assert.ok(other.status === 200 || other.status === 201, "the other invoice is still payable");
+    }, { ownLimiter: true });
+  });
+
+  test("PASS4: when Square cannot be asked the status endpoint answers an explicit, retryable 503 (not a clean 200); nothing is cancelled, charged, credited or duplicated; recovery then settles once", async () => {
+    await withApp(async ({ h, base }) => {
+      const s = await scene(h);
+      const created = await (await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId))).json();
+      const statusUrl = `${base}/api/catering/bookings/${s.bookingId}/billing/payment-attempts/${created.attempt.id}`;
+      const status = (userId: string) => fetch(statusUrl, { headers: tok(userId) });
+      h.fake.payOrder(h.fake.lastOrder()!.id);
+      const rowsBefore = (await h.attempts(s.bookingId)).length;
+      const createsBefore = h.fake.requests.filter((r) => r.method === "POST" && r.path === "/v2/online-checkout/payment-links").length;
+
+      // Square outage
+      h.fake.state.evidenceFailure = 503;
+      for (let i = 0; i < 4; i += 1) {
+        const response = await status(s.customerId);
+        assert.equal(response.status, 503);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        const body = await response.json();
+        assert.equal(body.code, "catering_square_verification_unavailable");
+        assert.equal(body.retryable, true);
+        assert.equal(body.attempt, undefined, "no attempt, state or reason is offered as if it had been checked");
+        assert.equal(/nothing was charged|failed|cancel/i.test(body.message.replace(/has not been changed or cancelled/i, "")), false);
+        assert.match(body.message, /do not pay again/i);
+        assert.equal(JSON.stringify(body).includes(s.connection.accessToken), false);
+        assert.equal(/square_unreachable|merchant|location|PAYMENT_/i.test(JSON.stringify(body)), false);
+      }
+      const unchanged = await h.attempt(created.attempt.id);
+      assert.equal(unchanged.state, "pending", "the attempt is preserved, not failed or cancelled");
+      assert.ok(unchanged.checkout_url, "its link is intact");
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+
+      // Unavailable PROVIDER CREDENTIALS are the same explicit answer
+      h.fake.state.evidenceFailure = undefined;
+      await h.dropConnection(s.providerId);
+      const noCredential = await status(s.customerId);
+      assert.equal(noCredential.status, 503);
+      assert.equal((await noCredential.json()).code, "catering_square_verification_unavailable");
+      assert.equal((await h.attempt(created.attempt.id)).state, "pending");
+      // a second checkout is still refused while the first is unresolved (the open attempt is reused, never duplicated)
+      const again = await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId));
+      assert.ok([200, 202, 409].includes(again.status));
+      assert.equal((await h.attempts(s.bookingId)).length, rowsBefore);
+      assert.equal(h.fake.requests.filter((r) => r.method === "POST" && r.path === "/v2/online-checkout/payment-links").length, createsBefore);
+
+      // Authentication still applies, and a provider's read neither asks Square nor reports unavailability
+      assert.equal((await fetch(statusUrl)).status, 401);
+      assert.equal((await status(await h.user("stranger"))).status, 404);
+      const provider = await status(s.providerId);
+      assert.equal(provider.status, 200);
+      assert.equal((await provider.json()).verification, "not_needed");
+    }, { ownLimiter: true });
+  });
+
+  test("PASS4: after Square recovers the retry settles the payment exactly once, concurrent checks included, and replays are idempotent", async () => {
+    await withApp(async ({ h, base }) => {
+      const s = await scene(h);
+      const created = await (await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId))).json();
+      const statusUrl = `${base}/api/catering/bookings/${s.bookingId}/billing/payment-attempts/${created.attempt.id}`;
+      const status = () => fetch(statusUrl, { headers: tok(s.customerId) });
+      h.fake.payOrder(h.fake.lastOrder()!.id);
+      h.fake.state.evidenceFailure = 503;
+      assert.equal((await status()).status, 503);
+      h.fake.state.evidenceFailure = undefined;
+      const responses = await Promise.all([status(), status(), status(), status()]);
+      for (const response of responses) assert.equal(response.status, 200);
+      const bodies = await Promise.all(responses.map((r) => r.json()));
+      assert.ok(bodies.every((b) => b.attempt.state === "completed" && b.verification === "checked"));
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit");
+      const replay = await (await status()).json();
+      assert.equal(replay.attempt.state, "completed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
     }, { ownLimiter: true });
   });
 

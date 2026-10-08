@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cateringBookingBillingKey, formatCateringMoney, type CateringBookingBillingView, type CateringInvoiceView } from "@shared/catering-booking-billing";
 import {
+  CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE,
   CATERING_SQUARE_COPY,
   cateringInvoicePayPath,
   cateringPaymentAttemptPath,
@@ -14,6 +15,8 @@ import {
   CATERING_ATTEMPT_LOOKUP_FAILED_COPY,
   CateringAttemptLookupError,
   CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY,
+  cateringLookupCountsAsSuccess,
+  cateringLookupIsVerificationUnavailable,
   cateringAttemptLookupStatus,
   cateringAttemptPollIdentity,
   cateringAttemptPollInterval,
@@ -164,9 +167,11 @@ function useAttemptPolling(bookingId: string, userId: string, attemptId: string 
         try { response = await fetch(cateringPaymentAttemptPath(bookingId, attemptId!), { credentials: "include" }); }
         catch { throw new CateringAttemptLookupError("This payment could not be checked right now.", null); }
         const body = await readJson(response);
-        if (!response.ok) throw new CateringAttemptLookupError("This payment could not be checked right now.", response.status);
+        // An explicit "Square could not be asked" is a FAILED check (counted, bounded), never a successful one: the attempt is unchanged and unverified.
+        if (!response.ok) throw new CateringAttemptLookupError("This payment could not be checked right now.", response.status, typeof body.code === "string" ? body.code : null);
         if (typeof body.attempt !== "object" || body.attempt === null) throw new CateringAttemptLookupError("This payment could not be checked right now.", null);
-        counter.succeeded();
+        // A throttled answer asked Square nothing: it is neither a success (it must not reset the count) nor a failure.
+        if (cateringLookupCountsAsSuccess(body.verification)) counter.succeeded();
         return body.attempt as CateringPaymentAttemptView;
       } catch (error) {
         counter.failed();
@@ -184,7 +189,7 @@ function useAttemptPolling(bookingId: string, userId: string, attemptId: string 
   // Judged AFTER the latest fetch: an error with a success since is no error at all (react-query clears `error` on success).
   const lookup = query.isError ? cateringAttemptLookupStatus({ error: query.error, consecutiveFailures: counter.count() }) : null;
   const recheck = () => { counter.reset(); void query.refetch(); };
-  return { attempt: query.data, failed: lookup === "terminal", exhausted: lookup === "exhausted", recheck };
+  return { attempt: query.data, failed: lookup === "terminal", exhausted: lookup === "exhausted", squareUnavailable: query.isError && cateringLookupIsVerificationUnavailable(query.error), recheck };
 }
 
 /**
@@ -201,7 +206,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
   const [dismissedIdentity, setDismissedIdentity] = useState<string | null>(null);
   const returned = cateringActiveReturnedAttempt({ search, userId, bookingId, dismissedIdentity });
   const refreshBilling = () => cache.invalidateQueries({ queryKey: cateringBookingBillingKey(userId, bookingId) });
-  const { attempt: polled, failed, exhausted, recheck } = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
+  const { attempt: polled, failed, exhausted, squareUnavailable, recheck } = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
   const money = (cents: number, currency: string) => formatCateringMoney(cents, currency);
 
   const dismiss = () => {
@@ -228,9 +233,9 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
         <p role="alert" className="break-words">{CATERING_ATTEMPT_LOOKUP_FAILED_COPY}</p>
         <Button variant="outline" className="mt-2 min-h-11" onClick={dismiss}>Dismiss</Button>
       </> : exhausted ? <>
-        <p role="alert" className="break-words">{CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY}</p>
+        <p role="alert" className="break-words">{squareUnavailable ? CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE : CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY}</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <Button className="min-h-11" onClick={recheck}>Check again</Button>
+          <Button className="min-h-11" onClick={recheck}>Retry status check</Button>
           <Button variant="outline" className="min-h-11" onClick={dismiss}>Dismiss</Button>
         </div>
       </> : polled ? <>

@@ -82,6 +82,9 @@ export const CATERING_ATTEMPT_UNAVAILABLE_CODE = "catering_square_unavailable";
 export const CATERING_ATTEMPT_PROVIDER_NOT_READY_CODE = "catering_square_provider_not_ready";
 export const CATERING_ATTEMPT_STATE_CODE = "catering_square_payment_state";
 /** A payment on this invoice is under review (Square confirmed money that could not be credited), so another checkout is refused until it is resolved. */
+/** The status check could not ask Square (outage, or the provider's connection is not usable right now). Retryable; says nothing about the payment. */
+export const CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE = "catering_square_verification_unavailable";
+export const CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE = "We could not check this payment with Square right now. Your payment has not been changed or cancelled. If you already paid, it will be applied once it can be confirmed. Please do not pay again.";
 export const CATERING_ATTEMPT_PAYMENT_REVIEW_CODE = "catering_square_payment_review";
 
 export const cateringSquarePaymentAttemptIdSchema = z.string().trim().min(1).max(64);

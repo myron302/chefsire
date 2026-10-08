@@ -939,7 +939,14 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
 
   type StatusResult =
     | { kind: "not_found" }
-    | { kind: "ok"; role: "provider" | "customer"; attempt: CateringAttemptWithPayments };
+    | { kind: "ok"; role: "provider" | "customer"; attempt: CateringAttemptWithPayments; verification: StatusVerification };
+
+  /**
+   * How fresh the answer is. `unavailable`: Square (or the provider's credential) could not be asked, so the attempt shown is UNVERIFIED and
+   * nothing may be concluded from it -- not that it is paid, and not that it failed. `throttled`: another check ran moments ago, this one did not
+   * ask. `checked`: Square was asked. `not_needed`: nothing to ask (provider read, or an attempt that already consumed its payment).
+   */
+  type StatusVerification = "checked" | "throttled" | "unavailable" | "not_needed";
 
   /**
    * A participant's view of one attempt. The CUSTOMER's read first asks Square (throttled), because a browser returning from
@@ -959,21 +966,28 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       if (!CONSUMED.includes(attempt!.state)) await sweepClosedLinks(attempt!.bookingId).catch(() => 0);
     };
     if (role === "provider") await sweepIfUnconfirmed();
+    let verification: StatusVerification = "not_needed";
     if (role === "customer" && !CONSUMED.includes(attempt.state)) {
+      verification = "throttled";
       const claimed = await db.update(cateringBookingPaymentAttempts).set({ lastCheckedAt: now() })
         .where(and(
           eq(cateringBookingPaymentAttempts.id, attempt.id),
           sql`(${cateringBookingPaymentAttempts.lastCheckedAt} IS NULL OR ${cateringBookingPaymentAttempts.lastCheckedAt} < ${new Date(now().getTime() - pollIntervalMs)})`,
         )).returning({ id: cateringBookingPaymentAttempts.id });
       if (claimed.length > 0) {
-        if (attempt.squareOrderId) await settleAttempt(attempt.id);
+        verification = "checked";
+        if (attempt.squareOrderId) {
+          // The outcome is NOT discarded: an `unavailable` settlement means nothing was verified, which must not read as a clean check.
+          const settled = await settleAttempt(attempt.id);
+          if (settled.outcome === "unavailable") verification = "unavailable";
+        }
         const refreshed = await attemptById(db, attempt.id);
         if (OPEN.includes(refreshed?.state ?? "")) await closeStaleOpenAttempts(attempt.bookingId);
         else await sweepIfUnconfirmed();
         attempt = (await attemptById(db, attempt.id)) ?? attempt;
       }
     }
-    return { kind: "ok", role, attempt: (await withPaymentEvidence(db, [attempt]))[0] };
+    return { kind: "ok", role, attempt: (await withPaymentEvidence(db, [attempt]))[0], verification };
   }
 
   /* --------------------------------------------------------------------------------------------------------- *
