@@ -81,6 +81,8 @@ export type CateringReconciliationReason = typeof CATERING_RECONCILIATION_REASON
 export const CATERING_ATTEMPT_UNAVAILABLE_CODE = "catering_square_unavailable";
 export const CATERING_ATTEMPT_PROVIDER_NOT_READY_CODE = "catering_square_provider_not_ready";
 export const CATERING_ATTEMPT_STATE_CODE = "catering_square_payment_state";
+/** A payment on this invoice is under review (Square confirmed money that could not be credited), so another checkout is refused until it is resolved. */
+export const CATERING_ATTEMPT_PAYMENT_REVIEW_CODE = "catering_square_payment_review";
 
 export const cateringSquarePaymentAttemptIdSchema = z.string().trim().min(1).max(64);
 
@@ -174,6 +176,8 @@ export const CATERING_SQUARE_COPY = {
   evidenceNotCredited: "Not credited to the Catering ledger",
   reconciliationNeutralHeadline: "Square payments require reconciliation",
   disclosure: "Card payments are made on Square and go directly to your caterer. ChefSire does not receive or hold this money.",
+  paymentReview: "A payment on this request is under review by your caterer. Please do not pay again: you will be told when it is sorted out.",
+  paymentReviewProvider: "A Square payment on this request needs your review, so the customer cannot start another checkout for it. Resolve it in your Square account and with your customer.",
   notReady: "This caterer cannot take Square payments right now. You can pay them directly instead.",
 } as const;
 

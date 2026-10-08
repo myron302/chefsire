@@ -31,13 +31,13 @@ if (!URL_ENV) {
 } else {
   const { createCateringSquarePaymentsRouter } = await import("./catering-square-payments");
 
-  async function withApp(fn: (ctx: { h: CateringSquareHarness; base: string; configured: { value: boolean } }) => Promise<void>) {
+  async function withApp(fn: (ctx: { h: CateringSquareHarness; base: string; configured: { value: boolean } }) => Promise<void>, options: { ownLimiter?: boolean } = {}) {
     const h = await createCateringSquareHarness(URL_ENV!);
     const configured = { value: true };
     const app = express();
     app.use(cookieParser());
     app.use(express.json({ verify: (req, _res, buf) => { (req as { rawBody?: string }).rawBody = buf.toString("utf8"); } }));
-    app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => (configured.value ? { signatureKey: WEBHOOK_KEY, notificationUrl: WEBHOOK_URL } : null) }));
+    app.use("/api/catering", createCateringSquarePaymentsRouter(h.payments, { webhookConfig: () => (configured.value ? { signatureKey: WEBHOOK_KEY, notificationUrl: WEBHOOK_URL } : null), ...(options.ownLimiter ? { payLimiter: (_req, _res, next) => next() } : {}) }));
     const server = app.listen(0);
     try { await fn({ h, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, configured }); }
     finally { server.close(); await h.cleanup(); }
@@ -108,6 +108,36 @@ if (!URL_ENV) {
       assert.equal(view.attempt.state, "creating");
       assert.equal(view.attempt.checkoutUrl, undefined);
     });
+  });
+
+  test("PASS2: POST pay answers 409 catering_square_payment_review for an invoice in payment review, creates nothing, and leaves unrelated invoices payable", async () => {
+    await withApp(async ({ h, base }) => {
+      const s = await scene(h);
+      const url = (i: number) => `${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[i]}/pay`;
+      const created = await post(url(0), tok(s.customerId));
+      assert.ok(created.status === 200 || created.status === 201);
+      const view = await created.json();
+      const row = await h.attempt(view.attempt.id);
+      h.fake.payOrder(row.square_order_id, { id: "HTTP_RV", total_money: { amount: 45000, currency: "USD" }, amount_money: { amount: 45000, currency: "USD" }, created_at: "2030-05-01T10:00:00Z", updated_at: "2030-05-01T10:00:00Z" });
+      assert.equal((await h.payments.settleAttempt(view.attempt.id)).outcome, "reconciliation_required");
+
+      const calls = h.fake.requests.length;
+      const rows = (await h.attempts(s.bookingId)).length;
+      const refused = await Promise.all(Array.from({ length: 2 }, () => post(url(0), tok(s.customerId))));
+      assert.equal((await post(url(0), tok(s.customerId), { amountCents: 1, state: "completed" })).status, 400, "a body that tries to name an amount or state is rejected outright");
+      for (const response of refused) {
+        const body = await response.json();
+        assert.equal(response.status, 409, JSON.stringify(body));
+        assert.equal(body.code, "catering_square_payment_review");
+        assert.match(body.message, /do not pay again/i);
+        assert.equal(JSON.stringify(body).includes("HTTP_RV"), false);
+      }
+      assert.equal(h.fake.requests.length, calls, "no Square call");
+      assert.equal((await h.attempts(s.bookingId)).length, rows, "no attempt row");
+      assert.equal((await post(url(0), tok(s.providerId))).status, 403, "the provider cannot start or bypass it");
+      const other = await post(url(1), tok(s.customerId));
+      assert.ok(other.status === 200 || other.status === 201, "the other invoice is still payable");
+    }, { ownLimiter: true });
   });
 
   test("GET status: the customer's check asks Square and credits only on confirmed evidence; the provider reads without triggering Square and sees the Square reference", async () => {

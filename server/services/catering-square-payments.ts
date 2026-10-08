@@ -21,6 +21,7 @@ import { cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import {
   CATERING_ATTEMPT_PROVIDER_NOT_READY_CODE,
   CATERING_ATTEMPT_STATE_CODE,
+  CATERING_ATTEMPT_PAYMENT_REVIEW_CODE,
   CATERING_ATTEMPT_UNAVAILABLE_CODE,
   CATERING_SQUARE_COPY,
   CATERING_SQUARE_CURRENCY,
@@ -223,6 +224,14 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         const code = decision.code === "booking_cancelled" ? CATERING_BILLING_NOT_AVAILABLE_CODE : CATERING_ATTEMPT_STATE_CODE;
         return { kind: "refused", status: 409, code, message: decision.message } as const;
       }
+      // MONEY MAY ALREADY HAVE MOVED for this invoice: an attempt in `reconciliation_required` means Square confirmed a payment the ledger could not take
+      // as a normal credit, while the invoice may still show something payable. Another checkout would invite a second payment, so it is refused here, under
+      // the same billing lock every settlement uses (a settlement that makes an attempt `reconciliation_required` either commits before this read, and is
+      // seen, or waits for this lock). Only THIS invoice is affected. There is no resolution workflow yet, so nothing clears this automatically: the
+      // closed checkout, a later read, or the passage of time never un-reviews a payment. No attempt row is written and Square is never called.
+      const [inReview] = await tx.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts)
+        .where(and(eq(cateringBookingPaymentAttempts.invoiceId, input.invoiceId), eq(cateringBookingPaymentAttempts.state, "reconciliation_required"))).limit(1);
+      if (inReview) return { kind: "refused", status: 409, code: CATERING_ATTEMPT_PAYMENT_REVIEW_CODE, message: CATERING_SQUARE_COPY.paymentReview } as const;
       const wanted = { amountCents: decision.amountCents, currency: decision.currency, merchantId: credentials.merchantId, locationId: credentials.locationId };
 
       const open = await tx.select().from(cateringBookingPaymentAttempts)

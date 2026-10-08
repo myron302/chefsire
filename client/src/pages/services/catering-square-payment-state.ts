@@ -74,6 +74,11 @@ export function cateringOpenAttemptFor(attempts: readonly CateringPaymentAttempt
   return attempts.find((attempt) => attempt.invoiceId === invoiceId && cateringAttemptIsOpen(attempt.state));
 }
 
+/** Whether a payment on this invoice is under review (Square confirmed money the ledger could not credit): another checkout is refused by the server until it is resolved. */
+export function cateringInvoicePaymentInReview(attempts: readonly CateringPaymentAttemptView[], invoiceId: string): boolean {
+  return attempts.some((attempt) => attempt.invoiceId === invoiceId && attempt.state === "reconciliation_required");
+}
+
 /**
  * Whether the customer is offered "Pay securely with Square" on this invoice.
  *
@@ -89,6 +94,8 @@ export function cateringSquarePayAvailable(input: {
   if (input.role !== "customer") return false;
   if (!input.billing.squareCheckout.enabled || input.billing.bookingStatus === "cancelled") return false;
   if (input.invoice.status !== "issued" || input.invoice.currency !== "USD" || input.invoice.payableCents <= 0) return false;
+  // A payment under review blocks another checkout (the server refuses it too; this only avoids offering what will be refused).
+  if (cateringInvoicePaymentInReview(input.billing.paymentAttempts, input.invoice.id)) return false;
   return cateringOpenAttemptFor(input.billing.paymentAttempts, input.invoice.id) === undefined;
 }
 

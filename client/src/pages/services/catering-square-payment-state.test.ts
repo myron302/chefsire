@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CateringPaymentAttemptView } from "@shared/catering-square-payments";
+import { CATERING_SQUARE_COPY, type CateringPaymentAttemptView } from "@shared/catering-square-payments";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,7 @@ import {
   cateringSquareDisplay,
   cateringSquarePayAvailable,
   cateringSquareReconciliationCopy,
+  cateringInvoicePaymentInReview,
 } from "./catering-square-payment-state";
 
 const attempt = (overrides: Partial<CateringPaymentAttemptView> = {}): CateringPaymentAttemptView => ({
@@ -554,4 +555,22 @@ test("a completed attempt with an unresolved refund review is never presented as
   assert.equal(customer.phase, "confirmed", "the payment itself is still confirmed: only the wording is qualified");
   assert.match(CATERING_SQUARE_COPY.returnReviewNoticeCustomer, /may not be fully settled/);
   assert.match(CATERING_SQUARE_COPY.returnReviewNoticeProvider, /NOT changed/);
+});
+
+test("PASS2: an invoice with a reconciliation_required attempt offers no Pay (even with no open checkout); other invoices stay payable; the server stays authoritative", () => {
+  const reviewed = attempt({ id: "r", state: "reconciliation_required" });
+  assert.equal(cateringInvoicePaymentInReview([reviewed], "inv-1"), true);
+  assert.equal(cateringInvoicePaymentInReview([reviewed], "inv-2"), false);
+  assert.equal(cateringInvoicePaymentInReview([attempt({ state: "completed" })], "inv-1"), false);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [reviewed] }), invoice }), false);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [reviewed, attempt({ id: "x", state: "cancelled" })] }), invoice }), false);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [reviewed] }), invoice: { ...invoice, id: "inv-2" } }), true);
+});
+
+test("PASS2: the component shows payment-review messaging instead of the Pay button, and never tells the customer to pay again", () => {
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const source = fs.readFileSync(path.join(dir, "../../components/catering/BookingSquarePayments.tsx"), "utf8");
+  assert.match(source, /cateringInvoicePaymentInReview/);
+  assert.match(source, /CATERING_SQUARE_COPY\.paymentReview/);
+  assert.match(CATERING_SQUARE_COPY.paymentReview, /do not pay again/i);
 });

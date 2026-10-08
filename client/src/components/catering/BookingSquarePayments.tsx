@@ -23,6 +23,7 @@ import {
   cateringCheckoutIdentity,
   cateringCheckoutRedirectTarget,
   createCheckoutRetryScheduler,
+  cateringInvoicePaymentInReview,
   cateringOpenAttemptFor,
   cateringProviderVisibleAttempts,
   cateringActiveReturnedAttempt,
@@ -117,6 +118,10 @@ export function InvoiceSquarePayment({ bookingId, userId, billing, invoice }: { 
   const pressPay = () => { retries.current = 0; setCreating(true); setMessage(null); start.mutate({ identity, userId, bookingId, invoiceId: invoice.id }); };
 
   if (billing.role !== "customer") return null;
+  // A payment under review: no Pay button, and the customer is told NOT to pay again. The server refuses another checkout regardless.
+  if (cateringInvoicePaymentInReview(billing.paymentAttempts, invoice.id)) {
+    return <div className="mt-3 space-y-2 rounded-md border border-dashed p-3" aria-live="polite"><p role="status" className="break-words text-sm">{CATERING_SQUARE_COPY.paymentReview}</p></div>;
+  }
   if (!available && !open) return null;
   const display = open ? cateringSquareDisplay(open, "customer") : null;
   const url = cateringSafeCheckoutUrl(open?.checkoutUrl);
@@ -248,6 +253,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
           </div>
           <p className="mt-1 break-words text-sm text-muted-foreground">{display.label}</p>
           {attempt.state === "reconciliation_required" && <p className="mt-1 break-words text-sm">{cateringSquareReconciliationCopy(attempt.reconciliationReason, "provider")}</p>}
+          {attempt.state === "reconciliation_required" && <p className="mt-1 break-words text-sm">{CATERING_SQUARE_COPY.paymentReviewProvider}</p>}
           {attempt.squarePaymentId && !attempt.processorPayments?.length && <p className="mt-1 break-all text-xs text-muted-foreground">Square payment reference: {attempt.squarePaymentId}</p>}
           {attempt.processorPayments && attempt.processorPayments.length > 0 && <div className="mt-2 space-y-1" aria-label="Completed Square payments">
             <p className="text-xs font-medium">{attempt.processorPayments.length === 1 ? "Square payment" : `${attempt.processorPayments.length} completed Square payments`}</p>
