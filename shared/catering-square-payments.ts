@@ -85,6 +85,19 @@ export const CATERING_ATTEMPT_STATE_CODE = "catering_square_payment_state";
 /** The status check could not ask Square (outage, or the provider's connection is not usable right now). Retryable; says nothing about the payment. */
 export const CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE = "catering_square_verification_unavailable";
 export const CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE = "We could not check this payment with Square right now. Your payment has not been changed or cancelled. If you already paid, it will be applied once it can be confirmed. Please do not pay again.";
+/**
+ * How long ChefSire will keep offering ONE Square payment link. Square's own statements conflict (a staff-reviewed forum answer gives 180 days or one
+ * payment for hosted checkout pages; other staff and community answers say links made with CreatePaymentLink last until paid or deleted), so ChefSire
+ * does not rely on Square to expire a link: past this age the link is retired by ChefSire, and only after fresh Square evidence, deletion and a second
+ * read show no payment. Measured from the persisted moment Square returned the link (`square_create_resolved_at`, else the attempt's `created_at`).
+ */
+export const CATERING_SQUARE_CHECKOUT_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
+export function cateringCheckoutPastExpiry(attempt: { state: string; squareCreateResolvedAt?: Date | string | null; createdAt: Date | string }, at: Date, maxAgeMs: number = CATERING_SQUARE_CHECKOUT_MAX_AGE_MS): boolean {
+  if (attempt.state !== "pending") return false;
+  const started = new Date(attempt.squareCreateResolvedAt ?? attempt.createdAt).getTime();
+  return Number.isFinite(started) && at.getTime() - started >= maxAgeMs;
+}
+export const CATERING_ATTEMPT_CHECKOUT_VERIFYING_CODE = "catering_square_checkout_verifying";
 export const CATERING_ATTEMPT_PAYMENT_REVIEW_CODE = "catering_square_payment_review";
 
 export const cateringSquarePaymentAttemptIdSchema = z.string().trim().min(1).max(64);
@@ -181,6 +194,8 @@ export const CATERING_SQUARE_COPY = {
   reconciliationNeutralHeadline: "Square payments require reconciliation",
   disclosure: "Card payments are made on Square and go directly to your caterer. ChefSire does not receive or hold this money.",
   paymentReview: "Your Square payment needs additional review. Your caterer has been notified. Please do not make another payment until the review is complete.",
+  expired: "This Square payment link has expired. You can start a new checkout. If you already paid on it, do not pay again: your caterer will confirm it.",
+  checkoutVerifying: "We are still confirming your earlier Square checkout. Please do not pay again yet; try again in a moment.",
   paymentReviewProvider: "A Square payment on this request needs your review, so the customer cannot start another checkout for it. Resolve it in your Square account and with your customer.",
   notReady: "This caterer cannot take Square payments right now. You can pay them directly instead.",
 } as const;

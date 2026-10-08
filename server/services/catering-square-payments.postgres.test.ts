@@ -2776,4 +2776,235 @@ if (!URL_ENV) {
       });
     });
   }
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 5: Square payment links past their lifetime are retired safely before a replacement
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const DAY = 24 * 60 * 60 * 1000;
+  const T0 = new Date("2030-01-01T00:00:00Z");
+  const MAX_AGE = 180 * DAY;
+  const p5Creates = (h: CateringSquareHarness) => h.fake.requests.filter((request) => request.method === "POST" && request.path === "/v2/online-checkout/payment-links").length;
+  const p5Deletes = (h: CateringSquareHarness) => h.fake.requests.filter((request) => request.method === "DELETE").length;
+  /** An open checkout created at T0 on the deterministic clock. */
+  async function p5Open(h: CateringSquareHarness, s: Scene, index = 0) { h.setClock(T0); return open(h, s, index); }
+
+  test("PASS5: a checkout younger than the lifetime is reused: same attempt, no Square call, no delete", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE - 1));
+      const calls = squareCalls(h).length;
+      const again = await pay(h, s);
+      assert.equal(again.kind, "ok");
+      if (again.kind === "ok") assert.equal(again.attempt.id, old.id);
+      assert.equal(squareCalls(h).length, calls, "no checkout, order or payment call (credential checks aside)");
+      assert.equal(p5Deletes(h), 0);
+      assert.equal((await h.attempt(old.id)).state, "pending");
+    });
+  });
+
+  for (const [name, offset] of [["exactly at", 0], ["beyond", 20 * DAY]] as const) {
+    test(`PASS5: a checkout ${name} the lifetime is verified, retired as expired, its link removed, and exactly one replacement is created`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const old = await p5Open(h, s);
+        const oldRow = await h.attempt(old.id);
+        h.setClock(new Date(T0.getTime() + MAX_AGE + offset));
+        const replacement = await pay(h, s);
+        assert.equal(replacement.kind, "ok");
+        if (replacement.kind !== "ok") throw new Error("not ok");
+        assert.notEqual(replacement.attempt.id, old.id);
+        assert.equal(replacement.attempt.state, "pending");
+        assert.notEqual(replacement.attempt.checkoutUrl, oldRow.checkout_url, "never the dead link");
+        const retired = await h.attempt(old.id);
+        assert.equal(retired.state, "expired");
+        assert.ok(retired.expiry_verified_at, "verified after the link was removed");
+        assert.ok(retired.square_link_closed_at, "link removal confirmed");
+        assert.equal(h.fake.links.get(oldRow.square_payment_link_id)!.deleted, true);
+        assert.equal((await h.attempts(s.bookingId)).length, 2);
+        assert.equal(p5Creates(h), 2);
+        assert.equal((await h.ledger(s.bookingId)).length, 0);
+        // replay: the replacement is reused, nothing more is created or deleted
+        const deletes = p5Deletes(h);
+        const replay = await pay(h, s);
+        assert.equal(replay.kind === "ok" && replay.attempt.id, replacement.attempt.id);
+        assert.equal(p5Creates(h), 2);
+        assert.equal(p5Deletes(h), deletes);
+      });
+    });
+  }
+
+  test("PASS5: an old link that was already PAID is credited, not expired, and no replacement is created", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.fake.payOrder(old.squareOrderId!, { id: "EX_PAID", created_at: "2030-01-02T00:00:00Z", updated_at: "2030-01-02T00:00:00Z" });
+      h.setClock(new Date(T0.getTime() + MAX_AGE + DAY));
+      const result = await pay(h, s);
+      assert.equal(result.kind, "refused", "the invoice is paid: nothing new to pay");
+      assert.equal((await h.attempt(old.id)).state, "completed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS5: a link Square reports cancelled is closed as cancelled (no payment) and replaced once", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.fake.orders.get(old.squareOrderId!)!.state = "CANCELED";
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const replacement = await pay(h, s);
+      assert.equal(replacement.kind, "ok");
+      assert.equal((await h.attempt(old.id)).state, "cancelled");
+      assert.equal((await h.attempts(s.bookingId)).length, 2);
+    });
+  });
+
+  test("PASS5: payment still PROCESSING or unattributable on an old link fails closed: nothing expired, deleted or created", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.fake.payOrder(old.squareOrderId!, { id: "EX_PROC", status: "APPROVED", created_at: "2030-01-02T00:00:00Z", updated_at: "2030-01-02T00:00:00Z" });
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const deletes = p5Deletes(h);
+      const result = await pay(h, s);
+      assert.equal(result.kind, "refused");
+      if (result.kind === "refused") { assert.equal(result.status, 503); assert.equal(result.code, "catering_square_verification_unavailable"); assert.match(result.message, /do not pay again/i); }
+      assert.equal((await h.attempt(old.id)).state, "pending", "age alone never expires an attempt");
+      assert.equal(p5Deletes(h), deletes);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS5: a Square outage during verification fails closed; recovery then retires and replaces exactly once", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      h.fake.state.evidenceFailure = 503;
+      for (let i = 0; i < 3; i += 1) {
+        const result = await pay(h, s);
+        assert.equal(result.kind === "refused" && result.status, 503);
+      }
+      assert.equal((await h.attempt(old.id)).state, "pending");
+      assert.equal(p5Creates(h), 1);
+      assert.equal(p5Deletes(h), 0);
+      h.fake.state.evidenceFailure = undefined;
+      assert.equal((await pay(h, s)).kind, "ok");
+      assert.equal((await h.attempt(old.id)).state, "expired");
+      assert.equal((await h.attempts(s.bookingId)).length, 2);
+      assert.equal(p5Creates(h), 2);
+    });
+  });
+
+  test("PASS5: if the old link cannot be removed the expired attempt stays UNVERIFIED and no replacement is created; once removable it is verified and replaced", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      h.fake.state.linkDeleteFailure = 500;
+      const blocked = await pay(h, s);
+      assert.equal(blocked.kind === "refused" && blocked.status, 503);
+      const mid = await h.attempt(old.id);
+      assert.equal(mid.state, "expired");
+      assert.equal(mid.expiry_verified_at, null);
+      assert.equal(mid.square_link_closed_at, null);
+      assert.equal(p5Creates(h), 1);
+      const again = await pay(h, s);
+      assert.equal(again.kind === "refused" && again.status, 503, "still no replacement while unverified");
+      h.fake.state.linkDeleteFailure = undefined;
+      assert.equal((await pay(h, s)).kind, "ok");
+      assert.ok((await h.attempt(old.id)).expiry_verified_at);
+      assert.equal(p5Creates(h), 2);
+    });
+  });
+
+  test("PASS5: an unverified expired attempt, as left by a concurrent request, is never silently superseded: the locked check refuses and makes no Square call", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'expired', closed_at = now(), square_link_closed_at = NULL WHERE id = $1`, [old.id]);
+      h.fake.state.linkDeleteFailure = 500;
+      const calls = p5Creates(h);
+      const result = await pay(h, s);
+      assert.equal(result.kind === "refused" && result.status, 503);
+      assert.equal(p5Creates(h), calls);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+    });
+  });
+
+  test("PASS5: a provider credential that is unavailable or gone blocks everything: no verification claim, no replacement", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      await h.dropConnection(s.providerId);
+      const result = await pay(h, s);
+      assert.equal(result.kind, "refused");
+      assert.equal((await h.attempt(old.id)).state, "pending");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS5: an unresolved reconciliation still blocks the invoice at and beyond the lifetime", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await intoReview(h, s, "amount_mismatch");
+      h.setClock(new Date(T0.getTime() + MAX_AGE + 5 * DAY));
+      assert.deepEqual(await pay(h, s), reviewRefusal);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+    });
+  });
+
+  test("PASS5: concurrent pay requests at the boundary produce exactly one replacement, one retirement, no extra rows and no ledger credit", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const results = await Promise.all(Array.from({ length: 6 }, () => pay(h, s)));
+      for (const result of results) assert.ok(result.kind === "ok" || (result.kind === "refused" && ["catering_square_checkout_verifying", "catering_square_verification_unavailable"].includes(result.code)), JSON.stringify(result));
+      // whichever requests were told to retry, one more request settles it
+      const final = await pay(h, s);
+      assert.equal(final.kind, "ok");
+      const rows = await h.attempts(s.bookingId);
+      assert.equal(rows.length, 2);
+      assert.equal(rows.filter((row) => row.state === "pending").length, 1);
+      assert.equal((await h.attempt(old.id)).state, "expired");
+      assert.equal(p5Creates(h), 2);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+  });
+
+  test("PASS5: a payment, webhook and poll racing the retirement end with one credit, no replacement and no duplicate", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.fake.payOrder(old.squareOrderId!, { id: "EX_RACE", created_at: "2030-01-02T00:00:00Z", updated_at: "2030-01-02T00:00:00Z" });
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      await Promise.all([pay(h, s), hook(h, s, old, "evt-ex-1", "EX_RACE"), h.payments.settleAttempt(old.id), pay(h, s)]);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit");
+      assert.equal((await h.attempt(old.id)).state, "completed");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS5: other invoices are unaffected, and an expired attempt keeps its record (never rewritten into a different state)", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s, 0);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      assert.equal((await pay(h, s, 1)).kind, "ok", "an invoice with no old checkout simply gets one");
+      assert.equal((await h.attempt(old.id)).state, "pending", "retiring is per invoice");
+      assert.equal((await pay(h, s, 0)).kind, "ok");
+      const row = await h.attempt(old.id);
+      assert.equal(row.state, "expired");
+      assert.ok(row.square_order_id && row.square_payment_link_id && row.amount_cents, "the historical record is preserved");
+    });
+  });
 }

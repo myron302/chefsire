@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, CATERING_SQUARE_COPY, CATERING_SQUARE_NOTIFICATIONS, CATERING_SQUARE_RECONCILIATION_COPY, CATERING_RECONCILIATION_REASONS, type CateringPaymentAttemptView } from "@shared/catering-square-payments";
+import { CATERING_SQUARE_CHECKOUT_MAX_AGE_MS, cateringCheckoutPastExpiry, CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, CATERING_SQUARE_COPY, CATERING_SQUARE_NOTIFICATIONS, CATERING_SQUARE_RECONCILIATION_COPY, CATERING_RECONCILIATION_REASONS, type CateringPaymentAttemptView } from "@shared/catering-square-payments";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -659,4 +659,29 @@ test("PASS4: the panel offers Retry status check and Dismiss when exhausted, use
   assert.equal(/nothing was charged/i.test(CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE), false);
   assert.match(CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, /do not pay again/i);
   assert.match(CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, /has not been changed or cancelled/i);
+});
+
+test("PASS5: the lifetime boundary is deterministic: pending only, measured from the persisted link time, inclusive at the boundary", () => {
+  const start = new Date("2030-01-01T00:00:00Z");
+  const row = { state: "pending", squareCreateResolvedAt: start, createdAt: new Date("2020-01-01T00:00:00Z") };
+  assert.equal(CATERING_SQUARE_CHECKOUT_MAX_AGE_MS, 180 * 24 * 60 * 60 * 1000);
+  assert.equal(cateringCheckoutPastExpiry(row, new Date(start.getTime() + CATERING_SQUARE_CHECKOUT_MAX_AGE_MS - 1)), false);
+  assert.equal(cateringCheckoutPastExpiry(row, new Date(start.getTime() + CATERING_SQUARE_CHECKOUT_MAX_AGE_MS)), true);
+  assert.equal(cateringCheckoutPastExpiry({ ...row, squareCreateResolvedAt: null, createdAt: start }, new Date(start.getTime() + CATERING_SQUARE_CHECKOUT_MAX_AGE_MS)), true, "falls back to created_at");
+  for (const state of ["creating", "completed", "expired", "cancelled", "reconciliation_required"]) assert.equal(cateringCheckoutPastExpiry({ ...row, state }, new Date(start.getTime() + 2 * CATERING_SQUARE_CHECKOUT_MAX_AGE_MS)), false, state);
+  assert.equal(cateringCheckoutPastExpiry({ ...row, squareCreateResolvedAt: "garbage", createdAt: "garbage" }, new Date()), false, "an unreadable time never expires anything");
+});
+
+test("PASS5: an expired checkout is explained to the customer without claiming nothing was charged, never shows a link, and a new checkout is offered", () => {
+  const display = cateringSquareDisplay(attempt({ state: "expired", checkoutUrl: "https://square.link/u/dead" }), "customer");
+  assert.equal(display.label, CATERING_SQUARE_COPY.expired);
+  assert.equal(display.canContinue, false, "a dead link is never offered");
+  assert.equal(display.polling, false);
+  assert.match(CATERING_SQUARE_COPY.expired, /expired/i);
+  assert.match(CATERING_SQUARE_COPY.expired, /do not pay again/i);
+  assert.equal(/nothing was charged/i.test(CATERING_SQUARE_COPY.expired + CATERING_SQUARE_COPY.checkoutVerifying), false);
+  assert.match(CATERING_SQUARE_COPY.checkoutVerifying, /do not pay again/i);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [attempt({ state: "expired" })] }), invoice }), true, "a new checkout may be started once the old one is expired");
+  const billingRoute = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../server/routes/catering-booking-billing.ts"), "utf8");
+  assert.match(billingRoute, /cateringCheckoutPastExpiry\(row, new Date\(\)\)/, "the customer's billing view does not carry a link past its lifetime");
 });

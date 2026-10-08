@@ -30,7 +30,8 @@ export function cateringSquareDisplay(attempt: Pick<CateringPaymentAttemptView, 
     case "completed": return { phase: "confirmed", label: attempt.refundReview ? (role === "customer" ? CATERING_SQUARE_COPY.completedRefundReviewCustomer : CATERING_SQUARE_COPY.completedRefundReviewProvider) : CATERING_SQUARE_COPY.completed, polling: false, canContinue: false };
     case "reconciliation_required": return { phase: "reconciliation", label: role === "customer" ? CATERING_SQUARE_COPY.reconciliation : attempt.ledgerCredited ? CATERING_SQUARE_COPY.reconciliationProviderPartlyCredited : CATERING_SQUARE_COPY.reconciliationProviderNothingCredited, polling: false, canContinue: false };
     case "failed": return { phase: "failed", label: CATERING_SQUARE_COPY.failed, polling: false, canContinue: false };
-    // expired, cancelled and superseded are all a checkout that was closed before any money moved.
+    case "expired": return { phase: "closed", label: CATERING_SQUARE_COPY.expired, polling: false, canContinue: false };
+    // cancelled and superseded are all a checkout that was closed before any money moved.
     default: return { phase: "closed", label: CATERING_SQUARE_COPY.closed, polling: false, canContinue: false };
   }
 }

@@ -22,6 +22,11 @@ import {
   CATERING_ATTEMPT_PROVIDER_NOT_READY_CODE,
   CATERING_ATTEMPT_STATE_CODE,
   CATERING_ATTEMPT_PAYMENT_REVIEW_CODE,
+  CATERING_ATTEMPT_CHECKOUT_VERIFYING_CODE,
+  CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE,
+  CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE,
+  CATERING_SQUARE_CHECKOUT_MAX_AGE_MS,
+  cateringCheckoutPastExpiry,
   CATERING_ATTEMPT_UNAVAILABLE_CODE,
   CATERING_SQUARE_COPY,
   CATERING_SQUARE_CURRENCY,
@@ -98,6 +103,8 @@ export type CateringSquarePaymentsDeps = {
   appBaseUrl?: () => string | null;
   /** Minimum gap between two status-triggered Square reads of one attempt. */
   pollIntervalMs?: number;
+  /** How long one Square payment link is offered before ChefSire retires it (see CATERING_SQUARE_CHECKOUT_MAX_AGE_MS). Tests inject a short one. */
+  checkoutMaxAgeMs?: number;
   log?: CateringSquareLogger;
   notify?: (userId: string, notification: { type: string; title: string; message: string; linkUrl: string }) => Promise<void>;
 };
@@ -152,6 +159,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
   const sandboxReady = deps.sandboxReady ?? (deps.enabled ?? cateringSquareSandboxReady);
   const log: CateringSquareLogger = deps.log ?? { warn: (event, fields) => console.warn(JSON.stringify({ event, ...fields })) };
   const pollIntervalMs = deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+  const checkoutMaxAgeMs = deps.checkoutMaxAgeMs ?? CATERING_SQUARE_CHECKOUT_MAX_AGE_MS;
   const appBaseUrl = deps.appBaseUrl ?? (() => (process.env.APP_BASE_URL?.trim() || process.env.CLIENT_URL?.trim() || null));
   const notify = deps.notify ?? (async (userId, notification) => {
     await db.insert(notifications).values({ userId, type: notification.type, title: notification.title, message: notification.message, linkUrl: notification.linkUrl }).catch(() => undefined);
@@ -210,6 +218,11 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       return { kind: "refused", status: 409, code: CATERING_ATTEMPT_PROVIDER_NOT_READY_CODE, message: CATERING_SQUARE_COPY.notReady };
     }
 
+    // A link past its lifetime is never reused. It is retired FIRST, outside the billing lock (it calls Square), and only after fresh Square
+    // evidence, link removal and a second read all show no payment; if that cannot be established, nothing new is created.
+    const retired = await retireExpiredCheckouts(input.invoiceId, booking.id);
+    if (retired === "unavailable") return { kind: "refused", status: 503, code: CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE, message: CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE };
+
     const prepared = await db.transaction(async (tx: Executor) => {
       await lockCateringBilling(tx, booking.id);
       const locked = await lockedBooking(tx, booking.id);
@@ -236,6 +249,14 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
 
       const open = await tx.select().from(cateringBookingPaymentAttempts)
         .where(and(eq(cateringBookingPaymentAttempts.invoiceId, input.invoiceId), inArray(cateringBookingPaymentAttempts.state, [...OPEN])));
+      // Re-judged under the lock: an open link that reached its lifetime since the retirement step, or an expired checkout that no request has yet
+      // verified (a concurrent request is mid-way), is never reused and never silently superseded. The caller is told to try again, and no Square call is made.
+      const unverifiedExpired = await tx.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts)
+        .where(and(eq(cateringBookingPaymentAttempts.invoiceId, input.invoiceId), eq(cateringBookingPaymentAttempts.state, "expired"),
+          sql`${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL AND ${cateringBookingPaymentAttempts.expiryVerifiedAt} IS NULL`)).limit(1);
+      if (unverifiedExpired.length > 0 || open.some((attempt: CateringBookingPaymentAttempt) => cateringCheckoutPastExpiry(attempt, now(), checkoutMaxAgeMs))) {
+        return { kind: "refused", status: 409, code: CATERING_ATTEMPT_CHECKOUT_VERIFYING_CODE, message: CATERING_SQUARE_COPY.checkoutVerifying } as const;
+      }
       const compatible = open.find((attempt: CateringBookingPaymentAttempt) => attempt.customerId === input.userId && cateringAttemptMatches(attempt, wanted));
       if (compatible) return { kind: "ok", attempt: compatible as CateringBookingPaymentAttempt, reused: true, superseded: [] } as const;
 
@@ -488,6 +509,53 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * Webhook, poll and retry all converge here. Reads FRESH Square state with the provider's credential, judges it against the
    * attempt, and writes the outcome in one transaction. Idempotent and safe to run concurrently with itself.
    */
+  /**
+   * Retires this invoice's Square checkouts whose link is past its lifetime, so the invoice can get a replacement. Returns `unavailable` (FAIL CLOSED:
+   * create nothing) whenever "no payment was made" cannot be established from Square itself; anything else (retired, or a payment that now blocks or
+   * changes the invoice) lets the caller's own locked re-check decide.
+   *
+   * For each candidate (a `pending` attempt past its lifetime, or an `expired` one not yet verified):
+   *  1. fresh Square evidence via the one settlement function. A payment is recorded or reconciled there; money that is processing, or evidence that
+   *     cannot be read or attributed, stops everything. Age alone never expires an attempt.
+   *  2. only if Square shows the order open with no payment, the attempt becomes `expired` (conditional on still being `pending`);
+   *  3. its Square link is deleted (forced, confirmed by Square: deleted or already gone) -- deletion is NOT taken as proof that no money moved;
+   *  4. fresh evidence is read AGAIN. Only then is `expiry_verified_at` set, which is what permits a replacement.
+   * Idempotent and safe to run concurrently: every step is conditional, and each request that reaches step 4 does its own read.
+   */
+  async function retireExpiredCheckouts(invoiceId: string, bookingId: string): Promise<"clear" | "unavailable"> {
+    const at = now();
+    const candidates = (await db.select().from(cateringBookingPaymentAttempts).where(and(
+      eq(cateringBookingPaymentAttempts.invoiceId, invoiceId),
+      sql`(${cateringBookingPaymentAttempts.state} = 'pending' OR (${cateringBookingPaymentAttempts.state} = 'expired' AND ${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL AND ${cateringBookingPaymentAttempts.expiryVerifiedAt} IS NULL))`,
+    ))) as CateringBookingPaymentAttempt[];
+    const due = candidates.filter((attempt) => attempt.state === "expired" || cateringCheckoutPastExpiry(attempt, at, checkoutMaxAgeMs));
+    for (const candidate of due) {
+      if (candidate.state === "pending") {
+        const first = await settleAttempt(candidate.id);
+        if (first.outcome === "completed" || first.outcome === "reconciliation_required" || first.outcome === "refund_review_required" || first.outcome === "already_settled") continue;
+        if (first.outcome === "cancelled") continue; // Square closed it with no payment: the ordinary cancelled path owns it from here
+        if (first.outcome !== "awaiting") return "unavailable";
+        await db.transaction(async (tx: Executor) => {
+          await lockCateringBilling(tx, bookingId);
+          await tx.update(cateringBookingPaymentAttempts).set({ state: "expired", closedAt: now(), updatedAt: now() })
+            .where(and(eq(cateringBookingPaymentAttempts.id, candidate.id), eq(cateringBookingPaymentAttempts.state, "pending")));
+        });
+      }
+      // From here the attempt is `expired`; its link must be confirmed gone, then Square read once more.
+      await sweepClosedLinks(bookingId, { force: true });
+      const current = await attemptById(db, candidate.id);
+      if (!current || current.state !== "expired") continue; // settled meanwhile by someone else; the locked re-check decides
+      if (current.squarePaymentLinkId && !current.squareLinkClosedAt) return "unavailable";
+      const second = await settleAttempt(candidate.id);
+      if (second.outcome === "completed" || second.outcome === "reconciliation_required" || second.outcome === "refund_review_required") continue;
+      // `cancelled` here means Square reports the order closed (its link was just removed) with no payment; `awaiting` means open, none.
+      if (second.outcome !== "awaiting" && second.outcome !== "cancelled" && second.outcome !== "already_settled") return "unavailable";
+      await db.update(cateringBookingPaymentAttempts).set({ expiryVerifiedAt: now(), updatedAt: now() })
+        .where(and(eq(cateringBookingPaymentAttempts.id, candidate.id), eq(cateringBookingPaymentAttempts.state, "expired"), sql`${cateringBookingPaymentAttempts.expiryVerifiedAt} IS NULL`));
+    }
+    return "clear";
+  }
+
   async function settleAttempt(attemptId: string): Promise<SettleOutcome> {
     const first = await attemptById(db, attemptId);
     if (!first) return { outcome: "not_found" };
