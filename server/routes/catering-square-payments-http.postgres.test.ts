@@ -205,7 +205,8 @@ if (!URL_ENV) {
       const responses = await Promise.all([status(), status(), status(), status()]);
       for (const response of responses) assert.equal(response.status, 200);
       const bodies = await Promise.all(responses.map((r) => r.json()));
-      assert.ok(bodies.every((b) => b.attempt.state === "completed" && b.verification === "checked"));
+      assert.ok(bodies.every((b) => ["checked", "not_needed", "throttled"].includes(b.verification) && ["pending", "completed"].includes(b.attempt.state)), "a read racing the settling one may still see pending, never anything else");
+      assert.ok(bodies.some((b) => b.attempt.state === "completed"), "and the settling one reports completed");
       assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit");
       const replay = await (await status()).json();
       assert.equal(replay.attempt.state, "completed");

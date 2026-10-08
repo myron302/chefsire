@@ -4,6 +4,7 @@ import {
   cateringAttemptSquarePayments,
   cateringBookingActivity,
   cateringBookingBilling,
+  cateringBookingInvoices,
   cateringBookingPaymentAttempts,
   cateringBookingPayments,
   cateringBookings,
@@ -211,6 +212,11 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     if (!booking) return { kind: "not_found" };
     // CUSTOMER ONLY. The role comes from the persisted booking, never from the request, so a provider cannot pay as the customer.
     if (cateringWorkspaceRole(booking, input.userId) !== "customer") return { kind: "forbidden" };
+    // The invoice must belong to THIS booking before anything else happens (no credential lookup, no Square call, no write): retirement may call Square and change attempts, and a
+    // customer who owns booking A must not be able to steer it at booking B's invoice. A foreign or unknown invoice is indistinguishable from none.
+    const [invoiceOnBooking] = await db.select({ id: cateringBookingInvoices.id }).from(cateringBookingInvoices)
+      .where(and(eq(cateringBookingInvoices.id, input.invoiceId), eq(cateringBookingInvoices.bookingId, booking.id))).limit(1);
+    if (!invoiceOnBooking) return { kind: "not_found" };
 
     // The provider's CURRENT verified credential, merchant and card-capable location. Fetched before any lock: it may call Square.
     const credentials = await connections.getReadyConnectedCredentials(booking.providerId);
@@ -253,7 +259,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       // verified (a concurrent request is mid-way), is never reused and never silently superseded. The caller is told to try again, and no Square call is made.
       const unverifiedExpired = await tx.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts)
         .where(and(eq(cateringBookingPaymentAttempts.invoiceId, input.invoiceId), eq(cateringBookingPaymentAttempts.state, "expired"),
-          sql`${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL AND ${cateringBookingPaymentAttempts.expiryVerifiedAt} IS NULL`)).limit(1);
+          sql`${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL AND ${cateringBookingPaymentAttempts.closureVerifiedAt} IS NULL`)).limit(1);
       if (unverifiedExpired.length > 0 || open.some((attempt: CateringBookingPaymentAttempt) => cateringCheckoutPastExpiry(attempt, now(), checkoutMaxAgeMs))) {
         return { kind: "refused", status: 409, code: CATERING_ATTEMPT_CHECKOUT_VERIFYING_CODE, message: CATERING_SQUARE_COPY.checkoutVerifying } as const;
       }
@@ -519,14 +525,16 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    *     cannot be read or attributed, stops everything. Age alone never expires an attempt.
    *  2. only if Square shows the order open with no payment, the attempt becomes `expired` (conditional on still being `pending`);
    *  3. its Square link is deleted (forced, confirmed by Square: deleted or already gone) -- deletion is NOT taken as proof that no money moved;
-   *  4. fresh evidence is read AGAIN. Only then is `expiry_verified_at` set, which is what permits a replacement.
+   *  4. fresh evidence is read AGAIN. Only then is `closure_verified_at` set, which is what permits a replacement.
    * Idempotent and safe to run concurrently: every step is conditional, and each request that reaches step 4 does its own read.
    */
   async function retireExpiredCheckouts(invoiceId: string, bookingId: string): Promise<"clear" | "unavailable"> {
     const at = now();
+    // Scoped by BOOKING as well as invoice: whatever invoice id a request names, only this booking's own attempts can ever be touched.
     const candidates = (await db.select().from(cateringBookingPaymentAttempts).where(and(
+      eq(cateringBookingPaymentAttempts.bookingId, bookingId),
       eq(cateringBookingPaymentAttempts.invoiceId, invoiceId),
-      sql`(${cateringBookingPaymentAttempts.state} = 'pending' OR (${cateringBookingPaymentAttempts.state} = 'expired' AND ${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL AND ${cateringBookingPaymentAttempts.expiryVerifiedAt} IS NULL))`,
+      sql`(${cateringBookingPaymentAttempts.state} = 'pending' OR (${cateringBookingPaymentAttempts.state} = 'expired' AND ${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL AND ${cateringBookingPaymentAttempts.closureVerifiedAt} IS NULL))`,
     ))) as CateringBookingPaymentAttempt[];
     const due = candidates.filter((attempt) => attempt.state === "expired" || cateringCheckoutPastExpiry(attempt, at, checkoutMaxAgeMs));
     for (const candidate of due) {
@@ -550,8 +558,9 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       if (second.outcome === "completed" || second.outcome === "reconciliation_required" || second.outcome === "refund_review_required") continue;
       // `cancelled` here means Square reports the order closed (its link was just removed) with no payment; `awaiting` means open, none.
       if (second.outcome !== "awaiting" && second.outcome !== "cancelled" && second.outcome !== "already_settled") return "unavailable";
-      await db.update(cateringBookingPaymentAttempts).set({ expiryVerifiedAt: now(), updatedAt: now() })
-        .where(and(eq(cateringBookingPaymentAttempts.id, candidate.id), eq(cateringBookingPaymentAttempts.state, "expired"), sql`${cateringBookingPaymentAttempts.expiryVerifiedAt} IS NULL`));
+      // The mark is written by the settlement read itself (an authoritative read that began after the link was confirmed removed); it is never set here.
+      const verified = await attemptById(db, candidate.id);
+      if (verified && verified.state === "expired" && !verified.closureVerifiedAt) return "unavailable";
     }
     return "clear";
   }
@@ -600,14 +609,24 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       log.warn("catering_square_evidence_rejected", { attemptId: first.id, code: verdict.code });
       return { outcome: "rejected", code: verdict.code, attempt: (await attemptById(db, first.id)) ?? first };
     }
+    // A SUCCESSFUL authoritative read that found no completed payment, begun after this attempt's link removal was already confirmed, is the one
+    // thing that records "verified after closure". `processing` (a payment is moving) and every unavailable, rejected or ambiguous read are not.
+    const markClosureVerified = async () => {
+      if (first.squareLinkClosedAt) {
+        await db.update(cateringBookingPaymentAttempts).set({ closureVerifiedAt: now() })
+          .where(and(eq(cateringBookingPaymentAttempts.id, first.id), sql`${cateringBookingPaymentAttempts.closureVerifiedAt} IS NULL`, sql`${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NOT NULL`));
+      }
+    };
     if (verdict.kind === "awaiting" || verdict.kind === "processing") {
       await db.update(cateringBookingPaymentAttempts).set({ lastCheckedAt: now() }).where(eq(cateringBookingPaymentAttempts.id, first.id));
+      if (verdict.kind === "awaiting") await markClosureVerified();
       return { outcome: verdict.kind, attempt: (await attemptById(db, first.id)) ?? first };
     }
     if (verdict.kind === "cancelled") {
       await db.update(cateringBookingPaymentAttempts)
         .set({ state: "cancelled", closedAt: now(), updatedAt: now(), lastCheckedAt: now() })
         .where(and(eq(cateringBookingPaymentAttempts.id, first.id), inArray(cateringBookingPaymentAttempts.state, [...OPEN])));
+      await markClosureVerified();
       return { outcome: "cancelled", attempt: (await attemptById(db, first.id)) ?? first };
     }
 
@@ -912,8 +931,9 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       eq(cateringBookingPaymentAttempts.merchantId, merchantId),
       sql`${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL`,
       sql`${cateringBookingPaymentAttempts.state} NOT IN ('completed', 'reconciliation_required')`,
-      // Already read from Square AFTER its link was confirmed deleted: that read is the final word on a deleted link, so it is not asked again.
-      sql`NOT (${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.lastCheckedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.lastCheckedAt} > ${cateringBookingPaymentAttempts.squareLinkClosedAt})`,
+      // Already read SUCCESSFULLY from Square after its link was confirmed deleted (the dedicated `closure_verified_at` mark, set only by an authoritative
+      // read): that read is the final word on a deleted link. A poll's `last_checked_at` is NOT such evidence (it is written before Square is asked).
+      sql`NOT (${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.closureVerifiedAt} IS NOT NULL)`,
     )) as Promise<CateringBookingPaymentAttempt[]>;
     const unconfirmed = () => and(
       eq(cateringBookingPaymentAttempts.providerId, providerId),
@@ -1118,10 +1138,12 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * hide an unresolved financial exception, however many newer attempts exist. Newest first.
    */
   async function attemptsForBooking(executor: Executor, bookingId: string): Promise<CateringAttemptWithPayments[]> {
+    // Unresolved = a reconciliation, or a credited payment Square later showed refund activity on (`refund_review_at`, state `completed`).
+    const isUnresolved = sql`(${cateringBookingPaymentAttempts.state} = 'reconciliation_required' OR (${cateringBookingPaymentAttempts.state} = 'completed' AND ${cateringBookingPaymentAttempts.refundReviewAt} IS NOT NULL))`;
     const unresolved = await executor.select().from(cateringBookingPaymentAttempts)
-      .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), eq(cateringBookingPaymentAttempts.state, "reconciliation_required"))) as CateringBookingPaymentAttempt[];
+      .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), isUnresolved)) as CateringBookingPaymentAttempt[];
     const recent = await executor.select().from(cateringBookingPaymentAttempts)
-      .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), sql`${cateringBookingPaymentAttempts.state} <> 'reconciliation_required'`))
+      .where(and(eq(cateringBookingPaymentAttempts.bookingId, bookingId), sql`NOT ${isUnresolved}`))
       .orderBy(desc(cateringBookingPaymentAttempts.createdAt), asc(cateringBookingPaymentAttempts.id)).limit(ATTEMPT_HISTORY_LIMIT) as CateringBookingPaymentAttempt[];
     const merged = [...unresolved, ...recent].sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime() || left.id.localeCompare(right.id));
     return withPaymentEvidence(executor, merged);

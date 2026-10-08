@@ -186,7 +186,7 @@ test("external link cleanup is decided by the durable link state, never by the a
   const billing = code(read("server/routes/catering-booking-billing.ts"));
   assert.ok(billing.includes("void cateringSquarePayments.sweepClosedLinks(resolved.id).catch(() => undefined);"));
   const list = body.slice(body.indexOf("async function attemptsForBooking"), body.indexOf("return { enabled,"));
-  assert.ok(list.includes('eq(cateringBookingPaymentAttempts.state, "reconciliation_required")') && list.includes("ATTEMPT_HISTORY_LIMIT"));
+  assert.ok(list.includes("state} = 'reconciliation_required'") && list.includes("refundReviewAt} IS NOT NULL") && list.includes("ATTEMPT_HISTORY_LIMIT"), "unresolved reconciliations AND unresolved refund reviews sit outside the history cap");
 });
 
 test("a credential is never discarded or replaced before the provider's open checkouts are wound down with it, and the Gate 0 service stays Catering-agnostic", () => {
