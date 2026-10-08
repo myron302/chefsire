@@ -129,7 +129,7 @@ if (!URL_ENV) {
         const body = await response.json();
         assert.equal(response.status, 409, JSON.stringify(body));
         assert.equal(body.code, "catering_square_payment_review");
-        assert.match(body.message, /do not pay again/i);
+        assert.match(body.message, /do not make another payment/i);
         assert.equal(JSON.stringify(body).includes("HTTP_RV"), false);
       }
       assert.equal(h.fake.requests.length, calls, "no Square call");

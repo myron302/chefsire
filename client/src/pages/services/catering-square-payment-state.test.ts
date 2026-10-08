@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_SQUARE_COPY, type CateringPaymentAttemptView } from "@shared/catering-square-payments";
+import { CATERING_SQUARE_COPY, CATERING_SQUARE_NOTIFICATIONS, CATERING_SQUARE_RECONCILIATION_COPY, CATERING_RECONCILIATION_REASONS, type CateringPaymentAttemptView } from "@shared/catering-square-payments";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -457,7 +457,7 @@ test("provider copy states whether anything was credited, and never says nothing
   // the customer's copy is unchanged and never asks them to pay again
   const customer = cateringSquareDisplay({ state: "reconciliation_required", ledgerCredited: true }, "customer").label;
   assert.equal(customer, CATERING_SQUARE_COPY.reconciliation);
-  assert.match(customer, /do not need to pay again/);
+  assert.match(customer, /do not make another payment/);
 });
 
 test("evidence rows: the ledger-backed payment is marked credited; every other is additional; with nothing credited none is", () => {
@@ -572,5 +572,51 @@ test("PASS2: the component shows payment-review messaging instead of the Pay but
   const source = fs.readFileSync(path.join(dir, "../../components/catering/BookingSquarePayments.tsx"), "utf8");
   assert.match(source, /cateringInvoicePaymentInReview/);
   assert.match(source, /CATERING_SQUARE_COPY\.paymentReview/);
-  assert.match(CATERING_SQUARE_COPY.paymentReview, /do not pay again/i);
+  assert.match(CATERING_SQUARE_COPY.paymentReview, /do not make another payment/i);
+});
+
+const NO_REPAY_RE = /do not make another payment until the review is complete/i;
+const CLAIMS_AMOUNT_CHANGED = /what you owe|amount (you owe|owed|payable)|balance (changed|dropped)|you owe/i;
+const CLAIMS_REFUND_ISSUED = /(was|has been|were) (refunded|returned)|refund(ed)? (to you|issued)|we (have )?refunded|money back/i;
+
+test("PASS3: the generic reconciliation wording is reason-neutral: it never claims the amount owed changed or a refund was issued, and says not to pay again", () => {
+  for (const text of [CATERING_SQUARE_COPY.reconciliation, CATERING_SQUARE_COPY.paymentReview, CATERING_SQUARE_NOTIFICATIONS.customerReconciliation.message]) {
+    assert.equal(CLAIMS_AMOUNT_CHANGED.test(text), false, text);
+    assert.equal(CLAIMS_REFUND_ISSUED.test(text), false, text);
+    assert.match(text, /needs additional review/i);
+    assert.match(text, /caterer has been notified/i);
+    assert.match(text, NO_REPAY_RE);
+  }
+  assert.equal(CATERING_SQUARE_COPY.reconciliation, CATERING_SQUARE_COPY.paymentReview, "one wording across the card, the invoice and the refusal");
+  assert.equal(CATERING_SQUARE_NOTIFICATIONS.customerReconciliation.message, CATERING_SQUARE_COPY.reconciliation, "the notification agrees with the banner");
+  const provider = CATERING_SQUARE_NOTIFICATIONS.providerReconciliation.message;
+  assert.equal(CLAIMS_AMOUNT_CHANGED.test(provider) || CLAIMS_REFUND_ISSUED.test(provider), false);
+  assert.match(provider, /not to pay again/i);
+});
+
+test("PASS3: every reconciliation reason has accurate customer wording: only payable_changed may speak of what is owed, none claims a refund was issued, all say not to pay again, none leaks internals", () => {
+  assert.equal(CATERING_RECONCILIATION_REASONS.length, 8);
+  for (const reason of CATERING_RECONCILIATION_REASONS) {
+    const text = CATERING_SQUARE_RECONCILIATION_COPY[reason].customer;
+    assert.match(text, NO_REPAY_RE, reason);
+    assert.equal(CLAIMS_REFUND_ISSUED.test(text), false, reason);
+    assert.equal(/\b(PAYMENT_|sq0|token|ledger|idempotency|merchant)\b/i.test(text), false, reason);
+    if (reason !== "payable_changed") assert.equal(CLAIMS_AMOUNT_CHANGED.test(text), false, `${reason} must not claim the amount owed changed`);
+    assert.equal(cateringSquareReconciliationCopy(reason, "customer"), text);
+  }
+  for (const reason of ["multiple_payments", "currency_mismatch", "amount_mismatch", "payment_refunded", "payment_timestamp_invalid"] as const) {
+    assert.equal(/changed/i.test(CATERING_SQUARE_RECONCILIATION_COPY[reason].customer), false, reason);
+  }
+  assert.match(CATERING_SQUARE_RECONCILIATION_COPY.payment_refunded.customer, /reports refund activity/i, "a refund is only ever described as something Square reports");
+});
+
+test("PASS3: the customer's card label for a reconciliation is the neutral wording for every reason, and ordinary statuses are unchanged", () => {
+  for (const reason of CATERING_RECONCILIATION_REASONS) {
+    const display = cateringSquareDisplay(attempt({ state: "reconciliation_required", reconciliationReason: reason }), "customer");
+    assert.equal(display.label, CATERING_SQUARE_COPY.reconciliation);
+    assert.equal(display.canContinue, false);
+  }
+  assert.equal(cateringSquareDisplay(attempt({ state: "completed" }), "customer").label, CATERING_SQUARE_COPY.completed);
+  assert.equal(CATERING_SQUARE_COPY.completed, "Payment confirmed by Square.");
+  assert.equal(CATERING_SQUARE_COPY.pending, "Your Square checkout is open. Finish paying there, then come back here.");
 });

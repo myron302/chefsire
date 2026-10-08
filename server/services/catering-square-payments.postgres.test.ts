@@ -2739,10 +2739,41 @@ if (!URL_ENV) {
       const reviewed = await intoReview(h, s, "amount_mismatch");
       const view = await customerView(h, s, reviewed.id);
       assert.equal(view.state, "reconciliation_required");
-      assert.match(CATERING_SQUARE_COPY.paymentReview, /do not pay again/i);
+      assert.match(CATERING_SQUARE_COPY.paymentReview, /do not make another payment/i);
       assert.equal(/RV_A/.test(JSON.stringify(view)), false);
       const listed = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
       assert.deepEqual(listed.map((row) => row.id), [reviewed.id]);
     });
   });
+
+  /* Pass 3: reason-neutral reconciliation wording, end to end for every reason */
+  for (const reason of ["multiple_payments", "currency_mismatch", "amount_mismatch", "payment_refunded", "payment_timestamp_invalid"] as const) {
+    test(`PASS3: a ${reason} reconciliation shows the customer neutral wording that agrees with the notifications, never claims the balance changed, and tells them not to pay again`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const attempt = reason === "payment_timestamp_invalid"
+          ? await (async () => { const a = await open(h, s); h.fake.payOrder(a.squareOrderId!, { id: "N3", updated_at: "not-a-date", created_at: "not-a-date" }); assert.equal((await h.payments.settleAttempt(a.id)).outcome, "reconciliation_required"); return a; })()
+          : await intoReview(h, s, reason);
+        assert.equal((await h.attempt(attempt.id)).reconciliation_reason, reason);
+        const view = await customerView(h, s, attempt.id);
+        const display = cateringSquareDisplay(view, "customer");
+        assert.equal(display.label, CATERING_SQUARE_COPY.reconciliation);
+        const detail = CATERING_SQUARE_RECONCILIATION_COPY[reason].customer;
+        for (const text of [display.label, detail, CATERING_SQUARE_COPY.paymentReview]) {
+          assert.match(text, /do not make another payment until the review is complete/i);
+          assert.equal(/what you owe|amount (you owe|owed|payable)|balance changed/i.test(text), false, `${reason}: ${text}`);
+        }
+        const mine = h.notifications.filter((n) => n.userId === s.customerId && n.type === "catering_booking_square_payment_reconciliation");
+        assert.equal(mine.length, 1);
+        assert.equal(mine[0].message, display.label, "the customer's notification and the visible banner agree");
+        const providerNote = h.notifications.filter((n) => n.userId === s.providerId && n.type === "catering_booking_square_payment_reconciliation_required");
+        assert.equal(providerNote.length, 1);
+        assert.equal(/what you owe|refund(ed)? (was )?issued/i.test(providerNote[0].message), false);
+        assert.equal(JSON.stringify([mine, providerNote, view]).includes(s.connection.accessToken), false);
+        assert.deepEqual(await pay(h, s), reviewRefusal, "still blocked");
+        assert.equal(reviewRefusal.message, display.label);
+        assert.equal((await h.processorLedger(s.bookingId)).length, 0, "behaviour unchanged: nothing credited");
+      });
+    });
+  }
 }

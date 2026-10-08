@@ -103,7 +103,7 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
   const db = drizzle(pool, { schema });
 
   const fake = await startFakeSquare(options.fake);
-  const notifications: { userId: string; type: string; linkUrl: string }[] = [];
+  const notifications: { userId: string; type: string; linkUrl: string; title?: string; message?: string }[] = [];
   const logs: { event: string; fields: Record<string, unknown> }[] = [];
   let clock: Date | null = null;
   const now = () => clock ?? new Date();
@@ -122,7 +122,7 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
     pollIntervalMs: -1,
     appBaseUrl: () => "https://app.test",
     log: { warn: (event, fields) => { logs.push({ event, fields }); } },
-    notify: async (userId, notification) => { notifications.push({ userId, type: notification.type, linkUrl: notification.linkUrl }); },
+    notify: async (userId, notification) => { notifications.push({ userId, type: notification.type, linkUrl: notification.linkUrl, title: (notification as { title?: string }).title, message: (notification as { message?: string }).message }); },
     ...options.deps,
   });
 
