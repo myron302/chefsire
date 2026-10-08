@@ -148,6 +148,15 @@ const CREATE_IN_FLIGHT_MS = 2 * 60 * 1000;
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 
 const OPEN: readonly string[] = ["creating", "pending"];
+/**
+ * THE one definition of "this attempt's Square order may still hold a payment ChefSire has not accounted for": it has a Square order, it has not
+ * consumed a payment, and it is NOT (link removal confirmed AND a successful authoritative Square read made after that removal, `closure_verified_at`).
+ * Deleting a link, a local state change and a poll timestamp (`last_checked_at`) are deliberately absent. Used verbatim by BOTH the preliminary
+ * verification (`closeProviderCheckouts`) and the final check under the connection row's exclusive lock (`credentialStillNeeded`), so they cannot diverge.
+ */
+const UNVERIFIED_ORDER_SQL = `square_order_id IS NOT NULL
+  AND state NOT IN ('completed', 'reconciliation_required')
+  AND NOT (square_link_closed_at IS NOT NULL AND closure_verified_at IS NOT NULL)`;
 /** Locally terminal states whose Square payment link may still be live until Square confirms otherwise. */
 // `failed` is included: a create that Square refused/lost locally can still deliver a LATE link, which must be recorded and removed like any other.
 const CLOSED_WITH_LINK_STATES: readonly string[] = ["cancelled", "superseded", "expired", "failed"];
@@ -929,11 +938,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     const unsettled = () => db.select().from(cateringBookingPaymentAttempts).where(and(
       eq(cateringBookingPaymentAttempts.providerId, providerId),
       eq(cateringBookingPaymentAttempts.merchantId, merchantId),
-      sql`${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL`,
-      sql`${cateringBookingPaymentAttempts.state} NOT IN ('completed', 'reconciliation_required')`,
-      // Already read SUCCESSFULLY from Square after its link was confirmed deleted (the dedicated `closure_verified_at` mark, set only by an authoritative
-      // read): that read is the final word on a deleted link. A poll's `last_checked_at` is NOT such evidence (it is written before Square is asked).
-      sql`NOT (${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.closureVerifiedAt} IS NOT NULL)`,
+      sql.raw(UNVERIFIED_ORDER_SQL),
     )) as Promise<CateringBookingPaymentAttempt[]>;
     const unconfirmed = () => and(
       eq(cateringBookingPaymentAttempts.providerId, providerId),
@@ -1013,6 +1018,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       `SELECT 1 FROM catering_booking_payment_attempts
        WHERE provider_id = $1 AND merchant_id = $2 AND (
          state IN ('creating', 'pending')
+         OR (${UNVERIFIED_ORDER_SQL})
          OR (state IN ('cancelled', 'superseded', 'expired', 'failed') AND square_payment_link_id IS NOT NULL AND square_link_closed_at IS NULL)
          OR (square_payment_link_id IS NULL AND square_create_started_at IS NOT NULL AND square_create_resolved_at IS NULL)
        ) LIMIT 1`,

@@ -3234,4 +3234,102 @@ if (!URL_ENV) {
       assert.deepEqual((await viewOf(h, other, "customer")).filter(cateringAttemptNeedsReturnReview), [], "another booking's reviews are not in this view");
     });
   });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 7: the FINAL check under the connection row's exclusive lock enforces the same closure-verification rule
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  /**
+   * Re-registers the REAL production guard with one change: after the preliminary verification (closeProviderCheckouts) has finished, `race` runs --
+   * exactly the window in which a concurrent process can close and delete a checkout. The in-transaction final check is the real production query.
+   */
+  function raceAfterPreliminary(h: CateringSquareHarness, race: () => Promise<void>) {
+    let raced = false;
+    h.connections.setCredentialDiscardGuard(
+      async (context: { userId: string }) => {
+        const result = await h.payments.closeProviderCheckouts(context.userId);
+        if (!raced) { raced = true; await race(); }
+        return result;
+      },
+      (context: never) => h.payments.credentialStillNeeded(context),
+    );
+  }
+  /** What a concurrent closeStaleOpenAttempts + sweepClosedLinks leaves behind: closed, link deleted, but NO authoritative read afterwards. */
+  const closeAndDeleteWithoutVerification = (h: CateringSquareHarness, attemptId: string) => h.q(
+    `UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now(), last_checked_at = now() + interval '1 second', closure_verified_at = NULL WHERE id = $1`, [attemptId]);
+
+  test("PASS7: a checkout closed and deleted AFTER the preliminary verification but BEFORE the credential lock still blocks the DISCONNECT (real final query)", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      // The preliminary verification winds the pending attempt down and verifies it; THEN a concurrent process leaves it closed, deleted and unverified.
+      raceAfterPreliminary(h, async () => { await closeAndDeleteWithoutVerification(h, attempt.id); });
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      const row = await h.row(s.providerId);
+      assert.equal(row.account_status, "active");
+      assert.ok(row.encrypted_access_token && row.encrypted_refresh_token, "credentials kept");
+    });
+  });
+
+  test("PASS7: the same race during MERCHANT REPLACEMENT refuses the replacement and keeps the old merchant", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now() - interval '1 hour', closure_verified_at = now() WHERE id = $1`, [attempt.id]); // verified: not a blocker yet
+      raceAfterPreliminary(h, async () => { await h.q(`UPDATE catering_booking_payment_attempts SET closure_verified_at = NULL WHERE id = $1`, [attempt.id]); });
+      // The replacement itself (preliminary guard, then the in-transaction final check) -- not the preliminary guard alone.
+      await assert.rejects(h.connectProvider(s.providerId, "MERCHANT_NEW", { access: "access-new", refresh: "refresh-new" }), SquareCredentialDiscardBlockedError);
+      const row = await h.row(s.providerId);
+      assert.equal(row.provider_id, s.connection.merchantId, "the old merchant is kept");
+      assert.ok(row.encrypted_access_token && row.encrypted_refresh_token);
+    });
+  });
+
+  test("PASS7: the final query itself: an already-deleted link with closure_verified_at NULL needs the credential; a verified one, a consumed one and another provider's do not", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      const needed = async () => (await h.payments.credentialStillNeeded({ userId: s.providerId, merchantId: s.connection.merchantId, query: (text, params) => h.pool.query(text, params as never) as never })).safe === false;
+      await closeAndDeleteWithoutVerification(h, attempt.id);
+      assert.equal(await needed(), true, "closed + link deleted + not verified = still needed");
+      await h.q(`UPDATE catering_booking_payment_attempts SET last_checked_at = now() + interval '1 day' WHERE id = $1`, [attempt.id]);
+      assert.equal(await needed(), true, "a newer poll timestamp changes nothing");
+      await h.q(`UPDATE catering_booking_payment_attempts SET closure_verified_at = now() WHERE id = $1`, [attempt.id]);
+      assert.equal(await needed(), false, "authoritatively verified after closure: no longer needed");
+      await h.q(`UPDATE catering_booking_payment_attempts SET closure_verified_at = NULL, state = 'completed' WHERE id = $1`, [attempt.id]).catch(() => undefined);
+      assert.equal(await h.payments.credentialStillNeeded({ userId: s.providerId, merchantId: "SOME_OTHER_MERCHANT", query: (text, params) => h.pool.query(text, params as never) as never }).then((r) => r.safe), true, "scoped to the merchant");
+    });
+  });
+
+  test("PASS7: after an authoritative post-deletion read the disconnect succeeds; with Square unavailable it is refused and credentials are preserved", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      await closeAndDeleteWithoutVerification(h, attempt.id);
+      h.fake.state.evidenceFailure = 503;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      assert.ok((await h.row(s.providerId)).encrypted_access_token, "credentials preserved");
+      assert.equal((await h.attempt(attempt.id)).closure_verified_at, null);
+      h.fake.state.evidenceFailure = undefined;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true, "no permanent blocker once verification completes");
+      assert.ok((await h.attempt(attempt.id)).closure_verified_at);
+    });
+  });
+
+  test("PASS7: a payment made before the deletion, settled concurrently with the disconnect, is accounted for exactly once and the credential is not lost early", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "P7_B", ...first });
+      raceAfterPreliminary(h, async () => { await closeAndDeleteWithoutVerification(h, attempt.id); });
+      const results = await Promise.allSettled([
+        h.connections.disconnect(s.providerId), h.payments.settleAttempt(attempt.id),
+        hook(h, s, attempt, "evt-p7-1", "P7_B"), h.payments.getAttempt({ bookingId: s.bookingId, attemptId: attempt.id, userId: s.customerId }),
+      ]);
+      for (const result of results) assert.ok(result.status === "fulfilled" || result.reason instanceof SquareCredentialDiscardBlockedError, String((result as { reason?: unknown }).reason));
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit, none missed");
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+    });
+  });
 }
