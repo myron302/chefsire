@@ -114,6 +114,8 @@ export type CateringPaymentAttemptView = {
    * evidence row that backs that ledger payment says so (`creditedToLedger`); every other completed payment is an additional, uncredited one.
    */
   ledgerCredited?: boolean;
+  /** True once Square showed refund activity on a payment of this attempt AFTER it was credited or reconciled: its state and ledger payment are unchanged, but a refund discrepancy is unresolved. */
+  refundReview?: boolean;
   /** How many completed Square payments the order showed. Present once money moved. More than one is always a reconciliation. */
   processorPaymentCount?: number;
   /** Every completed Square payment, each with its own amount and time. Present once money moved. A customer is not given the Square ids. */
@@ -155,6 +157,10 @@ export const CATERING_SQUARE_COPY = {
   pending: "Your Square checkout is open. Finish paying there, then come back here.",
   verifying: "Checking your payment with Square...",
   completed: "Payment confirmed by Square.",
+  returnReviewNoticeCustomer: "Square reports that part or all of a payment on this booking was returned. Your caterer is reviewing it, so this booking may not be fully settled.",
+  returnReviewNoticeProvider: "Square reports refund activity on a payment already credited to this booking. Your ledger was NOT changed. Review it in Square, then record any return under the booking's payments.",
+  completedRefundReviewCustomer: "Payment confirmed by Square. Square also reports that part or all of it was returned, and your caterer is reviewing that.",
+  completedRefundReviewProvider: "Payment confirmed by Square and credited to the Catering ledger. Square now reports refund activity on it. The ledger was NOT changed; review it in Square and record any return under the booking's payments.",
   failed: "We could not open a Square checkout. Nothing was charged. Please try again.",
   closed: "This Square checkout was closed before any payment was made.",
   reconciliation: "Square received your payment, but what you owe changed while you were paying. Your caterer has been told and will sort out how it applies. You do not need to pay again.",
@@ -231,6 +237,11 @@ export const CATERING_SQUARE_NOTIFICATIONS = {
     type: "catering_booking_square_payment_reconciliation",
     title: "Your payment needs your caterer's attention",
     message: "Square received your payment, but what you owe changed while you were paying. Your caterer has been told.",
+  },
+  providerRefundReview: {
+    type: "catering_booking_square_payment_refund_review",
+    title: "Square reports a refund on a payment you were credited",
+    message: "A payment already recorded on this booking shows refund activity in Square. Nothing was changed in your ledger. Open the booking's billing section.",
   },
   providerReconciliation: {
     type: "catering_booking_square_payment_reconciliation_required",

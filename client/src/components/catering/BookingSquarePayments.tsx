@@ -211,9 +211,13 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
   const attempts = customer ? billing.paymentAttempts : cateringProviderVisibleAttempts(billing.paymentAttempts);
   // A customer's banner is for the checkout they just came back from; the provider's panel lists the booking's Square payments.
   const showBanner = customer && returned !== null;
-  if (!showBanner && (customer || attempts.length === 0)) return null;
+  // An unresolved review of returned money is shown to BOTH actors, whether or not anyone just came back from Square: a booking that reads as paid must
+  // not hide that Square reports part of that money returned.
+  const reviewCount = billing.squareReturnReviewCount ?? 0;
+  if (!showBanner && reviewCount === 0 && (customer || attempts.length === 0)) return null;
 
   return <section className="space-y-3" aria-live="polite">
+    {reviewCount > 0 && <p role="alert" className="break-words rounded-md border border-destructive/50 p-3 text-sm">{customer ? CATERING_SQUARE_COPY.returnReviewNoticeCustomer : CATERING_SQUARE_COPY.returnReviewNoticeProvider}</p>}
     {showBanner && <div className="rounded-md border p-3 text-sm" role="status">
       {failed ? <>
         <p role="alert" className="break-words">{CATERING_ATTEMPT_LOOKUP_FAILED_COPY}</p>

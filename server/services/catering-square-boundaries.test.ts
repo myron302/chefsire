@@ -201,10 +201,18 @@ test("a credential is never discarded or replaced before the provider's open che
   assert.ok(callback.includes("error=connection_in_use"));
   assert.ok(sources.instance.includes("setCredentialDiscardGuard(({ userId }) => cateringSquarePayments.closeProviderCheckouts(userId), (context) => cateringSquarePayments.credentialStillNeeded(context))"));
   const close = sources.service.slice(sources.service.indexOf("async function closeProviderCheckouts"), sources.service.indexOf("Status\n"));
-  assert.ok(close.indexOf("closeOpenAttemptsInTransaction") < close.indexOf("storedCredentialState") && close.indexOf("storedCredentialState") < close.indexOf("getReadyConnectedCredentials") && close.indexOf("getReadyConnectedCredentials") < close.indexOf("{ force: true }"));
+  // stored state, then the credential, then FRESH VERIFICATION of unsettled payments, only THEN the open attempts are closed locally, then links are deleted
+  // (forced), then every unsettled attempt is read from Square once more: deleting a link is never proof that no payment happened.
+  const at = (needle: string, from = 0) => close.indexOf(needle, from);
+  const verifyBefore = at("await verify(attempt)");
+  const closeCall = at("await closeOpenLocally();", verifyBefore);
+  const sweep = at("{ force: true }");
+  const verifyAfter = at("await verify({ id })", sweep);
+  assert.ok(at("storedCredentialState") < at("getReadyConnectedCredentials") && at("getReadyConnectedCredentials") < verifyBefore && verifyBefore < closeCall && closeCall < sweep && sweep < verifyAfter, JSON.stringify([verifyBefore, closeCall, sweep, verifyAfter]));
   assert.ok(close.includes("eq(cateringBookingPaymentAttempts.merchantId, merchantId)"), "only the merchant the stored credential belongs to");
   // not-ready credentials are NOT proof of safety: with links unconfirmed and no usable credential the answer is { safe: false }
-  assert.ok(/if \(!credentials \|\| credentials\.merchantId !== merchantId\) \{[\s\S]*?return \{ safe: false \};/.test(close), "fail closed");
+  assert.ok(/if \(!credentials \|\| credentials\.merchantId !== merchantId\) return refuse\("credential_unavailable"\);/.test(close), "fail closed");
+  assert.ok(close.includes('const refuse = async (reason: string) => { await closeOpenLocally();') && /return \{ safe: false \}/.test(close));
   assert.equal(/getReadyConnectedCredentials\(providerId\)\.catch\(\(\) => null\);\s*if \(!credentials\) return \{ safe: true \}/.test(close), false);
 });
 

@@ -243,7 +243,7 @@ if (!URL_ENV) {
       await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId));
       const order = h.fake.lastOrder()!;
       h.fake.payOrder(order.id);
-      await h.connections.disconnect(s.providerId);
+      await h.dropConnection(s.providerId);
       const body = event("evt-retry", s.connection.merchantId, order.id);
       assert.equal((await deliver(base, body)).status, 503);
       assert.equal((await h.ledger(s.bookingId)).length, 0);
@@ -980,8 +980,7 @@ if (URL_ENV) {
       const s = await scene(h, base);
       const attemptId = await s.open(0);
       const row = await h.attempt(attemptId);
-      h.fake.payOrder(row.square_order_id);
-      // the callback's guard, exactly as the route calls it
+      // the callback's guard, exactly as the route calls it (no payment has completed: a paid order would be recorded first, see the hotfix tests)
       assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW"), { allowed: true });
       assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true, "closed under the OLD merchant");
       const after = await h.attempt(attemptId);

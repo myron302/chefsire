@@ -23,7 +23,8 @@ import { prepareCateringSquareEnvironment, withCateringSquareHarness, type Cater
 prepareCateringSquareEnvironment();
 const URL_ENV = process.env.TEST_DATABASE_URL?.trim();
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const migration = fs.readFileSync(path.join(root, "server", "migrations", "20261014_catering_square_payments.sql"), "utf8");
+// The Phase 2Q migration and the post-merge hotfix migration that adds the refund-review mark: applied together they must equal `drizzle-kit push`.
+const migration = ["20261014_catering_square_payments.sql", "20261015_catering_square_refund_review.sql"].map((name) => fs.readFileSync(path.join(root, "server", "migrations", name), "utf8")).join("\n");
 
 test("the barrel exports both Phase 2Q tables, which is how drizzle-kit finds them", () => {
   assert.equal((barrel as Record<string, unknown>).cateringBookingPaymentAttempts, cateringBookingPaymentAttempts);

@@ -86,6 +86,7 @@ if (!PG_URL) {
   await local.query(sqlFile("server/migrations/20261006_catering_billing_adjustments.sql"));
   // Cancelling a booking now also closes its open Square checkouts (Phase 2Q), so that table must exist.
   await local.query(sqlFile("server/migrations/20261014_catering_square_payments.sql"));
+  await local.query(sqlFile("server/migrations/20261015_catering_square_refund_review.sql"));
 
   const { default: cateringRouter } = await import("./catering");
   const { default: bookingsRouter } = await import("./catering-bookings");

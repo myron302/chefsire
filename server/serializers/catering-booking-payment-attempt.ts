@@ -29,6 +29,8 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
   }
   const ledgerCredited = Boolean(row.paymentId) && (state === "completed" || state === "reconciliation_required");
   if (role === "provider" && ledgerCredited) view.ledgerCredited = true;
+  // Both actors are told a refund discrepancy is unresolved (no Square id, no amounts beyond what they already see).
+  if (cateringAttemptNeedsReturnReview(row)) view.refundReview = true;
   // The ledger payment, when one was credited -- including the one credited before a LATER extra Square payment turned it into a reconciliation.
   if (row.paymentId) view.paymentId = row.paymentId;
   if (row.processorPaymentCount > 0) view.processorPaymentCount = row.processorPaymentCount;
@@ -49,4 +51,9 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
 /** The attempts a participant may see in the billing view: the provider sees every attempt, a customer only their own. */
 export function visibleCateringPaymentAttempts<T extends CateringBookingPaymentAttempt>(rows: readonly T[], role: "provider" | "customer", viewerId: string): T[] {
   return role === "provider" ? [...rows] : rows.filter((row) => row.customerId === viewerId);
+}
+
+/** Whether Square showed returned-money activity on an attempt's payment AFTER it was recorded, and that review is unresolved. The attempt's state and ledger payment are unchanged. */
+export function cateringAttemptNeedsReturnReview(row: { refundReviewAt: Date | null; state: string }): boolean {
+  return Boolean(row.refundReviewAt) && (row.state === "completed" || row.state === "reconciliation_required");
 }

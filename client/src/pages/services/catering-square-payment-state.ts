@@ -22,11 +22,11 @@ export type CateringSquareDisplay = {
   canContinue: boolean;
 };
 
-export function cateringSquareDisplay(attempt: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl"> & { ledgerCredited?: boolean }, role: "provider" | "customer"): CateringSquareDisplay {
+export function cateringSquareDisplay(attempt: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl"> & { ledgerCredited?: boolean; refundReview?: boolean }, role: "provider" | "customer"): CateringSquareDisplay {
   switch (attempt.state) {
     case "creating": return { phase: "creating", label: CATERING_SQUARE_COPY.creating, polling: false, canContinue: false };
     case "pending": return { phase: "awaiting", label: role === "customer" ? CATERING_SQUARE_COPY.pending : "A customer has opened a Square checkout for this request.", polling: true, canContinue: role === "customer" && Boolean(attempt.checkoutUrl) };
-    case "completed": return { phase: "confirmed", label: CATERING_SQUARE_COPY.completed, polling: false, canContinue: false };
+    case "completed": return { phase: "confirmed", label: attempt.refundReview ? (role === "customer" ? CATERING_SQUARE_COPY.completedRefundReviewCustomer : CATERING_SQUARE_COPY.completedRefundReviewProvider) : CATERING_SQUARE_COPY.completed, polling: false, canContinue: false };
     case "reconciliation_required": return { phase: "reconciliation", label: role === "customer" ? CATERING_SQUARE_COPY.reconciliation : attempt.ledgerCredited ? CATERING_SQUARE_COPY.reconciliationProviderPartlyCredited : CATERING_SQUARE_COPY.reconciliationProviderNothingCredited, polling: false, canContinue: false };
     case "failed": return { phase: "failed", label: CATERING_SQUARE_COPY.failed, polling: false, canContinue: false };
     // expired, cancelled and superseded are all a checkout that was closed before any money moved.

@@ -542,3 +542,16 @@ test("nav: the URL only ever selects what to ASK the server about; the component
   assert.equal(/method: "POST"/.test(polling), false);
   assert.ok(source.includes('"confirmed" is\n *    shown only when the server says an attempt is `completed`') || source.includes("shown only when the server says an attempt is `completed`"));
 });
+
+/* Post-merge hotfix: an unresolved refund review qualifies "paid" wording for both actors */
+test("a completed attempt with an unresolved refund review is never presented as plainly settled", () => {
+  assert.equal(cateringSquareDisplay({ state: "completed" }, "customer").label, CATERING_SQUARE_COPY.completed);
+  const customer = cateringSquareDisplay({ state: "completed", refundReview: true }, "customer");
+  const provider = cateringSquareDisplay({ state: "completed", refundReview: true }, "provider");
+  assert.equal(customer.label, CATERING_SQUARE_COPY.completedRefundReviewCustomer);
+  assert.match(customer.label, /returned/);
+  assert.match(provider.label, /ledger was NOT changed/);
+  assert.equal(customer.phase, "confirmed", "the payment itself is still confirmed: only the wording is qualified");
+  assert.match(CATERING_SQUARE_COPY.returnReviewNoticeCustomer, /may not be fully settled/);
+  assert.match(CATERING_SQUARE_COPY.returnReviewNoticeProvider, /NOT changed/);
+});

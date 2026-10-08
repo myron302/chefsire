@@ -811,6 +811,8 @@ export type CateringBookingBillingView = {
   paymentAttempts: CateringPaymentAttemptView[];
   /** Phase 2Q: whether this deployment offers Square checkout at all (sandbox only). Says nothing about any provider's account. */
   squareCheckout: CateringSquareCheckoutAvailability;
+  /** How many visible Square payment attempts have an unresolved review of returned money (activity seen after the payment was recorded). */
+  squareReturnReviewCount?: number;
   /** Absent keys rather than empty values: a customer's payload carries no provider-only object at all. */
   terms?: CateringDepositTermsView;
   issuable?: CateringInvoiceKind[];

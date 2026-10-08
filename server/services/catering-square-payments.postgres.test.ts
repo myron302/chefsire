@@ -8,8 +8,10 @@ import assert from "node:assert/strict";
 import { prepareCateringSquareEnvironment, withCateringSquareHarness, withTimeout, type CateringSquareHarness } from "../test-support/catering-square-harness";
 import { createSquareCheckoutApi, SquareSandboxOnlyError } from "../lib/square-checkout";
 import { CATERING_SQUARE_RECONCILIATION_COPY } from "../../shared/catering-square-payments";
+import { CATERING_SQUARE_COPY } from "../../shared/catering-square-payments";
+import { cateringSquareDisplay } from "../../client/src/pages/services/catering-square-payment-state";
 import { SquareCredentialDiscardBlockedError } from "../lib/square-connection-service";
-import { serializeCateringPaymentAttempt } from "../serializers/catering-booking-payment-attempt";
+import { cateringAttemptNeedsReturnReview, serializeCateringPaymentAttempt } from "../serializers/catering-booking-payment-attempt";
 
 prepareCateringSquareEnvironment();
 const URL_ENV = process.env.TEST_DATABASE_URL?.trim();
@@ -386,6 +388,7 @@ if (!URL_ENV) {
       assert.deepEqual(ignored, { kind: "ignored", reason: "merchant_mismatch" });
       assert.equal((await h.ledger(s.bookingId)).length, 0);
 
+      await h.dropConnection(s.providerId); // (replacing a live connection goes through the guard, which would first record the paid order)
       await h.connectProvider(s.providerId, "MERCHANT_OTHER_ACCOUNT", { access: "access-other", refresh: "refresh-other" });
       const before = h.fake.requests.length;
       const outcome = await h.payments.settleAttempt(attempt.id);
@@ -675,12 +678,11 @@ if (!URL_ENV) {
       const s = await scene(h);
       const attempt = await open(h, s);
       h.fake.payOrder(attempt.squareOrderId!);
-      await h.connections.disconnect(s.providerId);
+      await h.dropConnection(s.providerId); // lost without the disconnect guard (which would have recorded the payment first)
       const outcome = await h.payments.settleAttempt(attempt.id);
       assert.deepEqual(outcome.outcome === "unavailable" && outcome.reason, "connection_not_ready");
-      // the disconnect closed the checkout locally (and deleted its link) while the old credential still worked; the attempt is not payable any more,
-      // but money that had ALREADY moved is still recognised once the same merchant is back
-      assert.equal((await h.attempt(attempt.id)).state, "cancelled");
+      // money that had ALREADY moved is still recognised once the same merchant is back
+      assert.equal((await h.attempt(attempt.id)).state, "pending");
       assert.equal((await h.ledger(s.bookingId)).length, 0);
 
       await h.connectProvider(s.providerId, s.connection.merchantId, { access: "access-reconnected", refresh: "refresh-reconnected" });
@@ -1484,7 +1486,7 @@ if (!URL_ENV) {
     await run(async (h) => {
       const s = await scene(h);
       const attempt = await open(h, s);
-      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now() WHERE id = $1`, [attempt.id]);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now(), last_checked_at = now() + interval '1 second' WHERE id = $1`, [attempt.id]);
       await h.q(`UPDATE payment_methods SET token_expires_at = now() + interval '1 hour' WHERE user_id = $1`, [s.providerId]);
       h.fake.state.failures.token = 503;
       assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
@@ -2314,6 +2316,246 @@ if (!URL_ENV) {
       const outcome = await h.payments.settleAttempt(two.id);
       assert.equal(outcome.outcome === "rejected" && outcome.code, "payment_already_consumed");
       await assert.rejects(h.q(`INSERT INTO catering_attempt_square_payments (attempt_id, square_payment_id, amount_cents, currency) VALUES ($1, 'UQ_P', 100, 'USD')`, [two.id]), /catering_attempt_square_payments_payment_uidx/);
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Post-merge hotfix 1: payments are verified BEFORE a credential is discarded
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const evidenceCount = async (h: CateringSquareHarness, s: Scene) => Number((await h.q(`SELECT count(*)::int AS n FROM catering_attempt_square_payments e JOIN catering_booking_payment_attempts a ON a.id = e.attempt_id WHERE a.booking_id = $1`, [s.bookingId]))[0].n);
+
+  test("HOTFIX disconnect: a payment COMPLETED in Square but not yet heard of (webhook delayed) is recorded before the credential is discarded; deleting the link is not what settles it", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_P1", ...first });
+      assert.equal((await h.attempt(attempt.id)).state, "pending", "ChefSire has not heard of it");
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      assert.equal((await h.attempt(attempt.id)).state, "completed", "settled from fresh evidence, not cancelled");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "credited exactly once");
+      assert.equal(await evidenceCount(h, s), 1, "no lost evidence");
+      assert.equal((await h.row(s.providerId)).account_status, "disconnected");
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, false, "repeat is idempotent");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal(JSON.stringify({ logs: h.logs, notifications: h.notifications }).includes(s.connection.accessToken), false);
+    });
+  });
+
+  test("HOTFIX merchant replacement: a payment completed before the replacement is recorded first, and the new merchant is never used to judge the old order", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_M1", ...first });
+      assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW"), { allowed: true });
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      await h.connectProvider(s.providerId, "MERCHANT_NEW", { access: "access-new", refresh: "refresh-new" });
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await h.row(s.providerId)).provider_id, "MERCHANT_NEW");
+    });
+  });
+
+  test("HOTFIX disconnect: Square unavailable while verifying FAILS CLOSED, keeps the credential, loses nothing, and the retry records the payment", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_U1", ...first });
+      h.fake.state.evidenceFailure = 503;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "repeating stays refused");
+      const row = await h.row(s.providerId);
+      assert.equal(row.account_status, "active");
+      assert.ok(row.encrypted_access_token && row.encrypted_refresh_token, "credential kept");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 0);
+      h.fake.state.evidenceFailure = undefined;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "the payment was not lost");
+      assert.equal(await evidenceCount(h, s), 1);
+    });
+  });
+
+  test("HOTFIX disconnect: a pending checkout with NO payment disconnects normally, with its link deleted; a payment still PROCESSING refuses", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "cancelled");
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_PROC", status: "APPROVED", orderState: "OPEN" });
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "money may still be moving");
+      assert.equal((await h.row(s.providerId)).account_status, "active");
+    });
+  });
+
+  test("HOTFIX disconnect: a payment that completes while the disconnect is running (after the first read, before the link is deleted) is still recorded by the read after the deletion", async () => {
+    let beforeDelete: (() => void) | null = null;
+    await withCateringSquareHarness(URL_ENV!, {
+      wrapCheckout: (api) => ({ ...api, deletePaymentLink: async (token, id) => { if (beforeDelete) { const fire = beforeDelete; beforeDelete = null; fire(); } return api.deletePaymentLink(token, id); } }),
+    }, async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      beforeDelete = () => { h.fake.payOrder(attempt.squareOrderId!, { id: "HF_RACE", ...first }); };
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      const row = await h.attempt(attempt.id);
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true, "the link was deleted successfully");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "and the payment that landed first was still found and credited");
+      assert.ok(row.payment_id);
+      assert.equal(await evidenceCount(h, s), 1);
+    });
+  });
+
+  test("HOTFIX disconnect: a credential that needs refreshing is refreshed and used to verify; a failing refresh refuses and keeps the credential", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_REF", ...first });
+      await h.q(`UPDATE payment_methods SET token_expires_at = now() + interval '1 hour' WHERE user_id = $1`, [s.providerId]);
+      h.fake.state.failures.token = 503;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      assert.equal((await h.row(s.providerId)).account_status, "active");
+      h.fake.state.failures.token = undefined;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+    });
+  });
+
+  test("HOTFIX disconnect: concurrent disconnects and webhooks over one paid-but-unrecorded order credit it exactly once and lose nothing", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_CONC", ...first });
+      const results = await Promise.allSettled([
+        h.connections.disconnect(s.providerId), h.connections.disconnect(s.providerId),
+        hook(h, s, attempt, "evt-hf-1"), hook(h, s, attempt, "evt-hf-2"), h.payments.settleAttempt(attempt.id),
+      ]);
+      for (const result of results) assert.ok(result.status === "fulfilled" || result.reason instanceof SquareCredentialDiscardBlockedError, String((result as { reason?: unknown }).reason));
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal(await evidenceCount(h, s), 1);
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Post-merge hotfix 2: refund activity found AFTER a payment was credited
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const refundNotifications = (h: CateringSquareHarness) => h.notifications.filter((n) => n.type === "catering_booking_square_payment_refund_review");
+  const refundFor = (id: string, cents: number) => ({ refund_ids: [`R_${id}`], refunded_money: { amount: cents, currency: "USD" } });
+  const refundExisting = (h: CateringSquareHarness, id: string, cents: number) => h.fake.payments.set(id, { ...h.fake.payments.get(id)!, ...refundFor(id, cents) } as never);
+
+  for (const [name, cents] of [["partial", 15000], ["full", 40000]] as const) {
+    test(`HOTFIX refund: a ${name} refund AFTER the payment was credited marks the attempt for review, notifies the provider once, and leaves state, ledger and evidence untouched`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const attempt = await open(h, s);
+        h.setClock(new Date("2030-05-02T09:00:00Z"));
+        h.fake.payOrder(attempt.squareOrderId!, { id: "RV_P1", ...first });
+        assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+        const ledgerBefore = await h.processorLedger(s.bookingId);
+        assert.equal((await h.attempt(attempt.id)).refund_review_at, null);
+        assert.equal(refundNotifications(h).length, 0);
+
+        refundExisting(h, "RV_P1", cents);
+        assert.deepEqual(await hook(h, s, attempt, "evt-rv-1", "RV_P1"), { kind: "processed", outcome: "refund_review_required" });
+        const row = await h.attempt(attempt.id);
+        assert.equal(row.state, "completed", "no invalid state transition");
+        assert.ok(row.refund_review_at, "durable review mark");
+        assert.deepEqual(await h.processorLedger(s.bookingId), ledgerBefore, "the ledger payment is not duplicated, changed or deleted");
+        const [evidence] = await evidenceRows(h, attempt.id);
+        assert.equal(evidence.has_refunds, true);
+        assert.equal(Number(evidence.amount_cents), 40000, "historical evidence kept");
+        assert.equal(refundNotifications(h).length, 1);
+        assert.equal(refundNotifications(h)[0].userId, s.providerId);
+
+        await hook(h, s, attempt, "evt-rv-1", "RV_P1");
+        await Promise.all([hook(h, s, attempt, "evt-rv-2"), h.payments.settleAttempt(attempt.id), h.payments.settleAttempt(attempt.id)]);
+        assert.equal(refundNotifications(h).length, 1, "exactly one notification");
+        assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+        assert.equal((await h.attempt(attempt.id)).refund_review_at.getTime(), row.refund_review_at.getTime(), "the mark is set once");
+      });
+    });
+  }
+
+  test("HOTFIX refund: both actors see an unresolved discrepancy; the customer's 'paid' wording is qualified; nothing leaks", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "VW_P1", ...first });
+      await h.payments.settleAttempt(attempt.id);
+      const clean = await customerView(h, s, attempt.id);
+      assert.equal(clean.refundReview, undefined);
+      assert.equal(cateringSquareDisplay(clean, "customer").label, CATERING_SQUARE_COPY.completed);
+
+      refundExisting(h, "VW_P1", 40000);
+      await h.payments.settleAttempt(attempt.id);
+      const asCustomer = await customerView(h, s, attempt.id);
+      const asProvider = await providerView(h, s, attempt.id);
+      assert.equal(asCustomer.refundReview, true);
+      assert.equal(asProvider.refundReview, true);
+      assert.equal(asCustomer.state, "completed");
+      assert.equal(cateringSquareDisplay(asCustomer, "customer").label, CATERING_SQUARE_COPY.completedRefundReviewCustomer);
+      assert.equal(cateringSquareDisplay(asProvider, "provider").label, CATERING_SQUARE_COPY.completedRefundReviewProvider);
+      assert.equal(asProvider.processorPayments?.[0].refunded, true);
+      assert.equal(asProvider.processorPayments?.[0].creditedToLedger, true);
+      assert.equal(/VW_P1|R_VW_P1|"refunded"|creditedToLedger|ledgerCredited/.test(JSON.stringify(asCustomer)), false, "no Square ids or provider-only flags reach the customer");
+      assert.equal(JSON.stringify({ asProvider, logs: h.logs }).includes(s.connection.accessToken), false);
+      const listed = (await h.payments.attemptsForBooking(h.db as never, s.bookingId)).filter(cateringAttemptNeedsReturnReview);
+      assert.deepEqual(listed.map((row) => row.id), [attempt.id]);
+      assert.ok((await h.attempt(attempt.id)).refund_review_at, "persisted");
+    });
+  });
+
+  test("HOTFIX refund: a credited payment refunded later and an additional refunded payment coexist: one credit, both flagged, one reconciliation", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CO_P1", ...first });
+      await h.payments.settleAttempt(attempt.id);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CO_P2", ...at("2030-05-01T11:00:00Z"), ...money(5000), ...refundFor("CO_P2", 5000) });
+      refundExisting(h, "CO_P1", 10000);
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "reconciliation_required");
+      assert.ok(row.refund_review_at);
+      assert.deepEqual((await evidenceRows(h, attempt.id)).map((entry) => [entry.square_payment_id, entry.has_refunds]), [["CO_P1", true], ["CO_P2", true]]);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "the original credit stands, once");
+      assert.equal(h.notifications.filter((n) => n.type === "catering_booking_square_payment_reconciliation_required").length, 1);
+      assert.equal(refundNotifications(h).length, 0, "the reconciliation notification already covers it");
+      const view = await providerView(h, s, attempt.id);
+      assert.equal(view.refundReview, true);
+      assert.equal(view.ledgerCredited, true);
+    });
+  });
+
+  test("HOTFIX refund: a refund seen BEFORE the first credit is still a payment_refunded reconciliation and never credits; a clean payment credits normally", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const clean = await open(h, s, 0);
+      const refunded = await open(h, s, 1);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(clean.squareOrderId!, { id: "BF_CLEAN", ...first });
+      h.fake.payOrder(refunded.squareOrderId!, { id: "BF_REF", ...first, ...money(60000), ...refundFor("BF_REF", 20000) });
+      assert.equal((await h.payments.settleAttempt(clean.id)).outcome, "completed");
+      assert.equal((await h.payments.settleAttempt(refunded.id)).outcome, "reconciliation_required");
+      assert.equal((await h.attempt(refunded.id)).reconciliation_reason, "payment_refunded");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal(refundNotifications(h).length, 0);
     });
   });
 }

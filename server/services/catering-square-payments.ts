@@ -111,11 +111,16 @@ export type CreatePaymentResult =
 export type SettleOutcome =
   | { outcome: "completed"; attempt: CateringBookingPaymentAttempt }
   | { outcome: "reconciliation_required"; attempt: CateringBookingPaymentAttempt }
+  /** Refund activity was newly found on a payment of a consumed attempt (ledger and state untouched; the attempt is marked for review). */
+  | { outcome: "refund_review_required"; attempt: CateringBookingPaymentAttempt }
   | { outcome: "already_settled"; attempt: CateringBookingPaymentAttempt }
   | { outcome: "awaiting" | "processing" | "cancelled" | "no_checkout"; attempt: CateringBookingPaymentAttempt }
   | { outcome: "rejected"; code: string; attempt: CateringBookingPaymentAttempt }
   | { outcome: "unavailable"; reason: string; attempt: CateringBookingPaymentAttempt }
   | { outcome: "not_found" };
+
+/** What auditing a consumed attempt's fresh evidence found: new payments (changed), refund activity newly seen on a recorded one, or nothing. */
+type AuditResult = { changed: boolean; refundFlipped: boolean; attempt: CateringBookingPaymentAttempt };
 
 export type SquareWebhookInput = { eventId: string; eventType: string; merchantId: string | null; orderId: string | null; paymentId: string | null };
 export type WebhookResult =
@@ -509,7 +514,9 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       if (verdict.kind !== "confirmed") return { outcome: "already_settled", attempt: first };
       const audited = await recordAdditionalPayments(first.id, verdict.payments);
       if (audited.changed) await notifyReconciliation(audited.attempt);
-      return audited.changed ? { outcome: "reconciliation_required", attempt: audited.attempt } : { outcome: "already_settled", attempt: audited.attempt };
+      else if (audited.refundFlipped) await notifyRefundReview(audited.attempt);
+      if (audited.changed) return { outcome: "reconciliation_required", attempt: audited.attempt };
+      return audited.refundFlipped ? { outcome: "refund_review_required", attempt: audited.attempt } : { outcome: "already_settled", attempt: audited.attempt };
     }
 
     if (verdict.kind === "rejected") {
@@ -531,12 +538,14 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     const result = await recordConfirmedPayment(first.id, verdict);
     if (result.kind === "completed") await notifyCompleted(result.attempt);
     if (result.kind === "reconciliation" || result.kind === "additional") await notifyReconciliation(result.attempt);
+    if (result.kind === "refund_review") await notifyRefundReview(result.attempt);
     if (result.kind === "duplicate") {
       log.warn("catering_square_payment_already_consumed", { attemptId: first.id });
       return { outcome: "rejected", code: "payment_already_consumed", attempt: result.attempt };
     }
     if (result.kind === "completed") return { outcome: "completed", attempt: result.attempt };
     if (result.kind === "reconciliation" || result.kind === "additional") return { outcome: "reconciliation_required", attempt: result.attempt };
+    if (result.kind === "refund_review") return { outcome: "refund_review_required", attempt: result.attempt };
     return { outcome: "already_settled", attempt: result.attempt };
   }
 
@@ -572,7 +581,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * before the attempt can become terminal. A concurrent webhook/poll waits on the attempt row, then finds it consumed.
    */
   async function recordConfirmedPayment(attemptId: string, confirmed: Confirmed): Promise<
-    { kind: "completed" | "reconciliation" | "additional" | "already" | "duplicate"; attempt: CateringBookingPaymentAttempt }
+    { kind: "completed" | "reconciliation" | "additional" | "refund_review" | "already" | "duplicate"; attempt: CateringBookingPaymentAttempt }
   > {
     return db.transaction(async (tx: Executor) => {
       const seen = await attemptById(tx, attemptId);
@@ -585,7 +594,8 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       // this settlement already fetched (it may hold payments the winner of the lock race never saw) is audited under the locks just taken.
       if (CONSUMED.includes(attempt.state)) {
         const audited = await auditAdditionalPaymentsInTx(tx, attempt, confirmed.payments);
-        return audited.changed ? { kind: "additional", attempt: audited.attempt } : { kind: "already", attempt };
+        if (audited.changed) return { kind: "additional", attempt: audited.attempt };
+        return audited.refundFlipped ? { kind: "refund_review", attempt: audited.attempt } : { kind: "already", attempt: audited.attempt };
       }
 
       // A Square payment is evidence for AT MOST ONE attempt and credited at most once. Checked here as well as by the unique indexes, so a
@@ -664,7 +674,7 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * is not yet recorded is added as evidence in its own row, and the attempt becomes `reconciliation_required` / `multiple_payments`.
    * What was already credited to the ledger is never touched, rewritten or removed; the ledger link stays; a replay finds nothing new.
    */
-  async function recordAdditionalPayments(attemptId: string, payments: readonly ConfirmedSquarePayment[]): Promise<{ changed: boolean; attempt: CateringBookingPaymentAttempt }> {
+  async function recordAdditionalPayments(attemptId: string, payments: readonly ConfirmedSquarePayment[]): Promise<AuditResult> {
     return db.transaction(async (tx: Executor) => {
       const seen = await attemptById(tx, attemptId);
       if (!seen) throw new Error("payment attempt vanished");
@@ -680,21 +690,34 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * The audit itself, run with the billing lock, booking row and attempt row ALREADY held (in that order) and `attempt` read under them.
    * No Square call happens here. Payments already recorded for this attempt are skipped, so a replay changes nothing.
    */
-  async function auditAdditionalPaymentsInTx(tx: Executor, attempt: CateringBookingPaymentAttempt, payments: readonly ConfirmedSquarePayment[]): Promise<{ changed: boolean; attempt: CateringBookingPaymentAttempt }> {
-    if (!CONSUMED.includes(attempt.state)) return { changed: false, attempt };
+  async function auditAdditionalPaymentsInTx(tx: Executor, attempt: CateringBookingPaymentAttempt, payments: readonly ConfirmedSquarePayment[]): Promise<AuditResult> {
+    if (!CONSUMED.includes(attempt.state)) return { changed: false, refundFlipped: false, attempt };
     const attemptId = attempt.id;
     const existing = await paymentEvidenceOf(tx, attemptId);
     const known = new Set(existing.map((row) => row.squarePaymentId));
     if (attempt.squarePaymentId) known.add(attempt.squarePaymentId);
     // A payment already recorded (and perhaps credited) can be refunded LATER. The credit is never touched, netted or reversed here; the evidence row
     // only records that Square now reports refund activity, so the provider can see it. Idempotent, and only ever false -> true.
+    let refundFlipped = false;
     for (const payment of payments) {
       if (!payment.hasRefunds) continue;
-      await tx.update(cateringAttemptSquarePayments).set({ hasRefunds: true })
-        .where(and(eq(cateringAttemptSquarePayments.attemptId, attemptId), eq(cateringAttemptSquarePayments.squarePaymentId, payment.paymentId), eq(cateringAttemptSquarePayments.hasRefunds, false)));
+      const flipped = await tx.update(cateringAttemptSquarePayments).set({ hasRefunds: true })
+        .where(and(eq(cateringAttemptSquarePayments.attemptId, attemptId), eq(cateringAttemptSquarePayments.squarePaymentId, payment.paymentId), eq(cateringAttemptSquarePayments.hasRefunds, false))).returning({ id: cateringAttemptSquarePayments.id });
+      if (flipped.length > 0) refundFlipped = true;
     }
+    // THE DURABLE, ADDITIVE REFUND-REVIEW MARK. A COMPLETED attempt cannot become `reconciliation_required` while it keeps its ledger link (the
+    // database says a reconciliation has no ledger payment), and forcing it would hide the credit. So the attempt keeps its state and ledger link and
+    // gains `refund_review_at`: set once, under the row lock, by the first read that sees refund activity on any of its payments. Exactly one reader
+    // flips a row false -> true, so exactly one notification is sent however many webhooks, polls or retries follow.
+    const markRefundReview = async (current: CateringBookingPaymentAttempt) => {
+      if (current.refundReviewAt) return current;
+      const [marked] = await tx.update(cateringBookingPaymentAttempts).set({ refundReviewAt: now(), updatedAt: now() })
+        .where(eq(cateringBookingPaymentAttempts.id, attemptId)).returning();
+      return marked as CateringBookingPaymentAttempt;
+    };
+    if (refundFlipped) attempt = await markRefundReview(attempt);
     const fresh = payments.filter((payment) => !known.has(payment.paymentId));
-    if (fresh.length === 0) return { changed: false, attempt };
+    if (fresh.length === 0) return { changed: false, refundFlipped, attempt };
     // A payment already recorded as evidence for ANOTHER attempt, or credited to the ledger, is not this attempt's to claim.
     const ids = fresh.map((payment) => payment.paymentId);
     const taken = new Set([
@@ -702,20 +725,24 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       ...(await tx.select({ id: cateringBookingPayments.processorPaymentId }).from(cateringBookingPayments).where(and(eq(cateringBookingPayments.processor, CATERING_SQUARE_PROCESSOR), inArray(cateringBookingPayments.processorPaymentId, ids)))).map((row: { id: string | null }) => row.id),
     ]);
     const claimable = fresh.filter((payment) => !taken.has(payment.paymentId));
-    if (claimable.length === 0) return { changed: false, attempt };
+    if (claimable.length === 0) return { changed: false, refundFlipped, attempt };
     await insertPaymentEvidence(tx, attemptId, claimable);
+    if (claimable.some((payment) => payment.hasRefunds)) attempt = await markRefundReview(attempt);
     const stored = evidenceSummary(await paymentEvidenceOf(tx, attemptId));
     const [updated] = await tx.update(cateringBookingPaymentAttempts).set({
       state: "reconciliation_required", reconciliationReason: "multiple_payments", processorPaymentCount: stored.count,
       squarePaymentId: null, processorAmountCents: stored.amountCents, processorCurrency: stored.currency,
       verifiedAt: now(), lastCheckedAt: now(), updatedAt: now(),
     }).where(eq(cateringBookingPaymentAttempts.id, attemptId)).returning();
-    return { changed: true, attempt: updated as CateringBookingPaymentAttempt };
+    return { changed: true, refundFlipped, attempt: updated as CateringBookingPaymentAttempt };
   }
 
   async function notifyCompleted(attempt: CateringBookingPaymentAttempt) {
     await notify(attempt.customerId, { ...CATERING_SQUARE_NOTIFICATIONS.customerConfirmed, linkUrl: cateringBillingSectionPath("customer", attempt.bookingId) }).catch(() => undefined);
     await notify(attempt.providerId, { ...CATERING_SQUARE_NOTIFICATIONS.providerConfirmed, linkUrl: cateringBillingSectionPath("provider", attempt.bookingId) }).catch(() => undefined);
+  }
+  async function notifyRefundReview(attempt: CateringBookingPaymentAttempt) {
+    await notify(attempt.providerId, { ...CATERING_SQUARE_NOTIFICATIONS.providerRefundReview, linkUrl: cateringBillingSectionPath("provider", attempt.bookingId) }).catch(() => undefined);
   }
   async function notifyReconciliation(attempt: CateringBookingPaymentAttempt) {
     await notify(attempt.customerId, { ...CATERING_SQUARE_NOTIFICATIONS.customerReconciliation, linkUrl: cateringBillingSectionPath("customer", attempt.bookingId) }).catch(() => undefined);
@@ -766,6 +793,9 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * Winds down EVERY open Square checkout of one provider, while the provider's Square credential still works. The Square connection service
    * calls this before it discards or replaces that credential (a disconnect, or a reconnect to a DIFFERENT merchant).
    *
+   *  0. every unsettled attempt with a Square order is VERIFIED from fresh Square evidence first (a customer may have paid and ChefSire not yet have
+   *     heard; deleting a link neither reverses nor records a payment), and again after its link is deleted. Unavailable, still-processing or
+   *     unattributable evidence refuses the change;
    *  1. every open attempt of the provider becomes locally non-payable (database only, under each booking's billing lock);
    *  2. every locally closed attempt of the provider whose Square link is unconfirmed, on the merchant the credential belongs to, has its link
    *     deleted at Square NOW (no backoff);
@@ -777,24 +807,37 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
    * the attempts are closed locally either way and can still be closed later if the SAME merchant is reconnected. Idempotent.
    */
   async function closeProviderCheckouts(providerId: string): Promise<{ safe: boolean }> {
-    const open = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts)
-      .where(and(eq(cateringBookingPaymentAttempts.providerId, providerId), inArray(cateringBookingPaymentAttempts.state, [...OPEN]))) as { bookingId: string }[];
-    for (const { bookingId } of open) {
-      await db.transaction(async (tx: Executor) => {
-        await lockCateringBilling(tx, bookingId);
-        await closeOpenAttemptsInTransaction(tx, bookingId, now());
-      });
-    }
+    const closeOpenLocally = async () => {
+      const open = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts)
+        .where(and(eq(cateringBookingPaymentAttempts.providerId, providerId), inArray(cateringBookingPaymentAttempts.state, [...OPEN]))) as { bookingId: string }[];
+      for (const { bookingId } of open) {
+        await db.transaction(async (tx: Executor) => {
+          await lockCateringBilling(tx, bookingId);
+          await closeOpenAttemptsInTransaction(tx, bookingId, now());
+        });
+      }
+    };
+    const stored = await connections.storedCredentialState(providerId);
+    if (!stored.present || !stored.merchantId) { await closeOpenLocally(); return { safe: true }; } // nothing usable is on file, so nothing is lost by discarding it
+    const merchantId = stored.merchantId;
+    const refuse = async (reason: string) => { await closeOpenLocally(); log.warn("catering_square_connection_change_refused", { providerId, reason }); return { safe: false }; };
+
     // WHAT DEPENDS ON THE STORED CREDENTIAL, from persisted state only:
-    //  (a) a checkout link whose removal at Square is not yet confirmed -- it can still take a payment, and only that merchant's credential can
-    //      delete it or read what it took; and
-    //  (b) an UNRESOLVED CREATE CALL -- Square was (or may have been) asked to create a checkout and the outcome is not recorded. No link id exists
-    //      yet, so (a) cannot see it, but a hosted checkout may still appear, whatever the attempt's local state now says.
+    //  (a) an attempt whose Square order has not been settled: a customer may ALREADY have paid on it and ChefSire not yet have heard (a delayed
+    //      webhook, a customer who never came back). Deleting its hosted link does not reverse or record that payment, and without this credential
+    //      nobody can ever read what Square took. Each is VERIFIED with fresh Square evidence before the credential may go;
+    //  (b) a checkout link whose removal at Square is not yet confirmed -- it can still take a payment; and
+    //  (c) an UNRESOLVED CREATE CALL -- a hosted checkout may still appear whatever the attempt's local state now says.
     // "Not payment-ready right now" is NOT "safe to destroy": a verification outage, a failed refresh or a configuration fault all leave the
     // credential on file and still needed.
-    const stored = await connections.storedCredentialState(providerId);
-    if (!stored.present || !stored.merchantId) return { safe: true }; // nothing usable is on file, so nothing is lost by discarding it
-    const merchantId = stored.merchantId;
+    const unsettled = () => db.select().from(cateringBookingPaymentAttempts).where(and(
+      eq(cateringBookingPaymentAttempts.providerId, providerId),
+      eq(cateringBookingPaymentAttempts.merchantId, merchantId),
+      sql`${cateringBookingPaymentAttempts.squareOrderId} IS NOT NULL`,
+      sql`${cateringBookingPaymentAttempts.state} NOT IN ('completed', 'reconciliation_required')`,
+      // Already read from Square AFTER its link was confirmed deleted: that read is the final word on a deleted link, so it is not asked again.
+      sql`NOT (${cateringBookingPaymentAttempts.squareLinkClosedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.lastCheckedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.lastCheckedAt} > ${cateringBookingPaymentAttempts.squareLinkClosedAt})`,
+    )) as Promise<CateringBookingPaymentAttempt[]>;
     const unconfirmed = () => and(
       eq(cateringBookingPaymentAttempts.providerId, providerId),
       eq(cateringBookingPaymentAttempts.merchantId, merchantId),
@@ -807,28 +850,59 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
       sql`${cateringBookingPaymentAttempts.squarePaymentLinkId} IS NULL
         AND ${cateringBookingPaymentAttempts.squareCreateStartedAt} IS NOT NULL AND ${cateringBookingPaymentAttempts.squareCreateResolvedAt} IS NULL`,
     );
+    const openNoOrder = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(and(
+      eq(cateringBookingPaymentAttempts.providerId, providerId), eq(cateringBookingPaymentAttempts.merchantId, merchantId),
+      inArray(cateringBookingPaymentAttempts.state, [...OPEN]), sql`${cateringBookingPaymentAttempts.squareOrderId} IS NULL`,
+    )).limit(1);
+    const toVerify = await unsettled();
     const due = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts).where(unconfirmed()) as { bookingId: string }[];
     const creating = await db.select().from(cateringBookingPaymentAttempts).where(unresolvedCreates()) as CateringBookingPaymentAttempt[];
-    if (due.length === 0 && creating.length === 0) return { safe: true }; // nothing live or possibly-live depends on the credential
-    // Something does: the credential must still work to wind it down. If it cannot be obtained, FAIL CLOSED (the credential is kept for a retry).
+    if (toVerify.length === 0 && due.length === 0 && creating.length === 0 && openNoOrder.length === 0) { await closeOpenLocally(); return { safe: true }; }
+
+    // Something does depend on it: the credential must still work. If it cannot be obtained, FAIL CLOSED (the credential is kept for a retry).
     const credentials = await connections.getReadyConnectedCredentials(providerId).catch(() => null);
-    if (!credentials || credentials.merchantId !== merchantId) {
-      log.warn("catering_square_connection_change_refused", { providerId, reason: "credential_unavailable" });
-      return { safe: false };
+    if (!credentials || credentials.merchantId !== merchantId) return refuse("credential_unavailable");
+
+    // Settles the attempt from FRESH Square evidence through the one settlement function (webhook, poll and retry use it too, so a concurrent
+    // payment is recognised exactly once). Only an answer that proves the attempt's money is accounted for lets the credential go; an
+    // unavailable Square, evidence that is still processing, or evidence that does not belong to the attempt FAILS CLOSED.
+    const verify = async (attempt: { id: string }): Promise<boolean> => {
+      const result = await settleAttempt(attempt.id).catch(() => null);
+      if (!result) return false;
+      return result.outcome === "completed" || result.outcome === "reconciliation_required" || result.outcome === "refund_review_required"
+        || result.outcome === "already_settled" || result.outcome === "awaiting" || result.outcome === "cancelled";
+    };
+
+    // 1. BEFORE anything is closed: payments that already completed are recorded as ordinary settlements (not as payments on a cancelled checkout).
+    for (const attempt of toVerify) {
+      if (!OPEN.includes(attempt.state)) continue;
+      if (!(await verify(attempt))) return refuse("payment_unverified");
     }
+    // 2. Now nothing new may be started: open attempts become locally non-payable.
+    await closeOpenLocally();
+
     // A create call that is plausibly still in flight is WAITED for (its own completion records the link and starts the cleanup, with this very
-    // credential still in place). One that has outlived any plausible call is RECONCILED: the same idempotency key is sent again, which returns
-    // the link if Square made one (never a second), and which is then closed like any other.
+    // credential still in place). One that has outlived any plausible call is RECONCILED with the same idempotency key.
     for (const attempt of creating) {
       if (now().getTime() - (attempt.squareCreateStartedAt?.getTime() ?? 0) < CREATE_IN_FLIGHT_MS) continue;
       await completeCreation(attempt, credentials, attempt.bookingId, "reconcile").catch(() => undefined);
     }
+    // 3. Every link is deleted at Square (forced, no backoff).
     const afterReconcile = await db.selectDistinct({ bookingId: cateringBookingPaymentAttempts.bookingId }).from(cateringBookingPaymentAttempts).where(unconfirmed()) as { bookingId: string }[];
+    // Every attempt whose link is deleted by THIS call is read again afterwards, whatever its timestamps say.
+    const deletedHere = new Set((await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(unconfirmed()) as { id: string }[]).map((row) => row.id));
     for (const { bookingId } of afterReconcile) await sweepClosedLinks(bookingId, { force: true });
     const [remainingLink] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(unconfirmed()).limit(1);
     const [remainingCreate] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts).where(unresolvedCreates()).limit(1);
-    if (remainingLink || remainingCreate) log.warn("catering_square_connection_change_refused", { providerId, reason: remainingCreate ? "create_unresolved" : "links_unconfirmed" });
-    return { safe: !remainingLink && !remainingCreate };
+    if (remainingLink || remainingCreate) return refuse(remainingCreate ? "create_unresolved" : "links_unconfirmed");
+    // 4. AFTER the links are gone: deleting a link is NOT proof that no payment occurred (one may have completed before it was deleted, or be
+    // finishing right now), so every unsettled attempt is read from Square again. With the link gone this set is final: anything still moving
+    // (a payment APPROVED/PENDING) or unreadable refuses the change.
+    const afterIds = Array.from(new Set<string>([...(await unsettled()).map((attempt) => attempt.id), ...toVerify.map((attempt) => attempt.id), ...Array.from(deletedHere)]));
+    for (const id of afterIds) {
+      if (!(await verify({ id }))) return refuse("payment_unverified");
+    }
+    return { safe: true };
   }
 
   /**
