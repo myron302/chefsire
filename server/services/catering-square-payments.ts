@@ -847,7 +847,9 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     await notify(attempt.providerId, { ...CATERING_SQUARE_NOTIFICATIONS.providerConfirmed, linkUrl: cateringBillingSectionPath("provider", attempt.bookingId) }).catch(() => undefined);
   }
   async function notifyRefundReview(attempt: CateringBookingPaymentAttempt) {
-    await notify(attempt.providerId, { ...CATERING_SQUARE_NOTIFICATIONS.providerRefundReview, linkUrl: cateringBillingSectionPath("provider", attempt.bookingId) }).catch(() => undefined);
+    // The credited wording is used ONLY when the attempt really has a Catering ledger payment; otherwise the ledger-neutral one.
+    const notification = attempt.paymentId ? CATERING_SQUARE_NOTIFICATIONS.providerRefundReview : CATERING_SQUARE_NOTIFICATIONS.providerRefundReviewNoLedger;
+    await notify(attempt.providerId, { ...notification, linkUrl: cateringBillingSectionPath("provider", attempt.bookingId) }).catch(() => undefined);
   }
   async function notifyReconciliation(attempt: CateringBookingPaymentAttempt) {
     await notify(attempt.customerId, { ...CATERING_SQUARE_NOTIFICATIONS.customerReconciliation, linkUrl: cateringBillingSectionPath("customer", attempt.bookingId) }).catch(() => undefined);

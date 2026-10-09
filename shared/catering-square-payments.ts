@@ -176,7 +176,8 @@ export const CATERING_SQUARE_COPY = {
   verifying: "Checking your payment with Square...",
   completed: "Payment confirmed by Square.",
   returnReviewNoticeCustomer: "Square reports that part or all of a payment on this booking was returned. Your caterer is reviewing it, so this booking may not be fully settled.",
-  returnReviewNoticeProvider: "Square reports refund activity on a payment already credited to this booking. Your ledger was NOT changed. Review it in Square, then record any return under the booking's payments.",
+  /** Ledger-neutral on purpose: the banner covers every reviewed attempt, and some (a reconciliation) were never credited to the Catering ledger. */
+  returnReviewNoticeProvider: "Square reports refund activity associated with this booking. Review the payment and refund in Square, then compare them with the booking's recorded payments before making any ledger adjustments. Your ledger was NOT changed.",
   completedRefundReviewCustomer: "Payment confirmed by Square. Square also reports that part or all of it was returned, and your caterer is reviewing that.",
   completedRefundReviewProvider: "Payment confirmed by Square and credited to the Catering ledger. Square now reports refund activity on it. The ledger was NOT changed; review it in Square and record any return under the booking's payments.",
   failed: "We could not open a Square checkout. Nothing was charged. Please try again.",
@@ -264,10 +265,17 @@ export const CATERING_SQUARE_NOTIFICATIONS = {
     title: "Your Square payment needs additional review",
     message: "Your Square payment needs additional review. Your caterer has been notified. Please do not make another payment until the review is complete.",
   },
+  /** ONLY for an attempt that has a Catering ledger payment (`payment_id` set). */
   providerRefundReview: {
     type: "catering_booking_square_payment_refund_review",
     title: "Square reports a refund on a payment you were credited",
     message: "A payment already recorded on this booking shows refund activity in Square. Nothing was changed in your ledger. Open the booking's billing section.",
+  },
+  /** An attempt with NO Catering ledger payment (a reconciliation): never says anything was credited and never says to record a return. */
+  providerRefundReviewNoLedger: {
+    type: "catering_booking_square_payment_refund_review",
+    title: "Square reports refund activity on a payment under review",
+    message: "Square reports refund activity associated with this booking. Review the payment and refund in Square, then compare them with the booking's recorded payments before making any ledger adjustments. Nothing was changed in your ledger. Open the booking's billing section.",
   },
   providerReconciliation: {
     type: "catering_booking_square_payment_reconciliation_required",

@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareCateringSquareEnvironment, withCateringSquareHarness, withTimeout, type CateringSquareHarness } from "../test-support/catering-square-harness";
 import { createSquareCheckoutApi, SquareSandboxOnlyError } from "../lib/square-checkout";
-import { CATERING_SQUARE_RECONCILIATION_COPY } from "../../shared/catering-square-payments";
+import { CATERING_SQUARE_RECONCILIATION_COPY, CATERING_SQUARE_NOTIFICATIONS } from "../../shared/catering-square-payments";
 import { CATERING_SQUARE_COPY } from "../../shared/catering-square-payments";
 import { cateringSquareDisplay } from "../../client/src/pages/services/catering-square-payment-state";
 import { SquareCredentialDiscardBlockedError } from "../lib/square-connection-service";
@@ -3330,6 +3330,77 @@ if (!URL_ENV) {
       for (const result of results) assert.ok(result.status === "fulfilled" || result.reason instanceof SquareCredentialDiscardBlockedError, String((result as { reason?: unknown }).reason));
       assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit, none missed");
       assert.equal((await h.attempt(attempt.id)).state, "completed");
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 8: refund-review wording never claims a ledger credit that does not exist
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const CLAIMS_CREDIT = /credited|already recorded|record any return/i;
+
+  test("PASS8: a reconciliation_required attempt with NO ledger payment that later shows refund activity is described ledger-neutrally everywhere, and nothing financial changes", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await intoReview(h, s, "amount_mismatch");
+      const before = await h.attempt(attempt.id);
+      assert.equal(before.payment_id, null);
+      assert.equal(before.refund_review_at, null);
+      const evidenceBefore = JSON.stringify((await evidenceRows(h, attempt.id)).map((row) => [row.square_payment_id, row.amount_cents]));
+      refundExisting(h, "RV_A", 1000);
+      const outcome = await h.payments.settleAttempt(attempt.id);
+      assert.equal(outcome.outcome, "refund_review_required");
+      const row = await h.attempt(attempt.id);
+      assert.ok(row.refund_review_at, "the review mark is set");
+      assert.equal(row.payment_id, null, "still no ledger payment");
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 0);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+      assert.equal(JSON.stringify((await evidenceRows(h, attempt.id)).map((entry) => [entry.square_payment_id, entry.amount_cents])), evidenceBefore, "settlement and evidence amounts unchanged");
+
+      // notification: ledger-neutral, one only (idempotent across replays)
+      const notes = refundNotifications(h);
+      assert.equal(notes.length, 1);
+      assert.equal(notes[0].userId, s.providerId);
+      assert.equal(CLAIMS_CREDIT.test(`${notes[0].title} ${notes[0].message}`), false, `${notes[0].title} ${notes[0].message}`);
+      assert.equal(notes[0].message, CATERING_SQUARE_NOTIFICATIONS.providerRefundReviewNoLedger.message);
+      assert.match(notes[0].message, /compare them with the booking's recorded payments before making any ledger adjustments/);
+      await h.payments.settleAttempt(attempt.id);
+      await hook(h, s, attempt, "evt-p8-1", "RV_A");
+      assert.equal(refundNotifications(h).length, 1, "replays do not notify again");
+
+      // banner and provider card: neither claims a credit nor tells the provider to record a return
+      assert.equal(CLAIMS_CREDIT.test(CATERING_SQUARE_COPY.returnReviewNoticeProvider), false);
+      const providerCard = cateringSquareDisplay(await providerView(h, s, attempt.id), "provider");
+      assert.equal(providerCard.label, CATERING_SQUARE_COPY.reconciliationProviderNothingCredited, "the card truthfully says nothing was credited");
+      assert.equal(/record any return/i.test(providerCard.label), false);
+      assert.equal((await providerView(h, s, attempt.id)).ledgerCredited, undefined);
+
+      // customer wording stays accurate and says nothing about the ledger
+      assert.equal(CLAIMS_CREDIT.test(CATERING_SQUARE_COPY.returnReviewNoticeCustomer), false);
+      assert.equal(cateringSquareDisplay(await customerView(h, s, attempt.id), "customer").label, CATERING_SQUARE_COPY.reconciliation);
+    });
+  });
+
+  test("PASS8: a completed payment WITH a ledger payment keeps its accurate credited wording in the notification and card, while the generic banner stays ledger-neutral", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "P8_C", ...first });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      refundExisting(h, "P8_C", 40000);
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "refund_review_required");
+      const row = await h.attempt(attempt.id);
+      assert.ok(row.payment_id, "a real ledger payment");
+      const [note] = refundNotifications(h);
+      assert.equal(note.message, CATERING_SQUARE_NOTIFICATIONS.providerRefundReview.message);
+      assert.match(note.message, /already recorded on this booking/);
+      assert.equal(cateringSquareDisplay(await providerView(h, s, attempt.id), "provider").label, CATERING_SQUARE_COPY.completedRefundReviewProvider);
+      assert.match(CATERING_SQUARE_COPY.completedRefundReviewProvider, /credited to the Catering ledger/);
+      assert.equal(CLAIMS_CREDIT.test(CATERING_SQUARE_COPY.returnReviewNoticeProvider), false, "the shared banner never assumes a credit");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "the ledger is unchanged");
+      assert.equal(refundNotifications(h).length, 1);
     });
   });
 }
