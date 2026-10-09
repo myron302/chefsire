@@ -5,7 +5,7 @@ import { cateringBookingIdSchema } from "@shared/catering-bookings";
 import {
   CATERING_ATTEMPT_UNAVAILABLE_CODE,
   CATERING_SQUARE_COPY,
-  cateringAttemptIsOpen,
+  cateringAttemptIsConsumed,
   cateringSquarePayRequestSchema,
   CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE,
   CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE,
@@ -109,9 +109,9 @@ export function createCateringSquarePaymentsRouter(service: CateringSquarePaymen
       const attemptId = cateringSquarePaymentAttemptIdSchema.parse(req.params.attemptId);
       const result = await service.getAttempt({ bookingId, attemptId, userId: userId(req) });
       if (result.kind === "not_found") return res.status(404).json({ message: CATERING_BILLING_NOT_FOUND_REFUSAL.message });
-      // For a checkout the customer is still waiting on, when Square could not be asked: say so explicitly (and retryably) instead of a 200 that reads as a clean check of an unchanged attempt.
+      // For ANY attempt that has not consumed a payment (open, or locally closed: cancelled, expired, superseded, failed) when Square could not be asked: say so explicitly (and retryably) instead of a 200 that reads as a clean check of an unchanged attempt.
       // The body carries no attempt, no state and no reason, so it cannot be mistaken for "nothing was charged" or leak connection detail.
-      if (result.verification === "unavailable" && cateringAttemptIsOpen(result.attempt.state)) {
+      if (result.verification === "unavailable" && !cateringAttemptIsConsumed(result.attempt.state)) {
         res.set("Retry-After", "5");
         return res.status(503).json({ code: CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE, message: CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, retryable: true });
       }

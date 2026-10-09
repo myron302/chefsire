@@ -682,6 +682,16 @@ test("PASS5: an expired checkout is explained to the customer without claiming n
   assert.equal(/nothing was charged/i.test(CATERING_SQUARE_COPY.expired + CATERING_SQUARE_COPY.checkoutVerifying), false);
   assert.match(CATERING_SQUARE_COPY.checkoutVerifying, /do not pay again/i);
   assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [attempt({ state: "expired" })] }), invoice }), true, "a new checkout may be started once the old one is expired");
-  const billingRoute = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../server/routes/catering-booking-billing.ts"), "utf8");
-  assert.match(billingRoute, /cateringCheckoutPastExpiry\(row, new Date\(\)\)/, "the customer's billing view does not carry a link past its lifetime");
+});
+
+test("PASS9: an aged open checkout stays shown, offers no link, and a NEW checkout may be requested (the server verifies and retires first); a usable one still blocks Pay", () => {
+  const aged = attempt({ state: "pending", linkExpired: true, checkoutUrl: undefined });
+  const display = cateringSquareDisplay(aged, "customer");
+  assert.equal(display.label, CATERING_SQUARE_COPY.expired);
+  assert.equal(display.canContinue, false);
+  assert.equal(display.polling, true, "still watching for a payment");
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [aged] }), invoice }), true);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [attempt()] }), invoice }), false);
+  const route = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../server/routes/catering-booking-billing.ts"), "utf8");
+  assert.equal(/cateringCheckoutPastExpiry/.test(route), false, "the billing view never hides an unverified checkout just because time passed");
 });

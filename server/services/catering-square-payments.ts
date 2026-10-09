@@ -27,6 +27,7 @@ import {
   CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE,
   CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE,
   CATERING_SQUARE_CHECKOUT_MAX_AGE_MS,
+  CATERING_CONSUMED_ATTEMPT_STATES,
   cateringCheckoutPastExpiry,
   CATERING_ATTEMPT_UNAVAILABLE_CODE,
   CATERING_SQUARE_COPY,
@@ -160,7 +161,7 @@ const UNVERIFIED_ORDER_SQL = `square_order_id IS NOT NULL
 /** Locally terminal states whose Square payment link may still be live until Square confirms otherwise. */
 // `failed` is included: a create that Square refused/lost locally can still deliver a LATE link, which must be recorded and removed like any other.
 const CLOSED_WITH_LINK_STATES: readonly string[] = ["cancelled", "superseded", "expired", "failed"];
-const CONSUMED: readonly string[] = ["completed", "reconciliation_required"];
+const CONSUMED: readonly string[] = CATERING_CONSUMED_ATTEMPT_STATES;
 
 export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
   const { db, connections, checkout } = deps;
@@ -230,6 +231,12 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
     // The provider's CURRENT verified credential, merchant and card-capable location. Fetched before any lock: it may call Square.
     const credentials = await connections.getReadyConnectedCredentials(booking.providerId);
     if (!credentials || credentials.currency !== CATERING_SQUARE_CURRENCY) {
+      // "This caterer cannot take Square payments... pay them directly" is only safe when nothing earlier on this invoice could still hold a payment.
+      // If an earlier Square order is unverified (pending, aged, or closed without an authoritative read afterwards) the honest answer is "cannot verify
+      // right now, do not pay again" -- never guidance that invites a second payment.
+      const [exposed] = await db.select({ id: cateringBookingPaymentAttempts.id }).from(cateringBookingPaymentAttempts)
+        .where(and(eq(cateringBookingPaymentAttempts.bookingId, booking.id), eq(cateringBookingPaymentAttempts.invoiceId, input.invoiceId), sql.raw(UNVERIFIED_ORDER_SQL))).limit(1);
+      if (exposed) return { kind: "refused", status: 503, code: CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE, message: CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE };
       return { kind: "refused", status: 409, code: CATERING_ATTEMPT_PROVIDER_NOT_READY_CODE, message: CATERING_SQUARE_COPY.notReady };
     }
 
@@ -1075,7 +1082,10 @@ export function createCateringSquarePayments(deps: CateringSquarePaymentsDeps) {
         if (attempt.squareOrderId) {
           // The outcome is NOT discarded: an `unavailable` settlement means nothing was verified, which must not read as a clean check.
           const settled = await settleAttempt(attempt.id);
-          if (settled.outcome === "unavailable") verification = "unavailable";
+          // Unverified is unverified in EVERY non-consumed state (a cancelled, expired, superseded or failed checkout can still hold a payment), unless a
+          // successful authoritative read after its link's removal already established the answer (`closure_verified_at`).
+          const established = Boolean(attempt.squareLinkClosedAt && attempt.closureVerifiedAt);
+          if (settled.outcome === "unavailable") verification = established ? "not_needed" : "unavailable";
         }
         const refreshed = await attemptById(db, attempt.id);
         if (OPEN.includes(refreshed?.state ?? "")) await closeStaleOpenAttempts(attempt.bookingId);

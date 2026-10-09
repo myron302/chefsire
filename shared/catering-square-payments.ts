@@ -60,6 +60,10 @@ export type CateringPaymentAttemptState = typeof CATERING_PAYMENT_ATTEMPT_STATES
 export const CATERING_OPEN_ATTEMPT_STATES: readonly CateringPaymentAttemptState[] = ["creating", "pending"];
 
 /** The states from which money can still arrive and be recognised: everything except the two that already consumed a payment. */
+/** The two states that already consumed a Square payment. THE definition: the server, the routes and the client all derive "consumed" from here. */
+export const CATERING_CONSUMED_ATTEMPT_STATES: readonly CateringPaymentAttemptState[] = ["completed", "reconciliation_required"];
+export const cateringAttemptIsConsumed = (state: string): boolean => (CATERING_CONSUMED_ATTEMPT_STATES as readonly string[]).includes(state);
+
 export const CATERING_SETTLEABLE_ATTEMPT_STATES: readonly CateringPaymentAttemptState[] = ["creating", "pending", "failed", "expired", "cancelled", "superseded"];
 
 /**
@@ -123,6 +127,8 @@ export type CateringPaymentAttemptView = {
   completedAt: string | null;
   /** CUSTOMER ONLY, and only while `state` is `pending`. */
   checkoutUrl?: string;
+  /** A `pending` checkout whose link is past its lifetime: the link is not offered (it is retired, after verification, when a new checkout is requested). The attempt itself stays visible until then. */
+  linkExpired?: boolean;
   /** What actually moved at Square, once Square has confirmed a payment. Absent before that. Always read WITH `processorCurrency`, never with `currency` (the invoice's). */
   processorAmountCents?: number;
   /** The currency of `processorAmountCents`, as Square reported it. Present when it is unambiguous (every completed payment shares one currency). */

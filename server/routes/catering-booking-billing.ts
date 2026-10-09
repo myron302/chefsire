@@ -67,7 +67,6 @@ import {
 import { serializeCateringAdjustment } from "../serializers/catering-booking-adjustment";
 import { cateringAttemptNeedsReturnReview, serializeCateringPaymentAttempt, visibleCateringPaymentAttempts } from "../serializers/catering-booking-payment-attempt";
 import { cateringSquarePaymentsEnabled } from "../lib/square-checkout";
-import { cateringCheckoutPastExpiry } from "@shared/catering-square-payments";
 import { cateringAttemptIsObsolete } from "../services/catering-square-payment-policy";
 import { cateringSquarePayments } from "../services/catering-square-payments-instance";
 import type { CateringAttemptWithPayments } from "../services/catering-square-payments";
@@ -198,7 +197,7 @@ function billingView(input: {
     // A customer is never OFFERED an open checkout that now asks for more than is payable: the stale sweep closes it, and until it has, the view
     // simply does not carry it (so the invoice offers a fresh checkout at the current amount instead).
     paymentAttempts: visibleCateringPaymentAttempts(input.attempts, input.role, input.viewerId)
-      .filter((row) => input.role === "provider" || (!cateringCheckoutPastExpiry(row, new Date()) && !cateringAttemptIsObsolete(row, input.invoices.map(cateringInvoiceFactOf).find((invoice) => invoice.id === row.invoiceId), facts)))
+      .filter((row) => input.role === "provider" || !cateringAttemptIsObsolete(row, input.invoices.map(cateringInvoiceFactOf).find((invoice) => invoice.id === row.invoiceId), facts))
       .map((row) => serializeCateringPaymentAttempt(row, input.role)),
     squareCheckout: { enabled: cateringSquarePaymentsEnabled() },
     squareReturnReviewCount: visibleCateringPaymentAttempts(input.attempts, input.role, input.viewerId).filter(cateringAttemptNeedsReturnReview).length,

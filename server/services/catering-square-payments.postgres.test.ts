@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareCateringSquareEnvironment, withCateringSquareHarness, withTimeout, type CateringSquareHarness } from "../test-support/catering-square-harness";
 import { createSquareCheckoutApi, SquareSandboxOnlyError } from "../lib/square-checkout";
-import { CATERING_SQUARE_RECONCILIATION_COPY, CATERING_SQUARE_NOTIFICATIONS } from "../../shared/catering-square-payments";
+import { CATERING_SQUARE_RECONCILIATION_COPY, CATERING_SQUARE_NOTIFICATIONS, cateringCheckoutPastExpiry } from "../../shared/catering-square-payments";
 import { CATERING_SQUARE_COPY } from "../../shared/catering-square-payments";
 import { cateringSquareDisplay } from "../../client/src/pages/services/catering-square-payment-state";
 import { SquareCredentialDiscardBlockedError } from "../lib/square-connection-service";
@@ -3401,6 +3401,81 @@ if (!URL_ENV) {
       assert.equal(CLAIMS_CREDIT.test(CATERING_SQUARE_COPY.returnReviewNoticeProvider), false, "the shared banner never assumes a credit");
       assert.equal((await h.processorLedger(s.bookingId)).length, 1, "the ledger is unchanged");
       assert.equal(refundNotifications(h).length, 1);
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 9: aged checkouts stay visible until retirement is verified; no "pay directly" guidance over an unverified payment
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  test("PASS9: an aged pending checkout stays in BOTH billing views (state unchanged) with its link withheld and flagged expired, until retirement is verified", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const rows = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      for (const role of ["customer", "provider"] as const) {
+        const listed = visibleCateringPaymentAttempts(rows, role, role === "customer" ? s.customerId : s.providerId);
+        const view = listed.map((row) => serializeCateringPaymentAttempt(row, role, new Date(T0.getTime() + MAX_AGE))).find((entry) => entry.id === old.id)!;
+        assert.ok(view, `${role} still sees the unverified checkout`);
+        assert.equal(view.state, "pending");
+        assert.equal(view.checkoutUrl, undefined, "no dead link is handed out");
+        assert.equal(view.linkExpired, true);
+      }
+      assert.equal(cateringCheckoutPastExpiry({ state: "pending", squareCreateResolvedAt: T0, createdAt: T0 }, new Date(T0.getTime() + MAX_AGE)), true);
+      assert.equal(cateringSquareDisplay({ state: "pending", checkoutUrl: undefined, linkExpired: true }, "customer").label, CATERING_SQUARE_COPY.expired);
+    });
+  });
+
+  test("PASS9: an aged unverified checkout + provider credential unavailable: the answer is 'cannot verify, do not pay again', never 'pay them directly'; nothing is created or declared failed", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      await h.dropConnection(s.providerId);
+      const result = await pay(h, s);
+      assert.equal(result.kind, "refused");
+      if (result.kind === "refused") {
+        assert.equal(result.status, 503);
+        assert.equal(result.code, "catering_square_verification_unavailable");
+        assert.match(result.message, /do not pay again/i);
+        assert.equal(/directly/i.test(result.message), false);
+      }
+      assert.equal((await h.attempt(old.id)).state, "pending");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS9: with no earlier Square order, or one authoritatively verified after closure, an unusable provider still gets the ordinary 'cannot take Square payments' answer", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await open(h, s, 0);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now() - interval '1 hour', closure_verified_at = now() WHERE id = $1`, [old.id]);
+      await h.dropConnection(s.providerId);
+      const verified = await pay(h, s, 0);
+      assert.equal(verified.kind === "refused" && verified.code, "catering_square_provider_not_ready");
+      const none = await pay(h, s, 1);
+      assert.equal(none.kind === "refused" && none.code, "catering_square_provider_not_ready");
+    });
+  });
+
+  test("PASS9: a retired (expired + verified) checkout is replaced normally, and a payment completing at the boundary is recognised exactly once", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const replacement = await pay(h, s);
+      assert.equal(replacement.kind, "ok");
+      assert.ok((await h.attempt(old.id)).closure_verified_at);
+      // a second, near-boundary cycle: the replacement is paid just as it would age out
+      if (replacement.kind !== "ok") throw new Error("not ok");
+      h.fake.payOrder(replacement.attempt.squareOrderId!, { id: "P9_NEAR", created_at: "2030-07-01T00:00:00Z", updated_at: "2030-07-01T00:00:00Z" });
+      h.setClock(new Date(T0.getTime() + 2 * MAX_AGE));
+      await Promise.all([pay(h, s), h.payments.settleAttempt(replacement.attempt.id), hook(h, s, replacement.attempt, "evt-p9-1", "P9_NEAR")]);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit");
+      assert.equal((await h.attempt(replacement.attempt.id)).state, "completed");
+      assert.equal(p5Creates(h), 2, "no third checkout");
     });
   });
 }

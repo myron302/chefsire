@@ -179,7 +179,8 @@ if (!URL_ENV) {
       assert.equal((await h.attempt(created.attempt.id)).state, "pending");
       // a second checkout is still refused while the first is unresolved (the open attempt is reused, never duplicated)
       const again = await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId));
-      assert.ok([200, 202, 409].includes(again.status));
+      assert.equal(again.status, 503, "an unverified earlier checkout + unusable credential: cannot verify, do not pay again (never 'pay them directly')");
+      assert.equal((await again.json()).code, "catering_square_verification_unavailable");
       assert.equal((await h.attempts(s.bookingId)).length, rowsBefore);
       assert.equal(h.fake.requests.filter((r) => r.method === "POST" && r.path === "/v2/online-checkout/payment-links").length, createsBefore);
 
@@ -212,6 +213,67 @@ if (!URL_ENV) {
       assert.equal(replay.attempt.state, "completed");
       assert.equal((await h.processorLedger(s.bookingId)).length, 1);
       assert.equal((await h.attempts(s.bookingId)).length, 1);
+    }, { ownLimiter: true });
+  });
+
+  for (const closedState of ["cancelled", "expired", "superseded", "failed"] as const) {
+    test(`PASS9: a locally ${closedState} attempt whose Square payment is UNVERIFIED answers a retryable 503 (never a clean terminal 200); once Square is back the payment is recorded, never reported unpaid`, async () => {
+      await withApp(async ({ h, base }) => {
+        const s = await scene(h);
+        const created = await (await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId))).json();
+        const id = created.attempt.id;
+        const statusUrl = `${base}/api/catering/bookings/${s.bookingId}/billing/payment-attempts/${id}`;
+        h.fake.payOrder(h.fake.lastOrder()!.id);
+        await h.q(`UPDATE catering_booking_payment_attempts SET state = $2, closed_at = now(), square_link_closed_at = NULL, closure_verified_at = NULL WHERE id = $1`, [id, closedState]);
+
+        h.fake.state.evidenceFailure = 503;
+        for (let i = 0; i < 3; i += 1) {
+          const down = await fetch(statusUrl, { headers: tok(s.customerId) });
+          assert.equal(down.status, 503, closedState);
+          assert.equal(down.headers.get("retry-after"), "5");
+          const body = await down.json();
+          assert.equal(body.code, "catering_square_verification_unavailable");
+          assert.equal(body.retryable, true);
+          assert.equal(body.attempt, undefined, "no terminal state is shown");
+          assert.equal(/cancel|expired|closed|nothing was charged/i.test(body.message.replace(/not been changed or cancelled/i, "")), false);
+        }
+        assert.equal((await h.ledger(s.bookingId)).length, 0);
+        // a stranger and an unauthenticated caller learn nothing, even during the outage
+        assert.equal((await fetch(statusUrl, { headers: tok(await h.user("stranger")) })).status, 404);
+        assert.equal((await fetch(statusUrl)).status, 401);
+
+        h.fake.state.evidenceFailure = undefined;
+        const up = await fetch(statusUrl, { headers: tok(s.customerId) });
+        assert.equal(up.status, 200);
+        const view = await up.json();
+        assert.ok(["completed", "reconciliation_required"].includes(view.attempt.state), `payment found on a ${closedState} attempt: ${view.attempt.state}`);
+        assert.equal((await h.processorLedger(s.bookingId)).length + (view.attempt.state === "reconciliation_required" ? 1 : 0), 1, "recorded exactly once");
+      }, { ownLimiter: true });
+    });
+  }
+
+  test("PASS9: an established answer is still a terminal 200 during an outage: a verified-closed attempt and a consumed one", async () => {
+    await withApp(async ({ h, base }) => {
+      const s = await scene(h);
+      const created = await (await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[0]}/pay`, tok(s.customerId))).json();
+      const statusUrl = (id: string) => `${base}/api/catering/bookings/${s.bookingId}/billing/payment-attempts/${id}`;
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now() - interval '1 hour', closure_verified_at = now() WHERE id = $1`, [created.attempt.id]);
+      h.fake.state.evidenceFailure = 503;
+      const closed = await fetch(statusUrl(created.attempt.id), { headers: tok(s.customerId) });
+      assert.equal(closed.status, 200, "authoritatively verified after closure: nothing left to verify");
+      const closedBody = await closed.json();
+      assert.equal(closedBody.attempt.state, "cancelled");
+      assert.equal(closedBody.verification, "not_needed");
+
+      h.fake.state.evidenceFailure = undefined;
+      const second = await (await post(`${base}/api/catering/bookings/${s.bookingId}/billing/invoices/${s.invoiceIds[1]}/pay`, tok(s.customerId))).json();
+      h.fake.payOrder(h.fake.lastOrder()!.id);
+      assert.equal((await (await fetch(statusUrl(second.attempt.id), { headers: tok(s.customerId) })).json()).attempt.state, "completed");
+      h.fake.state.evidenceFailure = 503;
+      const consumed = await fetch(statusUrl(second.attempt.id), { headers: tok(s.customerId) });
+      assert.equal(consumed.status, 200, "a consumed attempt keeps its established answer");
+      assert.equal((await consumed.json()).attempt.state, "completed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
     }, { ownLimiter: true });
   });
 

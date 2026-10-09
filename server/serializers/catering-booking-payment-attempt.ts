@@ -1,5 +1,5 @@
 import type { CateringAttemptSquarePayment, CateringBookingPaymentAttempt } from "@shared/schema";
-import type { CateringPaymentAttemptState, CateringPaymentAttemptView, CateringReconciliationReason } from "@shared/catering-square-payments";
+import { cateringCheckoutPastExpiry, type CateringPaymentAttemptState, type CateringPaymentAttemptView, type CateringReconciliationReason } from "@shared/catering-square-payments";
 
 /**
  * EXPLICIT PROJECTION of a payment attempt. Not one spread of a row: the row carries the idempotency key, the Square order and
@@ -10,7 +10,7 @@ import type { CateringPaymentAttemptState, CateringPaymentAttemptView, CateringR
  *  - PROVIDER: the same, never the checkout URL (a provider is not the payer), and -- only once Square confirmed money moved --
  *    the Square payment reference, so they can find it in their own Square dashboard and remediate a reconciliation.
  */
-export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttempt & { processorPayments?: readonly CateringAttemptSquarePayment[]; creditedSquarePaymentId?: string | null }, role: "provider" | "customer"): CateringPaymentAttemptView {
+export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttempt & { processorPayments?: readonly CateringAttemptSquarePayment[]; creditedSquarePaymentId?: string | null }, role: "provider" | "customer", at: Date = new Date()): CateringPaymentAttemptView {
   const state = row.state as CateringPaymentAttemptState;
   const view: CateringPaymentAttemptView = {
     id: row.id,
@@ -43,7 +43,10 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
     }));
   }
   if (state === "reconciliation_required" && row.reconciliationReason) view.reconciliationReason = row.reconciliationReason as CateringReconciliationReason;
-  if (role === "customer" && state === "pending" && row.checkoutUrl) view.checkoutUrl = row.checkoutUrl;
+  // A link past its lifetime is never handed out; the attempt stays visible (it may still hold an unverified payment) until it is retired after verification.
+  const linkExpired = cateringCheckoutPastExpiry(row, at);
+  if (linkExpired) view.linkExpired = true;
+  if (role === "customer" && state === "pending" && row.checkoutUrl && !linkExpired) view.checkoutUrl = row.checkoutUrl;
   if (role === "provider" && (state === "completed" || state === "reconciliation_required") && row.squarePaymentId) view.squarePaymentId = row.squarePaymentId;
   return view;
 }
