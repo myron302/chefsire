@@ -1,5 +1,5 @@
 import type { CateringAttemptSquarePayment, CateringBookingPaymentAttempt } from "@shared/schema";
-import type { CateringPaymentAttemptState, CateringPaymentAttemptView, CateringReconciliationReason } from "@shared/catering-square-payments";
+import { cateringCheckoutPastExpiry, type CateringPaymentAttemptState, type CateringPaymentAttemptView, type CateringReconciliationReason } from "@shared/catering-square-payments";
 
 /**
  * EXPLICIT PROJECTION of a payment attempt. Not one spread of a row: the row carries the idempotency key, the Square order and
@@ -10,7 +10,7 @@ import type { CateringPaymentAttemptState, CateringPaymentAttemptView, CateringR
  *  - PROVIDER: the same, never the checkout URL (a provider is not the payer), and -- only once Square confirmed money moved --
  *    the Square payment reference, so they can find it in their own Square dashboard and remediate a reconciliation.
  */
-export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttempt & { processorPayments?: readonly CateringAttemptSquarePayment[]; creditedSquarePaymentId?: string | null }, role: "provider" | "customer"): CateringPaymentAttemptView {
+export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttempt & { processorPayments?: readonly CateringAttemptSquarePayment[]; creditedSquarePaymentId?: string | null }, role: "provider" | "customer", at: Date = new Date()): CateringPaymentAttemptView {
   const state = row.state as CateringPaymentAttemptState;
   const view: CateringPaymentAttemptView = {
     id: row.id,
@@ -29,6 +29,8 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
   }
   const ledgerCredited = Boolean(row.paymentId) && (state === "completed" || state === "reconciliation_required");
   if (role === "provider" && ledgerCredited) view.ledgerCredited = true;
+  // Both actors are told a refund discrepancy is unresolved (no Square id, no amounts beyond what they already see).
+  if (cateringAttemptNeedsReturnReview(row)) view.refundReview = true;
   // The ledger payment, when one was credited -- including the one credited before a LATER extra Square payment turned it into a reconciliation.
   if (row.paymentId) view.paymentId = row.paymentId;
   if (row.processorPaymentCount > 0) view.processorPaymentCount = row.processorPaymentCount;
@@ -41,7 +43,10 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
     }));
   }
   if (state === "reconciliation_required" && row.reconciliationReason) view.reconciliationReason = row.reconciliationReason as CateringReconciliationReason;
-  if (role === "customer" && state === "pending" && row.checkoutUrl) view.checkoutUrl = row.checkoutUrl;
+  // A link past its lifetime is never handed out; the attempt stays visible (it may still hold an unverified payment) until it is retired after verification.
+  const linkExpired = cateringCheckoutPastExpiry(row, at);
+  if (linkExpired) view.linkExpired = true;
+  if (role === "customer" && state === "pending" && row.checkoutUrl && !linkExpired) view.checkoutUrl = row.checkoutUrl;
   if (role === "provider" && (state === "completed" || state === "reconciliation_required") && row.squarePaymentId) view.squarePaymentId = row.squarePaymentId;
   return view;
 }
@@ -49,4 +54,9 @@ export function serializeCateringPaymentAttempt(row: CateringBookingPaymentAttem
 /** The attempts a participant may see in the billing view: the provider sees every attempt, a customer only their own. */
 export function visibleCateringPaymentAttempts<T extends CateringBookingPaymentAttempt>(rows: readonly T[], role: "provider" | "customer", viewerId: string): T[] {
   return role === "provider" ? [...rows] : rows.filter((row) => row.customerId === viewerId);
+}
+
+/** Whether Square showed returned-money activity on an attempt's payment AFTER it was recorded, and that review is unresolved. The attempt's state and ledger payment are unchanged. */
+export function cateringAttemptNeedsReturnReview(row: { refundReviewAt: Date | null; state: string }): boolean {
+  return Boolean(row.refundReviewAt) && (row.state === "completed" || row.state === "reconciliation_required");
 }

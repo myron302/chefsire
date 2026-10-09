@@ -60,6 +60,10 @@ export type CateringPaymentAttemptState = typeof CATERING_PAYMENT_ATTEMPT_STATES
 export const CATERING_OPEN_ATTEMPT_STATES: readonly CateringPaymentAttemptState[] = ["creating", "pending"];
 
 /** The states from which money can still arrive and be recognised: everything except the two that already consumed a payment. */
+/** The two states that already consumed a Square payment. THE definition: the server, the routes and the client all derive "consumed" from here. */
+export const CATERING_CONSUMED_ATTEMPT_STATES: readonly CateringPaymentAttemptState[] = ["completed", "reconciliation_required"];
+export const cateringAttemptIsConsumed = (state: string): boolean => (CATERING_CONSUMED_ATTEMPT_STATES as readonly string[]).includes(state);
+
 export const CATERING_SETTLEABLE_ATTEMPT_STATES: readonly CateringPaymentAttemptState[] = ["creating", "pending", "failed", "expired", "cancelled", "superseded"];
 
 /**
@@ -81,6 +85,24 @@ export type CateringReconciliationReason = typeof CATERING_RECONCILIATION_REASON
 export const CATERING_ATTEMPT_UNAVAILABLE_CODE = "catering_square_unavailable";
 export const CATERING_ATTEMPT_PROVIDER_NOT_READY_CODE = "catering_square_provider_not_ready";
 export const CATERING_ATTEMPT_STATE_CODE = "catering_square_payment_state";
+/** A payment on this invoice is under review (Square confirmed money that could not be credited), so another checkout is refused until it is resolved. */
+/** The status check could not ask Square (outage, or the provider's connection is not usable right now). Retryable; says nothing about the payment. */
+export const CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE = "catering_square_verification_unavailable";
+export const CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE = "We could not check this payment with Square right now. Your payment has not been changed or cancelled. If you already paid, it will be applied once it can be confirmed. Please do not pay again.";
+/**
+ * How long ChefSire will keep offering ONE Square payment link. Square's own statements conflict (a staff-reviewed forum answer gives 180 days or one
+ * payment for hosted checkout pages; other staff and community answers say links made with CreatePaymentLink last until paid or deleted), so ChefSire
+ * does not rely on Square to expire a link: past this age the link is retired by ChefSire, and only after fresh Square evidence, deletion and a second
+ * read show no payment. Measured from the persisted moment Square returned the link (`square_create_resolved_at`, else the attempt's `created_at`).
+ */
+export const CATERING_SQUARE_CHECKOUT_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
+export function cateringCheckoutPastExpiry(attempt: { state: string; squareCreateResolvedAt?: Date | string | null; createdAt: Date | string }, at: Date, maxAgeMs: number = CATERING_SQUARE_CHECKOUT_MAX_AGE_MS): boolean {
+  if (attempt.state !== "pending") return false;
+  const started = new Date(attempt.squareCreateResolvedAt ?? attempt.createdAt).getTime();
+  return Number.isFinite(started) && at.getTime() - started >= maxAgeMs;
+}
+export const CATERING_ATTEMPT_CHECKOUT_VERIFYING_CODE = "catering_square_checkout_verifying";
+export const CATERING_ATTEMPT_PAYMENT_REVIEW_CODE = "catering_square_payment_review";
 
 export const cateringSquarePaymentAttemptIdSchema = z.string().trim().min(1).max(64);
 
@@ -105,6 +127,8 @@ export type CateringPaymentAttemptView = {
   completedAt: string | null;
   /** CUSTOMER ONLY, and only while `state` is `pending`. */
   checkoutUrl?: string;
+  /** A `pending` checkout whose link is past its lifetime: the link is not offered (it is retired, after verification, when a new checkout is requested). The attempt itself stays visible until then. */
+  linkExpired?: boolean;
   /** What actually moved at Square, once Square has confirmed a payment. Absent before that. Always read WITH `processorCurrency`, never with `currency` (the invoice's). */
   processorAmountCents?: number;
   /** The currency of `processorAmountCents`, as Square reported it. Present when it is unambiguous (every completed payment shares one currency). */
@@ -114,6 +138,8 @@ export type CateringPaymentAttemptView = {
    * evidence row that backs that ledger payment says so (`creditedToLedger`); every other completed payment is an additional, uncredited one.
    */
   ledgerCredited?: boolean;
+  /** True once Square showed refund activity on a payment of this attempt AFTER it was credited or reconciled: its state and ledger payment are unchanged, but a refund discrepancy is unresolved. */
+  refundReview?: boolean;
   /** How many completed Square payments the order showed. Present once money moved. More than one is always a reconciliation. */
   processorPaymentCount?: number;
   /** Every completed Square payment, each with its own amount and time. Present once money moved. A customer is not given the Square ids. */
@@ -155,9 +181,15 @@ export const CATERING_SQUARE_COPY = {
   pending: "Your Square checkout is open. Finish paying there, then come back here.",
   verifying: "Checking your payment with Square...",
   completed: "Payment confirmed by Square.",
+  returnReviewNoticeCustomer: "Square reports that part or all of a payment on this booking was returned. Your caterer is reviewing it, so this booking may not be fully settled.",
+  /** Ledger-neutral on purpose: the banner covers every reviewed attempt, and some (a reconciliation) were never credited to the Catering ledger. */
+  returnReviewNoticeProvider: "Square reports refund activity associated with this booking. Review the payment and refund in Square, then compare them with the booking's recorded payments before making any ledger adjustments. Your ledger was NOT changed.",
+  completedRefundReviewCustomer: "Payment confirmed by Square. Square also reports that part or all of it was returned, and your caterer is reviewing that.",
+  completedRefundReviewProvider: "Payment confirmed by Square and credited to the Catering ledger. Square now reports refund activity on it. The ledger was NOT changed; review it in Square and record any return under the booking's payments.",
   failed: "We could not open a Square checkout. Nothing was charged. Please try again.",
   closed: "This Square checkout was closed before any payment was made.",
-  reconciliation: "Square received your payment, but what you owe changed while you were paying. Your caterer has been told and will sort out how it applies. You do not need to pay again.",
+  /** Reason-neutral: it holds for every reconciliation reason, so it never says why, never says the amount owed changed, and never says a refund was issued. */
+  reconciliation: "Your Square payment needs additional review. Your caterer has been notified. Please do not make another payment until the review is complete.",
   /** Nothing from this checkout is in the Catering ledger. */
   reconciliationProviderNothingCredited: "Square confirmed payment activity that could not be credited automatically. No payment from this checkout was added to the Catering ledger. Review the Square payment evidence below.",
   /** One payment WAS credited normally; later Square payments are unresolved. Must never say nothing was credited. */
@@ -168,40 +200,47 @@ export const CATERING_SQUARE_COPY = {
   evidenceNotCredited: "Not credited to the Catering ledger",
   reconciliationNeutralHeadline: "Square payments require reconciliation",
   disclosure: "Card payments are made on Square and go directly to your caterer. ChefSire does not receive or hold this money.",
+  paymentReview: "Your Square payment needs additional review. Your caterer has been notified. Please do not make another payment until the review is complete.",
+  expired: "This Square payment link has expired. You can start a new checkout. If you already paid on it, do not pay again: your caterer will confirm it.",
+  checkoutVerifying: "We are still confirming your earlier Square checkout. Please do not pay again yet; try again in a moment.",
+  paymentReviewProvider: "A Square payment on this request needs your review, so the customer cannot start another checkout for it. Resolve it in your Square account and with your customer.",
   notReady: "This caterer cannot take Square payments right now. You can pay them directly instead.",
 } as const;
 
+/** Appended to every customer reason: whatever the reason, nobody should pay again while the review is open. */
+const NO_REPAY = " Please do not make another payment until the review is complete.";
+
 export const CATERING_SQUARE_RECONCILIATION_COPY: Record<CateringReconciliationReason, { customer: string; provider: string }> = {
   payable_changed: {
-    customer: "What you owe changed while you were paying, so your payment is waiting to be applied by your caterer.",
+    customer: "What you owe changed while you were paying, so your caterer needs to review how your payment applies." + NO_REPAY,
     provider: "The amount payable on this invoice dropped below what Square took (an adjustment, another payment or an earlier invoice).",
   },
   invoice_not_payable: {
-    customer: "This request for payment was withdrawn while you were paying, so your payment is waiting to be sorted out by your caterer.",
+    customer: "This request for payment was withdrawn while you were paying, so your caterer needs to review your payment." + NO_REPAY,
     provider: "The invoice was voided or is no longer issued, but Square took the payment.",
   },
   booking_cancelled: {
-    customer: "This booking was cancelled while you were paying, so your payment is waiting to be sorted out by your caterer.",
+    customer: "This booking was cancelled while you were paying, so your caterer needs to review your payment." + NO_REPAY,
     provider: "The booking was cancelled, but Square took the payment.",
   },
   amount_mismatch: {
-    customer: "The amount Square took does not match what was requested, so your caterer needs to sort it out.",
+    customer: "The amount Square took does not match what was requested, so your caterer needs to sort it out." + NO_REPAY,
     provider: "Square's payment total does not match the amount ChefSire requested (for example a tip).",
   },
   currency_mismatch: {
-    customer: "Square took the payment in a different currency, so your caterer needs to sort it out.",
+    customer: "Square took the payment in a different currency, so your caterer needs to sort it out." + NO_REPAY,
     provider: "Square's payment is in a different currency from the invoice.",
   },
   multiple_payments: {
-    customer: "More than one payment was taken, so your caterer needs to sort it out.",
+    customer: "More than one payment was taken, so your caterer needs to sort it out." + NO_REPAY,
     provider: "Square shows more than one completed payment on the one checkout order. Every one is listed below with its own Square reference and whether it was credited to the Catering ledger; no payment is credited on another's behalf.",
   },
   payment_refunded: {
-    customer: "Square shows that part or all of your payment was returned, so your caterer needs to review it before anything is applied.",
+    customer: "Square reports refund activity on your payment, so your caterer needs to review it before anything is applied." + NO_REPAY,
     provider: "Square reports refund activity on this payment (a refund or refunded money). ChefSire did NOT credit it to the Catering ledger as a normal payment and made no refund of its own. Review the payment in your Square account and with your customer.",
   },
   payment_timestamp_invalid: {
-    customer: "Square took your payment, but your caterer needs to confirm it before it is applied.",
+    customer: "Square took your payment, but your caterer needs to confirm it before it is applied." + NO_REPAY,
     provider: "Square confirmed a payment but its completion time was missing or invalid, so ChefSire could not date it honestly and did not add it to the ledger.",
   },
 };
@@ -229,12 +268,24 @@ export const CATERING_SQUARE_NOTIFICATIONS = {
   },
   customerReconciliation: {
     type: "catering_booking_square_payment_reconciliation",
-    title: "Your payment needs your caterer's attention",
-    message: "Square received your payment, but what you owe changed while you were paying. Your caterer has been told.",
+    title: "Your Square payment needs additional review",
+    message: "Your Square payment needs additional review. Your caterer has been notified. Please do not make another payment until the review is complete.",
+  },
+  /** ONLY for an attempt that has a Catering ledger payment (`payment_id` set). */
+  providerRefundReview: {
+    type: "catering_booking_square_payment_refund_review",
+    title: "Square reports a refund on a payment you were credited",
+    message: "A payment already recorded on this booking shows refund activity in Square. Nothing was changed in your ledger. Open the booking's billing section.",
+  },
+  /** An attempt with NO Catering ledger payment (a reconciliation): never says anything was credited and never says to record a return. */
+  providerRefundReviewNoLedger: {
+    type: "catering_booking_square_payment_refund_review",
+    title: "Square reports refund activity on a payment under review",
+    message: "Square reports refund activity associated with this booking. Review the payment and refund in Square, then compare them with the booking's recorded payments before making any ledger adjustments. Nothing was changed in your ledger. Open the booking's billing section.",
   },
   providerReconciliation: {
     type: "catering_booking_square_payment_reconciliation_required",
-    title: "A Square payment needs your attention",
-    message: "A customer paid through Square but the payment could not be added automatically. Open the booking's billing section.",
+    title: "A Square payment needs your review",
+    message: "Square payment activity on this booking could not be added to its payments automatically. Your customer has been asked not to pay again until you review it. Open the booking's billing section.",
   },
 } as const;

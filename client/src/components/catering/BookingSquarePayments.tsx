@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cateringBookingBillingKey, formatCateringMoney, type CateringBookingBillingView, type CateringInvoiceView } from "@shared/catering-booking-billing";
 import {
+  CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE,
   CATERING_SQUARE_COPY,
   cateringInvoicePayPath,
   cateringPaymentAttemptPath,
@@ -14,6 +15,8 @@ import {
   CATERING_ATTEMPT_LOOKUP_FAILED_COPY,
   CateringAttemptLookupError,
   CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY,
+  cateringLookupCountsAsSuccess,
+  cateringLookupIsVerificationUnavailable,
   cateringAttemptLookupStatus,
   cateringAttemptPollIdentity,
   cateringAttemptPollInterval,
@@ -23,6 +26,7 @@ import {
   cateringCheckoutIdentity,
   cateringCheckoutRedirectTarget,
   createCheckoutRetryScheduler,
+  cateringInvoicePaymentInReview,
   cateringOpenAttemptFor,
   cateringProviderVisibleAttempts,
   cateringActiveReturnedAttempt,
@@ -117,6 +121,10 @@ export function InvoiceSquarePayment({ bookingId, userId, billing, invoice }: { 
   const pressPay = () => { retries.current = 0; setCreating(true); setMessage(null); start.mutate({ identity, userId, bookingId, invoiceId: invoice.id }); };
 
   if (billing.role !== "customer") return null;
+  // A payment under review: no Pay button, and the customer is told NOT to pay again. The server refuses another checkout regardless.
+  if (cateringInvoicePaymentInReview(billing.paymentAttempts, invoice.id)) {
+    return <div className="mt-3 space-y-2 rounded-md border border-dashed p-3" aria-live="polite"><p role="status" className="break-words text-sm">{CATERING_SQUARE_COPY.paymentReview}</p></div>;
+  }
   if (!available && !open) return null;
   const display = open ? cateringSquareDisplay(open, "customer") : null;
   const url = cateringSafeCheckoutUrl(open?.checkoutUrl);
@@ -159,9 +167,11 @@ function useAttemptPolling(bookingId: string, userId: string, attemptId: string 
         try { response = await fetch(cateringPaymentAttemptPath(bookingId, attemptId!), { credentials: "include" }); }
         catch { throw new CateringAttemptLookupError("This payment could not be checked right now.", null); }
         const body = await readJson(response);
-        if (!response.ok) throw new CateringAttemptLookupError("This payment could not be checked right now.", response.status);
+        // An explicit "Square could not be asked" is a FAILED check (counted, bounded), never a successful one: the attempt is unchanged and unverified.
+        if (!response.ok) throw new CateringAttemptLookupError("This payment could not be checked right now.", response.status, typeof body.code === "string" ? body.code : null);
         if (typeof body.attempt !== "object" || body.attempt === null) throw new CateringAttemptLookupError("This payment could not be checked right now.", null);
-        counter.succeeded();
+        // A throttled answer asked Square nothing: it is neither a success (it must not reset the count) nor a failure.
+        if (cateringLookupCountsAsSuccess(body.verification)) counter.succeeded();
         return body.attempt as CateringPaymentAttemptView;
       } catch (error) {
         counter.failed();
@@ -179,7 +189,7 @@ function useAttemptPolling(bookingId: string, userId: string, attemptId: string 
   // Judged AFTER the latest fetch: an error with a success since is no error at all (react-query clears `error` on success).
   const lookup = query.isError ? cateringAttemptLookupStatus({ error: query.error, consecutiveFailures: counter.count() }) : null;
   const recheck = () => { counter.reset(); void query.refetch(); };
-  return { attempt: query.data, failed: lookup === "terminal", exhausted: lookup === "exhausted", recheck };
+  return { attempt: query.data, failed: lookup === "terminal", exhausted: lookup === "exhausted", squareUnavailable: query.isError && cateringLookupIsVerificationUnavailable(query.error), recheck };
 }
 
 /**
@@ -196,7 +206,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
   const [dismissedIdentity, setDismissedIdentity] = useState<string | null>(null);
   const returned = cateringActiveReturnedAttempt({ search, userId, bookingId, dismissedIdentity });
   const refreshBilling = () => cache.invalidateQueries({ queryKey: cateringBookingBillingKey(userId, bookingId) });
-  const { attempt: polled, failed, exhausted, recheck } = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
+  const { attempt: polled, failed, exhausted, squareUnavailable, recheck } = useAttemptPolling(bookingId, userId, customer ? returned : null, refreshBilling);
   const money = (cents: number, currency: string) => formatCateringMoney(cents, currency);
 
   const dismiss = () => {
@@ -211,17 +221,21 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
   const attempts = customer ? billing.paymentAttempts : cateringProviderVisibleAttempts(billing.paymentAttempts);
   // A customer's banner is for the checkout they just came back from; the provider's panel lists the booking's Square payments.
   const showBanner = customer && returned !== null;
-  if (!showBanner && (customer || attempts.length === 0)) return null;
+  // An unresolved review of returned money is shown to BOTH actors, whether or not anyone just came back from Square: a booking that reads as paid must
+  // not hide that Square reports part of that money returned.
+  const reviewCount = billing.squareReturnReviewCount ?? 0;
+  if (!showBanner && reviewCount === 0 && (customer || attempts.length === 0)) return null;
 
   return <section className="space-y-3" aria-live="polite">
+    {reviewCount > 0 && <p role="alert" className="break-words rounded-md border border-destructive/50 p-3 text-sm">{customer ? CATERING_SQUARE_COPY.returnReviewNoticeCustomer : CATERING_SQUARE_COPY.returnReviewNoticeProvider}</p>}
     {showBanner && <div className="rounded-md border p-3 text-sm" role="status">
       {failed ? <>
         <p role="alert" className="break-words">{CATERING_ATTEMPT_LOOKUP_FAILED_COPY}</p>
         <Button variant="outline" className="mt-2 min-h-11" onClick={dismiss}>Dismiss</Button>
       </> : exhausted ? <>
-        <p role="alert" className="break-words">{CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY}</p>
+        <p role="alert" className="break-words">{squareUnavailable ? CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE : CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY}</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <Button className="min-h-11" onClick={recheck}>Check again</Button>
+          <Button className="min-h-11" onClick={recheck}>Retry status check</Button>
           <Button variant="outline" className="min-h-11" onClick={dismiss}>Dismiss</Button>
         </div>
       </> : polled ? <>
@@ -244,6 +258,7 @@ export function SquarePaymentsPanel({ bookingId, userId, billing }: { bookingId:
           </div>
           <p className="mt-1 break-words text-sm text-muted-foreground">{display.label}</p>
           {attempt.state === "reconciliation_required" && <p className="mt-1 break-words text-sm">{cateringSquareReconciliationCopy(attempt.reconciliationReason, "provider")}</p>}
+          {attempt.state === "reconciliation_required" && <p className="mt-1 break-words text-sm">{CATERING_SQUARE_COPY.paymentReviewProvider}</p>}
           {attempt.squarePaymentId && !attempt.processorPayments?.length && <p className="mt-1 break-all text-xs text-muted-foreground">Square payment reference: {attempt.squarePaymentId}</p>}
           {attempt.processorPayments && attempt.processorPayments.length > 0 && <div className="mt-2 space-y-1" aria-label="Completed Square payments">
             <p className="text-xs font-medium">{attempt.processorPayments.length === 1 ? "Square payment" : `${attempt.processorPayments.length} completed Square payments`}</p>

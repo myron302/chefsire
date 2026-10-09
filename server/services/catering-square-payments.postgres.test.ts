@@ -7,9 +7,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareCateringSquareEnvironment, withCateringSquareHarness, withTimeout, type CateringSquareHarness } from "../test-support/catering-square-harness";
 import { createSquareCheckoutApi, SquareSandboxOnlyError } from "../lib/square-checkout";
-import { CATERING_SQUARE_RECONCILIATION_COPY } from "../../shared/catering-square-payments";
+import { CATERING_SQUARE_RECONCILIATION_COPY, CATERING_SQUARE_NOTIFICATIONS, cateringCheckoutPastExpiry } from "../../shared/catering-square-payments";
+import { CATERING_SQUARE_COPY } from "../../shared/catering-square-payments";
+import { cateringSquareDisplay } from "../../client/src/pages/services/catering-square-payment-state";
 import { SquareCredentialDiscardBlockedError } from "../lib/square-connection-service";
-import { serializeCateringPaymentAttempt } from "../serializers/catering-booking-payment-attempt";
+import { cateringAttemptNeedsReturnReview, serializeCateringPaymentAttempt, visibleCateringPaymentAttempts } from "../serializers/catering-booking-payment-attempt";
 
 prepareCateringSquareEnvironment();
 const URL_ENV = process.env.TEST_DATABASE_URL?.trim();
@@ -386,6 +388,7 @@ if (!URL_ENV) {
       assert.deepEqual(ignored, { kind: "ignored", reason: "merchant_mismatch" });
       assert.equal((await h.ledger(s.bookingId)).length, 0);
 
+      await h.dropConnection(s.providerId); // (replacing a live connection goes through the guard, which would first record the paid order)
       await h.connectProvider(s.providerId, "MERCHANT_OTHER_ACCOUNT", { access: "access-other", refresh: "refresh-other" });
       const before = h.fake.requests.length;
       const outcome = await h.payments.settleAttempt(attempt.id);
@@ -675,12 +678,11 @@ if (!URL_ENV) {
       const s = await scene(h);
       const attempt = await open(h, s);
       h.fake.payOrder(attempt.squareOrderId!);
-      await h.connections.disconnect(s.providerId);
+      await h.dropConnection(s.providerId); // lost without the disconnect guard (which would have recorded the payment first)
       const outcome = await h.payments.settleAttempt(attempt.id);
       assert.deepEqual(outcome.outcome === "unavailable" && outcome.reason, "connection_not_ready");
-      // the disconnect closed the checkout locally (and deleted its link) while the old credential still worked; the attempt is not payable any more,
-      // but money that had ALREADY moved is still recognised once the same merchant is back
-      assert.equal((await h.attempt(attempt.id)).state, "cancelled");
+      // money that had ALREADY moved is still recognised once the same merchant is back
+      assert.equal((await h.attempt(attempt.id)).state, "pending");
       assert.equal((await h.ledger(s.bookingId)).length, 0);
 
       await h.connectProvider(s.providerId, s.connection.merchantId, { access: "access-reconnected", refresh: "refresh-reconnected" });
@@ -1073,10 +1075,15 @@ if (!URL_ENV) {
     await run(async (h) => {
       const s = await scene(h);
       h.setClock(new Date("2030-06-02T00:40:00Z"));
+      // One invoice per case: an invoice already under review refuses another checkout, so the third case uses the provider's other booking.
+      const third = await h.booking({ providerId: s.providerId, customerId: s.customerId, invoices: [{ kind: "deposit", amountCents: 40000 }] });
       for (const [index, times] of ([[{ updated_at: "not-a-date", created_at: "also bad" }], [{ updated_at: "", created_at: "" }], [{ updated_at: "2031-01-01T00:00:00Z", created_at: "2031-01-01T00:00:00Z" }]] as const).entries()) {
-        const invoiceIndex = index === 0 ? 0 : 1;
-        const attempt = index <= 1 ? await open(h, s, index === 0 ? 0 : 1) : await (async () => { await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now() WHERE booking_id = $1 AND state = 'pending'`, [s.bookingId]); return open(h, s, 0); })();
-        void invoiceIndex;
+        const attempt = index < 2 ? await open(h, s, index) : await (async () => {
+          const created = await h.payments.createPayment({ bookingId: third.bookingId, invoiceId: third.invoiceIds[0], userId: s.customerId });
+          assert.equal(created.kind, "ok");
+          if (created.kind !== "ok") throw new Error("not ok");
+          return created.attempt;
+        })();
         h.fake.payOrder(attempt.squareOrderId!, times[0]);
         const outcome = await h.payments.settleAttempt(attempt.id);
         assert.equal(outcome.outcome, "reconciliation_required", JSON.stringify(times));
@@ -1484,7 +1491,7 @@ if (!URL_ENV) {
     await run(async (h) => {
       const s = await scene(h);
       const attempt = await open(h, s);
-      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now() WHERE id = $1`, [attempt.id]);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now(), last_checked_at = now() + interval '1 second', closure_verified_at = now() + interval '1 second' WHERE id = $1`, [attempt.id]);
       await h.q(`UPDATE payment_methods SET token_expires_at = now() + interval '1 hour' WHERE user_id = $1`, [s.providerId]);
       h.fake.state.failures.token = 503;
       assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
@@ -2314,6 +2321,1161 @@ if (!URL_ENV) {
       const outcome = await h.payments.settleAttempt(two.id);
       assert.equal(outcome.outcome === "rejected" && outcome.code, "payment_already_consumed");
       await assert.rejects(h.q(`INSERT INTO catering_attempt_square_payments (attempt_id, square_payment_id, amount_cents, currency) VALUES ($1, 'UQ_P', 100, 'USD')`, [two.id]), /catering_attempt_square_payments_payment_uidx/);
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Post-merge hotfix 1: payments are verified BEFORE a credential is discarded
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const evidenceCount = async (h: CateringSquareHarness, s: Scene) => Number((await h.q(`SELECT count(*)::int AS n FROM catering_attempt_square_payments e JOIN catering_booking_payment_attempts a ON a.id = e.attempt_id WHERE a.booking_id = $1`, [s.bookingId]))[0].n);
+
+  test("HOTFIX disconnect: a payment COMPLETED in Square but not yet heard of (webhook delayed) is recorded before the credential is discarded; deleting the link is not what settles it", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_P1", ...first });
+      assert.equal((await h.attempt(attempt.id)).state, "pending", "ChefSire has not heard of it");
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      assert.equal((await h.attempt(attempt.id)).state, "completed", "settled from fresh evidence, not cancelled");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "credited exactly once");
+      assert.equal(await evidenceCount(h, s), 1, "no lost evidence");
+      assert.equal((await h.row(s.providerId)).account_status, "disconnected");
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, false, "repeat is idempotent");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal(JSON.stringify({ logs: h.logs, notifications: h.notifications }).includes(s.connection.accessToken), false);
+    });
+  });
+
+  test("HOTFIX merchant replacement: a payment completed before the replacement is recorded first, and the new merchant is never used to judge the old order", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_M1", ...first });
+      assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW"), { allowed: true });
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      await h.connectProvider(s.providerId, "MERCHANT_NEW", { access: "access-new", refresh: "refresh-new" });
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await h.row(s.providerId)).provider_id, "MERCHANT_NEW");
+    });
+  });
+
+  test("HOTFIX disconnect: Square unavailable while verifying FAILS CLOSED, keeps the credential, loses nothing, and the retry records the payment", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_U1", ...first });
+      h.fake.state.evidenceFailure = 503;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "repeating stays refused");
+      const row = await h.row(s.providerId);
+      assert.equal(row.account_status, "active");
+      assert.ok(row.encrypted_access_token && row.encrypted_refresh_token, "credential kept");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 0);
+      h.fake.state.evidenceFailure = undefined;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "the payment was not lost");
+      assert.equal(await evidenceCount(h, s), 1);
+    });
+  });
+
+  test("HOTFIX disconnect: a pending checkout with NO payment disconnects normally, with its link deleted; a payment still PROCESSING refuses", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "cancelled");
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_PROC", status: "APPROVED", orderState: "OPEN" });
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "money may still be moving");
+      assert.equal((await h.row(s.providerId)).account_status, "active");
+    });
+  });
+
+  test("HOTFIX disconnect: a payment that completes while the disconnect is running (after the first read, before the link is deleted) is still recorded by the read after the deletion", async () => {
+    let beforeDelete: (() => void) | null = null;
+    await withCateringSquareHarness(URL_ENV!, {
+      wrapCheckout: (api) => ({ ...api, deletePaymentLink: async (token, id) => { if (beforeDelete) { const fire = beforeDelete; beforeDelete = null; fire(); } return api.deletePaymentLink(token, id); } }),
+    }, async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      beforeDelete = () => { h.fake.payOrder(attempt.squareOrderId!, { id: "HF_RACE", ...first }); };
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      const row = await h.attempt(attempt.id);
+      assert.equal(h.fake.links.get(row.square_payment_link_id)!.deleted, true, "the link was deleted successfully");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "and the payment that landed first was still found and credited");
+      assert.ok(row.payment_id);
+      assert.equal(await evidenceCount(h, s), 1);
+    });
+  });
+
+  test("HOTFIX disconnect: a credential that needs refreshing is refreshed and used to verify; a failing refresh refuses and keeps the credential", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_REF", ...first });
+      await h.q(`UPDATE payment_methods SET token_expires_at = now() + interval '1 hour' WHERE user_id = $1`, [s.providerId]);
+      h.fake.state.failures.token = 503;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      assert.equal((await h.row(s.providerId)).account_status, "active");
+      h.fake.state.failures.token = undefined;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+    });
+  });
+
+  test("HOTFIX disconnect: concurrent disconnects and webhooks over one paid-but-unrecorded order credit it exactly once and lose nothing", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "HF_CONC", ...first });
+      const results = await Promise.allSettled([
+        h.connections.disconnect(s.providerId), h.connections.disconnect(s.providerId),
+        hook(h, s, attempt, "evt-hf-1"), hook(h, s, attempt, "evt-hf-2"), h.payments.settleAttempt(attempt.id),
+      ]);
+      for (const result of results) assert.ok(result.status === "fulfilled" || result.reason instanceof SquareCredentialDiscardBlockedError, String((result as { reason?: unknown }).reason));
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal(await evidenceCount(h, s), 1);
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Post-merge hotfix 2: refund activity found AFTER a payment was credited
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const refundNotifications = (h: CateringSquareHarness) => h.notifications.filter((n) => n.type === "catering_booking_square_payment_refund_review");
+  const refundFor = (id: string, cents: number) => ({ refund_ids: [`R_${id}`], refunded_money: { amount: cents, currency: "USD" } });
+  const refundExisting = (h: CateringSquareHarness, id: string, cents: number) => h.fake.payments.set(id, { ...h.fake.payments.get(id)!, ...refundFor(id, cents) } as never);
+
+  for (const [name, cents] of [["partial", 15000], ["full", 40000]] as const) {
+    test(`HOTFIX refund: a ${name} refund AFTER the payment was credited marks the attempt for review, notifies the provider once, and leaves state, ledger and evidence untouched`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const attempt = await open(h, s);
+        h.setClock(new Date("2030-05-02T09:00:00Z"));
+        h.fake.payOrder(attempt.squareOrderId!, { id: "RV_P1", ...first });
+        assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+        const ledgerBefore = await h.processorLedger(s.bookingId);
+        assert.equal((await h.attempt(attempt.id)).refund_review_at, null);
+        assert.equal(refundNotifications(h).length, 0);
+
+        refundExisting(h, "RV_P1", cents);
+        assert.deepEqual(await hook(h, s, attempt, "evt-rv-1", "RV_P1"), { kind: "processed", outcome: "refund_review_required" });
+        const row = await h.attempt(attempt.id);
+        assert.equal(row.state, "completed", "no invalid state transition");
+        assert.ok(row.refund_review_at, "durable review mark");
+        assert.deepEqual(await h.processorLedger(s.bookingId), ledgerBefore, "the ledger payment is not duplicated, changed or deleted");
+        const [evidence] = await evidenceRows(h, attempt.id);
+        assert.equal(evidence.has_refunds, true);
+        assert.equal(Number(evidence.amount_cents), 40000, "historical evidence kept");
+        assert.equal(refundNotifications(h).length, 1);
+        assert.equal(refundNotifications(h)[0].userId, s.providerId);
+
+        await hook(h, s, attempt, "evt-rv-1", "RV_P1");
+        await Promise.all([hook(h, s, attempt, "evt-rv-2"), h.payments.settleAttempt(attempt.id), h.payments.settleAttempt(attempt.id)]);
+        assert.equal(refundNotifications(h).length, 1, "exactly one notification");
+        assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+        assert.equal((await h.attempt(attempt.id)).refund_review_at.getTime(), row.refund_review_at.getTime(), "the mark is set once");
+      });
+    });
+  }
+
+  test("HOTFIX refund: both actors see an unresolved discrepancy; the customer's 'paid' wording is qualified; nothing leaks", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "VW_P1", ...first });
+      await h.payments.settleAttempt(attempt.id);
+      const clean = await customerView(h, s, attempt.id);
+      assert.equal(clean.refundReview, undefined);
+      assert.equal(cateringSquareDisplay(clean, "customer").label, CATERING_SQUARE_COPY.completed);
+
+      refundExisting(h, "VW_P1", 40000);
+      await h.payments.settleAttempt(attempt.id);
+      const asCustomer = await customerView(h, s, attempt.id);
+      const asProvider = await providerView(h, s, attempt.id);
+      assert.equal(asCustomer.refundReview, true);
+      assert.equal(asProvider.refundReview, true);
+      assert.equal(asCustomer.state, "completed");
+      assert.equal(cateringSquareDisplay(asCustomer, "customer").label, CATERING_SQUARE_COPY.completedRefundReviewCustomer);
+      assert.equal(cateringSquareDisplay(asProvider, "provider").label, CATERING_SQUARE_COPY.completedRefundReviewProvider);
+      assert.equal(asProvider.processorPayments?.[0].refunded, true);
+      assert.equal(asProvider.processorPayments?.[0].creditedToLedger, true);
+      assert.equal(/VW_P1|R_VW_P1|"refunded"|creditedToLedger|ledgerCredited/.test(JSON.stringify(asCustomer)), false, "no Square ids or provider-only flags reach the customer");
+      assert.equal(JSON.stringify({ asProvider, logs: h.logs }).includes(s.connection.accessToken), false);
+      const listed = (await h.payments.attemptsForBooking(h.db as never, s.bookingId)).filter(cateringAttemptNeedsReturnReview);
+      assert.deepEqual(listed.map((row) => row.id), [attempt.id]);
+      assert.ok((await h.attempt(attempt.id)).refund_review_at, "persisted");
+    });
+  });
+
+  test("HOTFIX refund: a credited payment refunded later and an additional refunded payment coexist: one credit, both flagged, one reconciliation", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CO_P1", ...first });
+      await h.payments.settleAttempt(attempt.id);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CO_P2", ...at("2030-05-01T11:00:00Z"), ...money(5000), ...refundFor("CO_P2", 5000) });
+      refundExisting(h, "CO_P1", 10000);
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "reconciliation_required");
+      assert.ok(row.refund_review_at);
+      assert.deepEqual((await evidenceRows(h, attempt.id)).map((entry) => [entry.square_payment_id, entry.has_refunds]), [["CO_P1", true], ["CO_P2", true]]);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "the original credit stands, once");
+      assert.equal(h.notifications.filter((n) => n.type === "catering_booking_square_payment_reconciliation_required").length, 1);
+      assert.equal(refundNotifications(h).length, 0, "the reconciliation notification already covers it");
+      const view = await providerView(h, s, attempt.id);
+      assert.equal(view.refundReview, true);
+      assert.equal(view.ledgerCredited, true);
+    });
+  });
+
+  test("HOTFIX refund: a refund seen BEFORE the first credit is still a payment_refunded reconciliation and never credits; a clean payment credits normally", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const clean = await open(h, s, 0);
+      const refunded = await open(h, s, 1);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(clean.squareOrderId!, { id: "BF_CLEAN", ...first });
+      h.fake.payOrder(refunded.squareOrderId!, { id: "BF_REF", ...first, ...money(60000), ...refundFor("BF_REF", 20000) });
+      assert.equal((await h.payments.settleAttempt(clean.id)).outcome, "completed");
+      assert.equal((await h.payments.settleAttempt(refunded.id)).outcome, "reconciliation_required");
+      assert.equal((await h.attempt(refunded.id)).reconciliation_reason, "payment_refunded");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal(refundNotifications(h).length, 0);
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Post-merge hotfix pass 2: no repeat checkout while a payment on the invoice is under reconciliation
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const pass2Creates = (h: CateringSquareHarness) => h.fake.requests.filter((request) => request.path === "/v2/online-checkout/payment-links" && request.method === "POST");
+  const reviewRefusal = { kind: "refused", status: 409, code: "catering_square_payment_review", message: CATERING_SQUARE_COPY.paymentReview };
+  /** Drives an attempt on invoice `index` into `reconciliation_required` for the named reason, through the real settlement code. */
+  async function intoReview(h: CateringSquareHarness, s: Scene, reason: "amount_mismatch" | "payment_refunded" | "currency_mismatch" | "multiple_payments", index = 0) {
+    const attempt = await open(h, s, index);
+    const cents = index === 0 ? 40000 : 60000;
+    h.setClock(new Date("2030-05-02T09:00:00Z"));
+    if (reason === "amount_mismatch") h.fake.payOrder(attempt.squareOrderId!, { id: "RV_A", ...first, ...money(cents + 500) });
+    if (reason === "currency_mismatch") h.fake.payOrder(attempt.squareOrderId!, { id: "RV_C", ...first, ...money(cents, "CAD") });
+    if (reason === "payment_refunded") h.fake.payOrder(attempt.squareOrderId!, { id: "RV_R", ...first, ...money(cents), ...refundFor("RV_R", 1000) });
+    if (reason === "multiple_payments") {
+      h.fake.payOrder(attempt.squareOrderId!, { id: "RV_M1", ...first, ...money(cents) });
+      h.fake.payOrder(attempt.squareOrderId!, { id: "RV_M2", ...at("2030-05-01T11:00:00Z"), ...money(1000) });
+    }
+    assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "reconciliation_required");
+    assert.equal((await h.attempt(attempt.id)).reconciliation_reason, reason);
+    return attempt;
+  }
+
+  test("PASS2: a creating or pending checkout prevents a duplicate: the same attempt comes back, with one create call", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const opened = await open(h, s);
+      const again = await pay(h, s);
+      assert.equal(again.kind, "ok");
+      if (again.kind === "ok") assert.equal(again.attempt.id, opened.id);
+      assert.equal(pass2Creates(h).length, 1);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+    });
+  });
+
+  test("PASS2: an invoice with a reconciliation_required attempt refuses another checkout with an explicit 409: no new row, no Square call, nothing cleared", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const reviewed = await intoReview(h, s, "amount_mismatch");
+      const rowsBefore = (await h.attempts(s.bookingId)).length;
+      const callsBefore = h.fake.requests.length;
+      assert.deepEqual(await pay(h, s), reviewRefusal);
+      assert.equal((await h.attempts(s.bookingId)).length, rowsBefore, "no attempt row was created");
+      assert.equal(h.fake.requests.length, callsBefore, "no Square call of any kind was made");
+      assert.equal(pass2Creates(h).length, 1, "only the original create");
+      const row = await h.attempt(reviewed.id);
+      assert.equal(row.state, "reconciliation_required", "the review is not cleared by the refusal, nor because the checkout is closed");
+      assert.equal(row.reconciliation_reason, "amount_mismatch");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 0);
+    });
+  });
+
+  for (const reason of ["amount_mismatch", "payment_refunded", "currency_mismatch", "multiple_payments"] as const) {
+    test(`PASS2: a ${reason} reconciliation prevents a repeat checkout on that invoice`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        await intoReview(h, s, reason);
+        const creates = pass2Creates(h).length;
+        assert.deepEqual(await pay(h, s), reviewRefusal);
+        assert.equal(pass2Creates(h).length, creates);
+        assert.equal((await h.attempts(s.bookingId)).length, 1);
+      });
+    });
+  }
+
+  test("PASS2: concurrent pay requests cannot bypass the review: every one is refused, no link is created, no row is added", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await intoReview(h, s, "amount_mismatch");
+      const creates = pass2Creates(h).length;
+      const results = await Promise.all(Array.from({ length: 8 }, () => pay(h, s)));
+      for (const result of results) assert.deepEqual(result, reviewRefusal);
+      assert.equal(pass2Creates(h).length, creates, "no Square link was created");
+      assert.equal((await h.attempts(s.bookingId)).length, 1, "no extra attempt row");
+    });
+  });
+
+  test("PASS2: a pay request racing the settlement that creates the review ends consistently: afterwards every pay is refused and no second checkout exists", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "RACE_A", ...first, ...money(45000) });
+      await Promise.all([h.payments.settleAttempt(attempt.id), pay(h, s), pay(h, s), h.payments.settleAttempt(attempt.id)]);
+      assert.equal((await h.attempt(attempt.id)).state, "reconciliation_required");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(pass2Creates(h).length, 1, "the racing pay reused or was refused: it never created a second checkout");
+      assert.deepEqual(await pay(h, s), reviewRefusal);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 0);
+    });
+  });
+
+  test("PASS2: an unrelated invoice on the same booking, and another booking of the same provider, remain payable", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await intoReview(h, s, "amount_mismatch", 0);
+      assert.deepEqual(await pay(h, s, 0), reviewRefusal);
+      assert.equal((await pay(h, s, 1)).kind, "ok", "the balance invoice is a different payable");
+      const second = await h.booking({ providerId: s.providerId, customerId: s.customerId, invoices: [{ kind: "deposit", amountCents: 20000 }] });
+      const elsewhere = await h.payments.createPayment({ bookingId: second.bookingId, invoiceId: second.invoiceIds[0], userId: s.customerId });
+      assert.equal(elsewhere.kind, "ok");
+    });
+  });
+
+  test("PASS2: the provider cannot bypass the review or start a customer's checkout; manipulated client input changes nothing", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await intoReview(h, s, "amount_mismatch");
+      const rows = (await h.attempts(s.bookingId)).length;
+      const calls = h.fake.requests.length;
+      assert.deepEqual(await pay(h, s, 0, s.providerId), { kind: "forbidden" });
+      const forged = await h.payments.createPayment({ bookingId: s.bookingId, invoiceId: s.invoiceIds[0], userId: s.customerId, amountCents: 1, state: "completed", force: true } as never);
+      assert.deepEqual(forged, reviewRefusal);
+      assert.equal((await h.attempts(s.bookingId)).length, rows);
+      assert.equal(h.fake.requests.length, calls);
+    });
+  });
+
+  test("PASS2: a clean completed payment is unaffected: it credits once, and the refusal that follows is not a review", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "CL_P1", ...first });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      const next = await pay(h, s, 0);
+      assert.equal(next.kind, "refused");
+      if (next.kind === "refused") assert.notEqual(next.code, "catering_square_payment_review");
+      assert.equal((await pay(h, s, 1)).kind, "ok");
+    });
+  });
+
+  test("PASS2: a credited payment later found refunded (completed + review mark) does not block the invoice machinery, and its review mark is preserved", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "PR_P1", ...first });
+      await h.payments.settleAttempt(attempt.id);
+      refundExisting(h, "PR_P1", 40000);
+      assert.deepEqual(await hook(h, s, attempt, "evt-pr-1", "PR_P1"), { kind: "processed", outcome: "refund_review_required" });
+      const row = await h.attempt(attempt.id);
+      assert.equal(row.state, "completed");
+      assert.ok(row.refund_review_at);
+      const credited = await pay(h, s, 0);
+      if (credited.kind === "refused") assert.notEqual(credited.code, "catering_square_payment_review");
+      assert.equal((await pay(h, s, 1)).kind, "ok", "the other invoice remains payable");
+      assert.ok((await h.attempt(attempt.id)).refund_review_at, "the review mark survives");
+    });
+  });
+
+  test("PASS2: replaying settlement, polling and the webhook over a reviewed attempt is idempotent: one record, no new notification, still blocked", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const reviewed = await intoReview(h, s, "amount_mismatch");
+      const notes = h.notifications.length;
+      const creates = pass2Creates(h).length;
+      for (let i = 0; i < 3; i += 1) {
+        assert.equal((await h.payments.settleAttempt(reviewed.id)).outcome, "already_settled");
+        await hook(h, s, reviewed, `evt-p2-${i}`, "RV_A");
+        assert.deepEqual(await pay(h, s), reviewRefusal);
+      }
+      assert.equal(h.notifications.length, notes, "no repeated notification");
+      assert.equal(pass2Creates(h).length, creates);
+      assert.equal((await h.attempt(reviewed.id)).state, "reconciliation_required");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+    });
+  });
+
+  test("PASS2: the customer's review wording says not to pay again, the billing list always carries the reviewed attempt, and no Square id reaches the customer", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const reviewed = await intoReview(h, s, "amount_mismatch");
+      const view = await customerView(h, s, reviewed.id);
+      assert.equal(view.state, "reconciliation_required");
+      assert.match(CATERING_SQUARE_COPY.paymentReview, /do not make another payment/i);
+      assert.equal(/RV_A/.test(JSON.stringify(view)), false);
+      const listed = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      assert.deepEqual(listed.map((row) => row.id), [reviewed.id]);
+    });
+  });
+
+  /* Pass 3: reason-neutral reconciliation wording, end to end for every reason */
+  for (const reason of ["multiple_payments", "currency_mismatch", "amount_mismatch", "payment_refunded", "payment_timestamp_invalid"] as const) {
+    test(`PASS3: a ${reason} reconciliation shows the customer neutral wording that agrees with the notifications, never claims the balance changed, and tells them not to pay again`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const attempt = reason === "payment_timestamp_invalid"
+          ? await (async () => { const a = await open(h, s); h.fake.payOrder(a.squareOrderId!, { id: "N3", updated_at: "not-a-date", created_at: "not-a-date" }); assert.equal((await h.payments.settleAttempt(a.id)).outcome, "reconciliation_required"); return a; })()
+          : await intoReview(h, s, reason);
+        assert.equal((await h.attempt(attempt.id)).reconciliation_reason, reason);
+        const view = await customerView(h, s, attempt.id);
+        const display = cateringSquareDisplay(view, "customer");
+        assert.equal(display.label, CATERING_SQUARE_COPY.reconciliation);
+        const detail = CATERING_SQUARE_RECONCILIATION_COPY[reason].customer;
+        for (const text of [display.label, detail, CATERING_SQUARE_COPY.paymentReview]) {
+          assert.match(text, /do not make another payment until the review is complete/i);
+          assert.equal(/what you owe|amount (you owe|owed|payable)|balance changed/i.test(text), false, `${reason}: ${text}`);
+        }
+        const mine = h.notifications.filter((n) => n.userId === s.customerId && n.type === "catering_booking_square_payment_reconciliation");
+        assert.equal(mine.length, 1);
+        assert.equal(mine[0].message, display.label, "the customer's notification and the visible banner agree");
+        const providerNote = h.notifications.filter((n) => n.userId === s.providerId && n.type === "catering_booking_square_payment_reconciliation_required");
+        assert.equal(providerNote.length, 1);
+        assert.equal(/what you owe|refund(ed)? (was )?issued/i.test(providerNote[0].message), false);
+        assert.equal(JSON.stringify([mine, providerNote, view]).includes(s.connection.accessToken), false);
+        assert.deepEqual(await pay(h, s), reviewRefusal, "still blocked");
+        assert.equal(reviewRefusal.message, display.label);
+        assert.equal((await h.processorLedger(s.bookingId)).length, 0, "behaviour unchanged: nothing credited");
+      });
+    });
+  }
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 5: Square payment links past their lifetime are retired safely before a replacement
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const DAY = 24 * 60 * 60 * 1000;
+  const T0 = new Date("2030-01-01T00:00:00Z");
+  const MAX_AGE = 180 * DAY;
+  const p5Creates = (h: CateringSquareHarness) => h.fake.requests.filter((request) => request.method === "POST" && request.path === "/v2/online-checkout/payment-links").length;
+  const p5Deletes = (h: CateringSquareHarness) => h.fake.requests.filter((request) => request.method === "DELETE").length;
+  /** An open checkout created at T0 on the deterministic clock. */
+  async function p5Open(h: CateringSquareHarness, s: Scene, index = 0) { h.setClock(T0); return open(h, s, index); }
+
+  test("PASS5: a checkout younger than the lifetime is reused: same attempt, no Square call, no delete", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE - 1));
+      const calls = squareCalls(h).length;
+      const again = await pay(h, s);
+      assert.equal(again.kind, "ok");
+      if (again.kind === "ok") assert.equal(again.attempt.id, old.id);
+      assert.equal(squareCalls(h).length, calls, "no checkout, order or payment call (credential checks aside)");
+      assert.equal(p5Deletes(h), 0);
+      assert.equal((await h.attempt(old.id)).state, "pending");
+    });
+  });
+
+  for (const [name, offset] of [["exactly at", 0], ["beyond", 20 * DAY]] as const) {
+    test(`PASS5: a checkout ${name} the lifetime is verified, retired as expired, its link removed, and exactly one replacement is created`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const old = await p5Open(h, s);
+        const oldRow = await h.attempt(old.id);
+        h.setClock(new Date(T0.getTime() + MAX_AGE + offset));
+        const replacement = await pay(h, s);
+        assert.equal(replacement.kind, "ok");
+        if (replacement.kind !== "ok") throw new Error("not ok");
+        assert.notEqual(replacement.attempt.id, old.id);
+        assert.equal(replacement.attempt.state, "pending");
+        assert.notEqual(replacement.attempt.checkoutUrl, oldRow.checkout_url, "never the dead link");
+        const retired = await h.attempt(old.id);
+        assert.equal(retired.state, "expired");
+        assert.ok(retired.closure_verified_at, "verified after the link was removed");
+        assert.ok(retired.square_link_closed_at, "link removal confirmed");
+        assert.equal(h.fake.links.get(oldRow.square_payment_link_id)!.deleted, true);
+        assert.equal((await h.attempts(s.bookingId)).length, 2);
+        assert.equal(p5Creates(h), 2);
+        assert.equal((await h.ledger(s.bookingId)).length, 0);
+        // replay: the replacement is reused, nothing more is created or deleted
+        const deletes = p5Deletes(h);
+        const replay = await pay(h, s);
+        assert.equal(replay.kind === "ok" && replay.attempt.id, replacement.attempt.id);
+        assert.equal(p5Creates(h), 2);
+        assert.equal(p5Deletes(h), deletes);
+      });
+    });
+  }
+
+  test("PASS5: an old link that was already PAID is credited, not expired, and no replacement is created", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.fake.payOrder(old.squareOrderId!, { id: "EX_PAID", created_at: "2030-01-02T00:00:00Z", updated_at: "2030-01-02T00:00:00Z" });
+      h.setClock(new Date(T0.getTime() + MAX_AGE + DAY));
+      const result = await pay(h, s);
+      assert.equal(result.kind, "refused", "the invoice is paid: nothing new to pay");
+      assert.equal((await h.attempt(old.id)).state, "completed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS5: a link Square reports cancelled is closed as cancelled (no payment) and replaced once", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.fake.orders.get(old.squareOrderId!)!.state = "CANCELED";
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const replacement = await pay(h, s);
+      assert.equal(replacement.kind, "ok");
+      assert.equal((await h.attempt(old.id)).state, "cancelled");
+      assert.equal((await h.attempts(s.bookingId)).length, 2);
+    });
+  });
+
+  test("PASS5: payment still PROCESSING or unattributable on an old link fails closed: nothing expired, deleted or created", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.fake.payOrder(old.squareOrderId!, { id: "EX_PROC", status: "APPROVED", created_at: "2030-01-02T00:00:00Z", updated_at: "2030-01-02T00:00:00Z" });
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const deletes = p5Deletes(h);
+      const result = await pay(h, s);
+      assert.equal(result.kind, "refused");
+      if (result.kind === "refused") { assert.equal(result.status, 503); assert.equal(result.code, "catering_square_verification_unavailable"); assert.match(result.message, /do not pay again/i); }
+      assert.equal((await h.attempt(old.id)).state, "pending", "age alone never expires an attempt");
+      assert.equal(p5Deletes(h), deletes);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS5: a Square outage during verification fails closed; recovery then retires and replaces exactly once", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      h.fake.state.evidenceFailure = 503;
+      for (let i = 0; i < 3; i += 1) {
+        const result = await pay(h, s);
+        assert.equal(result.kind === "refused" && result.status, 503);
+      }
+      assert.equal((await h.attempt(old.id)).state, "pending");
+      assert.equal(p5Creates(h), 1);
+      assert.equal(p5Deletes(h), 0);
+      h.fake.state.evidenceFailure = undefined;
+      assert.equal((await pay(h, s)).kind, "ok");
+      assert.equal((await h.attempt(old.id)).state, "expired");
+      assert.equal((await h.attempts(s.bookingId)).length, 2);
+      assert.equal(p5Creates(h), 2);
+    });
+  });
+
+  test("PASS5: if the old link cannot be removed the expired attempt stays UNVERIFIED and no replacement is created; once removable it is verified and replaced", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      h.fake.state.linkDeleteFailure = 500;
+      const blocked = await pay(h, s);
+      assert.equal(blocked.kind === "refused" && blocked.status, 503);
+      const mid = await h.attempt(old.id);
+      assert.equal(mid.state, "expired");
+      assert.equal(mid.closure_verified_at, null);
+      assert.equal(mid.square_link_closed_at, null);
+      assert.equal(p5Creates(h), 1);
+      const again = await pay(h, s);
+      assert.equal(again.kind === "refused" && again.status, 503, "still no replacement while unverified");
+      h.fake.state.linkDeleteFailure = undefined;
+      assert.equal((await pay(h, s)).kind, "ok");
+      assert.ok((await h.attempt(old.id)).closure_verified_at);
+      assert.equal(p5Creates(h), 2);
+    });
+  });
+
+  test("PASS5: an unverified expired attempt, as left by a concurrent request, is never silently superseded: the locked check refuses and makes no Square call", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'expired', closed_at = now(), square_link_closed_at = NULL WHERE id = $1`, [old.id]);
+      h.fake.state.linkDeleteFailure = 500;
+      const calls = p5Creates(h);
+      const result = await pay(h, s);
+      assert.equal(result.kind === "refused" && result.status, 503);
+      assert.equal(p5Creates(h), calls);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+    });
+  });
+
+  test("PASS5: a provider credential that is unavailable or gone blocks everything: no verification claim, no replacement", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      await h.dropConnection(s.providerId);
+      const result = await pay(h, s);
+      assert.equal(result.kind, "refused");
+      assert.equal((await h.attempt(old.id)).state, "pending");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS5: an unresolved reconciliation still blocks the invoice at and beyond the lifetime", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      await intoReview(h, s, "amount_mismatch");
+      h.setClock(new Date(T0.getTime() + MAX_AGE + 5 * DAY));
+      assert.deepEqual(await pay(h, s), reviewRefusal);
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+    });
+  });
+
+  test("PASS5: concurrent pay requests at the boundary produce exactly one replacement, one retirement, no extra rows and no ledger credit", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const results = await Promise.all(Array.from({ length: 6 }, () => pay(h, s)));
+      for (const result of results) assert.ok(result.kind === "ok" || (result.kind === "refused" && ["catering_square_checkout_verifying", "catering_square_verification_unavailable"].includes(result.code)), JSON.stringify(result));
+      // whichever requests were told to retry, one more request settles it
+      const final = await pay(h, s);
+      assert.equal(final.kind, "ok");
+      const rows = await h.attempts(s.bookingId);
+      assert.equal(rows.length, 2);
+      assert.equal(rows.filter((row) => row.state === "pending").length, 1);
+      assert.equal((await h.attempt(old.id)).state, "expired");
+      assert.equal(p5Creates(h), 2);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+    });
+  });
+
+  test("PASS5: a payment, webhook and poll racing the retirement end with one credit, no replacement and no duplicate", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.fake.payOrder(old.squareOrderId!, { id: "EX_RACE", created_at: "2030-01-02T00:00:00Z", updated_at: "2030-01-02T00:00:00Z" });
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      await Promise.all([pay(h, s), hook(h, s, old, "evt-ex-1", "EX_RACE"), h.payments.settleAttempt(old.id), pay(h, s)]);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit");
+      assert.equal((await h.attempt(old.id)).state, "completed");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS5: other invoices are unaffected, and an expired attempt keeps its record (never rewritten into a different state)", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s, 0);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      assert.equal((await pay(h, s, 1)).kind, "ok", "an invoice with no old checkout simply gets one");
+      assert.equal((await h.attempt(old.id)).state, "pending", "retiring is per invoice");
+      assert.equal((await pay(h, s, 0)).kind, "ok");
+      const row = await h.attempt(old.id);
+      assert.equal(row.state, "expired");
+      assert.ok(row.square_order_id && row.square_payment_link_id && row.amount_cents, "the historical record is preserved");
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 6a: a request can only ever touch the attempts of the booking it names
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  /** A second booking of the same provider, owned by `customerId`, with one deposit invoice. */
+  async function otherBooking(h: CateringSquareHarness, s: Scene, customerId = s.customerId) {
+    const created = await h.booking({ providerId: s.providerId, customerId, invoices: [{ kind: "deposit", amountCents: 20000 }] });
+    return { bookingId: created.bookingId, invoiceId: created.invoiceIds[0], customerId };
+  }
+  const snapshot = async (h: CateringSquareHarness) => JSON.stringify(await h.q(`SELECT id, state, closed_at, square_link_closed_at, closure_verified_at, updated_at FROM catering_booking_payment_attempts ORDER BY id`));
+
+  for (const [label, sameOwner] of [["the same customer owns both bookings", true], ["different customers own the bookings", false]] as const) {
+    test(`PASS6: booking A submitted with booking B's invoice (${label}) is not found: no Square call, no state change, B's aged checkout untouched`, async () => {
+      await run(async (h) => {
+        const s = await scene(h);
+        const otherCustomer = sameOwner ? s.customerId : await h.user("customer");
+        const b = await otherBooking(h, s, otherCustomer);
+        h.setClock(T0);
+        const created = await h.payments.createPayment({ bookingId: b.bookingId, invoiceId: b.invoiceId, userId: b.customerId });
+        assert.equal(created.kind, "ok");
+        if (created.kind !== "ok") throw new Error("not ok");
+        h.setClock(new Date(T0.getTime() + MAX_AGE + DAY));
+        const before = await snapshot(h);
+        const calls = h.fake.requests.length;
+        // booking A (the requester's own) + booking B's invoice id
+        const result = await h.payments.createPayment({ bookingId: s.bookingId, invoiceId: b.invoiceId, userId: s.customerId });
+        assert.deepEqual(result, { kind: "not_found" });
+        assert.equal(h.fake.requests.length, calls, "no Square call of any kind (not even a credential check)");
+        assert.equal(await snapshot(h), before, "no row changed");
+        assert.equal((await h.attempt(created.attempt.id)).state, "pending");
+        assert.equal(p5Deletes(h), 0);
+        // the legitimate owner of B, with B's own invoice, still retires and replaces it
+        const legit = await h.payments.createPayment({ bookingId: b.bookingId, invoiceId: b.invoiceId, userId: b.customerId });
+        assert.equal(legit.kind, "ok");
+        assert.equal((await h.attempt(created.attempt.id)).state, "expired");
+      });
+    });
+  }
+
+  test("PASS6: malicious invoice-id substitution (random, other booking's, other provider's) never reaches Square or any attempt; concurrent cross-booking requests change nothing", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const b = await otherBooking(h, s);
+      const other = await otherBooking(h, s, await h.user("customer"));
+      h.setClock(T0);
+      const mine = await open(h, s, 0);
+      const theirs = await h.payments.createPayment({ bookingId: b.bookingId, invoiceId: b.invoiceId, userId: s.customerId });
+      assert.equal(theirs.kind, "ok");
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const before = await snapshot(h);
+      const calls = h.fake.requests.length;
+      const attempts = [
+        ["00000000-0000-4000-8000-000000000000", s.bookingId, s.customerId],
+        [b.invoiceId, s.bookingId, s.customerId],
+        [s.invoiceIds[0], b.bookingId, s.customerId],
+        [other.invoiceId, s.bookingId, s.customerId],
+        [s.invoiceIds[1], other.bookingId, s.customerId],
+        [b.invoiceId, s.bookingId, s.providerId],
+      ] as const;
+      const results = await Promise.all(Array.from({ length: 4 }, () => attempts.map(([invoiceId, bookingId, userId]) => h.payments.createPayment({ bookingId, invoiceId, userId }))).flat());
+      for (const result of results) assert.ok(result.kind === "not_found" || result.kind === "forbidden", JSON.stringify(result));
+      assert.equal(h.fake.requests.length, calls);
+      assert.equal(await snapshot(h), before);
+      assert.equal((await h.attempt(mine.id)).state, "pending");
+      assert.equal((await h.ledger(s.bookingId)).length + (await h.ledger(b.bookingId)).length, 0);
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 6b: only an authoritative Square read counts as "verified after the link was closed"
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  /** An attempt closed locally with its link confirmed removed an hour ago, and a poll that merely ASKED (last_checked_at is newer). */
+  async function closedButPolled(h: CateringSquareHarness, s: Scene, index = 0) {
+    const attempt = await open(h, s, index);
+    await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now() - interval '2 hours', square_link_closed_at = now() - interval '1 hour', last_checked_at = now(), closure_verified_at = NULL WHERE id = $1`, [attempt.id]);
+    return attempt;
+  }
+
+  test("PASS6: a poll timestamp newer than the link closure is NOT verification: with Square unavailable the disconnect is refused and the credential kept", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await closedButPolled(h, s);
+      h.fake.state.evidenceFailure = 503;
+      for (let i = 0; i < 3; i += 1) await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError, "repeated failed checks stay refused");
+      const row = await h.row(s.providerId);
+      assert.equal(row.account_status, "active");
+      assert.ok(row.encrypted_access_token && row.encrypted_refresh_token);
+      assert.equal((await h.attempt(attempt.id)).closure_verified_at, null, "an unavailable read never sets the mark");
+    });
+  });
+
+  test("PASS6: a payment made before the link was deleted but discovered AFTER is recorded once at disconnect, and the mark is only set by a successful read", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await closedButPolled(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "LATE_1", ...first });
+      assert.equal((await h.processorLedger(s.bookingId)).length, 0);
+      const result = await h.connections.disconnect(s.providerId);
+      assert.equal(result.changed, true);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "recorded, not lost");
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+    });
+  });
+
+  test("PASS6: a successful read after closure sets the mark once, and then the disconnect no longer needs the credential for that attempt", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await closedButPolled(h, s);
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "awaiting", "Square shows the order open with no payment");
+      const marked = await h.attempt(attempt.id);
+      assert.ok(marked.closure_verified_at, "authoritative read succeeded");
+      const readsBefore = h.fake.requests.filter((r) => r.path.startsWith("/v2/orders/")).length;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true);
+      assert.equal(h.fake.requests.filter((r) => r.path.startsWith("/v2/orders/")).length, readsBefore, "not read again");
+    });
+  });
+
+  test("PASS6: a credential REPLACEMENT after a failed verification is refused too; recovery then allows it with the payment recorded", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await closedButPolled(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "LATE_2", ...first });
+      h.fake.state.evidenceFailure = 503;
+      const refused = await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW");
+      assert.notDeepEqual(refused, { allowed: true });
+      assert.equal((await h.processorLedger(s.bookingId)).length, 0);
+      h.fake.state.evidenceFailure = undefined;
+      assert.deepEqual(await h.connections.guardCredentialReplacement(s.providerId, "MERCHANT_NEW"), { allowed: true });
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1);
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+    });
+  });
+
+  test("PASS6: concurrent polling, webhooks and disconnects over a paid-but-unrecorded closed link lose nothing and credit exactly once", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await closedButPolled(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "LATE_3", ...first });
+      const results = await Promise.allSettled([
+        h.connections.disconnect(s.providerId), h.connections.disconnect(s.providerId),
+        h.payments.getAttempt({ bookingId: s.bookingId, attemptId: attempt.id, userId: s.customerId }),
+        hook(h, s, attempt, "evt-p6-1", "LATE_3"), h.payments.settleAttempt(attempt.id),
+      ]);
+      for (const result of results) assert.ok(result.status === "fulfilled" || result.reason instanceof SquareCredentialDiscardBlockedError, String((result as { reason?: unknown }).reason));
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit");
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+    });
+  });
+
+  test("PASS6: a poll's claim and a payment still PROCESSING never mark an attempt verified", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await closedButPolled(h, s);
+      h.fake.payOrder(attempt.squareOrderId!, { id: "PROC_1", status: "APPROVED", created_at: "2030-01-02T00:00:00Z", updated_at: "2030-01-02T00:00:00Z" });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "processing");
+      assert.equal((await h.attempt(attempt.id)).closure_verified_at, null);
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 6c: unresolved refund reviews stay visible beyond the history cap
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  async function oldReviewedPayment(h: CateringSquareHarness, s: Scene, index: number, label: string, review: boolean) {
+    const attempt = await open(h, s, index);
+    h.setClock(new Date("2030-05-02T09:00:00Z"));
+    h.fake.payOrder(attempt.squareOrderId!, { id: label, ...first });
+    assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+    await h.q(`UPDATE catering_booking_payment_attempts SET created_at = now() - interval '900000 minutes', refund_review_at = ${review ? "now()" : "NULL"} WHERE id = $1`, [attempt.id]);
+    return attempt.id;
+  }
+  const viewOf = (h: CateringSquareHarness, s: Scene, role: "customer" | "provider") => h.payments.attemptsForBooking(h.db as never, s.bookingId)
+    .then((rows) => visibleCateringPaymentAttempts(rows, role, role === "customer" ? s.customerId : s.providerId));
+
+  test("PASS6: with fewer than 50 attempts everything is listed, and an old reviewed payment is flagged for both actors", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const id = await oldReviewedPayment(h, s, 0, "RV6_A", true);
+      for (const role of ["customer", "provider"] as const) {
+        const rows = await viewOf(h, s, role);
+        assert.ok(rows.some((row) => row.id === id));
+        assert.equal(rows.filter(cateringAttemptNeedsReturnReview).length, 1, role);
+      }
+    });
+  });
+
+  test("PASS6: past the 50-attempt cap an old completed payment with an unresolved refund review is STILL listed and counted for customer and provider; several are all kept", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const a = await oldReviewedPayment(h, s, 0, "RV6_B", true);
+      const b = await oldReviewedPayment(h, s, 1, "RV6_C", true);
+      await seedHistory(h, s, 70, "superseded", 5_000);
+      await seedHistory(h, s, 30, "cancelled", 3_000);
+      for (const role of ["customer", "provider"] as const) {
+        const rows = await viewOf(h, s, role);
+        assert.ok(rows.some((row) => row.id === a) && rows.some((row) => row.id === b), `${role}: both reviewed payments listed`);
+        assert.equal(rows.filter(cateringAttemptNeedsReturnReview).length, 2, `${role}: the warning count covers all of them`);
+        assert.ok(rows.length <= 50 + 2, "the ordinary history is still capped");
+        const serialized = serializeCateringPaymentAttempt(rows.find((row) => row.id === a)!, role);
+        assert.equal(serialized.refundReview, true);
+        assert.equal(serialized.state, "completed");
+      }
+    });
+  });
+
+  test("PASS6: a resolved review (no mark) returns to ordinary history and falls off the cap; privacy: a stranger sees no attempt", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const id = await oldReviewedPayment(h, s, 0, "RV6_D", false);
+      await seedHistory(h, s, 60, "superseded", 5_000);
+      const rows = await viewOf(h, s, "provider");
+      assert.equal(rows.some((row) => row.id === id), false, "an old payment with no unresolved review is ordinary history");
+      assert.equal(rows.filter(cateringAttemptNeedsReturnReview).length, 0);
+      const stranger = await h.user("stranger");
+      const all = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      assert.deepEqual(visibleCateringPaymentAttempts(all, "customer", stranger), []);
+      const other = await scene(h);
+      assert.deepEqual((await viewOf(h, other, "customer")).filter(cateringAttemptNeedsReturnReview), [], "another booking's reviews are not in this view");
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 7: the FINAL check under the connection row's exclusive lock enforces the same closure-verification rule
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  /**
+   * Re-registers the REAL production guard with one change: after the preliminary verification (closeProviderCheckouts) has finished, `race` runs --
+   * exactly the window in which a concurrent process can close and delete a checkout. The in-transaction final check is the real production query.
+   */
+  function raceAfterPreliminary(h: CateringSquareHarness, race: () => Promise<void>) {
+    let raced = false;
+    h.connections.setCredentialDiscardGuard(
+      async (context: { userId: string }) => {
+        const result = await h.payments.closeProviderCheckouts(context.userId);
+        if (!raced) { raced = true; await race(); }
+        return result;
+      },
+      (context: never) => h.payments.credentialStillNeeded(context),
+    );
+  }
+  /** What a concurrent closeStaleOpenAttempts + sweepClosedLinks leaves behind: closed, link deleted, but NO authoritative read afterwards. */
+  const closeAndDeleteWithoutVerification = (h: CateringSquareHarness, attemptId: string) => h.q(
+    `UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now(), last_checked_at = now() + interval '1 second', closure_verified_at = NULL WHERE id = $1`, [attemptId]);
+
+  test("PASS7: a checkout closed and deleted AFTER the preliminary verification but BEFORE the credential lock still blocks the DISCONNECT (real final query)", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      // The preliminary verification winds the pending attempt down and verifies it; THEN a concurrent process leaves it closed, deleted and unverified.
+      raceAfterPreliminary(h, async () => { await closeAndDeleteWithoutVerification(h, attempt.id); });
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      const row = await h.row(s.providerId);
+      assert.equal(row.account_status, "active");
+      assert.ok(row.encrypted_access_token && row.encrypted_refresh_token, "credentials kept");
+    });
+  });
+
+  test("PASS7: the same race during MERCHANT REPLACEMENT refuses the replacement and keeps the old merchant", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now() - interval '1 hour', closure_verified_at = now() WHERE id = $1`, [attempt.id]); // verified: not a blocker yet
+      raceAfterPreliminary(h, async () => { await h.q(`UPDATE catering_booking_payment_attempts SET closure_verified_at = NULL WHERE id = $1`, [attempt.id]); });
+      // The replacement itself (preliminary guard, then the in-transaction final check) -- not the preliminary guard alone.
+      await assert.rejects(h.connectProvider(s.providerId, "MERCHANT_NEW", { access: "access-new", refresh: "refresh-new" }), SquareCredentialDiscardBlockedError);
+      const row = await h.row(s.providerId);
+      assert.equal(row.provider_id, s.connection.merchantId, "the old merchant is kept");
+      assert.ok(row.encrypted_access_token && row.encrypted_refresh_token);
+    });
+  });
+
+  test("PASS7: the final query itself: an already-deleted link with closure_verified_at NULL needs the credential; a verified one, a consumed one and another provider's do not", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      const needed = async () => (await h.payments.credentialStillNeeded({ userId: s.providerId, merchantId: s.connection.merchantId, query: (text, params) => h.pool.query(text, params as never) as never })).safe === false;
+      await closeAndDeleteWithoutVerification(h, attempt.id);
+      assert.equal(await needed(), true, "closed + link deleted + not verified = still needed");
+      await h.q(`UPDATE catering_booking_payment_attempts SET last_checked_at = now() + interval '1 day' WHERE id = $1`, [attempt.id]);
+      assert.equal(await needed(), true, "a newer poll timestamp changes nothing");
+      await h.q(`UPDATE catering_booking_payment_attempts SET closure_verified_at = now() WHERE id = $1`, [attempt.id]);
+      assert.equal(await needed(), false, "authoritatively verified after closure: no longer needed");
+      await h.q(`UPDATE catering_booking_payment_attempts SET closure_verified_at = NULL, state = 'completed' WHERE id = $1`, [attempt.id]).catch(() => undefined);
+      assert.equal(await h.payments.credentialStillNeeded({ userId: s.providerId, merchantId: "SOME_OTHER_MERCHANT", query: (text, params) => h.pool.query(text, params as never) as never }).then((r) => r.safe), true, "scoped to the merchant");
+    });
+  });
+
+  test("PASS7: after an authoritative post-deletion read the disconnect succeeds; with Square unavailable it is refused and credentials are preserved", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      await closeAndDeleteWithoutVerification(h, attempt.id);
+      h.fake.state.evidenceFailure = 503;
+      await assert.rejects(h.connections.disconnect(s.providerId), SquareCredentialDiscardBlockedError);
+      assert.ok((await h.row(s.providerId)).encrypted_access_token, "credentials preserved");
+      assert.equal((await h.attempt(attempt.id)).closure_verified_at, null);
+      h.fake.state.evidenceFailure = undefined;
+      assert.equal((await h.connections.disconnect(s.providerId)).changed, true, "no permanent blocker once verification completes");
+      assert.ok((await h.attempt(attempt.id)).closure_verified_at);
+    });
+  });
+
+  test("PASS7: a payment made before the deletion, settled concurrently with the disconnect, is accounted for exactly once and the credential is not lost early", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "P7_B", ...first });
+      raceAfterPreliminary(h, async () => { await closeAndDeleteWithoutVerification(h, attempt.id); });
+      const results = await Promise.allSettled([
+        h.connections.disconnect(s.providerId), h.payments.settleAttempt(attempt.id),
+        hook(h, s, attempt, "evt-p7-1", "P7_B"), h.payments.getAttempt({ bookingId: s.bookingId, attemptId: attempt.id, userId: s.customerId }),
+      ]);
+      for (const result of results) assert.ok(result.status === "fulfilled" || result.reason instanceof SquareCredentialDiscardBlockedError, String((result as { reason?: unknown }).reason));
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit, none missed");
+      assert.equal((await h.attempt(attempt.id)).state, "completed");
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 8: refund-review wording never claims a ledger credit that does not exist
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  const CLAIMS_CREDIT = /credited|already recorded|record any return/i;
+
+  test("PASS8: a reconciliation_required attempt with NO ledger payment that later shows refund activity is described ledger-neutrally everywhere, and nothing financial changes", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await intoReview(h, s, "amount_mismatch");
+      const before = await h.attempt(attempt.id);
+      assert.equal(before.payment_id, null);
+      assert.equal(before.refund_review_at, null);
+      const evidenceBefore = JSON.stringify((await evidenceRows(h, attempt.id)).map((row) => [row.square_payment_id, row.amount_cents]));
+      refundExisting(h, "RV_A", 1000);
+      const outcome = await h.payments.settleAttempt(attempt.id);
+      assert.equal(outcome.outcome, "refund_review_required");
+      const row = await h.attempt(attempt.id);
+      assert.ok(row.refund_review_at, "the review mark is set");
+      assert.equal(row.payment_id, null, "still no ledger payment");
+      assert.equal(row.state, "reconciliation_required");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 0);
+      assert.equal((await h.ledger(s.bookingId)).length, 0);
+      assert.equal(JSON.stringify((await evidenceRows(h, attempt.id)).map((entry) => [entry.square_payment_id, entry.amount_cents])), evidenceBefore, "settlement and evidence amounts unchanged");
+
+      // notification: ledger-neutral, one only (idempotent across replays)
+      const notes = refundNotifications(h);
+      assert.equal(notes.length, 1);
+      assert.equal(notes[0].userId, s.providerId);
+      assert.equal(CLAIMS_CREDIT.test(`${notes[0].title} ${notes[0].message}`), false, `${notes[0].title} ${notes[0].message}`);
+      assert.equal(notes[0].message, CATERING_SQUARE_NOTIFICATIONS.providerRefundReviewNoLedger.message);
+      assert.match(notes[0].message, /compare them with the booking's recorded payments before making any ledger adjustments/);
+      await h.payments.settleAttempt(attempt.id);
+      await hook(h, s, attempt, "evt-p8-1", "RV_A");
+      assert.equal(refundNotifications(h).length, 1, "replays do not notify again");
+
+      // banner and provider card: neither claims a credit nor tells the provider to record a return
+      assert.equal(CLAIMS_CREDIT.test(CATERING_SQUARE_COPY.returnReviewNoticeProvider), false);
+      const providerCard = cateringSquareDisplay(await providerView(h, s, attempt.id), "provider");
+      assert.equal(providerCard.label, CATERING_SQUARE_COPY.reconciliationProviderNothingCredited, "the card truthfully says nothing was credited");
+      assert.equal(/record any return/i.test(providerCard.label), false);
+      assert.equal((await providerView(h, s, attempt.id)).ledgerCredited, undefined);
+
+      // customer wording stays accurate and says nothing about the ledger
+      assert.equal(CLAIMS_CREDIT.test(CATERING_SQUARE_COPY.returnReviewNoticeCustomer), false);
+      assert.equal(cateringSquareDisplay(await customerView(h, s, attempt.id), "customer").label, CATERING_SQUARE_COPY.reconciliation);
+    });
+  });
+
+  test("PASS8: a completed payment WITH a ledger payment keeps its accurate credited wording in the notification and card, while the generic banner stays ledger-neutral", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const attempt = await open(h, s);
+      h.setClock(new Date("2030-05-02T09:00:00Z"));
+      h.fake.payOrder(attempt.squareOrderId!, { id: "P8_C", ...first });
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "completed");
+      refundExisting(h, "P8_C", 40000);
+      assert.equal((await h.payments.settleAttempt(attempt.id)).outcome, "refund_review_required");
+      const row = await h.attempt(attempt.id);
+      assert.ok(row.payment_id, "a real ledger payment");
+      const [note] = refundNotifications(h);
+      assert.equal(note.message, CATERING_SQUARE_NOTIFICATIONS.providerRefundReview.message);
+      assert.match(note.message, /already recorded on this booking/);
+      assert.equal(cateringSquareDisplay(await providerView(h, s, attempt.id), "provider").label, CATERING_SQUARE_COPY.completedRefundReviewProvider);
+      assert.match(CATERING_SQUARE_COPY.completedRefundReviewProvider, /credited to the Catering ledger/);
+      assert.equal(CLAIMS_CREDIT.test(CATERING_SQUARE_COPY.returnReviewNoticeProvider), false, "the shared banner never assumes a credit");
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "the ledger is unchanged");
+      assert.equal(refundNotifications(h).length, 1);
+    });
+  });
+
+  /* ----------------------------------------------------------------------------------------------------------- *
+   * Pass 9: aged checkouts stay visible until retirement is verified; no "pay directly" guidance over an unverified payment
+   * ----------------------------------------------------------------------------------------------------------- */
+
+  test("PASS9: an aged pending checkout stays in BOTH billing views (state unchanged) with its link withheld and flagged expired, until retirement is verified", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const rows = await h.payments.attemptsForBooking(h.db as never, s.bookingId);
+      for (const role of ["customer", "provider"] as const) {
+        const listed = visibleCateringPaymentAttempts(rows, role, role === "customer" ? s.customerId : s.providerId);
+        const view = listed.map((row) => serializeCateringPaymentAttempt(row, role, new Date(T0.getTime() + MAX_AGE))).find((entry) => entry.id === old.id)!;
+        assert.ok(view, `${role} still sees the unverified checkout`);
+        assert.equal(view.state, "pending");
+        assert.equal(view.checkoutUrl, undefined, "no dead link is handed out");
+        assert.equal(view.linkExpired, true);
+      }
+      assert.equal(cateringCheckoutPastExpiry({ state: "pending", squareCreateResolvedAt: T0, createdAt: T0 }, new Date(T0.getTime() + MAX_AGE)), true);
+      assert.equal(cateringSquareDisplay({ state: "pending", checkoutUrl: undefined, linkExpired: true }, "customer").label, CATERING_SQUARE_COPY.expired);
+    });
+  });
+
+  test("PASS9: an aged unverified checkout + provider credential unavailable: the answer is 'cannot verify, do not pay again', never 'pay them directly'; nothing is created or declared failed", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      await h.dropConnection(s.providerId);
+      const result = await pay(h, s);
+      assert.equal(result.kind, "refused");
+      if (result.kind === "refused") {
+        assert.equal(result.status, 503);
+        assert.equal(result.code, "catering_square_verification_unavailable");
+        assert.match(result.message, /do not pay again/i);
+        assert.equal(/directly/i.test(result.message), false);
+      }
+      assert.equal((await h.attempt(old.id)).state, "pending");
+      assert.equal((await h.attempts(s.bookingId)).length, 1);
+      assert.equal(p5Creates(h), 1);
+    });
+  });
+
+  test("PASS9: with no earlier Square order, or one authoritatively verified after closure, an unusable provider still gets the ordinary 'cannot take Square payments' answer", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await open(h, s, 0);
+      await h.q(`UPDATE catering_booking_payment_attempts SET state = 'cancelled', closed_at = now(), square_link_closed_at = now() - interval '1 hour', closure_verified_at = now() WHERE id = $1`, [old.id]);
+      await h.dropConnection(s.providerId);
+      const verified = await pay(h, s, 0);
+      assert.equal(verified.kind === "refused" && verified.code, "catering_square_provider_not_ready");
+      const none = await pay(h, s, 1);
+      assert.equal(none.kind === "refused" && none.code, "catering_square_provider_not_ready");
+    });
+  });
+
+  test("PASS9: a retired (expired + verified) checkout is replaced normally, and a payment completing at the boundary is recognised exactly once", async () => {
+    await run(async (h) => {
+      const s = await scene(h);
+      const old = await p5Open(h, s);
+      h.setClock(new Date(T0.getTime() + MAX_AGE));
+      const replacement = await pay(h, s);
+      assert.equal(replacement.kind, "ok");
+      assert.ok((await h.attempt(old.id)).closure_verified_at);
+      // a second, near-boundary cycle: the replacement is paid just as it would age out
+      if (replacement.kind !== "ok") throw new Error("not ok");
+      h.fake.payOrder(replacement.attempt.squareOrderId!, { id: "P9_NEAR", created_at: "2030-07-01T00:00:00Z", updated_at: "2030-07-01T00:00:00Z" });
+      h.setClock(new Date(T0.getTime() + 2 * MAX_AGE));
+      await Promise.all([pay(h, s), h.payments.settleAttempt(replacement.attempt.id), hook(h, s, replacement.attempt, "evt-p9-1", "P9_NEAR")]);
+      assert.equal((await h.processorLedger(s.bookingId)).length, 1, "exactly one credit");
+      assert.equal((await h.attempt(replacement.attempt.id)).state, "completed");
+      assert.equal(p5Creates(h), 2, "no third checkout");
     });
   });
 }

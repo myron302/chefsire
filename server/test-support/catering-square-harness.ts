@@ -103,7 +103,7 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
   const db = drizzle(pool, { schema });
 
   const fake = await startFakeSquare(options.fake);
-  const notifications: { userId: string; type: string; linkUrl: string }[] = [];
+  const notifications: { userId: string; type: string; linkUrl: string; title?: string; message?: string }[] = [];
   const logs: { event: string; fields: Record<string, unknown> }[] = [];
   let clock: Date | null = null;
   const now = () => clock ?? new Date();
@@ -122,7 +122,7 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
     pollIntervalMs: -1,
     appBaseUrl: () => "https://app.test",
     log: { warn: (event, fields) => { logs.push({ event, fields }); } },
-    notify: async (userId, notification) => { notifications.push({ userId, type: notification.type, linkUrl: notification.linkUrl }); },
+    notify: async (userId, notification) => { notifications.push({ userId, type: notification.type, linkUrl: notification.linkUrl, title: (notification as { title?: string }).title, message: (notification as { message?: string }).message }); },
     ...options.deps,
   });
 
@@ -205,6 +205,10 @@ export async function createCateringSquareHarness(databaseUrl: string, options: 
       )).rows[0].id as string;
     },
 
+    /** The connection is LOST without going through the disconnect guard (a revocation or an outage): no credential is on file any more. */
+    async dropConnection(providerId: string) {
+      await pool.query(`UPDATE payment_methods SET account_status = 'disconnected', encrypted_access_token = NULL, encrypted_refresh_token = NULL, token_expires_at = NULL, credential_generation = credential_generation + 1 WHERE user_id = $1 AND provider = 'square'`, [providerId]);
+    },
     async voidInvoice(invoiceId: string, providerId: string) {
       await pool.query(`UPDATE catering_booking_invoices SET status = 'void', voided_at = now(), voided_by = $2 WHERE id = $1`, [invoiceId, providerId]);
     },

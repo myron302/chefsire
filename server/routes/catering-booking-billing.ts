@@ -65,7 +65,7 @@ import {
   reversalOutlook,
 } from "../services/catering-booking-adjustments";
 import { serializeCateringAdjustment } from "../serializers/catering-booking-adjustment";
-import { serializeCateringPaymentAttempt, visibleCateringPaymentAttempts } from "../serializers/catering-booking-payment-attempt";
+import { cateringAttemptNeedsReturnReview, serializeCateringPaymentAttempt, visibleCateringPaymentAttempts } from "../serializers/catering-booking-payment-attempt";
 import { cateringSquarePaymentsEnabled } from "../lib/square-checkout";
 import { cateringAttemptIsObsolete } from "../services/catering-square-payment-policy";
 import { cateringSquarePayments } from "../services/catering-square-payments-instance";
@@ -200,6 +200,7 @@ function billingView(input: {
       .filter((row) => input.role === "provider" || !cateringAttemptIsObsolete(row, input.invoices.map(cateringInvoiceFactOf).find((invoice) => invoice.id === row.invoiceId), facts))
       .map((row) => serializeCateringPaymentAttempt(row, input.role)),
     squareCheckout: { enabled: cateringSquarePaymentsEnabled() },
+    squareReturnReviewCount: visibleCateringPaymentAttempts(input.attempts, input.role, input.viewerId).filter(cateringAttemptNeedsReturnReview).length,
   };
   if (input.role !== "provider") return view;
   const issuable = cateringIssuableInvoiceKinds(facts);

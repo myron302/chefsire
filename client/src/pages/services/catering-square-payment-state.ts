@@ -1,4 +1,5 @@
 import {
+  CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE,
   CATERING_SQUARE_COPY,
   CATERING_SQUARE_RECONCILIATION_COPY,
   cateringAttemptIsOpen,
@@ -22,14 +23,16 @@ export type CateringSquareDisplay = {
   canContinue: boolean;
 };
 
-export function cateringSquareDisplay(attempt: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl"> & { ledgerCredited?: boolean }, role: "provider" | "customer"): CateringSquareDisplay {
+export function cateringSquareDisplay(attempt: Pick<CateringPaymentAttemptView, "state" | "checkoutUrl"> & { ledgerCredited?: boolean; refundReview?: boolean; linkExpired?: boolean }, role: "provider" | "customer"): CateringSquareDisplay {
   switch (attempt.state) {
     case "creating": return { phase: "creating", label: CATERING_SQUARE_COPY.creating, polling: false, canContinue: false };
-    case "pending": return { phase: "awaiting", label: role === "customer" ? CATERING_SQUARE_COPY.pending : "A customer has opened a Square checkout for this request.", polling: true, canContinue: role === "customer" && Boolean(attempt.checkoutUrl) };
-    case "completed": return { phase: "confirmed", label: CATERING_SQUARE_COPY.completed, polling: false, canContinue: false };
+    case "pending": if (attempt.linkExpired) return { phase: "awaiting", label: CATERING_SQUARE_COPY.expired, polling: true, canContinue: false };
+      return { phase: "awaiting", label: role === "customer" ? CATERING_SQUARE_COPY.pending : "A customer has opened a Square checkout for this request.", polling: true, canContinue: role === "customer" && Boolean(attempt.checkoutUrl) };
+    case "completed": return { phase: "confirmed", label: attempt.refundReview ? (role === "customer" ? CATERING_SQUARE_COPY.completedRefundReviewCustomer : CATERING_SQUARE_COPY.completedRefundReviewProvider) : CATERING_SQUARE_COPY.completed, polling: false, canContinue: false };
     case "reconciliation_required": return { phase: "reconciliation", label: role === "customer" ? CATERING_SQUARE_COPY.reconciliation : attempt.ledgerCredited ? CATERING_SQUARE_COPY.reconciliationProviderPartlyCredited : CATERING_SQUARE_COPY.reconciliationProviderNothingCredited, polling: false, canContinue: false };
     case "failed": return { phase: "failed", label: CATERING_SQUARE_COPY.failed, polling: false, canContinue: false };
-    // expired, cancelled and superseded are all a checkout that was closed before any money moved.
+    case "expired": return { phase: "closed", label: CATERING_SQUARE_COPY.expired, polling: false, canContinue: false };
+    // cancelled and superseded are all a checkout that was closed before any money moved.
     default: return { phase: "closed", label: CATERING_SQUARE_COPY.closed, polling: false, canContinue: false };
   }
 }
@@ -74,6 +77,16 @@ export function cateringOpenAttemptFor(attempts: readonly CateringPaymentAttempt
   return attempts.find((attempt) => attempt.invoiceId === invoiceId && cateringAttemptIsOpen(attempt.state));
 }
 
+/** An open checkout whose link is still usable. One whose link expired is NOT "the open checkout": a new checkout may be requested, which verifies and retires it first. */
+export function cateringUsableOpenAttemptFor(attempts: readonly CateringPaymentAttemptView[], invoiceId: string): CateringPaymentAttemptView | undefined {
+  return attempts.find((attempt) => attempt.invoiceId === invoiceId && cateringAttemptIsOpen(attempt.state) && !attempt.linkExpired);
+}
+
+/** Whether a payment on this invoice is under review (Square confirmed money the ledger could not credit): another checkout is refused by the server until it is resolved. */
+export function cateringInvoicePaymentInReview(attempts: readonly CateringPaymentAttemptView[], invoiceId: string): boolean {
+  return attempts.some((attempt) => attempt.invoiceId === invoiceId && attempt.state === "reconciliation_required");
+}
+
 /**
  * Whether the customer is offered "Pay securely with Square" on this invoice.
  *
@@ -89,7 +102,9 @@ export function cateringSquarePayAvailable(input: {
   if (input.role !== "customer") return false;
   if (!input.billing.squareCheckout.enabled || input.billing.bookingStatus === "cancelled") return false;
   if (input.invoice.status !== "issued" || input.invoice.currency !== "USD" || input.invoice.payableCents <= 0) return false;
-  return cateringOpenAttemptFor(input.billing.paymentAttempts, input.invoice.id) === undefined;
+  // A payment under review blocks another checkout (the server refuses it too; this only avoids offering what will be refused).
+  if (cateringInvoicePaymentInReview(input.billing.paymentAttempts, input.invoice.id)) return false;
+  return cateringUsableOpenAttemptFor(input.billing.paymentAttempts, input.invoice.id) === undefined;
 }
 
 /** An attempt a provider's panel lists: superseded checkouts are replaced ones and would only be noise. */
@@ -120,7 +135,7 @@ export function cateringActiveReturnedAttempt(input: { search: string; userId: s
 
 /** The error a failed attempt lookup throws: the HTTP status (or null for a network failure) so polling can tell terminal from transient. */
 export class CateringAttemptLookupError extends Error {
-  constructor(message: string, readonly status: number | null) { super(message); this.name = "CateringAttemptLookupError"; }
+  constructor(message: string, readonly status: number | null, readonly code: string | null = null) { super(message); this.name = "CateringAttemptLookupError"; }
 }
 
 /**
@@ -181,7 +196,17 @@ export function cateringAttemptLookupStatus(state: { error?: unknown; consecutiv
   return (state.consecutiveFailures ?? 0) >= CATERING_ATTEMPT_LOOKUP_MAX_FAILURES ? "exhausted" : null;
 }
 
-export const CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY = "We couldn't reach ChefSire to check this payment. If you paid on Square, your payment is safe and will be applied once ChefSire can confirm it. Check again, or reload the page. Nothing has been marked as paid here.";
+export const CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY = "We couldn't reach ChefSire to check this payment. If you paid on Square, your payment is safe and will be applied once ChefSire can confirm it. Use Retry status check, or reload the page. Nothing has been marked as paid here.";
+/** The server said it could not ask Square (explicit, retryable). The screen says so; it never says the payment failed or that nothing was charged. */
+export function cateringLookupIsVerificationUnavailable(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE;
+}
+
+/** Whether a 200 status answer counts as a real check: a throttled answer asked Square nothing, so it neither resets nor adds to the failure count. */
+export function cateringLookupCountsAsSuccess(verification: unknown): boolean {
+  return verification !== "throttled" && verification !== "unavailable";
+}
+
 export const CATERING_ATTEMPT_LOOKUP_FAILED_COPY = "We couldn't verify this payment attempt. Refresh your billing page, or start again if a payment is still due. Nothing has been marked as paid.";
 
 /** Checkout creation answered `creating`: Square's answer was uncertain. The same request again resumes the same checkout. */

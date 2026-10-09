@@ -5,7 +5,10 @@ import { cateringBookingIdSchema } from "@shared/catering-bookings";
 import {
   CATERING_ATTEMPT_UNAVAILABLE_CODE,
   CATERING_SQUARE_COPY,
+  cateringAttemptIsConsumed,
   cateringSquarePayRequestSchema,
+  CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE,
+  CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE,
   cateringSquarePaymentAttemptIdSchema,
   SQUARE_EVENT_ID_MAX_LENGTH,
   SQUARE_MERCHANT_ID_MAX_LENGTH,
@@ -106,7 +109,13 @@ export function createCateringSquarePaymentsRouter(service: CateringSquarePaymen
       const attemptId = cateringSquarePaymentAttemptIdSchema.parse(req.params.attemptId);
       const result = await service.getAttempt({ bookingId, attemptId, userId: userId(req) });
       if (result.kind === "not_found") return res.status(404).json({ message: CATERING_BILLING_NOT_FOUND_REFUSAL.message });
-      res.json({ attempt: serializeCateringPaymentAttempt(result.attempt, result.role) });
+      // For ANY attempt that has not consumed a payment (open, or locally closed: cancelled, expired, superseded, failed) when Square could not be asked: say so explicitly (and retryably) instead of a 200 that reads as a clean check of an unchanged attempt.
+      // The body carries no attempt, no state and no reason, so it cannot be mistaken for "nothing was charged" or leak connection detail.
+      if (result.verification === "unavailable" && !cateringAttemptIsConsumed(result.attempt.state)) {
+        res.set("Retry-After", "5");
+        return res.status(503).json({ code: CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_CODE, message: CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, retryable: true });
+      }
+      res.json({ attempt: serializeCateringPaymentAttempt(result.attempt, result.role), verification: result.verification });
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message });
       next(error);

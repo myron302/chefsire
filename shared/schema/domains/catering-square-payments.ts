@@ -43,6 +43,12 @@ export const cateringBookingPaymentAttempts = pgTable("catering_booking_payment_
   squareCreateResolvedAt: timestamp("square_create_resolved_at", { withTimezone: true }),
   // Set (never cleared; refreshed on every such end) when a create call ended with an UNCERTAIN outcome: Square may hold a link ChefSire has not recorded.
   squareCreateUncertainAt: timestamp("square_create_uncertain_at", { withTimezone: true }),
+  // Set once (never cleared) when Square first showed refund activity on a payment of a CONSUMED attempt. A completed attempt cannot become
+  // reconciliation_required while it keeps its ledger link, so this is the additive, durable "needs refund review" mark.
+  refundReviewAt: timestamp("refund_review_at", { withTimezone: true }),
+  // Set once, only by a SUCCESSFUL authoritative Square read (no completed payment) that STARTED after the link's removal was confirmed. Never by a
+  // poll attempt, an unavailable or still-processing answer. Gates replacement of an expired checkout and discarding the provider credential.
+  closureVerifiedAt: timestamp("closure_verified_at", { withTimezone: true }),
   lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   verifiedAt: timestamp("verified_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),

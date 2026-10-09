@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CateringPaymentAttemptView } from "@shared/catering-square-payments";
+import { CATERING_SQUARE_CHECKOUT_MAX_AGE_MS, cateringCheckoutPastExpiry, CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, CATERING_SQUARE_COPY, CATERING_SQUARE_NOTIFICATIONS, CATERING_SQUARE_RECONCILIATION_COPY, CATERING_RECONCILIATION_REASONS, type CateringPaymentAttemptView } from "@shared/catering-square-payments";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,9 @@ import {
   cateringSquareDisplay,
   cateringSquarePayAvailable,
   cateringSquareReconciliationCopy,
+  cateringInvoicePaymentInReview,
+  cateringLookupCountsAsSuccess,
+  cateringLookupIsVerificationUnavailable,
 } from "./catering-square-payment-state";
 
 const attempt = (overrides: Partial<CateringPaymentAttemptView> = {}): CateringPaymentAttemptView => ({
@@ -384,7 +387,7 @@ test("reaching the threshold is a truthful recoverable state, not an endless 'Ch
   const { data, error, counter } = simulate(["ok", "fail", "fail", "fail"]);
   assert.ok(data);
   assert.equal(cateringAttemptLookupStatus({ error, consecutiveFailures: counter.count() }), "exhausted");
-  assert.match(CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY, /Check again/);
+  assert.match(CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY, /Retry status check/);
   assert.match(CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY, /Nothing has been marked as paid/);
   assert.equal(/not found|does not exist|unauthori[sz]ed|forbidden|404/i.test(CATERING_ATTEMPT_LOOKUP_UNREACHABLE_COPY), false);
   const banner = component.slice(component.indexOf("{failed ? <>"), component.indexOf(": polled ? <>"));
@@ -456,7 +459,7 @@ test("provider copy states whether anything was credited, and never says nothing
   // the customer's copy is unchanged and never asks them to pay again
   const customer = cateringSquareDisplay({ state: "reconciliation_required", ledgerCredited: true }, "customer").label;
   assert.equal(customer, CATERING_SQUARE_COPY.reconciliation);
-  assert.match(customer, /do not need to pay again/);
+  assert.match(customer, /do not make another payment/);
 });
 
 test("evidence rows: the ledger-backed payment is marked credited; every other is additional; with nothing credited none is", () => {
@@ -541,4 +544,154 @@ test("nav: the URL only ever selects what to ASK the server about; the component
   const polling = source.slice(source.indexOf("function useAttemptPolling"), source.indexOf("export function SquarePaymentsPanel"));
   assert.equal(/method: "POST"/.test(polling), false);
   assert.ok(source.includes('"confirmed" is\n *    shown only when the server says an attempt is `completed`') || source.includes("shown only when the server says an attempt is `completed`"));
+});
+
+/* Post-merge hotfix: an unresolved refund review qualifies "paid" wording for both actors */
+test("a completed attempt with an unresolved refund review is never presented as plainly settled", () => {
+  assert.equal(cateringSquareDisplay({ state: "completed" }, "customer").label, CATERING_SQUARE_COPY.completed);
+  const customer = cateringSquareDisplay({ state: "completed", refundReview: true }, "customer");
+  const provider = cateringSquareDisplay({ state: "completed", refundReview: true }, "provider");
+  assert.equal(customer.label, CATERING_SQUARE_COPY.completedRefundReviewCustomer);
+  assert.match(customer.label, /returned/);
+  assert.match(provider.label, /ledger was NOT changed/);
+  assert.equal(customer.phase, "confirmed", "the payment itself is still confirmed: only the wording is qualified");
+  assert.match(CATERING_SQUARE_COPY.returnReviewNoticeCustomer, /may not be fully settled/);
+  assert.match(CATERING_SQUARE_COPY.returnReviewNoticeProvider, /NOT changed/);
+});
+
+test("PASS2: an invoice with a reconciliation_required attempt offers no Pay (even with no open checkout); other invoices stay payable; the server stays authoritative", () => {
+  const reviewed = attempt({ id: "r", state: "reconciliation_required" });
+  assert.equal(cateringInvoicePaymentInReview([reviewed], "inv-1"), true);
+  assert.equal(cateringInvoicePaymentInReview([reviewed], "inv-2"), false);
+  assert.equal(cateringInvoicePaymentInReview([attempt({ state: "completed" })], "inv-1"), false);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [reviewed] }), invoice }), false);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [reviewed, attempt({ id: "x", state: "cancelled" })] }), invoice }), false);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [reviewed] }), invoice: { ...invoice, id: "inv-2" } }), true);
+});
+
+test("PASS2: the component shows payment-review messaging instead of the Pay button, and never tells the customer to pay again", () => {
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const source = fs.readFileSync(path.join(dir, "../../components/catering/BookingSquarePayments.tsx"), "utf8");
+  assert.match(source, /cateringInvoicePaymentInReview/);
+  assert.match(source, /CATERING_SQUARE_COPY\.paymentReview/);
+  assert.match(CATERING_SQUARE_COPY.paymentReview, /do not make another payment/i);
+});
+
+const NO_REPAY_RE = /do not make another payment until the review is complete/i;
+const CLAIMS_AMOUNT_CHANGED = /what you owe|amount (you owe|owed|payable)|balance (changed|dropped)|you owe/i;
+const CLAIMS_REFUND_ISSUED = /(was|has been|were) (refunded|returned)|refund(ed)? (to you|issued)|we (have )?refunded|money back/i;
+
+test("PASS3: the generic reconciliation wording is reason-neutral: it never claims the amount owed changed or a refund was issued, and says not to pay again", () => {
+  for (const text of [CATERING_SQUARE_COPY.reconciliation, CATERING_SQUARE_COPY.paymentReview, CATERING_SQUARE_NOTIFICATIONS.customerReconciliation.message]) {
+    assert.equal(CLAIMS_AMOUNT_CHANGED.test(text), false, text);
+    assert.equal(CLAIMS_REFUND_ISSUED.test(text), false, text);
+    assert.match(text, /needs additional review/i);
+    assert.match(text, /caterer has been notified/i);
+    assert.match(text, NO_REPAY_RE);
+  }
+  assert.equal(CATERING_SQUARE_COPY.reconciliation, CATERING_SQUARE_COPY.paymentReview, "one wording across the card, the invoice and the refusal");
+  assert.equal(CATERING_SQUARE_NOTIFICATIONS.customerReconciliation.message, CATERING_SQUARE_COPY.reconciliation, "the notification agrees with the banner");
+  const provider = CATERING_SQUARE_NOTIFICATIONS.providerReconciliation.message;
+  assert.equal(CLAIMS_AMOUNT_CHANGED.test(provider) || CLAIMS_REFUND_ISSUED.test(provider), false);
+  assert.match(provider, /not to pay again/i);
+});
+
+test("PASS3: every reconciliation reason has accurate customer wording: only payable_changed may speak of what is owed, none claims a refund was issued, all say not to pay again, none leaks internals", () => {
+  assert.equal(CATERING_RECONCILIATION_REASONS.length, 8);
+  for (const reason of CATERING_RECONCILIATION_REASONS) {
+    const text = CATERING_SQUARE_RECONCILIATION_COPY[reason].customer;
+    assert.match(text, NO_REPAY_RE, reason);
+    assert.equal(CLAIMS_REFUND_ISSUED.test(text), false, reason);
+    assert.equal(/\b(PAYMENT_|sq0|token|ledger|idempotency|merchant)\b/i.test(text), false, reason);
+    if (reason !== "payable_changed") assert.equal(CLAIMS_AMOUNT_CHANGED.test(text), false, `${reason} must not claim the amount owed changed`);
+    assert.equal(cateringSquareReconciliationCopy(reason, "customer"), text);
+  }
+  for (const reason of ["multiple_payments", "currency_mismatch", "amount_mismatch", "payment_refunded", "payment_timestamp_invalid"] as const) {
+    assert.equal(/changed/i.test(CATERING_SQUARE_RECONCILIATION_COPY[reason].customer), false, reason);
+  }
+  assert.match(CATERING_SQUARE_RECONCILIATION_COPY.payment_refunded.customer, /reports refund activity/i, "a refund is only ever described as something Square reports");
+});
+
+test("PASS3: the customer's card label for a reconciliation is the neutral wording for every reason, and ordinary statuses are unchanged", () => {
+  for (const reason of CATERING_RECONCILIATION_REASONS) {
+    const display = cateringSquareDisplay(attempt({ state: "reconciliation_required", reconciliationReason: reason }), "customer");
+    assert.equal(display.label, CATERING_SQUARE_COPY.reconciliation);
+    assert.equal(display.canContinue, false);
+  }
+  assert.equal(cateringSquareDisplay(attempt({ state: "completed" }), "customer").label, CATERING_SQUARE_COPY.completed);
+  assert.equal(CATERING_SQUARE_COPY.completed, "Payment confirmed by Square.");
+  assert.equal(CATERING_SQUARE_COPY.pending, "Your Square checkout is open. Finish paying there, then come back here.");
+});
+
+test("PASS4: a Square-unavailable answer is a counted failure that stops polling after the bound; a throttled answer neither resets nor adds; only a real check resets", () => {
+  const unavailable = new CateringAttemptLookupError("x", 503, "catering_square_verification_unavailable");
+  assert.equal(cateringLookupIsVerificationUnavailable(unavailable), true);
+  assert.equal(cateringLookupIsVerificationUnavailable(new CateringAttemptLookupError("x", 503)), false);
+  assert.equal(cateringAttemptLookupIsTerminal(unavailable), false, "retryable, not terminal");
+  const counter = createConsecutiveFailureCounter();
+  let polls = 0;
+  for (let i = 0; i < 20; i += 1) {
+    const interval = cateringAttemptPollInterval({ data: attempt(), error: unavailable, consecutiveFailures: counter.count() });
+    if (interval === false) break;
+    polls += 1;
+    counter.failed();
+  }
+  assert.equal(polls, CATERING_ATTEMPT_LOOKUP_MAX_FAILURES, "polling is bounded");
+  assert.equal(cateringAttemptLookupStatus({ error: unavailable, consecutiveFailures: counter.count() }), "exhausted");
+  assert.equal(cateringLookupCountsAsSuccess("throttled"), false);
+  assert.equal(cateringLookupCountsAsSuccess("unavailable"), false);
+  assert.equal(cateringLookupCountsAsSuccess("checked"), true);
+  assert.equal(cateringLookupCountsAsSuccess("not_needed"), true);
+  // manual retry starts a fresh bounded run, and the same preserved attempt is polled again
+  counter.reset();
+  assert.equal(cateringAttemptPollInterval({ data: attempt(), error: unavailable, consecutiveFailures: counter.count() }), CATERING_SQUARE_POLL_MS);
+});
+
+test("PASS4: the panel offers Retry status check and Dismiss when exhausted, uses Square-unavailable wording that never says nothing was charged, and stops polling on unmount", () => {
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const source = fs.readFileSync(path.join(dir, "../../components/catering/BookingSquarePayments.tsx"), "utf8");
+  assert.match(source, /Retry status check/);
+  assert.match(source, /Dismiss/);
+  assert.match(source, /CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE/);
+  assert.match(source, /cateringLookupCountsAsSuccess\(body\.verification\)/);
+  assert.match(source, /refetchInterval/, "polling is driven by the query's own interval, which TanStack stops on unmount");
+  assert.equal(/setInterval\(/.test(source), false, "no hand-rolled timer that could outlive the component");
+  assert.equal(/nothing was charged/i.test(CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE), false);
+  assert.match(CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, /do not pay again/i);
+  assert.match(CATERING_ATTEMPT_VERIFICATION_UNAVAILABLE_MESSAGE, /has not been changed or cancelled/i);
+});
+
+test("PASS5: the lifetime boundary is deterministic: pending only, measured from the persisted link time, inclusive at the boundary", () => {
+  const start = new Date("2030-01-01T00:00:00Z");
+  const row = { state: "pending", squareCreateResolvedAt: start, createdAt: new Date("2020-01-01T00:00:00Z") };
+  assert.equal(CATERING_SQUARE_CHECKOUT_MAX_AGE_MS, 180 * 24 * 60 * 60 * 1000);
+  assert.equal(cateringCheckoutPastExpiry(row, new Date(start.getTime() + CATERING_SQUARE_CHECKOUT_MAX_AGE_MS - 1)), false);
+  assert.equal(cateringCheckoutPastExpiry(row, new Date(start.getTime() + CATERING_SQUARE_CHECKOUT_MAX_AGE_MS)), true);
+  assert.equal(cateringCheckoutPastExpiry({ ...row, squareCreateResolvedAt: null, createdAt: start }, new Date(start.getTime() + CATERING_SQUARE_CHECKOUT_MAX_AGE_MS)), true, "falls back to created_at");
+  for (const state of ["creating", "completed", "expired", "cancelled", "reconciliation_required"]) assert.equal(cateringCheckoutPastExpiry({ ...row, state }, new Date(start.getTime() + 2 * CATERING_SQUARE_CHECKOUT_MAX_AGE_MS)), false, state);
+  assert.equal(cateringCheckoutPastExpiry({ ...row, squareCreateResolvedAt: "garbage", createdAt: "garbage" }, new Date()), false, "an unreadable time never expires anything");
+});
+
+test("PASS5: an expired checkout is explained to the customer without claiming nothing was charged, never shows a link, and a new checkout is offered", () => {
+  const display = cateringSquareDisplay(attempt({ state: "expired", checkoutUrl: "https://square.link/u/dead" }), "customer");
+  assert.equal(display.label, CATERING_SQUARE_COPY.expired);
+  assert.equal(display.canContinue, false, "a dead link is never offered");
+  assert.equal(display.polling, false);
+  assert.match(CATERING_SQUARE_COPY.expired, /expired/i);
+  assert.match(CATERING_SQUARE_COPY.expired, /do not pay again/i);
+  assert.equal(/nothing was charged/i.test(CATERING_SQUARE_COPY.expired + CATERING_SQUARE_COPY.checkoutVerifying), false);
+  assert.match(CATERING_SQUARE_COPY.checkoutVerifying, /do not pay again/i);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [attempt({ state: "expired" })] }), invoice }), true, "a new checkout may be started once the old one is expired");
+});
+
+test("PASS9: an aged open checkout stays shown, offers no link, and a NEW checkout may be requested (the server verifies and retires first); a usable one still blocks Pay", () => {
+  const aged = attempt({ state: "pending", linkExpired: true, checkoutUrl: undefined });
+  const display = cateringSquareDisplay(aged, "customer");
+  assert.equal(display.label, CATERING_SQUARE_COPY.expired);
+  assert.equal(display.canContinue, false);
+  assert.equal(display.polling, true, "still watching for a payment");
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [aged] }), invoice }), true);
+  assert.equal(cateringSquarePayAvailable({ role: "customer", billing: billing({ paymentAttempts: [attempt()] }), invoice }), false);
+  const route = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../server/routes/catering-booking-billing.ts"), "utf8");
+  assert.equal(/cateringCheckoutPastExpiry/.test(route), false, "the billing view never hides an unverified checkout just because time passed");
 });
