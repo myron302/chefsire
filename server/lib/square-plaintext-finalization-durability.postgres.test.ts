@@ -34,7 +34,7 @@ const MIGRATIONS = ["20261007_square_connection_hardening", "20261008_square_cre
 
 test("push-schema.ts restores finalized enforcement after the Drizzle push, and the Drizzle schema declares the marker but NOT the constraint", () => {
   const script = fs.readFileSync(path.join(root, "server/scripts/push-schema.ts"), "utf8");
-  const push = script.indexOf('"drizzle-kit", "push"') >= 0 ? script.indexOf("run(pushArgs)") : -1;
+  const push = script.indexOf('"drizzle-kit", "push"') >= 0 ? script.indexOf("await guardedPush();") : -1;
   const restore = script.indexOf("enforce-square-plaintext-finalization.ts");
   assert.ok(push > 0 && restore > push, "restoration runs after the push");
   assert.equal(script.slice(restore - 80).includes("run(["), true);

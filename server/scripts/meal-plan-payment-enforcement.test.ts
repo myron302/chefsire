@@ -7,7 +7,7 @@ const pushSchema = readFileSync(new URL("./push-schema.ts", import.meta.url), "u
 
 test("meal-plan preflight runs before Drizzle and enforcement runs after", () => {
   const pre = pushSchema.indexOf('enforce-meal-plan-payment-integrity.ts", "--allow-missing"');
-  const drizzle = pushSchema.indexOf('"drizzle-kit", "push"');
+  const drizzle = pushSchema.indexOf("await guardedPush();"); // the guarded drizzle-kit push (plan review, then atomic apply)
   const post = pushSchema.lastIndexOf('enforce-meal-plan-payment-integrity.ts"');
   assert.ok(pre >= 0 && pre < drizzle);
   assert.ok(post > drizzle);

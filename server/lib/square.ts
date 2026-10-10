@@ -1,9 +1,7 @@
 import "../lib/load-env";
 
-import { SquareClient, SquareEnvironment } from "square";
-
-const SQUARE_ENV = (process.env.SQUARE_ENV || "sandbox").trim().toLowerCase();
-const isSandbox = SQUARE_ENV !== "production";
+import type { SquareClient } from "square";
+import { createConnectedSquareClient, squareEnvironmentConfigured } from "./square-integration";
 
 function cleanedEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -11,8 +9,6 @@ function cleanedEnv(name: string): string | undefined {
 }
 
 export const squareConfig = {
-  isSandbox,
-  environment: isSandbox ? SquareEnvironment.Sandbox : SquareEnvironment.Production,
   accessToken: cleanedEnv("SQUARE_ACCESS_TOKEN"),
   applicationId: cleanedEnv("SQUARE_APPLICATION_ID"),
   locationId: cleanedEnv("SQUARE_LOCATION_ID"),
@@ -21,6 +17,8 @@ export const squareConfig = {
 };
 
 export function getSquareConfigError(): string | null {
+  // The environment is resolved by the shared policy at USE time (never cached at import): missing, invalid or unsafe means not configured.
+  if (!squareEnvironmentConfigured()) return "Square environment is not safely configured (see SQUARE_ENV).";
   if (!squareConfig.accessToken) return "Missing SQUARE_ACCESS_TOKEN.";
   if (!squareConfig.locationId) return "Missing SQUARE_LOCATION_ID.";
   return null;
@@ -36,13 +34,12 @@ export function getSquareClient(): SquareClient {
     throw new Error(`${configError} Set the required Square environment variables before using premium drink collection checkout.`);
   }
 
-  return new SquareClient({
-    token: squareConfig.accessToken!,
-    environment: squareConfig.environment,
-  });
+  // The shared factory applies the one environment policy (and a request timeout); this module never picks an environment itself.
+  return createConnectedSquareClient(squareConfig.accessToken!);
 }
 
 export function requireWebhookKey() {
+  if (!squareEnvironmentConfigured()) throw new Error("Square environment is not safely configured (see SQUARE_ENV).");
   if (!squareConfig.webhookSignatureKey) {
     throw new Error("Missing SQUARE_WEBHOOK_SIGNATURE_KEY. Add it before enabling Square webhooks.");
   }
