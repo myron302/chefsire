@@ -10,7 +10,11 @@ import {
   catalogLookupsNeeded,
   classifyPushPlan,
   constraintFactKey,
+  buildServerIdentity,
+  columnFactKey,
+  connectionTarget,
   dropSequenceTarget,
+  ServerIdentityError,
   enumAdditionCount,
   enumAdditionHazards,
   interpretDryRun,
@@ -109,7 +113,6 @@ test("ordinary safe schema additions pass silently", () => {
     'CREATE TABLE IF NOT EXISTS "public"."t2" ("id" uuid PRIMARY KEY);',
     'ALTER TABLE "t" ADD COLUMN "c" text;',
     'ALTER TABLE "t" ADD COLUMN IF NOT EXISTS "d" text DEFAULT \'a;b\';',
-    'ALTER TABLE "t" ALTER COLUMN "c" SET DEFAULT \'{}\'::text[];',
     'ALTER TABLE "t" ALTER COLUMN "c" SET NOT NULL;',
     'CREATE INDEX "t_c_idx" ON "t" USING btree ("c");',
     'CREATE UNIQUE INDEX IF NOT EXISTS "t_u" ON "public"."t" ("c") WHERE "c" IS NOT NULL;',
@@ -250,7 +253,7 @@ test("multibyte long identifiers pair by their stored (byte-truncated) name and 
 
 test("catalogLookupsNeeded names exactly the dropped constraints and indexes, with their stored identifiers", () => {
   assert.deepEqual(catalogLookupsNeeded([dropFk(`${LONG}_fk`), 'DROP INDEX "public"."i";', 'DROP TABLE "x";', 'ALTER TABLE "a" ADD COLUMN "b" int;']),
-    { constraints: [{ schema: "public", table: "catering_booking_access_details", name: LONG }], indexes: [{ schema: "public", name: "i" }] });
+    { constraints: [{ schema: "public", table: "catering_booking_access_details", name: LONG }], indexes: [{ schema: "public", name: "i" }], defaults: [] });
 });
 
 test("canonicalConstraint understands both drizzle's and PostgreSQL's spelling of the same constraint", () => {
@@ -404,7 +407,7 @@ test("several ALTER COLUMN operations in one statement cannot smuggle DROP NOT N
 });
 
 test("tightening nullability and ordinary defaults stay silent; dropping a default (can carry security state) is reviewed", () => {
-  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "a" SET NOT NULL;', 'ALTER TABLE "o" ALTER COLUMN "a" SET DEFAULT \'free\';']), []);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "a" SET NOT NULL;']), []);
   assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "tier" DROP DEFAULT;']), ["default_dropped"]);
   assert.deepEqual(kinds(['ALTER TABLE "public"."o" ALTER COLUMN "tier" DROP DEFAULT, ALTER COLUMN "x" SET NOT NULL;']), ["unrecognized_statement"]);
 });
@@ -536,4 +539,137 @@ test("acknowledgement fails closed: only exactly one well-formed, current token 
   assert.equal(ack([`--accept-plan=${current}`, `--accept-plan=${current}`]), false, "repeated");
   assert.equal(ack([], true), true, "a disposable test database acknowledges implicitly");
   assert.equal(ack([], false, []), true, "a plan with no findings needs no approval");
+});
+
+/* ------------------------------------------------ foreign-key referential action column lists ------------------------------------------------ */
+
+const fk = (tail: string, columns = "a, b") => `FOREIGN KEY (${columns}) REFERENCES t(x, y) ${tail}`.trim();
+const canon = (definition: string) => canonicalConstraint(definition);
+
+test("ON DELETE SET NULL / SET DEFAULT column lists are part of the canonical foreign key", () => {
+  for (const action of ["SET NULL", "SET DEFAULT"]) {
+    const none = canon(fk(`ON DELETE ${action}`));
+    const one = canon(fk(`ON DELETE ${action} (a)`));
+    const other = canon(fk(`ON DELETE ${action} (b)`));
+    const both = canon(fk(`ON DELETE ${action} (a, b)`));
+    assert.ok(none && one && other && both);
+    assert.notEqual(one, none, `${action}: one column differs from no list on a two-column key`);
+    assert.notEqual(one, other, `${action}: different single columns differ`);
+    assert.notEqual(one, both);
+    assert.equal(both, none, `${action}: listing every referencing column IS the default behaviour`);
+    assert.equal(canon(fk(`ON DELETE ${action} (b, a)`)), both, `${action}: the column list is a set; order is irrelevant`);
+    assert.equal(canon(fk(`on delete ${action.toLowerCase()} ( "a" ,"b" )`)), both, "formatting and quoting do not matter");
+    assert.equal(canon(fk(`ON UPDATE ${action} (a)`)), canon(fk(`ON UPDATE ${action} (a)`)));
+    assert.notEqual(canon(fk(`ON UPDATE ${action} (a)`)), canon(fk(`ON UPDATE ${action}`)), "ON UPDATE lists count too");
+    assert.notEqual(canon(fk(`ON DELETE ${action} (a)`)), canon(fk(`ON UPDATE ${action} (a)`)), "delete and update are distinct");
+  }
+  assert.notEqual(canon(fk("ON DELETE SET NULL (a)")), canon(fk("ON DELETE SET DEFAULT (a)")), "the action itself differs");
+  assert.notEqual(canon(fk("ON DELETE SET NULL (a)")), canon(fk("ON DELETE CASCADE")));
+  assert.equal(canon(fk("ON DELETE CASCADE")), canon(fk("ON DELETE cascade ON UPDATE no action")), "unlisted actions default to NO ACTION");
+});
+
+test("identifier semantics in action lists: unquoted names fold, quoted names keep case; repeats and malformed lists fail closed", () => {
+  assert.equal(canon(fk("ON DELETE SET NULL (A)", "a, b")), canon(fk("ON DELETE SET NULL (a)", "a, b")), "unquoted A is a");
+  assert.notEqual(canon(fk('ON DELETE SET NULL ("A")', "a, b")), canon(fk("ON DELETE SET NULL (a)", "a, b")), 'quoted "A" is not a');
+  assert.equal(canon(fk("ON DELETE SET NULL (a, a)")), null, "a repeated column is invalid");
+  assert.equal(canon(fk("ON DELETE SET NULL ()")), null);
+  assert.equal(canon(fk("ON DELETE SET NULL (a b)")), null);
+  assert.equal(canon(fk("ON DELETE CASCADE (a)")), null, "CASCADE takes no column list: unparseable, fail closed");
+});
+
+test("a replacement whose referential-action columns differ is reviewed; an equivalent spelling is still excused", () => {
+  const name = "composite_fk";
+  const live = (def: string) => facts({ [constraintFactKey("public", "t", name)]: def });
+  const plan = (add: string) => ['ALTER TABLE "t" DROP CONSTRAINT "composite_fk";', `ALTER TABLE "t" ADD CONSTRAINT "composite_fk" ${add};`];
+  const dbDef = "FOREIGN KEY (a, b) REFERENCES t(x, y) ON DELETE SET NULL (a)";
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set null ("a") ON UPDATE no action'), live(dbDef)), []);
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set null ("b") ON UPDATE no action'), live(dbDef)), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set null ON UPDATE no action'), live(dbDef)), ["drop_constraint_unpaired"], "narrowed -> widened nulling");
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set null ("a","b") ON UPDATE no action'), live(dbDef)), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set default ("a") ON UPDATE no action'), live(dbDef)), ["drop_constraint_unpaired"]);
+});
+
+/* ------------------------------------------------ defaults ------------------------------------------------ */
+
+const setDefault = (expression: string, column = "c", table = "o") => `ALTER TABLE "${table}" ALTER COLUMN "${column}" SET DEFAULT ${expression};`;
+const defaultFacts = (current: string | null, proposed: string | null, column = "c", table = "o"): PlanCatalogFacts =>
+  ({ constraints: {}, indexes: {}, defaults: { [columnFactKey("public", table, column)]: { current, proposed } } });
+
+test("SET DEFAULT is judged against the catalog: only re-applying the identical default is silent", () => {
+  assert.deepEqual(kinds([setDefault("true")], defaultFacts("false", "true")), ["default_changed"], "false -> true boolean");
+  assert.deepEqual(kinds([setDefault("'completed'::text", "payment_status", "orders")], defaultFacts("'pending'::text", "'completed'::text", "payment_status", "orders")), ["default_changed"], "pending -> completed payment state");
+  assert.deepEqual(kinds([setDefault("'free'::text")], defaultFacts("'free'::text", "'free'::text")), [], "equivalent default re-applied");
+  assert.deepEqual(kinds([setDefault("'premium'::text")], defaultFacts("'free'::text", "'premium'::text")), ["default_changed"], "existing -> different");
+  assert.deepEqual(kinds([setDefault("'admin'::text", "role", "users")], defaultFacts(null, "'admin'::text", "role", "users")), ["default_added"], "no default -> new default is NOT assumed harmless");
+  assert.deepEqual(kinds([setDefault("0")], defaultFacts(null, "0")), ["default_added"], "even a zero");
+});
+
+test("missing or incomplete catalog evidence about a default never classifies it as safe", () => {
+  assert.deepEqual(kinds([setDefault("true")]), ["default_unverified"], "no facts at all");
+  assert.deepEqual(kinds([setDefault("true")], { constraints: {}, indexes: {}, defaults: {} }), ["default_unverified"], "column not inspected / not found");
+  assert.deepEqual(kinds([setDefault("true")], defaultFacts("false", null)), ["default_unverified"], "PostgreSQL could not render the proposed default");
+  assert.deepEqual(kinds([setDefault("true", "other")], defaultFacts("true", "true")), ["default_unverified"], "facts for a different column do not count");
+  assert.deepEqual(kinds([setDefault("true", "c", "other_table")], defaultFacts("true", "true")), ["default_unverified"]);
+});
+
+test("DROP DEFAULT always requires review; defaults added inline with a new column or table are additive", () => {
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "c" DROP DEFAULT;']), ["default_dropped"]);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ADD COLUMN "c" boolean DEFAULT false NOT NULL;', 'CREATE TABLE "n" ("c" text DEFAULT \'x\');']), []);
+});
+
+test("catalogLookupsNeeded exposes each SET DEFAULT with its exact expression, in any spelling", () => {
+  const needed = catalogLookupsNeeded([setDefault("now() + interval '24 hours'", "expires_at", "t"), 'alter table public.t alter column x set default \'a;b\'::text ;']);
+  assert.deepEqual(needed.defaults, [
+    { schema: "public", table: "t", column: "expires_at", expression: "now() + interval '24 hours'" },
+    { schema: "public", table: "t", column: "x", expression: "'a;b'::text" },
+  ]);
+});
+
+/* ------------------------------------------------ server identity ------------------------------------------------ */
+
+const identity = (over: Partial<Parameters<typeof buildServerIdentity>[0]> = {}) =>
+  buildServerIdentity({ systemIdentifier: "7123456789012345678", databaseOid: "16384", databaseName: "chefsire", target: "db.example.com:5432", ...over });
+
+test("the same database name, catalog and plan on different servers cannot share an approval token", () => {
+  const plan = ['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;'];
+  const tokenFor = (id: string) => planAcknowledgementToken(plan, id, undefined, "same-catalog");
+  const staging = identity({ systemIdentifier: "7000000000000000001", target: "staging.example.com:5432" });
+  const production = identity({ systemIdentifier: "7000000000000000002", target: "prod.example.com:5432" });
+  assert.notEqual(tokenFor(staging.id), tokenFor(production.id), "different cluster identifiers and targets");
+  // each ingredient matters on its own
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ systemIdentifier: "7123456789012345679" }).id), "cluster identifier");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ target: "other.example.com:5432" }).id), "connection target (a Neon branch shares the identifier)");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ target: "db.example.com:6432" }).id), "port");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ databaseOid: "16385" }).id), "database OID");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ databaseName: "chefsire2" }).id), "database name");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ systemIdentifier: null }).id), "an unverified identity never equals a verified one");
+});
+
+test("the same server, database and plan is identified consistently", () => {
+  assert.equal(identity().id, identity().id);
+  assert.equal(planAcknowledgementToken(["x;"], identity().id), planAcknowledgementToken(["x;"], identity().id));
+  assert.equal(identity().strong, true);
+  assert.equal(identity({ systemIdentifier: null }).strong, false, "no cluster identifier read: weak, needs a separate explicit flag");
+});
+
+test("a missing or ambiguous identity fails closed", () => {
+  for (const bad of [
+    { systemIdentifier: "" }, { systemIdentifier: "abc" }, { systemIdentifier: "0" }, { systemIdentifier: "123 456 789" }, { systemIdentifier: "1;2" },
+    { databaseOid: "" }, { databaseOid: "abc" }, { databaseName: "" }, { target: "" },
+  ]) assert.throws(() => identity(bad as never), ServerIdentityError, JSON.stringify(bad));
+});
+
+test("the connection target names the host and port only: no credentials, no query, no database; unreadable or ambiguous URLs fail closed", () => {
+  const url = "postgres://admin:s3cr3t-P@ss@Prod.Example.COM:6543/chefsire?sslmode=require&options=-c%20x";
+  assert.equal(connectionTarget(url), "prod.example.com:6543");
+  assert.doesNotMatch(connectionTarget(url), /s3cr3t|admin|chefsire|sslmode/);
+  assert.equal(connectionTarget("postgresql://u@localhost/db"), "localhost:5432");
+  assert.equal(connectionTarget("postgres://u@[::1]:5433/db"), "::1:5433");
+  assert.equal(connectionTarget("postgres:///db?host=/var/run/postgresql"), "socket:/var/run/postgresql:5432");
+  assert.throws(() => connectionTarget("not a url"), ServerIdentityError);
+  assert.throws(() => connectionTarget("mysql://h/db"), ServerIdentityError);
+  assert.throws(() => connectionTarget("postgres://a,b/db"), ServerIdentityError, "multi-host is ambiguous");
+  // the identity carries no secret
+  const id = buildServerIdentity({ systemIdentifier: "7123456789012345678", databaseOid: "1", databaseName: "chefsire", target: connectionTarget(url) }).id;
+  assert.doesNotMatch(id, /s3cr3t|admin|sslmode/);
 });

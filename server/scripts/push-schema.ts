@@ -1,9 +1,11 @@
 import "../lib/load-env";
 import { spawnSync } from "node:child_process";
 import pg from "pg";
-import { applyReviewedPlan, catalogFingerprint, SchemaPushApplyError, ENUM_GUIDANCE } from "../lib/schema-push-apply";
+import { applyReviewedPlan, catalogFingerprint, readServerIdentity, SchemaPushApplyError, ENUM_GUIDANCE } from "../lib/schema-push-apply";
 import {
   catalogLookupsNeeded,
+  columnFactKey,
+  connectionTarget,
   classifyPushPlan,
   enumAdditionHazards,
   interpretDryRun,
@@ -14,6 +16,7 @@ import {
   isPlanAcknowledged,
   planAcknowledgementToken,
   type PlanCatalogFacts,
+  type ServerIdentity,
   type PlanFinding,
 } from "../lib/schema-push-plan";
 
@@ -97,12 +100,12 @@ async function dryRunPlan(): Promise<string[]> {
   return outcome.statements;
 }
 
-type ReviewedPlan = { toApply: string[]; findings: PlanFinding[]; token: string };
+type ReviewedPlan = { toApply: string[]; findings: PlanFinding[]; token: string; identity: ServerIdentity };
 
 /** Reads the live definition of every constraint/index the plan drops, so a replacement can be compared with what it replaces. */
 async function readCatalogFacts(client: pg.Client, statements: string[]): Promise<PlanCatalogFacts> {
   const needed = catalogLookupsNeeded(statements);
-  const facts: PlanCatalogFacts = { constraints: {}, indexes: {} };
+  const facts: PlanCatalogFacts = { constraints: {}, indexes: {}, defaults: {} };
   for (const { schema, table, name } of needed.constraints) {
     const { rows } = await client.query(
       `SELECT pg_get_constraintdef(c.oid) AS definition
@@ -121,11 +124,39 @@ async function readCatalogFacts(client: pg.Client, statements: string[]): Promis
     );
     if (rows.length === 1) facts.indexes[indexFactKey(schema, name)] = rows[0].definition;
   }
+  for (const { schema, table, column, expression } of needed.defaults) {
+    const { rows } = await client.query(
+      `SELECT format_type(a.atttypid, a.atttypmod) AS type, pg_get_expr(d.adbin, d.adrelid) AS current_default
+         FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+         LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE n.nspname = $1 AND c.relname = $2 AND a.attname = $3 AND a.attnum > 0 AND NOT a.attisdropped`,
+      [schema, table, column],
+    );
+    if (rows.length !== 1) continue; // unknown column: left uninspected, so the change is reviewed
+    facts.defaults![columnFactKey(schema, table, column)] = { current: rows[0].current_default ?? null, proposed: await renderDefault(client, rows[0].type, expression) };
+  }
   return facts;
 }
 
-async function currentDatabase(client: pg.Client): Promise<string> {
-  return (await client.query("SELECT current_database() AS name")).rows[0].name;
+/**
+ * Has PostgreSQL itself parse a proposed default against the column's type and render it back, so that old and new defaults are compared in
+ * PostgreSQL's own spelling (drizzle writes `now() + interval '24 hours'`, the catalog stores `(now() + '24:00:00'::interval)`). Done on a
+ * throw-away temp table inside a rolled-back transaction with a short timeout; nothing is evaluated and nothing persists. null = not renderable.
+ */
+async function renderDefault(client: pg.Client, type: string, expression: string): Promise<string | null> {
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL statement_timeout = '5s'");
+    await client.query(`CREATE TEMP TABLE chefsire_default_probe (c ${type}) ON COMMIT DROP`);
+    await client.query(`ALTER TABLE pg_temp.chefsire_default_probe ALTER COLUMN c SET DEFAULT ${expression}`);
+    const { rows } = await client.query(
+      `SELECT pg_get_expr(d.adbin, d.adrelid) AS rendered FROM pg_attrdef d WHERE d.adrelid = 'pg_temp.chefsire_default_probe'::regclass`);
+    return rows.length === 1 ? rows[0].rendered : null;
+  } catch {
+    return null;
+  } finally {
+    await client.query("ROLLBACK").catch(() => undefined);
+  }
 }
 
 async function reviewPlan(client: pg.Client, statements: string[], catalog: string): Promise<ReviewedPlan> {
@@ -150,11 +181,19 @@ async function reviewPlan(client: pg.Client, statements: string[], catalog: stri
   // The token commits to the plan that will actually run (after the sequence exclusions above), not just to what was flagged.
   const facts = await readCatalogFacts(client, toApply);
   const findings = classifyPushPlan(toApply, facts);
-  return { toApply, findings, token: planAcknowledgementToken(toApply, await currentDatabase(client), facts, catalog) };
+  // The approval is scoped to the SERVER (cluster identifier when readable, database OID and name, connection target), not just a database name.
+  const identity = await readServerIdentity(client, connectionTarget(databaseUrl));
+  return { toApply, findings, identity, token: planAcknowledgementToken(toApply, identity.id, facts, catalog) };
 }
 
 function isAcknowledged(plan: ReviewedPlan): boolean {
   // throw-away loopback "test" databases acknowledge implicitly; everything else needs exactly this plan's token
+  if (plan.findings.length > 0 && !isDisposableTestDatabase(databaseUrl) && !plan.identity.strong && !process.argv.includes("--accept-unverified-server-identity")) {
+    console.error("Schema push REFUSED: the plan needs approval, but this connection cannot read the PostgreSQL cluster identifier (pg_control_system() is not permitted),");
+    console.error("so an approval could not be proven to belong to THIS server. Nothing was applied. Either run as a role that may read it, or, after confirming the target");
+    console.error("by other means, pass --accept-unverified-server-identity together with --accept-plan=<token> (the token is still scoped to the connection target and database).");
+    process.exit(1);
+  }
   const ok = isPlanAcknowledged({ findings: plan.findings, token: plan.token, argv: process.argv, disposable: isDisposableTestDatabase(databaseUrl) });
   if (ok && plan.findings.length > 0) console.warn(`Schema push: applying ${plan.findings.length} reviewed statement(s) that need review (plan ${plan.token}).`);
   return ok;
@@ -196,7 +235,7 @@ async function guardedPush() {
     if (!isAcknowledged(plan)) refuse(plan, "Nothing was applied by the schema push (pre-push scripts had already run; they are idempotent).");
 
     try {
-      await applyReviewedPlan(client, plan.toApply, planned);
+      await applyReviewedPlan(client, plan.toApply, planned, { planned: plan.identity.id, target: connectionTarget(databaseUrl) });
     } catch (error) {
       if (error instanceof SchemaPushApplyError) {
         if (error.outcome === "nothing_applied") console.error("Schema push refused; nothing was applied.");

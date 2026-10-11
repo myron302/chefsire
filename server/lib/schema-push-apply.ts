@@ -3,7 +3,7 @@
  * Takes any `pg`-style client (`query(text, values?)`), so it can be exercised against a disposable database without drizzle-kit.
  */
 import { createHash } from "node:crypto";
-import { enumAdditionCount, enumAdditionHazards } from "./schema-push-plan";
+import { buildServerIdentity, enumAdditionCount, enumAdditionHazards, ServerIdentityError, type ServerIdentity } from "./schema-push-plan";
 
 export type QueryClient = { query: (text: string, values?: unknown[]) => Promise<{ rows: any[] }> };
 
@@ -28,6 +28,24 @@ export const ENUM_GUIDANCE =
   "(a later phase could fail with an earlier one already committed). Apply the addition on its own first, e.g. " +
   "`psql \"$DATABASE_URL\" -c \"ALTER TYPE \\\"<type>\\\" ADD VALUE IF NOT EXISTS '<value>'\"` (it commits immediately), then re-run the push: " +
   "the next plan no longer contains the addition and can be reviewed and applied normally.";
+
+/**
+ * Reads the identity of the server this client is connected to (see {@link buildServerIdentity}). Never throws a permission error: when the
+ * cluster system identifier is not readable it says so (`strong: false`) instead. Ambiguous answers throw {@link ServerIdentityError}.
+ */
+export async function readServerIdentity(client: QueryClient, target: string): Promise<ServerIdentity> {
+  const database = (await client.query("SELECT d.oid::text AS oid, d.datname AS name FROM pg_database d WHERE d.datname = current_database()")).rows;
+  if (database.length !== 1) throw new ServerIdentityError("The current database could not be identified unambiguously.");
+  // Check the privilege first: a failed statement would abort an open transaction.
+  const readable = (await client.query("SELECT has_function_privilege(current_user, 'pg_control_system()', 'EXECUTE') AS ok")).rows;
+  let systemIdentifier: string | null = null;
+  if (readable.length === 1 && readable[0].ok === true) {
+    const system = (await client.query("SELECT system_identifier::text AS id FROM pg_control_system()")).rows;
+    if (system.length !== 1) throw new ServerIdentityError("The server's system identifier is ambiguous.");
+    systemIdentifier = system[0].id;
+  }
+  return buildServerIdentity({ systemIdentifier, databaseOid: database[0].oid, databaseName: database[0].name, target });
+}
 
 /** A hash of everything the guard exists to protect: relations, columns, constraints, indexes, RLS flags and policies, triggers, enums, sequences. */
 export async function catalogFingerprint(client: QueryClient): Promise<string> {
@@ -60,7 +78,13 @@ export async function catalogFingerprint(client: QueryClient): Promise<string> {
  * Applies a reviewed plan in ONE transaction, under an advisory lock, after proving the catalog is still what was planned against.
  * Throws {@link SchemaPushApplyError} on every failure, and its `outcome` says exactly what is known about the database.
  */
-export async function applyReviewedPlan(client: QueryClient, statements: readonly string[], plannedFingerprint: string): Promise<void> {
+export async function applyReviewedPlan(
+  client: QueryClient,
+  statements: readonly string[],
+  plannedFingerprint: string,
+  /** The server identity the plan was reviewed on, and how to read the identity of the connection that will apply it. */
+  identity?: { planned: string; target: string },
+): Promise<void> {
   const hazards = enumAdditionHazards(statements);
   if (hazards.length > 0) {
     const detail = hazards.map((hazard) => `  ${hazard.statement}\n    is followed by: ${hazard.dependents.join("\n                    ")}`).join("\n");
@@ -82,6 +106,8 @@ export async function applyReviewedPlan(client: QueryClient, statements: readonl
     if ((await catalogFingerprint(client)) !== plannedFingerprint) {
       throw new DriftError();
     }
+    // The connection that applies must be the server that was reviewed (a failover, a re-pointed alias or a different endpoint would not be).
+    if (identity && (await readServerIdentity(client, identity.target)).id !== identity.planned) throw new IdentityChangedError();
     for (const statement of statements) await client.query(statement);
     committing = true;
     await client.query("COMMIT");
@@ -95,6 +121,8 @@ export async function applyReviewedPlan(client: QueryClient, statements: readonl
     const outcome: ApplyOutcome = rolledBack && known ? "rolled_back" : "state_unknown";
     const reason = error instanceof DriftError
       ? "The database schema changed between planning and applying the push; re-run to review a fresh plan."
+      : error instanceof IdentityChangedError
+      ? "The server identity changed between review and apply (a different server or database answered); nothing was applied. Re-run to review a fresh plan."
       : `${(error as Error).message}`;
     throw new SchemaPushApplyError(reason, outcome, { cause: error });
   }
@@ -103,5 +131,11 @@ export async function applyReviewedPlan(client: QueryClient, statements: readonl
 class DriftError extends Error {
   constructor() {
     super("catalog fingerprint changed");
+  }
+}
+
+class IdentityChangedError extends Error {
+  constructor() {
+    super("server identity changed");
   }
 }

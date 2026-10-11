@@ -78,20 +78,33 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
      Everything else is a finding: drops of tables/columns/enums/sequences/views/schemas, truncate/delete, column type changes, `DROP NOT NULL`,
      **`DISABLE` / `NO FORCE ROW LEVEL SECURITY`, `DROP/ALTER/CREATE POLICY`**, trigger disable/drop (append-only protections), `GRANT`/`REVOKE`/role
      and ownership changes, compound `ALTER TABLE` actions, multi-statement strings, and any statement not understood (`unrecognized_statement`).
+   * **Defaults** are protection state (status, tier, role, payment state). `SET DEFAULT` is judged against the catalog: PostgreSQL itself renders
+     both the current and the proposed default (the proposed one is parsed against the column's type on a throw-away temp table in a rolled-back
+     transaction), and only the *identical* default re-applied is silent. A replaced default (`default_changed`), a default added where none existed
+     (`default_added`) and anything the catalog cannot settle (`default_unverified`) are reviewed; `DROP DEFAULT` always is.
    * **Replacement matching** (a constraint/index dropped and re-created is only excused if provably the same protection): same schema, same
      table, same **63-byte UTF-8 stored identifier** (not a name prefix), AND an equivalent definition. The live definition of the dropped object
      is read from the database (`pg_get_constraintdef` / `pg_get_indexdef`) and compared with the new one: kind, columns, referenced table and
-     columns, `ON DELETE/UPDATE`, `MATCH`, deferrability, validity, uniqueness, method, `INCLUDE`/`WITH`, predicate. Unparseable, missing,
+     columns, `ON DELETE/UPDATE` including the PostgreSQL 15 `SET NULL/SET DEFAULT (columns)` lists (a set; no list = all referencing columns), `MATCH`, deferrability, validity, uniqueness, method, `INCLUDE`/`WITH`, predicate. Unparseable, missing,
      ambiguous (several candidates, or one replacement claimed twice) or unprovable (e.g. CHECK expressions) means review. This keeps Drizzle's
      identifier-truncation churn (~50 foreign keys) working without letting an unrelated or weaker object stand in.
 3. **Explicit approval bound to the complete plan**: `npm run db:push -- --accept-plan=<token>`. The token is a hash of (JSON-serialized, so
-   statement boundaries cannot be forged) the **database name**, **every statement that will run, in execution order** (safe and dangerous alike,
+   statement boundaries cannot be forged) the **server identity** (below), **every statement that will run, in execution order** (safe and dangerous alike,
    after protected sequences were excluded), the **live definitions of every dropped constraint and index**, and the **fingerprint of the whole
    protected catalog** (RLS flags, policies, triggers, columns, constraints, indexes, enums, sequences) the plan was reviewed against. Changing
    any statement, its order, the replacement `ADD CONSTRAINT`/`CREATE INDEX`, the database, or catalog state that is not in the SQL text (a new
    policy, a different dropped definition) yields a different token, so an old token never authorises a changed plan. Exactly one well-formed
    current token is accepted; missing, empty, malformed, repeated or stale tokens and `--force` never are. A loopback database with a whole-word
    `test` in its name (and no remote `host`/`hostaddr` override) acknowledges implicitly.
+   **Server identity.** The scope is not a bare database name. It combines the cluster `system_identifier` (`pg_control_system()`), the database
+   OID and name, and the connection target (`host:port` or socket directory; credentials, query string and database are never included, and nothing
+   but the token is logged). It is read at review and re-read inside the apply transaction; a different answer aborts with nothing applied.
+   Verified on two separate local clusters with the same database name: different identifiers, different tokens. Limits: `system_identifier`
+   needs EXECUTE on `pg_control_system()` (often unavailable on managed services), and on branching services such as Neon a branch inherits its
+   parent's identifier and OIDs, so the identifier identifies the lineage, not the endpoint; the connection target is therefore part of the identity
+   (using a different hostname, e.g. a pooler, yields a different token and a fresh review). When the identifier is not readable the identity is
+   *weak* and an approval additionally needs the separate flag `--accept-unverified-server-identity`; an unreadable or ambiguous identity (several
+   rows, malformed values, multi-host URLs) fails closed.
 4. **Review happens before any pre-push script runs.** The enforcement scripts backfill and normalise data, so a plan that would be refused is
    refused first (the plan is reviewed again after them, since they can change it).
 5. **Atomic apply with drift detection.** A fingerprint of the catalog (relations, RLS flags, columns, constraints, indexes, policies, triggers,

@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 
 export type PlanFindingKind =
   | "drop_table" | "drop_column" | "drop_type" | "drop_schema" | "drop_view" | "drop_sequence" | "drop_other" | "truncate" | "delete_rows"
-  | "column_type_change" | "not_null_dropped" | "default_dropped"
+  | "column_type_change" | "not_null_dropped" | "default_dropped" | "default_changed" | "default_added" | "default_unverified"
   | "drop_constraint_unpaired" | "drop_index_unpaired"
   | "rls_disabled" | "rls_no_force" | "policy_dropped" | "policy_altered" | "policy_created"
   | "trigger_disabled" | "trigger_dropped"
@@ -292,7 +292,10 @@ export function canonicalConstraint(tokens: Token[] | string): string | null {
     if (!target) return null;
     let targetColumns = "";
     if (cursor.isPunct("(")) { const list = columnList(cursor.group()); if (!list) return null; targetColumns = list; }
-    let match = "simple"; let onDelete = "no action"; let onUpdate = "no action";
+    let match = "simple";
+    type Action = { action: string; columns: string | null };
+    let onDelete: Action = { action: "no action", columns: null };
+    let onUpdate: Action = { action: "no action", columns: null };
     for (;;) {
       if (cursor.eat("match")) { const kind = cursor.name(); if (!kind) return null; match = kind; continue; }
       if (cursor.isWord("on") && (cursor.isWord("delete", 1) || cursor.isWord("update", 1))) {
@@ -300,13 +303,33 @@ export function canonicalConstraint(tokens: Token[] | string): string | null {
         cursor.i += 2;
         const action = REFERENTIAL_ACTIONS.find((candidate) => cursor.eat(...candidate.split(" ")));
         if (!action) return null;
-        if (action === "set null" || action === "set default") { if (cursor.isPunct("(") && !columnList(cursor.group())) return null; }
-        if (isDelete) onDelete = action; else onUpdate = action;
+        let actionColumns: string | null = null;
+        // PostgreSQL 15+: SET NULL / SET DEFAULT may name the subset of referencing columns they apply to.
+        if ((action === "set null" || action === "set default") && cursor.isPunct("(")) {
+          actionColumns = columnList(cursor.group());
+          if (!actionColumns) return null;
+        }
+        if (isDelete) onDelete = { action, columns: actionColumns }; else onUpdate = { action, columns: actionColumns };
         continue;
       }
       break;
     }
-    head = `foreign_key|${columns}|${target.schema}.${target.name}(${targetColumns})|match:${match}|delete:${onDelete}|update:${onUpdate}`;
+    // The effective column set of a SET NULL / SET DEFAULT action: no list means ALL referencing columns, and a list is a set (order is
+    // irrelevant, repeats are invalid). Listing every referencing column is therefore the same behaviour as listing none.
+    const referencing = columns.split(",");
+    const effective = (action: Action): string | null => {
+      if (action.action !== "set null" && action.action !== "set default") return action.action;
+      const listed = (action.columns ?? columns).split(",");
+      if (new Set(listed).size !== listed.length) return null;
+      const sortedListed = [...listed].sort();
+      const sortedAll = [...referencing].sort();
+      const all = sortedListed.length === sortedAll.length && sortedListed.every((name, index) => name === sortedAll[index]);
+      return `${action.action}(${all ? "*" : sortedListed.join(",")})`;
+    };
+    const deleteBehaviour = effective(onDelete);
+    const updateBehaviour = effective(onUpdate);
+    if (deleteBehaviour === null || updateBehaviour === null) return null;
+    head = `foreign_key|${columns}|${target.schema}.${target.name}(${targetColumns})|match:${match}|delete:${deleteBehaviour}|update:${updateBehaviour}`;
   } else if (cursor.eat("check")) {
     const expression = cursor.group();
     if (!expression) return null;
@@ -367,7 +390,8 @@ type Analysis =
   | { type: "add_constraint"; schema: string; table: string; name: string; canonical: string | null }
   | { type: "create_index"; schema: string; table: string; name: string; canonical: string | null }
   | { type: "drop_constraint"; schema: string; table: string; name: string }
-  | { type: "drop_index"; schema: string; name: string };
+  | { type: "drop_index"; schema: string; name: string }
+  | { type: "set_default"; schema: string; table: string; column: string; expression: string };
 
 const safe: Analysis = { type: "safe" };
 const finding = (kind: PlanFindingKind): Analysis => ({ type: "finding", kind });
@@ -383,7 +407,7 @@ function hasTopLevelComma(tokens: Token[]): boolean {
   return false;
 }
 
-function analyzeAlterTable(cursor: Cursor): Analysis {
+function analyzeAlterTable(cursor: Cursor, source: string): Analysis {
   cursor.eat("if", "exists");
   cursor.eat("only");
   const table = cursor.qname();
@@ -415,8 +439,15 @@ function analyzeAlterTable(cursor: Cursor): Analysis {
   }
   if (cursor.eat("alter")) {
     cursor.eat("column");
-    if (cursor.name() === null) return unrecognized;
-    if (cursor.eat("set", "default") || cursor.eat("set", "not", "null")) return safe;
+    const column = cursor.name();
+    if (column === null) return unrecognized;
+    if (cursor.eat("set", "not", "null")) return safe;
+    if (cursor.eat("set", "default")) {
+      // A default can carry security state (status, tier, role, payment state), so a change of it is judged against the live catalog.
+      const expression = cursor.rest();
+      if (expression.length === 0) return unrecognized;
+      return { type: "set_default", schema: table.schema, table: table.name, column, expression: source.slice(expression[0].s, expression[expression.length - 1].e) };
+    }
     if (cursor.eat("drop", "default")) return cursor.done ? finding("default_dropped") : unrecognized; // defaults can carry security state (status, tier, role)
     if (cursor.eat("drop", "not", "null")) return finding("not_null_dropped");
     if (cursor.eat("set", "data", "type") || cursor.eat("type")) return finding("column_type_change");
@@ -432,7 +463,7 @@ function analyzeStatement(statement: string): Analysis {
   const cursor = new Cursor(tokens);
 
   if (cursor.eat("alter")) {
-    if (cursor.eat("table")) return analyzeAlterTable(cursor);
+    if (cursor.eat("table")) return analyzeAlterTable(cursor, statement);
     if (cursor.eat("policy")) return finding("policy_altered");
     if (cursor.eat("type") && cursor.qname() && cursor.eat("add", "value")) return safe;
     return unrecognized;
@@ -485,10 +516,20 @@ export type PlanCatalogFacts = {
   constraints: Record<string, string>;
   /** `indexFactKey(...)` -> `pg_get_indexdef(oid)` */
   indexes: Record<string, string>;
+  /** `columnFactKey(...)` -> what the catalog says about the column's default (see {@link ColumnDefaultFacts}). Absent key: not inspected. */
+  defaults?: Record<string, ColumnDefaultFacts>;
 };
+
+/**
+ * `current`: the column's present default rendered by PostgreSQL (`pg_get_expr`), null when it has none. `proposed`: the statement's new default
+ * rendered by PostgreSQL the same way (it parses the expression against the column's type), so equal text means the same default; null when
+ * PostgreSQL could not render it. A key that is missing altogether means the column was not found or the inspection failed.
+ */
+export type ColumnDefaultFacts = { current: string | null; proposed: string | null };
 
 export const constraintFactKey = (schema: string, table: string, name: string) => `${schema}.${table}.${name}`;
 export const indexFactKey = (schema: string, name: string) => `${schema}.${name}`;
+export const columnFactKey = (schema: string, table: string, column: string) => `${schema}.${table}.${column}`;
 
 /** The (schema, name) of a `DROP SEQUENCE x` statement, or null when the statement is anything else. */
 export function dropSequenceTarget(statement: string): { schema: string; name: string } | null {
@@ -503,12 +544,14 @@ export function dropSequenceTarget(statement: string): { schema: string; name: s
 export function catalogLookupsNeeded(statements: readonly string[]) {
   const constraints: { schema: string; table: string; name: string }[] = [];
   const indexes: { schema: string; name: string }[] = [];
+  const defaults: { schema: string; table: string; column: string; expression: string }[] = [];
   for (const statement of statements) {
     const analysis = analyzeStatement(statement);
+    if (analysis.type === "set_default") defaults.push({ schema: analysis.schema, table: analysis.table, column: analysis.column, expression: analysis.expression });
     if (analysis.type === "drop_constraint") constraints.push({ schema: analysis.schema, table: analysis.table, name: analysis.name });
     if (analysis.type === "drop_index") indexes.push({ schema: analysis.schema, name: analysis.name });
   }
-  return { constraints, indexes };
+  return { constraints, indexes, defaults };
 }
 
 const norm = (statement: string) => statement.replace(/\s+/g, " ").trim();
@@ -539,6 +582,16 @@ export function classifyPushPlan(statements: readonly string[], facts: PlanCatal
       const [only] = candidates;
       if (candidates.length === 1 && !usedAdds.has(only) && before !== null && before === only.canonical) usedAdds.add(only);
       else add("drop_constraint_unpaired", statement);
+      continue;
+    }
+    if (analysis.type === "set_default") {
+      // Policy: only RE-APPLYING the identical default (PostgreSQL renders old and new the same) is silent. Replacing a default, adding one
+      // where none existed (inserts that used to fail or get NULL would start succeeding with a value), and any case the catalog cannot
+      // settle are all reviewed.
+      const known = facts.defaults?.[columnFactKey(analysis.schema, analysis.table, analysis.column)];
+      if (!known || known.proposed === null) add("default_unverified", statement);
+      else if (known.current === null) add("default_added", statement);
+      else if (known.current !== known.proposed) add("default_changed", statement);
       continue;
     }
     if (analysis.type === "drop_index") {
@@ -647,13 +700,69 @@ export function enumAdditionHazards(statements: readonly string[]): EnumHazard[]
   return hazards;
 }
 
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Server identity
+ * ------------------------------------------------------------------------------------------------------------- */
+
+/** The target server could not be identified reliably (missing or ambiguous identity). Carries no secret. */
+export class ServerIdentityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ServerIdentityError";
+  }
+}
+
+/**
+ * Where the connection points, WITHOUT credentials, query parameters or database name: `host:port`, or `socket:<dir>:port` for a local socket.
+ * It is one ingredient of the server identity, never the whole of it (a hostname is not proof of identity). Throws on a URL that cannot be read,
+ * so a malformed target can never silently collapse to a shared value.
+ */
+export function connectionTarget(databaseUrl: string): string {
+  let url: URL;
+  try { url = new URL(databaseUrl); } catch { throw new ServerIdentityError("The database URL could not be read, so the target server cannot be identified."); }
+  if (!/^postgres(ql)?:$/.test(url.protocol)) throw new ServerIdentityError("The database URL is not a PostgreSQL URL.");
+  const port = url.port || "5432";
+  const hostParam = url.searchParams.get("host");
+  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host.includes(",") || (hostParam ?? "").includes(",")) throw new ServerIdentityError("Multi-host database URLs are ambiguous; the target server cannot be identified.");
+  if (host === "" && hostParam?.startsWith("/")) return `socket:${hostParam}:${url.searchParams.get("port") ?? port}`;
+  if (host === "") return `socket:default:${port}`;
+  return `${host}:${port}`;
+}
+
+export type ServerIdentity = {
+  /** Opaque, stable string that goes into the approval token. Contains no credentials. */
+  id: string;
+  /** True when the cluster's own `system_identifier` was read; false when only the weaker database/target facts are available. */
+  strong: boolean;
+};
+
+/**
+ * The identity an approval is scoped to: the cluster `system_identifier` (when readable), the database OID and name, and the connection target.
+ * Each is checked for shape: anything missing or ambiguous throws, so an approval can never be scoped to a blank or colliding identity.
+ *
+ * Limits, stated plainly: `system_identifier` needs EXECUTE on `pg_control_system()` (superuser by default; it is often unavailable on managed
+ * services), and on copy-on-write branching services (Neon) a branch inherits its parent's identifier and OIDs, so it identifies the lineage,
+ * not the endpoint. That is why the connection target is part of the identity, and why an identity without `system_identifier` is `strong:
+ * false` and needs a separate explicit flag instead of being silently accepted.
+ */
+export function buildServerIdentity(input: { systemIdentifier: string | null; databaseOid: string; databaseName: string; target: string }): ServerIdentity {
+  if (input.systemIdentifier !== null && !/^[0-9]{5,}$/.test(input.systemIdentifier)) throw new ServerIdentityError("The server reported an unreadable system identifier.");
+  if (!/^[0-9]+$/.test(input.databaseOid)) throw new ServerIdentityError("The server reported an unreadable database OID.");
+  if (!input.databaseName) throw new ServerIdentityError("The server reported no database name.");
+  if (!input.target) throw new ServerIdentityError("The connection target is unknown.");
+  const id = JSON.stringify({ v: 1, system: input.systemIdentifier, databaseOid: input.databaseOid, database: input.databaseName, target: input.target });
+  return { id, strong: input.systemIdentifier !== null };
+}
+
 /** A statement in a canonical spelling: its tokens exactly as written (quoted identifiers and string literals untouched), single-space separated. */
 export function canonicalStatement(statement: string): string {
   return tokenize(statement).map((token) => statement.slice(token.s, token.e)).join(" ");
 }
 
 /**
- * The approval token for one reviewed plan on one database. It commits to EVERYTHING that will run: the complete executable plan -- every
+ * The approval token for one reviewed plan on one server and database (`scope` is the {@link ServerIdentity} id, not a bare database name,
+ * so the same database name, catalog and plan on a different server yields a different token). It commits to EVERYTHING that will run: the complete executable plan -- every
  * statement, safe or dangerous, in execution order, after protected sequences were excluded -- plus the database name and the live
  * definitions of the constraints and indexes the plan drops, plus the fingerprint of the whole protected catalog (RLS flags, policies,
  * triggers, columns, constraints, indexes: state that is not in the SQL text but is what the operator actually reviewed). Changing any

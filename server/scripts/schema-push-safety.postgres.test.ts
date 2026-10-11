@@ -200,8 +200,35 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     assert.equal(staleToken.status, 1, "a token for the old plan does not authorise a changed plan");
     assert.equal(await passwordNullable(), "NO");
     await db.query("ALTER TABLE users DROP COLUMN token_probe");
-    assert.equal(pushSchema(databaseUrl, [`--accept-plan=${notNullToken}`]).status, 0);
+    const notNullApplied = pushSchema(databaseUrl, [`--accept-plan=${notNullToken}`]);
+    assert.equal(notNullApplied.status, 0, notNullApplied.output.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").split("\n").filter((line) => !/Pulling/.test(line)).slice(-25).join("\n"));
     assert.equal(await passwordNullable(), "YES", "the reviewed DROP NOT NULL was applied");
+
+    // 3e. Defaults are protection state too. The schema says water_logs.daily_target defaults to 8. A changed default in the database makes
+    //     drizzle plan SET DEFAULT (a silent replacement of existing state); a missing one makes it ADD a default. Both need review; the
+    //     identical default re-applied (the routine pushes above, including drizzle's interval/array default churn) does not.
+    const dailyDefault = async () => (await db.query("SELECT column_default FROM information_schema.columns WHERE table_name = 'water_logs' AND column_name = 'daily_target'")).rows[0].column_default as string | null;
+    assert.equal(await dailyDefault(), "8");
+    await db.query("ALTER TABLE water_logs ALTER COLUMN daily_target SET DEFAULT 10");
+    const changed = pushSchema(databaseUrl);
+    assert.equal(changed.status, 1, changed.output.slice(-1200));
+    assert.match(changed.output, /\[default_changed\] ALTER TABLE "water_logs" ALTER COLUMN "daily_target" SET DEFAULT 8/);
+    assert.doesNotMatch(changed.output, /invariants verified/, "refused before any pre-push script");
+    assert.equal(await dailyDefault(), "10", "the existing default is untouched by the refusal");
+    await db.query("ALTER TABLE water_logs ALTER COLUMN daily_target DROP DEFAULT");
+    const added = pushSchema(databaseUrl);
+    assert.equal(added.status, 1, added.output.slice(-1200));
+    assert.match(added.output, /\[default_added\] ALTER TABLE "water_logs" ALTER COLUMN "daily_target" SET DEFAULT 8/);
+    assert.equal(await dailyDefault(), null);
+    const stale = /--accept-plan=([0-9a-f]{32})/.exec(changed.output)?.[1];
+    assert.ok(stale);
+    assert.equal(pushSchema(databaseUrl, [`--accept-plan=${stale}`]).status, 1, "the approval for the CHANGED-default plan does not cover the ADDED-default plan");
+    assert.equal(await dailyDefault(), null);
+    const addedToken = /--accept-plan=([0-9a-f]{32})/.exec(added.output)?.[1];
+    assert.ok(addedToken);
+    assert.equal(pushSchema(databaseUrl, [`--accept-plan=${addedToken}`]).status, 0);
+    assert.equal(await dailyDefault(), "8", "the reviewed default was applied");
+    assert.equal(pushSchema(databaseUrl).status, 0, "re-applying the identical default is silent");
 
     // 4. A destructive plan against a DECLARED table is refused, applies nothing, and names a plan-specific token.
     await db.query("ALTER TABLE users ADD COLUMN reviewed_later integer");

@@ -5,7 +5,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import pg from "pg";
-import { SchemaPushApplyError, applyReviewedPlan, catalogFingerprint, type QueryClient } from "./schema-push-apply";
+import { SchemaPushApplyError, applyReviewedPlan, catalogFingerprint, readServerIdentity, type QueryClient } from "./schema-push-apply";
+import { ServerIdentityError, canonicalConstraint, connectionTarget, planAcknowledgementToken } from "./schema-push-plan";
 
 const candidates = [
   process.env.TEST_DATABASE_URL,
@@ -150,5 +151,106 @@ postgresTest("a lost connection at COMMIT or ROLLBACK is reported as UNKNOWN, ne
     const rejected = Object.assign(new Error("deferred constraint violated"), { code: "23514" });
     lost = await applyError(applyReviewedPlan(flaky(db, (text) => (text === "COMMIT" ? rejected : null)), plan, planned));
     assert.equal(lost.outcome, "rolled_back");
+  });
+});
+
+/* ------------------------------------------------ server identity ------------------------------------------------ */
+
+postgresTest("the server identity is read from the cluster, is stable across calls, and contains no secret", async () => {
+  await withDatabase(async (db) => {
+    const target = connectionTarget("postgres://user:hunter2-secret@localhost:5433/whatever?sslmode=disable");
+    const first = await readServerIdentity(db, target);
+    const second = await readServerIdentity(db, target);
+    assert.equal(first.id, second.id, "stable between review and apply");
+    assert.equal(first.strong, true, "a superuser can read the cluster system identifier");
+    const parsed = JSON.parse(first.id);
+    const { rows } = await db.query("SELECT system_identifier::text AS id FROM pg_control_system()");
+    assert.equal(parsed.system, rows[0].id);
+    assert.doesNotMatch(first.id, /hunter2|secret|user:|sslmode/);
+    // a different connection target (e.g. the same database name on another endpoint) is a different identity, and a different token
+    const other = await readServerIdentity(db, "other-host.example.com:5432");
+    assert.notEqual(other.id, first.id);
+    const plan = ['ALTER TABLE "t" DISABLE ROW LEVEL SECURITY;'];
+    assert.notEqual(planAcknowledgementToken(plan, first.id, undefined, "c"), planAcknowledgementToken(plan, other.id, undefined, "c"));
+  });
+});
+
+postgresTest("when the cluster identifier is not readable (managed services) the identity is WEAK: no error, and never equal to a strong one", async () => {
+  await withDatabase(async (db) => {
+    // Revoking EXECUTE on a pg_catalog function would change the whole cluster, so the privilege answer is simulated instead.
+    const denied: QueryClient = { query: async (text: string, values?: unknown[]) => (text.includes("has_function_privilege") ? { rows: [{ ok: false }] } : db.query(text, values)) };
+    const weak = await readServerIdentity(denied, "t:5432");
+    const strong = await readServerIdentity(db, "t:5432");
+    assert.equal(weak.strong, false);
+    assert.equal(strong.strong, true);
+    assert.notEqual(weak.id, strong.id);
+    assert.equal(JSON.parse(weak.id).system, null);
+    // an unreadable privilege answer is treated as "not readable", not as permission
+    const unclear: QueryClient = { query: async (text: string, values?: unknown[]) => (text.includes("has_function_privilege") ? { rows: [] } : db.query(text, values)) };
+    assert.equal((await readServerIdentity(unclear, "t:5432")).strong, false);
+  });
+});
+
+postgresTest("ambiguous identity answers fail closed", async () => {
+  await withDatabase(async (db) => {
+    const lying = (rows: Record<string, unknown>[], match: string): QueryClient => ({
+      query: async (text: string, values?: unknown[]) => (text.includes(match) ? { rows } : db.query(text, values)),
+    });
+    await assert.rejects(readServerIdentity(lying([], "FROM pg_database d"), "t:1"), ServerIdentityError, "no database row");
+    await assert.rejects(readServerIdentity(lying([{ oid: "1", name: "a" }, { oid: "2", name: "b" }], "FROM pg_database d"), "t:1"), ServerIdentityError, "two database rows");
+    await assert.rejects(readServerIdentity(lying([], "FROM pg_control_system()"), "t:1"), ServerIdentityError, "no system identifier row");
+    await assert.rejects(readServerIdentity(lying([{ id: "1" }, { id: "2" }], "FROM pg_control_system()"), "t:1"), ServerIdentityError, "two system identifier rows");
+    await assert.rejects(readServerIdentity(lying([{ id: "not-a-number" }], "FROM pg_control_system()"), "t:1"), ServerIdentityError, "garbled identifier");
+  });
+});
+
+postgresTest("a change of server identity between review and apply is detected and nothing is applied", async () => {
+  await withDatabase(async (db) => {
+    const fingerprint = await catalogFingerprint(db);
+    const target = "reviewed-host:5432";
+    const reviewed = await readServerIdentity(db, target);
+    // the same server and target applies normally
+    await applyReviewedPlan(db, ['ALTER TABLE "t" ADD COLUMN "ok" integer;'], fingerprint, { planned: reviewed.id, target });
+    assert.equal(await hasColumn(db, "ok"), true);
+    // a connection that answers as a different server/target than the one that was reviewed is refused, with a confirmed rollback
+    const fp2 = await catalogFingerprint(db);
+    const error = await applyError(applyReviewedPlan(db, ['ALTER TABLE "t" ADD COLUMN "nope" integer;'], fp2, { planned: reviewed.id, target: "other-host:5432" }));
+    assert.equal(error.outcome, "rolled_back");
+    assert.match(error.message, /server identity changed/);
+    assert.equal(await hasColumn(db, "nope"), false);
+    const forged = JSON.stringify({ ...JSON.parse(reviewed.id), system: "7999999999999999999" });
+    const error2 = await applyError(applyReviewedPlan(db, ['ALTER TABLE "t" ADD COLUMN "nope2" integer;'], fp2, { planned: forged, target }));
+    assert.equal(error2.outcome, "rolled_back");
+    assert.equal(await hasColumn(db, "nope2"), false);
+  });
+});
+
+/* ------------------------------------------------ foreign key canonical form against PostgreSQL's own rendering ------------------------------------------------ */
+
+postgresTest("canonicalConstraint agrees with pg_get_constraintdef for composite foreign keys and their action column lists", async () => {
+  await withDatabase(async (db) => {
+    const { rows: version } = await db.query("SHOW server_version_num");
+    if (Number(version[0].server_version_num) < 150000) return; // column lists on SET NULL / SET DEFAULT need PostgreSQL 15+
+    await db.query("CREATE TABLE parent (x int, y int, PRIMARY KEY (x, y)); CREATE TABLE child (a int DEFAULT 1, b int DEFAULT 1)");
+    const defOf = async (action: string) => {
+      await db.query(`ALTER TABLE child ADD CONSTRAINT fk FOREIGN KEY (a, b) REFERENCES parent(x, y) ${action}`);
+      const { rows } = await db.query("SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'fk'");
+      await db.query("ALTER TABLE child DROP CONSTRAINT fk");
+      return String(rows[0].def);
+    };
+    const drizzleStyle = (action: string) => `FOREIGN KEY ("a","b") REFERENCES "public"."parent"("x","y") ${action}`;
+    const variants = ["ON DELETE SET NULL", "ON DELETE SET NULL (a)", "ON DELETE SET NULL (b)", "ON DELETE SET NULL (a, b)", "ON DELETE SET DEFAULT (a)", "ON DELETE SET DEFAULT", "ON UPDATE CASCADE"];
+    const canon: Record<string, string | null> = {};
+    for (const variant of variants) {
+      const rendered = await defOf(variant);
+      canon[variant] = canonicalConstraint(rendered);
+      assert.ok(canon[variant], `PostgreSQL's rendering must be understood: ${rendered}`);
+      assert.equal(canon[variant], canonicalConstraint(drizzleStyle(variant.toLowerCase().replace(/\(([^)]*)\)/, (_m, cols: string) => `(${cols.split(",").map((c) => `"${c.trim()}"`).join(",")})`))), `drizzle-style spelling of ${variant}`);
+    }
+    assert.equal(canon["ON DELETE SET NULL (a, b)"], canon["ON DELETE SET NULL"], "all referencing columns == no list, as PostgreSQL behaves");
+    assert.notEqual(canon["ON DELETE SET NULL (a)"], canon["ON DELETE SET NULL (b)"]);
+    assert.notEqual(canon["ON DELETE SET NULL (a)"], canon["ON DELETE SET NULL"]);
+    assert.notEqual(canon["ON DELETE SET DEFAULT (a)"], canon["ON DELETE SET NULL (a)"]);
+    assert.notEqual(canon["ON DELETE SET DEFAULT (a)"], canon["ON DELETE SET DEFAULT"]);
   });
 });
