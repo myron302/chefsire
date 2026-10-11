@@ -554,6 +554,99 @@ export function classifyPushPlan(statements: readonly string[], facts: PlanCatal
   return findings;
 }
 
+/* ------------------------------------------------------------------------------------------------------------- *
+ * The dry-run process
+ * ------------------------------------------------------------------------------------------------------------- */
+
+export type DryRunProcessResult = {
+  status: number | null;
+  signal?: string | null;
+  error?: Error;
+  stdout?: string | null;
+  stderr?: string | null;
+};
+
+export type DryRunOutcome =
+  | { ok: true; statements: string[]; diagnostics: string }
+  /** drizzle-kit (or npm) did not run to a clean finish: non-zero exit, killed, timed out, or could not start. */
+  | { ok: false; kind: "process_failed"; message: string; diagnostics: string }
+  /** The process exited cleanly but what it printed is not a plan this guard can read. */
+  | { ok: false; kind: "plan_unreadable"; message: string; diagnostics: string };
+
+const tail = (text: string, lines: number) => text.replace(ANSI, "").split(/\r?\n/).filter((line) => line.trim() !== "").slice(-lines).join("\n");
+
+/**
+ * Turns the dry-run process result into a plan. Verified against the installed drizzle-kit: the plan and its approval prompt are written to
+ * STDOUT in full, and stderr carries only incidental output (for example npm warnings). Only stdout is parsed, so a warning can neither
+ * corrupt a valid plan nor be mistaken for part of one; stderr is kept for diagnostics. A process that did not exit 0 is a failure whatever it
+ * printed, and an exit 0 whose stdout is not a recognisable plan (including a missing or truncated approval prompt) is unreadable -- neither is
+ * ever treated as an empty plan.
+ */
+export function interpretDryRun(result: DryRunProcessResult): DryRunOutcome {
+  const stdout = result.stdout ?? "";
+  const stderr = result.stderr ?? "";
+  const diagnostics = [tail(stderr, 30), tail(stdout, 30)].filter(Boolean).join("\n--- stdout ---\n");
+  if (result.error) return { ok: false, kind: "process_failed", message: `drizzle-kit could not be run to completion (${result.error.message}).`, diagnostics };
+  if (result.signal) return { ok: false, kind: "process_failed", message: `drizzle-kit was terminated by ${result.signal} (timeout or kill); its output may be incomplete.`, diagnostics };
+  if (result.status !== 0) return { ok: false, kind: "process_failed", message: `drizzle-kit exited with status ${result.status ?? "unknown"}.`, diagnostics };
+  try {
+    return { ok: true, statements: parsePushPlan(stdout), diagnostics: tail(stderr, 30) };
+  } catch (error) {
+    return { ok: false, kind: "plan_unreadable", message: (error as Error).message, diagnostics };
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Enum value additions
+ * ------------------------------------------------------------------------------------------------------------- */
+
+export type EnumHazard = {
+  /** The `ALTER TYPE ... ADD VALUE` statement. */
+  statement: string;
+  type: string;
+  /** Later statements that mention the type or the new value (or, for an unreadable addition, every later statement). */
+  dependents: string[];
+};
+
+/** The `ALTER TYPE ... ADD VALUE` statements of a plan, with what each adds. `value` is null when the statement is not in a shape we can read. */
+function enumAdditionsIn(statements: readonly string[]) {
+  const out: { index: number; type: string; value: string | null }[] = [];
+  statements.forEach((statement, index) => {
+    const cursor = new Cursor(tokenize(statement).filter((token) => !(token.k === "p" && token.v === ";")));
+    if (!cursor.eat("alter", "type")) return;
+    const type = cursor.qname();
+    if (!type || !cursor.eat("add", "value")) return;
+    cursor.eat("if", "not", "exists");
+    const literal = cursor.peek();
+    out.push({ index, type: type.name, value: literal?.k === "str" ? literal.v : null });
+  });
+  return out;
+}
+
+/** How many enum values a plan adds. */
+export const enumAdditionCount = (statements: readonly string[]) => enumAdditionsIn(statements).length;
+
+/**
+ * PostgreSQL does not let a transaction USE an enum value it added ("unsafe use of new enum value"; the value only exists for other
+ * statements once the addition has committed). A plan applied atomically therefore cannot contain an addition followed by anything that
+ * depends on it. Dependence is judged conservatively by NAME: any later statement that mentions the enum type, or the new value as a literal,
+ * is a dependent; an addition whose value cannot be read treats every later statement as a dependent. Such a plan must not be applied (and
+ * must not be silently split into several transactions: a later phase could then fail with the earlier one already committed).
+ */
+export function enumAdditionHazards(statements: readonly string[]): EnumHazard[] {
+  const hazards: EnumHazard[] = [];
+  for (const addition of enumAdditionsIn(statements)) {
+    const later = statements.slice(addition.index + 1);
+    const dependents = later.filter((statement) => {
+      if (addition.value === null) return true;
+      return tokenize(statement).some((token) =>
+        ((token.k === "word" || token.k === "qid") && token.v === addition.type) || (token.k === "str" && token.v === addition.value));
+    });
+    if (dependents.length > 0) hazards.push({ statement: norm(statements[addition.index]), type: addition.type, dependents: dependents.map(norm) });
+  }
+  return hazards;
+}
+
 /**
  * A token naming exactly this set of dangerous statements for exactly this database; an operator passes it back to acknowledge THIS plan
  * on THIS database and no other. `scope` is the database name.

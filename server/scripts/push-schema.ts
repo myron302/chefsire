@@ -1,15 +1,16 @@
 import "../lib/load-env";
 import { spawnSync } from "node:child_process";
 import pg from "pg";
-import { createHash } from "node:crypto";
+import { applyReviewedPlan, catalogFingerprint, SchemaPushApplyError, ENUM_GUIDANCE } from "../lib/schema-push-apply";
 import {
   catalogLookupsNeeded,
   classifyPushPlan,
+  enumAdditionHazards,
+  interpretDryRun,
   constraintFactKey,
   dropSequenceTarget,
   indexFactKey,
   isDisposableTestDatabase,
-  parsePushPlan,
   planAcknowledgementToken,
   type PlanCatalogFacts,
   type PlanFinding,
@@ -84,18 +85,15 @@ async function dryRunPlan(): Promise<string[]> {
     maxBuffer: 64 * 1024 * 1024,
     timeout: 10 * 60 * 1000,
   });
-  const output = `${dryRun.stdout ?? ""}\n${dryRun.stderr ?? ""}`;
-  if (dryRun.status !== 0) {
-    console.error("Schema push plan could not be produced; nothing was applied.");
-    console.error(output.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, "").split("\n").slice(-30).join("\n"));
+  // Only STDOUT is the plan (verified against the installed drizzle-kit); stderr (e.g. npm warnings) is diagnostics and never parsed.
+  const outcome = interpretDryRun({ status: dryRun.status, signal: dryRun.signal, error: dryRun.error, stdout: dryRun.stdout, stderr: dryRun.stderr });
+  if (!outcome.ok) {
+    if (outcome.kind === "process_failed") console.error(`Schema push plan could not be produced: ${outcome.message} Nothing was applied.`);
+    else console.error(`Schema push refused: the plan output could not be understood (${outcome.message}) Nothing was applied.`);
+    if (outcome.diagnostics) console.error(outcome.diagnostics);
     process.exit(1);
   }
-  try {
-    return parsePushPlan(output);
-  } catch (error) {
-    console.error(`Schema push refused: ${(error as Error).message} Nothing was applied.`);
-    process.exit(1);
-  }
+  return outcome.statements;
 }
 
 type ReviewedPlan = { toApply: string[]; findings: PlanFinding[]; token: string };
@@ -130,6 +128,13 @@ async function currentDatabase(client: pg.Client): Promise<string> {
 }
 
 async function reviewPlan(client: pg.Client, statements: string[]): Promise<ReviewedPlan> {
+  // Not a matter of acknowledgement: such a plan cannot be applied atomically at all, so it is refused up front with guidance.
+  if (enumAdditionHazards(statements).length > 0) {
+    console.error("Schema push REFUSED: the plan adds an enum value and then uses it in the same plan.");
+    for (const hazard of enumAdditionHazards(statements)) console.error(`  ${hazard.statement}\n    followed by: ${hazard.dependents.join("\n                 ")}`);
+    console.error(`\nNothing was applied. ${ENUM_GUIDANCE}`);
+    process.exit(1);
+  }
   // A sequence owned by (or the default of) a column can never be dropped while that column exists, so drizzle's attempt to drop the
   // sequence of an UNDECLARED table is both unwanted and certain to fail. Such statements are skipped and reported, never executed.
   const toApply: string[] = [];
@@ -176,33 +181,6 @@ async function reviewBeforePrePushScripts() {
   }
 }
 
-/** A hash of everything the guard exists to protect: relations, columns, constraints, indexes, RLS flags and policies, triggers, enums, sequences. */
-async function catalogFingerprint(client: pg.Client): Promise<string> {
-  const { rows } = await client.query(`
-    SELECT json_build_object(
-      'relations', (SELECT coalesce(json_agg(x ORDER BY x), '[]') FROM (
-        SELECT format('%s|%s|%s|%s|%s', c.relname, c.relkind, c.relrowsecurity, c.relforcerowsecurity, c.relowner::regrole) AS x
-          FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace) s),
-      'columns', (SELECT coalesce(json_agg(x ORDER BY x), '[]') FROM (
-        SELECT format('%s.%s|%s|%s|%s|%s', c.relname, a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull, coalesce(pg_get_expr(d.adbin, d.adrelid), ''), a.attgenerated) AS x
-          FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
-         WHERE a.attnum > 0 AND NOT a.attisdropped AND c.relkind IN ('r', 'p') AND c.relnamespace = 'public'::regnamespace) s),
-      'constraints', (SELECT coalesce(json_agg(x ORDER BY x), '[]') FROM (
-        SELECT format('%s|%s|%s|%s', c.conrelid::regclass, c.conname, pg_get_constraintdef(c.oid), c.convalidated) AS x
-          FROM pg_constraint c WHERE c.connamespace = 'public'::regnamespace) s),
-      'indexes', (SELECT coalesce(json_agg(indexdef ORDER BY indexdef), '[]') FROM pg_indexes WHERE schemaname = 'public'),
-      'policies', (SELECT coalesce(json_agg(x ORDER BY x), '[]') FROM (
-        SELECT format('%s|%s|%s|%s|%s|%s|%s', p.polrelid::regclass, p.polname, p.polcmd, p.polpermissive, p.polroles::text, pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid)) AS x
-          FROM pg_policy p) s),
-      'triggers', (SELECT coalesce(json_agg(x ORDER BY x), '[]') FROM (
-        SELECT format('%s|%s|%s', t.tgrelid::regclass, t.tgenabled, pg_get_triggerdef(t.oid)) AS x FROM pg_trigger t WHERE NOT t.tgisinternal) s),
-      'enums', (SELECT coalesce(json_agg(x ORDER BY x), '[]') FROM (
-        SELECT format('%s.%s', t.typname, e.enumlabel) AS x FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid) s),
-      'sequences', (SELECT coalesce(json_agg(sequencename ORDER BY sequencename), '[]') FROM pg_sequences WHERE schemaname = 'public')
-    )::text AS snapshot`);
-  return createHash("sha256").update(rows[0].snapshot).digest("hex");
-}
-
 async function guardedPush() {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
@@ -216,19 +194,14 @@ async function guardedPush() {
     const plan = await reviewPlan(client, statements);
     if (!isAcknowledged(plan)) refuse(plan, "Nothing was applied by the schema push (pre-push scripts had already run; they are idempotent).");
 
-    await client.query("BEGIN");
     try {
-      await client.query("SET LOCAL lock_timeout = '30s'");
-      // Serialize concurrent pushes, then prove the database is still exactly what was reviewed.
-      await client.query("SELECT pg_advisory_xact_lock(hashtext('chefsire:schema-push'))");
-      if ((await catalogFingerprint(client)) !== planned) {
-        throw new Error("The database schema changed between planning and applying the push. Nothing was applied; re-run to review a fresh plan.");
-      }
-      for (const statement of plan.toApply) await client.query(statement);
-      await client.query("COMMIT");
+      await applyReviewedPlan(client, plan.toApply, planned);
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      console.error("Schema push failed and was rolled back; the database is unchanged.");
+      if (error instanceof SchemaPushApplyError) {
+        if (error.outcome === "nothing_applied") console.error("Schema push refused; nothing was applied.");
+        else if (error.outcome === "rolled_back") console.error("Schema push failed and was rolled back; the database is unchanged.");
+        else console.error("Schema push FAILED and its outcome is UNKNOWN (the connection or the rollback failed). The transaction may or may not have committed: inspect the database before re-running anything.");
+      }
       throw error;
     }
     console.log(`Schema push: ${plan.toApply.length} statement(s) applied in one transaction.`);

@@ -93,7 +93,17 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
    enums, sequences) is taken before planning and re-checked inside the transaction under an advisory lock; any difference aborts. The reviewed plan
    then runs in one transaction with `lock_timeout`; any failure rolls everything back. An unreadable or truncated plan is refused, never treated
    as empty; the plan ends at the LAST approval-prompt block, so an object name imitating the prompt cannot hide statements.
-6. A sequence still owned by or defaulted into a column (drizzle-kit wants to drop it; the drop can never succeed and is never wanted) is skipped
+6. **Streams.** Only drizzle-kit's STDOUT is parsed (verified against the installed version: the plan and the approval prompt are both on
+   stdout). stderr (e.g. npm warnings) is kept for diagnostics, so it can neither corrupt a valid plan nor smuggle a statement into one. Three
+   distinct messages: *could not be produced* (non-zero exit, signal, timeout, spawn error), *could not be understood* (clean exit, unreadable or
+   truncated stdout), and *REFUSED* (a readable plan with statements that need review).
+7. **Enum values.** PostgreSQL cannot use an enum value in the transaction that added it. A plan with `ALTER TYPE ... ADD VALUE` followed by any
+   statement that names the type or the new value is refused outright (not acknowledgeable, and never silently split into several transactions,
+   which could leave a later phase failing after an earlier one committed). The message tells the operator to apply the addition on its own
+   first; the next plan no longer contains it. An addition nothing depends on is applied in the same transaction (PostgreSQL 12+).
+8. **Honest failure reporting** (`server/lib/schema-push-apply.ts`): `nothing_applied` (refused before any statement), `rolled_back` (the server
+   confirmed the transaction ended uncommitted), or `state_unknown` (lost connection or failed rollback: never reported as a rollback).
+9. A sequence still owned by or defaulted into a column (drizzle-kit wants to drop it; the drop can never succeed and is never wanted) is skipped
    and reported.
 
 The existing pre-/post-push enforcement scripts (payout, marketplace revenue/checkout atomicity, meal-plan payment, Square plaintext

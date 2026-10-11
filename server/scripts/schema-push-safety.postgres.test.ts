@@ -8,6 +8,8 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -47,9 +49,9 @@ function withDatabase(url: string, database: string): string {
   return next.toString();
 }
 
-function pushSchema(databaseUrl: string, args: string[] = []) {
+function pushSchema(databaseUrl: string, args: string[] = [], extraEnv: Record<string, string> = {}) {
   const result = spawnSync("npx", ["tsx", "server/scripts/push-schema.ts", ...args], {
-    cwd: ROOT, env: { ...process.env, DATABASE_URL: databaseUrl }, encoding: "utf8", timeout: 280_000, input: "", maxBuffer: 64 * 1024 * 1024,
+    cwd: ROOT, env: { ...process.env, DATABASE_URL: databaseUrl, ...extraEnv }, encoding: "utf8", timeout: 280_000, input: "", maxBuffer: 64 * 1024 * 1024,
   });
   return { status: result.status, output: `${result.stdout ?? ""}\n${result.stderr ?? ""}` };
 }
@@ -198,6 +200,85 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     assert.equal((await db.query("SELECT to_regclass('public.water_logs') AS t")).rows[0].t, null, "the early CREATE TABLE was rolled back with the failed statement");
     assert.equal((await db.query("SELECT count(*)::int AS n FROM legacy_credential_invalidations")).rows[0].n, 1);
   } finally {
+    await db.end().catch(() => undefined);
+    await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => undefined);
+    await admin.end();
+  }
+});
+
+/**
+ * An `npm` shim placed first on PATH. For the drizzle-kit dry run ONLY (`npm exec -- drizzle-kit push --strict ...`) it can append an npm-style
+ * warning to stderr, fail, or print junk; everything else passes straight through to the real npm.
+ */
+function npmShim(realNpm: string) {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "npm-shim-"));
+  const file = path.join(dir, "npm");
+  writeFileSync(file, `#!/bin/sh
+case "$*" in
+  *drizzle-kit*--strict*)
+    case "$SHIM_MODE" in
+      fail) echo "npm error simulated drizzle-kit failure" >&2; echo "Error: connect ECONNREFUSED" ; exit 1 ;;
+      garbage) echo "this is not a drizzle plan"; exit 0 ;;
+      warn) "${realNpm}" "$@"; status=$?; echo "npm warn exec The following package was not found and will be installed: drizzle-kit" >&2; echo "npm warn config simulated trailing warning" >&2; exit $status ;;
+    esac ;;
+esac
+exec "${realNpm}" "$@"
+`);
+  chmodSync(file, 0o755);
+  return { dir, env: (mode: string) => ({ PATH: `${dir}:${process.env.PATH}`, SHIM_MODE: mode }) };
+}
+
+postgresTest("an npm warning on stderr cannot corrupt, hide or bypass review of the plan; failures and junk are reported as what they are", { timeout: 1_200_000 }, async () => {
+  const realNpm = spawnSync("sh", ["-c", "command -v npm"], { encoding: "utf8" }).stdout.trim();
+  assert.ok(realNpm, "npm is on PATH");
+  const shim = npmShim(realNpm);
+  const name = `chefsire_streams_${process.pid}_${Date.now()}`;
+  const admin = new pg.Client({ connectionString: adminUrl! });
+  await admin.connect();
+  await admin.query(`CREATE DATABASE ${name}`);
+  const databaseUrl = withDatabase(adminUrl!, name);
+  const db = new pg.Client({ connectionString: databaseUrl });
+  try {
+    assert.equal(pushSchema(databaseUrl).status, 0);
+    await db.connect();
+
+    // A routine push with a warning on stderr still reviews and applies (the plan is read from stdout only).
+    const warned = pushSchema(databaseUrl, [], shim.env("warn"));
+    assert.equal(warned.status, 0, warned.output.slice(-2000));
+    assert.match(warned.output, /applied in one transaction|no changes detected/);
+
+    // A dangerous plan is classified identically with the warning present: refused, never applied, and the refusal says it is a dangerous plan.
+    await db.query("ALTER TABLE users ADD COLUMN stderr_probe integer");
+    const refused = pushSchema(databaseUrl, [], shim.env("warn"));
+    assert.equal(refused.status, 1, refused.output.slice(-1500));
+    assert.match(refused.output, /Schema push REFUSED. The plan contains statements/);
+    assert.match(refused.output, /\[drop_column\] ALTER TABLE "users" DROP COLUMN "stderr_probe"/);
+    const present = async () => (await db.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'stderr_probe'")).rowCount === 1;
+    assert.equal(await present(), true);
+
+    // ... and a warning does not make a reviewed plan impossible to apply.
+    const token = /--accept-plan=([0-9a-f]{24})/.exec(refused.output)?.[1];
+    assert.ok(token);
+    assert.equal(pushSchema(databaseUrl, [`--accept-plan=${token}`], shim.env("warn")).status, 0);
+    assert.equal(await present(), false);
+
+    // A drizzle-kit failure is a failure to PRODUCE a plan -- not a dangerous plan, not an unreadable one -- and applies nothing.
+    await db.query("ALTER TABLE users ADD COLUMN stderr_probe integer");
+    const failed = pushSchema(databaseUrl, [], shim.env("fail"));
+    assert.equal(failed.status, 1);
+    assert.match(failed.output, /Schema push plan could not be produced: drizzle-kit exited with status 1/);
+    assert.match(failed.output, /ECONNREFUSED/, "the real error is surfaced, not suppressed");
+    assert.doesNotMatch(failed.output, /Schema push REFUSED|could not be understood/);
+    assert.doesNotMatch(failed.output, /invariants verified/);
+
+    // A clean exit whose stdout is not a plan is unreadable -- again distinct, and fail closed.
+    const junk = pushSchema(databaseUrl, [], shim.env("garbage"));
+    assert.equal(junk.status, 1);
+    assert.match(junk.output, /the plan output could not be understood/);
+    assert.doesNotMatch(junk.output, /could not be produced|Schema push REFUSED. The plan contains/);
+    assert.equal(await present(), true, "nothing was applied by any failed attempt");
+  } finally {
+    rmSync(shim.dir, { recursive: true, force: true });
     await db.end().catch(() => undefined);
     await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => undefined);
     await admin.end();

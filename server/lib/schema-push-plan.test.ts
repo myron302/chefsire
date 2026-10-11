@@ -11,6 +11,9 @@ import {
   classifyPushPlan,
   constraintFactKey,
   dropSequenceTarget,
+  enumAdditionCount,
+  enumAdditionHazards,
+  interpretDryRun,
   indexFactKey,
   isDisposableTestDatabase,
   parsePushPlan,
@@ -343,4 +346,113 @@ test("tightening nullability and ordinary defaults stay silent; dropping a defau
   assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "a" SET NOT NULL;', 'ALTER TABLE "o" ALTER COLUMN "a" SET DEFAULT \'free\';']), []);
   assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "tier" DROP DEFAULT;']), ["default_dropped"]);
   assert.deepEqual(kinds(['ALTER TABLE "public"."o" ALTER COLUMN "tier" DROP DEFAULT, ALTER COLUMN "x" SET NOT NULL;']), ["unrecognized_statement"]);
+});
+
+/* ------------------------------------------------ the dry-run process (stdout vs stderr) ------------------------------------------------ */
+
+const PLAN_OUT = `No config path provided, using default 'drizzle.config.ts'\nUsing 'pg' driver for database querying\n${wrap('ALTER TABLE "users" DROP COLUMN "probe";')}`;
+const NPM_WARNING = "npm warn exec The following package was not found and will be installed: drizzle-kit@0.30.4\nnpm warn config global `--global` is deprecated\n";
+
+test("a valid plan on stdout is read whether or not npm wrote warnings to stderr", () => {
+  const quiet = interpretDryRun({ status: 0, stdout: PLAN_OUT, stderr: "" });
+  const noisy = interpretDryRun({ status: 0, stdout: PLAN_OUT, stderr: NPM_WARNING });
+  assert.ok(quiet.ok && noisy.ok);
+  assert.deepEqual(quiet.ok && quiet.statements, ['ALTER TABLE "users" DROP COLUMN "probe";']);
+  assert.deepEqual(noisy.ok && noisy.statements, quiet.ok ? quiet.statements : []);
+  assert.match(noisy.ok ? noisy.diagnostics : "", /npm warn/, "stderr is kept for diagnostics, not parsed");
+  const empty = interpretDryRun({ status: 0, stdout: "[i] No changes detected", stderr: NPM_WARNING });
+  assert.deepEqual(empty.ok && empty.statements, []);
+});
+
+test("a stderr warning can neither hide nor create a statement, so it can never change classification", () => {
+  const hostile = 'ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;\nDROP TABLE "victim" CASCADE;\n';
+  const withStderr = interpretDryRun({ status: 0, stdout: PLAN_OUT, stderr: `${hostile}${NPM_WARNING}` });
+  assert.ok(withStderr.ok);
+  assert.deepEqual(classifyPushPlan(withStderr.ok ? withStderr.statements : []).map((item) => item.kind), ["drop_column"], "only stdout statements exist");
+  // the dangerous statement on stdout is classified identically with or without stderr noise
+  const a = interpretDryRun({ status: 0, stdout: PLAN_OUT, stderr: "" });
+  assert.deepEqual(withStderr.ok && withStderr.statements, a.ok ? a.statements : null);
+  // and a plan printed on STDERR only is not a plan
+  const wrongStream = interpretDryRun({ status: 0, stdout: "", stderr: PLAN_OUT });
+  assert.equal(wrongStream.ok, false);
+  assert.equal(!wrongStream.ok && wrongStream.kind, "plan_unreadable");
+});
+
+test("prose inside the plan region is read as a statement and then fails closed in classification", () => {
+  const outcome = interpretDryRun({ status: 0, stdout: wrap("this is not sql;"), stderr: "" });
+  assert.ok(outcome.ok);
+  assert.deepEqual(classifyPushPlan(outcome.ok ? outcome.statements : []).map((item) => item.kind), ["unrecognized_statement"]);
+});
+
+test("process failures, signals, spawn errors and non-zero exits fail closed even if stdout looks like a plan", () => {
+  for (const result of [
+    { status: 1, stdout: PLAN_OUT, stderr: "" },
+    { status: 2, stdout: "", stderr: "boom" },
+    { status: null, signal: "SIGTERM", stdout: PLAN_OUT, stderr: "" },
+    { status: null, stdout: PLAN_OUT, stderr: "" },
+    { status: null, error: new Error("spawnSync npm ETIMEDOUT"), stdout: "", stderr: "" },
+  ]) {
+    const outcome = interpretDryRun(result);
+    assert.equal(outcome.ok, false);
+    assert.equal(!outcome.ok && outcome.kind, "process_failed");
+  }
+  const failed = interpretDryRun({ status: 1, stdout: "Error: connect ECONNREFUSED", stderr: "npm warn x" });
+  assert.match(!failed.ok ? failed.diagnostics : "", /ECONNREFUSED/, "a legitimate drizzle error is surfaced, not suppressed");
+});
+
+test("malformed, truncated or unexpected stdout is 'unreadable', distinct from a failed process and from a dangerous plan", () => {
+  for (const stdout of [
+    "", "garbage", "Reading config file\nUsing 'pg' driver\n",
+    " Warning  You are about to execute current statements:\n\nDROP TABLE \"u\" CASCADE;\n", // no approval prompt: truncated
+    wrap('ALTER TABLE "t" ADD COLUMN "c" text'), // unterminated statement
+    `${wrap('DROP TABLE "u" CASCADE;')}\ntrailing text after the prompt`,
+  ]) {
+    const outcome = interpretDryRun({ status: 0, stdout, stderr: "" });
+    if (outcome.ok) assert.fail(`accepted: ${JSON.stringify(stdout)} -> ${JSON.stringify(outcome.statements)}`);
+    assert.equal(outcome.kind, "plan_unreadable", JSON.stringify(stdout));
+  }
+});
+
+/* ------------------------------------------------ enum value additions ------------------------------------------------ */
+
+const ADD_C = 'ALTER TYPE "public"."status" ADD VALUE \'c\';';
+
+test("an enum addition that nothing in the plan uses is not a hazard (and plain plans have none)", () => {
+  assert.equal(enumAdditionCount([ADD_C]), 1);
+  assert.deepEqual(enumAdditionHazards([ADD_C]), []);
+  assert.deepEqual(enumAdditionHazards([ADD_C, 'ALTER TABLE "t" ADD COLUMN "x" integer;', 'CREATE INDEX "t_x" ON "t" ("x");']), []);
+  assert.deepEqual(enumAdditionHazards(['ALTER TABLE "t" ADD COLUMN "x" integer;', 'CREATE TABLE "u" ("id" int);']), []);
+  assert.equal(enumAdditionCount(['ALTER TABLE "t" ADD COLUMN "x" integer;']), 0);
+});
+
+test("an enum addition followed by a dependent default, column, constraint or literal use is a hazard", () => {
+  const dependents: string[][] = [
+    ['ALTER TABLE "t" ALTER COLUMN "s" SET DEFAULT \'c\';'],
+    ['ALTER TABLE "t" ADD COLUMN "s2" "status" DEFAULT \'c\' NOT NULL;'],
+    ['ALTER TABLE "t" ADD COLUMN "s2" "public"."status";'], // names the type
+    ['CREATE TABLE "u" ("s" "public"."status" NOT NULL DEFAULT \'c\');'],
+    ['ALTER TABLE "t" ADD CONSTRAINT "t_chk" CHECK ("s" <> \'c\');'],
+    ['UPDATE "t" SET "s" = \'c\';'],
+    ['ALTER TABLE "t" ALTER COLUMN "s" SET DEFAULT \'x\'::status;'],
+  ];
+  for (const later of dependents) {
+    const hazards = enumAdditionHazards([ADD_C, ...later]);
+    assert.equal(hazards.length, 1, later.join());
+    assert.deepEqual(hazards[0].dependents, later.map((statement) => statement.replace(/\s+/g, " ")));
+  }
+  // order matters: a statement BEFORE the addition cannot depend on it
+  assert.deepEqual(enumAdditionHazards(['ALTER TABLE "t" ALTER COLUMN "s" SET DEFAULT \'a\';', ADD_C]), []);
+  // unrelated statements after the addition are not dependents
+  assert.deepEqual(enumAdditionHazards([ADD_C, 'ALTER TABLE "t" ADD COLUMN "z" text DEFAULT \'d\';']).length, 0);
+});
+
+test("enum additions in other spellings (IF NOT EXISTS, BEFORE/AFTER, unqualified, odd value) are read; unreadable ones fail closed", () => {
+  assert.equal(enumAdditionHazards(["ALTER TYPE status ADD VALUE IF NOT EXISTS 'c' AFTER 'a';", 'SELECT 1 WHERE x = \'c\';']).length, 1);
+  assert.equal(enumAdditionHazards(['ALTER TYPE "my status" ADD VALUE \'it\'\'s\';', 'ALTER TABLE t ALTER COLUMN s SET DEFAULT \'it\'\'s\';']).length, 1);
+  assert.equal(enumAdditionHazards(["ALTER TYPE status ADD VALUE some_word;", "ALTER TABLE t ADD COLUMN y int;"]).length, 1, "unreadable value: every later statement is a dependent");
+});
+
+test("the classifier still reviews dangerous SQL in a plan that contains an enum addition", () => {
+  assert.deepEqual(kinds([ADD_C, 'DROP TABLE "x" CASCADE;', 'ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']), ["drop_table", "rls_disabled"]);
+  assert.deepEqual(kinds([ADD_C]), []);
 });
