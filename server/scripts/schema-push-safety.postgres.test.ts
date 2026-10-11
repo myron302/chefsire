@@ -100,6 +100,66 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     await assert.rejects(db.query("DELETE FROM legacy_credential_invalidations"), /append-only/, "the append-only trigger survives");
     assert.deepEqual(await catalog(db), (() => ({ ...before }))(), "constraints, indexes and triggers are unchanged by a routine push");
 
+    // 3b. Authorization boundaries. Row level security that exists in the database but not in the schema would be DISABLED by drizzle's plan.
+    //     That must be refused, BEFORE any pre-push script runs, and must leave RLS and the policy exactly as they were.
+    await db.query(`ALTER TABLE water_logs ENABLE ROW LEVEL SECURITY; ALTER TABLE water_logs FORCE ROW LEVEL SECURITY;
+                    CREATE POLICY water_owner ON water_logs USING (user_id = current_user)`);
+    const rlsBefore = await catalog(db);
+    const rlsRefused = pushSchema(databaseUrl);
+    assert.equal(rlsRefused.status, 1, rlsRefused.output.slice(-1500));
+    assert.match(rlsRefused.output, /\[rls_disabled\] ALTER TABLE "water_logs" DISABLE ROW LEVEL SECURITY/);
+    assert.doesNotMatch(rlsRefused.output, /invariants verified/, "a refused push runs no pre-push script");
+    const rls = async () => (await db.query("SELECT relrowsecurity, relforcerowsecurity, (SELECT count(*)::int FROM pg_policy WHERE polrelid = c.oid) AS policies FROM pg_class c WHERE relname = 'water_logs'")).rows[0];
+    assert.deepEqual(await rls(), { relrowsecurity: true, relforcerowsecurity: true, policies: 1 }, "RLS and its policy are untouched by the refusal");
+    assert.deepEqual(await catalog(db), rlsBefore);
+    await db.query("DROP POLICY water_owner ON water_logs; ALTER TABLE water_logs NO FORCE ROW LEVEL SECURITY; ALTER TABLE water_logs DISABLE ROW LEVEL SECURITY");
+
+    // 3c. A same-named replacement that is NOT the same protection is refused: a foreign key whose referential action drifted, and a UNIQUE
+    //     index that the schema declares as a plain index (drizzle plans drop + create under one name).
+    const { rows: fks } = await db.query("SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'meal_streaks'::regclass AND contype = 'f'");
+    assert.equal(fks.length, 1);
+    await db.query(`ALTER TABLE meal_streaks DROP CONSTRAINT "${fks[0].conname}"`);
+    await db.query(`ALTER TABLE meal_streaks ADD CONSTRAINT "${fks[0].conname}" ${String(fks[0].def).replace(/ON UPDATE \w+( \w+)?/i, "").trim()} ON UPDATE CASCADE`);
+    const idxName = "creator_campaign_rollout_timeline_events_campaign_occurred_at_i";
+    const idxExists = (await db.query("SELECT 1 FROM pg_indexes WHERE indexname = $1", [idxName])).rowCount === 1;
+    assert.equal(idxExists, true, "the schema's rollout-timeline index exists under its stored (truncated) name");
+    await db.query(`DROP INDEX "${idxName}"; CREATE UNIQUE INDEX "${idxName}" ON creator_campaign_rollout_timeline_events (campaign_id, occurred_at)`);
+    const weakBefore = await catalog(db);
+    const weak = pushSchema(databaseUrl);
+    assert.equal(weak.status, 1, weak.output.slice(-1500));
+    assert.match(weak.output, /\[drop_constraint_unpaired\] ALTER TABLE "meal_streaks" DROP CONSTRAINT/);
+    assert.match(weak.output, /\[drop_index_unpaired\] DROP INDEX/);
+    assert.deepEqual(await catalog(db), weakBefore, "the refused push left every constraint and index exactly as they were");
+    // restore the schema's own definitions so the remaining steps start from a routine state
+    await db.query(`ALTER TABLE meal_streaks DROP CONSTRAINT "${fks[0].conname}"`);
+    await db.query(`ALTER TABLE meal_streaks ADD CONSTRAINT "${fks[0].conname}" ${fks[0].def}`);
+    await db.query(`DROP INDEX "${idxName}"; CREATE INDEX "${idxName}" ON creator_campaign_rollout_timeline_events (campaign_id, occurred_at)`);
+    assert.equal(pushSchema(databaseUrl).status, 0, "back to routine: the genuine churn passes review again");
+
+    // 3d. Removing NOT NULL. users.password is nullable in the schema; making it NOT NULL in the database makes drizzle plan DROP NOT NULL on
+    //     an authentication table. That must be refused, leave the constraint in place, and apply only with the exact token.
+    const passwordNullable = async () => (await db.query("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'password'")).rows[0].is_nullable;
+    assert.equal(await passwordNullable(), "YES", "precondition: the schema declares users.password nullable");
+    await db.query("ALTER TABLE users ALTER COLUMN password SET NOT NULL");
+    const notNullBefore = await catalog(db);
+    const notNullRefused = pushSchema(databaseUrl);
+    assert.equal(notNullRefused.status, 1, notNullRefused.output.slice(-1500));
+    assert.match(notNullRefused.output, /\[not_null_dropped\] ALTER TABLE "users" ALTER COLUMN "password" DROP NOT NULL/);
+    assert.doesNotMatch(notNullRefused.output, /invariants verified/);
+    assert.equal(await passwordNullable(), "NO", "NOT NULL is still in force after the refusal");
+    assert.deepEqual(await catalog(db), notNullBefore);
+    assert.equal(pushSchema(databaseUrl, ["--force"]).status, 1, "--force is not an acknowledgement");
+    const notNullToken = /--accept-plan=([0-9a-f]{24})/.exec(notNullRefused.output)?.[1];
+    assert.ok(notNullToken);
+    // The token is bound to this exact plan: a different plan (an extra dangerous change) invalidates it.
+    await db.query("ALTER TABLE users ADD COLUMN token_probe integer");
+    const staleToken = pushSchema(databaseUrl, [`--accept-plan=${notNullToken}`]);
+    assert.equal(staleToken.status, 1, "a token for the old plan does not authorise a changed plan");
+    assert.equal(await passwordNullable(), "NO");
+    await db.query("ALTER TABLE users DROP COLUMN token_probe");
+    assert.equal(pushSchema(databaseUrl, [`--accept-plan=${notNullToken}`]).status, 0);
+    assert.equal(await passwordNullable(), "YES", "the reviewed DROP NOT NULL was applied");
+
     // 4. A destructive plan against a DECLARED table is refused, applies nothing, and names a plan-specific token.
     await db.query("ALTER TABLE users ADD COLUMN reviewed_later integer");
     const refused = pushSchema(databaseUrl);
@@ -113,11 +173,11 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     const forced = pushSchema(databaseUrl, ["--force"]);
     assert.equal(forced.status, 1);
     assert.match(forced.output, /--force no longer bypasses/);
-    assert.equal(pushSchema(databaseUrl, ["--accept-plan=0000000000000000"]).status, 1);
+    assert.equal(pushSchema(databaseUrl, ["--accept-plan=000000000000000000000000"]).status, 1);
     assert.equal(await columnPresent(), true, "still nothing applied");
 
     // 6. The exact token lets exactly that plan through, atomically.
-    const token = /--accept-plan=([0-9a-f]{16})/.exec(refused.output)?.[1];
+    const token = /--accept-plan=([0-9a-f]{24})/.exec(refused.output)?.[1];
     assert.ok(token, refused.output.slice(-800));
     const accepted = pushSchema(databaseUrl, [`--accept-plan=${token}`]);
     assert.equal(accepted.status, 0, accepted.output.slice(-2000));

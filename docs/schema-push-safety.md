@@ -70,31 +70,53 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
 ### Safeguards
 1. **`tablesFilter` in `drizzle.config.ts`**, derived from the schema by `shared/schema-managed-tables.ts` (no second list): push cannot see,
    drop or alter any undeclared table.
-2. **Plan review before apply** (`server/scripts/push-schema.ts`, pure logic in `server/lib/schema-push-plan.ts`). The plan is produced with
-   `drizzle-kit push --strict --verbose` and a closed stdin (applies nothing). Statements that drop tables, columns, enums, sequences,
-   views or schemas, truncate or delete, change a column type, or drop a constraint/index with no same-table replacement are **refused** with
-   the statements listed. The CHECK `payouts_completed_transfer_check`, which push-schema re-asserts after every push, is the only exception.
-3. **Explicit, plan-specific acknowledgement**: `npm run db:push -- --accept-plan=<token>`. The token is a hash of exactly the dangerous
-   statements, so it cannot be reused for a different plan. `--force` / `db:push:accept` no longer bypasses anything on a real database. A
-   loopback database whose name contains `test` (the existing disposable-harness convention) acknowledges implicitly.
-4. **Atomic apply**: the reviewed plan runs in one transaction with `lock_timeout`; any failure rolls back everything (drizzle-kit alone leaves
-   a partial schema). An unreadable or truncated plan is refused, never treated as empty.
-5. A sequence still owned by or defaulted into a column of an undeclared table (drizzle-kit wants to drop it; the drop can never succeed and
-   is never wanted) is skipped and reported.
+2. **Plan review before apply** (`server/scripts/push-schema.ts`; pure logic in `server/lib/schema-push-plan.ts`). The plan is produced with
+   `drizzle-kit push --strict --verbose` and a closed stdin (applies nothing) and parsed by a real SQL tokenizer (quotes, schema
+   qualification, case, `IF EXISTS`/`ONLY`, dollar quoting; comments are refused).
+   * **Classification is an allowlist.** Only recognised additive shapes (`CREATE TABLE`, `ADD COLUMN`, `ADD CONSTRAINT`, `CREATE [UNIQUE] INDEX`,
+     `SET DEFAULT`/`SET NOT NULL`, `ENABLE`/`FORCE ROW LEVEL SECURITY`, `CREATE SEQUENCE/TYPE/SCHEMA`, `ALTER TYPE ... ADD VALUE`) pass silently.
+     Everything else is a finding: drops of tables/columns/enums/sequences/views/schemas, truncate/delete, column type changes, `DROP NOT NULL`,
+     **`DISABLE` / `NO FORCE ROW LEVEL SECURITY`, `DROP/ALTER/CREATE POLICY`**, trigger disable/drop (append-only protections), `GRANT`/`REVOKE`/role
+     and ownership changes, compound `ALTER TABLE` actions, multi-statement strings, and any statement not understood (`unrecognized_statement`).
+   * **Replacement matching** (a constraint/index dropped and re-created is only excused if provably the same protection): same schema, same
+     table, same **63-byte UTF-8 stored identifier** (not a name prefix), AND an equivalent definition. The live definition of the dropped object
+     is read from the database (`pg_get_constraintdef` / `pg_get_indexdef`) and compared with the new one: kind, columns, referenced table and
+     columns, `ON DELETE/UPDATE`, `MATCH`, deferrability, validity, uniqueness, method, `INCLUDE`/`WITH`, predicate. Unparseable, missing,
+     ambiguous (several candidates, or one replacement claimed twice) or unprovable (e.g. CHECK expressions) means review. This keeps Drizzle's
+     identifier-truncation churn (~50 foreign keys) working without letting an unrelated or weaker object stand in.
+3. **Explicit, plan-specific acknowledgement**: `npm run db:push -- --accept-plan=<token>`. The token hashes exactly the findings **and the
+   database name**. `--force` / `db:push:accept` no longer bypasses anything on a real database. A loopback database with a whole-word `test` in its
+   name (and no remote `host`/`hostaddr` override) acknowledges implicitly.
+4. **Review happens before any pre-push script runs.** The enforcement scripts backfill and normalise data, so a plan that would be refused is
+   refused first (the plan is reviewed again after them, since they can change it).
+5. **Atomic apply with drift detection.** A fingerprint of the catalog (relations, RLS flags, columns, constraints, indexes, policies, triggers,
+   enums, sequences) is taken before planning and re-checked inside the transaction under an advisory lock; any difference aborts. The reviewed plan
+   then runs in one transaction with `lock_timeout`; any failure rolls everything back. An unreadable or truncated plan is refused, never treated
+   as empty; the plan ends at the LAST approval-prompt block, so an object name imitating the prompt cannot hide statements.
+6. A sequence still owned by or defaulted into a column (drizzle-kit wants to drop it; the drop can never succeed and is never wanted) is skipped
+   and reported.
 
 The existing pre-/post-push enforcement scripts (payout, marketplace revenue/checkout atomicity, meal-plan payment, Square plaintext
-finalization) are unchanged and still run in the same order. Indexes, CHECK and unique constraints, and trigger-based append-only protections
-on declared and undeclared tables are verified unchanged by the PostgreSQL test below.
+finalization) are unchanged and still run in the same order. Indexes, CHECK and unique constraints, RLS and trigger-based append-only protections
+are verified unchanged by the PostgreSQL test below.
 
 ### Known pre-existing behaviour (not changed)
 Every push re-plans a drop and re-add of ~50 foreign keys and a few indexes/constraints because drizzle-kit compares untruncated identifiers
 while PostgreSQL truncates them at 63 characters. It is not data loss; it is now atomic. A future PR can fix the names.
 
 ### Verification
-* `server/lib/schema-push-plan.test.ts`, `server/lib/schema-table-coverage.test.ts` — pure.
+* `server/lib/schema-push-plan.test.ts` (classification, RLS/policies, replacement matching, identifiers, tokens), `server/lib/schema-table-coverage.test.ts` — pure.
 * `server/scripts/schema-push-safety.postgres.test.ts` — creates and drops its own database; runs the real push flow; proves undeclared tables,
-  rows, sequences and triggers survive, destructive plans are refused/acknowledged/atomic, and constraints/indexes/triggers are unchanged.
+  rows, sequences and triggers survive, destructive plans, RLS removal and weaker constraint/index replacements are refused (and leave every
+  protected object untouched, with no pre-push script run), acknowledged plans apply atomically, and constraints/indexes/triggers are unchanged.
   Skipped (not passed) when no local PostgreSQL that can `CREATE DATABASE` is reachable.
+
+### Residual limits of the guard
+* Drift detection covers the window between planning and applying, not DDL by another session that commits inside the transaction's own lock
+  waits; schema pushes should be run while no other migration is running.
+* Pre-push enforcement scripts still mutate data (idempotent backfills) before the second plan review; only the first review precedes them.
+* Equivalence proof covers FOREIGN KEY / UNIQUE / PRIMARY KEY constraints and plain-column indexes; CHECK constraints and expression indexes are
+  always reviewed when dropped and re-created.
 
 ### Remaining risks
 * Neon was not (and must not be) inspected here. The real production table set, sequences, enums and constraints may differ from what the
