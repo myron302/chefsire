@@ -84,9 +84,14 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
      columns, `ON DELETE/UPDATE`, `MATCH`, deferrability, validity, uniqueness, method, `INCLUDE`/`WITH`, predicate. Unparseable, missing,
      ambiguous (several candidates, or one replacement claimed twice) or unprovable (e.g. CHECK expressions) means review. This keeps Drizzle's
      identifier-truncation churn (~50 foreign keys) working without letting an unrelated or weaker object stand in.
-3. **Explicit, plan-specific acknowledgement**: `npm run db:push -- --accept-plan=<token>`. The token hashes exactly the findings **and the
-   database name**. `--force` / `db:push:accept` no longer bypasses anything on a real database. A loopback database with a whole-word `test` in its
-   name (and no remote `host`/`hostaddr` override) acknowledges implicitly.
+3. **Explicit approval bound to the complete plan**: `npm run db:push -- --accept-plan=<token>`. The token is a hash of (JSON-serialized, so
+   statement boundaries cannot be forged) the **database name**, **every statement that will run, in execution order** (safe and dangerous alike,
+   after protected sequences were excluded), the **live definitions of every dropped constraint and index**, and the **fingerprint of the whole
+   protected catalog** (RLS flags, policies, triggers, columns, constraints, indexes, enums, sequences) the plan was reviewed against. Changing
+   any statement, its order, the replacement `ADD CONSTRAINT`/`CREATE INDEX`, the database, or catalog state that is not in the SQL text (a new
+   policy, a different dropped definition) yields a different token, so an old token never authorises a changed plan. Exactly one well-formed
+   current token is accepted; missing, empty, malformed, repeated or stale tokens and `--force` never are. A loopback database with a whole-word
+   `test` in its name (and no remote `host`/`hostaddr` override) acknowledges implicitly.
 4. **Review happens before any pre-push script runs.** The enforcement scripts backfill and normalise data, so a plan that would be refused is
    refused first (the plan is reviewed again after them, since they can change it).
 5. **Atomic apply with drift detection.** A fingerprint of the catalog (relations, RLS flags, columns, constraints, indexes, policies, triggers,
@@ -125,6 +130,8 @@ while PostgreSQL truncates them at 63 characters. It is not data loss; it is now
 * Drift detection covers the window between planning and applying, not DDL by another session that commits inside the transaction's own lock
   waits; schema pushes should be run while no other migration is running.
 * Pre-push enforcement scripts still mutate data (idempotent backfills) before the second plan review; only the first review precedes them.
+  If they change the catalog, the first review's token no longer matches the second and the push is refused with a fresh token (the scripts are
+  idempotent, so the next run is stable).
 * Equivalence proof covers FOREIGN KEY / UNIQUE / PRIMARY KEY constraints and plain-column indexes; CHECK constraints and expression indexes are
   always reviewed when dropped and re-created.
 

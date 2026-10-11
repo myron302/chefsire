@@ -11,6 +11,7 @@ import {
   dropSequenceTarget,
   indexFactKey,
   isDisposableTestDatabase,
+  isPlanAcknowledged,
   planAcknowledgementToken,
   type PlanCatalogFacts,
   type PlanFinding,
@@ -127,7 +128,7 @@ async function currentDatabase(client: pg.Client): Promise<string> {
   return (await client.query("SELECT current_database() AS name")).rows[0].name;
 }
 
-async function reviewPlan(client: pg.Client, statements: string[]): Promise<ReviewedPlan> {
+async function reviewPlan(client: pg.Client, statements: string[], catalog: string): Promise<ReviewedPlan> {
   // Not a matter of acknowledgement: such a plan cannot be applied atomically at all, so it is refused up front with guidance.
   if (enumAdditionHazards(statements).length > 0) {
     console.error("Schema push REFUSED: the plan adds an enum value and then uses it in the same plan.");
@@ -146,18 +147,17 @@ async function reviewPlan(client: pg.Client, statements: string[]): Promise<Revi
     }
     toApply.push(statement);
   }
-  const findings = classifyPushPlan(toApply, await readCatalogFacts(client, toApply));
-  return { toApply, findings, token: planAcknowledgementToken(findings, await currentDatabase(client)) };
+  // The token commits to the plan that will actually run (after the sequence exclusions above), not just to what was flagged.
+  const facts = await readCatalogFacts(client, toApply);
+  const findings = classifyPushPlan(toApply, facts);
+  return { toApply, findings, token: planAcknowledgementToken(toApply, await currentDatabase(client), facts, catalog) };
 }
 
 function isAcknowledged(plan: ReviewedPlan): boolean {
-  if (plan.findings.length === 0 || isDisposableTestDatabase(databaseUrl)) return true; // throw-away loopback "test" databases acknowledge implicitly
-  const accepted = process.argv.find((arg) => arg.startsWith("--accept-plan="))?.slice("--accept-plan=".length);
-  if (accepted === plan.token) {
-    console.warn(`Schema push: applying ${plan.findings.length} reviewed statement(s) that need review (plan ${plan.token}).`);
-    return true;
-  }
-  return false;
+  // throw-away loopback "test" databases acknowledge implicitly; everything else needs exactly this plan's token
+  const ok = isPlanAcknowledged({ findings: plan.findings, token: plan.token, argv: process.argv, disposable: isDisposableTestDatabase(databaseUrl) });
+  if (ok && plan.findings.length > 0) console.warn(`Schema push: applying ${plan.findings.length} reviewed statement(s) that need review (plan ${plan.token}).`);
+  return ok;
 }
 
 function refuse(plan: ReviewedPlan, note: string): never {
@@ -169,12 +169,13 @@ function refuse(plan: ReviewedPlan, note: string): never {
 }
 
 async function reviewBeforePrePushScripts() {
-  const statements = await dryRunPlan();
-  if (statements.length === 0) return;
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   try {
-    const plan = await reviewPlan(client, statements);
+    const catalog = await catalogFingerprint(client);
+    const statements = await dryRunPlan();
+    if (statements.length === 0) return;
+    const plan = await reviewPlan(client, statements, catalog);
     if (!isAcknowledged(plan)) refuse(plan, "Nothing was applied and no pre-push script has run.");
   } finally {
     await client.end();
@@ -191,7 +192,7 @@ async function guardedPush() {
       console.log("Schema push: no changes detected.");
       return;
     }
-    const plan = await reviewPlan(client, statements);
+    const plan = await reviewPlan(client, statements, planned);
     if (!isAcknowledged(plan)) refuse(plan, "Nothing was applied by the schema push (pre-push scripts had already run; they are idempotent).");
 
     try {

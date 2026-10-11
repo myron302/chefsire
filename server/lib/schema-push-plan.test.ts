@@ -16,6 +16,7 @@ import {
   interpretDryRun,
   indexFactKey,
   isDisposableTestDatabase,
+  isPlanAcknowledged,
   parsePushPlan,
   pgIdentifier,
   planAcknowledgementToken,
@@ -263,15 +264,75 @@ test("canonicalConstraint understands both drizzle's and PostgreSQL's spelling o
 
 /* ------------------------------------------------ acknowledgement ------------------------------------------------ */
 
-test("the acknowledgement token names one set of dangerous statements on one database", () => {
-  const a = classifyPushPlan(['DROP TABLE "a" CASCADE;']);
-  const b = classifyPushPlan(['DROP TABLE "b" CASCADE;']);
-  assert.equal(planAcknowledgementToken(a, "db1"), planAcknowledgementToken(classifyPushPlan(['DROP TABLE   "a"   CASCADE;']), "db1"));
-  assert.notEqual(planAcknowledgementToken(a, "db1"), planAcknowledgementToken(b, "db1"));
-  assert.notEqual(planAcknowledgementToken(a, "db1"), planAcknowledgementToken([...a, ...b], "db1"));
-  assert.notEqual(planAcknowledgementToken(a, "db1"), planAcknowledgementToken(a, "db2"), "bound to the database");
-  assert.notEqual(planAcknowledgementToken(a, "db1"), planAcknowledgementToken(classifyPushPlan(['ALTER TABLE "a" DISABLE ROW LEVEL SECURITY;']), "db1"));
-  assert.match(planAcknowledgementToken(a, "db1"), /^[0-9a-f]{24}$/);
+const token = (plan: string[], database = "db1", f?: PlanCatalogFacts, catalog = "") => planAcknowledgementToken(plan, database, f, catalog);
+const DROP_FK = dropFk();
+const ADD_FK = addFk(LONG);
+
+test("the token commits to the COMPLETE executable plan, in order, on one database", () => {
+  const base = token([DROP_FK, ADD_FK], "db1", fkFacts());
+  assert.match(base, /^[0-9a-f]{32}$/);
+  assert.equal(token([DROP_FK, ADD_FK], "db1", fkFacts()), base, "deterministic");
+  assert.equal(token([DROP_FK, ADD_FK.replace(/ /g, "   ")], "db1", fkFacts()), base, "whitespace outside literals is not significant");
+
+  // same DROP, different replacement constraint
+  assert.notEqual(token([DROP_FK, addFk(LONG, undefined, "ON DELETE set null ON UPDATE no action")], "db1", fkFacts()), base);
+  assert.notEqual(token([DROP_FK, ADD_FK.replace('"id")', '"other_id")')], "db1", fkFacts()), base);
+  // same dropped index, different CREATE INDEX
+  const idxPlan = (create: string) => token([dropIdx(), create], "db1", idxFacts());
+  assert.notEqual(idxPlan(createIdx(IDX)), idxPlan(createIdx(IDX, undefined, 'USING btree ("campaign_id")')));
+  assert.notEqual(idxPlan(createIdx(IDX)), idxPlan(createIdx(IDX, undefined, undefined, "UNIQUE ")));
+  // identical findings, different harmless-looking statement
+  const danger = 'ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;';
+  assert.deepEqual(classifyPushPlan([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']).map((f) => f.statement), classifyPushPlan([danger, 'ALTER TABLE "t" ADD COLUMN "b" text;']).map((f) => f.statement));
+  assert.notEqual(token([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']), token([danger, 'ALTER TABLE "t" ADD COLUMN "b" text;']));
+  assert.notEqual(token([danger]), token([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']), "an added safe statement");
+  assert.notEqual(token([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']), token([danger]), "a removed safe statement");
+  // order
+  assert.notEqual(token([DROP_FK, ADD_FK]), token([ADD_FK, DROP_FK]));
+  assert.notEqual(token([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']), token(['ALTER TABLE "t" ADD COLUMN "a" text;', danger]));
+  // database scope
+  assert.notEqual(token([danger], "db1"), token([danger], "db2"));
+  assert.notEqual(token([danger], "db1"), token([danger], ""));
+});
+
+test("string literals and quoted identifiers are never normalised away, and statement boundaries cannot be forged", () => {
+  assert.notEqual(token(["ALTER TABLE t ALTER COLUMN c SET DEFAULT 'a b';"]), token(["ALTER TABLE t ALTER COLUMN c SET DEFAULT 'a  b';"]));
+  assert.notEqual(token(['ALTER TABLE "T" DISABLE ROW LEVEL SECURITY;']), token(['ALTER TABLE "t" DISABLE ROW LEVEL SECURITY;']));
+  assert.notEqual(token(['SELECT 1;', 'SELECT 2;']), token(['SELECT 1; SELECT 2;']), "two statements are not one statement");
+  assert.notEqual(token(["A", "B C"]), token(["A B", "C"]));
+  assert.notEqual(token(["db"], "a"), token(["a\u0000db"], ""), "scope and plan cannot be shifted into each other");
+});
+
+test("a plan with a protected sequence intentionally removed is approved as the plan that actually runs", () => {
+  const withSequence = ['ALTER TABLE "t" DISABLE ROW LEVEL SECURITY;', 'DROP SEQUENCE "public"."households_id_seq";'];
+  const executable = [withSequence[0]]; // push-schema.ts excludes the in-use sequence before computing the token
+  assert.notEqual(token(executable), token(withSequence));
+  assert.equal(token(executable), token(['ALTER TABLE "t" DISABLE ROW LEVEL SECURITY;']));
+});
+
+test("the token also commits to the live definition of every dropped constraint and index (catalog state not in the SQL text)", () => {
+  const plan = [DROP_FK, ADD_FK];
+  assert.notEqual(token(plan, "db1", fkFacts()), token(plan, "db1", fkFacts(undefined, undefined, "FOREIGN KEY (booking_id) REFERENCES catering_bookings(id) ON DELETE SET NULL")));
+  assert.notEqual(token(plan, "db1", fkFacts()), token(plan, "db1"), "definition read vs not readable");
+  const idxPlan = [dropIdx(), createIdx(IDX)];
+  assert.notEqual(token(idxPlan, "db1", idxFacts()), token(idxPlan, "db1", idxFacts(INDEX_DB.replace("CREATE INDEX", "CREATE UNIQUE INDEX"))));
+  assert.equal(token(plan, "db1", fkFacts()), token(plan, "db1", fkFacts()));
+});
+
+test("the token commits to the whole protected catalog it was reviewed against (RLS, policies, triggers: state not in the SQL text)", () => {
+  const plan = ['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;'];
+  assert.notEqual(token(plan, "db1", undefined, "catalog-a"), token(plan, "db1", undefined, "catalog-b"));
+  assert.equal(token(plan, "db1", undefined, "catalog-a"), token(plan, "db1", undefined, "catalog-a"));
+});
+
+test("a previously issued token authorises only the exact plan it was issued for", () => {
+  const issued = token([DROP_FK, ADD_FK], "db1", fkFacts());
+  const changed = [
+    token([DROP_FK, addFk(LONG, undefined, "ON DELETE restrict ON UPDATE no action")], "db1", fkFacts()),
+    token([DROP_FK, ADD_FK, 'ALTER TABLE "x" ADD COLUMN "y" text;'], "db1", fkFacts()),
+    token([DROP_FK, ADD_FK], "other_db", fkFacts()),
+  ];
+  for (const candidate of changed) assert.notEqual(candidate, issued);
 });
 
 /* ------------------------------------------------ parsing ------------------------------------------------ */
@@ -455,4 +516,24 @@ test("enum additions in other spellings (IF NOT EXISTS, BEFORE/AFTER, unqualifie
 test("the classifier still reviews dangerous SQL in a plan that contains an enum addition", () => {
   assert.deepEqual(kinds([ADD_C, 'DROP TABLE "x" CASCADE;', 'ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']), ["drop_table", "rls_disabled"]);
   assert.deepEqual(kinds([ADD_C]), []);
+});
+
+test("acknowledgement fails closed: only exactly one well-formed, current token passes; --force never does", () => {
+  const findings = classifyPushPlan(['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']);
+  const current = token(['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']);
+  const ack = (argv: string[], disposable = false, list = findings) => isPlanAcknowledged({ findings: list, token: current, argv, disposable });
+  assert.equal(ack([`--accept-plan=${current}`]), true, "the correct current token authorises its exact plan");
+  assert.equal(ack([]), false, "missing");
+  assert.equal(ack(["--force"]), false, "--force is not approval");
+  assert.equal(ack(["--force", "--accept-plan="]), false, "empty");
+  assert.equal(ack(["--accept-plan"]), false, "no value");
+  assert.equal(ack([`--accept-plan=${current.slice(0, 31)}`]), false, "truncated");
+  assert.equal(ack([`--accept-plan=${current.toUpperCase()}`]), false, "malformed (case)");
+  assert.equal(ack([`--accept-plan=${current}x`]), false, "trailing junk");
+  assert.equal(ack([`--accept-plan= ${current}`]), false, "whitespace");
+  assert.equal(ack([`--accept-plan=${token(["something else"])}`]), false, "a token for another plan");
+  assert.equal(ack([`--accept-plan=${current}`, `--accept-plan=${token(["x"])}`]), false, "ambiguous: several tokens");
+  assert.equal(ack([`--accept-plan=${current}`, `--accept-plan=${current}`]), false, "repeated");
+  assert.equal(ack([], true), true, "a disposable test database acknowledges implicitly");
+  assert.equal(ack([], false, []), true, "a plan with no findings needs no approval");
 });

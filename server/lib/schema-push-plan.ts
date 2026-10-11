@@ -647,13 +647,46 @@ export function enumAdditionHazards(statements: readonly string[]): EnumHazard[]
   return hazards;
 }
 
+/** A statement in a canonical spelling: its tokens exactly as written (quoted identifiers and string literals untouched), single-space separated. */
+export function canonicalStatement(statement: string): string {
+  return tokenize(statement).map((token) => statement.slice(token.s, token.e)).join(" ");
+}
+
 /**
- * A token naming exactly this set of dangerous statements for exactly this database; an operator passes it back to acknowledge THIS plan
- * on THIS database and no other. `scope` is the database name.
+ * The approval token for one reviewed plan on one database. It commits to EVERYTHING that will run: the complete executable plan -- every
+ * statement, safe or dangerous, in execution order, after protected sequences were excluded -- plus the database name and the live
+ * definitions of the constraints and indexes the plan drops, plus the fingerprint of the whole protected catalog (RLS flags, policies,
+ * triggers, columns, constraints, indexes: state that is not in the SQL text but is what the operator actually reviewed). Changing any
+ * statement, its order, the database, a dropped object's definition or the catalog it was reviewed against changes the token, so an approval
+ * can never be reused for a different replacement, an added or reordered statement, another database, or a changed protection.
+ *
+ * Serialized as JSON (strings are escaped and arrays are delimited), so statement boundaries cannot be forged by statement text. Statements
+ * are whitespace-normalised by token (literals and quoted identifiers keep every character); their order is significant.
  */
-export function planAcknowledgementToken(findings: readonly PlanFinding[], scope = ""): string {
-  const canonical = findings.map((item) => `${item.kind}\u0000${item.statement}`).sort().join("\u0001");
-  return createHash("sha256").update(`${scope}\u0002${canonical}`).digest("hex").slice(0, 24);
+export function planAcknowledgementToken(
+  statements: readonly string[], scope: string, facts: PlanCatalogFacts = { constraints: {}, indexes: {} }, catalogFingerprint = "",
+): string {
+  const sorted = (record: Record<string, string>) => Object.keys(record).sort().map((key) => [key, record[key]]);
+  const canonical = JSON.stringify({
+    version: 2,
+    database: scope,
+    plan: statements.map(canonicalStatement),
+    droppedConstraints: sorted(facts.constraints),
+    droppedIndexes: sorted(facts.indexes),
+    catalog: catalogFingerprint,
+  });
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+}
+
+/**
+ * Whether the command line acknowledges THIS plan. Fail closed: a plan with no findings needs nothing; otherwise (unless the database is a
+ * disposable test database) there must be exactly one `--accept-plan=<token>` and it must equal the current token. A missing, empty,
+ * malformed, repeated or stale token -- and `--force`, which is not a token -- never acknowledges anything.
+ */
+export function isPlanAcknowledged(input: { findings: readonly PlanFinding[]; token: string; argv: readonly string[]; disposable: boolean }): boolean {
+  if (input.findings.length === 0 || input.disposable) return true;
+  const supplied = input.argv.filter((arg) => arg.startsWith("--accept-plan=")).map((arg) => arg.slice("--accept-plan=".length));
+  return supplied.length === 1 && /^[0-9a-f]{32}$/.test(supplied[0]) && supplied[0] === input.token;
 }
 
 /**

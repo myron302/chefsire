@@ -114,6 +114,15 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     const rls = async () => (await db.query("SELECT relrowsecurity, relforcerowsecurity, (SELECT count(*)::int FROM pg_policy WHERE polrelid = c.oid) AS policies FROM pg_class c WHERE relname = 'water_logs'")).rows[0];
     assert.deepEqual(await rls(), { relrowsecurity: true, relforcerowsecurity: true, policies: 1 }, "RLS and its policy are untouched by the refusal");
     assert.deepEqual(await catalog(db), rlsBefore);
+    // The token is bound to the catalog it was reviewed against: the same DISABLE ROW LEVEL SECURITY text over a catalog that gained a
+    // (permissive, wide-open) policy since the review is not approved by the old token.
+    const rlsToken = /--accept-plan=([0-9a-f]{32})/.exec(rlsRefused.output)?.[1];
+    assert.ok(rlsToken);
+    await db.query("CREATE POLICY water_open ON water_logs USING (true)");
+    const rlsStale = pushSchema(databaseUrl, [`--accept-plan=${rlsToken}`]);
+    assert.equal(rlsStale.status, 1, rlsStale.output.slice(-800));
+    assert.deepEqual(await rls(), { relrowsecurity: true, relforcerowsecurity: true, policies: 2 }, "nothing applied");
+    await db.query("DROP POLICY water_open ON water_logs");
     await db.query("DROP POLICY water_owner ON water_logs; ALTER TABLE water_logs NO FORCE ROW LEVEL SECURITY; ALTER TABLE water_logs DISABLE ROW LEVEL SECURITY");
 
     // 3c. A same-named replacement that is NOT the same protection is refused: a foreign key whose referential action drifted, and a UNIQUE
@@ -132,6 +141,38 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     assert.match(weak.output, /\[drop_constraint_unpaired\] ALTER TABLE "meal_streaks" DROP CONSTRAINT/);
     assert.match(weak.output, /\[drop_index_unpaired\] DROP INDEX/);
     assert.deepEqual(await catalog(db), weakBefore, "the refused push left every constraint and index exactly as they were");
+    // 3c-i. A token is bound to the COMPLETE plan and to the dropped objects' live definitions. The token issued above must not authorise a
+    //       plan that differs by a harmless-looking additive statement, by a different catalog state behind the same DROP text, or by --force.
+    const weakToken = /--accept-plan=([0-9a-f]{32})/.exec(weak.output)?.[1];
+    assert.ok(weakToken, weak.output.slice(-800));
+    const staleCases: [string, () => Promise<void>][] = [
+      ["an extra additive statement appears in the plan", async () => { await db.query("ALTER TABLE meal_streaks DROP COLUMN last_logged_date"); }],
+    ];
+    for (const [label, change] of staleCases) {
+      await change();
+      const stale = pushSchema(databaseUrl, [`--accept-plan=${weakToken}`]);
+      assert.equal(stale.status, 1, `${label}: ${stale.output.slice(-800)}`);
+      assert.match(stale.output, /Schema push REFUSED/, label);
+      assert.doesNotMatch(stale.output, new RegExp(`--accept-plan=${weakToken}`), "a new, different token is offered");
+    }
+    assert.equal((await db.query("SELECT 1 FROM information_schema.columns WHERE table_name='meal_streaks' AND column_name='last_logged_date'")).rowCount, 0, "nothing applied");
+    await db.query("ALTER TABLE meal_streaks ADD COLUMN last_logged_date date");
+    // same DROP text, different live definition of the dropped foreign key
+    await db.query(`ALTER TABLE meal_streaks DROP CONSTRAINT "${fks[0].conname}"`);
+    await db.query(`ALTER TABLE meal_streaks ADD CONSTRAINT "${fks[0].conname}" ${String(fks[0].def).replace(/ON UPDATE \w+( \w+)?/i, "").trim()} ON UPDATE SET NULL`);
+    const drifted = pushSchema(databaseUrl, [`--accept-plan=${weakToken}`]);
+    assert.equal(drifted.status, 1, "the same DROP text over a different catalog state is a different plan");
+    assert.match(drifted.output, /\[drop_constraint_unpaired\] ALTER TABLE "meal_streaks" DROP CONSTRAINT/);
+    assert.match((await db.query(`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = '${fks[0].conname}'`)).rows[0].def, /ON UPDATE SET NULL/, "nothing applied");
+    // the CURRENT token authorises exactly the current plan -- and applying it restores the schema's own definitions
+    const currentToken = /--accept-plan=([0-9a-f]{32})/.exec(drifted.output)?.[1];
+    assert.ok(currentToken && currentToken !== weakToken);
+    assert.equal(pushSchema(databaseUrl, ["--force", "--accept-plan=nonsense"]).status, 1, "a malformed token fails closed");
+    assert.equal(pushSchema(databaseUrl, [`--accept-plan=${currentToken}`, `--accept-plan=${weakToken}`]).status, 1, "ambiguous tokens fail closed");
+    const applied = pushSchema(databaseUrl, [`--accept-plan=${currentToken}`]);
+    assert.equal(applied.status, 0, applied.output.slice(-1500));
+    assert.equal((await db.query(`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = '${fks[0].conname}'`)).rows[0].def, fks[0].def, "restored to the schema's definition");
+
     // restore the schema's own definitions so the remaining steps start from a routine state
     await db.query(`ALTER TABLE meal_streaks DROP CONSTRAINT "${fks[0].conname}"`);
     await db.query(`ALTER TABLE meal_streaks ADD CONSTRAINT "${fks[0].conname}" ${fks[0].def}`);
@@ -151,7 +192,7 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     assert.equal(await passwordNullable(), "NO", "NOT NULL is still in force after the refusal");
     assert.deepEqual(await catalog(db), notNullBefore);
     assert.equal(pushSchema(databaseUrl, ["--force"]).status, 1, "--force is not an acknowledgement");
-    const notNullToken = /--accept-plan=([0-9a-f]{24})/.exec(notNullRefused.output)?.[1];
+    const notNullToken = /--accept-plan=([0-9a-f]{32})/.exec(notNullRefused.output)?.[1];
     assert.ok(notNullToken);
     // The token is bound to this exact plan: a different plan (an extra dangerous change) invalidates it.
     await db.query("ALTER TABLE users ADD COLUMN token_probe integer");
@@ -175,11 +216,11 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     const forced = pushSchema(databaseUrl, ["--force"]);
     assert.equal(forced.status, 1);
     assert.match(forced.output, /--force no longer bypasses/);
-    assert.equal(pushSchema(databaseUrl, ["--accept-plan=000000000000000000000000"]).status, 1);
+    assert.equal(pushSchema(databaseUrl, ["--accept-plan=00000000000000000000000000000000"]).status, 1);
     assert.equal(await columnPresent(), true, "still nothing applied");
 
     // 6. The exact token lets exactly that plan through, atomically.
-    const token = /--accept-plan=([0-9a-f]{24})/.exec(refused.output)?.[1];
+    const token = /--accept-plan=([0-9a-f]{32})/.exec(refused.output)?.[1];
     assert.ok(token, refused.output.slice(-800));
     const accepted = pushSchema(databaseUrl, [`--accept-plan=${token}`]);
     assert.equal(accepted.status, 0, accepted.output.slice(-2000));
@@ -257,7 +298,7 @@ postgresTest("an npm warning on stderr cannot corrupt, hide or bypass review of 
     assert.equal(await present(), true);
 
     // ... and a warning does not make a reviewed plan impossible to apply.
-    const token = /--accept-plan=([0-9a-f]{24})/.exec(refused.output)?.[1];
+    const token = /--accept-plan=([0-9a-f]{32})/.exec(refused.output)?.[1];
     assert.ok(token);
     assert.equal(pushSchema(databaseUrl, [`--accept-plan=${token}`], shim.env("warn")).status, 0);
     assert.equal(await present(), false);
