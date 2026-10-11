@@ -102,7 +102,11 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
    Verified on two separate local clusters with the same database name: different identifiers, different tokens. Limits: `system_identifier`
    needs EXECUTE on `pg_control_system()` (often unavailable on managed services), and on branching services such as Neon a branch inherits its
    parent's identifier and OIDs, so the identifier identifies the lineage, not the endpoint; the connection target is therefore part of the identity
-   (using a different hostname, e.g. a pooler, yields a different token and a fresh review). When the identifier is not readable the identity is
+   (using a different hostname, e.g. a pooler, yields a different token and a fresh review). The target is the destination the driver *actually*
+   uses: node-postgres lets `?host=` / `?port=` override the authority and falls back to `PGHOST`/`PGPORT`, so `connectionTarget` **rejects** URLs whose
+   destination it cannot prove (`hostaddr`; repeated or comma-separated hosts/ports; a `host` override other than an absolute socket directory, or
+   next to an authority host; a `port` override on a TCP connection; no host at all) instead of mirroring each override. Supported: `host[:port]`,
+   IPv6, `postgres:///db?host=/socket/dir[&port=N]`, URL-encoded socket authority. Errors never echo the URL. When the identifier is not readable the identity is
    *weak* and an approval additionally needs the separate flag `--accept-unverified-server-identity`; an unreadable or ambiguous identity (several
    rows, malformed values, multi-host URLs) fails closed.
 4. **Review happens before any pre-push script runs.** The enforcement scripts backfill and normalise data, so a plan that would be refused is
@@ -121,8 +125,13 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
    first; the next plan no longer contains it. An addition nothing depends on is applied in the same transaction (PostgreSQL 12+).
 8. **Honest failure reporting** (`server/lib/schema-push-apply.ts`): `nothing_applied` (refused before any statement), `rolled_back` (the server
    confirmed the transaction ended uncommitted), or `state_unknown` (lost connection or failed rollback: never reported as a rollback).
-9. A sequence still owned by or defaulted into a column (drizzle-kit wants to drop it; the drop can never succeed and is never wanted) is skipped
-   and reported.
+9. **Sequences that belong to tables are never dropped.** drizzle-kit wants to drop the sequences of tables it does not declare. `pg_depend` records
+   them in different directions: a SERIAL/BIGSERIAL sequence is *owned by* its column (sequence -> table, deptype `a`) and the column's DEFAULT
+   refers to it; a `GENERATED ... AS IDENTITY` sequence is internal to its column (sequence -> table, deptype `i`) and has **no** default expression.
+   `sequenceProtection` checks both directions, matches on schema **and** name, and fails closed on an ambiguous or incomplete answer. Protected
+   sequences are removed from the plan *before* classification, hashing and execution (so the approval token names the plan that really runs, and
+   nothing is reported as dropped that was kept). An unrelated sequence with no dependencies stays in the plan and is reviewed like any drop. Leaving
+   a sequence behind is never destructive; a deliberate serial -> non-serial change therefore leaves its orphan sequence for manual removal.
 
 The existing pre-/post-push enforcement scripts (payout, marketplace revenue/checkout atomicity, meal-plan payment, Square plaintext
 finalization) are unchanged and still run in the same order. Indexes, CHECK and unique constraints, RLS and trigger-based append-only protections
@@ -153,3 +162,17 @@ while PostgreSQL truncates them at 63 characters. It is not data loss; it is now
   repository implies; the first guarded push will print and refuse anything unexpected.
 * Production likely holds `wedding_vendor_listings_id_seq` / `wedding_vendor_quotes_id_seq` (BIGSERIAL runtime tables): handled by item 5.
 * Declaring the unmanaged tables (so they gain managed indexes/constraints) is follow-up work needing read-only prod introspection plus parity tests.
+
+## C. Is this workflow too complex, and what should production do?
+
+Honestly: yes. The guard exists because `drizzle-kit push` is a *state-diffing* tool pointed at a database that is *not* fully described by the schema
+(tables, enums, sequences, RLS, triggers and CHECKs that live in hand-written SQL). Each safeguard in section B patches a distinct way that diff can
+destroy or weaken something, and the result is ~1,300 lines of SQL tokenizing, catalog comparison and token logic that must itself be trusted. A
+statement-diffing tool cannot be made safe by adding classifiers; it can only be fenced.
+
+**Recommendation for production: do not run `db:push` / `db:push:accept` against Neon.** Synchronise production only with explicitly reviewed SQL
+migrations through the existing ledger (`npm run db:migrate`, `server/migrations/*.sql`, applied once, in a transaction, recorded in `_app_migrations`),
+generated or written offline, reviewed as ordinary diffs, and rehearsed on a restored copy first. Keep `db:push` for local and disposable databases,
+where the guard (and the implicit acknowledgement on `*_test*` loopback databases) makes it convenient. If a production push is ever unavoidable, treat
+the printed plan as a migration: review it, pass `--accept-plan=<token>`, and expect the guard to refuse anything it does not recognise. This PR does
+not replace the workflow; it makes the dangerous path loud and exact.

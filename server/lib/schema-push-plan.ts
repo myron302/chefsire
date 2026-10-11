@@ -713,21 +713,60 @@ export class ServerIdentityError extends Error {
 }
 
 /**
- * Where the connection points, WITHOUT credentials, query parameters or database name: `host:port`, or `socket:<dir>:port` for a local socket.
- * It is one ingredient of the server identity, never the whole of it (a hostname is not proof of identity). Throws on a URL that cannot be read,
- * so a malformed target can never silently collapse to a shared value.
+ * Where the connection ACTUALLY goes, WITHOUT credentials, query parameters or database name: `host:port`, or `socket:<dir>:port` for a local
+ * socket. It is one ingredient of the server identity, never the whole of it (a hostname is not proof of identity).
+ *
+ * "Actually" is decided the way the installed driver decides it: node-postgres' `pg-connection-string` lets the query string override the
+ * authority (`?host=`, `?port=`), an empty host falls back to the PGHOST environment variable, and a missing port to PGPORT. Rather than
+ * mirror every override, this REJECTS (throws) any URL whose destination it cannot prove from the URL alone:
+ *  - `hostaddr`, a repeated or comma-separated (multi-host) `host`/`port`;
+ *  - a `host` override that is not an absolute socket directory, or any `host` override next to an authority host;
+ *  - a `port` override outside a socket connection, or next to an authority port;
+ *  - an empty authority host with no socket directory (the driver would read PGHOST from the environment);
+ *  - an unreadable URL or port.
+ * Accepted forms: `postgres://host[:port]/db`, `postgres://[::1]:port/db`, `postgres:///db?host=/socket/dir[&port=N]` and an
+ * URL-encoded socket directory as the authority. A missing port is `PGPORT` when set, else 5432 (as the driver does). Errors never echo the URL.
  */
-export function connectionTarget(databaseUrl: string): string {
+export function connectionTarget(databaseUrl: string, env: NodeJS.ProcessEnv = process.env): string {
+  const refuse = (why: string): never => { throw new ServerIdentityError(`The database URL ${why}, so the target server cannot be identified.`); };
   let url: URL;
-  try { url = new URL(databaseUrl); } catch { throw new ServerIdentityError("The database URL could not be read, so the target server cannot be identified."); }
-  if (!/^postgres(ql)?:$/.test(url.protocol)) throw new ServerIdentityError("The database URL is not a PostgreSQL URL.");
-  const port = url.port || "5432";
-  const hostParam = url.searchParams.get("host");
-  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (host.includes(",") || (hostParam ?? "").includes(",")) throw new ServerIdentityError("Multi-host database URLs are ambiguous; the target server cannot be identified.");
-  if (host === "" && hostParam?.startsWith("/")) return `socket:${hostParam}:${url.searchParams.get("port") ?? port}`;
-  if (host === "") return `socket:default:${port}`;
-  return `${host}:${port}`;
+  try { url = new URL(databaseUrl); } catch { return refuse("could not be read"); }
+  if (!/^postgres(ql)?:$/.test(url.protocol)) return refuse("is not a PostgreSQL URL");
+  const params = url.searchParams;
+  if (params.has("hostaddr")) return refuse("sets hostaddr, which overrides the host");
+  const queryHosts = params.getAll("host");
+  const queryPorts = params.getAll("port");
+  if (queryHosts.length > 1 || queryPorts.length > 1) return refuse("repeats host or port");
+  let authorityHost: string;
+  try { authorityHost = decodeURIComponent(url.hostname).replace(/^\[|\]$/g, "").toLowerCase(); } catch { return refuse("has an unreadable host"); }
+  const queryHost = queryHosts[0];
+  const queryPort = queryPorts[0];
+  if (authorityHost.includes(",") || (queryHost ?? "").includes(",") || (queryPort ?? "").includes(",")) return refuse("lists several hosts");
+
+  let socketDirectory: string | null = null;
+  if (queryHost !== undefined) {
+    if (!queryHost.startsWith("/")) return refuse("overrides the host in its query string");
+    if (authorityHost !== "") return refuse("names a host both in its authority and in its query string");
+    socketDirectory = queryHost;
+  } else if (authorityHost.startsWith("/")) {
+    socketDirectory = authorityHost;
+  } else if (authorityHost === "") {
+    return refuse("has no host (the driver would take it from the environment)");
+  }
+
+  if (queryPort !== undefined && (socketDirectory === null || url.port !== "")) return refuse("overrides the port in its query string");
+  const port = queryPort ?? (url.port !== "" ? url.port : (env.PGPORT?.trim() || "5432"));
+  if (!/^[0-9]{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535) return refuse("has an invalid port");
+  return socketDirectory !== null ? `socket:${socketDirectory}:${port}` : `${authorityHost}:${port}`;
+}
+
+/**
+ * Whether an approval that needs a server identity is blocked because the identity is only weak (the cluster identifier could not be read) and the
+ * separate explicit flag was not given. Plans with nothing to approve, and disposable test databases, never need it.
+ */
+export function weakIdentityBlocksApproval(input: { findings: readonly PlanFinding[]; identity: ServerIdentity; argv: readonly string[]; disposable: boolean }): boolean {
+  if (input.findings.length === 0 || input.disposable || input.identity.strong) return false;
+  return !input.argv.includes("--accept-unverified-server-identity");
 }
 
 export type ServerIdentity = {

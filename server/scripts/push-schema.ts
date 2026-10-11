@@ -1,7 +1,7 @@
 import "../lib/load-env";
 import { spawnSync } from "node:child_process";
 import pg from "pg";
-import { applyReviewedPlan, catalogFingerprint, readServerIdentity, SchemaPushApplyError, ENUM_GUIDANCE } from "../lib/schema-push-apply";
+import { applyReviewedPlan, catalogFingerprint, excludeProtectedSequences, readServerIdentity, SchemaPushApplyError, ENUM_GUIDANCE } from "../lib/schema-push-apply";
 import {
   catalogLookupsNeeded,
   columnFactKey,
@@ -10,13 +10,13 @@ import {
   enumAdditionHazards,
   interpretDryRun,
   constraintFactKey,
-  dropSequenceTarget,
   indexFactKey,
   isDisposableTestDatabase,
   isPlanAcknowledged,
   planAcknowledgementToken,
   type PlanCatalogFacts,
   type ServerIdentity,
+  weakIdentityBlocksApproval,
   type PlanFinding,
 } from "../lib/schema-push-plan";
 
@@ -100,7 +100,7 @@ async function dryRunPlan(): Promise<string[]> {
   return outcome.statements;
 }
 
-type ReviewedPlan = { toApply: string[]; findings: PlanFinding[]; token: string; identity: ServerIdentity };
+type ReviewedPlan = { toApply: string[]; findings: PlanFinding[]; token: string; identity: ServerIdentity | null };
 
 /** Reads the live definition of every constraint/index the plan drops, so a replacement can be compared with what it replaces. */
 async function readCatalogFacts(client: pg.Client, statements: string[]): Promise<PlanCatalogFacts> {
@@ -167,28 +167,24 @@ async function reviewPlan(client: pg.Client, statements: string[], catalog: stri
     console.error(`\nNothing was applied. ${ENUM_GUIDANCE}`);
     process.exit(1);
   }
-  // A sequence owned by (or the default of) a column can never be dropped while that column exists, so drizzle's attempt to drop the
-  // sequence of an UNDECLARED table is both unwanted and certain to fail. Such statements are skipped and reported, never executed.
-  const toApply: string[] = [];
-  for (const statement of statements) {
-    const target = dropSequenceTarget(statement);
-    if (target && target.schema === "public" && (await sequenceIsInUse(client, target.name))) {
-      console.warn(`Schema push: leaving sequence "${target.name}" alone (still used by a table column that this schema does not declare).`);
-      continue;
-    }
-    toApply.push(statement);
-  }
+  // A sequence a table still needs (SERIAL/BIGSERIAL ownership or default, GENERATED AS IDENTITY) is never dropped: drizzle-kit wants to drop the
+  // sequences of tables it does not declare. They are removed from the plan here, before classification, hashing and execution.
+  const { toApply, skipped } = await excludeProtectedSequences(client, statements);
+  for (const item of skipped) console.warn(`Schema push: leaving sequence "${item.schema}"."${item.name}" in place (${item.reasons.join("; ")}).`);
   // The token commits to the plan that will actually run (after the sequence exclusions above), not just to what was flagged.
   const facts = await readCatalogFacts(client, toApply);
   const findings = classifyPushPlan(toApply, facts);
   // The approval is scoped to the SERVER (cluster identifier when readable, database OID and name, connection target), not just a database name.
+  // Only a plan that needs approval needs an identity; a routine plan is never blocked by an identity that cannot be established.
+  // Disposable test databases acknowledge implicitly and need no identity either.
+  if (findings.length === 0 || isDisposableTestDatabase(databaseUrl)) return { toApply, findings, identity: null, token: "" };
   const identity = await readServerIdentity(client, connectionTarget(databaseUrl));
   return { toApply, findings, identity, token: planAcknowledgementToken(toApply, identity.id, facts, catalog) };
 }
 
 function isAcknowledged(plan: ReviewedPlan): boolean {
   // throw-away loopback "test" databases acknowledge implicitly; everything else needs exactly this plan's token
-  if (plan.findings.length > 0 && !isDisposableTestDatabase(databaseUrl) && !plan.identity.strong && !process.argv.includes("--accept-unverified-server-identity")) {
+  if (plan.identity && weakIdentityBlocksApproval({ findings: plan.findings, identity: plan.identity, argv: process.argv, disposable: isDisposableTestDatabase(databaseUrl) })) {
     console.error("Schema push REFUSED: the plan needs approval, but this connection cannot read the PostgreSQL cluster identifier (pg_control_system() is not permitted),");
     console.error("so an approval could not be proven to belong to THIS server. Nothing was applied. Either run as a role that may read it, or, after confirming the target");
     console.error("by other means, pass --accept-unverified-server-identity together with --accept-plan=<token> (the token is still scoped to the connection target and database).");
@@ -235,7 +231,7 @@ async function guardedPush() {
     if (!isAcknowledged(plan)) refuse(plan, "Nothing was applied by the schema push (pre-push scripts had already run; they are idempotent).");
 
     try {
-      await applyReviewedPlan(client, plan.toApply, planned, { planned: plan.identity.id, target: connectionTarget(databaseUrl) });
+      await applyReviewedPlan(client, plan.toApply, planned, plan.identity ? { planned: plan.identity.id, target: connectionTarget(databaseUrl) } : undefined);
     } catch (error) {
       if (error instanceof SchemaPushApplyError) {
         if (error.outcome === "nothing_applied") console.error("Schema push refused; nothing was applied.");
@@ -248,17 +244,4 @@ async function guardedPush() {
   } finally {
     await client.end();
   }
-}
-
-async function sequenceIsInUse(client: pg.Client, name: string): Promise<boolean> {
-  const { rows } = await client.query(
-    `SELECT 1
-       FROM pg_class sequence
-       JOIN pg_depend dependency ON dependency.refobjid = sequence.oid
-      WHERE sequence.relkind = 'S' AND sequence.relnamespace = 'public'::regnamespace AND sequence.relname = $1
-        AND (dependency.deptype IN ('a', 'i') OR dependency.classid = 'pg_attrdef'::regclass)
-      LIMIT 1`,
-    [name],
-  );
-  return rows.length > 0;
 }

@@ -3,7 +3,7 @@
  * Takes any `pg`-style client (`query(text, values?)`), so it can be exercised against a disposable database without drizzle-kit.
  */
 import { createHash } from "node:crypto";
-import { buildServerIdentity, enumAdditionCount, enumAdditionHazards, ServerIdentityError, type ServerIdentity } from "./schema-push-plan";
+import { buildServerIdentity, dropSequenceTarget, enumAdditionCount, enumAdditionHazards, ServerIdentityError, type ServerIdentity } from "./schema-push-plan";
 
 export type QueryClient = { query: (text: string, values?: unknown[]) => Promise<{ rows: any[] }> };
 
@@ -138,4 +138,56 @@ class IdentityChangedError extends Error {
   constructor() {
     super("server identity changed");
   }
+}
+
+/* ------------------------------------------------------------------------------------------------------------- *
+ * Sequences that belong to tables
+ * ------------------------------------------------------------------------------------------------------------- */
+
+export type SequenceProtection = { exists: boolean; protected: boolean; reasons: string[] };
+
+/**
+ * Whether a sequence must not be dropped because something still needs it. `pg_depend` records the relationships in DIFFERENT directions:
+ *  - SERIAL / BIGSERIAL: the sequence is OWNED BY the column -- a row with objid = the sequence, refobjid = the table, deptype 'a' -- and the
+ *    column's DEFAULT (a `pg_attrdef` row) refers to the sequence (refobjid = the sequence).
+ *  - GENERATED ... AS IDENTITY: the sequence is internal to the column -- objid = the sequence, refobjid = the table, deptype 'i' -- and there
+ *    is NO default expression at all, so a check that only looks at things referring TO the sequence misses it.
+ * Anything that refers to the sequence (a default, a view, another dependency) also protects it. Matching is by schema AND name. A sequence with
+ * none of these is unrelated and is not protected. Leaving a sequence in place is never destructive; dropping one that a table needs is.
+ */
+export async function sequenceProtection(client: QueryClient, schema: string, name: string): Promise<SequenceProtection> {
+  const { rows } = await client.query(
+    `SELECT
+       EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = s.oid AND d.refclassid = 'pg_class'::regclass AND d.deptype = 'a') AS owned,
+       EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = s.oid AND d.refclassid = 'pg_class'::regclass AND d.deptype = 'i') AS identity,
+       EXISTS (SELECT 1 FROM pg_depend d WHERE d.refclassid = 'pg_class'::regclass AND d.refobjid = s.oid) AS referenced
+     FROM pg_class s JOIN pg_namespace n ON n.oid = s.relnamespace
+    WHERE s.relkind = 'S' AND n.nspname = $1 AND s.relname = $2`,
+    [schema, name],
+  );
+  if (rows.length === 0) return { exists: false, protected: false, reasons: [] };
+  if (rows.length !== 1) throw new Error("The sequence could not be identified unambiguously."); // fail closed
+  const reasons = [rows[0].owned === true && "owned by a table column", rows[0].identity === true && "identity sequence of a table column", rows[0].referenced === true && "referenced by a default or another object"].filter(Boolean) as string[];
+  for (const value of [rows[0].owned, rows[0].identity, rows[0].referenced]) if (typeof value !== "boolean") throw new Error("Sequence dependencies could not be inspected completely."); // fail closed
+  return { exists: true, protected: reasons.length > 0, reasons };
+}
+
+/**
+ * Removes `DROP SEQUENCE` statements for sequences a table still needs from the plan BEFORE it is classified, hashed into an approval token and
+ * executed, so the token names the plan that actually runs and nothing is ever reported as dropped that was kept. Other `DROP SEQUENCE`
+ * statements (an unrelated sequence, an unreadable form, a missing sequence) stay in the plan and are reviewed like any other drop. Any failure
+ * to inspect propagates: the push stops rather than guessing.
+ */
+export async function excludeProtectedSequences(client: QueryClient, statements: readonly string[]) {
+  const toApply: string[] = [];
+  const skipped: { statement: string; schema: string; name: string; reasons: string[] }[] = [];
+  for (const statement of statements) {
+    const target = dropSequenceTarget(statement);
+    if (target) {
+      const protection = await sequenceProtection(client, target.schema, target.name);
+      if (protection.protected) { skipped.push({ statement, schema: target.schema, name: target.name, reasons: protection.reasons }); continue; }
+    }
+    toApply.push(statement);
+  }
+  return { toApply, skipped };
 }

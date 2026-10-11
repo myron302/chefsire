@@ -15,6 +15,7 @@ import {
   connectionTarget,
   dropSequenceTarget,
   ServerIdentityError,
+  weakIdentityBlocksApproval,
   enumAdditionCount,
   enumAdditionHazards,
   interpretDryRun,
@@ -659,17 +660,100 @@ test("a missing or ambiguous identity fails closed", () => {
   ]) assert.throws(() => identity(bad as never), ServerIdentityError, JSON.stringify(bad));
 });
 
-test("the connection target names the host and port only: no credentials, no query, no database; unreadable or ambiguous URLs fail closed", () => {
+test("the connection target names the host and port only: no credentials, no query, no database", () => {
   const url = "postgres://admin:s3cr3t-P@ss@Prod.Example.COM:6543/chefsire?sslmode=require&options=-c%20x";
-  assert.equal(connectionTarget(url), "prod.example.com:6543");
-  assert.doesNotMatch(connectionTarget(url), /s3cr3t|admin|chefsire|sslmode/);
-  assert.equal(connectionTarget("postgresql://u@localhost/db"), "localhost:5432");
-  assert.equal(connectionTarget("postgres://u@[::1]:5433/db"), "::1:5433");
-  assert.equal(connectionTarget("postgres:///db?host=/var/run/postgresql"), "socket:/var/run/postgresql:5432");
-  assert.throws(() => connectionTarget("not a url"), ServerIdentityError);
-  assert.throws(() => connectionTarget("mysql://h/db"), ServerIdentityError);
-  assert.throws(() => connectionTarget("postgres://a,b/db"), ServerIdentityError, "multi-host is ambiguous");
-  // the identity carries no secret
-  const id = buildServerIdentity({ systemIdentifier: "7123456789012345678", databaseOid: "1", databaseName: "chefsire", target: connectionTarget(url) }).id;
+  assert.equal(connectionTarget(url, {}), "prod.example.com:6543");
+  assert.doesNotMatch(connectionTarget(url, {}), /s3cr3t|admin|chefsire|sslmode/);
+  const id = buildServerIdentity({ systemIdentifier: "7123456789012345678", databaseOid: "1", databaseName: "chefsire", target: connectionTarget(url, {}) }).id;
   assert.doesNotMatch(id, /s3cr3t|admin|sslmode/);
+});
+
+test("accepted connection strings: authority host and port, IPv6, default and PGPORT port, socket directories", () => {
+  assert.equal(connectionTarget("postgresql://u@localhost/db", {}), "localhost:5432");
+  assert.equal(connectionTarget("postgres://u@db.example.com:5433/db", {}), "db.example.com:5433");
+  assert.equal(connectionTarget("postgres://u@[::1]:5433/db", {}), "::1:5433");
+  assert.equal(connectionTarget("postgres://u@db.example.com/db", { PGPORT: "6000" }), "db.example.com:6000", "a missing port is PGPORT, as the driver does");
+  assert.equal(connectionTarget("postgres://u@db.example.com:5433/db", { PGPORT: "6000" }), "db.example.com:5433", "an explicit port wins over PGPORT");
+  assert.equal(connectionTarget("postgres:///db?host=/var/run/postgresql", {}), "socket:/var/run/postgresql:5432");
+  assert.equal(connectionTarget("postgres:///db?host=/tmp&port=5433", {}), "socket:/tmp:5433", "a socket connection selects its socket file by port");
+  assert.equal(connectionTarget("postgres://%2Fvar%2Frun%2Fpostgresql/db", {}), "socket:/var/run/postgresql:5432", "URL-encoded socket directory as authority");
+  assert.equal(connectionTarget("postgres://u@db.example.com/db?sslmode=require&application_name=x", {}), "db.example.com:5432", "harmless parameters are fine");
+});
+
+test("query-string overrides of the destination are rejected, not silently mapped to the authority", () => {
+  const rejected = [
+    "postgres://u@prod.example.com/db?host=/tmp",                // host override next to an authority host
+    "postgres://u@prod.example.com/db?host=other.example.com",   // TCP host override
+    "postgres://u@prod.example.com:5432/db?port=6543",           // port override on a TCP connection
+    "postgres://u@prod.example.com/db?port=6543",
+    "postgres://u@prod.example.com/db?host=other.example.com&port=6543", // both
+    "postgres://u@prod.example.com:5432/db?hostaddr=10.0.0.9",   // hostaddr
+    "postgres:///db?host=/tmp&hostaddr=10.0.0.9",
+    "postgres:///db?host=other.example.com",                     // empty authority + non-socket host override
+    "postgres:///db?host=/tmp&host=/var/run/postgresql",         // repeated
+    "postgres:///db?host=/tmp&port=5432&port=5433",
+    "postgres://u@localhost:5432/db?host=/tmp&port=5433",        // socket override next to authority host/port
+    "postgres:///db",                                            // no host at all: the environment (PGHOST) would decide
+    "postgres://u@/db",
+  ];
+  for (const url of rejected) assert.throws(() => connectionTarget(url, {}), ServerIdentityError, url);
+});
+
+test("multi-host, invalid and non-PostgreSQL URLs fail closed with a message that carries no secret", () => {
+  for (const url of [
+    "postgres://a,b/db", "postgres://u:pw@a:5432,b:5433/db", "postgres:///db?host=/tmp,/var/run", "postgres://u@a/db?port=1,2",
+    "not a url", "", "mysql://h/db", "postgres://u@h:99999/db", "postgres://u@h:0/db", "postgres://u@h/db?host=%E0%A4%A",
+  ]) assert.throws(() => connectionTarget(url, {}), ServerIdentityError, url);
+  try { connectionTarget("postgres://admin:s3cr3t-P@ss@h/db?hostaddr=10.0.0.9", {}); assert.fail("expected a throw"); } catch (error) {
+    assert.ok(error instanceof ServerIdentityError);
+    assert.doesNotMatch((error as Error).message, /s3cr3t|admin|10\.0\.0\.9|postgres:/, "no secret, address or URL in the error");
+  }
+});
+
+test("every accepted URL resolves, in the installed driver, to exactly the destination connectionTarget reports", async () => {
+  const imported = (await import("pg-connection-string")) as unknown as { parse?: (s: string) => Record<string, unknown>; default?: ((s: string) => Record<string, unknown>) & { parse?: (s: string) => Record<string, unknown> } };
+  const parse = (imported.parse ?? imported.default?.parse ?? imported.default) as (s: string) => Record<string, unknown>;
+  const accepted = [
+    "postgres://u@db.example.com:5433/db", "postgres://u@[::1]:5433/db", "postgres://u@LOCALHOST/db?sslmode=require",
+    "postgres:///db?host=/var/run/postgresql", "postgres:///db?host=/tmp&port=5433", "postgres://%2Fvar%2Frun%2Fpostgresql/db",
+  ];
+  for (const url of accepted) {
+    const config = parse(url);
+    const target = connectionTarget(url, {});
+    const host = String(config.host).replace(/^\[|\]$/g, "").toLowerCase();
+    const port = String(config.port || "5432");
+    assert.equal(target, host.startsWith("/") ? `socket:${host}:${port}` : `${host}:${port}`, url);
+  }
+  // ... and the URLs the old reading would have mapped to the authority host really do point elsewhere in the driver
+  const old = (url: string) => new URL(url).hostname;
+  for (const url of ["postgres://u@prod.example.com/db?host=other.example.com", "postgres://u@prod.example.com/db?port=6543"]) {
+    const config = parse(url);
+    assert.ok(config.host !== old(url) || String(config.port) !== (new URL(url).port || ""), `the driver honours the override in ${url}`);
+    assert.throws(() => connectionTarget(url, {}), ServerIdentityError);
+  }
+});
+
+test("different resolved destinations never share an approval, and the same destination does", () => {
+  const plan = ['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;'];
+  const identityFor = (url: string) => buildServerIdentity({ systemIdentifier: "7123456789012345678", databaseOid: "16384", databaseName: "chefsire", target: connectionTarget(url, {}) });
+  const tokenFor = (url: string) => planAcknowledgementToken(plan, identityFor(url).id, undefined, "same-catalog");
+  assert.notEqual(tokenFor("postgres://u@staging.example.com:5432/chefsire"), tokenFor("postgres://u@prod.example.com:5432/chefsire"));
+  assert.notEqual(tokenFor("postgres://u@h:5432/chefsire"), tokenFor("postgres://u@h:6432/chefsire"));
+  assert.notEqual(tokenFor("postgres:///chefsire?host=/tmp&port=5433"), tokenFor("postgres:///chefsire?host=/tmp&port=5434"));
+  assert.notEqual(tokenFor("postgres:///chefsire?host=/tmp"), tokenFor("postgres:///chefsire?host=/var/run/postgresql"));
+  assert.equal(tokenFor("postgres://user1:pw1@h:5432/chefsire?sslmode=require"), tokenFor("postgres://user2:pw2@H:5432/chefsire"), "credentials and harmless parameters are not identity");
+});
+
+test("the weak-identity fallback stays explicitly gated, and only where an approval is actually needed", () => {
+  const findings = classifyPushPlan(['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']);
+  const weak = identity({ systemIdentifier: null });
+  const strong = identity();
+  const blocked = (over: Partial<Parameters<typeof weakIdentityBlocksApproval>[0]>) => weakIdentityBlocksApproval({ findings, identity: weak, argv: [], disposable: false, ...over });
+  assert.equal(blocked({}), true, "weak identity + a plan to approve: refused");
+  assert.equal(blocked({ argv: ["--accept-unverified-server-identity"] }), false, "the separate explicit flag lifts it");
+  assert.equal(blocked({ argv: ["--accept-plan=" + "a".repeat(32)] }), true, "a plan token alone does not");
+  assert.equal(blocked({ argv: ["--force"] }), true, "--force does not");
+  assert.equal(blocked({ identity: strong }), false, "a verified identity needs no flag");
+  assert.equal(blocked({ findings: [] }), false, "nothing to approve");
+  assert.equal(blocked({ disposable: true }), false);
 });
