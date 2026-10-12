@@ -11,6 +11,7 @@ import {
   classifyPushPlan,
   constraintFactKey,
   buildServerIdentity,
+  parseIndexStatement,
   columnFactKey,
   connectionTarget,
   dropSequenceTarget,
@@ -756,4 +757,119 @@ test("the weak-identity fallback stays explicitly gated, and only where an appro
   assert.equal(blocked({ identity: strong }), false, "a verified identity needs no flag");
   assert.equal(blocked({ findings: [] }), false, "nothing to approve");
   assert.equal(blocked({ disposable: true }), false);
+});
+
+/* ------------------------------------------------ string-literal and token semantics in canonical forms ------------------------------------------------ */
+
+const ON = { standardConformingStrings: true };
+const check = (expression: string, options = ON) => canonicalConstraint(`CHECK (${expression})`, options);
+
+test("E'\\n' (a newline) and '\\n' (backslash, n) never compare equal; equal values do", () => {
+  assert.notEqual(check("x <> E'\\n'"), check("x <> '\\n'"), "newline vs backslash-n");
+  assert.notEqual(check("x <> E'\\t'"), check("x <> E'\\n'"), "different escapes");
+  assert.notEqual(check("x <> E'\\n'"), check("x <> E'\\\\n'"), "newline vs escaped backslash then n");
+  assert.notEqual(check("x <> E'\\x41'"), check("x <> E'\\x42'"));
+  // provably identical values compare consistently, however they are spelled
+  assert.equal(check("x <> E'\\n'"), check("x <> e'\\n'"));
+  assert.equal(check("x <> E'A'"), check("x <> E'\\x41'"));
+  assert.equal(check("x <> E'A'"), check("x <> E'\\101'"));
+  assert.equal(check("x <> E'A'"), check("x <> E'\\u0041'"));
+  assert.equal(check("x <> E'A'"), check("x <> E'\\U00000041'"));
+  assert.equal(check("x <> E'\\\\n'"), check("x <> '\\n'"), "an E-string backslash-n IS the ordinary literal \\n when backslashes are literal");
+  assert.equal(check("x <> E'\\z'"), check("x <> E'z'"), "an unknown escape is the character itself");
+  assert.equal(check("x <> E'\\'' "), check("x <> '''' "), "an escaped quote is a quote");
+});
+
+test("embedded quotes, dollar quoting and backslashes are told apart without corrupting the canonical form", () => {
+  assert.equal(check("x <> 'it''s'"), check("x <> E'it\\'s'"));
+  assert.equal(check("x <> 'it''s'"), check("x <> $$it's$$"));
+  assert.notEqual(check("x <> 'it''s'"), check("x <> 'its'"));
+  assert.notEqual(check("x <> 'a'' b'"), check("x <> 'a' 'b'"), "a doubled quote is not a literal boundary");
+  assert.equal(check("x <> $$a\\nb$$"), check("x <> E'a\\\\nb'"), "dollar quoting never processes backslashes");
+  assert.notEqual(check("x <> $$a\\nb$$"), check("x <> E'a\\nb'"), "so $$\\n$$ is not a newline");
+  assert.notEqual(check("x <> $a$one$a$"), check("x <> $a$two$a$"));
+  assert.equal(check("x <> $a$one$a$"), check("x <> $b$one$b$"), "the tag is not part of the value");
+  assert.notEqual(check("x <> ''''"), check("x <> ''"), "a quote versus the empty string");
+});
+
+test("an unprovable literal makes the whole canonical form unavailable instead of equal", () => {
+  for (const bad of ["E'\\x'", "E'\\u12'", "E'\\u0000'", "E'\\0'", "E'\\ud83d'"]) assert.equal(check(`x <> ${bad}`), null, bad);
+  assert.equal(check("x <> '\\n'", {}), null, "ordinary literal with a backslash and an unknown standard_conforming_strings");
+  assert.equal(check("x <> 'plain'", {}) !== null, true, "no backslash: the setting does not matter");
+  assert.equal(check("x <> $$\\n$$", {}) !== null, true, "dollar quoting does not depend on the setting");
+  assert.equal(check("x <> E'\\n'", {}) !== null, true, "nor do E-strings");
+  // with standard_conforming_strings off an ordinary literal IS an escape string
+  assert.equal(check("x <> '\\n'", { standardConformingStrings: false }), check("x <> E'\\n'", { standardConformingStrings: false }));
+  assert.notEqual(check("x <> '\\n'", { standardConformingStrings: false }), check("x <> '\\n'", ON));
+});
+
+const dropCheck = 'ALTER TABLE "t" DROP CONSTRAINT "t_chk";';
+const addCheck = (expression: string) => `ALTER TABLE "t" ADD CONSTRAINT "t_chk" CHECK (${expression});`;
+const checkFacts = (live: string, standard: boolean | "unknown" = true): PlanCatalogFacts =>
+  ({ constraints: { [constraintFactKey("public", "t", "t_chk")]: `CHECK (${live})` }, indexes: {}, standardConformingStrings: standard === "unknown" ? undefined : standard });
+
+test("CHECK replacement with changed escape semantics requires review; an identical one is still excused", () => {
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\n')")], checkFacts("(x <> '\\n')")), ["drop_constraint_unpaired"], "was backslash-n, becomes newline");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> '\\n')")], checkFacts("(x <> E'\\n')")), ["drop_constraint_unpaired"], "was newline, becomes backslash-n");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\t')")], checkFacts("(x <> E'\\n')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\n')")], checkFacts("(x <> E'\\n')")), [], "identical expression: provably the same protection");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\x0a')")], checkFacts("(x <> E'\\n')")), [], "same value, different spelling");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> '\\n')")], checkFacts("(x <> '\\n')", "unknown")), ["drop_constraint_unpaired"], "unknown setting: not provable");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> 'a')")], checkFacts("(x <> 'a')", "unknown")), [], "no backslash: unaffected");
+});
+
+const dropIndex = 'DROP INDEX "i";';
+const indexFacts = (definition: string, standard: boolean | "unknown" = true): PlanCatalogFacts =>
+  ({ constraints: {}, indexes: { [indexFactKey("public", "i")]: definition }, standardConformingStrings: standard === "unknown" ? undefined : standard });
+
+test("partial UNIQUE and expression index replacement with changed escape semantics requires review", () => {
+  const live = (tail: string) => `CREATE UNIQUE INDEX i ON public.t USING btree ${tail}`;
+  const create = (tail: string) => `CREATE UNIQUE INDEX "i" ON "t" USING btree ${tail};`;
+  // partial index predicate
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> E'\\n')")], indexFacts(live("(a) WHERE (b <> '\\n')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> E'\\n')")], indexFacts(live("(a) WHERE (b <> E'\\n')"))), [], "identical predicate");
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> E'\\n')")], indexFacts(live("(a) WHERE (b <> E'\\t')"))), ["drop_index_unpaired"]);
+  // expression index
+  assert.deepEqual(kinds([dropIndex, create("((lower(a) || E'\\n'))")], indexFacts(live("((lower(a) || '\\n'))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((lower(a) || E'\\n'))")], indexFacts(live("((lower(a) || E'\\n'))"))), []);
+  assert.deepEqual(kinds([dropIndex, create("((lower(a) || '\\n'))")], indexFacts(live("((lower(a) || '\\n'))"), "unknown")), ["drop_index_unpaired"], "unknown setting");
+  // ordinary comparisons keep working
+  assert.deepEqual(kinds([dropIndex, create('("a", "b")')], indexFacts(live("(a, b)"))), []);
+  assert.deepEqual(kinds([dropIndex, create('("a", "b") WHERE ("c" = \'x\')')], indexFacts(live("(a, b) WHERE (c = 'x')"))), []);
+});
+
+test("other token representations keep their meaning: quoted identifiers, operators, casts, name lists, keys", () => {
+  // a quoted identifier is its own name; "foo" IS foo; reserved words stay quoted so they are not the keyword
+  assert.equal(check('"x" > 0'), check("x > 0"));
+  assert.notEqual(check('"X" > 0'), check("x > 0"), "quoted keeps case");
+  assert.notEqual(check('"a b" > 0'), check("a b > 0".replace("a b", "a")), "a space inside a quoted name is part of the name");
+  assert.notEqual(check('"a b" = 1'), check('"a" = 1'));
+  assert.notEqual(check('"user" = 1'), check("user = 1"), "the column named user is not the keyword USER");
+  assert.notEqual(check('"select" = 1'), check("select = 1"));
+  assert.notEqual(check('"a""b" = 1'), check('"ab" = 1'), "an embedded quote is part of the name");
+  // operators: one operator, not two adjacent ones
+  assert.equal(check("x >= 0"), check("x>=0"));
+  assert.notEqual(check("x >= 0"), check("x > = 0"));
+  assert.notEqual(check("x <> 0"), check("x < > 0"));
+  assert.notEqual(check("x <= 0"), check("x < 0"));
+  assert.notEqual(check("x - -1 > 0"), check("x - 1 > 0"));
+  // casts and types
+  assert.notEqual(check("x::text = 'a'"), check("x::varchar = 'a'"));
+  assert.equal(check("x::TEXT = 'a'"), check("x::text = 'a'"));
+  assert.notEqual(check('x::"Text" = \'a\''), check("x::text = 'a'"), 'a quoted type name keeps its case');
+  // name lists and keys cannot be forged with commas or dots
+  assert.notEqual(canonicalConstraint('UNIQUE ("a,b")'), canonicalConstraint("UNIQUE (a, b)"));
+  assert.notEqual(canonicalConstraint('FOREIGN KEY (a) REFERENCES "s.t"(id)'), canonicalConstraint('FOREIGN KEY (a) REFERENCES s.t(id)'));
+  assert.notEqual(constraintFactKey("public", "a.b", "c"), constraintFactKey("public", "a", "b.c"));
+  assert.notEqual(indexFactKey("a.b", "c"), indexFactKey("a", "b.c"));
+  assert.notEqual(columnFactKey("public", "a.b", "c"), columnFactKey("public", "a", "b.c"));
+  // a fact recorded for a different object (whose dotted name collides) is not used
+  const collide: PlanCatalogFacts = { constraints: { [constraintFactKey("public", "a", "b.c")]: "UNIQUE (x)" }, indexes: {} };
+  assert.deepEqual(kinds(['ALTER TABLE "a.b" DROP CONSTRAINT "c";', 'ALTER TABLE "a.b" ADD CONSTRAINT "c" UNIQUE ("x");'], collide), ["drop_constraint_unpaired"]);
+});
+
+test("the drizzle spelling of an index and PostgreSQL's rendering still agree for ordinary columns", () => {
+  assert.equal(parseIndexStatement('CREATE INDEX "i" ON "t" USING btree ("campaign_id","occurred_at" DESC)')?.canonical,
+    parseIndexStatement("CREATE INDEX i ON public.t USING btree (campaign_id, occurred_at DESC)")?.canonical);
+  assert.notEqual(parseIndexStatement('CREATE INDEX "i" ON "t" USING btree ("a b")')?.canonical, parseIndexStatement("CREATE INDEX i ON public.t USING btree (a)")?.canonical);
 });

@@ -78,6 +78,13 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
      Everything else is a finding: drops of tables/columns/enums/sequences/views/schemas, truncate/delete, column type changes, `DROP NOT NULL`,
      **`DISABLE` / `NO FORCE ROW LEVEL SECURITY`, `DROP/ALTER/CREATE POLICY`**, trigger disable/drop (append-only protections), `GRANT`/`REVOKE`/role
      and ownership changes, compound `ALTER TABLE` actions, multi-statement strings, and any statement not understood (`unrecognized_statement`).
+   * **Canonical forms keep meaning, not just text.** String literals are compared by their *value* and by how they were written: `E'\n'` is a
+     newline, `'\n'` is backslash + n (when `standard_conforming_strings` is on, which the guard reads from the server; if it is off or unknown an
+     ordinary literal containing a backslash is unprovable), `$$..$$` never processes backslashes, `E'\x41'` equals `E'A'`. Malformed escapes make the
+     whole expression unprovable. Quoted identifiers keep case and special characters (a quoted reserved word is not the keyword), two operator
+     characters are one operator only when written adjacent, and name lists / fact keys are JSON so a comma or dot in a name cannot pose as a
+     separator. Anything unprovable means *review*. A differential test checks the canonical form against PostgreSQL's own `=` on a table of
+     literal pairs.
    * **Defaults** are protection state (status, tier, role, payment state). `SET DEFAULT` is judged against the catalog: PostgreSQL itself renders
      both the current and the proposed default (the proposed one is parsed against the column's type on a throw-away temp table in a rolled-back
      transaction), and only the *identical* default re-applied is silent. A replaced default (`default_changed`), a default added where none existed

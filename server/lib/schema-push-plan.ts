@@ -27,7 +27,7 @@ export type PlanFindingKind =
 export type PlanFinding = { kind: PlanFindingKind; statement: string };
 
 /** Constraints that a post-push enforcement script reasserts after every push (see server/scripts/push-schema.ts): `schema.table.constraint`. */
-export const CONSTRAINTS_REASSERTED_AFTER_PUSH: readonly string[] = ["public.payouts.payouts_completed_transfer_check"];
+export const CONSTRAINTS_REASSERTED_AFTER_PUSH: readonly string[] = [JSON.stringify(["public", "payouts", "payouts_completed_transfer_check"])];
 
 export class SchemaPlanParseError extends Error {
   constructor(message: string) {
@@ -63,7 +63,12 @@ export function pgIdentifier(name: string): string {
  * Tokenizer
  * ------------------------------------------------------------------------------------------------------------- */
 
-export type Token = { k: "word" | "qid" | "str" | "num" | "p"; v: string; s: number; e: number };
+/**
+ * `lit` says HOW a string literal was written, because that decides what it means: `escape` = `E'...'` (backslash escapes are processed),
+ * `std` = an ordinary `'...'` (backslashes are literal when standard_conforming_strings is on, escapes when off), `dollar` = `$tag$...$tag$` (never
+ * processes anything). `v` is the text between the delimiters with only the delimiter-level doubling (`''`) undone.
+ */
+export type Token = { k: "word" | "qid" | "str" | "num" | "p"; v: string; s: number; e: number; lit?: "std" | "escape" | "dollar" };
 
 /** Letters (any non-ASCII character counts as one, as PostgreSQL treats high-bit bytes) and underscore start or continue an unquoted word. */
 const isWordStart = (char: string) => /[A-Za-z_]/.test(char) || char.charCodeAt(0) > 127;
@@ -105,7 +110,7 @@ function tokenize(sql: string): Token[] {
         if (sql[i] === "'") { if (sql[i + 1] === "'") { value += "'"; i += 2; continue; } i += 1; break; }
         value += sql[i]; i += 1;
       }
-      tokens.push({ k: "str", v: value, s, e: i });
+      tokens.push({ k: "str", v: value, s, e: i, lit: escapes ? "escape" : "std" });
       continue;
     }
     if (c === "$") {
@@ -114,7 +119,7 @@ function tokenize(sql: string): Token[] {
         const close = sql.indexOf(tag, i + tag.length);
         if (close === -1) fail("an unterminated dollar-quoted string");
         i = close + tag.length;
-        tokens.push({ k: "str", v: sql.slice(s + tag.length, close), s, e: i });
+        tokens.push({ k: "str", v: sql.slice(s + tag.length, close), s, e: i, lit: "dollar" });
         continue;
       }
     }
@@ -239,9 +244,83 @@ class Cursor {
   rest(): Token[] { const out = this.t.slice(this.i); this.i = this.t.length; return out; }
 }
 
-const tokenText = (token: Token) => (token.k === "str" ? `'${token.v}'` : token.v);
+/** How the target database reads ordinary string literals. `undefined` = unknown, which is treated as "cannot prove" wherever it matters. */
+export type CanonicalOptions = { standardConformingStrings?: boolean };
 
-/** A name list `a, b` inside parentheses, or null when it is anything else. */
+/** PostgreSQL's reserved and type/function-reserved words: a quoted identifier with one of these names is NOT the keyword and must stay quoted. */
+const RESERVED = new Set(("all analyse analyze and any array as asc asymmetric authorization binary both case cast check collate collation column concurrently constraint create cross " +
+  "current_catalog current_date current_role current_schema current_time current_timestamp current_user default deferrable desc distinct do else end except false fetch for foreign " +
+  "freeze from full grant group having ilike in initially inner intersect into is isnull join lateral leading left like limit localtime localtimestamp natural not notnull null offset " +
+  "on only or order outer overlaps placing primary references returning right select session_user similar some symmetric system_user table tablesample then to trailing true union " +
+  "unique user using variadic verbose when where window with").split(" "));
+
+/** The characters PostgreSQL operators are made of: two of them written without a gap are ONE operator (`<=`), with a gap they are not. */
+const OPERATOR_CHARACTERS = "+-*/<>=~!@#%^&|`?:";
+
+/**
+ * The value a string literal denotes, or null when it cannot be established. Escape strings (`E'...'`) are decoded with PostgreSQL's rules, so
+ * `E'\n'` (a newline) and `'\n'` (backslash, n) are different, while `E'\\n'` and `'\n'` (both backslash, n) are the same. An ordinary literal
+ * containing a backslash means different things depending on standard_conforming_strings, so it is only comparable when that setting is known.
+ */
+function literalValue(token: Token, options: CanonicalOptions): string | null {
+  if (token.lit === "dollar") return token.v;
+  if (token.lit === "escape" || (token.lit === "std" && options.standardConformingStrings === false)) return decodeEscapes(token.v);
+  if (token.v.includes("\\") && options.standardConformingStrings !== true) return null; // unknown setting: cannot prove what this means
+  return token.v;
+}
+
+/** PostgreSQL's backslash escapes inside E'...' (and inside ordinary literals when standard_conforming_strings is off). Null on anything invalid. */
+function decodeEscapes(raw: string): string | null {
+  let out = "";
+  for (let i = 0; i < raw.length; i += 1) {
+    const c = raw[i];
+    if (c !== "\\") { out += c; continue; }
+    i += 1;
+    const n = raw[i];
+    if (n === undefined) return null;
+    const simple: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+    if (n in simple) { out += simple[n]; continue; }
+    if (/[0-7]/.test(n)) {
+      let digits = n;
+      while (digits.length < 3 && /[0-7]/.test(raw[i + 1] ?? "")) { i += 1; digits += raw[i]; }
+      const code = parseInt(digits, 8);
+      if (code === 0 || code > 255) return null;
+      out += String.fromCharCode(code);
+      continue;
+    }
+    if (n === "x") {
+      let digits = "";
+      while (digits.length < 2 && /[0-9a-fA-F]/.test(raw[i + 1] ?? "")) { i += 1; digits += raw[i]; }
+      const code = parseInt(digits, 16);
+      if (digits === "" || code === 0 || code > 255) return null;
+      out += String.fromCharCode(code);
+      continue;
+    }
+    if (n === "u" || n === "U") {
+      const width = n === "u" ? 4 : 8;
+      const digits = raw.slice(i + 1, i + 1 + width);
+      if (!new RegExp(`^[0-9a-fA-F]{${width}}$`).test(digits)) return null;
+      const code = parseInt(digits, 16);
+      if (code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return null;
+      out += String.fromCodePoint(code);
+      i += width;
+      continue;
+    }
+    out += n; // any other backslashed character is that character (including \\ and \')
+  }
+  return out;
+}
+
+/** A canonical, comparable form of one token, or null when its meaning cannot be established. Quoted identifiers keep case and special characters. */
+function tokenText(token: Token, options: CanonicalOptions): string | null {
+  switch (token.k) {
+    case "str": { const value = literalValue(token, options); return value === null ? null : `s${JSON.stringify(value)}`; }
+    case "qid": return /^[a-z_][a-z0-9_$]*$/.test(token.v) && !RESERVED.has(token.v) ? token.v : `"${token.v.replace(/"/g, '""')}"`; // "foo" IS foo
+    default: return token.v;
+  }
+}
+
+/** A name list `a, b` inside parentheses (as a JSON array, so a name containing a comma cannot pose as two), or null when it is anything else. */
 function columnList(inner: Token[] | null): string | null {
   if (!inner || inner.length === 0) return null;
   const names: string[] = [];
@@ -250,19 +329,28 @@ function columnList(inner: Token[] | null): string | null {
     if (expectName) { if (token.k !== "word" && token.k !== "qid") return null; names.push(token.v); expectName = false; }
     else { if (token.k !== "p" || token.v !== ",") return null; expectName = true; }
   }
-  return expectName ? null : names.join(",");
+  return expectName ? null : JSON.stringify(names);
 }
 
-/** Token text with the default-schema prefix and redundant ASC removed, so drizzle's and PostgreSQL's spellings of one expression agree. */
-function normalizedTokens(tokens: Token[]): string {
-  const out: string[] = [];
+/**
+ * Token text with the default-schema prefix and redundant ASC removed, so drizzle's and PostgreSQL's spellings of one expression agree. Keeps what
+ * the SQL means: string literals by VALUE (and how they were written), quoted identifiers exactly, operators as one operator, and never joins
+ * tokens in a way that could read as something else. Null when any part cannot be established, so it can never be "equal" to anything.
+ */
+function normalizedTokens(tokens: Token[], options: CanonicalOptions): string | null {
+  let out = "";
+  let previous: Token | undefined;
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
     if (token.k === "word" && token.v === "public" && tokens[index + 1]?.k === "p" && tokens[index + 1].v === ".") { index += 1; continue; }
     if (token.k === "word" && token.v === "asc") continue;
-    out.push(tokenText(token));
+    const text = tokenText(token, options);
+    if (text === null) return null;
+    const glued = previous && previous.k === "p" && token.k === "p" && previous.e === token.s && OPERATOR_CHARACTERS.includes(previous.v) && OPERATOR_CHARACTERS.includes(token.v);
+    out += previous ? (glued ? text : ` ${text}`) : text;
+    previous = token;
   }
-  return out.join(" ");
+  return out;
 }
 
 const REFERENTIAL_ACTIONS = ["no action", "restrict", "cascade", "set null", "set default"];
@@ -273,7 +361,7 @@ const REFERENTIAL_ACTIONS = ["no action", "restrict", "cascade", "set null", "se
  * expressions are compared as normalized token text, which PostgreSQL's own re-rendering rarely reproduces: that is deliberate, an
  * unprovable CHECK replacement is reviewed.
  */
-export function canonicalConstraint(tokens: Token[] | string): string | null {
+export function canonicalConstraint(tokens: Token[] | string, options: CanonicalOptions = {}): string | null {
   const cursor = new Cursor(typeof tokens === "string" ? tokenize(tokens) : tokens);
   let head: string;
   if (cursor.eat("primary", "key")) {
@@ -316,24 +404,26 @@ export function canonicalConstraint(tokens: Token[] | string): string | null {
     }
     // The effective column set of a SET NULL / SET DEFAULT action: no list means ALL referencing columns, and a list is a set (order is
     // irrelevant, repeats are invalid). Listing every referencing column is therefore the same behaviour as listing none.
-    const referencing = columns.split(",");
+    const referencing: string[] = JSON.parse(columns);
     const effective = (action: Action): string | null => {
       if (action.action !== "set null" && action.action !== "set default") return action.action;
-      const listed = (action.columns ?? columns).split(",");
+      const listed: string[] = JSON.parse(action.columns ?? columns);
       if (new Set(listed).size !== listed.length) return null;
       const sortedListed = [...listed].sort();
       const sortedAll = [...referencing].sort();
       const all = sortedListed.length === sortedAll.length && sortedListed.every((name, index) => name === sortedAll[index]);
-      return `${action.action}(${all ? "*" : sortedListed.join(",")})`;
+      return `${action.action}(${all ? "*" : JSON.stringify(sortedListed)})`;
     };
     const deleteBehaviour = effective(onDelete);
     const updateBehaviour = effective(onUpdate);
     if (deleteBehaviour === null || updateBehaviour === null) return null;
-    head = `foreign_key|${columns}|${target.schema}.${target.name}(${targetColumns})|match:${match}|delete:${deleteBehaviour}|update:${updateBehaviour}`;
+    head = `foreign_key|${columns}|${JSON.stringify([target.schema, target.name])}(${targetColumns})|match:${match}|delete:${deleteBehaviour}|update:${updateBehaviour}`;
   } else if (cursor.eat("check")) {
     const expression = cursor.group();
     if (!expression) return null;
-    head = `check|${normalizedTokens(expression)}`;
+    const text = normalizedTokens(expression, options);
+    if (text === null) return null;
+    head = `check|${text}`;
     if (cursor.eat("no", "inherit")) head += "|no_inherit";
   } else {
     return null;
@@ -353,7 +443,7 @@ export function canonicalConstraint(tokens: Token[] | string): string | null {
 type IndexShape = { unique: boolean; name: string; schema: string; table: string; canonical: string | null };
 
 /** Parses `CREATE [UNIQUE] INDEX name ON [ONLY] table ...` (drizzle's text or `pg_get_indexdef`). Null when it is anything else. */
-export function parseIndexStatement(statement: string): IndexShape | null {
+export function parseIndexStatement(statement: string, options: CanonicalOptions = {}): IndexShape | null {
   const cursor = new Cursor(tokenize(statement).filter((token) => !(token.k === "p" && token.v === ";")));
   if (!cursor.eat("create")) return null;
   const unique = cursor.eat("unique");
@@ -364,21 +454,23 @@ export function parseIndexStatement(statement: string): IndexShape | null {
   cursor.eat("only");
   const table = cursor.qname();
   if (!table) return null;
-  const canonical = canonicalIndexBody(cursor, unique, table);
+  const canonical = canonicalIndexBody(cursor, unique, table, options);
   return { unique, name, schema: table.schema, table: table.name, canonical };
 }
 
-function canonicalIndexBody(cursor: Cursor, unique: boolean, table: { schema: string; name: string }): string | null {
+function canonicalIndexBody(cursor: Cursor, unique: boolean, table: { schema: string; name: string }, options: CanonicalOptions): string | null {
   const method = cursor.eat("using") ? cursor.name() : "btree";
   if (!method) return null;
   const elements = cursor.group();
   if (!elements || elements.length === 0) return null;
-  const parts = [`unique:${unique}`, `table:${table.schema}.${table.name}`, `method:${method}`, `columns:${normalizedTokens(elements)}`];
+  const columns = normalizedTokens(elements, options);
+  if (columns === null) return null;
+  const parts = [`unique:${unique}`, `table:${JSON.stringify([table.schema, table.name])}`, `method:${method}`, `columns:${columns}`];
   while (!cursor.done) {
-    if (cursor.eat("include")) { const inner = cursor.group(); if (!inner) return null; parts.push(`include:${normalizedTokens(inner)}`); }
-    else if (cursor.eat("with")) { const inner = cursor.group(); if (!inner) return null; parts.push(`with:${normalizedTokens(inner)}`); }
+    if (cursor.eat("include")) { const inner = cursor.group(); const text = inner && normalizedTokens(inner, options); if (!text) return null; parts.push(`include:${text}`); }
+    else if (cursor.eat("with")) { const inner = cursor.group(); const text = inner && normalizedTokens(inner, options); if (!text) return null; parts.push(`with:${text}`); }
     else if (cursor.eat("tablespace")) { if (cursor.name() === null) return null; parts.push("tablespace"); }
-    else if (cursor.eat("where")) { const predicate = cursor.rest(); if (predicate.length === 0) return null; parts.push(`where:${normalizedTokens(predicate)}`); }
+    else if (cursor.eat("where")) { const predicate = cursor.rest(); const text = predicate.length > 0 ? normalizedTokens(predicate, options) : null; if (!text) return null; parts.push(`where:${text}`); }
     else return null;
   }
   return parts.join("|");
@@ -407,7 +499,7 @@ function hasTopLevelComma(tokens: Token[]): boolean {
   return false;
 }
 
-function analyzeAlterTable(cursor: Cursor, source: string): Analysis {
+function analyzeAlterTable(cursor: Cursor, source: string, options: CanonicalOptions): Analysis {
   cursor.eat("if", "exists");
   cursor.eat("only");
   const table = cursor.qname();
@@ -419,7 +511,7 @@ function analyzeAlterTable(cursor: Cursor, source: string): Analysis {
     if (cursor.eat("constraint")) {
       const name = cursor.name();
       if (name === null) return unrecognized;
-      return { type: "add_constraint", schema: table.schema, table: table.name, name: pgIdentifier(name), canonical: canonicalConstraint(cursor.rest()) };
+      return { type: "add_constraint", schema: table.schema, table: table.name, name: pgIdentifier(name), canonical: canonicalConstraint(cursor.rest(), options) };
     }
     return safe; // ADD [COLUMN] ... / ADD PRIMARY KEY|UNIQUE|CHECK|FOREIGN KEY ...: purely additive
   }
@@ -456,14 +548,14 @@ function analyzeAlterTable(cursor: Cursor, source: string): Analysis {
   return unrecognized;
 }
 
-function analyzeStatement(statement: string): Analysis {
+function analyzeStatement(statement: string, options: CanonicalOptions = {}): Analysis {
   const tokens = tokenize(statement);
   while (tokens.length > 0 && tokens[tokens.length - 1].k === "p" && tokens[tokens.length - 1].v === ";") tokens.pop();
   if (tokens.some((token) => token.k === "p" && token.v === ";")) return unrecognized; // more than one statement in one string
   const cursor = new Cursor(tokens);
 
   if (cursor.eat("alter")) {
-    if (cursor.eat("table")) return analyzeAlterTable(cursor, statement);
+    if (cursor.eat("table")) return analyzeAlterTable(cursor, statement, options);
     if (cursor.eat("policy")) return finding("policy_altered");
     if (cursor.eat("type") && cursor.qname() && cursor.eat("add", "value")) return safe;
     return unrecognized;
@@ -475,7 +567,7 @@ function analyzeStatement(statement: string): Analysis {
       return cursor.group() && cursor.done ? safe : unrecognized;
     }
     if (cursor.isWord("unique") || cursor.isWord("index")) {
-      const parsed = parseIndexStatement(statement);
+      const parsed = parseIndexStatement(statement, options);
       return parsed ? { type: "create_index", schema: parsed.schema, table: parsed.table, name: pgIdentifier(parsed.name), canonical: parsed.canonical } : unrecognized;
     }
     if (cursor.eat("sequence")) { cursor.eat("if", "not", "exists"); return cursor.qname() ? safe : unrecognized; }
@@ -518,6 +610,8 @@ export type PlanCatalogFacts = {
   indexes: Record<string, string>;
   /** `columnFactKey(...)` -> what the catalog says about the column's default (see {@link ColumnDefaultFacts}). Absent key: not inspected. */
   defaults?: Record<string, ColumnDefaultFacts>;
+  /** The target database's `standard_conforming_strings` (how ordinary `'...'` literals treat backslashes). Absent: unknown, which makes such literals unprovable. */
+  standardConformingStrings?: boolean;
 };
 
 /**
@@ -527,9 +621,10 @@ export type PlanCatalogFacts = {
  */
 export type ColumnDefaultFacts = { current: string | null; proposed: string | null };
 
-export const constraintFactKey = (schema: string, table: string, name: string) => `${schema}.${table}.${name}`;
-export const indexFactKey = (schema: string, name: string) => `${schema}.${name}`;
-export const columnFactKey = (schema: string, table: string, column: string) => `${schema}.${table}.${column}`;
+// JSON keys: a name containing a dot cannot pose as a different schema/table/object.
+export const constraintFactKey = (schema: string, table: string, name: string) => JSON.stringify([schema, table, name]);
+export const indexFactKey = (schema: string, name: string) => JSON.stringify([schema, name]);
+export const columnFactKey = (schema: string, table: string, column: string) => JSON.stringify([schema, table, column]);
 
 /** The (schema, name) of a `DROP SEQUENCE x` statement, or null when the statement is anything else. */
 export function dropSequenceTarget(statement: string): { schema: string; name: string } | null {
@@ -565,7 +660,8 @@ const norm = (statement: string) => statement.replace(/\s+/g, " ").trim();
  * parse, the drop is reviewed. This preserves drizzle's identifier-truncation churn without letting a weaker or unrelated object stand in.
  */
 export function classifyPushPlan(statements: readonly string[], facts: PlanCatalogFacts = { constraints: {}, indexes: {} }): PlanFinding[] {
-  const analyses = statements.map((statement) => ({ statement: norm(statement), analysis: analyzeStatement(statement) }));
+  const canonicalOptions: CanonicalOptions = { standardConformingStrings: facts.standardConformingStrings };
+  const analyses = statements.map((statement) => ({ statement: norm(statement), analysis: analyzeStatement(statement, canonicalOptions) }));
   const addedConstraints = analyses.flatMap(({ analysis }) => (analysis.type === "add_constraint" ? [analysis] : []));
   const createdIndexes = analyses.flatMap(({ analysis }) => (analysis.type === "create_index" ? [analysis] : []));
   const usedAdds = new Set<unknown>();
@@ -578,7 +674,7 @@ export function classifyPushPlan(statements: readonly string[], facts: PlanCatal
       if (CONSTRAINTS_REASSERTED_AFTER_PUSH.includes(constraintFactKey(analysis.schema, analysis.table, analysis.name))) continue;
       const candidates = addedConstraints.filter((added) => added.schema === analysis.schema && added.table === analysis.table && added.name === analysis.name);
       const live = facts.constraints[constraintFactKey(analysis.schema, analysis.table, analysis.name)];
-      const before = live === undefined ? null : canonicalConstraint(live);
+      const before = live === undefined ? null : canonicalConstraint(live, canonicalOptions);
       const [only] = candidates;
       if (candidates.length === 1 && !usedAdds.has(only) && before !== null && before === only.canonical) usedAdds.add(only);
       else add("drop_constraint_unpaired", statement);
@@ -596,7 +692,7 @@ export function classifyPushPlan(statements: readonly string[], facts: PlanCatal
     }
     if (analysis.type === "drop_index") {
       const live = facts.indexes[indexFactKey(analysis.schema, analysis.name)];
-      const before = live === undefined ? null : parseIndexStatement(live);
+      const before = live === undefined ? null : parseIndexStatement(live, canonicalOptions);
       const candidates = createdIndexes.filter((created) => created.schema === analysis.schema && created.name === analysis.name);
       const [only] = candidates;
       if (before && before.canonical !== null && before.schema === analysis.schema && candidates.length === 1 && !usedAdds.has(only)

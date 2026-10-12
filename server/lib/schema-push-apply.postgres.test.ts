@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import pg from "pg";
 import { SchemaPushApplyError, applyReviewedPlan, catalogFingerprint, excludeProtectedSequences, readServerIdentity, sequenceProtection, type QueryClient } from "./schema-push-apply";
-import { ServerIdentityError, canonicalConstraint, classifyPushPlan, connectionTarget, planAcknowledgementToken } from "./schema-push-plan";
+import { ServerIdentityError, canonicalConstraint, classifyPushPlan, connectionTarget, parseIndexStatement, planAcknowledgementToken, type PlanCatalogFacts } from "./schema-push-plan";
 
 const candidates = [
   process.env.TEST_DATABASE_URL,
@@ -360,5 +360,68 @@ postgresTest("incomplete or ambiguous dependency inspection fails closed", async
     await assert.rejects(sequenceProtection(lying([{ owned: "t", identity: false, referenced: false }]), "public", "s"), /completely/);
     const broken: QueryClient = { query: async () => { throw new Error("catalog unavailable"); } };
     await assert.rejects(excludeProtectedSequences(broken, ['DROP SEQUENCE "public"."s";']), /catalog unavailable/, "an inspection error stops the push; the statement is never silently kept or dropped");
+  });
+});
+
+/* ------------------------------------------------ literal semantics, checked against PostgreSQL itself ------------------------------------------------ */
+
+postgresTest("canonical equality never claims two literals are equal when PostgreSQL says they differ (differential test against the server)", async () => {
+  await withDatabase(async (db) => {
+    const { rows: setting } = await db.query("SHOW standard_conforming_strings");
+    assert.equal(setting[0].standard_conforming_strings, "on", "precondition: the default");
+    const canon = (literal: string) => canonicalConstraint(`CHECK (x <> ${literal})`, { standardConformingStrings: true });
+    // SQL source text of each literal (a TS "\\n" is the two characters backslash and n, which is what the SQL text contains)
+    const pairs: [string, string][] = [
+      ["E'\\n'", "'\\n'"], ["E'\\n'", "E'\\t'"], ["E'\\n'", "E'\\\\n'"], ["E'\\x41'", "E'\\x42'"], ["E'A'", "E'\\x41'"], ["E'A'", "E'\\101'"],
+      ["E'A'", "E'\\u0041'"], ["E'A'", "E'\\U00000041'"], ["E'\\\\n'", "'\\n'"], ["E'\\z'", "E'z'"], ["E'\\''", "''''"], ["'it''s'", "E'it\\'s'"],
+      ["'it''s'", "$$it's$$"], ["'it''s'", "'its'"], ["$$a\\nb$$", "E'a\\\\nb'"], ["$$a\\nb$$", "E'a\\nb'"], ["$a$one$a$", "$b$one$b$"], ["$a$one$a$", "$a$two$a$"],
+      ["''''", "''"], ["E'\\b'", "E'\\f'"], ["E'\\r'", "E'\\n'"], ["'a'", "'a'"], ["''", "E''"],
+    ];
+    let equalClaims = 0;
+    for (const [a, b] of pairs) {
+      const { rows } = await db.query(`SELECT (${a}) = (${b}) AS equal`);
+      const claimed = canon(a) !== null && canon(a) === canon(b);
+      if (claimed) { equalClaims += 1; assert.equal(rows[0].equal, true, `canonical form claims ${a} == ${b} but PostgreSQL says they differ`); }
+      else assert.equal(rows[0].equal, false, `canonical form did not equate ${a} and ${b}, which PostgreSQL treats as equal`);
+    }
+    assert.ok(equalClaims >= 10, "legitimate equivalences are recognised");
+    // with standard_conforming_strings off an ordinary literal IS an escape string -- the case the canonical form refuses to guess
+    await db.query("SET standard_conforming_strings = off");
+    await db.query("SET escape_string_warning = off");
+    assert.equal((await db.query("SELECT ('\\n') = (E'\\n') AS equal")).rows[0].equal, true);
+    assert.equal(canonicalConstraint("CHECK (x <> '\\n')", { standardConformingStrings: false }), canonicalConstraint("CHECK (x <> E'\\n')", { standardConformingStrings: false }));
+    assert.equal(canonicalConstraint("CHECK (x <> '\\n')", {}), null);
+  });
+});
+
+postgresTest("PostgreSQL's own renderings of constraints and indexes with different escape semantics have different canonical forms", async () => {
+  await withDatabase(async (db) => {
+    await db.query("CREATE TABLE lit (a text, b text)");
+    const def = async (create: string, name: string, kind: "constraint" | "index") => {
+      await db.query(create);
+      const { rows } = await db.query(kind === "constraint" ? "SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = $1" : "SELECT pg_get_indexdef(indexrelid) AS d FROM pg_index WHERE indexrelid = $1::regclass", [name]);
+      return String(rows[0].d);
+    };
+    const options = { standardConformingStrings: true };
+    const checkNewline = await def("ALTER TABLE lit ADD CONSTRAINT c_nl CHECK (a <> E'\\n')", "c_nl", "constraint");
+    const checkBackslashN = await def("ALTER TABLE lit ADD CONSTRAINT c_bn CHECK (a <> '\\n')", "c_bn", "constraint");
+    assert.ok(canonicalConstraint(checkNewline, options) && canonicalConstraint(checkBackslashN, options), "PostgreSQL's renderings are understood");
+    assert.notEqual(canonicalConstraint(checkNewline, options), canonicalConstraint(checkBackslashN, options));
+    const partialNewline = await def("CREATE UNIQUE INDEX i_nl ON lit (a) WHERE (b <> E'\\n')", "i_nl", "index");
+    const partialBackslashN = await def("CREATE UNIQUE INDEX i_bn ON lit (a) WHERE (b <> '\\n')", "i_bn", "index");
+    const exprNewline = await def("CREATE INDEX x_nl ON lit ((a || E'\\n'))", "x_nl", "index");
+    const exprBackslashN = await def("CREATE INDEX x_bn ON lit ((a || '\\n'))", "x_bn", "index");
+    const idx = (definition: string) => parseIndexStatement(definition, options)?.canonical;
+    assert.ok(idx(partialNewline) && idx(partialBackslashN) && idx(exprNewline) && idx(exprBackslashN), "PostgreSQL's index renderings are understood");
+    assert.notEqual(idx(partialNewline), idx(partialBackslashN), "partial UNIQUE index");
+    assert.notEqual(idx(exprNewline), idx(exprBackslashN), "expression index");
+    // the classifier therefore reviews swapping one for the other, while an index compared with itself stays excused
+    const facts = (name: string, definition: string): PlanCatalogFacts => ({ constraints: {}, indexes: { [JSON.stringify(["public", name])]: definition }, standardConformingStrings: true });
+    const rename = (definition: string, name: string) => definition.replace(/INDEX \S+ ON public\./, `INDEX "${name}" ON "public".`);
+    const swap = (from: string, to: string, name: string) => classifyPushPlan([`DROP INDEX "${name}";`, `${rename(to, name)};`], facts(name, from)).map((item) => item.kind);
+    assert.deepEqual(swap(partialNewline, partialBackslashN, "i_nl"), ["drop_index_unpaired"]);
+    assert.deepEqual(swap(partialNewline, partialNewline, "i_nl"), []);
+    assert.deepEqual(swap(exprNewline, exprBackslashN, "x_nl"), ["drop_index_unpaired"]);
+    assert.deepEqual(swap(exprNewline, exprNewline, "x_nl"), []);
   });
 });

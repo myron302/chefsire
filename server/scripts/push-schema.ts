@@ -105,7 +105,9 @@ type ReviewedPlan = { toApply: string[]; findings: PlanFinding[]; token: string;
 /** Reads the live definition of every constraint/index the plan drops, so a replacement can be compared with what it replaces. */
 async function readCatalogFacts(client: pg.Client, statements: string[]): Promise<PlanCatalogFacts> {
   const needed = catalogLookupsNeeded(statements);
-  const facts: PlanCatalogFacts = { constraints: {}, indexes: {}, defaults: {} };
+  // How ordinary '...' literals read backslashes decides whether two expressions mean the same; unknown/unreadable stays undefined (unprovable).
+  const scs = (await client.query("SHOW standard_conforming_strings")).rows[0]?.standard_conforming_strings;
+  const facts: PlanCatalogFacts = { constraints: {}, indexes: {}, defaults: {}, standardConformingStrings: scs === "on" ? true : scs === "off" ? false : undefined };
   for (const { schema, table, name } of needed.constraints) {
     const { rows } = await client.query(
       `SELECT pg_get_constraintdef(c.oid) AS definition
