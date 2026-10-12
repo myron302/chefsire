@@ -84,13 +84,25 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
      whole expression unprovable. Quoted identifiers keep case and special characters (a quoted reserved word is not the keyword), two operator
      characters are one operator only when written adjacent, and name lists / fact keys are JSON so a comma or dot in a name cannot pose as a
      separator. Anything unprovable means *review*. A differential test checks the canonical form against PostgreSQL's own `=` on a table of
-     literal pairs.
+     literal pairs. Byte escapes (`\xHH`, `\ooo`) denote *bytes* read in the database encoding (`E'\xC3\xA9'` is one character in UTF-8, not the two of
+     `'Ã©'`), so only bytes below 0x80 are decoded; a byte escape >= 0x80 makes the expression unprovable (reviewed). `\u`/`\U` escapes are
+     encoding-independent and still compared.
    * **Name resolution.** Schema qualifiers are never stripped from expressions: `public.lower(x)` and `lower(x)` can be different functions (an
      unqualified name resolves through `pg_catalog` first, then `search_path`; PostgreSQL itself renders a name qualified exactly when the
      unqualified spelling would not resolve to the same object). The same holds for `OPERATOR(schema.op)`, `::schema.type` and `COLLATE`. A mismatch
      is reviewed, never assumed harmless, and a misplaced qualifier dot makes the expression unparseable (reviewed). Review and apply both run under a
      pinned `search_path = public` (`SET search_path` on the connection, `SET LOCAL` in the apply transaction), so a role-named schema (`"$user"`)
      or role-level setting cannot make the same statement text act on different objects than the ones that were reviewed.
+   * **Financial protections are never "restored later".** The payout CHECK `payouts_completed_transfer_check` is installed by the reviewed
+     migration (as `NOT VALID`, so legacy history is untouched) and cannot be declared in Drizzle, so every plan wants to drop it. It used to be
+     exempted because a script re-created it *after* the push committed: a window with no CHECK (the trigger `payouts_completed_transfer_trigger` kept
+     new rows honest, but the CHECK itself was gone), which never closed if the process died or the script failed. Now the drop is **removed from the
+     plan** when PostgreSQL renders the live constraint identically to the one the migration's expression produces (compared on a throw-away copy of the
+     table; validation state is ignored, a same-named weaker constraint is not accepted), so the very same constraint object stays throughout. Any other
+     drop of it, and any drop of **any** constraint or index the enforcement migrations install (the names are derived from the enforcement DDL, not
+     listed by hand), is `protected_object_dropped`: refused outright, **no token or `--force` can approve it**. Finally, the apply transaction
+     snapshots all protected constraints/indexes at BEGIN and re-checks them before COMMIT; any that vanished or changed definition rolls the
+     whole transaction back. Repair a wrong definition with the reviewed migration (`enforce-payout-integrity`), then push.
    * **Defaults** are protection state (status, tier, role, payment state). `SET DEFAULT` is judged against the catalog: PostgreSQL itself renders
      both the current and the proposed default (the proposed one is parsed against the column's type on a throw-away temp table in a rolled-back
      transaction), and only the *identical* default re-applied is silent. A replaced default (`default_changed`), a default added where none existed
@@ -109,6 +121,10 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
    policy, a different dropped definition) yields a different token, so an old token never authorises a changed plan. Exactly one well-formed
    current token is accepted; missing, empty, malformed, repeated or stale tokens and `--force` never are. A loopback database with a whole-word
    `test` in its name (and no remote `host`/`hostaddr` override) acknowledges implicitly.
+   **Stable under drizzle-kit's ordering noise.** drizzle-kit emits independent statements of one kind (dozens of `DROP CONSTRAINT` / `ADD CONSTRAINT ...
+   FOREIGN KEY`) in the physical row order of PostgreSQL's catalog, which shifts with unrelated DDL: the same plan came back permuted and the token flipped
+   (observed as an intermittent failure of the accept step). Adjacent statements of the same kind are therefore sorted for the token; the sequence of
+   kinds, every statement, and the position of every differently-kinded statement (`SET`/`DROP NOT NULL`, a foreign key vs the unique constraint it needs) still matter.
    **Server identity.** The scope is not a bare database name. It combines the cluster `system_identifier` (`pg_control_system()`), the database
    OID and name, and the connection target (`host:port` or socket directory; credentials, query string and database are never included, and nothing
    but the token is logged). It is read at review and re-read inside the apply transaction; a different answer aborts with nothing applied.
@@ -183,7 +199,10 @@ Honestly: yes. The guard exists because `drizzle-kit push` is a *state-diffing* 
 destroy or weaken something, and the result is ~1,300 lines of SQL tokenizing, catalog comparison and token logic that must itself be trusted. A
 statement-diffing tool cannot be made safe by adding classifiers; it can only be fenced.
 
-**Recommendation for production: do not run `db:push` / `db:push:accept` against Neon.** Synchronise production only with explicitly reviewed SQL
+**Recommendation for production: do not run `db:push` / `db:push:accept` against Neon. Treat it as disabled there.** Seven review passes found a new way
+the diff-and-fence approach could weaken a protection each time (RLS, replacement matching, NOT NULL, defaults, literals, qualification, a
+restore-after-commit gap); the next one should be assumed to exist. A production guard that refuses `db:push` unless an explicit, logged
+`ALLOW_PRODUCTION_SCHEMA_PUSH` break-glass is set would be a small, separate follow-up (not done here without approval). Synchronise production only with explicitly reviewed SQL
 migrations through the existing ledger (`npm run db:migrate`, `server/migrations/*.sql`, applied once, in a transaction, recorded in `_app_migrations`),
 generated or written offline, reviewed as ordinary diffs, and rehearsed on a restored copy first. Keep `db:push` for local and disposable databases,
 where the guard (and the implicit acknowledgement on `*_test*` loopback databases) makes it convenient. If a production push is ever unavoidable, treat

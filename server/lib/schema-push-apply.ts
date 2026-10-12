@@ -3,6 +3,7 @@
  * Takes any `pg`-style client (`query(text, values?)`), so it can be exercised against a disposable database without drizzle-kit.
  */
 import { createHash } from "node:crypto";
+import { assertProtectionsIntact, protectedSnapshot, ProtectionLostError, type ProtectedObjects } from "./schema-push-protected";
 import { buildServerIdentity, dropSequenceTarget, enumAdditionCount, enumAdditionHazards, ServerIdentityError, type ServerIdentity } from "./schema-push-plan";
 
 export type QueryClient = { query: (text: string, values?: unknown[]) => Promise<{ rows: any[] }> };
@@ -84,6 +85,12 @@ export async function applyReviewedPlan(
   plannedFingerprint: string,
   /** The server identity the plan was reviewed on, and how to read the identity of the connection that will apply it. */
   identity?: { planned: string; target: string },
+  /**
+   * Protections installed by the reviewed enforcement migrations. When given, the transaction proves BEFORE COMMIT that every one that existed when
+   * it began still exists with an identical definition; otherwise it rolls back. So no plan can commit a state without them, whatever a later script
+   * would restore, and there is no commit boundary between a removal and a restoration.
+   */
+  protections?: ProtectedObjects,
 ): Promise<void> {
   const hazards = enumAdditionHazards(statements);
   if (hazards.length > 0) {
@@ -111,7 +118,9 @@ export async function applyReviewedPlan(
     }
     // The connection that applies must be the server that was reviewed (a failover, a re-pointed alias or a different endpoint would not be).
     if (identity && (await readServerIdentity(client, identity.target)).id !== identity.planned) throw new IdentityChangedError();
+    const before = protections ? await protectedSnapshot(client, protections) : null;
     for (const statement of statements) await client.query(statement);
+    if (protections && before) assertProtectionsIntact(before, await protectedSnapshot(client, protections));
     committing = true;
     await client.query("COMMIT");
   } catch (error) {
@@ -124,6 +133,8 @@ export async function applyReviewedPlan(
     const outcome: ApplyOutcome = rolledBack && known ? "rolled_back" : "state_unknown";
     const reason = error instanceof DriftError
       ? "The database schema changed between planning and applying the push; re-run to review a fresh plan."
+      : error instanceof ProtectionLostError
+      ? error.message
       : error instanceof IdentityChangedError
       ? "The server identity changed between review and apply (a different server or database answered); nothing was applied. Re-run to review a fresh plan."
       : `${(error as Error).message}`;

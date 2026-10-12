@@ -230,6 +230,39 @@ postgresTest("push never drops undeclared tables, refuses destructive plans with
     assert.equal(await dailyDefault(), "8", "the reviewed default was applied");
     assert.equal(pushSchema(databaseUrl).status, 0, "re-applying the identical default is silent");
 
+    // 3f. The payout CHECK is a financial protection. A routine push must keep THE SAME constraint object (never drop-and-restore after a commit),
+    //     and a same-named weaker constraint must be refused outright -- no acknowledgement token or --force can approve a plan that drops it.
+    const payoutCheck = async () => (await db.query("SELECT oid::int AS oid, pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'payouts_completed_transfer_check' AND conrelid = 'payouts'::regclass")).rows;
+    const [payoutBefore] = await payoutCheck();
+    assert.ok(payoutBefore, "the post-push enforcement installed it during bootstrap");
+    const routine = pushSchema(databaseUrl);
+    assert.equal(routine.status, 0, routine.output.slice(-1500));
+    assert.deepEqual(await payoutCheck(), [payoutBefore], "same oid and definition: it was never dropped");
+    assert.match(routine.output, /keeping the payout CHECK in place instead of dropping it|no changes detected|applied in one transaction/);
+    await db.query("ALTER TABLE payouts DROP CONSTRAINT payouts_completed_transfer_check");
+    await db.query("ALTER TABLE payouts ADD CONSTRAINT payouts_completed_transfer_check CHECK (status <> 'completed' OR provider_payout_id IS NOT NULL) NOT VALID");
+    const [payoutWeak] = await payoutCheck();
+    const weakPush = pushSchema(databaseUrl);
+    assert.equal(weakPush.status, 1, weakPush.output.slice(-1500));
+    assert.match(weakPush.output, /cannot be approved/);
+    assert.match(weakPush.output, /\[protected_object_dropped\] ALTER TABLE "payouts" DROP CONSTRAINT "payouts_completed_transfer_check"/);
+    assert.doesNotMatch(weakPush.output, /invariants verified/, "refused before any pre-push script");
+    assert.deepEqual(await payoutCheck(), [payoutWeak], "untouched");
+    const offered = /--accept-plan=([0-9a-f]{32})/.exec(weakPush.output)?.[1];
+    assert.equal(offered, undefined, "no token is even offered");
+    assert.equal(pushSchema(databaseUrl, ["--force", `--accept-plan=${"0".repeat(32)}`]).status, 1);
+    assert.deepEqual(await payoutCheck(), [payoutWeak]);
+    // the reviewed enforcement migration is how a wrong definition is repaired; then pushes go through again
+    await db.query("ALTER TABLE payouts DROP CONSTRAINT payouts_completed_transfer_check");
+    const repaired = spawnSync("npx", ["tsx", "server/scripts/enforce-payout-integrity.ts"], { cwd: ROOT, env: { ...process.env, DATABASE_URL: databaseUrl }, encoding: "utf8", timeout: 120_000 });
+    assert.equal(repaired.status, 0, repaired.stderr);
+    const [payoutRepaired] = await payoutCheck();
+    assert.equal(payoutRepaired.def, payoutBefore.def, "restored by the reviewed migration, identical to the required definition");
+    const afterRepair = pushSchema(databaseUrl);
+    assert.equal(afterRepair.status, 0, afterRepair.output.slice(-1500));
+    assert.deepEqual(await payoutCheck(), [payoutRepaired]);
+    assert.equal((await db.query("SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'payouts_completed_transfer_trigger'")).rows[0].n, 1, "the trigger protection never left");
+
     // 4. A destructive plan against a DECLARED table is refused, applies nothing, and names a plan-specific token.
     await db.query("ALTER TABLE users ADD COLUMN reviewed_later integer");
     const refused = pushSchema(databaseUrl);

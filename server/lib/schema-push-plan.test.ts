@@ -15,6 +15,8 @@ import {
   columnFactKey,
   connectionTarget,
   dropSequenceTarget,
+  droppedConstraint,
+  hardRefusals,
   ServerIdentityError,
   weakIdentityBlocksApproval,
   enumAdditionCount,
@@ -188,10 +190,36 @@ test("a dropped constraint with no live definition, an unparseable definition, o
   assert.deepEqual(kinds(['ALTER TABLE "payouts" DROP CONSTRAINT "payouts_amount_check";']), ["drop_constraint_unpaired"]);
 });
 
-test("the one CHECK that push-schema.ts reasserts after every push is the only allowed drift-drop, and only on its own table", () => {
-  assert.deepEqual(kinds(['ALTER TABLE "payouts" DROP CONSTRAINT "payouts_completed_transfer_check";']), []);
-  assert.deepEqual(kinds(['ALTER TABLE "public"."payouts" DROP CONSTRAINT "payouts_completed_transfer_check";']), []);
-  assert.deepEqual(kinds(['ALTER TABLE "orders" DROP CONSTRAINT "payouts_completed_transfer_check";']), ["drop_constraint_unpaired"]);
+test("the payout CHECK is a protection that a push may never drop, however the statement is spelled; only a provably identical replacement is excused", () => {
+  for (const statement of [
+    'ALTER TABLE "payouts" DROP CONSTRAINT "payouts_completed_transfer_check";',
+    'ALTER TABLE "public"."payouts" DROP CONSTRAINT "payouts_completed_transfer_check";',
+    'alter table only payouts drop constraint if exists payouts_completed_transfer_check',
+  ]) {
+    assert.deepEqual(kinds([statement]), ["protected_object_dropped"], statement);
+    assert.equal(hardRefusals(classifyPushPlan([statement])).length, 1, "and no acknowledgement token lifts it");
+  }
+  assert.deepEqual(kinds(['ALTER TABLE "orders" DROP CONSTRAINT "payouts_completed_transfer_check";']), ["drop_constraint_unpaired"], "only on its own table");
+  assert.deepEqual(kinds(['ALTER TABLE "payouts" DROP CONSTRAINT "payouts_amount_check";']), ["drop_constraint_unpaired"]);
+  // dropped and re-added with a provably identical definition inside the same plan (so inside one transaction): not a removal
+  const key = constraintFactKey("public", "payouts", "payouts_completed_transfer_check");
+  const same = { constraints: { [key]: "CHECK (status <> 'completed' OR processed_at IS NOT NULL)" }, indexes: {}, standardConformingStrings: true } as PlanCatalogFacts;
+  const drop = 'ALTER TABLE "payouts" DROP CONSTRAINT "payouts_completed_transfer_check";';
+  assert.deepEqual(kinds([drop, 'ALTER TABLE "payouts" ADD CONSTRAINT "payouts_completed_transfer_check" CHECK (status <> \'completed\' OR processed_at IS NOT NULL);'], same), []);
+  assert.deepEqual(kinds([drop, 'ALTER TABLE "payouts" ADD CONSTRAINT "payouts_completed_transfer_check" CHECK (status <> \'completed\');'], same), ["protected_object_dropped"], "a same-named weaker constraint is not a replacement");
+  assert.deepEqual(kinds([drop], same), ["protected_object_dropped"]);
+});
+
+test("every protection the enforcement migrations install is refused when dropped (names supplied from the enforcement DDL)", () => {
+  const facts: PlanCatalogFacts = {
+    constraints: {}, indexes: {},
+    protectedConstraints: [constraintFactKey("public", "orders", "orders_inventory_status_check")],
+    protectedIndexes: [indexFactKey("public", "commissions_order_uidx")],
+  };
+  assert.deepEqual(kinds(['ALTER TABLE "orders" DROP CONSTRAINT "orders_inventory_status_check";'], facts), ["protected_object_dropped"]);
+  assert.deepEqual(kinds(['DROP INDEX "commissions_order_uidx";'], facts), ["protected_object_dropped"]);
+  assert.deepEqual(kinds(['DROP INDEX "some_other_index";'], facts), ["drop_index_unpaired"], "ordinary indexes keep the reviewable path");
+  assert.deepEqual(kinds(['ALTER TABLE "orders" DROP CONSTRAINT "unrelated_check";'], facts), ["drop_constraint_unpaired"]);
 });
 
 const INDEX_DB = "CREATE INDEX creator_campaign_rollout_timeline_events_campaign_occurred_at_i ON public.creator_campaign_rollout_timeline_events USING btree (campaign_id, occurred_at)";
@@ -929,4 +957,80 @@ test("ambiguous or unparseable expressions fail closed", () => {
   }
   assert.ok(kinds([dropCheck, addCheck("(lower(email) = 'a'")], checkFacts("(lower(email) = 'a')")).includes("drop_constraint_unpaired"), "an unbalanced replacement does not excuse the drop");
   assert.notDeepEqual(kinds([dropCheck, addCheck("(public.)")], checkFacts("(public.)")), [], "an unparseable expression is never excused, even against itself");
+});
+
+/* ------------------------------------------------ byte escapes depend on the database encoding ------------------------------------------------ */
+
+test("non-ASCII byte escapes are never decoded into code points: E'\\xC3\\xA9' (one character in a UTF-8 database) is not 'Ã©' (two)", () => {
+  assert.equal(check("x <> E'\\xC3\\xA9'"), null, "hex bytes >= 0x80: unprovable");
+  assert.equal(check("x <> E'\\303\\251'"), null, "octal bytes >= 0x80: unprovable");
+  assert.equal(check("x <> E'\\x80'"), null);
+  assert.equal(check("x <> E'a\\xff'"), null);
+  assert.equal(check("x <> E'\\377'"), null);
+  assert.notEqual(check("x <> E'\\xC3\\xA9'"), check("x <> 'Ã©'"), "the mojibake text never equals the byte escapes");
+  assert.notEqual(check("x <> E'\\303\\251'"), check("x <> 'Ã©'"));
+  assert.notEqual(check("x <> E'\\xC3\\xA9'"), check("x <> E'\\u00c3\\u00a9'"));
+  assert.notEqual(check("x <> E'\\xC3\\xA9'"), check("x <> 'é'"), "and an unproven escape is not equated with the decoded text either (a missed equivalence is reviewed, never assumed)");
+  // identical unprovable literals do not become equal to each other: unprovable is unprovable
+  assert.equal(check("x <> E'\\xC3\\xA9'") === check("x <> E'\\xC3\\xA9'"), true, "both null");
+  assert.equal(check("x <> E'\\xC3\\xA9'") === null, true);
+});
+
+test("code-point escapes need no encoding and are still compared; ASCII byte escapes are unchanged", () => {
+  assert.equal(check("x <> E'\\u00e9'"), check("x <> 'é'"));
+  assert.equal(check("x <> E'\\U000000e9'"), check("x <> 'é'"));
+  assert.equal(check("x <> E'\\u00c3\\u00a9'"), check("x <> 'Ã©'"));
+  assert.notEqual(check("x <> E'\\u00e9'"), check("x <> E'\\u00c3\\u00a9'"));
+  assert.equal(check("x <> E'\\x41'"), check("x <> 'A'"));
+  assert.equal(check("x <> E'\\101'"), check("x <> 'A'"));
+  assert.equal(check("x <> E'\\x7f'"), check("x <> E'\\177'"));
+  assert.notEqual(check("x <> E'\\x41'"), check("x <> E'\\x42'"));
+  assert.equal(check("x <> E'\\n\\t'"), check("x <> E'\\x0a\\x09'"));
+});
+
+test("malformed and incomplete byte sequences fail closed", () => {
+  for (const bad of ["E'\\x'", "E'\\xZ1'", "E'\\x0'", "E'\\x00'", "E'\\0'", "E'\\000'", "E'\\400'", "E'\\C3'"]) {
+    const value = check(`x <> ${bad}`);
+    if (bad === "E'\\C3'") assert.notEqual(value, null, "an unknown escape is the character itself");
+    else assert.equal(value, null, bad);
+  }
+});
+
+test("replacements whose byte-escape semantics may differ require review (CHECK, partial UNIQUE index, expression index)", () => {
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> 'Ã©')")], checkFacts("(x <> E'\\xC3\\xA9')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\xC3\\xA9')")], checkFacts("(x <> 'Ã©')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\xC3\\xA9')")], checkFacts("(x <> E'\\xC3\\xA9')")), ["drop_constraint_unpaired"], "even identical: not provable, so reviewed");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\x41')")], checkFacts("(x <> 'A')")), [], "ASCII escapes: still excused when provably identical");
+  const live = (tail: string) => `CREATE UNIQUE INDEX i ON public.t USING btree ${tail}`;
+  const create = (tail: string) => `CREATE UNIQUE INDEX "i" ON "t" USING btree ${tail};`;
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> 'Ã©')")], indexFacts(live("(a) WHERE (b <> E'\\xC3\\xA9')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> E'\\303\\251')")], indexFacts(live("(a) WHERE (b <> E'\\303\\251')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((a || 'Ã©'))")], indexFacts(live("((a || E'\\xC3\\xA9'))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((a || E'\\x41'))")], indexFacts(live("((a || 'A'))"))), [], "ASCII: unaffected");
+  assert.deepEqual(kinds([dropIndex, create('("a", "b")')], indexFacts(live("(a, b)"))), []);
+});
+
+/* ------------------------------------------------ token stability under drizzle-kit's catalog-order permutations ------------------------------------------------ */
+
+test("the token does not flip when drizzle-kit permutes interchangeable statements, but still binds everything that matters", () => {
+  const dropFkOn = (table: string) => `ALTER TABLE "${table}" DROP CONSTRAINT "${table}_fk";`;
+  const addFkOn = (table: string) => `ALTER TABLE "${table}" ADD CONSTRAINT "${table}_fk" FOREIGN KEY ("x") REFERENCES "public"."p"("id");`;
+  const danger = 'ALTER TABLE "users" ALTER COLUMN "password" DROP NOT NULL;';
+  const plan = [danger, dropFkOn("a"), dropFkOn("b"), dropFkOn("c"), addFkOn("a"), addFkOn("b"), addFkOn("c")];
+  const base = token(plan);
+  // adjacent statements of one kind may come back in any order (the catalog's physical row order shifts with unrelated DDL)
+  assert.equal(token([danger, dropFkOn("b"), dropFkOn("a"), dropFkOn("c"), addFkOn("c"), addFkOn("a"), addFkOn("b")]), base);
+  assert.equal(token([danger, dropFkOn("c"), dropFkOn("b"), dropFkOn("a"), addFkOn("b"), addFkOn("c"), addFkOn("a")]), base);
+  // ... but nothing else is interchangeable
+  assert.notEqual(token([danger, addFkOn("a"), addFkOn("b"), addFkOn("c"), dropFkOn("a"), dropFkOn("b"), dropFkOn("c")]), base, "drops after adds");
+  assert.notEqual(token([dropFkOn("a"), dropFkOn("b"), dropFkOn("c"), danger, addFkOn("a"), addFkOn("b"), addFkOn("c")]), base, "a differently-kinded statement moved");
+  assert.notEqual(token([danger, dropFkOn("a"), dropFkOn("b"), addFkOn("a"), addFkOn("b"), addFkOn("c")]), base, "a statement removed");
+  assert.notEqual(token([...plan, 'ALTER TABLE "t" ADD COLUMN "z" text;']), base, "a statement added");
+  assert.notEqual(token([danger, dropFkOn("a"), dropFkOn("b"), dropFkOn("d"), addFkOn("a"), addFkOn("b"), addFkOn("c")]), base, "a statement changed");
+  // statements of different kinds that happen to touch the same column keep their order
+  const setNotNull = 'ALTER TABLE "t" ALTER COLUMN "c" SET NOT NULL;';
+  const dropNotNull = 'ALTER TABLE "t" ALTER COLUMN "c" DROP NOT NULL;';
+  assert.notEqual(token([setNotNull, dropNotNull]), token([dropNotNull, setNotNull]), "SET then DROP NOT NULL is not DROP then SET");
+  const addUnique = 'ALTER TABLE "t" ADD CONSTRAINT "u" UNIQUE ("c");';
+  assert.notEqual(token([addFkOn("a"), addUnique]), token([addUnique, addFkOn("a")]), "a foreign key may depend on a unique constraint added before it");
 });

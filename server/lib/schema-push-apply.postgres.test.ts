@@ -490,3 +490,33 @@ postgresTest("the apply transaction pins search_path, so a role-named schema can
     assert.equal((await db.query("SHOW search_path")).rows[0].search_path !== "public", true, "SET LOCAL ended with the transaction");
   });
 });
+
+postgresTest("byte escapes are read in the database encoding, so the canonical form refuses to decide them (differential test against the server)", async () => {
+  await withDatabase(async (db) => {
+    const { rows } = await db.query("SHOW server_encoding");
+    if (rows[0].server_encoding !== "UTF8") return; // the claim below is about a UTF-8 database
+    const canon = (literal: string) => canonicalConstraint(`CHECK (x <> ${literal})`, { standardConformingStrings: true });
+    const sqlEqual = async (a: string, b: string) => (await db.query(`SELECT (${a}) = (${b}) AS equal`)).rows[0].equal as boolean;
+    // PostgreSQL: E'\xC3\xA9' is ONE character (e-acute); 'Ã©' is TWO. They differ, and the canonical form must not call them equal.
+    assert.equal(await sqlEqual("E'\\xC3\\xA9'", "'Ã©'"), false);
+    assert.equal(await sqlEqual("E'\\303\\251'", "'Ã©'"), false);
+    assert.equal(await sqlEqual("E'\\xC3\\xA9'", "'é'"), true, "the server DOES treat the byte escapes as the character");
+    for (const [a, b] of [["E'\\xC3\\xA9'", "'Ã©'"], ["E'\\303\\251'", "'Ã©'"], ["E'\\xC3\\xA9'", "E'\\u00c3\\u00a9'"]]) {
+      assert.ok(canon(a) === null || canon(a) !== canon(b), `${a} vs ${b} must not be called equal`);
+    }
+    // ... and it does not call the (genuinely equal) escaped and decoded forms equal either: unproven means reviewed, never assumed
+    assert.equal(canon("E'\\xC3\\xA9'"), null);
+    // code-point escapes ARE encoding independent, and agree with the server
+    assert.equal(await sqlEqual("E'\\u00e9'", "'é'"), true);
+    assert.equal(canon("E'\\u00e9'"), canon("'é'"));
+    assert.equal(await sqlEqual("E'\\u00c3\\u00a9'", "'Ã©'"), true);
+    assert.equal(canon("E'\\u00c3\\u00a9'"), canon("'Ã©'"));
+    assert.equal(await sqlEqual("E'\\u00e9'", "E'\\u00c3\\u00a9'"), false);
+    assert.notEqual(canon("E'\\u00e9'"), canon("E'\\u00c3\\u00a9'"));
+    // ASCII byte escapes keep agreeing with the server
+    for (const [a, b] of [["E'\\x41'", "'A'"], ["E'\\101'", "'A'"], ["E'\\x7f'", "E'\\177'"], ["E'\\x0a'", "E'\\n'"]]) {
+      assert.equal(await sqlEqual(a, b), true);
+      assert.equal(canon(a), canon(b), `${a} == ${b}`);
+    }
+  });
+});

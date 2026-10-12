@@ -1,6 +1,7 @@
 import "../lib/load-env";
 import { spawnSync } from "node:child_process";
 import pg from "pg";
+import { preserveRequiredPayoutCheck, protectedObjects } from "../lib/schema-push-protected";
 import { applyReviewedPlan, catalogFingerprint, excludeProtectedSequences, readServerIdentity, SchemaPushApplyError, ENUM_GUIDANCE } from "../lib/schema-push-apply";
 import {
   catalogLookupsNeeded,
@@ -10,6 +11,8 @@ import {
   enumAdditionHazards,
   interpretDryRun,
   constraintFactKey,
+  droppedConstraint,
+  hardRefusals,
   indexFactKey,
   isDisposableTestDatabase,
   isPlanAcknowledged,
@@ -24,6 +27,7 @@ if (!process.env.DATABASE_URL?.trim()) throw new Error("DATABASE_URL is required
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const databaseUrl = process.env.DATABASE_URL!.trim();
+const PROTECTIONS = protectedObjects();
 const run = (args: string[]) => {
   const result = spawnSync(npm, args, {
     stdio: "inherit",
@@ -171,11 +175,29 @@ async function reviewPlan(client: pg.Client, statements: string[], catalog: stri
   }
   // A sequence a table still needs (SERIAL/BIGSERIAL ownership or default, GENERATED AS IDENTITY) is never dropped: drizzle-kit wants to drop the
   // sequences of tables it does not declare. They are removed from the plan here, before classification, hashing and execution.
-  const { toApply, skipped } = await excludeProtectedSequences(client, statements);
+  const { toApply: afterSequences, skipped } = await excludeProtectedSequences(client, statements);
   for (const item of skipped) console.warn(`Schema push: leaving sequence "${item.schema}"."${item.name}" in place (${item.reasons.join("; ")}).`);
-  // The token commits to the plan that will actually run (after the sequence exclusions above), not just to what was flagged.
+  // The payout CHECK is not declared in the Drizzle schema (it is NOT VALID), so every plan wants to drop it. It is NEVER dropped: when the live
+  // constraint is exactly the required one the drop is removed from the plan; anything else is refused below. Restoring it after COMMIT is not an option.
+  const preservation = await preserveRequiredPayoutCheck(client, afterSequences, (statement) => {
+    const dropped = droppedConstraint(statement);
+    return dropped !== null && dropped.schema === "public" && dropped.table === "payouts" && dropped.name === "payouts_completed_transfer_check";
+  });
+  for (const statement of preservation.preserved) console.warn(`Schema push: keeping the payout CHECK in place instead of dropping it (${statement}).`);
+  const toApply = preservation.toApply;
+  // The token commits to the plan that will actually run (after the exclusions above), not just to what was flagged.
   const facts = await readCatalogFacts(client, toApply);
+  facts.protectedConstraints = PROTECTIONS.constraints;
+  facts.protectedIndexes = PROTECTIONS.indexes;
   const findings = classifyPushPlan(toApply, facts);
+  const hard = hardRefusals(findings);
+  if (hard.length > 0) {
+    console.error("Schema push REFUSED (this cannot be approved): the plan removes a protection installed by the reviewed enforcement migrations.");
+    for (const item of hard) console.error(`  [${item.kind}] ${item.statement}`);
+    console.error("\nNothing was applied. Such a protection is never dropped and restored later (a commit in between would leave it missing). Restore the required");
+    console.error("definition through the reviewed enforcement script (server/scripts/enforce-*.ts), then run the push again.");
+    process.exit(1);
+  }
   // The approval is scoped to the SERVER (cluster identifier when readable, database OID and name, connection target), not just a database name.
   // Only a plan that needs approval needs an identity; a routine plan is never blocked by an identity that cannot be established.
   // Disposable test databases acknowledge implicitly and need no identity either.
@@ -237,7 +259,7 @@ async function guardedPush() {
     if (!isAcknowledged(plan)) refuse(plan, "Nothing was applied by the schema push (pre-push scripts had already run; they are idempotent).");
 
     try {
-      await applyReviewedPlan(client, plan.toApply, planned, plan.identity ? { planned: plan.identity.id, target: connectionTarget(databaseUrl) } : undefined);
+      await applyReviewedPlan(client, plan.toApply, planned, plan.identity ? { planned: plan.identity.id, target: connectionTarget(databaseUrl) } : undefined, PROTECTIONS);
     } catch (error) {
       if (error instanceof SchemaPushApplyError) {
         if (error.outcome === "nothing_applied") console.error("Schema push refused; nothing was applied.");

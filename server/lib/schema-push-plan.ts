@@ -22,12 +22,27 @@ export type PlanFindingKind =
   | "drop_constraint_unpaired" | "drop_index_unpaired"
   | "rls_disabled" | "rls_no_force" | "policy_dropped" | "policy_altered" | "policy_created"
   | "trigger_disabled" | "trigger_dropped"
+  | "protected_object_dropped"
   | "unrecognized_statement";
 
 export type PlanFinding = { kind: PlanFindingKind; statement: string };
 
-/** Constraints that a post-push enforcement script reasserts after every push (see server/scripts/push-schema.ts): `schema.table.constraint`. */
-export const CONSTRAINTS_REASSERTED_AFTER_PUSH: readonly string[] = [JSON.stringify(["public", "payouts", "payouts_completed_transfer_check"])];
+/**
+ * Protections that the enforcement migrations install and a post-push script used to "restore" AFTER the push had committed. A push may never
+ * remove one: the window between commit and restoration is a window without a financial protection, and it never closes if the process dies.
+ * (`constraintFactKey` form.) More are supplied from the enforcement DDL itself (`PlanCatalogFacts.protectedConstraints`); this is the minimum.
+ */
+export const ALWAYS_PROTECTED_CONSTRAINTS: readonly string[] = [JSON.stringify(["public", "payouts", "payouts_completed_transfer_check"])];
+
+/** Findings that no acknowledgement token can lift: the plan must not run at all. */
+export const NON_ACKNOWLEDGEABLE_KINDS: readonly PlanFindingKind[] = ["protected_object_dropped"];
+export const hardRefusals = (findings: readonly PlanFinding[]) => findings.filter((item) => NON_ACKNOWLEDGEABLE_KINDS.includes(item.kind));
+
+/** The constraint a `ALTER TABLE ... DROP CONSTRAINT x` statement drops, or null when the statement is anything else. */
+export function droppedConstraint(statement: string): { schema: string; table: string; name: string } | null {
+  const analysis = analyzeStatement(statement);
+  return analysis.type === "drop_constraint" ? { schema: analysis.schema, table: analysis.table, name: analysis.name } : null;
+}
 
 export class SchemaPlanParseError extends Error {
   constructor(message: string) {
@@ -269,7 +284,14 @@ function literalValue(token: Token, options: CanonicalOptions): string | null {
   return token.v;
 }
 
-/** PostgreSQL's backslash escapes inside E'...' (and inside ordinary literals when standard_conforming_strings is off). Null on anything invalid. */
+/**
+ * PostgreSQL's backslash escapes inside E'...' (and inside ordinary literals when standard_conforming_strings is off). Null on anything invalid.
+ *
+ * Byte escapes (`\xHH`, `\ooo`) denote BYTES that PostgreSQL then reads in the database's encoding: in a UTF-8 database `E'\xC3\xA9'` is the single
+ * character U+00E9, not the two characters U+00C3 U+00A9 that `'Ã©'` is. Only bytes below 0x80 mean the same thing in every ASCII-compatible
+ * encoding, so only those are decoded; a byte escape of 0x80 or above makes the literal unprovable (and so the expression is reviewed) rather than
+ * guessing an encoding. `\u`/`\U` name code points directly and need no encoding.
+ */
 function decodeEscapes(raw: string): string | null {
   let out = "";
   for (let i = 0; i < raw.length; i += 1) {
@@ -284,7 +306,7 @@ function decodeEscapes(raw: string): string | null {
       let digits = n;
       while (digits.length < 3 && /[0-7]/.test(raw[i + 1] ?? "")) { i += 1; digits += raw[i]; }
       const code = parseInt(digits, 8);
-      if (code === 0 || code > 255) return null;
+      if (code === 0 || code > 127) return null; // see below: only ASCII bytes have a meaning independent of the database encoding
       out += String.fromCharCode(code);
       continue;
     }
@@ -292,7 +314,7 @@ function decodeEscapes(raw: string): string | null {
       let digits = "";
       while (digits.length < 2 && /[0-9a-fA-F]/.test(raw[i + 1] ?? "")) { i += 1; digits += raw[i]; }
       const code = parseInt(digits, 16);
-      if (digits === "" || code === 0 || code > 255) return null;
+      if (digits === "" || code === 0 || code > 127) return null;
       out += String.fromCharCode(code);
       continue;
     }
@@ -621,6 +643,9 @@ export type PlanCatalogFacts = {
   indexes: Record<string, string>;
   /** `columnFactKey(...)` -> what the catalog says about the column's default (see {@link ColumnDefaultFacts}). Absent key: not inspected. */
   defaults?: Record<string, ColumnDefaultFacts>;
+  /** `constraintFactKey(...)` / `indexFactKey(...)` of protections installed by the enforcement migrations (see schema-push-protected.ts). Dropping one is refused outright. */
+  protectedConstraints?: string[];
+  protectedIndexes?: string[];
   /** The target database's `standard_conforming_strings` (how ordinary `'...'` literals treat backslashes). Absent: unknown, which makes such literals unprovable. */
   standardConformingStrings?: boolean;
 };
@@ -672,6 +697,8 @@ const norm = (statement: string) => statement.replace(/\s+/g, " ").trim();
  */
 export function classifyPushPlan(statements: readonly string[], facts: PlanCatalogFacts = { constraints: {}, indexes: {} }): PlanFinding[] {
   const canonicalOptions: CanonicalOptions = { standardConformingStrings: facts.standardConformingStrings };
+  const protectedConstraints = new Set([...ALWAYS_PROTECTED_CONSTRAINTS, ...(facts.protectedConstraints ?? [])]);
+  const protectedIndexes = new Set(facts.protectedIndexes ?? []);
   const analyses = statements.map((statement) => ({ statement: norm(statement), analysis: analyzeStatement(statement, canonicalOptions) }));
   const addedConstraints = analyses.flatMap(({ analysis }) => (analysis.type === "add_constraint" ? [analysis] : []));
   const createdIndexes = analyses.flatMap(({ analysis }) => (analysis.type === "create_index" ? [analysis] : []));
@@ -682,13 +709,13 @@ export function classifyPushPlan(statements: readonly string[], facts: PlanCatal
   for (const { statement, analysis } of analyses) {
     if (analysis.type === "finding") { add(analysis.kind, statement); continue; }
     if (analysis.type === "drop_constraint") {
-      if (CONSTRAINTS_REASSERTED_AFTER_PUSH.includes(constraintFactKey(analysis.schema, analysis.table, analysis.name))) continue;
+      const key = constraintFactKey(analysis.schema, analysis.table, analysis.name);
       const candidates = addedConstraints.filter((added) => added.schema === analysis.schema && added.table === analysis.table && added.name === analysis.name);
-      const live = facts.constraints[constraintFactKey(analysis.schema, analysis.table, analysis.name)];
+      const live = facts.constraints[key];
       const before = live === undefined ? null : canonicalConstraint(live, canonicalOptions);
       const [only] = candidates;
       if (candidates.length === 1 && !usedAdds.has(only) && before !== null && before === only.canonical) usedAdds.add(only);
-      else add("drop_constraint_unpaired", statement);
+      else add(protectedConstraints.has(key) ? "protected_object_dropped" : "drop_constraint_unpaired", statement);
       continue;
     }
     if (analysis.type === "set_default") {
@@ -708,7 +735,7 @@ export function classifyPushPlan(statements: readonly string[], facts: PlanCatal
       const [only] = candidates;
       if (before && before.canonical !== null && before.schema === analysis.schema && candidates.length === 1 && !usedAdds.has(only)
         && only.table === before.table && before.canonical === only.canonical) usedAdds.add(only);
-      else add("drop_index_unpaired", statement);
+      else add(protectedIndexes.has(indexFactKey(analysis.schema, analysis.name)) ? "protected_object_dropped" : "drop_index_unpaired", statement);
     }
   }
   return findings;
@@ -916,8 +943,51 @@ export function canonicalStatement(statement: string): string {
  * can never be reused for a different replacement, an added or reordered statement, another database, or a changed protection.
  *
  * Serialized as JSON (strings are escaped and arrays are delimited), so statement boundaries cannot be forged by statement text. Statements
- * are whitespace-normalised by token (literals and quoted identifiers keep every character); their order is significant.
+ * are whitespace-normalised by token (literals and quoted identifiers keep every character); their order is significant, except among adjacent
+ * statements of the same kind (see {@link tokenPlanOrder}).
  */
+/**
+ * The shape of a statement, ignoring every name: statements with the same key are the same KIND of operation (drop a constraint, add a foreign
+ * key, add a column, ...). Used only to recognise runs of interchangeable statements; `SET NOT NULL` and `DROP NOT NULL` are different keys.
+ */
+function runKey(statement: string): string {
+  const tokens = tokenize(statement).filter((token) => !(token.k === "p" && token.v === ";"));
+  const cursor = new Cursor(tokens);
+  const word = () => (cursor.peek()?.k === "word" ? cursor.peek()!.v : "");
+  const take = (count: number) => { const out: string[] = []; for (let n = 0; n < count; n += 1) { out.push(word()); cursor.i += 1; } return out.join(" "); };
+  if (cursor.eat("alter", "table")) {
+    cursor.eat("if", "exists"); cursor.eat("only"); cursor.qname();
+    if (cursor.eat("add")) {
+      if (cursor.eat("constraint")) { cursor.name(); return `alter-table add constraint ${take(2)}`; }
+      return "alter-table add";
+    }
+    if (cursor.eat("alter")) { cursor.eat("column"); cursor.name(); return `alter-table alter ${take(2)}`; }
+    return `alter-table ${take(3)}`;
+  }
+  return take(2);
+}
+
+/**
+ * The plan in the order the token commits to. drizzle-kit emits independent statements of one kind (dozens of `DROP CONSTRAINT`, `ADD CONSTRAINT
+ * ... FOREIGN KEY`, ...) in the physical order of PostgreSQL's catalog rows, which shifts with unrelated DDL, so the SAME plan can come back with
+ * those statements permuted and a token over the literal order would flip for no reason. Adjacent statements of the same kind are therefore
+ * sorted; the sequence of kinds, every statement, and the position of every differently-kinded statement still matter.
+ */
+export function tokenPlanOrder(statements: readonly string[]): string[] {
+  const out: string[] = [];
+  let run: string[] = [];
+  let runKeyOf: string | null = null;
+  const flush = () => { out.push(...run.sort()); run = []; };
+  for (const statement of statements) {
+    const key = runKey(statement);
+    if (runKeyOf !== null && key !== runKeyOf) flush();
+    runKeyOf = key;
+    run.push(canonicalStatement(statement));
+  }
+  flush();
+  return out;
+}
+
 export function planAcknowledgementToken(
   statements: readonly string[], scope: string, facts: PlanCatalogFacts = { constraints: {}, indexes: {} }, catalogFingerprint = "",
 ): string {
@@ -925,7 +995,7 @@ export function planAcknowledgementToken(
   const canonical = JSON.stringify({
     version: 2,
     database: scope,
-    plan: statements.map(canonicalStatement),
+    plan: tokenPlanOrder(statements),
     droppedConstraints: sorted(facts.constraints),
     droppedIndexes: sorted(facts.indexes),
     catalog: catalogFingerprint,
