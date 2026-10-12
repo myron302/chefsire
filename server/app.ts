@@ -1,7 +1,6 @@
 // server/app.ts
 import "./lib/load-env";
 import express, { Request, Response, NextFunction } from "express";
-import cors from "cors";
 import compression from "compression";
 import morgan from "morgan";
 import passport from "passport";
@@ -14,6 +13,7 @@ import { setupTikTokOAuth } from "./services/tiktok-oauth.service";
 import { UPLOADS_DIR } from "./lib/uploads-dir";
 import { uploadsStaticHandler } from "./lib/uploads-static";
 import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./lib/public-static-dirs";
+import { createCorsMiddleware } from "./lib/cors-policy";
 
 const app = express();
 
@@ -23,10 +23,10 @@ const app = express();
 // let attackers spoof their IP via extra X-Forwarded-For headers.
 app.set("trust proxy", 1);
 
-app.use(cors({
-  credentials: true,
-  origin: process.env.CLIENT_URL || true, // Allow configured origin or all origins in dev
-}));
+// Browser origin policy: an explicit allowlist (CLIENT_URL, APP_BASE_URL, APP_URL, CORS_ALLOWED_ORIGINS, and CORS_DEV_ORIGINS outside
+// production) that fails closed. This used to be `cors({ credentials: true, origin: process.env.CLIENT_URL || true })`, which reflected
+// ANY origin with credentials whenever CLIENT_URL was missing. The same policy guards both Socket.IO servers. See lib/cors-policy.ts.
+app.use(createCorsMiddleware());
 app.use(express.json({
   limit: "2mb",
   verify: (req, _res, buf) => {
@@ -119,15 +119,17 @@ app.all("/api/*", (_req: Request, res: Response) => {
 
 // Global error handler
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  const isProd = process.env.NODE_ENV === "production";
+  // Detail (message and stack, which for a database failure means driver text, host names and SQL) is returned only when the runtime
+  // is EXPLICITLY "development". It used to be returned whenever NODE_ENV was anything but "production", so an unset, misspelled,
+  // "test" or "staging" environment answered every unhandled error with its stack trace.
+  const exposeDetail = process.env.NODE_ENV === "development";
   const message = err instanceof Error ? err.message : "Unknown error";
   const stack = err instanceof Error ? err.stack : undefined;
 
   // ALWAYS log the error server-side
   console.error("[ERROR]", err);
 
-  if (isProd) {
-    // Never expose internal details to clients in production
+  if (!exposeDetail) {
     res.status(500).json({ error: "Internal Server Error" });
   } else {
     // In development, include details for debugging

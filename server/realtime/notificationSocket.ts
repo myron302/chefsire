@@ -1,10 +1,10 @@
 // server/realtime/notificationSocket.ts
 import type { Server as HttpServer } from "http";
-import { Server } from "socket.io";
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "../db";
 import { notifications, users } from "../../shared/schema";
 import { authenticateSocket, socketUserId } from "./socket-auth";
+import { socketIoServerFor } from "./socket-server";
 
 type SocketNotificationInput = Pick<
   typeof notifications.$inferInsert,
@@ -12,10 +12,9 @@ type SocketNotificationInput = Pick<
 >;
 
 export function attachNotificationRealtime(httpServer: HttpServer) {
-  const io = new Server(httpServer, {
-    path: "/socket.io",
-    cors: { origin: true, credentials: true },
-  });
+  // One Socket.IO server per HTTP server, shared with the other realtime module, with the allowlisted-origin policy applied to every
+  // handshake (never `origin: true`). See socket-server.ts and lib/cors-policy.ts.
+  const io = socketIoServerFor(httpServer);
 
   // Namespace for notifications
   const ns = io.of("/notifications");
@@ -44,7 +43,8 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
 
         socket.emit("unread_count", { count: unreadNotifs.length });
       } catch (e: any) {
-        socket.emit("error", { error: e?.message || "Failed to get unread count" });
+        console.error("[notification-socket] get_unread_count failed:", e);
+        socket.emit("error", { error: "Failed to get unread count" });
       }
     });
 
@@ -66,7 +66,8 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
 
         socket.emit("unread_count", { count: unreadNotifs.length });
       } catch (e: any) {
-        socket.emit("error", { error: e?.message || "Failed to mark as read" });
+        console.error("[notification-socket] mark_read failed:", e);
+        socket.emit("error", { error: "Failed to mark as read" });
       }
     });
 
@@ -81,7 +82,8 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
         socket.emit("all_marked_read", {});
         socket.emit("unread_count", { count: 0 });
       } catch (e: any) {
-        socket.emit("error", { error: e?.message || "Failed to mark all as read" });
+        console.error("[notification-socket] mark_all_read failed:", e);
+        socket.emit("error", { error: "Failed to mark all as read" });
       }
     });
 
@@ -97,7 +99,8 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
 
         socket.emit("recent_notifications", { notifications: recentNotifs });
       } catch (e: any) {
-        socket.emit("error", { error: e?.message || "Failed to get recent notifications" });
+        console.error("[notification-socket] get_recent failed:", e);
+        socket.emit("error", { error: "Failed to get recent notifications" });
       }
     });
 
