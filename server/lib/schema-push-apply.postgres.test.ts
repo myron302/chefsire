@@ -425,3 +425,68 @@ postgresTest("PostgreSQL's own renderings of constraints and indexes with differ
     assert.deepEqual(swap(exprNewline, exprNewline, "x_nl"), []);
   });
 });
+
+/* ------------------------------------------------ schema qualification and name resolution ------------------------------------------------ */
+
+postgresTest("a function in public that shadows a pg_catalog one is rendered qualified by PostgreSQL, and is not the unqualified function", async () => {
+  await withDatabase(async (db) => {
+    await db.query(`
+      CREATE FUNCTION public.lower(text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT upper($1) $$;   -- same name as pg_catalog.lower, different behaviour
+      CREATE TABLE people (email text, tag text);`);
+    // an unqualified call resolves through pg_catalog FIRST, even though public is on the search path
+    assert.equal((await db.query("SELECT lower('Ab') AS plain, public.lower('Ab') AS qualified")).rows[0].plain, "ab");
+    assert.equal((await db.query("SELECT lower('Ab') AS plain, public.lower('Ab') AS qualified")).rows[0].qualified, "AB", "so these are different functions");
+
+    const options = { standardConformingStrings: true };
+    const def = async (create: string, name: string, kind: "constraint" | "index") => {
+      await db.query(create);
+      const { rows } = await db.query(kind === "constraint" ? "SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = $1" : "SELECT pg_get_indexdef(indexrelid) AS d FROM pg_index WHERE indexrelid = $1::regclass", [name]);
+      return String(rows[0].d);
+    };
+    const checkQualified = await def("ALTER TABLE people ADD CONSTRAINT c_q CHECK (public.lower(email) = 'x')", "c_q", "constraint");
+    const checkPlain = await def("ALTER TABLE people ADD CONSTRAINT c_p CHECK (lower(email) = 'x')", "c_p", "constraint");
+    assert.match(checkQualified, /public\.lower\(/, "PostgreSQL itself qualifies the shadowed function");
+    assert.doesNotMatch(checkPlain, /public\.lower/);
+    assert.ok(canonicalConstraint(checkQualified, options) && canonicalConstraint(checkPlain, options));
+    assert.notEqual(canonicalConstraint(checkQualified, options), canonicalConstraint(checkPlain, options));
+
+    const exprQualified = await def("CREATE INDEX x_q ON people ((public.lower(email)))", "x_q", "index");
+    const exprPlain = await def("CREATE INDEX x_p ON people ((lower(email)))", "x_p", "index");
+    const partialQualified = await def("CREATE UNIQUE INDEX p_q ON people (tag) WHERE (public.lower(email) = 'x')", "p_q", "index");
+    const partialPlain = await def("CREATE UNIQUE INDEX p_p ON people (tag) WHERE (lower(email) = 'x')", "p_p", "index");
+    const idx = (definition: string) => parseIndexStatement(definition, options)?.canonical;
+    assert.ok(idx(exprQualified) && idx(exprPlain) && idx(partialQualified) && idx(partialPlain));
+    assert.notEqual(idx(exprQualified), idx(exprPlain), "expression index");
+    assert.notEqual(idx(partialQualified), idx(partialPlain), "partial UNIQUE index");
+
+    // the classifier: drizzle writing the PLAIN spelling over a live QUALIFIED definition (and vice versa) is not an unchanged protection
+    const facts = (name: string, definition: string): PlanCatalogFacts => ({ constraints: { [JSON.stringify(["public", "people", name])]: definition }, indexes: { [JSON.stringify(["public", name])]: definition }, standardConformingStrings: true });
+    const rename = (definition: string, name: string) => definition.replace(/INDEX \S+ ON public\./, `INDEX "${name}" ON "public".`);
+    const swapIndex = (from: string, to: string, name: string) => classifyPushPlan([`DROP INDEX "${name}";`, `${rename(to, name)};`], facts(name, from)).map((item) => item.kind);
+    assert.deepEqual(swapIndex(exprQualified, exprPlain, "x_q"), ["drop_index_unpaired"]);
+    assert.deepEqual(swapIndex(exprPlain, exprQualified, "x_p"), ["drop_index_unpaired"]);
+    assert.deepEqual(swapIndex(exprQualified, exprQualified, "x_q"), [], "identical definitions: excused");
+    assert.deepEqual(swapIndex(partialQualified, partialPlain, "p_q"), ["drop_index_unpaired"]);
+    assert.deepEqual(swapIndex(partialQualified, partialQualified, "p_q"), []);
+    const swapCheck = (from: string, to: string, name: string) => classifyPushPlan([`ALTER TABLE "people" DROP CONSTRAINT "${name}";`, `ALTER TABLE "people" ADD CONSTRAINT "${name}" ${to};`], facts(name, from)).map((item) => item.kind);
+    assert.deepEqual(swapCheck(checkQualified, checkPlain, "c_q"), ["drop_constraint_unpaired"]);
+    assert.deepEqual(swapCheck(checkPlain, checkQualified, "c_p"), ["drop_constraint_unpaired"]);
+    assert.deepEqual(swapCheck(checkQualified, checkQualified, "c_q"), []);
+  });
+});
+
+postgresTest("the apply transaction pins search_path, so a role-named schema cannot redirect unqualified names", async () => {
+  await withDatabase(async (db) => {
+    const user = (await db.query("SELECT current_user AS u")).rows[0].u as string;
+    await db.query(`CREATE SCHEMA IF NOT EXISTS "${user}"; CREATE TABLE "${user}".victim (id int); CREATE TABLE public.victim (id int)`);
+    // with the role's default search_path ("$user", public) an unqualified name finds the role-named schema FIRST
+    await db.query('ALTER TABLE "victim" ADD COLUMN probe int');
+    assert.equal((await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'victim' AND column_name = 'probe'", [user])).rowCount, 1, "precondition: unpinned, it hits the role's schema");
+    await db.query(`ALTER TABLE "${user}".victim DROP COLUMN probe`);
+    await applyReviewedPlan(db, ['ALTER TABLE "victim" ADD COLUMN "reviewed" integer;'], await catalogFingerprint(db));
+    const hit = async (schema: string) => (await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'victim' AND column_name = 'reviewed'", [schema])).rowCount === 1;
+    assert.equal(await hit("public"), true, "applied to the object that was reviewed");
+    assert.equal(await hit(user), false, "and not to the same-named table the role's schema would have captured");
+    assert.equal((await db.query("SHOW search_path")).rows[0].search_path !== "public", true, "SET LOCAL ended with the transaction");
+  });
+});

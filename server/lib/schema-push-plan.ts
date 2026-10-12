@@ -333,16 +333,27 @@ function columnList(inner: Token[] | null): string | null {
 }
 
 /**
- * Token text with the default-schema prefix and redundant ASC removed, so drizzle's and PostgreSQL's spellings of one expression agree. Keeps what
+ * Token text with only the redundant ASC removed, so drizzle's and PostgreSQL's spellings of one expression agree. Schema qualifiers are NEVER
+ * dropped: `public.lower(x)` and `lower(x)` can be different functions (an unqualified name resolves through pg_catalog first, then search_path),
+ * and the same goes for qualified operators (`OPERATOR(schema.+)`), casts (`::schema.type`) and collations. PostgreSQL renders a name qualified
+ * exactly when the unqualified spelling would not resolve to the same object, so a qualifier difference is a real difference. Keeps what
  * the SQL means: string literals by VALUE (and how they were written), quoted identifiers exactly, operators as one operator, and never joins
  * tokens in a way that could read as something else. Null when any part cannot be established, so it can never be "equal" to anything.
  */
 function normalizedTokens(tokens: Token[], options: CanonicalOptions): string | null {
+  if (tokens.length === 0) return null;
   let out = "";
   let previous: Token | undefined;
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
-    if (token.k === "word" && token.v === "public" && tokens[index + 1]?.k === "p" && tokens[index + 1].v === ".") { index += 1; continue; }
+    if (token.k === "p" && token.v === ".") {
+      // A qualifier dot joins two names (`schema.function`, `(composite).field`); a dangling or misplaced one is not an expression we understand.
+      const before = tokens[index - 1];
+      const after = tokens[index + 1];
+      const joinsNames = before !== undefined && after !== undefined && (before.k === "word" || before.k === "qid" || (before.k === "p" && (before.v === ")" || before.v === "]")))
+        && (after.k === "word" || after.k === "qid" || (after.k === "p" && (after.v === "*" || OPERATOR_CHARACTERS.includes(after.v)))); // `OPERATOR(schema.+)`
+      if (!joinsNames) return null;
+    }
     if (token.k === "word" && token.v === "asc") continue;
     const text = tokenText(token, options);
     if (text === null) return null;

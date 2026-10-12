@@ -101,6 +101,9 @@ export async function applyReviewedPlan(
   let committing = false;
   try {
     await client.query("SET LOCAL lock_timeout = '30s'");
+    // Unqualified names in the reviewed statements resolve through search_path. Pin it, so a role-named schema ("$user") or a role-level setting
+    // cannot make the same text act on different objects than the ones that were reviewed.
+    await client.query("SET LOCAL search_path TO public");
     // Serialize concurrent pushes, then prove the database is still exactly what was reviewed.
     await client.query("SELECT pg_advisory_xact_lock(hashtext('chefsire:schema-push'))");
     if ((await catalogFingerprint(client)) !== plannedFingerprint) {

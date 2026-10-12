@@ -85,6 +85,12 @@ that nothing new can fall outside both lists (`server/lib/schema-table-coverage.
      characters are one operator only when written adjacent, and name lists / fact keys are JSON so a comma or dot in a name cannot pose as a
      separator. Anything unprovable means *review*. A differential test checks the canonical form against PostgreSQL's own `=` on a table of
      literal pairs.
+   * **Name resolution.** Schema qualifiers are never stripped from expressions: `public.lower(x)` and `lower(x)` can be different functions (an
+     unqualified name resolves through `pg_catalog` first, then `search_path`; PostgreSQL itself renders a name qualified exactly when the
+     unqualified spelling would not resolve to the same object). The same holds for `OPERATOR(schema.op)`, `::schema.type` and `COLLATE`. A mismatch
+     is reviewed, never assumed harmless, and a misplaced qualifier dot makes the expression unparseable (reviewed). Review and apply both run under a
+     pinned `search_path = public` (`SET search_path` on the connection, `SET LOCAL` in the apply transaction), so a role-named schema (`"$user"`)
+     or role-level setting cannot make the same statement text act on different objects than the ones that were reviewed.
    * **Defaults** are protection state (status, tier, role, payment state). `SET DEFAULT` is judged against the catalog: PostgreSQL itself renders
      both the current and the proposed default (the proposed one is parsed against the column's type on a throw-away temp table in a rolled-back
      transaction), and only the *identical* default re-applied is silent. A replaced default (`default_changed`), a default added where none existed

@@ -873,3 +873,60 @@ test("the drizzle spelling of an index and PostgreSQL's rendering still agree fo
     parseIndexStatement("CREATE INDEX i ON public.t USING btree (campaign_id, occurred_at DESC)")?.canonical);
   assert.notEqual(parseIndexStatement('CREATE INDEX "i" ON "t" USING btree ("a b")')?.canonical, parseIndexStatement("CREATE INDEX i ON public.t USING btree (a)")?.canonical);
 });
+
+/* ------------------------------------------------ schema qualification and name resolution ------------------------------------------------ */
+
+test("explicit schema qualification is never discarded: public.lower(email) and lower(email) are not the same expression", () => {
+  assert.notEqual(check("public.lower(email) = 'a'"), check("lower(email) = 'a'"));
+  assert.notEqual(check("lower(email) = 'a'"), check("public.lower(email) = 'a'"));
+  assert.notEqual(check("public.lower(email) = 'a'"), check("pg_catalog.lower(email) = 'a'"));
+  assert.notEqual(check("s1.f(x) > 0"), check("s2.f(x) > 0"), "functions in different schemas");
+  assert.notEqual(check("s1.f(x) > 0"), check("public.f(x) > 0"));
+  assert.notEqual(check("s1.f(x) > 0"), check("f(x) > 0"));
+  // the same explicit qualification, spelled with quoting, case or whitespace differences, is the same expression
+  assert.equal(check("public.lower(email) = 'a'"), check('"public"."lower"( email )   =  \'a\''));
+  assert.equal(check("PUBLIC.LOWER(email) = 'a'"), check("public.lower(email) = 'a'"));
+  assert.equal(check("lower(email) = 'a'"), check("lower( email )=\n 'a'".replace("=\n", " = ")));
+  assert.notEqual(check('"Public".lower(email) = \'a\''), check("public.lower(email) = 'a'"), "a quoted, differently-cased schema is a different schema");
+});
+
+test("qualified operators, casts and collations keep their qualification and are not equated with the plain spelling", () => {
+  assert.notEqual(check("a OPERATOR(public.=) b"), check("a OPERATOR(pg_catalog.=) b"));
+  assert.notEqual(check("a OPERATOR(pg_catalog.=) b"), check("a = b"));
+  assert.notEqual(check("x::public.mytype = y"), check("x::mytype = y"));
+  assert.notEqual(check("x::pg_catalog.text = y"), check("x::text = y"));
+  assert.notEqual(check('lower(x) = y COLLATE "C"'), check("lower(x) = y"), "an explicit collation is part of the expression");
+  assert.notEqual(check('x COLLATE "C" = y'), check('x COLLATE "POSIX" = y'));
+  assert.notEqual(check('x COLLATE pg_catalog."C" = y'), check('x COLLATE "C" = y'));
+  assert.notEqual(check("CAST(x AS text) = y"), check("x::text = y"), "different spellings are not proven equal");
+});
+
+test("a replacement whose function resolution changed requires review (CHECK, partial UNIQUE index, expression index)", () => {
+  // CHECK
+  assert.deepEqual(kinds([dropCheck, addCheck("(lower(email) = 'a')")], checkFacts("(public.lower(email) = 'a')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(public.lower(email) = 'a')")], checkFacts("(lower(email) = 'a')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(s1.f(email) = 'a')")], checkFacts("(s2.f(email) = 'a')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(public.lower(email) = 'a')")], checkFacts("(public.lower(email) = 'a')")), [], "same qualification, established equivalence: excused");
+  assert.deepEqual(kinds([dropCheck, addCheck("(\"public\".\"lower\"(email) = 'a')")], checkFacts("(public.lower(email) = 'a')")), [], "same objects, different quoting");
+  // partial UNIQUE index
+  const live = (tail: string) => `CREATE UNIQUE INDEX i ON public.t USING btree ${tail}`;
+  const create = (tail: string) => `CREATE UNIQUE INDEX "i" ON "t" USING btree ${tail};`;
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (lower(b) = 'x')")], indexFacts(live("(a) WHERE (public.lower(b) = 'x')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (public.lower(b) = 'x')")], indexFacts(live("(a) WHERE (lower(b) = 'x')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (public.lower(b) = 'x')")], indexFacts(live("(a) WHERE (public.lower(b) = 'x')"))), []);
+  // expression index
+  assert.deepEqual(kinds([dropIndex, create("((lower(a)))")], indexFacts(live("((public.lower(a)))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((public.lower(a)))")], indexFacts(live("((lower(a)))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((s1.f(a)))")], indexFacts(live("((s2.f(a)))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((public.lower(a)))")], indexFacts(live("((public.lower(a)))"))), []);
+  // ordinary columns are unaffected by any of this
+  assert.deepEqual(kinds([dropIndex, create('("a", "b")')], indexFacts(live("(a, b)"))), []);
+});
+
+test("ambiguous or unparseable expressions fail closed", () => {
+  for (const bad of ["CHECK (lower(email) = 'a'", "CHECK lower(email) = 'a'", "CHECK ()", "CHECK (public.)", "CHECK (a OPERATOR(public.= b)", "CHECK ((x) = E'\\u12')"]) {
+    assert.equal(canonicalConstraint(bad, ON), null, bad);
+  }
+  assert.ok(kinds([dropCheck, addCheck("(lower(email) = 'a'")], checkFacts("(lower(email) = 'a')")).includes("drop_constraint_unpaired"), "an unbalanced replacement does not excuse the drop");
+  assert.notDeepEqual(kinds([dropCheck, addCheck("(public.)")], checkFacts("(public.)")), [], "an unparseable expression is never excused, even against itself");
+});

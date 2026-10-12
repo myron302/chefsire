@@ -208,6 +208,8 @@ function refuse(plan: ReviewedPlan, note: string): never {
 async function reviewBeforePrePushScripts() {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
+  // Review and apply read and run unqualified names through ONE known search_path (see applyReviewedPlan).
+  await client.query("SET search_path TO public");
   try {
     const catalog = await catalogFingerprint(client);
     const statements = await dryRunPlan();
@@ -222,6 +224,8 @@ async function reviewBeforePrePushScripts() {
 async function guardedPush() {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
+  // Review and apply read and run unqualified names through ONE known search_path (see applyReviewedPlan).
+  await client.query("SET search_path TO public");
   try {
     const planned = await catalogFingerprint(client);
     const statements = await dryRunPlan();
