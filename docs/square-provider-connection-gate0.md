@@ -284,7 +284,8 @@ location and window filters, and the evidence checks on the found payment, are u
 v43, so marketplace capture/refund/reconciliation threw a `TypeError` before any request. It is now a thin adapter that
 keeps the exact call shape those state machines use (`paymentsApi.createPayment/listPayments`, `refundsApi.refundPayment/
 getPaymentRefund`, `{ result }` envelopes) on the supported `SquareClient`. The state machine, idempotency keys,
-reconciliation and amount/currency verification are untouched. `SQUARE_ENV` decides the environment when set; when absent the prior `NODE_ENV` fallback applies (production in
-`NODE_ENV=production`). Setting it explicitly in production is still recommended.
+reconciliation and amount/currency verification are untouched. The environment is chosen by the single policy in `server/lib/square-environment.ts` (Phase 1 hardening, `docs/schema-push-safety.md` is the
+sibling document for the database): an unset `SQUARE_ENV` is Sandbox outside `NODE_ENV=production` and a configuration error under it; LIVE needs
+`SQUARE_ENV=production` + `NODE_ENV=production` + `SQUARE_LIVE_PAYMENTS_ENABLED=true`. The earlier `NODE_ENV` fallback to production was removed.
 
 Not changed: `server/lib/square.ts` and the drinks code (already on the v43 API).

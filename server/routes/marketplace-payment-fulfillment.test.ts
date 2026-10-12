@@ -118,7 +118,7 @@ test("seller revenue accounting is order-scoped and exactly once", () => {
 
 test("db push classifies legacy revenue before and after Drizzle synchronization", () => {
   const pre = pushSchema.indexOf('enforce-marketplace-revenue-integrity.ts", "--allow-missing"');
-  const drizzle = pushSchema.indexOf('drizzle-kit", "push"');
+  const drizzle = pushSchema.indexOf("await guardedPush();"); // the guarded drizzle-kit push
   const post = pushSchema.lastIndexOf('enforce-marketplace-revenue-integrity.ts"');
   assert.ok(pre >= 0 && pre < drizzle && post > drizzle);
   assert.match(revenueEnforcement, /ADD COLUMN IF NOT EXISTS seller_revenue_status text/);

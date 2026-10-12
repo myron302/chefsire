@@ -1,0 +1,1036 @@
+/**
+ * The pure half of the schema-push guard: plan parsing and classification. No database, no drizzle-kit process.
+ * The end-to-end behaviour on a real PostgreSQL is in server/scripts/schema-push-safety.postgres.test.ts.
+ */
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  SchemaPlanParseError,
+  canonicalConstraint,
+  catalogLookupsNeeded,
+  classifyPushPlan,
+  constraintFactKey,
+  buildServerIdentity,
+  parseIndexStatement,
+  columnFactKey,
+  connectionTarget,
+  dropSequenceTarget,
+  droppedConstraint,
+  hardRefusals,
+  ServerIdentityError,
+  weakIdentityBlocksApproval,
+  enumAdditionCount,
+  enumAdditionHazards,
+  interpretDryRun,
+  indexFactKey,
+  isDisposableTestDatabase,
+  isPlanAcknowledged,
+  parsePushPlan,
+  pgIdentifier,
+  planAcknowledgementToken,
+  splitSqlStatements,
+  type PlanCatalogFacts,
+} from "./schema-push-plan";
+
+const wrap = (body: string) => ` Warning  You are about to execute current statements:\n\n${body}\n\n❯ No, abort\n  Yes, I want to execute all statements\n`;
+const kinds = (statements: string[], facts?: PlanCatalogFacts) => classifyPushPlan(statements, facts).map((item) => item.kind);
+const facts = (constraints: Record<string, string> = {}, indexes: Record<string, string> = {}): PlanCatalogFacts => ({ constraints, indexes });
+
+/* ------------------------------------------------ RLS and authorization boundaries (P1) ------------------------------------------------ */
+
+test("disabling row level security always requires review, whatever the spelling", () => {
+  for (const statement of [
+    'ALTER TABLE "orders" DISABLE ROW LEVEL SECURITY;',
+    'alter table orders disable row level security;',
+    'ALTER TABLE "public"."orders" DISABLE ROW LEVEL SECURITY;',
+    'ALTER TABLE public.orders DISABLE ROW LEVEL SECURITY',
+    'ALTER TABLE ONLY "orders" DISABLE ROW LEVEL SECURITY;',
+    'ALTER TABLE IF EXISTS "orders" DISABLE ROW LEVEL SECURITY;',
+    'ALTER   TABLE\n\t"my ""odd"" table"\n  DISABLE\n ROW   LEVEL\tSECURITY ;',
+    'ALTER TABLE "é表" DISABLE ROW LEVEL SECURITY;',
+  ]) assert.deepEqual(kinds([statement]), ["rls_disabled"], statement);
+});
+
+test("NO FORCE ROW LEVEL SECURITY requires review", () => {
+  for (const statement of ['ALTER TABLE "orders" NO FORCE ROW LEVEL SECURITY;', 'ALTER TABLE "public"."orders" no force row level security;'])
+    assert.deepEqual(kinds([statement]), ["rls_no_force"], statement);
+});
+
+test("dropping, altering or adding a policy requires review (a permissive policy widens access)", () => {
+  assert.deepEqual(kinds(['DROP POLICY "tenant_isolation" ON "orders";']), ["policy_dropped"]);
+  assert.deepEqual(kinds(['DROP POLICY IF EXISTS tenant_isolation ON public.orders;']), ["policy_dropped"]);
+  assert.deepEqual(kinds(['ALTER POLICY "tenant_isolation" ON "orders" USING (true);']), ["policy_altered"]);
+  assert.deepEqual(kinds(['ALTER POLICY p ON orders TO PUBLIC;']), ["policy_altered"]);
+  assert.deepEqual(kinds(['ALTER POLICY p ON orders RENAME TO q;']), ["policy_altered"]);
+  assert.deepEqual(kinds(['CREATE POLICY "open" ON "orders" AS PERMISSIVE FOR ALL TO public USING (true);']), ["policy_created"]);
+});
+
+test("strengthening RLS passes; other authorization-boundary changes are never silently approved", () => {
+  assert.deepEqual(kinds(['ALTER TABLE "orders" ENABLE ROW LEVEL SECURITY;', 'ALTER TABLE "public"."orders" FORCE ROW LEVEL SECURITY;']), []);
+  for (const statement of [
+    'GRANT ALL ON TABLE orders TO PUBLIC;', 'REVOKE ALL ON orders FROM app;', 'ALTER ROLE app BYPASSRLS;', 'CREATE ROLE evil BYPASSRLS;',
+    'ALTER TABLE orders OWNER TO evil;', 'ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO PUBLIC;', 'SET ROLE evil;', 'SET row_security = off;',
+    'ALTER TABLE orders DISABLE TRIGGER USER;', 'ALTER TABLE orders DISABLE TRIGGER orders_append_only;',
+    'DROP TRIGGER orders_append_only ON orders;', 'CREATE OR REPLACE FUNCTION forbid_change() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;',
+    'DROP FUNCTION forbid_change();', 'ALTER TABLE orders NO INHERIT parent;', 'ALTER TABLE orders SET SCHEMA other;',
+  ]) assert.notDeepEqual(kinds([statement]), [], statement);
+  assert.deepEqual(kinds(['DROP TRIGGER t ON o;']), ["trigger_dropped"]);
+  assert.deepEqual(kinds(['ALTER TABLE o DISABLE TRIGGER t;']), ["trigger_disabled"]);
+});
+
+test("a dangerous action cannot hide in a compound or multi-statement string", () => {
+  assert.deepEqual(kinds(['ALTER TABLE "o" ADD COLUMN "a" integer, DISABLE ROW LEVEL SECURITY;']), ["unrecognized_statement"]);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ADD COLUMN "a" integer; ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']), ["unrecognized_statement"]);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ADD COLUMN "a" numeric(10,2) DEFAULT 0 NOT NULL;']), [], "commas inside parentheses are fine");
+});
+
+test("unrecognized or unusual SQL fails closed", () => {
+  for (const statement of [
+    'VACUUM FULL orders;', 'COMMIT;', 'BEGIN;', 'INSERT INTO t VALUES (1);', 'UPDATE t SET a = 1;', 'CREATE EXTENSION pgcrypto;',
+    'CREATE TABLE t AS SELECT 1;', 'CREATE TEMP TABLE t (a int);', 'CREATE INDEX CONCURRENTLY i ON t (a);',
+    'ALTER TABLE t RENAME TO u;', 'ALTER TABLE t RENAME COLUMN a TO b;', 'ALTER TABLE t ALTER COLUMN a SET STATISTICS 5;', 'COMMENT ON TABLE t IS \'x\';',
+    'ALTER SEQUENCE s RESTART;', 'CREATE VIEW v AS SELECT 1;', 'totally not sql',
+  ]) assert.deepEqual(kinds([statement]), ["unrecognized_statement"], statement);
+});
+
+test("every destructive statement drizzle-kit can plan is flagged, in any spelling", () => {
+  assert.deepEqual(kinds(['DROP TABLE "households" CASCADE;']), ["drop_table"]);
+  assert.deepEqual(kinds(['drop table if exists public.households;']), ["drop_table"]);
+  assert.deepEqual(kinds(['ALTER TABLE "users" DROP COLUMN "email";']), ["drop_column"]);
+  assert.deepEqual(kinds(['ALTER TABLE IF EXISTS ONLY public.users DROP email;']), ["drop_column"]);
+  assert.deepEqual(kinds(['DROP TYPE "public"."status";']), ["drop_type"]);
+  assert.deepEqual(kinds(['DROP SEQUENCE "public"."x_seq";']), ["drop_sequence"]);
+  assert.deepEqual(kinds(['DROP SCHEMA "other" CASCADE;']), ["drop_schema"]);
+  assert.deepEqual(kinds(['DROP VIEW "v";']), ["drop_view"]);
+  assert.deepEqual(kinds(['DROP MATERIALIZED VIEW "v";']), ["drop_view"]);
+  assert.deepEqual(kinds(['DROP FUNCTION f();']), ["drop_other"]);
+  assert.deepEqual(kinds(['TRUNCATE TABLE "orders" CASCADE;']), ["truncate"]);
+  assert.deepEqual(kinds(['DELETE FROM "orders";']), ["delete_rows"]);
+  assert.deepEqual(kinds(['ALTER TABLE "orders" ALTER COLUMN "total_amount" SET DATA TYPE integer;']), ["column_type_change"]);
+  assert.deepEqual(kinds(['ALTER TABLE "orders" ALTER COLUMN "total_amount" TYPE integer USING total_amount::integer;']), ["column_type_change"]);
+  assert.deepEqual(kinds(['ALTER TABLE "orders" ALTER COLUMN "total_amount" DROP NOT NULL;']), ["not_null_dropped"]);
+});
+
+test("ordinary safe schema additions pass silently", () => {
+  assert.deepEqual(kinds([
+    'CREATE TABLE "t" (\n\t"id" serial PRIMARY KEY NOT NULL,\n\t"c" numeric(10, 2) DEFAULT 0\n);',
+    'CREATE TABLE IF NOT EXISTS "public"."t2" ("id" uuid PRIMARY KEY);',
+    'ALTER TABLE "t" ADD COLUMN "c" text;',
+    'ALTER TABLE "t" ADD COLUMN IF NOT EXISTS "d" text DEFAULT \'a;b\';',
+    'ALTER TABLE "t" ALTER COLUMN "c" SET NOT NULL;',
+    'CREATE INDEX "t_c_idx" ON "t" USING btree ("c");',
+    'CREATE UNIQUE INDEX IF NOT EXISTS "t_u" ON "public"."t" ("c") WHERE "c" IS NOT NULL;',
+    'ALTER TABLE "t" ADD CONSTRAINT "t_c_unique" UNIQUE("c");',
+    'ALTER TABLE "t" ADD CONSTRAINT "t_fk" FOREIGN KEY ("c") REFERENCES "public"."u"("id") ON DELETE cascade ON UPDATE no action;',
+    'CREATE SEQUENCE "s";', 'CREATE TYPE "public"."k" AS ENUM(\'a\', \'b\');', 'ALTER TYPE "k" ADD VALUE \'c\';', 'CREATE SCHEMA "x";',
+  ]), []);
+});
+
+/* ------------------------------------------- replacement matching (P2) ------------------------------------------- */
+
+const LONG = "catering_booking_access_details_booking_id_catering_bookings_id"; // 63 characters: what PostgreSQL stored
+const FK_DB = "FOREIGN KEY (booking_id) REFERENCES catering_bookings(id) ON DELETE CASCADE";
+const dropFk = (name = LONG, table = "catering_booking_access_details") => `ALTER TABLE "${table}" DROP CONSTRAINT "${name}";`;
+const addFk = (name: string, table = "catering_booking_access_details", extra = 'ON DELETE cascade ON UPDATE no action') =>
+  `ALTER TABLE "${table}" ADD CONSTRAINT "${name}" FOREIGN KEY ("booking_id") REFERENCES "public"."catering_bookings"("id") ${extra};`;
+const fkFacts = (table = "catering_booking_access_details", name = LONG, def = FK_DB) => facts({ [constraintFactKey("public", table, name)]: def });
+
+test("genuine Drizzle churn (untruncated name, same definition) is still recognised as an unchanged constraint", () => {
+  assert.equal(`${LONG}_fk`.length > 63, true);
+  assert.deepEqual(kinds([dropFk(), addFk(`${LONG}_fk`)], fkFacts()), []);
+  assert.deepEqual(kinds([dropFk(), addFk(LONG)], fkFacts()), [], "an identical name works too");
+  // unique constraint renamed by truncation (the real creator_membership_checkout_sessions case)
+  const stored = "creator_membership_checkout_sessions_provider_reference_id_uniq";
+  assert.equal(stored.length, 63);
+  assert.deepEqual(kinds(
+    [`ALTER TABLE "creator_membership_checkout_sessions" DROP CONSTRAINT "${stored}";`,
+      'ALTER TABLE "creator_membership_checkout_sessions" ADD CONSTRAINT "creator_membership_checkout_sessions_provider_reference_id_unique" UNIQUE("provider_reference_id");'],
+    facts({ [constraintFactKey("public", "creator_membership_checkout_sessions", stored)]: "UNIQUE (provider_reference_id)" })), []);
+});
+
+test("two constraints sharing their first 40 characters are NOT equivalent", () => {
+  const added = `${LONG.slice(0, 45)}_something_else_entirely_fk`;
+  assert.equal(added.slice(0, 40), LONG.slice(0, 40));
+  assert.deepEqual(kinds([dropFk(), addFk(added)], fkFacts()), ["drop_constraint_unpaired"]);
+});
+
+test("constraints on different tables cannot match", () => {
+  assert.deepEqual(kinds([dropFk(), addFk(LONG, "catering_booking_files")], fkFacts()), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropFk(), addFk(LONG).replace('"catering_booking_access_details"', '"other"."catering_booking_access_details"')], fkFacts()), ["drop_constraint_unpaired"], "nor a different schema");
+});
+
+test("a weaker or different replacement of a protective constraint requires review", () => {
+  // same name, same table, weaker referential action
+  assert.deepEqual(kinds([dropFk(), addFk(LONG, undefined, "ON DELETE set null ON UPDATE no action")], fkFacts()), ["drop_constraint_unpaired"]);
+  // foreign key replaced by a different referenced column / table
+  assert.deepEqual(kinds([dropFk(), addFk(LONG).replace('"catering_bookings"("id")', '"catering_bookings"("other_id")')], fkFacts()), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropFk(), addFk(LONG).replace('"catering_bookings"', '"other_table"')], fkFacts()), ["drop_constraint_unpaired"]);
+  // unique -> narrower/wider column set, unique -> check, primary key -> unique, validated -> NOT VALID
+  const key = (kind: string) => facts({ [constraintFactKey("public", "t", "c")]: kind });
+  const swap = (add: string, existing: string) => kinds(['ALTER TABLE "t" DROP CONSTRAINT "c";', `ALTER TABLE "t" ADD CONSTRAINT "c" ${add};`], key(existing));
+  assert.deepEqual(swap('UNIQUE ("a")', "UNIQUE (a, b)"), ["drop_constraint_unpaired"]);
+  assert.deepEqual(swap('UNIQUE ("a", "b")', "UNIQUE (a, b)"), []);
+  assert.deepEqual(swap('UNIQUE ("a") NULLS NOT DISTINCT', "UNIQUE (a)"), ["drop_constraint_unpaired"]);
+  assert.deepEqual(swap('CHECK ("a" > 0)', "UNIQUE (a)"), ["drop_constraint_unpaired"]);
+  assert.deepEqual(swap('UNIQUE ("a")', "PRIMARY KEY (a)"), ["drop_constraint_unpaired"]);
+  assert.deepEqual(swap('PRIMARY KEY ("a")', "PRIMARY KEY (a)"), []);
+  assert.deepEqual(swap('UNIQUE ("a") NOT VALID', "UNIQUE (a)"), ["drop_constraint_unpaired"]);
+  assert.deepEqual(swap('UNIQUE ("a") DEFERRABLE INITIALLY DEFERRED', "UNIQUE (a)"), ["drop_constraint_unpaired"]);
+  assert.deepEqual(swap('CHECK ("amount" > 0)', "CHECK ((amount > 0))"), ["drop_constraint_unpaired"], "an unprovable CHECK equivalence is reviewed, never assumed");
+});
+
+test("a dropped constraint with no live definition, an unparseable definition, or an ambiguous pairing fails closed", () => {
+  assert.deepEqual(kinds([dropFk(), addFk(LONG)]), ["drop_constraint_unpaired"], "no catalog facts");
+  assert.deepEqual(kinds([dropFk(), addFk(LONG)], fkFacts(undefined, undefined, "EXCLUDE USING gist (c WITH =)")), ["drop_constraint_unpaired"], "unparseable live definition");
+  assert.deepEqual(kinds([dropFk(), addFk(LONG).replace("FOREIGN KEY", "SOMETHING ELSE")], fkFacts()), ["drop_constraint_unpaired"], "unparseable replacement");
+  assert.deepEqual(kinds([dropFk(), addFk(LONG), addFk(`${LONG}_fk`)], fkFacts()), ["drop_constraint_unpaired"], "two candidates are ambiguous");
+  assert.deepEqual(kinds([dropFk(), dropFk(), addFk(LONG)], fkFacts()).length, 1, "one replacement can excuse only one drop");
+  assert.deepEqual(kinds([`ALTER TABLE "t" DROP CONSTRAINT "c" CASCADE;`]), ["drop_constraint_unpaired"], "CASCADE is never a plain drop");
+  assert.deepEqual(kinds(['ALTER TABLE "t" DROP CONSTRAINT "a", DROP CONSTRAINT "b";']), ["unrecognized_statement"]);
+  assert.deepEqual(kinds(['ALTER TABLE "payouts" DROP CONSTRAINT "payouts_amount_check";']), ["drop_constraint_unpaired"]);
+});
+
+test("the payout CHECK is a protection that a push may never drop, however the statement is spelled; only a provably identical replacement is excused", () => {
+  for (const statement of [
+    'ALTER TABLE "payouts" DROP CONSTRAINT "payouts_completed_transfer_check";',
+    'ALTER TABLE "public"."payouts" DROP CONSTRAINT "payouts_completed_transfer_check";',
+    'alter table only payouts drop constraint if exists payouts_completed_transfer_check',
+  ]) {
+    assert.deepEqual(kinds([statement]), ["protected_object_dropped"], statement);
+    assert.equal(hardRefusals(classifyPushPlan([statement])).length, 1, "and no acknowledgement token lifts it");
+  }
+  assert.deepEqual(kinds(['ALTER TABLE "orders" DROP CONSTRAINT "payouts_completed_transfer_check";']), ["drop_constraint_unpaired"], "only on its own table");
+  assert.deepEqual(kinds(['ALTER TABLE "payouts" DROP CONSTRAINT "payouts_amount_check";']), ["drop_constraint_unpaired"]);
+  // dropped and re-added with a provably identical definition inside the same plan (so inside one transaction): not a removal
+  const key = constraintFactKey("public", "payouts", "payouts_completed_transfer_check");
+  const same = { constraints: { [key]: "CHECK (status <> 'completed' OR processed_at IS NOT NULL)" }, indexes: {}, standardConformingStrings: true } as PlanCatalogFacts;
+  const drop = 'ALTER TABLE "payouts" DROP CONSTRAINT "payouts_completed_transfer_check";';
+  assert.deepEqual(kinds([drop, 'ALTER TABLE "payouts" ADD CONSTRAINT "payouts_completed_transfer_check" CHECK (status <> \'completed\' OR processed_at IS NOT NULL);'], same), []);
+  assert.deepEqual(kinds([drop, 'ALTER TABLE "payouts" ADD CONSTRAINT "payouts_completed_transfer_check" CHECK (status <> \'completed\');'], same), ["protected_object_dropped"], "a same-named weaker constraint is not a replacement");
+  assert.deepEqual(kinds([drop], same), ["protected_object_dropped"]);
+});
+
+test("every protection the enforcement migrations install is refused when dropped (names supplied from the enforcement DDL)", () => {
+  const facts: PlanCatalogFacts = {
+    constraints: {}, indexes: {},
+    protectedConstraints: [constraintFactKey("public", "orders", "orders_inventory_status_check")],
+    protectedIndexes: [indexFactKey("public", "commissions_order_uidx")],
+  };
+  assert.deepEqual(kinds(['ALTER TABLE "orders" DROP CONSTRAINT "orders_inventory_status_check";'], facts), ["protected_object_dropped"]);
+  assert.deepEqual(kinds(['DROP INDEX "commissions_order_uidx";'], facts), ["protected_object_dropped"]);
+  assert.deepEqual(kinds(['DROP INDEX "some_other_index";'], facts), ["drop_index_unpaired"], "ordinary indexes keep the reviewable path");
+  assert.deepEqual(kinds(['ALTER TABLE "orders" DROP CONSTRAINT "unrelated_check";'], facts), ["drop_constraint_unpaired"]);
+});
+
+const INDEX_DB = "CREATE INDEX creator_campaign_rollout_timeline_events_campaign_occurred_at_i ON public.creator_campaign_rollout_timeline_events USING btree (campaign_id, occurred_at)";
+const IDX = "creator_campaign_rollout_timeline_events_campaign_occurred_at_i";
+const dropIdx = (name = IDX) => `DROP INDEX "${name}";`;
+const createIdx = (name: string, table = "creator_campaign_rollout_timeline_events", rest = 'USING btree ("campaign_id","occurred_at")', unique = "") =>
+  `CREATE ${unique}INDEX "${name}" ON "${table}" ${rest};`;
+const idxFacts = (def = INDEX_DB, name = IDX) => facts({}, { [indexFactKey("public", name)]: def });
+
+test("indexes: genuine churn passes; same table, same effective name and same definition are all required", () => {
+  assert.deepEqual(kinds([dropIdx(), createIdx(`${IDX}dx`)], idxFacts()), [], "untruncated name, same definition");
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX)], idxFacts()), []);
+  assert.deepEqual(kinds([dropIdx(), createIdx(`${IDX.slice(0, 45)}_unrelated_index_idx`)], idxFacts()), ["drop_index_unpaired"], "40-char prefix is not identity");
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX, "some_other_table")], idxFacts()), ["drop_index_unpaired"], "different table");
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX).replace('"creator_campaign_rollout_timeline_events"', '"other"."creator_campaign_rollout_timeline_events"')], idxFacts()), ["drop_index_unpaired"], "different schema");
+  assert.deepEqual(kinds([`DROP INDEX "other"."${IDX}";`, createIdx(IDX)], idxFacts()), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX, undefined, 'USING btree ("campaign_id")')], idxFacts()), ["drop_index_unpaired"], "different columns");
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX, undefined, 'USING hash ("campaign_id","occurred_at")')], idxFacts()), ["drop_index_unpaired"], "different method");
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX, undefined, 'USING btree ("campaign_id","occurred_at") WHERE "campaign_id" > 0')], idxFacts()), ["drop_index_unpaired"], "partial index");
+});
+
+test("a UNIQUE index replaced with a non-unique index requires review; unique stays unique", () => {
+  const uniqueDb = INDEX_DB.replace("CREATE INDEX", "CREATE UNIQUE INDEX");
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX)], idxFacts(uniqueDb)), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX, undefined, undefined, "UNIQUE ")], idxFacts(uniqueDb)), []);
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX, undefined, undefined, "UNIQUE ")], idxFacts()), ["drop_index_unpaired"], "non-unique replaced by unique is still a change to review");
+});
+
+test("indexes with no live definition, unparseable text, CONCURRENTLY, CASCADE or several targets fail closed", () => {
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX)]), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX)], idxFacts("not an index definition")), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds(["DROP INDEX CONCURRENTLY i;"]), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds(["DROP INDEX a, b;"]), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds(["DROP INDEX a CASCADE;"]), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIdx(), createIdx(IDX).replace("USING btree", "USING btree INCLUDE (x) ,junk")], idxFacts()), ["drop_index_unpaired"]);
+});
+
+test("PostgreSQL identifiers: 63 BYTES of UTF-8, never splitting a character", () => {
+  assert.equal(pgIdentifier("a".repeat(63)), "a".repeat(63));
+  assert.equal(pgIdentifier("a".repeat(70)), "a".repeat(63));
+  // 'é' is 2 bytes: 31 of them = 62 bytes, a 32nd would make 64 -> stops at 31 characters
+  assert.equal(pgIdentifier("é".repeat(40)), "é".repeat(31));
+  // 3-byte and 4-byte characters
+  assert.equal(pgIdentifier("表".repeat(30)), "表".repeat(21));
+  assert.equal(pgIdentifier("😀".repeat(20)), "😀".repeat(15));
+  assert.equal(Buffer.byteLength(pgIdentifier("x" + "表".repeat(30)), "utf8") <= 63, true);
+  assert.equal(pgIdentifier("short"), "short");
+});
+
+test("multibyte long identifiers pair by their stored (byte-truncated) name and still fail closed when they differ", () => {
+  const base = `${"é".repeat(31)}`; // 62 bytes
+  const stored = pgIdentifier(`${base}_constraint_that_is_far_too_long`);
+  assert.equal(stored, `${base}_`);
+  const table = "t_é";
+  const live = facts({ [constraintFactKey("public", table, stored)]: "UNIQUE (a)" });
+  assert.deepEqual(kinds([`ALTER TABLE "${table}" DROP CONSTRAINT "${stored}";`, `ALTER TABLE "${table}" ADD CONSTRAINT "${base}_constraint_that_is_far_too_long" UNIQUE ("a");`], live), []);
+  assert.deepEqual(kinds([`ALTER TABLE "${table}" DROP CONSTRAINT "${stored}";`, `ALTER TABLE "${table}" ADD CONSTRAINT "${"è".repeat(31)}_x" UNIQUE ("a");`], live), ["drop_constraint_unpaired"]);
+  // quoted identifiers keep case; unquoted fold; so "T" and t are different tables
+  assert.deepEqual(kinds([`ALTER TABLE "T_é" DROP CONSTRAINT "${stored}";`, `ALTER TABLE ${table} ADD CONSTRAINT "${stored}" UNIQUE ("a");`], live), ["drop_constraint_unpaired"]);
+});
+
+test("catalogLookupsNeeded names exactly the dropped constraints and indexes, with their stored identifiers", () => {
+  assert.deepEqual(catalogLookupsNeeded([dropFk(`${LONG}_fk`), 'DROP INDEX "public"."i";', 'DROP TABLE "x";', 'ALTER TABLE "a" ADD COLUMN "b" int;']),
+    { constraints: [{ schema: "public", table: "catering_booking_access_details", name: LONG }], indexes: [{ schema: "public", name: "i" }], defaults: [] });
+});
+
+test("canonicalConstraint understands both drizzle's and PostgreSQL's spelling of the same constraint", () => {
+  assert.equal(
+    canonicalConstraint('FOREIGN KEY ("booking_id") REFERENCES "public"."catering_bookings"("id") ON DELETE cascade ON UPDATE no action'),
+    canonicalConstraint("FOREIGN KEY (booking_id) REFERENCES catering_bookings(id) ON DELETE CASCADE"));
+  assert.notEqual(canonicalConstraint("FOREIGN KEY (a) REFERENCES t(id)"), canonicalConstraint("FOREIGN KEY (a) REFERENCES t(id) ON DELETE CASCADE"));
+  assert.equal(canonicalConstraint("something unknown"), null);
+  assert.equal(canonicalConstraint("UNIQUE (a) trailing junk"), null);
+});
+
+/* ------------------------------------------------ acknowledgement ------------------------------------------------ */
+
+const token = (plan: string[], database = "db1", f?: PlanCatalogFacts, catalog = "") => planAcknowledgementToken(plan, database, f, catalog);
+const DROP_FK = dropFk();
+const ADD_FK = addFk(LONG);
+
+test("the token commits to the COMPLETE executable plan, in order, on one database", () => {
+  const base = token([DROP_FK, ADD_FK], "db1", fkFacts());
+  assert.match(base, /^[0-9a-f]{32}$/);
+  assert.equal(token([DROP_FK, ADD_FK], "db1", fkFacts()), base, "deterministic");
+  assert.equal(token([DROP_FK, ADD_FK.replace(/ /g, "   ")], "db1", fkFacts()), base, "whitespace outside literals is not significant");
+
+  // same DROP, different replacement constraint
+  assert.notEqual(token([DROP_FK, addFk(LONG, undefined, "ON DELETE set null ON UPDATE no action")], "db1", fkFacts()), base);
+  assert.notEqual(token([DROP_FK, ADD_FK.replace('"id")', '"other_id")')], "db1", fkFacts()), base);
+  // same dropped index, different CREATE INDEX
+  const idxPlan = (create: string) => token([dropIdx(), create], "db1", idxFacts());
+  assert.notEqual(idxPlan(createIdx(IDX)), idxPlan(createIdx(IDX, undefined, 'USING btree ("campaign_id")')));
+  assert.notEqual(idxPlan(createIdx(IDX)), idxPlan(createIdx(IDX, undefined, undefined, "UNIQUE ")));
+  // identical findings, different harmless-looking statement
+  const danger = 'ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;';
+  assert.deepEqual(classifyPushPlan([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']).map((f) => f.statement), classifyPushPlan([danger, 'ALTER TABLE "t" ADD COLUMN "b" text;']).map((f) => f.statement));
+  assert.notEqual(token([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']), token([danger, 'ALTER TABLE "t" ADD COLUMN "b" text;']));
+  assert.notEqual(token([danger]), token([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']), "an added safe statement");
+  assert.notEqual(token([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']), token([danger]), "a removed safe statement");
+  // order
+  assert.notEqual(token([DROP_FK, ADD_FK]), token([ADD_FK, DROP_FK]));
+  assert.notEqual(token([danger, 'ALTER TABLE "t" ADD COLUMN "a" text;']), token(['ALTER TABLE "t" ADD COLUMN "a" text;', danger]));
+  // database scope
+  assert.notEqual(token([danger], "db1"), token([danger], "db2"));
+  assert.notEqual(token([danger], "db1"), token([danger], ""));
+});
+
+test("string literals and quoted identifiers are never normalised away, and statement boundaries cannot be forged", () => {
+  assert.notEqual(token(["ALTER TABLE t ALTER COLUMN c SET DEFAULT 'a b';"]), token(["ALTER TABLE t ALTER COLUMN c SET DEFAULT 'a  b';"]));
+  assert.notEqual(token(['ALTER TABLE "T" DISABLE ROW LEVEL SECURITY;']), token(['ALTER TABLE "t" DISABLE ROW LEVEL SECURITY;']));
+  assert.notEqual(token(['SELECT 1;', 'SELECT 2;']), token(['SELECT 1; SELECT 2;']), "two statements are not one statement");
+  assert.notEqual(token(["A", "B C"]), token(["A B", "C"]));
+  assert.notEqual(token(["db"], "a"), token(["a\u0000db"], ""), "scope and plan cannot be shifted into each other");
+});
+
+test("a plan with a protected sequence intentionally removed is approved as the plan that actually runs", () => {
+  const withSequence = ['ALTER TABLE "t" DISABLE ROW LEVEL SECURITY;', 'DROP SEQUENCE "public"."households_id_seq";'];
+  const executable = [withSequence[0]]; // push-schema.ts excludes the in-use sequence before computing the token
+  assert.notEqual(token(executable), token(withSequence));
+  assert.equal(token(executable), token(['ALTER TABLE "t" DISABLE ROW LEVEL SECURITY;']));
+});
+
+test("the token also commits to the live definition of every dropped constraint and index (catalog state not in the SQL text)", () => {
+  const plan = [DROP_FK, ADD_FK];
+  assert.notEqual(token(plan, "db1", fkFacts()), token(plan, "db1", fkFacts(undefined, undefined, "FOREIGN KEY (booking_id) REFERENCES catering_bookings(id) ON DELETE SET NULL")));
+  assert.notEqual(token(plan, "db1", fkFacts()), token(plan, "db1"), "definition read vs not readable");
+  const idxPlan = [dropIdx(), createIdx(IDX)];
+  assert.notEqual(token(idxPlan, "db1", idxFacts()), token(idxPlan, "db1", idxFacts(INDEX_DB.replace("CREATE INDEX", "CREATE UNIQUE INDEX"))));
+  assert.equal(token(plan, "db1", fkFacts()), token(plan, "db1", fkFacts()));
+});
+
+test("the token commits to the whole protected catalog it was reviewed against (RLS, policies, triggers: state not in the SQL text)", () => {
+  const plan = ['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;'];
+  assert.notEqual(token(plan, "db1", undefined, "catalog-a"), token(plan, "db1", undefined, "catalog-b"));
+  assert.equal(token(plan, "db1", undefined, "catalog-a"), token(plan, "db1", undefined, "catalog-a"));
+});
+
+test("a previously issued token authorises only the exact plan it was issued for", () => {
+  const issued = token([DROP_FK, ADD_FK], "db1", fkFacts());
+  const changed = [
+    token([DROP_FK, addFk(LONG, undefined, "ON DELETE restrict ON UPDATE no action")], "db1", fkFacts()),
+    token([DROP_FK, ADD_FK, 'ALTER TABLE "x" ADD COLUMN "y" text;'], "db1", fkFacts()),
+    token([DROP_FK, ADD_FK], "other_db", fkFacts()),
+  ];
+  for (const candidate of changed) assert.notEqual(candidate, issued);
+});
+
+/* ------------------------------------------------ parsing ------------------------------------------------ */
+
+test("splitSqlStatements honours parentheses, quotes, dollar quoting and refuses comments", () => {
+  assert.deepEqual(splitSqlStatements(`CREATE TABLE "t" (\n "a" text DEFAULT 'x;y',\n "b" int\n);\nDROP TABLE "u" CASCADE;`), [
+    `CREATE TABLE "t" (\n "a" text DEFAULT 'x;y',\n "b" int\n);`, 'DROP TABLE "u" CASCADE;',
+  ]);
+  assert.deepEqual(splitSqlStatements("DO $$ BEGIN PERFORM 1; END $$;\nSELECT 2;"), ["DO $$ BEGIN PERFORM 1; END $$;", "SELECT 2;"]);
+  assert.deepEqual(splitSqlStatements(`SELECT E'it\\'s;';SELECT "a;b";`), [`SELECT E'it\\'s;';`, `SELECT "a;b";`]);
+  assert.throws(() => splitSqlStatements("SELECT 'open;"), SchemaPlanParseError);
+  assert.throws(() => splitSqlStatements('SELECT "open;'), SchemaPlanParseError);
+  assert.throws(() => splitSqlStatements("SELECT 1"), SchemaPlanParseError);
+  assert.throws(() => splitSqlStatements("SELECT 1; -- hide; DROP TABLE x\nSELECT 2;"), SchemaPlanParseError, "comments are refused");
+  assert.throws(() => splitSqlStatements("SELECT /* x */ 1;"), SchemaPlanParseError);
+});
+
+test("parsePushPlan reads drizzle-kit's verbose strict output and never mistakes an unreadable plan for an empty one", () => {
+  const output = `No config path provided\n[\u001b[32m✓\u001b[39m] Pulling schema from database...\n${wrap('ALTER TABLE "t" ADD COLUMN "c" text;\nDROP TABLE "u" CASCADE;')}`;
+  assert.deepEqual(parsePushPlan(output), ['ALTER TABLE "t" ADD COLUMN "c" text;', 'DROP TABLE "u" CASCADE;']);
+  assert.deepEqual(parsePushPlan("[i] No changes detected"), []);
+  assert.throws(() => parsePushPlan("something unexpected"), SchemaPlanParseError);
+  assert.throws(() => parsePushPlan(" Warning  You are about to execute current statements:\n\nDROP TABLE \"u\" CASCADE;\n"), SchemaPlanParseError);
+  // a name that imitates the approval prompt cannot cut the plan short and hide what follows it
+  const spoofed = wrap('CREATE TABLE "x\n  Yes, I want to execute all statements" ("a" int);\nDROP TABLE "victim" CASCADE;');
+  assert.deepEqual(classifyPushPlan(parsePushPlan(spoofed)).map((item) => item.kind), ["drop_table"]);
+});
+
+test("dropSequenceTarget reads the sequence a DROP SEQUENCE names, qualified or not", () => {
+  assert.deepEqual(dropSequenceTarget('DROP SEQUENCE "public"."households_id_seq";'), { schema: "public", name: "households_id_seq" });
+  assert.deepEqual(dropSequenceTarget("drop sequence if exists other.s;"), { schema: "other", name: "s" });
+  assert.equal(dropSequenceTarget('DROP TABLE "x";'), null);
+  assert.equal(dropSequenceTarget("DROP SEQUENCE a, b;"), null);
+});
+
+test("only loopback databases named with a whole-word 'test' are disposable", () => {
+  assert.equal(isDisposableTestDatabase("postgres://u@localhost:5432/chefsire_test_1"), true);
+  assert.equal(isDisposableTestDatabase("postgres://u@127.0.0.1/my_TEST_db"), true);
+  assert.equal(isDisposableTestDatabase("postgres://u@127.0.0.1/test"), true);
+  assert.equal(isDisposableTestDatabase("postgres:///chefsire_test?host=/var/run/postgresql"), true);
+  assert.equal(isDisposableTestDatabase("postgres://u:p@ep-cool-123.us-east-2.aws.neon.tech/neondb?sslmode=require"), false);
+  assert.equal(isDisposableTestDatabase("postgres://u:p@ep-test-123.neon.tech/neondb_test"), false, "a remote host is never disposable");
+  assert.equal(isDisposableTestDatabase("postgres://u@localhost/chefsire"), false);
+  assert.equal(isDisposableTestDatabase("postgres://u@localhost/latest"), false, "'test' must be a whole word");
+  assert.equal(isDisposableTestDatabase("postgres://u@localhost/contest_prod"), false);
+  assert.equal(isDisposableTestDatabase("postgres://u@localhost/app_test?host=db.prod.example.com"), false, "libpq lets ?host override the URL host");
+  assert.equal(isDisposableTestDatabase("postgres://u@localhost/app_test?hostaddr=10.0.0.5"), false);
+  assert.equal(isDisposableTestDatabase("postgres://u@localhost,db.prod.example.com/app_test"), false);
+  assert.equal(isDisposableTestDatabase("not a url"), false);
+});
+
+test("DROP NOT NULL is protection-removing in every spelling, including financial, entitlement and authentication tables", () => {
+  for (const table of ["orders", "payouts", "commissions", "catering_booking_payments", "meal_plan_purchases", "users", "subscription_history"]) {
+    for (const statement of [
+      `ALTER TABLE "${table}" ALTER COLUMN "c" DROP NOT NULL;`,
+      `ALTER TABLE "public"."${table}" ALTER COLUMN c DROP NOT NULL`,
+      `alter table ${table} alter column "Mixed Case" drop not null;`,
+      `ALTER TABLE ONLY IF EXISTS ${table}\n  ALTER COLUMN\n  c\n  DROP\n  NOT NULL ;`.replace("ONLY IF EXISTS", "IF EXISTS ONLY"),
+      `ALTER TABLE ${table} ALTER c DROP NOT NULL;`,
+    ]) assert.deepEqual(kinds([statement]), ["not_null_dropped"], statement);
+  }
+});
+
+test("several ALTER COLUMN operations in one statement cannot smuggle DROP NOT NULL past review", () => {
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "a" SET NOT NULL, ALTER COLUMN "b" DROP NOT NULL;']), ["unrecognized_statement"]);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "b" DROP NOT NULL, ALTER COLUMN "a" SET NOT NULL;']), ["unrecognized_statement"]);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "a" SET DEFAULT 1, ALTER COLUMN "b" DROP NOT NULL;']), ["unrecognized_statement"]);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "a" SET NOT NULL;', 'ALTER TABLE "o" ALTER COLUMN "b" DROP NOT NULL;']), ["not_null_dropped"], "separate statements are each classified");
+});
+
+test("tightening nullability and ordinary defaults stay silent; dropping a default (can carry security state) is reviewed", () => {
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "a" SET NOT NULL;']), []);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "tier" DROP DEFAULT;']), ["default_dropped"]);
+  assert.deepEqual(kinds(['ALTER TABLE "public"."o" ALTER COLUMN "tier" DROP DEFAULT, ALTER COLUMN "x" SET NOT NULL;']), ["unrecognized_statement"]);
+});
+
+/* ------------------------------------------------ the dry-run process (stdout vs stderr) ------------------------------------------------ */
+
+const PLAN_OUT = `No config path provided, using default 'drizzle.config.ts'\nUsing 'pg' driver for database querying\n${wrap('ALTER TABLE "users" DROP COLUMN "probe";')}`;
+const NPM_WARNING = "npm warn exec The following package was not found and will be installed: drizzle-kit@0.30.4\nnpm warn config global `--global` is deprecated\n";
+
+test("a valid plan on stdout is read whether or not npm wrote warnings to stderr", () => {
+  const quiet = interpretDryRun({ status: 0, stdout: PLAN_OUT, stderr: "" });
+  const noisy = interpretDryRun({ status: 0, stdout: PLAN_OUT, stderr: NPM_WARNING });
+  assert.ok(quiet.ok && noisy.ok);
+  assert.deepEqual(quiet.ok && quiet.statements, ['ALTER TABLE "users" DROP COLUMN "probe";']);
+  assert.deepEqual(noisy.ok && noisy.statements, quiet.ok ? quiet.statements : []);
+  assert.match(noisy.ok ? noisy.diagnostics : "", /npm warn/, "stderr is kept for diagnostics, not parsed");
+  const empty = interpretDryRun({ status: 0, stdout: "[i] No changes detected", stderr: NPM_WARNING });
+  assert.deepEqual(empty.ok && empty.statements, []);
+});
+
+test("a stderr warning can neither hide nor create a statement, so it can never change classification", () => {
+  const hostile = 'ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;\nDROP TABLE "victim" CASCADE;\n';
+  const withStderr = interpretDryRun({ status: 0, stdout: PLAN_OUT, stderr: `${hostile}${NPM_WARNING}` });
+  assert.ok(withStderr.ok);
+  assert.deepEqual(classifyPushPlan(withStderr.ok ? withStderr.statements : []).map((item) => item.kind), ["drop_column"], "only stdout statements exist");
+  // the dangerous statement on stdout is classified identically with or without stderr noise
+  const a = interpretDryRun({ status: 0, stdout: PLAN_OUT, stderr: "" });
+  assert.deepEqual(withStderr.ok && withStderr.statements, a.ok ? a.statements : null);
+  // and a plan printed on STDERR only is not a plan
+  const wrongStream = interpretDryRun({ status: 0, stdout: "", stderr: PLAN_OUT });
+  assert.equal(wrongStream.ok, false);
+  assert.equal(!wrongStream.ok && wrongStream.kind, "plan_unreadable");
+});
+
+test("prose inside the plan region is read as a statement and then fails closed in classification", () => {
+  const outcome = interpretDryRun({ status: 0, stdout: wrap("this is not sql;"), stderr: "" });
+  assert.ok(outcome.ok);
+  assert.deepEqual(classifyPushPlan(outcome.ok ? outcome.statements : []).map((item) => item.kind), ["unrecognized_statement"]);
+});
+
+test("process failures, signals, spawn errors and non-zero exits fail closed even if stdout looks like a plan", () => {
+  for (const result of [
+    { status: 1, stdout: PLAN_OUT, stderr: "" },
+    { status: 2, stdout: "", stderr: "boom" },
+    { status: null, signal: "SIGTERM", stdout: PLAN_OUT, stderr: "" },
+    { status: null, stdout: PLAN_OUT, stderr: "" },
+    { status: null, error: new Error("spawnSync npm ETIMEDOUT"), stdout: "", stderr: "" },
+  ]) {
+    const outcome = interpretDryRun(result);
+    assert.equal(outcome.ok, false);
+    assert.equal(!outcome.ok && outcome.kind, "process_failed");
+  }
+  const failed = interpretDryRun({ status: 1, stdout: "Error: connect ECONNREFUSED", stderr: "npm warn x" });
+  assert.match(!failed.ok ? failed.diagnostics : "", /ECONNREFUSED/, "a legitimate drizzle error is surfaced, not suppressed");
+});
+
+test("malformed, truncated or unexpected stdout is 'unreadable', distinct from a failed process and from a dangerous plan", () => {
+  for (const stdout of [
+    "", "garbage", "Reading config file\nUsing 'pg' driver\n",
+    " Warning  You are about to execute current statements:\n\nDROP TABLE \"u\" CASCADE;\n", // no approval prompt: truncated
+    wrap('ALTER TABLE "t" ADD COLUMN "c" text'), // unterminated statement
+    `${wrap('DROP TABLE "u" CASCADE;')}\ntrailing text after the prompt`,
+  ]) {
+    const outcome = interpretDryRun({ status: 0, stdout, stderr: "" });
+    if (outcome.ok) assert.fail(`accepted: ${JSON.stringify(stdout)} -> ${JSON.stringify(outcome.statements)}`);
+    assert.equal(outcome.kind, "plan_unreadable", JSON.stringify(stdout));
+  }
+});
+
+/* ------------------------------------------------ enum value additions ------------------------------------------------ */
+
+const ADD_C = 'ALTER TYPE "public"."status" ADD VALUE \'c\';';
+
+test("an enum addition that nothing in the plan uses is not a hazard (and plain plans have none)", () => {
+  assert.equal(enumAdditionCount([ADD_C]), 1);
+  assert.deepEqual(enumAdditionHazards([ADD_C]), []);
+  assert.deepEqual(enumAdditionHazards([ADD_C, 'ALTER TABLE "t" ADD COLUMN "x" integer;', 'CREATE INDEX "t_x" ON "t" ("x");']), []);
+  assert.deepEqual(enumAdditionHazards(['ALTER TABLE "t" ADD COLUMN "x" integer;', 'CREATE TABLE "u" ("id" int);']), []);
+  assert.equal(enumAdditionCount(['ALTER TABLE "t" ADD COLUMN "x" integer;']), 0);
+});
+
+test("an enum addition followed by a dependent default, column, constraint or literal use is a hazard", () => {
+  const dependents: string[][] = [
+    ['ALTER TABLE "t" ALTER COLUMN "s" SET DEFAULT \'c\';'],
+    ['ALTER TABLE "t" ADD COLUMN "s2" "status" DEFAULT \'c\' NOT NULL;'],
+    ['ALTER TABLE "t" ADD COLUMN "s2" "public"."status";'], // names the type
+    ['CREATE TABLE "u" ("s" "public"."status" NOT NULL DEFAULT \'c\');'],
+    ['ALTER TABLE "t" ADD CONSTRAINT "t_chk" CHECK ("s" <> \'c\');'],
+    ['UPDATE "t" SET "s" = \'c\';'],
+    ['ALTER TABLE "t" ALTER COLUMN "s" SET DEFAULT \'x\'::status;'],
+  ];
+  for (const later of dependents) {
+    const hazards = enumAdditionHazards([ADD_C, ...later]);
+    assert.equal(hazards.length, 1, later.join());
+    assert.deepEqual(hazards[0].dependents, later.map((statement) => statement.replace(/\s+/g, " ")));
+  }
+  // order matters: a statement BEFORE the addition cannot depend on it
+  assert.deepEqual(enumAdditionHazards(['ALTER TABLE "t" ALTER COLUMN "s" SET DEFAULT \'a\';', ADD_C]), []);
+  // unrelated statements after the addition are not dependents
+  assert.deepEqual(enumAdditionHazards([ADD_C, 'ALTER TABLE "t" ADD COLUMN "z" text DEFAULT \'d\';']).length, 0);
+});
+
+test("enum additions in other spellings (IF NOT EXISTS, BEFORE/AFTER, unqualified, odd value) are read; unreadable ones fail closed", () => {
+  assert.equal(enumAdditionHazards(["ALTER TYPE status ADD VALUE IF NOT EXISTS 'c' AFTER 'a';", 'SELECT 1 WHERE x = \'c\';']).length, 1);
+  assert.equal(enumAdditionHazards(['ALTER TYPE "my status" ADD VALUE \'it\'\'s\';', 'ALTER TABLE t ALTER COLUMN s SET DEFAULT \'it\'\'s\';']).length, 1);
+  assert.equal(enumAdditionHazards(["ALTER TYPE status ADD VALUE some_word;", "ALTER TABLE t ADD COLUMN y int;"]).length, 1, "unreadable value: every later statement is a dependent");
+});
+
+test("the classifier still reviews dangerous SQL in a plan that contains an enum addition", () => {
+  assert.deepEqual(kinds([ADD_C, 'DROP TABLE "x" CASCADE;', 'ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']), ["drop_table", "rls_disabled"]);
+  assert.deepEqual(kinds([ADD_C]), []);
+});
+
+test("acknowledgement fails closed: only exactly one well-formed, current token passes; --force never does", () => {
+  const findings = classifyPushPlan(['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']);
+  const current = token(['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']);
+  const ack = (argv: string[], disposable = false, list = findings) => isPlanAcknowledged({ findings: list, token: current, argv, disposable });
+  assert.equal(ack([`--accept-plan=${current}`]), true, "the correct current token authorises its exact plan");
+  assert.equal(ack([]), false, "missing");
+  assert.equal(ack(["--force"]), false, "--force is not approval");
+  assert.equal(ack(["--force", "--accept-plan="]), false, "empty");
+  assert.equal(ack(["--accept-plan"]), false, "no value");
+  assert.equal(ack([`--accept-plan=${current.slice(0, 31)}`]), false, "truncated");
+  assert.equal(ack([`--accept-plan=${current.toUpperCase()}`]), false, "malformed (case)");
+  assert.equal(ack([`--accept-plan=${current}x`]), false, "trailing junk");
+  assert.equal(ack([`--accept-plan= ${current}`]), false, "whitespace");
+  assert.equal(ack([`--accept-plan=${token(["something else"])}`]), false, "a token for another plan");
+  assert.equal(ack([`--accept-plan=${current}`, `--accept-plan=${token(["x"])}`]), false, "ambiguous: several tokens");
+  assert.equal(ack([`--accept-plan=${current}`, `--accept-plan=${current}`]), false, "repeated");
+  assert.equal(ack([], true), true, "a disposable test database acknowledges implicitly");
+  assert.equal(ack([], false, []), true, "a plan with no findings needs no approval");
+});
+
+/* ------------------------------------------------ foreign-key referential action column lists ------------------------------------------------ */
+
+const fk = (tail: string, columns = "a, b") => `FOREIGN KEY (${columns}) REFERENCES t(x, y) ${tail}`.trim();
+const canon = (definition: string) => canonicalConstraint(definition);
+
+test("ON DELETE SET NULL / SET DEFAULT column lists are part of the canonical foreign key", () => {
+  for (const action of ["SET NULL", "SET DEFAULT"]) {
+    const none = canon(fk(`ON DELETE ${action}`));
+    const one = canon(fk(`ON DELETE ${action} (a)`));
+    const other = canon(fk(`ON DELETE ${action} (b)`));
+    const both = canon(fk(`ON DELETE ${action} (a, b)`));
+    assert.ok(none && one && other && both);
+    assert.notEqual(one, none, `${action}: one column differs from no list on a two-column key`);
+    assert.notEqual(one, other, `${action}: different single columns differ`);
+    assert.notEqual(one, both);
+    assert.equal(both, none, `${action}: listing every referencing column IS the default behaviour`);
+    assert.equal(canon(fk(`ON DELETE ${action} (b, a)`)), both, `${action}: the column list is a set; order is irrelevant`);
+    assert.equal(canon(fk(`on delete ${action.toLowerCase()} ( "a" ,"b" )`)), both, "formatting and quoting do not matter");
+    assert.equal(canon(fk(`ON UPDATE ${action} (a)`)), canon(fk(`ON UPDATE ${action} (a)`)));
+    assert.notEqual(canon(fk(`ON UPDATE ${action} (a)`)), canon(fk(`ON UPDATE ${action}`)), "ON UPDATE lists count too");
+    assert.notEqual(canon(fk(`ON DELETE ${action} (a)`)), canon(fk(`ON UPDATE ${action} (a)`)), "delete and update are distinct");
+  }
+  assert.notEqual(canon(fk("ON DELETE SET NULL (a)")), canon(fk("ON DELETE SET DEFAULT (a)")), "the action itself differs");
+  assert.notEqual(canon(fk("ON DELETE SET NULL (a)")), canon(fk("ON DELETE CASCADE")));
+  assert.equal(canon(fk("ON DELETE CASCADE")), canon(fk("ON DELETE cascade ON UPDATE no action")), "unlisted actions default to NO ACTION");
+});
+
+test("identifier semantics in action lists: unquoted names fold, quoted names keep case; repeats and malformed lists fail closed", () => {
+  assert.equal(canon(fk("ON DELETE SET NULL (A)", "a, b")), canon(fk("ON DELETE SET NULL (a)", "a, b")), "unquoted A is a");
+  assert.notEqual(canon(fk('ON DELETE SET NULL ("A")', "a, b")), canon(fk("ON DELETE SET NULL (a)", "a, b")), 'quoted "A" is not a');
+  assert.equal(canon(fk("ON DELETE SET NULL (a, a)")), null, "a repeated column is invalid");
+  assert.equal(canon(fk("ON DELETE SET NULL ()")), null);
+  assert.equal(canon(fk("ON DELETE SET NULL (a b)")), null);
+  assert.equal(canon(fk("ON DELETE CASCADE (a)")), null, "CASCADE takes no column list: unparseable, fail closed");
+});
+
+test("a replacement whose referential-action columns differ is reviewed; an equivalent spelling is still excused", () => {
+  const name = "composite_fk";
+  const live = (def: string) => facts({ [constraintFactKey("public", "t", name)]: def });
+  const plan = (add: string) => ['ALTER TABLE "t" DROP CONSTRAINT "composite_fk";', `ALTER TABLE "t" ADD CONSTRAINT "composite_fk" ${add};`];
+  const dbDef = "FOREIGN KEY (a, b) REFERENCES t(x, y) ON DELETE SET NULL (a)";
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set null ("a") ON UPDATE no action'), live(dbDef)), []);
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set null ("b") ON UPDATE no action'), live(dbDef)), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set null ON UPDATE no action'), live(dbDef)), ["drop_constraint_unpaired"], "narrowed -> widened nulling");
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set null ("a","b") ON UPDATE no action'), live(dbDef)), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds(plan('FOREIGN KEY ("a","b") REFERENCES "public"."t"("x","y") ON DELETE set default ("a") ON UPDATE no action'), live(dbDef)), ["drop_constraint_unpaired"]);
+});
+
+/* ------------------------------------------------ defaults ------------------------------------------------ */
+
+const setDefault = (expression: string, column = "c", table = "o") => `ALTER TABLE "${table}" ALTER COLUMN "${column}" SET DEFAULT ${expression};`;
+const defaultFacts = (current: string | null, proposed: string | null, column = "c", table = "o"): PlanCatalogFacts =>
+  ({ constraints: {}, indexes: {}, defaults: { [columnFactKey("public", table, column)]: { current, proposed } } });
+
+test("SET DEFAULT is judged against the catalog: only re-applying the identical default is silent", () => {
+  assert.deepEqual(kinds([setDefault("true")], defaultFacts("false", "true")), ["default_changed"], "false -> true boolean");
+  assert.deepEqual(kinds([setDefault("'completed'::text", "payment_status", "orders")], defaultFacts("'pending'::text", "'completed'::text", "payment_status", "orders")), ["default_changed"], "pending -> completed payment state");
+  assert.deepEqual(kinds([setDefault("'free'::text")], defaultFacts("'free'::text", "'free'::text")), [], "equivalent default re-applied");
+  assert.deepEqual(kinds([setDefault("'premium'::text")], defaultFacts("'free'::text", "'premium'::text")), ["default_changed"], "existing -> different");
+  assert.deepEqual(kinds([setDefault("'admin'::text", "role", "users")], defaultFacts(null, "'admin'::text", "role", "users")), ["default_added"], "no default -> new default is NOT assumed harmless");
+  assert.deepEqual(kinds([setDefault("0")], defaultFacts(null, "0")), ["default_added"], "even a zero");
+});
+
+test("missing or incomplete catalog evidence about a default never classifies it as safe", () => {
+  assert.deepEqual(kinds([setDefault("true")]), ["default_unverified"], "no facts at all");
+  assert.deepEqual(kinds([setDefault("true")], { constraints: {}, indexes: {}, defaults: {} }), ["default_unverified"], "column not inspected / not found");
+  assert.deepEqual(kinds([setDefault("true")], defaultFacts("false", null)), ["default_unverified"], "PostgreSQL could not render the proposed default");
+  assert.deepEqual(kinds([setDefault("true", "other")], defaultFacts("true", "true")), ["default_unverified"], "facts for a different column do not count");
+  assert.deepEqual(kinds([setDefault("true", "c", "other_table")], defaultFacts("true", "true")), ["default_unverified"]);
+});
+
+test("DROP DEFAULT always requires review; defaults added inline with a new column or table are additive", () => {
+  assert.deepEqual(kinds(['ALTER TABLE "o" ALTER COLUMN "c" DROP DEFAULT;']), ["default_dropped"]);
+  assert.deepEqual(kinds(['ALTER TABLE "o" ADD COLUMN "c" boolean DEFAULT false NOT NULL;', 'CREATE TABLE "n" ("c" text DEFAULT \'x\');']), []);
+});
+
+test("catalogLookupsNeeded exposes each SET DEFAULT with its exact expression, in any spelling", () => {
+  const needed = catalogLookupsNeeded([setDefault("now() + interval '24 hours'", "expires_at", "t"), 'alter table public.t alter column x set default \'a;b\'::text ;']);
+  assert.deepEqual(needed.defaults, [
+    { schema: "public", table: "t", column: "expires_at", expression: "now() + interval '24 hours'" },
+    { schema: "public", table: "t", column: "x", expression: "'a;b'::text" },
+  ]);
+});
+
+/* ------------------------------------------------ server identity ------------------------------------------------ */
+
+const identity = (over: Partial<Parameters<typeof buildServerIdentity>[0]> = {}) =>
+  buildServerIdentity({ systemIdentifier: "7123456789012345678", databaseOid: "16384", databaseName: "chefsire", target: "db.example.com:5432", ...over });
+
+test("the same database name, catalog and plan on different servers cannot share an approval token", () => {
+  const plan = ['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;'];
+  const tokenFor = (id: string) => planAcknowledgementToken(plan, id, undefined, "same-catalog");
+  const staging = identity({ systemIdentifier: "7000000000000000001", target: "staging.example.com:5432" });
+  const production = identity({ systemIdentifier: "7000000000000000002", target: "prod.example.com:5432" });
+  assert.notEqual(tokenFor(staging.id), tokenFor(production.id), "different cluster identifiers and targets");
+  // each ingredient matters on its own
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ systemIdentifier: "7123456789012345679" }).id), "cluster identifier");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ target: "other.example.com:5432" }).id), "connection target (a Neon branch shares the identifier)");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ target: "db.example.com:6432" }).id), "port");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ databaseOid: "16385" }).id), "database OID");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ databaseName: "chefsire2" }).id), "database name");
+  assert.notEqual(tokenFor(identity().id), tokenFor(identity({ systemIdentifier: null }).id), "an unverified identity never equals a verified one");
+});
+
+test("the same server, database and plan is identified consistently", () => {
+  assert.equal(identity().id, identity().id);
+  assert.equal(planAcknowledgementToken(["x;"], identity().id), planAcknowledgementToken(["x;"], identity().id));
+  assert.equal(identity().strong, true);
+  assert.equal(identity({ systemIdentifier: null }).strong, false, "no cluster identifier read: weak, needs a separate explicit flag");
+});
+
+test("a missing or ambiguous identity fails closed", () => {
+  for (const bad of [
+    { systemIdentifier: "" }, { systemIdentifier: "abc" }, { systemIdentifier: "0" }, { systemIdentifier: "123 456 789" }, { systemIdentifier: "1;2" },
+    { databaseOid: "" }, { databaseOid: "abc" }, { databaseName: "" }, { target: "" },
+  ]) assert.throws(() => identity(bad as never), ServerIdentityError, JSON.stringify(bad));
+});
+
+test("the connection target names the host and port only: no credentials, no query, no database", () => {
+  const url = "postgres://admin:s3cr3t-P@ss@Prod.Example.COM:6543/chefsire?sslmode=require&options=-c%20x";
+  assert.equal(connectionTarget(url, {}), "prod.example.com:6543");
+  assert.doesNotMatch(connectionTarget(url, {}), /s3cr3t|admin|chefsire|sslmode/);
+  const id = buildServerIdentity({ systemIdentifier: "7123456789012345678", databaseOid: "1", databaseName: "chefsire", target: connectionTarget(url, {}) }).id;
+  assert.doesNotMatch(id, /s3cr3t|admin|sslmode/);
+});
+
+test("accepted connection strings: authority host and port, IPv6, default and PGPORT port, socket directories", () => {
+  assert.equal(connectionTarget("postgresql://u@localhost/db", {}), "localhost:5432");
+  assert.equal(connectionTarget("postgres://u@db.example.com:5433/db", {}), "db.example.com:5433");
+  assert.equal(connectionTarget("postgres://u@[::1]:5433/db", {}), "::1:5433");
+  assert.equal(connectionTarget("postgres://u@db.example.com/db", { PGPORT: "6000" }), "db.example.com:6000", "a missing port is PGPORT, as the driver does");
+  assert.equal(connectionTarget("postgres://u@db.example.com:5433/db", { PGPORT: "6000" }), "db.example.com:5433", "an explicit port wins over PGPORT");
+  assert.equal(connectionTarget("postgres:///db?host=/var/run/postgresql", {}), "socket:/var/run/postgresql:5432");
+  assert.equal(connectionTarget("postgres:///db?host=/tmp&port=5433", {}), "socket:/tmp:5433", "a socket connection selects its socket file by port");
+  assert.equal(connectionTarget("postgres://%2Fvar%2Frun%2Fpostgresql/db", {}), "socket:/var/run/postgresql:5432", "URL-encoded socket directory as authority");
+  assert.equal(connectionTarget("postgres://u@db.example.com/db?sslmode=require&application_name=x", {}), "db.example.com:5432", "harmless parameters are fine");
+});
+
+test("query-string overrides of the destination are rejected, not silently mapped to the authority", () => {
+  const rejected = [
+    "postgres://u@prod.example.com/db?host=/tmp",                // host override next to an authority host
+    "postgres://u@prod.example.com/db?host=other.example.com",   // TCP host override
+    "postgres://u@prod.example.com:5432/db?port=6543",           // port override on a TCP connection
+    "postgres://u@prod.example.com/db?port=6543",
+    "postgres://u@prod.example.com/db?host=other.example.com&port=6543", // both
+    "postgres://u@prod.example.com:5432/db?hostaddr=10.0.0.9",   // hostaddr
+    "postgres:///db?host=/tmp&hostaddr=10.0.0.9",
+    "postgres:///db?host=other.example.com",                     // empty authority + non-socket host override
+    "postgres:///db?host=/tmp&host=/var/run/postgresql",         // repeated
+    "postgres:///db?host=/tmp&port=5432&port=5433",
+    "postgres://u@localhost:5432/db?host=/tmp&port=5433",        // socket override next to authority host/port
+    "postgres:///db",                                            // no host at all: the environment (PGHOST) would decide
+    "postgres://u@/db",
+  ];
+  for (const url of rejected) assert.throws(() => connectionTarget(url, {}), ServerIdentityError, url);
+});
+
+test("multi-host, invalid and non-PostgreSQL URLs fail closed with a message that carries no secret", () => {
+  for (const url of [
+    "postgres://a,b/db", "postgres://u:pw@a:5432,b:5433/db", "postgres:///db?host=/tmp,/var/run", "postgres://u@a/db?port=1,2",
+    "not a url", "", "mysql://h/db", "postgres://u@h:99999/db", "postgres://u@h:0/db", "postgres://u@h/db?host=%E0%A4%A",
+  ]) assert.throws(() => connectionTarget(url, {}), ServerIdentityError, url);
+  try { connectionTarget("postgres://admin:s3cr3t-P@ss@h/db?hostaddr=10.0.0.9", {}); assert.fail("expected a throw"); } catch (error) {
+    assert.ok(error instanceof ServerIdentityError);
+    assert.doesNotMatch((error as Error).message, /s3cr3t|admin|10\.0\.0\.9|postgres:/, "no secret, address or URL in the error");
+  }
+});
+
+test("every accepted URL resolves, in the installed driver, to exactly the destination connectionTarget reports", async () => {
+  const imported = (await import("pg-connection-string")) as unknown as { parse?: (s: string) => Record<string, unknown>; default?: ((s: string) => Record<string, unknown>) & { parse?: (s: string) => Record<string, unknown> } };
+  const parse = (imported.parse ?? imported.default?.parse ?? imported.default) as (s: string) => Record<string, unknown>;
+  const accepted = [
+    "postgres://u@db.example.com:5433/db", "postgres://u@[::1]:5433/db", "postgres://u@LOCALHOST/db?sslmode=require",
+    "postgres:///db?host=/var/run/postgresql", "postgres:///db?host=/tmp&port=5433", "postgres://%2Fvar%2Frun%2Fpostgresql/db",
+  ];
+  for (const url of accepted) {
+    const config = parse(url);
+    const target = connectionTarget(url, {});
+    const host = String(config.host).replace(/^\[|\]$/g, "").toLowerCase();
+    const port = String(config.port || "5432");
+    assert.equal(target, host.startsWith("/") ? `socket:${host}:${port}` : `${host}:${port}`, url);
+  }
+  // ... and the URLs the old reading would have mapped to the authority host really do point elsewhere in the driver
+  const old = (url: string) => new URL(url).hostname;
+  for (const url of ["postgres://u@prod.example.com/db?host=other.example.com", "postgres://u@prod.example.com/db?port=6543"]) {
+    const config = parse(url);
+    assert.ok(config.host !== old(url) || String(config.port) !== (new URL(url).port || ""), `the driver honours the override in ${url}`);
+    assert.throws(() => connectionTarget(url, {}), ServerIdentityError);
+  }
+});
+
+test("different resolved destinations never share an approval, and the same destination does", () => {
+  const plan = ['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;'];
+  const identityFor = (url: string) => buildServerIdentity({ systemIdentifier: "7123456789012345678", databaseOid: "16384", databaseName: "chefsire", target: connectionTarget(url, {}) });
+  const tokenFor = (url: string) => planAcknowledgementToken(plan, identityFor(url).id, undefined, "same-catalog");
+  assert.notEqual(tokenFor("postgres://u@staging.example.com:5432/chefsire"), tokenFor("postgres://u@prod.example.com:5432/chefsire"));
+  assert.notEqual(tokenFor("postgres://u@h:5432/chefsire"), tokenFor("postgres://u@h:6432/chefsire"));
+  assert.notEqual(tokenFor("postgres:///chefsire?host=/tmp&port=5433"), tokenFor("postgres:///chefsire?host=/tmp&port=5434"));
+  assert.notEqual(tokenFor("postgres:///chefsire?host=/tmp"), tokenFor("postgres:///chefsire?host=/var/run/postgresql"));
+  assert.equal(tokenFor("postgres://user1:pw1@h:5432/chefsire?sslmode=require"), tokenFor("postgres://user2:pw2@H:5432/chefsire"), "credentials and harmless parameters are not identity");
+});
+
+test("the weak-identity fallback stays explicitly gated, and only where an approval is actually needed", () => {
+  const findings = classifyPushPlan(['ALTER TABLE "o" DISABLE ROW LEVEL SECURITY;']);
+  const weak = identity({ systemIdentifier: null });
+  const strong = identity();
+  const blocked = (over: Partial<Parameters<typeof weakIdentityBlocksApproval>[0]>) => weakIdentityBlocksApproval({ findings, identity: weak, argv: [], disposable: false, ...over });
+  assert.equal(blocked({}), true, "weak identity + a plan to approve: refused");
+  assert.equal(blocked({ argv: ["--accept-unverified-server-identity"] }), false, "the separate explicit flag lifts it");
+  assert.equal(blocked({ argv: ["--accept-plan=" + "a".repeat(32)] }), true, "a plan token alone does not");
+  assert.equal(blocked({ argv: ["--force"] }), true, "--force does not");
+  assert.equal(blocked({ identity: strong }), false, "a verified identity needs no flag");
+  assert.equal(blocked({ findings: [] }), false, "nothing to approve");
+  assert.equal(blocked({ disposable: true }), false);
+});
+
+/* ------------------------------------------------ string-literal and token semantics in canonical forms ------------------------------------------------ */
+
+const ON = { standardConformingStrings: true };
+const check = (expression: string, options = ON) => canonicalConstraint(`CHECK (${expression})`, options);
+
+test("E'\\n' (a newline) and '\\n' (backslash, n) never compare equal; equal values do", () => {
+  assert.notEqual(check("x <> E'\\n'"), check("x <> '\\n'"), "newline vs backslash-n");
+  assert.notEqual(check("x <> E'\\t'"), check("x <> E'\\n'"), "different escapes");
+  assert.notEqual(check("x <> E'\\n'"), check("x <> E'\\\\n'"), "newline vs escaped backslash then n");
+  assert.notEqual(check("x <> E'\\x41'"), check("x <> E'\\x42'"));
+  // provably identical values compare consistently, however they are spelled
+  assert.equal(check("x <> E'\\n'"), check("x <> e'\\n'"));
+  assert.equal(check("x <> E'A'"), check("x <> E'\\x41'"));
+  assert.equal(check("x <> E'A'"), check("x <> E'\\101'"));
+  assert.equal(check("x <> E'A'"), check("x <> E'\\u0041'"));
+  assert.equal(check("x <> E'A'"), check("x <> E'\\U00000041'"));
+  assert.equal(check("x <> E'\\\\n'"), check("x <> '\\n'"), "an E-string backslash-n IS the ordinary literal \\n when backslashes are literal");
+  assert.equal(check("x <> E'\\z'"), check("x <> E'z'"), "an unknown escape is the character itself");
+  assert.equal(check("x <> E'\\'' "), check("x <> '''' "), "an escaped quote is a quote");
+});
+
+test("embedded quotes, dollar quoting and backslashes are told apart without corrupting the canonical form", () => {
+  assert.equal(check("x <> 'it''s'"), check("x <> E'it\\'s'"));
+  assert.equal(check("x <> 'it''s'"), check("x <> $$it's$$"));
+  assert.notEqual(check("x <> 'it''s'"), check("x <> 'its'"));
+  assert.notEqual(check("x <> 'a'' b'"), check("x <> 'a' 'b'"), "a doubled quote is not a literal boundary");
+  assert.equal(check("x <> $$a\\nb$$"), check("x <> E'a\\\\nb'"), "dollar quoting never processes backslashes");
+  assert.notEqual(check("x <> $$a\\nb$$"), check("x <> E'a\\nb'"), "so $$\\n$$ is not a newline");
+  assert.notEqual(check("x <> $a$one$a$"), check("x <> $a$two$a$"));
+  assert.equal(check("x <> $a$one$a$"), check("x <> $b$one$b$"), "the tag is not part of the value");
+  assert.notEqual(check("x <> ''''"), check("x <> ''"), "a quote versus the empty string");
+});
+
+test("an unprovable literal makes the whole canonical form unavailable instead of equal", () => {
+  for (const bad of ["E'\\x'", "E'\\u12'", "E'\\u0000'", "E'\\0'", "E'\\ud83d'"]) assert.equal(check(`x <> ${bad}`), null, bad);
+  assert.equal(check("x <> '\\n'", {}), null, "ordinary literal with a backslash and an unknown standard_conforming_strings");
+  assert.equal(check("x <> 'plain'", {}) !== null, true, "no backslash: the setting does not matter");
+  assert.equal(check("x <> $$\\n$$", {}) !== null, true, "dollar quoting does not depend on the setting");
+  assert.equal(check("x <> E'\\n'", {}) !== null, true, "nor do E-strings");
+  // with standard_conforming_strings off an ordinary literal IS an escape string
+  assert.equal(check("x <> '\\n'", { standardConformingStrings: false }), check("x <> E'\\n'", { standardConformingStrings: false }));
+  assert.notEqual(check("x <> '\\n'", { standardConformingStrings: false }), check("x <> '\\n'", ON));
+});
+
+const dropCheck = 'ALTER TABLE "t" DROP CONSTRAINT "t_chk";';
+const addCheck = (expression: string) => `ALTER TABLE "t" ADD CONSTRAINT "t_chk" CHECK (${expression});`;
+const checkFacts = (live: string, standard: boolean | "unknown" = true): PlanCatalogFacts =>
+  ({ constraints: { [constraintFactKey("public", "t", "t_chk")]: `CHECK (${live})` }, indexes: {}, standardConformingStrings: standard === "unknown" ? undefined : standard });
+
+test("CHECK replacement with changed escape semantics requires review; an identical one is still excused", () => {
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\n')")], checkFacts("(x <> '\\n')")), ["drop_constraint_unpaired"], "was backslash-n, becomes newline");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> '\\n')")], checkFacts("(x <> E'\\n')")), ["drop_constraint_unpaired"], "was newline, becomes backslash-n");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\t')")], checkFacts("(x <> E'\\n')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\n')")], checkFacts("(x <> E'\\n')")), [], "identical expression: provably the same protection");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\x0a')")], checkFacts("(x <> E'\\n')")), [], "same value, different spelling");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> '\\n')")], checkFacts("(x <> '\\n')", "unknown")), ["drop_constraint_unpaired"], "unknown setting: not provable");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> 'a')")], checkFacts("(x <> 'a')", "unknown")), [], "no backslash: unaffected");
+});
+
+const dropIndex = 'DROP INDEX "i";';
+const indexFacts = (definition: string, standard: boolean | "unknown" = true): PlanCatalogFacts =>
+  ({ constraints: {}, indexes: { [indexFactKey("public", "i")]: definition }, standardConformingStrings: standard === "unknown" ? undefined : standard });
+
+test("partial UNIQUE and expression index replacement with changed escape semantics requires review", () => {
+  const live = (tail: string) => `CREATE UNIQUE INDEX i ON public.t USING btree ${tail}`;
+  const create = (tail: string) => `CREATE UNIQUE INDEX "i" ON "t" USING btree ${tail};`;
+  // partial index predicate
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> E'\\n')")], indexFacts(live("(a) WHERE (b <> '\\n')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> E'\\n')")], indexFacts(live("(a) WHERE (b <> E'\\n')"))), [], "identical predicate");
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> E'\\n')")], indexFacts(live("(a) WHERE (b <> E'\\t')"))), ["drop_index_unpaired"]);
+  // expression index
+  assert.deepEqual(kinds([dropIndex, create("((lower(a) || E'\\n'))")], indexFacts(live("((lower(a) || '\\n'))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((lower(a) || E'\\n'))")], indexFacts(live("((lower(a) || E'\\n'))"))), []);
+  assert.deepEqual(kinds([dropIndex, create("((lower(a) || '\\n'))")], indexFacts(live("((lower(a) || '\\n'))"), "unknown")), ["drop_index_unpaired"], "unknown setting");
+  // ordinary comparisons keep working
+  assert.deepEqual(kinds([dropIndex, create('("a", "b")')], indexFacts(live("(a, b)"))), []);
+  assert.deepEqual(kinds([dropIndex, create('("a", "b") WHERE ("c" = \'x\')')], indexFacts(live("(a, b) WHERE (c = 'x')"))), []);
+});
+
+test("other token representations keep their meaning: quoted identifiers, operators, casts, name lists, keys", () => {
+  // a quoted identifier is its own name; "foo" IS foo; reserved words stay quoted so they are not the keyword
+  assert.equal(check('"x" > 0'), check("x > 0"));
+  assert.notEqual(check('"X" > 0'), check("x > 0"), "quoted keeps case");
+  assert.notEqual(check('"a b" > 0'), check("a b > 0".replace("a b", "a")), "a space inside a quoted name is part of the name");
+  assert.notEqual(check('"a b" = 1'), check('"a" = 1'));
+  assert.notEqual(check('"user" = 1'), check("user = 1"), "the column named user is not the keyword USER");
+  assert.notEqual(check('"select" = 1'), check("select = 1"));
+  assert.notEqual(check('"a""b" = 1'), check('"ab" = 1'), "an embedded quote is part of the name");
+  // operators: one operator, not two adjacent ones
+  assert.equal(check("x >= 0"), check("x>=0"));
+  assert.notEqual(check("x >= 0"), check("x > = 0"));
+  assert.notEqual(check("x <> 0"), check("x < > 0"));
+  assert.notEqual(check("x <= 0"), check("x < 0"));
+  assert.notEqual(check("x - -1 > 0"), check("x - 1 > 0"));
+  // casts and types
+  assert.notEqual(check("x::text = 'a'"), check("x::varchar = 'a'"));
+  assert.equal(check("x::TEXT = 'a'"), check("x::text = 'a'"));
+  assert.notEqual(check('x::"Text" = \'a\''), check("x::text = 'a'"), 'a quoted type name keeps its case');
+  // name lists and keys cannot be forged with commas or dots
+  assert.notEqual(canonicalConstraint('UNIQUE ("a,b")'), canonicalConstraint("UNIQUE (a, b)"));
+  assert.notEqual(canonicalConstraint('FOREIGN KEY (a) REFERENCES "s.t"(id)'), canonicalConstraint('FOREIGN KEY (a) REFERENCES s.t(id)'));
+  assert.notEqual(constraintFactKey("public", "a.b", "c"), constraintFactKey("public", "a", "b.c"));
+  assert.notEqual(indexFactKey("a.b", "c"), indexFactKey("a", "b.c"));
+  assert.notEqual(columnFactKey("public", "a.b", "c"), columnFactKey("public", "a", "b.c"));
+  // a fact recorded for a different object (whose dotted name collides) is not used
+  const collide: PlanCatalogFacts = { constraints: { [constraintFactKey("public", "a", "b.c")]: "UNIQUE (x)" }, indexes: {} };
+  assert.deepEqual(kinds(['ALTER TABLE "a.b" DROP CONSTRAINT "c";', 'ALTER TABLE "a.b" ADD CONSTRAINT "c" UNIQUE ("x");'], collide), ["drop_constraint_unpaired"]);
+});
+
+test("the drizzle spelling of an index and PostgreSQL's rendering still agree for ordinary columns", () => {
+  assert.equal(parseIndexStatement('CREATE INDEX "i" ON "t" USING btree ("campaign_id","occurred_at" DESC)')?.canonical,
+    parseIndexStatement("CREATE INDEX i ON public.t USING btree (campaign_id, occurred_at DESC)")?.canonical);
+  assert.notEqual(parseIndexStatement('CREATE INDEX "i" ON "t" USING btree ("a b")')?.canonical, parseIndexStatement("CREATE INDEX i ON public.t USING btree (a)")?.canonical);
+});
+
+/* ------------------------------------------------ schema qualification and name resolution ------------------------------------------------ */
+
+test("explicit schema qualification is never discarded: public.lower(email) and lower(email) are not the same expression", () => {
+  assert.notEqual(check("public.lower(email) = 'a'"), check("lower(email) = 'a'"));
+  assert.notEqual(check("lower(email) = 'a'"), check("public.lower(email) = 'a'"));
+  assert.notEqual(check("public.lower(email) = 'a'"), check("pg_catalog.lower(email) = 'a'"));
+  assert.notEqual(check("s1.f(x) > 0"), check("s2.f(x) > 0"), "functions in different schemas");
+  assert.notEqual(check("s1.f(x) > 0"), check("public.f(x) > 0"));
+  assert.notEqual(check("s1.f(x) > 0"), check("f(x) > 0"));
+  // the same explicit qualification, spelled with quoting, case or whitespace differences, is the same expression
+  assert.equal(check("public.lower(email) = 'a'"), check('"public"."lower"( email )   =  \'a\''));
+  assert.equal(check("PUBLIC.LOWER(email) = 'a'"), check("public.lower(email) = 'a'"));
+  assert.equal(check("lower(email) = 'a'"), check("lower( email )=\n 'a'".replace("=\n", " = ")));
+  assert.notEqual(check('"Public".lower(email) = \'a\''), check("public.lower(email) = 'a'"), "a quoted, differently-cased schema is a different schema");
+});
+
+test("qualified operators, casts and collations keep their qualification and are not equated with the plain spelling", () => {
+  assert.notEqual(check("a OPERATOR(public.=) b"), check("a OPERATOR(pg_catalog.=) b"));
+  assert.notEqual(check("a OPERATOR(pg_catalog.=) b"), check("a = b"));
+  assert.notEqual(check("x::public.mytype = y"), check("x::mytype = y"));
+  assert.notEqual(check("x::pg_catalog.text = y"), check("x::text = y"));
+  assert.notEqual(check('lower(x) = y COLLATE "C"'), check("lower(x) = y"), "an explicit collation is part of the expression");
+  assert.notEqual(check('x COLLATE "C" = y'), check('x COLLATE "POSIX" = y'));
+  assert.notEqual(check('x COLLATE pg_catalog."C" = y'), check('x COLLATE "C" = y'));
+  assert.notEqual(check("CAST(x AS text) = y"), check("x::text = y"), "different spellings are not proven equal");
+});
+
+test("a replacement whose function resolution changed requires review (CHECK, partial UNIQUE index, expression index)", () => {
+  // CHECK
+  assert.deepEqual(kinds([dropCheck, addCheck("(lower(email) = 'a')")], checkFacts("(public.lower(email) = 'a')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(public.lower(email) = 'a')")], checkFacts("(lower(email) = 'a')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(s1.f(email) = 'a')")], checkFacts("(s2.f(email) = 'a')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(public.lower(email) = 'a')")], checkFacts("(public.lower(email) = 'a')")), [], "same qualification, established equivalence: excused");
+  assert.deepEqual(kinds([dropCheck, addCheck("(\"public\".\"lower\"(email) = 'a')")], checkFacts("(public.lower(email) = 'a')")), [], "same objects, different quoting");
+  // partial UNIQUE index
+  const live = (tail: string) => `CREATE UNIQUE INDEX i ON public.t USING btree ${tail}`;
+  const create = (tail: string) => `CREATE UNIQUE INDEX "i" ON "t" USING btree ${tail};`;
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (lower(b) = 'x')")], indexFacts(live("(a) WHERE (public.lower(b) = 'x')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (public.lower(b) = 'x')")], indexFacts(live("(a) WHERE (lower(b) = 'x')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (public.lower(b) = 'x')")], indexFacts(live("(a) WHERE (public.lower(b) = 'x')"))), []);
+  // expression index
+  assert.deepEqual(kinds([dropIndex, create("((lower(a)))")], indexFacts(live("((public.lower(a)))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((public.lower(a)))")], indexFacts(live("((lower(a)))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((s1.f(a)))")], indexFacts(live("((s2.f(a)))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((public.lower(a)))")], indexFacts(live("((public.lower(a)))"))), []);
+  // ordinary columns are unaffected by any of this
+  assert.deepEqual(kinds([dropIndex, create('("a", "b")')], indexFacts(live("(a, b)"))), []);
+});
+
+test("ambiguous or unparseable expressions fail closed", () => {
+  for (const bad of ["CHECK (lower(email) = 'a'", "CHECK lower(email) = 'a'", "CHECK ()", "CHECK (public.)", "CHECK (a OPERATOR(public.= b)", "CHECK ((x) = E'\\u12')"]) {
+    assert.equal(canonicalConstraint(bad, ON), null, bad);
+  }
+  assert.ok(kinds([dropCheck, addCheck("(lower(email) = 'a'")], checkFacts("(lower(email) = 'a')")).includes("drop_constraint_unpaired"), "an unbalanced replacement does not excuse the drop");
+  assert.notDeepEqual(kinds([dropCheck, addCheck("(public.)")], checkFacts("(public.)")), [], "an unparseable expression is never excused, even against itself");
+});
+
+/* ------------------------------------------------ byte escapes depend on the database encoding ------------------------------------------------ */
+
+test("non-ASCII byte escapes are never decoded into code points: E'\\xC3\\xA9' (one character in a UTF-8 database) is not 'Ã©' (two)", () => {
+  assert.equal(check("x <> E'\\xC3\\xA9'"), null, "hex bytes >= 0x80: unprovable");
+  assert.equal(check("x <> E'\\303\\251'"), null, "octal bytes >= 0x80: unprovable");
+  assert.equal(check("x <> E'\\x80'"), null);
+  assert.equal(check("x <> E'a\\xff'"), null);
+  assert.equal(check("x <> E'\\377'"), null);
+  assert.notEqual(check("x <> E'\\xC3\\xA9'"), check("x <> 'Ã©'"), "the mojibake text never equals the byte escapes");
+  assert.notEqual(check("x <> E'\\303\\251'"), check("x <> 'Ã©'"));
+  assert.notEqual(check("x <> E'\\xC3\\xA9'"), check("x <> E'\\u00c3\\u00a9'"));
+  assert.notEqual(check("x <> E'\\xC3\\xA9'"), check("x <> 'é'"), "and an unproven escape is not equated with the decoded text either (a missed equivalence is reviewed, never assumed)");
+  // identical unprovable literals do not become equal to each other: unprovable is unprovable
+  assert.equal(check("x <> E'\\xC3\\xA9'") === check("x <> E'\\xC3\\xA9'"), true, "both null");
+  assert.equal(check("x <> E'\\xC3\\xA9'") === null, true);
+});
+
+test("code-point escapes need no encoding and are still compared; ASCII byte escapes are unchanged", () => {
+  assert.equal(check("x <> E'\\u00e9'"), check("x <> 'é'"));
+  assert.equal(check("x <> E'\\U000000e9'"), check("x <> 'é'"));
+  assert.equal(check("x <> E'\\u00c3\\u00a9'"), check("x <> 'Ã©'"));
+  assert.notEqual(check("x <> E'\\u00e9'"), check("x <> E'\\u00c3\\u00a9'"));
+  assert.equal(check("x <> E'\\x41'"), check("x <> 'A'"));
+  assert.equal(check("x <> E'\\101'"), check("x <> 'A'"));
+  assert.equal(check("x <> E'\\x7f'"), check("x <> E'\\177'"));
+  assert.notEqual(check("x <> E'\\x41'"), check("x <> E'\\x42'"));
+  assert.equal(check("x <> E'\\n\\t'"), check("x <> E'\\x0a\\x09'"));
+});
+
+test("malformed and incomplete byte sequences fail closed", () => {
+  for (const bad of ["E'\\x'", "E'\\xZ1'", "E'\\x0'", "E'\\x00'", "E'\\0'", "E'\\000'", "E'\\400'", "E'\\C3'"]) {
+    const value = check(`x <> ${bad}`);
+    if (bad === "E'\\C3'") assert.notEqual(value, null, "an unknown escape is the character itself");
+    else assert.equal(value, null, bad);
+  }
+});
+
+test("replacements whose byte-escape semantics may differ require review (CHECK, partial UNIQUE index, expression index)", () => {
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> 'Ã©')")], checkFacts("(x <> E'\\xC3\\xA9')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\xC3\\xA9')")], checkFacts("(x <> 'Ã©')")), ["drop_constraint_unpaired"]);
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\xC3\\xA9')")], checkFacts("(x <> E'\\xC3\\xA9')")), ["drop_constraint_unpaired"], "even identical: not provable, so reviewed");
+  assert.deepEqual(kinds([dropCheck, addCheck("(x <> E'\\x41')")], checkFacts("(x <> 'A')")), [], "ASCII escapes: still excused when provably identical");
+  const live = (tail: string) => `CREATE UNIQUE INDEX i ON public.t USING btree ${tail}`;
+  const create = (tail: string) => `CREATE UNIQUE INDEX "i" ON "t" USING btree ${tail};`;
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> 'Ã©')")], indexFacts(live("(a) WHERE (b <> E'\\xC3\\xA9')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("(a) WHERE (b <> E'\\303\\251')")], indexFacts(live("(a) WHERE (b <> E'\\303\\251')"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((a || 'Ã©'))")], indexFacts(live("((a || E'\\xC3\\xA9'))"))), ["drop_index_unpaired"]);
+  assert.deepEqual(kinds([dropIndex, create("((a || E'\\x41'))")], indexFacts(live("((a || 'A'))"))), [], "ASCII: unaffected");
+  assert.deepEqual(kinds([dropIndex, create('("a", "b")')], indexFacts(live("(a, b)"))), []);
+});
+
+/* ------------------------------------------------ token stability under drizzle-kit's catalog-order permutations ------------------------------------------------ */
+
+test("the token does not flip when drizzle-kit permutes interchangeable statements, but still binds everything that matters", () => {
+  const dropFkOn = (table: string) => `ALTER TABLE "${table}" DROP CONSTRAINT "${table}_fk";`;
+  const addFkOn = (table: string) => `ALTER TABLE "${table}" ADD CONSTRAINT "${table}_fk" FOREIGN KEY ("x") REFERENCES "public"."p"("id");`;
+  const danger = 'ALTER TABLE "users" ALTER COLUMN "password" DROP NOT NULL;';
+  const plan = [danger, dropFkOn("a"), dropFkOn("b"), dropFkOn("c"), addFkOn("a"), addFkOn("b"), addFkOn("c")];
+  const base = token(plan);
+  // adjacent statements of one kind may come back in any order (the catalog's physical row order shifts with unrelated DDL)
+  assert.equal(token([danger, dropFkOn("b"), dropFkOn("a"), dropFkOn("c"), addFkOn("c"), addFkOn("a"), addFkOn("b")]), base);
+  assert.equal(token([danger, dropFkOn("c"), dropFkOn("b"), dropFkOn("a"), addFkOn("b"), addFkOn("c"), addFkOn("a")]), base);
+  // ... but nothing else is interchangeable
+  assert.notEqual(token([danger, addFkOn("a"), addFkOn("b"), addFkOn("c"), dropFkOn("a"), dropFkOn("b"), dropFkOn("c")]), base, "drops after adds");
+  assert.notEqual(token([dropFkOn("a"), dropFkOn("b"), dropFkOn("c"), danger, addFkOn("a"), addFkOn("b"), addFkOn("c")]), base, "a differently-kinded statement moved");
+  assert.notEqual(token([danger, dropFkOn("a"), dropFkOn("b"), addFkOn("a"), addFkOn("b"), addFkOn("c")]), base, "a statement removed");
+  assert.notEqual(token([...plan, 'ALTER TABLE "t" ADD COLUMN "z" text;']), base, "a statement added");
+  assert.notEqual(token([danger, dropFkOn("a"), dropFkOn("b"), dropFkOn("d"), addFkOn("a"), addFkOn("b"), addFkOn("c")]), base, "a statement changed");
+  // statements of different kinds that happen to touch the same column keep their order
+  const setNotNull = 'ALTER TABLE "t" ALTER COLUMN "c" SET NOT NULL;';
+  const dropNotNull = 'ALTER TABLE "t" ALTER COLUMN "c" DROP NOT NULL;';
+  assert.notEqual(token([setNotNull, dropNotNull]), token([dropNotNull, setNotNull]), "SET then DROP NOT NULL is not DROP then SET");
+  const addUnique = 'ALTER TABLE "t" ADD CONSTRAINT "u" UNIQUE ("c");';
+  assert.notEqual(token([addFkOn("a"), addUnique]), token([addUnique, addFkOn("a")]), "a foreign key may depend on a unique constraint added before it");
+});

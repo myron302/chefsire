@@ -1,6 +1,7 @@
 import "./load-env";
 
 import { SquareClient, SquareEnvironment, SquareError, type BaseClientOptions } from "square";
+import { resolveSquareEnvironment, tryResolveSquareEnvironment } from "./square-environment";
 
 /**
  * The one place ChefSire builds Square clients for provider-connected accounts.
@@ -15,29 +16,20 @@ import { SquareClient, SquareEnvironment, SquareError, type BaseClientOptions } 
  * returned to a caller outside the server.
  */
 
-/** The Square environment configuration is invalid. Carries no secret. */
-export class SquareEnvironmentConfigError extends Error {
-  constructor() {
-    super("SQUARE_ENV must be 'sandbox' or 'production'.");
-    this.name = "SquareEnvironmentConfigError";
-  }
-}
+export { SquareEnvironmentConfigError } from "./square-environment";
 
 /**
- * Which Square environment ChefSire is configured for.
- *  - `SQUARE_ENV` set: it decides, and must be exactly `sandbox` or `production` (case and surrounding space ignored). Any other
- *    value THROWS: a typo must never be guessed into an environment.
- *  - `SQUARE_ENV` absent or blank: the prior `NODE_ENV` fallback of the marketplace client and the provider OAuth path is
- *    preserved -- `NODE_ENV=production` is Square PRODUCTION, anything else is Sandbox. A production deployment that never set
- *    SQUARE_ENV is therefore never silently moved to Sandbox (which would send production credentials to Sandbox endpoints).
+ * Which Square environment ChefSire is configured for: the single policy in `square-environment.ts`. Throws
+ * `SquareEnvironmentConfigError` when `SQUARE_ENV` is missing under `NODE_ENV=production`, invalid, or asks for LIVE without the explicit
+ * production settings. There is no `NODE_ENV` fallback to production.
  */
 export function squareEnvironmentName(): "production" | "sandbox" {
-  const explicit = process.env.SQUARE_ENV?.trim().toLowerCase();
-  if (explicit) {
-    if (explicit === "production" || explicit === "sandbox") return explicit;
-    throw new SquareEnvironmentConfigError();
-  }
-  return process.env.NODE_ENV === "production" ? "production" : "sandbox";
+  return resolveSquareEnvironment();
+}
+
+/** Whether the environment is safely configured. Never throws. */
+export function squareEnvironmentConfigured(): boolean {
+  return tryResolveSquareEnvironment() !== null;
 }
 
 export function squareApiEnvironment() {

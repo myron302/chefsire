@@ -747,7 +747,12 @@ if (!URL_ENV) {
       h.fake.payOrder(attempt.squareOrderId!);
       const before = h.fake.requests.length;
       const original = process.env.SQUARE_ENV;
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalLive = process.env.SQUARE_LIVE_PAYMENTS_ENABLED;
+      // A genuinely, deliberately LIVE environment under the shared policy (production runtime + explicit live flag): Catering must STILL refuse it.
       process.env.SQUARE_ENV = "production";
+      process.env.NODE_ENV = "production";
+      process.env.SQUARE_LIVE_PAYMENTS_ENABLED = "true";
       try {
         const { cateringSquarePaymentsEnabled } = await import("../lib/square-checkout");
         assert.equal(cateringSquarePaymentsEnabled(), false);
@@ -762,8 +767,15 @@ if (!URL_ENV) {
         await assert.rejects(api.deletePaymentLink("t", "L"), SquareSandboxOnlyError);
         process.env.SQUARE_ENV = "banana";
         assert.equal(cateringSquarePaymentsEnabled(), false, "an invalid SQUARE_ENV is a refusal, never a guess");
+        // "production" without the explicit live settings is a configuration fault: refused too (no request is made either way).
+        process.env.SQUARE_ENV = "production";
+        delete process.env.SQUARE_LIVE_PAYMENTS_ENABLED;
+        assert.equal(cateringSquarePaymentsEnabled(), false);
+        await assert.rejects(api.retrieveOrder("t", "O"));
       } finally {
         process.env.SQUARE_ENV = original;
+        if (originalNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = originalNodeEnv;
+        if (originalLive === undefined) delete process.env.SQUARE_LIVE_PAYMENTS_ENABLED; else process.env.SQUARE_LIVE_PAYMENTS_ENABLED = originalLive;
       }
       assert.equal(h.fake.requests.length, before, "not one request reached Square while production was configured");
       assert.equal((await h.ledger(s.bookingId)).length, 0);

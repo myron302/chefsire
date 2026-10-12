@@ -9,6 +9,8 @@ import { requireAuth } from "../middleware";
 import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireSquareRefundEvidence, toClientOrder } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 import { getSquareClient } from "../lib/square-client";
+import { squareEnvironmentConfigured } from "../lib/square-integration";
+import { tryResolveSquareEnvironment } from "../lib/square-environment";
 import {
   completeMarketplaceCapture,
   productionCheckoutDeps,
@@ -73,7 +75,7 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     if (!["unverified", "capture_pending", "capture_reconciliation"].includes(order.paymentStatus)) {
       return res.status(400).json({ ok: false, error: "Order already processed" });
     }
-    if (order.paymentStatus !== "capture_reconciliation" && (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID)) {
+    if (order.paymentStatus !== "capture_reconciliation" && (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID || !squareEnvironmentConfigured())) {
       return res.status(503).json({
         ok: false,
         code: "PAYMENT_PROVIDER_UNAVAILABLE",
@@ -205,7 +207,7 @@ router.post("/refund", requireAuth, async (req, res) => {
     if (!["captured", "refund_pending", "refund_reconciliation"].includes(order.paymentStatus) || !order.squarePaymentId) {
       return res.status(409).json({ ok: false, code: "PAYMENT_CAPTURE_UNVERIFIED", error: "Order has no verified captured payment" });
     }
-    if (order.paymentStatus !== "refund_reconciliation" && !process.env.SQUARE_ACCESS_TOKEN) {
+    if (order.paymentStatus !== "refund_reconciliation" && (!process.env.SQUARE_ACCESS_TOKEN || !squareEnvironmentConfigured())) {
       return res.status(503).json({ ok: false, code: "PAYMENT_PROVIDER_UNAVAILABLE", error: "Refund provider unavailable" });
     }
 
@@ -410,12 +412,15 @@ router.post("/refund", requireAuth, async (req, res) => {
  * Get Square configuration for frontend (public key only)
  */
 router.get("/square-config", (_req, res) => {
+  // Same authoritative policy as every server-side Square call: never advertise an environment the server would refuse to use.
+  const environment = tryResolveSquareEnvironment();
+  if (!environment) return res.status(503).json({ ok: false, error: "Square is not configured" });
   res.json({
     ok: true,
     config: {
       applicationId: process.env.SQUARE_APPLICATION_ID || "SANDBOX_APP_ID",
       locationId: process.env.SQUARE_LOCATION_ID || "SANDBOX_LOCATION_ID",
-      environment: process.env.NODE_ENV === "production" ? "production" : "sandbox",
+      environment,
     },
   });
 });

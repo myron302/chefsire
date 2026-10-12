@@ -88,15 +88,23 @@ test("production client constructors build real SDK clients and refuse a missing
 
 test("the OAuth authorize host follows the configured environment and never mixes sandbox with production", () => {
   const before = process.env.SQUARE_ENV;
+  const beforeNode = process.env.NODE_ENV;
+  const beforeLive = process.env.SQUARE_LIVE_PAYMENTS_ENABLED;
   try {
+    // LIVE needs all three deliberate settings under the shared policy; this only builds a URL string, no request is made.
     process.env.SQUARE_ENV = "production";
+    process.env.NODE_ENV = "production";
+    process.env.SQUARE_LIVE_PAYMENTS_ENABLED = "true";
     assert.equal(squareOauthAuthorizeUrl(), "https://connect.squareup.com/oauth2/authorize");
     process.env.SQUARE_ENV = "sandbox";
     assert.equal(squareOauthAuthorizeUrl(), "https://connect.squareupsandbox.com/oauth2/authorize");
+    process.env.NODE_ENV = beforeNode ?? "test";
     delete process.env.SQUARE_ENV;
     assert.equal(squareOauthAuthorizeUrl(), "https://connect.squareupsandbox.com/oauth2/authorize");
   } finally {
     if (before === undefined) delete process.env.SQUARE_ENV; else process.env.SQUARE_ENV = before;
+    if (beforeNode === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = beforeNode;
+    if (beforeLive === undefined) delete process.env.SQUARE_LIVE_PAYMENTS_ENABLED; else process.env.SQUARE_LIVE_PAYMENTS_ENABLED = beforeLive;
   }
 });
 
