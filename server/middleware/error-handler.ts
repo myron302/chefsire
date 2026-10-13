@@ -1,5 +1,6 @@
 // server/middleware/error-handler.ts
 import { Request, Response, NextFunction } from "express";
+import { forwardAsyncErrors } from "../lib/async-error-forwarding";
 
 /**
  * Custom error class with status code
@@ -22,9 +23,9 @@ export class ApiError extends Error {
 export function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<any>
 ) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
+  // One implementation for both this explicit wrapper and the app-wide forwarding (lib/async-error-forwarding); a handler wrapped
+  // here is recognised there and never wrapped a second time.
+  return forwardAsyncErrors(fn);
 }
 
 /**

@@ -7,6 +7,7 @@
 //   3. only then construct the app, routes, database runtime and sockets
 import "./lib/load-env";
 import "./boot/verify-auth-config";
+import "./lib/async-error-forwarding.install";
 import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
 import { attachNotificationRealtime } from "./realtime/notificationSocket";
