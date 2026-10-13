@@ -14,14 +14,28 @@ import { UPLOADS_DIR } from "./lib/uploads-dir";
 import { uploadsStaticHandler } from "./lib/uploads-static";
 import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./lib/public-static-dirs";
 import { createCorsMiddleware } from "./lib/cors-policy";
+import { resolveTrustProxy, TrustProxyConfigError, type TrustProxyResolution } from "./lib/proxy-trust";
 
 const app = express();
 
-// Trust exactly one proxy hop (nginx on the same Plesk VPS).
-// This ensures req.ip comes from the first X-Forwarded-For entry
-// set by nginx, rather than trusting the entire chain which would
-// let attackers spoof their IP via extra X-Forwarded-For headers.
-app.set("trust proxy", 1);
+// Which peer is a trusted reverse proxy. Default: one hop (the direct peer is the proxy -- nginx/Passenger on the same Plesk host), unchanged from
+// when this was a literal `1`. Configurable and validated through TRUST_PROXY (see lib/proxy-trust), because the SAME decision also governs how
+// the browser-origin checks read X-Forwarded-Proto, including on Socket.IO requests that never pass through Express.
+// With a hop count, `req.ip` is the RIGHTMOST X-Forwarded-For entry (the one the nearest proxy appended), so extra entries a client prepends are
+// ignored; `req.protocol` and `req.hostname` take the LEFTMOST X-Forwarded-Proto / -Host (Express's rule), which is why the origin checks do not
+// use them. An invalid TRUST_PROXY stops the server from starting rather than silently trusting the wrong peers.
+let trustProxy: TrustProxyResolution;
+try {
+  trustProxy = resolveTrustProxy();
+} catch (error) {
+  if (error instanceof TrustProxyConfigError) {
+    console.error(`[ChefSire] Refusing to start — ${error.message}`);
+    process.exit(1);
+  }
+  throw error;
+}
+app.set("trust proxy", trustProxy.setting);
+console.log(`✓ trust proxy: ${trustProxy.description}${trustProxy.source === "env" ? " (TRUST_PROXY)" : ""}`);
 
 // Browser origin policy: an explicit allowlist (CLIENT_URL, APP_BASE_URL, APP_URL, CORS_ALLOWED_ORIGINS, and CORS_DEV_ORIGINS outside
 // production) that fails closed. This used to be `cors({ credentials: true, origin: process.env.CLIENT_URL || true })`, which reflected

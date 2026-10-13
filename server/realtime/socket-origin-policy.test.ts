@@ -154,11 +154,19 @@ test("a preflight to the polling transport from a disallowed origin gets no CORS
   assert.equal(good.headers.get("access-control-allow-credentials"), "true");
 });
 
-test("same-origin handshakes (Origin matches the Host the browser addressed) are accepted even with nothing configured", async () => {
+test("same-origin is the FULL origin: development accepts the plain-http page of its own server; production never infers it from the Host alone", async () => {
+  setEnv({ NODE_ENV: "development" });
+  for (const namespace of BOTH) {
+    const result = await attempt(namespace, { origin: `http://${hostHeader}` });
+    assert.equal(result.ok, true, `development same-origin ${namespace}: ${result.ok ? "" : result.message}`);
+  }
+  // Production, nothing configured, and the connection carries no statement of its scheme (here the peer is the loopback "proxy" and sends no
+  // X-Forwarded-Proto): the host matching is not evidence, so the page is refused. The complete scheme/host/port/proxy matrix, over raw
+  // WebSocket upgrades, polling and real clients, is in socket-origin-same-origin.test.ts.
   setEnv({ NODE_ENV: "production" });
   for (const namespace of BOTH) {
     const result = await attempt(namespace, { origin: `http://${hostHeader}` });
-    assert.equal(result.ok, true, `same-origin ${namespace}: ${result.ok ? "" : result.message}`);
+    assert.equal(result.ok, false, `production ${namespace} must not infer same-origin from the host alone`);
   }
 });
 

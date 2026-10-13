@@ -246,10 +246,29 @@ test("OPTIONS preflight: a disallowed or unconfigured origin is refused with 403
   noCorsHeaders(plain);
 });
 
-test("OPTIONS preflight from the server's own origin is never refused", async () => {
+test("OPTIONS preflight from the server's own FULL origin is not refused; a page on another scheme or port is, whatever the Host says", async () => {
+  const preflight = (origin: string, extra: Record<string, string> = {}) =>
+    request("OPTIONS", "/api", { Origin: origin, "Access-Control-Request-Method": "GET", ...extra });
+  const httpsSelf = `https://127.0.0.1:${port}`;
+
+  // Development/test: the server's plain-http origin is its own.
+  configure({ NODE_ENV: "test" });
+  assert.notEqual((await preflight(ownOrigin)).status, 403);
+  assert.equal((await preflight(httpsSelf)).status, 403, "an https page is not the plain-http dev server");
+
+  // Production behind a proxy that states https: the https origin on this authority is its own; the http page and other ports are not.
   configure({ NODE_ENV: "production" });
-  const response = await request("OPTIONS", "/api", { Origin: ownOrigin, "Access-Control-Request-Method": "GET" });
-  assert.notEqual(response.status, 403);
+  assert.notEqual((await preflight(httpsSelf, { "X-Forwarded-Proto": "https" })).status, 403);
+  assert.equal((await preflight(ownOrigin, { "X-Forwarded-Proto": "https" })).status, 403, "HTTP page against the HTTPS application");
+  assert.equal((await preflight(`https://127.0.0.1:${port + 1}`, { "X-Forwarded-Proto": "https" })).status, 403, "different port");
+  assert.equal((await preflight("capacitor://127.0.0.1", { "X-Forwarded-Proto": "https" })).status, 403, "custom scheme");
+
+  // Production and the proxy states nothing: the server's own origin cannot be established, so it fails closed (and no browser sends this anyway).
+  assert.equal((await preflight(httpsSelf)).status, 403);
+  assert.equal((await preflight(ownOrigin)).status, 403);
+
+  // A spoofed forwarding host never makes a foreign origin the server's own.
+  assert.equal((await preflight("https://evil.example", { "X-Forwarded-Proto": "https", "X-Forwarded-Host": "evil.example" })).status, 403);
 });
 
 test("third-party webhooks and OAuth redirects do not depend on, and are not blocked by, the origin policy", async () => {

@@ -31,46 +31,23 @@
  *    docs/stability-phase-2a-api-reliability-cors.md.)
  *  - A request with no Origin header is not a cross-origin browser request at all (same-origin GET/HEAD, curl, a native mobile app,
  *    Square's server-to-server webhook delivery, an OAuth redirect) and is untouched by this policy.
- *  - Sockets apply the same allowlist to the handshake, which is the part that matters: browsers do not enforce CORS on WebSocket
- *    connections, so for a WebSocket the server's own origin check is the only one there is. A handshake that carries an Origin
- *    which is neither allowlisted nor the server's own is refused; one with no Origin (a non-browser client) is let through to the
- *    namespace authentication, which still demands a verified token.
+ *  - Sockets apply the same allowlist to EVERY engine request, which is the part that matters: browsers do not enforce CORS on WebSocket
+ *    connections, so for a WebSocket the server's own origin check is the only one there is. A request that carries an Origin which is
+ *    neither allowlisted nor this server's own is refused; one with no Origin (a non-browser client) is let through to the namespace
+ *    authentication, which still demands a verified token.
+ *  - "This server's own origin" means the FULL origin -- scheme, hostname and effective port -- reconstructed by lib/request-origin from
+ *    evidence a page cannot forge (the Host header, the TLS state of the socket, and X-Forwarded-Proto only from a trusted proxy), and it is
+ *    UNKNOWN, so nothing is same-origin and only this allowlist admits an origin, whenever that evidence is missing or ambiguous. Matching
+ *    hostnames alone is never enough: http://chefsire.com and capacitor://chefsire.com are not https://chefsire.com.
  */
 import type { IncomingMessage } from "node:http";
 import type { Request, RequestHandler, Response } from "express";
+import { externalOriginOf, isDevelopmentRuntime, isOwnOrigin, normalizeOrigin, webOrigin, type RequestLike } from "./request-origin";
 
-const MAX_ORIGIN_LENGTH = 2048;
-const SCHEME_AUTHORITY = /^([a-z][a-z0-9+.-]*):\/\/([^/?#@\\]+)\/?$/i;
-const OPAQUE_SCHEME_AUTHORITY = /^[a-z0-9.-]+(?::\d{1,5})?$/i;
+// The origin parser lives in request-origin (it is shared with the same-origin decision); re-exported for existing importers.
+export { normalizeOrigin };
+
 const HEADER_TOKEN_LIST = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:\s*,\s*[!#$%&'*+.^_`|~0-9A-Za-z-]+)*$/;
-
-/**
- * Reduce a configured or received value to a bare origin (`scheme://host[:port]`, lowercase, default port removed), or null if it is
- * not exactly an origin. Paths other than a single trailing slash, query strings, fragments, userinfo, whitespace, lists and
- * wildcards are all refused rather than trimmed, so a value can never be silently widened.
- */
-export function normalizeOrigin(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const value = raw.trim();
-  if (!value || value.length > MAX_ORIGIN_LENGTH) return null;
-  if (value === "*" || value.toLowerCase() === "null" || /[\s*,]/.test(value)) return null;
-  const match = SCHEME_AUTHORITY.exec(value);
-  if (!match) return null;
-  const scheme = match[1].toLowerCase();
-  const authority = match[2];
-  if (scheme === "http" || scheme === "https") {
-    try {
-      const url = new URL(`${scheme}://${authority}`);
-      if (!url.hostname || url.username || url.password) return null;
-      return url.origin;
-    } catch {
-      return null;
-    }
-  }
-  // Non-special schemes (capacitor://localhost, ionic://localhost) have an opaque origin to the URL parser, so validate by hand.
-  if (!OPAQUE_SCHEME_AUTHORITY.test(authority)) return null;
-  return `${scheme}://${authority.toLowerCase()}`;
-}
 
 function isLoopbackHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -88,12 +65,6 @@ export interface CorsPolicy {
   readonly warnings: readonly string[];
   /** The canonical allowed origin for a received Origin header value, or null. Exact match only. */
   match(origin: unknown): string | null;
-}
-
-/** NODE_ENV values under which development origins may be honoured. Anything else (including unset) is production-strict, as in jwt-config. */
-function isDevelopmentRuntime(env: NodeJS.ProcessEnv): boolean {
-  const runtime = env.NODE_ENV?.trim().toLowerCase();
-  return runtime === "development" || runtime === "test";
 }
 
 export function resolveCorsPolicy(env: NodeJS.ProcessEnv = process.env): CorsPolicy {
@@ -173,28 +144,37 @@ export function createEnvCorsPolicy(options: { env?: () => NodeJS.ProcessEnv; wa
 /** The process-wide policy used by app.ts and both realtime servers, so they cannot drift apart. */
 export const currentCorsPolicy = createEnvCorsPolicy();
 
-function firstHeaderValue(value: string | string[] | undefined): string | undefined {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return raw?.split(",")[0]?.trim() || undefined;
-}
+export type OriginVerdict =
+  | { readonly allowed: true; readonly via: "allowlist" | "own_origin" }
+  | { readonly allowed: false; readonly unverifiable: boolean };
 
 /**
- * Is `origin` this server's own origin as the browser addressed it? Compared on authority (host and port) only: TLS usually ends at the
- * proxy in front of this process, so the scheme the app sees is not the scheme the browser used. The Host header (and the first
- * X-Forwarded-Host a proxy adds) is something a browser page cannot set, so a cross-site page cannot make itself look same-origin.
+ * May a browser page at `origin` talk to this server? Yes if the origin is on the explicit allowlist, or is exactly this server's own full
+ * origin (scheme + host + effective port, see lib/request-origin). `unverifiable` marks a refusal that LOOKS like our own site (an http(s) origin
+ * on the very authority the browser addressed) but that we could not verify because our own scheme is unknown or contradicts it: that is the
+ * signature of a deployment that needs CLIENT_URL/APP_URL (or a proxy that states X-Forwarded-Proto), and is the only refusal worth logging.
  */
-export function isSameOrigin(origin: string, headers: IncomingMessage["headers"]): boolean {
-  let authority: string;
-  try {
-    authority = new URL(origin).host.toLowerCase();
-  } catch {
-    return false;
-  }
-  if (!authority) return false;
-  for (const candidate of [firstHeaderValue(headers.host), firstHeaderValue(headers["x-forwarded-host"])]) {
-    if (candidate && candidate.toLowerCase() === authority) return true;
-  }
-  return false;
+export function originVerdict(req: RequestLike, origin: unknown, getPolicy: () => CorsPolicy = currentCorsPolicy, env: NodeJS.ProcessEnv = process.env): OriginVerdict {
+  if (getPolicy().match(origin) !== null) return { allowed: true, via: "allowlist" };
+  if (isOwnOrigin(origin, req, env)) return { allowed: true, via: "own_origin" };
+  const web = webOrigin(origin);
+  const host = typeof req.headers.host === "string" ? req.headers.host.toLowerCase() : "";
+  const looksLikeUs = web !== null && web === origin && web.replace(/^https?:\/\//, "") === host.replace(/:(80|443)$/, "");
+  return { allowed: false, unverifiable: looksLikeUs && externalOriginOf(req, env).origin === null };
+}
+
+const REFUSAL_LOG_INTERVAL_MS = 10 * 60 * 1000;
+let lastRefusalLogAt = 0;
+/** One line, at most every ten minutes, telling an operator why a page that looks like their own site was refused. Never logs request data other than the origin. */
+function noteUnverifiableRefusal(req: RequestLike, origin: unknown, env: NodeJS.ProcessEnv = process.env): void {
+  const now = Date.now();
+  if (now - lastRefusalLogAt < REFUSAL_LOG_INTERVAL_MS) return;
+  lastRefusalLogAt = now;
+  const own = externalOriginOf(req, env);
+  console.warn(
+    `[cors] refused browser origin ${JSON.stringify(String(origin).slice(0, 120))}: it matches this server's host but its own https origin cannot be established ` +
+      `(${own.origin === null ? own.reason : "scheme mismatch"}). Set CLIENT_URL or APP_URL to the public https origin, or have the reverse proxy send X-Forwarded-Proto.`,
+  );
 }
 
 /**
@@ -213,7 +193,8 @@ export function createCorsMiddleware(getPolicy: () => CorsPolicy = currentCorsPo
     const preflight = req.method === "OPTIONS" && typeof req.headers["access-control-request-method"] === "string";
 
     if (!allowed) {
-      if (preflight && !isSameOrigin(origin, req.headers)) {
+      // A browser never preflights a same-origin request, so this exemption only matters to tooling; it uses the same full-origin test as sockets.
+      if (preflight && !isOwnOrigin(origin, req)) {
         res.status(403).json({ error: "Origin not allowed" });
         return;
       }
@@ -239,12 +220,27 @@ export function createCorsMiddleware(getPolicy: () => CorsPolicy = currentCorsPo
 }
 
 /**
+ * The ONE origin decision for Socket.IO / engine.io, used by `allowRequest` and by the engine-level guard (realtime/engine-origin-guard).
+ * Never throws: an engine hook that throws is an uncaught exception, and server/index.ts exits the process on those.
+ */
+export function socketOriginAllowed(req: IncomingMessage, origin: unknown, getPolicy: () => CorsPolicy = currentCorsPolicy): boolean {
+  try {
+    const verdict = originVerdict(req, origin, getPolicy);
+    if (!verdict.allowed && verdict.unverifiable) noteUnverifiableRefusal(req, origin);
+    return verdict.allowed;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Options for `new Server(httpServer, {...})` from socket.io, shared by the DM and notification servers.
  *
- * `cors` answers the polling transport's CORS check from the allowlist (never `true`, never a reflection). `allowRequest` is the
- * part that actually protects a WebSocket, which browsers do not subject to CORS: a handshake from a browser page whose origin is
- * neither allowlisted nor this server's own is refused before a session exists. A handshake with no Origin header is a non-browser
- * client and proceeds to the namespace's token authentication, which refuses it unless it presents a verified credential.
+ * `cors` answers the polling transport's CORS check from the allowlist (never `true`, never a reflection). `allowRequest` decides the first
+ * request of every session (engine.io does not consult it for requests that carry a sid; the guard installed by socket-server.ts covers those).
+ * A request with no Origin header is a non-browser client and proceeds to the namespace's token authentication, which refuses it unless it
+ * presents a verified credential. The first argument of the callback is always a string or null: engine.io serializes anything else into a
+ * Buffer on an upgrade and throws inside the `upgrade` listener.
  */
 export function socketIoOriginOptions(getPolicy: () => CorsPolicy = currentCorsPolicy) {
   return {
@@ -257,10 +253,7 @@ export function socketIoOriginOptions(getPolicy: () => CorsPolicy = currentCorsP
     allowRequest: (req: IncomingMessage, callback: (error: string | null | undefined, success: boolean) => void) => {
       const origin = req.headers.origin;
       if (origin === undefined) return callback(null, true);
-      if (typeof origin === "string" && (getPolicy().match(origin) !== null || isSameOrigin(origin, req.headers))) {
-        return callback(null, true);
-      }
-      return callback("origin not allowed", false);
+      return socketOriginAllowed(req, origin, getPolicy) ? callback(null, true) : callback("origin not allowed", false);
     },
   };
 }

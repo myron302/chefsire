@@ -67,9 +67,11 @@ When `CLIENT_URL` *was* set, the HTTP side sent that one fixed string; it was ne
 * An untrusted origin gets **no CORS headers** (the browser will not expose the response); a **preflight** from it gets `403`. Non-preflight requests are
   not rejected — CORS protects reads, and rejecting them would break form-POST OAuth callbacks and other legitimate cross-site navigations.
 * No `Origin` header ⇒ not a browser cross-origin request (same-origin GET, curl, native mobile, **Square's server-to-server webhook**, OAuth redirects) ⇒ untouched.
-* Same-origin requests are untouched; a same-origin preflight is never refused (authority compared with `Host`/first `X-Forwarded-Host`, scheme ignored because TLS ends at the proxy).
-* Socket.IO: `cors` uses the same allowlist and `allowRequest` refuses a **handshake** whose `Origin` is neither allowlisted nor the server's own (this is the control that
-  actually protects a WebSocket). A handshake with no `Origin` is a non-browser client and proceeds to the namespace's token authentication, which is unchanged.
+* "Same-origin" is the **full origin** (scheme + hostname + effective port) — see *Full-origin validation* below. A preflight from the server's own origin is never refused; one from any other
+  origin that is not on the allowlist is.
+* Socket.IO: `cors` uses the same allowlist, and the origin decision is applied to **every engine request that carries an `Origin`** — the first request (`allowRequest`) and, through an
+  engine-level guard (`realtime/engine-origin-guard.ts`), every polling GET/POST, preflight and the polling→websocket probe upgrade, which engine.io never shows to `allowRequest`. This is
+  the control that actually protects a WebSocket. A request with no `Origin` is a non-browser client and proceeds to the namespace's token authentication, which is unchanged.
 
 ### Socket.IO: one server per HTTP server
 
@@ -77,6 +79,42 @@ When `CLIENT_URL` *was* set, the HTTP side sent that one fixed string; it was ne
 polling to `/dm` fails with “Invalid namespace”, and **a WebSocket upgrade throws `handleUpgrade() was called more than once`**, an uncaught exception that
 `server/index.ts` turns into `process.exit(1)` — any remote client could restart the server. `realtime/socket-server.ts` now hands both modules a single shared
 `Server` (with the origin policy applied once).
+
+### Full-origin validation (repair pass 1)
+
+The first version compared only the authority (host:port) of `Origin` with the `Host` header (or the first `X-Forwarded-Host`), ignoring the scheme. So a page on `http://chefsire.com`
+— or `capacitor://chefsire.com` — was "the same origin" as the `https://chefsire.com` deployment, and a client-set `X-Forwarded-Host` could stand in for the host. For a WebSocket
+that is the whole defence (browsers apply no CORS to it and the handshake carries the site's cookies), so an untrusted page could have opened an authenticated socket.
+
+`lib/request-origin.ts` replaces it. An Origin is "the server's own" only if its canonical `scheme://host[:port]` equals the server's external origin, reconstructed as:
+
+| | evidence | never used |
+| --- | --- | --- |
+| host | exactly one `Host` header **line**, matched against a strict `host[:port]` grammar and compared **literally** (never through the URL parser, which "repairs" `127.1`, `host:0443`, `a.com/x`) | `X-Forwarded-Host` |
+| scheme | 1. TLS terminated by this process (`socket.encrypted`) ⇒ `https`. 2. The direct peer is **not** a trusted proxy ⇒ `http` (its forwarding headers are not even read). 3. A **trusted proxy** that sent **exactly one** `X-Forwarded-Proto` line holding **exactly one** `http`/`https` token ⇒ that token | a forwarded header from an untrusted peer; a list or several lines (Express takes the leftmost element, which under Passenger is the client's own) |
+| fail closed | a trusted proxy that states nothing in production, an ambiguous header (list, several lines, blank, any other token), a missing/invalid/repeated `Host`, or **any `http` result in production** ⇒ the own origin is *unknown* and **only the explicit allowlist admits an origin** | hostname-only matching |
+
+* Only **canonical** `http`/`https` origins can ever be same-origin (compared as scheme, hostname, *effective* port). `capacitor://…`, `ws://…`, `blob:`, `null`, empty, malformed, userinfo, paths, lists, trailing dots and
+  non-canonical spellings (`:443`, trailing slash, upper case, IDN, IPv4 short forms) never are.
+  A custom scheme is admitted only if the operator lists it in `CORS_ALLOWED_ORIGINS`.
+* **Production never accepts an `http` own origin** (the auth cookies are `Secure`; users reach the site over https), so no arrangement of headers — or a mis-set `TRUST_PROXY` — can make an http page
+  "the site". Development/test (`NODE_ENV` exactly `development`/`test`) additionally accept the plain-http origin of the server itself, so local work needs no proxy.
+* "Trusted proxy" is **one definition shared by Express and the Socket.IO layer** (`lib/proxy-trust.ts`, env `TRUST_PROXY`, default **1** hop — what `app.ts` hard-coded before). Engine.io hands the policy a raw
+  `IncomingMessage` that Express never touched, so `req.protocol`/`req.ip`/`trust proxy` do not exist there. The setting is parsed strictly and only a number, `false` or an array reaches Express
+  (the string `"1"` would be compiled as the IP address `0.0.0.1`; `true`/`all`/`*`, out-of-range counts and unparsable values stop the server from starting).
+* `requireSameOriginJson` (Square connection actions and the catering invoice payment) used `${req.protocol}://${Host}`: the leftmost forwarded value, and `http` whenever a TLS-terminating proxy stated nothing.
+  It now uses the same reconstruction, plus `CLIENT_URL`/`APP_BASE_URL`, and refuses a non-canonical or empty `Origin`.
+* A refusal of a page that looks like the operator's own site but could not be verified is logged once per ten minutes with the fix (`[cors] refused browser origin … Set CLIENT_URL or APP_URL …`).
+
+**Deployment assumptions (Plesk / Phusion Passenger) — what is known and what is not.** From Passenger's stock source (not verifiable from this environment against the production host): Passenger gives a
+Node app a **Unix socket** (so `socket.remoteAddress` is `undefined`), copies every client header unchanged, then **appends** `X-Forwarded-Proto: https` only for a TLS request and `X-Forwarded-For: <nginx peer>`;
+it never sets or strips `X-Forwarded-Host`. Consequences, all handled above: hop-count trust is required (an address list such as `loopback` cannot vouch for a peer with no address); an
+`X-Forwarded-Proto` list (a client-typed value in front of Passenger's) is *ambiguous* and fails closed, while a single value is believed; a **plain-http** request carrying a client-typed `X-Forwarded-Proto: https` is indistinguishable from TLS, so **plain http must not
+reach the app** (enable the Plesk http→https redirect). Whether production is nginx-only + Passenger or nginx→Apache could not be determined; the design does not depend on it, because
+**`CLIENT_URL`/`APP_URL` set to the public https origin always works** and the reconstruction is a fallback.
+
+Operator verification (run once, after deploy): `curl -sk https://DOMAIN/api -H 'Origin: https://DOMAIN'` must show no `Access-Control-Allow-Origin` unless `DOMAIN` is allowlisted (CORS is for *cross*-origin);
+open the site and confirm the realtime features connect; check the log for `[cors] refused browser origin` (it means set `CLIENT_URL`) and for `trust proxy: 1 hop (the direct peer is the proxy)`.
 
 ## 3. Operational notes
 
@@ -92,7 +130,13 @@ polling to `/dm` fails with “Invalid namespace”, and **a WebSocket upgrade t
 | --- | --- |
 | `server/lib/retryable-init.test.ts` | success cached, single-flight, failure not cached, backoff/cap, no retry storm, opaque errors, hung/wedged attempts, no unhandled rejection, `initGuard` |
 | `server/routes/api-init-isolation.test.ts` | real `app`: real driver against an unreachable DB, unrelated APIs stay up and never run the DDL, Square catering webhook routing, unknown `/api/*` 404, auth-before-init, bounded retries, recovery, concurrency, handler errors, advanced-schema sanitization |
-| `server/lib/cors-policy.test.ts` | origin normalization/refusals, production vs development, missing `CLIENT_URL`, same-origin, env re-read |
+| `server/lib/cors-policy.test.ts` | origin normalization/refusals, production vs development, missing `CLIENT_URL`, `originVerdict`, env re-read |
+| `server/lib/request-origin.test.ts` | the full-origin decision: scheme, host, port, TLS, trusted/untrusted peer, forwarded-header spoofing, malformed/opaque/custom-scheme origins, literal Host parsing, production vs development |
+| `server/lib/request-origin.matrix.test.ts` | a 195-case matrix written from the rules by an independent investigation (with its own reference implementation, cross-checked over raw bytes against real http/https listeners); 189 agree, 6 are the deliberate *production never accepts an http own origin* policy |
+| `server/lib/proxy-trust.test.ts` | `TRUST_PROXY` parsing, refusals, and parity of the standalone trust function with the real Express app |
+| `server/realtime/engine-origin-guard.test.ts` | real engine.io: sid-bearing requests escape `allowRequest` (the gap), the guard closes it on polling, preflights and upgrades; throwing policy fails closed |
+| `server/realtime/socket-origin-same-origin.test.ts` | 41 scenarios over raw WebSocket upgrades, raw polling and real clients on **both** namespaces; refusals happen before authentication (the account lookup is never reached) |
+| `server/routes/same-origin-json.test.ts` | `requireSameOriginJson` over real HTTP |
 | `server/routes/cors-http.test.ts` | real `app`: reproduction of the old behavior, allowed/disallowed/same-origin/dev origins, credentials, preflight, duplicate `Origin`, webhook + OAuth compatibility |
 | `server/realtime/socket-origin-policy.test.ts` | both namespaces on one server over websocket and polling, allowed/disallowed/missing-config/same-origin/no-Origin/dev origins, CORS headers on polling |
 | `server/realtime/notification-socket-error-disclosure.test.ts` | database failures in notification-socket handlers produce fixed messages, no driver text |
@@ -107,4 +151,6 @@ an old and a new process during a restart); now it is refused for the 1 s window
 
 See the PR description for the full list. Highlights: `/meal-planner/*` still shares the advanced/week router-level guards (campaigns and AI nutrition sit behind them); Express 4 async handlers
 elsewhere without `try/catch` still exit the process on a rejection; the Neon pool has no `connectionTimeoutMillis`; CORS is not a CSRF control (same-site cross-origin state-changing requests rely
-on `SameSite=Lax` and the few `requireSameOriginJson` routes); `trust proxy` is hard-coded to 1 hop.
+on `SameSite=Lax` and the few `requireSameOriginJson` routes); the default `/` Socket.IO namespace accepts unauthenticated connections (no handlers); `drinks.ts` still builds checkout/gift/webhook URLs
+from `req.protocol` + `Host` when no base URL is configured; and the server binds `0.0.0.0` when `PORT` is unset, where hop-count trust would trust any direct client (harmless under Passenger, which
+supplies a Unix socket).

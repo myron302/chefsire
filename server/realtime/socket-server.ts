@@ -1,7 +1,8 @@
 // server/realtime/socket-server.ts
 import type { Server as HttpServer } from "http";
 import { Server } from "socket.io";
-import { socketIoOriginOptions } from "../lib/cors-policy";
+import { socketIoOriginOptions, socketOriginAllowed } from "../lib/cors-policy";
+import { installEngineOriginGuard } from "./engine-origin-guard";
 
 const servers = new WeakMap<HttpServer, Server>();
 
@@ -23,6 +24,10 @@ export function socketIoServerFor(httpServer: HttpServer): Server {
   let io = servers.get(httpServer);
   if (!io) {
     io = new Server(httpServer, { path: "/socket.io", ...socketIoOriginOptions() });
+    // `allowRequest` (above) only ever sees the FIRST request of a session; engine.io skips it for anything that carries a sid (polling
+    // GET/POST, preflights, the polling->websocket probe upgrade). The guard puts the same decision in front of every engine request that carries
+    // an Origin. engine.use() middleware is per engine, so it is installed here, at the one place a Server is constructed.
+    installEngineOriginGuard(io, (req, origin) => socketOriginAllowed(req, origin));
     servers.set(httpServer, io);
   }
   return io;

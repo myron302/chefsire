@@ -5,7 +5,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createEnvCorsPolicy, isSameOrigin, normalizeOrigin, resolveCorsPolicy } from "./cors-policy";
+import { createEnvCorsPolicy, normalizeOrigin, originVerdict, resolveCorsPolicy, socketOriginAllowed } from "./cors-policy";
 
 test("normalizeOrigin reduces a configured value to a bare, canonical origin", () => {
   assert.equal(normalizeOrigin("https://chefsire.com"), "https://chefsire.com");
@@ -99,16 +99,36 @@ test("CORS_ALLOWED_ORIGINS is the explicit escape hatch for approved clients, in
   assert.equal(prod.match("ionic://localhost"), null);
 });
 
-test("isSameOrigin compares authority with the Host (or first X-Forwarded-Host) a browser addressed, ignoring scheme", () => {
-  assert.equal(isSameOrigin("https://chefsire.com", { host: "chefsire.com" }), true);
-  assert.equal(isSameOrigin("http://127.0.0.1:3001", { host: "127.0.0.1:3001" }), true);
-  assert.equal(isSameOrigin("https://Chefsire.com", { host: "CHEFSIRE.com" }), true);
-  assert.equal(isSameOrigin("https://chefsire.com", { host: "127.0.0.1:3001", "x-forwarded-host": "chefsire.com, internal" }), true);
-  assert.equal(isSameOrigin("https://evil.example", { host: "chefsire.com" }), false);
-  assert.equal(isSameOrigin("https://chefsire.com:8443", { host: "chefsire.com" }), false, "port is part of the authority");
-  assert.equal(isSameOrigin("https://chefsire.com.evil.example", { host: "chefsire.com" }), false);
-  assert.equal(isSameOrigin("null", { host: "chefsire.com" }), false);
-  assert.equal(isSameOrigin("https://chefsire.com", {}), false);
+const fake = (host: string | undefined, extra: Record<string, string> = {}, socket: { remoteAddress?: string; encrypted?: boolean } = { remoteAddress: "127.0.0.1" }) =>
+  ({ headers: { ...(host !== undefined ? { host } : {}), ...extra }, socket }) as never;
+
+test("originVerdict: the allowlist and the server's own FULL origin are the only two ways in", () => {
+  const policy = () => resolveCorsPolicy({ NODE_ENV: "production", CLIENT_URL: "https://app.chefsire.com" } as NodeJS.ProcessEnv);
+  const prod = { NODE_ENV: "production" } as NodeJS.ProcessEnv;
+  const behindProxy = fake("chefsire.com", { "x-forwarded-proto": "https" });
+
+  assert.deepEqual(originVerdict(behindProxy, "https://app.chefsire.com", policy, prod), { allowed: true, via: "allowlist" });
+  assert.deepEqual(originVerdict(behindProxy, "https://chefsire.com", policy, prod), { allowed: true, via: "own_origin" });
+  for (const refused of ["http://chefsire.com", "capacitor://chefsire.com", "https://chefsire.com:8443", "https://evil.example", "null", "https://chefsire.com/"]) {
+    assert.equal(originVerdict(behindProxy, refused, policy, prod).allowed, false, refused);
+  }
+});
+
+test("originVerdict flags only the refusals that look like the operator's own site that could not be verified", () => {
+  const policy = () => resolveCorsPolicy({ NODE_ENV: "production" } as NodeJS.ProcessEnv);
+  const prod = { NODE_ENV: "production" } as NodeJS.ProcessEnv;
+  const proxyStatesNothing = fake("chefsire.com");
+  assert.deepEqual(originVerdict(proxyStatesNothing, "https://chefsire.com", policy, prod), { allowed: false, unverifiable: true });
+  assert.deepEqual(originVerdict(proxyStatesNothing, "https://evil.example", policy, prod), { allowed: false, unverifiable: false }, "a stranger is just refused");
+  assert.deepEqual(originVerdict(fake("chefsire.com", { "x-forwarded-proto": "https" }), "http://chefsire.com", policy, prod), { allowed: false, unverifiable: false }, "known scheme, wrong page");
+  assert.deepEqual(originVerdict(fake("chefsire.com:443"), "https://chefsire.com", policy, prod), { allowed: false, unverifiable: true }, "a Host with its default port still counts as the same authority");
+});
+
+test("socketOriginAllowed never throws: a broken policy refuses", () => {
+  const exploding = () => { throw new Error("policy bug"); };
+  assert.equal(socketOriginAllowed(fake("chefsire.com"), "https://chefsire.com", exploding as never), false);
+  assert.equal(socketOriginAllowed({} as never, "https://chefsire.com"), false);
+  assert.equal(socketOriginAllowed(fake("chefsire.com"), undefined as never), false);
 });
 
 test("the env-backed policy re-reads the environment when it changes and reports each distinct configuration problem once", () => {
