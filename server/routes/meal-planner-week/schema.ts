@@ -1,12 +1,14 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { createRetryableInit } from "../../lib/retryable-init.js";
 
-let mealPlannerWeekSchemaReady: Promise<void> | null = null;
-
-export async function ensureMealPlannerWeekSchema() {
-  if (mealPlannerWeekSchemaReady) return mealPlannerWeekSchemaReady;
-
-  mealPlannerWeekSchemaReady = (async () => {
+/**
+ * Single-flight, and a failed attempt is retried after a bounded backoff instead of being cached for the life of the process
+ * (see lib/retryable-init.ts). Every statement below is idempotent.
+ */
+export const mealPlannerWeekSchemaInit = createRetryableInit({
+  name: "meal-planner-week-schema",
+  run: async () => {
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_protein INTEGER;`);
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_carbs INTEGER;`);
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_fat INTEGER;`);
@@ -32,7 +34,9 @@ export async function ensureMealPlannerWeekSchema() {
       );
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_week_shares_user_week ON meal_plan_week_shares(user_id, week_anchor);`);
-  })();
+  },
+});
 
-  return mealPlannerWeekSchemaReady;
+export async function ensureMealPlannerWeekSchema(): Promise<void> {
+  return mealPlannerWeekSchemaInit.ensure();
 }

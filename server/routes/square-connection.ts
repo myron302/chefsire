@@ -4,6 +4,8 @@ import { requireAuth } from "../middleware";
 import { squareConnectionLimiter } from "../middleware/rate-limit";
 import { squareConnections } from "../lib/square-connection";
 import { SquareCredentialDiscardBlockedError, type SquareConnectionService } from "../lib/square-connection-service";
+import { externalOriginOf, webOrigin } from "../lib/request-origin";
+import { currentCorsPolicy } from "../lib/cors-policy";
 
 /** The authenticated user's id, as set by `requireAuth`. Never read from a request body, query or path. */
 function currentUserId(req: Request): string {
@@ -27,25 +29,22 @@ export function requireSameOriginJson(req: Request, res: Response, next: NextFun
   if (!req.is("application/json")) {
     return res.status(415).json({ ok: false, error: "Expected a JSON request" });
   }
-  const origin = req.get("origin");
-  if (origin) {
-    const allowed = new Set<string>();
-    for (const configured of [process.env.CLIENT_URL, process.env.APP_BASE_URL]) {
-      try {
-        if (configured?.trim()) allowed.add(new URL(configured.trim()).origin);
-      } catch {
-        // An unparsable configured URL simply allows nothing extra.
-      }
-    }
-    const host = req.get("host");
-    if (host) allowed.add(`${req.protocol}://${host}`);
-    let requestOrigin: string;
-    try {
-      requestOrigin = new URL(origin).origin;
-    } catch {
+  // Presence, not truthiness: an empty `Origin:` header is still an Origin (a browser never sends one, so it is refused below), not "no Origin".
+  const origin = req.headers.origin;
+  if (origin !== undefined) {
+    // The application's own configured URLs under the SAME production rules as the CORS policy (https, not loopback), not re-parsed here.
+    const allowed = new Set<string>(currentCorsPolicy().applicationOrigins);
+    // This server's own full origin (scheme + host + port), reconstructed from the TLS state of the socket and -- only from a trusted proxy -- one
+    // unambiguous X-Forwarded-Proto (lib/request-origin). It used to be `${req.protocol}://${host}`: Express reads the LEFTMOST forwarded value (the
+    // client's own, behind Phusion Passenger) and falls back to "http" when a TLS-terminating proxy states nothing, which made an http page the
+    // "own origin" of an https deployment. When the scheme cannot be established there is no derived origin and only CLIENT_URL/APP_BASE_URL admit one.
+    const own = externalOriginOf(req);
+    if (own.origin) allowed.add(own.origin);
+    // A browser sends the canonical serialization; anything else (a path, a trailing slash, "null", a list) is not an Origin header it produced.
+    const requestOrigin = webOrigin(origin);
+    if (requestOrigin === null || requestOrigin !== origin || !allowed.has(requestOrigin)) {
       return res.status(403).json({ ok: false, error: "Request origin is not allowed" });
     }
-    if (!allowed.has(requestOrigin)) return res.status(403).json({ ok: false, error: "Request origin is not allowed" });
   }
   return next();
 }

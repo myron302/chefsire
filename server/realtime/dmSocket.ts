@@ -1,6 +1,5 @@
 // server/realtime/dmSocket.ts
 import type { Server as HttpServer } from "http";
-import { Server } from "socket.io";
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "../db";
 import {
@@ -11,6 +10,7 @@ import { users, notifications } from "../../shared/schema";
 import { CATERING_BOOKING_THREAD_CODE, CATERING_BOOKING_THREAD_MESSAGE } from "../../shared/catering-booking-communication";
 import { bookingLinkedThread } from "../services/catering-booking-conversation";
 import { authenticateSocket, socketUserId } from "./socket-auth";
+import { socketIoServerFor } from "./socket-server";
 
 /**
  * A DM thread that belongs to a catering booking is owned by the Phase 2I booking API and is closed to the generic
@@ -86,10 +86,9 @@ export type DmRealtimeOptions = {
 export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOptions = {}) {
   const isThreadParticipant = options.isThreadParticipant ?? isThreadParticipantInDatabase;
 
-  const io = new Server(httpServer, {
-    path: "/socket.io",
-    cors: { origin: true, credentials: true },
-  });
+  // One Socket.IO server per HTTP server, shared with the other realtime module, with the allowlisted-origin policy applied to every
+  // handshake (never `origin: true`). See socket-server.ts and lib/cors-policy.ts.
+  const io = socketIoServerFor(httpServer);
 
   // Namespace for DMs
   const ns = io.of("/dm");

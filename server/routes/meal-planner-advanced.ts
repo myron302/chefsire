@@ -1,4 +1,4 @@
-import express, { type Request, type Response, type NextFunction } from "express";
+import express, { type Request, type Response } from "express";
 import { db } from "../db/index.js";
 import { eq, and, desc, sql, gte, lte, isNull, asc } from "drizzle-orm";
 import {
@@ -30,7 +30,8 @@ import {
   toFamilyMealProfilePatch,
   toGroceryListItemPatch,
 } from "../../shared/planner-remix-mutations.js";
-import { ensureAdvancedMealPlanningSchema } from "./meal-planner-advanced/schema.js";
+import { advancedMealPlanningSchemaInit, ensureAdvancedMealPlanningSchema } from "./meal-planner-advanced/schema.js";
+import { initGuard } from "../lib/retryable-init.js";
 import {
   calculateBudgetSummary,
   calculateSavingsReport,
@@ -63,18 +64,13 @@ import {
 
 const router = express.Router();
 
-router.use(async (_req: Request, res: Response, next: NextFunction) => {
-  try {
-    await ensureAdvancedMealPlanningSchema();
-    next();
-  } catch (e: any) {
-    console.error("[meal-planner-advanced] Schema ensure failed:", e);
-    res.status(500).json({
-      message: "Meal planner database schema is not ready",
-      details: String(e?.message || e),
-    });
-  }
-});
+// Mounted at /meal-planner, so this only guards that prefix. A failed attempt is retried after a bounded backoff (it is not cached
+// for the life of the process) and the response never carries driver detail: the previous handler returned `details: e.message`,
+// which put database host names, SQL and driver text in the body of a public, unauthenticated-reachable response.
+router.use(initGuard(advancedMealPlanningSchemaInit, {
+  message: "Meal planner database schema is not ready",
+  code: "meal_planner_advanced_unavailable",
+}));
 
 // ============================================================
 // AI-POWERED MEAL RECOMMENDATIONS

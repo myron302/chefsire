@@ -1,120 +1,138 @@
-import { Router, type Request, type Response, type NextFunction } from "express";
+import { Router } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { requireAuth, optionalAuth } from "../middleware";
+import { asyncHandler } from "../middleware/error-handler";
 import { mealPlanReviewEntitlementPredicate } from "../lib/meal-plan-entitlement.js";
+import { createRetryableInit, initGuard } from "../lib/retryable-init.js";
 
 const router = Router();
 const SHARED_WEEK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 const COMMENT_LIMIT = 1000;
 
-let schemaReady: Promise<void> | null = null;
+/**
+ * The DDL that backs the meal-planner social features. Every statement is CREATE ... IF NOT EXISTS, so running it again after a
+ * partial failure is safe. It is only ever run through `mealSocialSchemaInit` below (single-flight, retried with bounded backoff).
+ */
+async function createMealSocialTables(): Promise<void> {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS meal_plan_likes (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      blueprint_id VARCHAR NOT NULL REFERENCES meal_plan_blueprints(id) ON DELETE CASCADE,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(user_id, blueprint_id)
+    );
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_likes_blueprint ON meal_plan_likes(blueprint_id);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_likes_user ON meal_plan_likes(user_id);`);
 
-export async function ensureMealSocialSchema() {
-  if (schemaReady) return schemaReady;
-  schemaReady = (async () => {
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS meal_plan_likes (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        blueprint_id VARCHAR NOT NULL REFERENCES meal_plan_blueprints(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(user_id, blueprint_id)
-      );
-    `);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_likes_blueprint ON meal_plan_likes(blueprint_id);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_likes_user ON meal_plan_likes(user_id);`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS meal_plan_saves (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      blueprint_id VARCHAR NOT NULL REFERENCES meal_plan_blueprints(id) ON DELETE CASCADE,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(user_id, blueprint_id)
+    );
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_saves_blueprint ON meal_plan_saves(blueprint_id);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_saves_user ON meal_plan_saves(user_id);`);
 
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS meal_plan_saves (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        blueprint_id VARCHAR NOT NULL REFERENCES meal_plan_blueprints(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(user_id, blueprint_id)
-      );
-    `);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_saves_blueprint ON meal_plan_saves(blueprint_id);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_saves_user ON meal_plan_saves(user_id);`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS meal_plan_comments (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      blueprint_id VARCHAR NOT NULL REFERENCES meal_plan_blueprints(id) ON DELETE CASCADE,
+      comment TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    );
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_comments_blueprint_created ON meal_plan_comments(blueprint_id, created_at DESC);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_comments_user ON meal_plan_comments(user_id);`);
 
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS meal_plan_comments (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        blueprint_id VARCHAR NOT NULL REFERENCES meal_plan_blueprints(id) ON DELETE CASCADE,
-        comment TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        deleted_at TIMESTAMP
-      );
-    `);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_comments_blueprint_created ON meal_plan_comments(blueprint_id, created_at DESC);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_meal_plan_comments_user ON meal_plan_comments(user_id);`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS shared_week_likes (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      public_share_token VARCHAR(80) NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(user_id, public_share_token)
+    );
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_likes_token ON shared_week_likes(public_share_token);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_likes_user ON shared_week_likes(user_id);`);
 
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS shared_week_likes (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        public_share_token VARCHAR(80) NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(user_id, public_share_token)
-      );
-    `);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_likes_token ON shared_week_likes(public_share_token);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_likes_user ON shared_week_likes(user_id);`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS shared_week_saves (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      public_share_token VARCHAR(80) NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(user_id, public_share_token)
+    );
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_saves_token ON shared_week_saves(public_share_token);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_saves_user ON shared_week_saves(user_id);`);
 
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS shared_week_saves (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        public_share_token VARCHAR(80) NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(user_id, public_share_token)
-      );
-    `);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_saves_token ON shared_week_saves(public_share_token);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_saves_user ON shared_week_saves(user_id);`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS shared_week_comments (
+      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      public_share_token VARCHAR(80) NOT NULL,
+      comment TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    );
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_comments_token_created ON shared_week_comments(public_share_token, created_at DESC);`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_comments_user ON shared_week_comments(user_id);`);
 
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS shared_week_comments (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        public_share_token VARCHAR(80) NOT NULL,
-        comment TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        deleted_at TIMESTAMP
-      );
-    `);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_comments_token_created ON shared_week_comments(public_share_token, created_at DESC);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_shared_week_comments_user ON shared_week_comments(user_id);`);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS meal_plan_creator_profiles (
-        user_id VARCHAR PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        display_title TEXT,
-        bio TEXT,
-        specialty TEXT,
-        avatar_url TEXT,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-  })();
-  return schemaReady;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS meal_plan_creator_profiles (
+      user_id VARCHAR PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      display_title TEXT,
+      bio TEXT,
+      specialty TEXT,
+      avatar_url TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
 }
 
-async function ensureSchemaMiddleware(_req: Request, res: Response, next: NextFunction) {
-  try {
-    await ensureMealSocialSchema();
-    next();
-  } catch (error) {
-    console.error("Error ensuring meal social schema:", error);
-    res.status(500).json({ message: "Meal planner social schema is not ready" });
-  }
+/**
+ * A failed attempt is NOT cached: the next attempt is allowed after a bounded, growing delay, and callers inside that window are
+ * refused without touching the database. See lib/retryable-init.ts.
+ */
+const mealSocialSchemaInit = createRetryableInit({ name: "meal-social-schema", run: createMealSocialTables });
+
+/** For handlers that need the tables inline (meal-plans, meal-planner-week). Rejects with InitializationUnavailableError. */
+export async function ensureMealSocialSchema(): Promise<void> {
+  return mealSocialSchemaInit.ensure();
 }
 
-router.use(ensureSchemaMiddleware);
+/** Test/diagnostic access to the initializer's state. */
+export const mealSocialSchema = mealSocialSchemaInit;
+
+/**
+ * Per-route guard for the routes in THIS file.
+ *
+ * It must NOT be `router.use(...)`. This router is mounted in routes/index.ts without a path prefix (its URLs are absolute:
+ * /meal-plans/:id/like, /meal-plan-creators, /me/saved-meal-planner-items ...), and a router-level middleware runs for every request
+ * that reaches the router whether or not one of its routes matches. Every request that fell through the routers mounted before it
+ * -- /api itself, /dm, /catering (including the Square webhook), /wedding, an unknown /api path -- ran this initialization first,
+ * and while it was failing they all answered 500 for a feature none of them use.
+ *
+ * Mounted after authentication so an unauthenticated caller can neither trigger the DDL nor learn whether it succeeded.
+ */
+const requireMealSocialSchema = initGuard(mealSocialSchemaInit, {
+  message: "Meal planner social schema is not ready",
+  code: "meal_planner_social_unavailable",
+});
 
 export async function getMealPlanSocialStats(blueprintId: string, viewerId?: string | null) {
   const result = await db.execute(sql`
@@ -171,7 +189,7 @@ async function publicSharedWeekExists(token: string) {
   return Boolean((result as any).rows?.[0]);
 }
 
-router.post("/meal-plans/:id/like", requireAuth, async (req, res) => {
+router.post("/meal-plans/:id/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
   if (!(await mealPlanExists(planId))) return res.status(404).json({ message: "Meal plan not found" });
   await db.execute(sql`
@@ -180,15 +198,15 @@ router.post("/meal-plans/:id/like", requireAuth, async (req, res) => {
     ON CONFLICT (user_id, blueprint_id) DO NOTHING
   `);
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
-});
+}));
 
-router.delete("/meal-plans/:id/like", requireAuth, async (req, res) => {
+router.delete("/meal-plans/:id/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
   await db.execute(sql`DELETE FROM meal_plan_likes WHERE user_id = ${(req.user as any).id} AND blueprint_id = ${planId}`);
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
-});
+}));
 
-router.post("/meal-plans/:id/save", requireAuth, async (req, res) => {
+router.post("/meal-plans/:id/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
   if (!(await mealPlanExists(planId))) return res.status(404).json({ message: "Meal plan not found" });
   await db.execute(sql`
@@ -197,15 +215,15 @@ router.post("/meal-plans/:id/save", requireAuth, async (req, res) => {
     ON CONFLICT (user_id, blueprint_id) DO NOTHING
   `);
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
-});
+}));
 
-router.delete("/meal-plans/:id/save", requireAuth, async (req, res) => {
+router.delete("/meal-plans/:id/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
   await db.execute(sql`DELETE FROM meal_plan_saves WHERE user_id = ${(req.user as any).id} AND blueprint_id = ${planId}`);
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
-});
+}));
 
-router.get("/meal-plans/:id/comments", optionalAuth, async (req, res) => {
+router.get("/meal-plans/:id/comments", optionalAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
   if (!(await mealPlanExists(planId))) return res.status(404).json({ message: "Meal plan not found" });
   const commentsResult = await db.execute(sql`
@@ -218,9 +236,9 @@ router.get("/meal-plans/:id/comments", optionalAuth, async (req, res) => {
     LIMIT 100
   `);
   res.json({ comments: mapComments((commentsResult as any).rows || []), social: await getMealPlanSocialStats(planId, (req.user as any)?.id) });
-});
+}));
 
-router.post("/meal-plans/:id/comments", requireAuth, async (req, res) => {
+router.post("/meal-plans/:id/comments", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
   const comment = normalizeCommentText(req.body?.comment ?? req.body?.text);
   if (!comment) return res.status(400).json({ message: "Comment text is required" });
@@ -231,9 +249,9 @@ router.post("/meal-plans/:id/comments", requireAuth, async (req, res) => {
     RETURNING id
   `);
   res.status(201).json({ id: (result as any).rows?.[0]?.id, social: await getMealPlanSocialStats(planId, (req.user as any).id) });
-});
+}));
 
-router.delete("/meal-plans/:id/comments/:commentId", requireAuth, async (req, res) => {
+router.delete("/meal-plans/:id/comments/:commentId", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const { id: planId, commentId } = req.params;
   const result = await db.execute(sql`
     UPDATE meal_plan_comments
@@ -243,35 +261,35 @@ router.delete("/meal-plans/:id/comments/:commentId", requireAuth, async (req, re
   `);
   if (!(result as any).rows?.[0]) return res.status(404).json({ message: "Comment not found or not owned by viewer" });
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
-});
+}));
 
-router.post("/meal-planner/week/shared/:token/like", requireAuth, async (req, res) => {
+router.post("/meal-planner/week/shared/:token/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
   if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   await db.execute(sql`INSERT INTO shared_week_likes (user_id, public_share_token) VALUES (${(req.user as any).id}, ${token}) ON CONFLICT (user_id, public_share_token) DO NOTHING`);
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
-});
+}));
 
-router.delete("/meal-planner/week/shared/:token/like", requireAuth, async (req, res) => {
+router.delete("/meal-planner/week/shared/:token/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
   await db.execute(sql`DELETE FROM shared_week_likes WHERE user_id = ${(req.user as any).id} AND public_share_token = ${token}`);
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
-});
+}));
 
-router.post("/meal-planner/week/shared/:token/save", requireAuth, async (req, res) => {
+router.post("/meal-planner/week/shared/:token/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
   if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   await db.execute(sql`INSERT INTO shared_week_saves (user_id, public_share_token) VALUES (${(req.user as any).id}, ${token}) ON CONFLICT (user_id, public_share_token) DO NOTHING`);
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
-});
+}));
 
-router.delete("/meal-planner/week/shared/:token/save", requireAuth, async (req, res) => {
+router.delete("/meal-planner/week/shared/:token/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
   await db.execute(sql`DELETE FROM shared_week_saves WHERE user_id = ${(req.user as any).id} AND public_share_token = ${token}`);
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
-});
+}));
 
-router.get("/meal-planner/week/shared/:token/comments", optionalAuth, async (req, res) => {
+router.get("/meal-planner/week/shared/:token/comments", optionalAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
   if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   const commentsResult = await db.execute(sql`
@@ -284,18 +302,18 @@ router.get("/meal-planner/week/shared/:token/comments", optionalAuth, async (req
     LIMIT 100
   `);
   res.json({ comments: mapComments((commentsResult as any).rows || []), social: await getSharedWeekSocialStats(token, (req.user as any)?.id) });
-});
+}));
 
-router.post("/meal-planner/week/shared/:token/comments", requireAuth, async (req, res) => {
+router.post("/meal-planner/week/shared/:token/comments", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
   const comment = normalizeCommentText(req.body?.comment ?? req.body?.text);
   if (!comment) return res.status(400).json({ message: "Comment text is required" });
   if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   const result = await db.execute(sql`INSERT INTO shared_week_comments (user_id, public_share_token, comment) VALUES (${(req.user as any).id}, ${token}, ${comment}) RETURNING id`);
   res.status(201).json({ id: (result as any).rows?.[0]?.id, social: await getSharedWeekSocialStats(token, (req.user as any).id) });
-});
+}));
 
-router.delete("/meal-planner/week/shared/:token/comments/:commentId", requireAuth, async (req, res) => {
+router.delete("/meal-planner/week/shared/:token/comments/:commentId", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const { token, commentId } = req.params;
   const result = await db.execute(sql`
     UPDATE shared_week_comments
@@ -305,10 +323,10 @@ router.delete("/meal-planner/week/shared/:token/comments/:commentId", requireAut
   `);
   if (!(result as any).rows?.[0]) return res.status(404).json({ message: "Comment not found or not owned by viewer" });
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
-});
+}));
 
 
-router.get("/meal-plan-creators", optionalAuth, async (req, res) => {
+router.get("/meal-plan-creators", optionalAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const viewerId = (req.user as any)?.id || "";
   const search = String(req.query.search || "").trim().toLowerCase();
   const searchPattern = `%${search}%`;
@@ -369,9 +387,9 @@ router.get("/meal-plan-creators", optionalAuth, async (req, res) => {
     };
   });
   res.json({ creators });
-});
+}));
 
-router.get("/meal-plan-creators/:creatorId", optionalAuth, async (req, res) => {
+router.get("/meal-plan-creators/:creatorId", optionalAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const creatorId = req.params.creatorId;
   const creatorResult = await db.execute(sql`
     SELECT u.id, u.username, u.display_name, u.avatar, u.bio, u.specialty, u.followers_count,
@@ -428,9 +446,9 @@ router.get("/meal-plan-creators/:creatorId", optionalAuth, async (req, res) => {
     },
     publicSharedWeeks: ((sharedWeeksResult as any).rows || []).map(mapSavedWeekRow),
   });
-});
+}));
 
-router.get("/meal-plan-creators/:creatorId/plans", optionalAuth, async (req, res) => {
+router.get("/meal-plan-creators/:creatorId/plans", optionalAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const creatorId = req.params.creatorId;
   const result = await db.execute(sql`
     SELECT b.*, u.id AS creator_id, u.username, u.display_name,
@@ -447,9 +465,9 @@ router.get("/meal-plan-creators/:creatorId/plans", optionalAuth, async (req, res
     ORDER BY b.created_at DESC
   `);
   res.json({ plans: ((result as any).rows || []).map(mapPlanRow) });
-});
+}));
 
-router.put("/meal-plan-creators/me", requireAuth, async (req, res) => {
+router.put("/meal-plan-creators/me", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const displayTitle = nullableTrim(req.body?.displayTitle ?? req.body?.display_title);
   const bio = nullableTrim(req.body?.bio);
   const specialty = nullableTrim(req.body?.specialty);
@@ -466,9 +484,9 @@ router.put("/meal-plan-creators/me", requireAuth, async (req, res) => {
     RETURNING *
   `);
   res.json({ profile: (result as any).rows?.[0] });
-});
+}));
 
-router.get("/me/saved-meal-planner-items", requireAuth, async (req, res) => {
+router.get("/me/saved-meal-planner-items", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const plansResult = await db.execute(sql`
     SELECT b.*, u.id AS creator_id, u.username, u.display_name, s.created_at AS saved_at,
       (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id AND ${mealPlanReviewEntitlementPredicate(sql.raw("r.user_id"), sql.raw("r.blueprint_id"))}) AS avg_rating,
@@ -501,7 +519,7 @@ router.get("/me/saved-meal-planner-items", requireAuth, async (req, res) => {
     LIMIT 50
   `);
   res.json({ marketplacePlans: ((plansResult as any).rows || []).map(mapPlanRow), sharedWeeks: ((weeksResult as any).rows || []).map(mapSavedWeekRow) });
-});
+}));
 
 function nullableTrim(raw: unknown) {
   const value = String(raw ?? "").trim();

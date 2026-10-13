@@ -1,12 +1,14 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { createRetryableInit } from "../../lib/retryable-init.js";
 
-let advancedMealPlanningSchemaReady: Promise<void> | null = null;
-
-export async function ensureAdvancedMealPlanningSchema() {
-  if (advancedMealPlanningSchemaReady) return advancedMealPlanningSchemaReady;
-
-  advancedMealPlanningSchemaReady = (async () => {
+/**
+ * Single-flight, and a failed attempt is retried after a bounded backoff instead of being cached for the life of the process
+ * (see lib/retryable-init.ts). Every statement below is idempotent.
+ */
+export const advancedMealPlanningSchemaInit = createRetryableInit({
+  name: "meal-planner-advanced-schema",
+  run: async () => {
     if (!db) {
       throw new Error("Database is not configured (missing DATABASE_URL).");
     }
@@ -173,7 +175,9 @@ export async function ensureAdvancedMealPlanningSchema() {
     await db.execute(sql`UPDATE meal_prep_schedules SET is_running_low = false WHERE is_running_low IS NULL;`);
     await db.execute(sql`UPDATE leftovers SET is_running_low = false WHERE is_running_low IS NULL;`);
     await db.execute(sql`UPDATE grocery_list_items SET is_running_low = false WHERE is_running_low IS NULL;`);
-  })();
+  },
+});
 
-  return advancedMealPlanningSchemaReady;
+export async function ensureAdvancedMealPlanningSchema(): Promise<void> {
+  return advancedMealPlanningSchemaInit.ensure();
 }

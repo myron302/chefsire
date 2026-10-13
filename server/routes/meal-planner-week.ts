@@ -1,4 +1,4 @@
-import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
@@ -12,7 +12,8 @@ import {
   users,
 } from "../../shared/schema.js";
 import { optionalAuth, requireAuth } from "../middleware";
-import { ensureMealPlannerWeekSchema } from "./meal-planner-week/schema.js";
+import { ensureMealPlannerWeekSchema, mealPlannerWeekSchemaInit } from "./meal-planner-week/schema.js";
+import { initGuard } from "../lib/retryable-init.js";
 import { ensureMealSocialSchema, getSharedWeekSocialStats } from "./meal-social.js";
 import { recordMealPlannerEvent } from "./meal-planner-events.js";
 import {
@@ -232,15 +233,12 @@ function mapSharedEntriesToTargetWeek(args: {
   });
 }
 
-router.use(async (_req: Request, res: Response, next: NextFunction) => {
-  try {
-    await ensureMealPlannerWeekSchema();
-    next();
-  } catch (error) {
-    console.error("Error ensuring meal planner week schema:", error);
-    res.status(500).json({ message: "Meal planner schema is not ready" });
-  }
-});
+// Mounted at /meal-planner, so this only guards that prefix. A failed attempt is retried after a bounded backoff (it is not cached
+// for the life of the process) and the response never carries driver detail.
+router.use(initGuard(mealPlannerWeekSchemaInit, {
+  message: "Meal planner schema is not ready",
+  code: "meal_planner_week_unavailable",
+}));
 
 async function buildRecipePool(args: {
   mealType: MealType;
