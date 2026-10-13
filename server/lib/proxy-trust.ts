@@ -66,7 +66,8 @@ function normalizeEntry(entry: string): string | null {
   if (parts.length === 1) return entry;
   if (!/^\d{1,3}$/.test(parts[1])) return null;
   const prefix = Number(parts[1]);
-  return prefix >= 1 && prefix <= (family === 4 ? 32 : 128) ? entry : null;
+  // A very short prefix trusts a large part of the internet as 'a proxy': /8 and /16 are the floors.
+  return prefix >= (family === 4 ? 8 : 16) && prefix <= (family === 4 ? 32 : 128) ? entry : null;
 }
 
 /** Parse `TRUST_PROXY`. Throws TrustProxyConfigError for anything that is not unambiguously one of the documented forms. */

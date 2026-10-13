@@ -50,8 +50,11 @@ export { normalizeOrigin };
 const HEADER_TOKEN_LIST = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:\s*,\s*[!#$%&'*+.^_`|~0-9A-Za-z-]+)*$/;
 
 function isLoopbackHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  return host === "localhost" || host.endsWith(".localhost") || host === "::1" || /^127\.\d+\.\d+\.\d+$/.test(host) || host === "0.0.0.0";
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  return (
+    host === "localhost" || host.endsWith(".localhost") || host === "::1" || host === "::" || /^127\.\d+\.\d+\.\d+$/.test(host) || host === "0.0.0.0" ||
+    /^::ffff:(7f[0-9a-f]{2}:[0-9a-f]{1,4}|127\.\d+\.\d+\.\d+)$/.test(host) // IPv4-mapped 127.x, in the URL-normalised hex form or dotted
+  );
 }
 
 function splitList(raw: string | undefined): string[] {
@@ -61,6 +64,8 @@ function splitList(raw: string | undefined): string[] {
 export interface CorsPolicy {
   /** The complete set of origins allowed to make credentialed cross-origin browser requests. */
   readonly origins: ReadonlySet<string>;
+  /** The subset named by CLIENT_URL / APP_BASE_URL / APP_URL (production: https and non-loopback only). */
+  readonly applicationOrigins: ReadonlySet<string>;
   /** Human-readable notes about configuration that was refused or looks wrong. Never contains a secret. */
   readonly warnings: readonly string[];
   /** The canonical allowed origin for a received Origin header value, or null. Exact match only. */
@@ -70,6 +75,7 @@ export interface CorsPolicy {
 export function resolveCorsPolicy(env: NodeJS.ProcessEnv = process.env): CorsPolicy {
   const development = isDevelopmentRuntime(env);
   const origins = new Set<string>();
+  const applicationOrigins = new Set<string>();
   const warnings: string[] = [];
 
   const add = (variable: string, raw: string, mode: "application" | "explicit") => {
@@ -89,6 +95,7 @@ export function resolveCorsPolicy(env: NodeJS.ProcessEnv = process.env): CorsPol
       }
     }
     origins.add(origin);
+    if (mode === "application") applicationOrigins.add(origin);
   };
 
   for (const variable of ["CLIENT_URL", "APP_BASE_URL", "APP_URL"] as const) {
@@ -108,6 +115,7 @@ export function resolveCorsPolicy(env: NodeJS.ProcessEnv = process.env): CorsPol
 
   return {
     origins,
+    applicationOrigins,
     warnings,
     match(origin: unknown): string | null {
       const canonical = normalizeOrigin(origin);

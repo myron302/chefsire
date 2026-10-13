@@ -13,7 +13,7 @@ import { setupTikTokOAuth } from "./services/tiktok-oauth.service";
 import { UPLOADS_DIR } from "./lib/uploads-dir";
 import { uploadsStaticHandler } from "./lib/uploads-static";
 import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./lib/public-static-dirs";
-import { createCorsMiddleware } from "./lib/cors-policy";
+import { createCorsMiddleware, currentCorsPolicy } from "./lib/cors-policy";
 import { resolveTrustProxy, TrustProxyConfigError, type TrustProxyResolution } from "./lib/proxy-trust";
 
 const app = express();
@@ -40,6 +40,7 @@ console.log(`✓ trust proxy: ${trustProxy.description}${trustProxy.source === "
 // Browser origin policy: an explicit allowlist (CLIENT_URL, APP_BASE_URL, APP_URL, CORS_ALLOWED_ORIGINS, and CORS_DEV_ORIGINS outside
 // production) that fails closed. This used to be `cors({ credentials: true, origin: process.env.CLIENT_URL || true })`, which reflected
 // ANY origin with credentials whenever CLIENT_URL was missing. The same policy guards both Socket.IO servers. See lib/cors-policy.ts.
+currentCorsPolicy(); // resolve now so configuration warnings print at boot, not on the first cross-origin request
 app.use(createCorsMiddleware());
 app.use(express.json({
   limit: "2mb",

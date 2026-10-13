@@ -112,6 +112,9 @@ it never sets or strips `X-Forwarded-Host`. Consequences, all handled above: hop
 `X-Forwarded-Proto` list (a client-typed value in front of Passenger's) is *ambiguous* and fails closed, while a single value is believed; a **plain-http** request carrying a client-typed `X-Forwarded-Proto: https` is indistinguishable from TLS, so **plain http must not
 reach the app** (enable the Plesk http→https redirect). Whether production is nginx-only + Passenger or nginx→Apache could not be determined; the design does not depend on it, because
 **`CLIENT_URL`/`APP_URL` set to the public https origin always works** and the reconstruction is a fallback.
+**Set `CLIENT_URL` (or `APP_URL`) before deploying this**: without it, a proxy chain that sends `X-Forwarded-Proto` on more than one line, or none, makes the own origin unknown and realtime/`requireSameOriginJson` refuse the site
+(fail closed; logged). List `www` too (`CORS_ALLOWED_ORIGINS`) if both hosts are served. Also: `server/dist` must be rebuilt (`npm run build`) for the running process to pick this up; any hostname that resolves to the server is
+its own origin by Host (cookies are host-only, so no session is exposed); `TRUST_PROXY` CIDRs shorter than /8 (IPv4) or /16 (IPv6) are refused.
 
 Operator verification (run once, after deploy): `curl -sk https://DOMAIN/api -H 'Origin: https://DOMAIN'` must show no `Access-Control-Allow-Origin` unless `DOMAIN` is allowlisted (CORS is for *cross*-origin);
 open the site and confirm the realtime features connect; check the log for `[cors] refused browser origin` (it means set `CLIENT_URL`) and for `trust proxy: 1 hop (the direct peer is the proxy)`.

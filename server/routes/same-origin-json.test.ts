@@ -116,8 +116,12 @@ test("a configured CLIENT_URL / APP_BASE_URL admits its origin whatever the prox
   assert.equal(await post({ Host: H, "X-Forwarded-Proto": "https", Origin: `http://${H}` }), 403);
   assert.equal(await post({ Host: H, "X-Forwarded-Proto": "https", Origin: "https://evil.example" }), 403);
 
+  setEnv({ APP_URL: `https://${H}` });
+  assert.equal(await post({ Host: "127.0.0.1:3001", Origin: `https://${H}` }), 200, "APP_URL counts too, as in the CORS policy");
   setEnv({ APP_BASE_URL: `https://${H}/some/path` });
-  assert.equal(await post({ Host: "127.0.0.1:3001", Origin: `https://${H}` }), 200, "a configured URL with a path still names its origin, as before");
+  assert.equal(await post({ Host: "127.0.0.1:3001", Origin: `https://${H}` }), 403, "a configured URL with a path is not an origin: ignored (warned at boot), fail closed");
+  setEnv({ CLIENT_URL: "http://localhost:5173" });
+  assert.equal(await post({ Host: H, Origin: "http://localhost:5173" }), 403, "a development URL left in production configures nothing");
 
   // Not an application URL: CORS_ALLOWED_ORIGINS is for read access by approved clients, not for cookie-authenticated state changes.
   setEnv({ CORS_ALLOWED_ORIGINS: "capacitor://localhost" });

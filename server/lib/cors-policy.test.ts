@@ -148,3 +148,11 @@ test("the env-backed policy re-reads the environment when it changes and reports
   assert.equal(get().match("https://chefsire.com"), null, "removing CLIENT_URL closes it again");
   assert.equal(warned.length, 2);
 });
+
+test("production application URLs: loopback spellings are refused, and applicationOrigins excludes allowlist extras", () => {
+  const prod = (u: string) => resolveCorsPolicy({ NODE_ENV: "production", CLIENT_URL: u } as NodeJS.ProcessEnv).origins.size;
+  for (const u of ["https://localhost.", "https://[::ffff:127.0.0.1]", "https://[::]", "https://127.0.0.1", "https://foo.localhost"]) assert.equal(prod(u), 0, u);
+  const p = resolveCorsPolicy({ NODE_ENV: "production", CLIENT_URL: "https://chefsire.com", CORS_ALLOWED_ORIGINS: "capacitor://localhost" } as NodeJS.ProcessEnv);
+  assert.deepEqual([...p.applicationOrigins], ["https://chefsire.com"]);
+  assert.equal(p.origins.size, 2);
+});

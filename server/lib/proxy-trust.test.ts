@@ -45,7 +45,7 @@ test("trusting every hop, out-of-range counts and unparsable values refuse to re
   for (const raw of [
     "true", "TRUE", "on", "yes", "all", "*",
     "9", "100", "99999999999999999999", "-1", "1.5", "1e3", "NaN", "Infinity",
-    "foo", "loopbak", "127.1", "0x7f000001", "1.2.3", "10.0.0.0/0", "10.0.0.0/33", "::/0", "10.0.0.0/255.0.0.0", "10.0.0.0/8/8", "fe80::1%eth0",
+    "foo", "loopbak", "127.1", "0x7f000001", "1.2.3", "10.0.0.0/0", "10.0.0.0/7", "0.0.0.0/1", "::/1", "2001:db8::/15", "10.0.0.0/33", "::/0", "10.0.0.0/255.0.0.0", "10.0.0.0/8/8", "fe80::1%eth0",
     ",", "loopback,,10.0.0.1", ",loopback", "loopback,", "http://127.0.0.1", "127.0.0.1:80", "localhost",
     Array.from({ length: 70 }, (_, i) => `10.0.${i}.1`).join(","),
   ]) {
