@@ -1,12 +1,13 @@
 /**
  * Child process for the Phase 2B regression tests. Mirrors server/index.ts's process policy (exit(1) on unhandledRejection), serves
  * an async-failing route, and reports what happened on stdout as JSON lines. Run in its OWN process so a crash cannot kill the test runner.
- * argv[2] = "patched" | "unpatched"
+ * argv[2] = "patched" | "unpatched";  argv[3] = route to hit (default "/boom"; "/call-only" = async handler whose only failure is a throwing SYNC helper, no await)
  */
 import http from "node:http";
 import express from "express";
 
 async function main() {
+  const route = process.argv[3] ?? "/boom";
 if (process.argv[2] === "patched") await import("./async-error-forwarding.install");
 
 process.on("unhandledRejection", (e) => {
@@ -17,6 +18,8 @@ process.on("unhandledRejection", (e) => {
 const app = express();
 let handled = 0;
 app.get("/boom", async () => { await Promise.resolve(); throw new Error("async boom"); });
+const helperThatThrows = (): string => { throw new Error("async boom"); };
+app.get("/call-only", async (_req, res) => { res.send(helperThatThrows()); });
 app.get("/ok", (_req, res) => { res.json({ ok: true }); });
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   handled++;
@@ -30,7 +33,7 @@ const server = app.listen(0, "127.0.0.1", async () => {
     req.on("timeout", () => { req.destroy(); resolve({ error: "timeout" }); });
     req.on("error", (e) => resolve({ error: (e as Error).message }));
   });
-  console.log(JSON.stringify({ event: "boom", result: await get("/boom") }));
+  console.log(JSON.stringify({ event: "boom", result: await get(route) }));
   await new Promise((r) => setTimeout(r, 200));
   console.log(JSON.stringify({ event: "ok-after", result: await get("/ok"), handled }));
   process.exit(0);

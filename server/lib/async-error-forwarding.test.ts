@@ -21,8 +21,8 @@ const unhandled: unknown[] = [];
 process.on("unhandledRejection", (reason) => { unhandled.push(reason); });
 
 // ---- 1. isolated processes -------------------------------------------------------------------------------------------------
-function runChild(mode: "patched" | "unpatched") {
-  const out = spawnSync(process.execPath, ["--import", "tsx", "server/lib/async-failure-child.ts", mode], { encoding: "utf8", timeout: 30_000 });
+function runChild(mode: "patched" | "unpatched", route = "/boom") {
+  const out = spawnSync(process.execPath, ["--import", "tsx", "server/lib/async-failure-child.ts", mode, route], { encoding: "utf8", timeout: 30_000 });
   const events = out.stdout.split("\n").filter((l) => l.startsWith("{")).map((l) => JSON.parse(l));
   return { status: out.status, events };
 }
@@ -43,6 +43,39 @@ test("FIXED: the same rejection reaches the error handler once, the client gets 
   assert.deepEqual(events[1].result, { status: 500 });
   assert.deepEqual(events[2].result, { status: 200 });
   assert.equal(events[2].handled, 1, "error handler invoked exactly once");
+});
+
+test("CALL-ONLY async failure (no await; a synchronous helper throws) -- BASELINE: unhandled rejection kills the process", () => {
+  const { status, events } = runChild("unpatched", "/call-only");
+  assert.equal(status, 1);
+  assert.deepEqual(events.map((e) => e.event), ["unhandledRejection"]);
+  assert.equal(events[0].message, "async boom");
+});
+
+test("CALL-ONLY async failure -- FIXED: original error reaches the error handler exactly once, 500, process survives and serves the next request", () => {
+  const { status, events } = runChild("patched", "/call-only");
+  assert.equal(status, 0);
+  assert.deepEqual(events.map((e) => e.event), ["errorHandler", "boom", "ok-after"]);
+  assert.equal(events[0].message, "async boom");
+  assert.deepEqual(events[1].result, { status: 500 });
+  assert.deepEqual(events[2].result, { status: 200 });
+  assert.equal(events[2].handled, 1, "error handler invoked exactly once");
+});
+
+test("in-process: call-only async handlers (arrow, expression-bodied, function) deliver the original Error once and leave no unhandled rejection", async () => {
+  const helper = (): never => { throw boom; };
+  const boom = new Error("helper threw");
+  const s = await serve((app) => {
+    app.get("/expr", async () => helper());
+    app.get("/block", async (_q, r) => { r.send(helper()); });
+    app.get("/fn", async function (_q, r) { r.json({ v: helper() }); });
+  });
+  try {
+    for (const p of ["/expr", "/block", "/fn"]) assert.equal((await s.get(p)).status, 500, p);
+    await settle();
+    assert.deepEqual(s.seen, [boom, boom, boom], "same instance, once per request");
+    assert.equal(unhandled.length, 0);
+  } finally { s.close(); }
 });
 
 // ---- 2. in-process HTTP ----------------------------------------------------------------------------------------------------
