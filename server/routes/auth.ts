@@ -19,7 +19,8 @@ import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { hashPassword } from "../lib/password-hash";
 import { isEmailAuthoritativelyVerified } from "../lib/email-verification-provenance";
 import { verifyAuthToken } from "../lib/jwt-config";
-import { issueAuthToken, resolveSessionUser } from "../lib/auth-session";
+import { issueAuthToken, checkSession } from "../lib/auth-session";
+import { isDatabaseUnavailableError, sendServiceUnavailable } from "../lib/db-availability";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -177,6 +178,11 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
     if ((error as { code?: string })?.code === "23505" && /email/i.test((error as { constraint?: string }).constraint ?? "")) {
       return res.status(400).json({ error: "Email already registered" });
     }
+    // The database could not be reached: nothing was created, and saying "failed to create account" would invite a duplicate attempt blindly.
+    if (isDatabaseUnavailableError(error)) {
+      console.error("Signup could not reach the database:", (error as Error)?.name);
+      return sendServiceUnavailable(res);
+    }
     console.error("Error during signup:", error);
     res.status(500).json({ error: "Failed to create account" });
   }
@@ -232,6 +238,11 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
       user: serializeAuthenticatedUser(user),
     });
   } catch (error) {
+    // An unreachable database is not "Login failed" and certainly not "Invalid email or password": retryable, nothing granted, nothing revealed.
+    if (isDatabaseUnavailableError(error)) {
+      console.error("Login could not reach the database:", (error as Error)?.name);
+      return sendServiceUnavailable(res);
+    }
     console.error("💥 CRITICAL ERROR during login:", error);
     console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
     res.status(500).json({ error: "Login failed" });
@@ -297,6 +308,12 @@ router.post("/auth/verify-email", verifyEmailLimiter, async (req, res) => {
 
     res.redirect(303, "/verify/success");
   } catch (error) {
+    if (isDatabaseUnavailableError(error)) {
+      // The token is only consumed inside the database transaction, so an unreachable database leaves it unused and the link still works.
+      console.error("Email verification could not reach the database:", (error as Error)?.name);
+      res.set("Retry-After", "5");
+      return res.status(503).send("Verification is temporarily unavailable. Please try the link again in a moment.");
+    }
     console.error("Error verifying email:", error);
     res.status(500).send("Verification failed");
   }
@@ -353,6 +370,10 @@ router.post("/auth/resend-verification", emailSendLimiter, async (req, res) => {
       res.status(500).json({ error: "Failed to send verification email. Please try again later." });
     }
   } catch (error) {
+    if (isDatabaseUnavailableError(error)) {
+      console.error("Resend verification could not reach the database:", (error as Error)?.name);
+      return sendServiceUnavailable(res);
+    }
     console.error("Error resending verification:", error);
     res.status(500).json({ error: "Failed to resend verification email" });
   }
@@ -374,7 +395,9 @@ router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => 
     // Verify token
     const decoded = verifyAuthToken(token) as { id: string; av?: number };
     // A signed token is not enough: it must still match the account's current auth version.
-    if (!(await resolveSessionUser(decoded))) {
+    const session = await checkSession(decoded);
+    if (session.status === "unavailable") return sendServiceUnavailable(res);
+    if (session.status !== "valid") {
       return res.status(401).json({ error: "Invalid token" });
     }
     const userId = decoded.id;
@@ -418,6 +441,8 @@ router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => 
     if (error instanceof jwt.JsonWebTokenError) {
       return res.status(401).json({ error: "Invalid token" });
     }
+    // The password write is a single UPDATE; if the connection fails the outcome is the caller's to re-check, not to be reported as a clean failure.
+    if (isDatabaseUnavailableError(error)) return sendServiceUnavailable(res);
     res.status(500).json({ error: "Failed to change password" });
   }
 });
@@ -435,12 +460,15 @@ router.get("/auth/me", async (req, res) => {
     }
 
     const decoded = verifyAuthToken(token) as { id: string; av?: number };
-    const user = await resolveSessionUser(decoded);
+    const session = await checkSession(decoded);
 
-    if (!user) {
+    // Case C: the database could not answer. 503, not 401 -- the client keeps the user signed in and retries (it clears local state on 401 only).
+    if (session.status === "unavailable") return sendServiceUnavailable(res);
+    if (session.status !== "valid") {
       // Unknown account and revoked session are indistinguishable to the caller.
       return res.status(401).json({ error: "Not authenticated" });
     }
+    const user = session.user;
 
     res.json({
       success: true,
@@ -451,6 +479,7 @@ router.get("/auth/me", async (req, res) => {
     if (error instanceof jwt.JsonWebTokenError) {
       return res.status(401).json({ error: "Invalid token" });
     }
+    if (isDatabaseUnavailableError(error)) return sendServiceUnavailable(res);
     res.status(500).json({ error: "Failed to fetch user" });
   }
 });
@@ -496,7 +525,8 @@ router.get("/auth/google/callback", (req, res, next) => {
         missingColumn,
         message,
       });
-      return res.redirect("/login?error=google-auth-failed");
+      // A database that could not be reached is not a failed Google sign-in; no session is issued either way.
+      return res.redirect(isDatabaseUnavailableError(error) ? "/login?error=service-unavailable" : "/login?error=google-auth-failed");
     }
 
     try {

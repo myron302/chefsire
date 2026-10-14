@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { classifySessionStatus, recheckSession } from "@/lib/session-verification";
 
 type User = {
   id: string;
@@ -83,6 +84,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   // Load user from localStorage on mount, then verify session with server
   useEffect(() => {
+    let cancelled = false;
     const loadUser = async () => {
       try {
         // Check if just logged in with OAuth
@@ -116,14 +118,31 @@ export function UserProvider({ children }: { children: ReactNode }) {
             // Verify the cookie/session is still valid before trusting localStorage
             try {
               const verifyRes = await fetch('/api/auth/me', { credentials: 'include' });
-              if (verifyRes.ok) {
+              const verdict = classifySessionStatus(verifyRes.status);
+              if (verdict === "unavailable") {
+                // The SERVER could not check (503 database outage, 5xx, 429): that says nothing about the session. Keep the signed-in
+                // state, exactly as for a network error, and look again a few times in the background.
+                setUser(parsed as User);
+                void recheckSession(async () => (await fetch('/api/auth/me', { credentials: 'include' })).status, { shouldStop: () => cancelled }).then((later) => {
+                  if (later === "invalid") {
+                    localStorage.removeItem("user");
+                    setUser(null);
+                  } else if (later === "valid") {
+                    void fetch('/api/auth/me', { credentials: 'include' }).then((r) => r.json()).then((v) => {
+                      const refreshed = authenticatedUserFromPayload(v?.user);
+                      localStorage.setItem("user", JSON.stringify(refreshed));
+                      setUser(refreshed);
+                    }).catch(() => undefined);
+                  }
+                });
+              } else if (verifyRes.ok) {
                 // Session valid — refresh server-owned profile fields.
                 const verified = await verifyRes.json().catch(() => ({}));
                 const refreshedUser = authenticatedUserFromPayload(verified?.user);
                 localStorage.setItem("user", JSON.stringify(refreshedUser));
                 setUser(refreshedUser);
               } else {
-                // Cookie expired or missing — clear stale localStorage
+                // The server answered that this session is not valid (401) — clear stale localStorage
                 localStorage.removeItem("user");
                 setUser(null);
               }
@@ -142,6 +161,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
 
     loadUser();
+    return () => { cancelled = true; };
   }, []);
 
   const persist = (u: User | null) => {
