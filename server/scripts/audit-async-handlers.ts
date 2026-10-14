@@ -38,7 +38,7 @@ const categorize = (p: string) => CATEGORIES.find(([, re]) => re.test(p))?.[0] ?
 const WRAP_MARK = Symbol.for("chefsire.asyncForwarded");
 const ORIGINAL = Symbol.for("chefsire.asyncOriginal");
 
-function analyze(fn: any): { cls: Cls; severity: HandlerAnalysis["severity"]; async: boolean; reasons: string[]; catchRisk: number } {
+function analyze(fn: any): { cls: Cls; severity: HandlerAnalysis["severity"]; async: boolean; reasons: string[]; catchRisk: number; onlyInRecovery: boolean } {
   const original = fn?.[ORIGINAL] ?? fn; // classify what a wrapper wraps
   if (typeof original !== "function") return { cls: "sync", severity: "none", async: false, reasons: [], catchRisk: 0, onlyInRecovery: false };
   if (original.length === 4) return { cls: "error-handler", severity: "none", async: false, reasons: [], catchRisk: 0, onlyInRecovery: false };
