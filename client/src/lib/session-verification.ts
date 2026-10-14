@@ -1,11 +1,13 @@
 /**
  * How the client reads the answer to "is my session still good?" (`GET /api/auth/me`). Stability Phase 2C.
  *
- * The server now separates three cases and the client must too:
+ * The server separates three cases and the client must too:
  *   - the session is definitively not valid  -> 401 (the server answered "no"): forget the stored user;
- *   - the session is valid                   -> 200;
+ *   - the session is valid                   -> 200 with a user payload;
  *   - the server could not check (database outage, overload, gateway error) -> 5xx / 429 / 408: say NOTHING about the session.
- * Before this, every non-OK answer cleared the stored user, so a database blip logged everyone out of the UI.
+ *
+ * There is exactly ONE reader of that answer (`verifySessionOnce`) and it returns the validated user from the very response it examined, so
+ * no caller needs a second GET to obtain the user (a second request could answer differently from the first).
  */
 export type SessionVerdict = "valid" | "invalid" | "unavailable";
 
@@ -17,25 +19,53 @@ export function classifySessionStatus(status: number): SessionVerdict {
   return "unavailable";
 }
 
-/** Bounded background re-check after an "unavailable" answer: 3 tries, increasing delay, then stop (no polling loop, no retry storm). */
+/** Bounded background re-check after an "unavailable" answer: 3 retries, increasing delay, then stop (no polling loop, no retry storm). */
 export const SESSION_RECHECK_DELAYS_MS = [5_000, 15_000, 45_000] as const;
 
-export async function recheckSession(
-  fetchStatus: () => Promise<number>,
-  options: { delaysMs?: readonly number[]; sleep?: (ms: number) => Promise<void>; shouldStop?: () => boolean } = {},
-): Promise<SessionVerdict> {
-  const delays = options.delaysMs ?? SESSION_RECHECK_DELAYS_MS;
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-  for (const delay of delays) {
-    await sleep(delay);
-    if (options.shouldStop?.()) return "unavailable";
-    let verdict: SessionVerdict;
-    try {
-      verdict = classifySessionStatus(await fetchStatus());
-    } catch {
-      verdict = "unavailable"; // network failure: still no information
-    }
-    if (verdict !== "unavailable") return verdict;
+export type SessionCheckResult<U> =
+  | { kind: "valid"; user: U }
+  | { kind: "invalid" }
+  /** No authoritative answer. `reason` is for diagnostics/tests only; callers must treat every reason the same way. */
+  | { kind: "unavailable"; reason: "status" | "network" | "malformed" }
+  /** The request was abandoned because the caller's generation ended (logout, login, unmount, newer run). Carries no information. */
+  | { kind: "cancelled" };
+
+/**
+ * One request, one answer. A 2xx whose body does not contain a user the caller accepts (`parseUser` throws) is NOT a verification:
+ * it is reported as unavailable/"malformed" so it can neither be persisted nor mistaken for success.
+ */
+export async function verifySessionOnce<U>(
+  fetchFn: typeof fetch,
+  signal: AbortSignal,
+  parseUser: (payload: unknown) => U,
+): Promise<SessionCheckResult<U>> {
+  let response: Response;
+  try {
+    response = await fetchFn("/api/auth/me", { credentials: "include", signal });
+  } catch {
+    return signal.aborted ? { kind: "cancelled" } : { kind: "unavailable", reason: "network" };
   }
-  return "unavailable";
+  const verdict = classifySessionStatus(response.status);
+  if (verdict === "invalid") return { kind: "invalid" };
+  if (verdict === "unavailable") return { kind: "unavailable", reason: "status" };
+  try {
+    const body = (await response.json()) as { user?: unknown } | null;
+    return { kind: "valid", user: parseUser(body?.user) };
+  } catch {
+    return signal.aborted ? { kind: "cancelled" } : { kind: "unavailable", reason: "malformed" };
+  }
+}
+
+/** Abortable delay: resolves after `ms`, or immediately when the signal aborts (the caller re-checks its generation either way). */
+export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    }
+    signal.addEventListener("abort", done, { once: true });
+  });
 }
