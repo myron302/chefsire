@@ -1,5 +1,6 @@
 // server/app.ts
 import "./lib/load-env";
+import "./lib/async-error-forwarding.install"; // before ./routes: wraps handlers as they are registered
 import express, { Request, Response, NextFunction } from "express";
 import compression from "compression";
 import morgan from "morgan";
@@ -133,7 +134,7 @@ app.all("/api/*", (_req: Request, res: Response) => {
 });
 
 // Global error handler
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
   // Detail (message and stack, which for a database failure means driver text, host names and SQL) is returned only when the runtime
   // is EXPLICITLY "development". It used to be returned whenever NODE_ENV was anything but "production", so an unset, misspelled,
   // "test" or "staging" environment answered every unhandled error with its stack trace.
@@ -143,6 +144,12 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
   // ALWAYS log the error server-side
   console.error("[ERROR]", err);
+
+  // A response is already (partly) on the wire: a second status/body would throw ERR_HTTP_HEADERS_SENT. Express's contract is to delegate
+  // to its default handler, which closes the connection so the client sees a truncated response rather than a corrupted one.
+  if (res.headersSent) {
+    return next(err);
+  }
 
   if (!exposeDetail) {
     res.status(500).json({ error: "Internal Server Error" });
