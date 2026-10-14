@@ -37,7 +37,7 @@ export async function startFaultProxy(target: { host: string; port: number }): P
   const live = new Set<{ ws: WebSocket; tcp?: net.Socket }>();
   const proxy: FaultProxy = {
     port: 0, mode: "pass", delayMs: 0, accepted: 0, muteReplies: false,
-    cutAll() { for (const c of live) { c.tcp?.destroy(); c.ws.terminate(); } live.clear(); },
+    cutAll() { for (const c of Array.from(live)) { c.tcp?.destroy(); c.ws.terminate(); } live.clear(); },
     close: async () => { proxy.cutAll(); wss.close(); await new Promise<void>((r) => { http.close(() => r()); http.closeAllConnections?.(); }); },
   };
   http.on("upgrade", (req, socket, head) => {

@@ -100,3 +100,15 @@ Only standard `pg.Pool` options are used (`connectionTimeoutMillis`), which `@ne
 ## 10. Remaining stability campaign work
 
 Error-message leakage in individual routes; lazy schema initialisation outside meal-social/advanced; CSRF hardening; a bounded `unhandledRejection` policy; floating promises in handlers and cron; request-id/correlation logging; optional retry-with-idempotency for *read* paths if desired.
+
+## 11. Verification results
+
+Disposable local PostgreSQL 16 (loopback only, deleted afterwards); production Neon, Plesk and Square production were not touched.
+
+* Complete server/shared/client suite (`tsx --test`, 331 files, one at a time, all three test-database variables set, so **nothing is skipped**): **5,860 tests, 5,857 pass, 3 fail, 0 skipped, 0 cancelled.**
+* The 3 failures are `client/src/lib/socket-lifecycle.test.ts` ("a handshake the server refuses is evicted…", "logging in after a rejected connection…", "an expired explicit token is evicted…"). Verified on a clean checkout of `main` (`a45f1e5`): the same file fails the same 3 of 13 there. Not related to this PR (the client socket cache is untouched).
+* An earlier full run also showed two failures that were investigated rather than dismissed:
+  * `db-outage` "no retry storm": my assertion raced with connection attempts the pool had begun just before the requests timed out (each bounded by the same timeout). Fixed by letting those drain and then requiring a bounded, *stable* count.
+  * `drink-collection-premium-access.test.ts`: fails on `main` too when run alone or after `auth-account-prehijack` (3/3 runs on a clean `main` checkout) and passed in the later full run; it is timing-dependent (a fire-and-forget `sendNewFollowerNotification` promise rejecting after the test body — a Phase 2B "floating promise" residual). My two suites now run in their own scratch databases so they cannot change what other files see.
+* New PostgreSQL-backed tests: `db-outage.postgres.test.ts` 13/13, `auth-db-outage.postgres.test.ts` 15/15. Unit tests: `db-config` 5, `db-availability` 6, `session-verification` 5. On `main`'s code the same PostgreSQL tests hang at the first black hole (and `/api/auth/me` answers 401 for a refusing database).
+* `npm run build:client` and `npm run build:server` succeed. `tsc --incremental false`: 3,193 errors on `main` and on this branch, identical after normalising line numbers (an interim 3,194 was my fault-proxy file; fixed).
