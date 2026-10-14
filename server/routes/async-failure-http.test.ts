@@ -17,6 +17,9 @@ import type { AddressInfo } from "node:net";
 process.env.NODE_ENV = "test";
 process.env.DATABASE_URL = "postgres://app:secret@127.0.0.1:9/chefsire_unreachable_test";
 process.env.SQUARE_ENV = "sandbox";
+// Fake credentials, read at import time by lib/square.ts. They can reach no one: the only test that builds a Square client intercepts global fetch.
+process.env.SQUARE_ACCESS_TOKEN = "EAAA-test-token-not-real";
+process.env.SQUARE_LOCATION_ID = "LTESTLOCATION";
 process.env.SQUARE_CATERING_WEBHOOK_SIGNATURE_KEY = "test-signature-key";
 process.env.SQUARE_CATERING_WEBHOOK_NOTIFICATION_URL = "https://chefsire.test/api/catering/webhooks/square";
 
@@ -171,4 +174,60 @@ test("isolated process with server/index.ts's exit-on-unhandledRejection policy 
   const responses = events.filter((e) => e.event === "response");
   assert.deepEqual(responses.map((e) => e.status), [500, 500, 200]);
   for (const r of responses) assertSafe(r.body);
+});
+
+// ---- recovery-path failure on the REAL create-payment route ----------------------------------------------------------------
+// Square is faked at the HTTP layer (global fetch intercepts squareup hosts: no real network, no real payment): CreatePayment answers a definitive
+// card decline. The route's catch then enters settleMarketplaceCaptureFailure -> releaseMarketplaceReservation, which needs the database
+// transaction -- and that rejects. Nothing can capture a payment or credit a ledger.
+test("create-payment: Square declines, the catch-block recovery (reservation release) ALSO rejects -> 500 via Express, process alive, one Square call, no ledger write", async () => {
+  let reads = 0;
+  let transactionAttempts = 0;
+  let writesSucceeded = 0;
+  const squareCalls: string[] = [];
+  const order = {
+    id: "order-1", buyerId: "user-1", sellerId: "seller-1", productId: "p-1", quantity: 1, status: "pending", totalAmount: "10.00", platformFee: "0.50", sellerAmount: "9.50",
+    paymentStatus: "capture_pending", inventoryStatus: "reserved", sellerRevenueStatus: "uncredited", providerPaymentStatus: null, squarePaymentId: null,
+    paymentProvider: "square", sellerTierSnapshot: "free", commissionRateSnapshot: "5", checkoutIdempotencyKey: "checkout-key", captureIdempotencyKey: "capture-key",
+    captureAttemptedAt: null, captureRequestSnapshot: { idempotencyKey: "capture-key", referenceId: "capture-key", sourceId: "cnon:card-nonce-ok", amountCents: 1000, currency: "USD", locationId: "LTESTLOCATION", note: "ChefSire order order-1", verificationToken: null, buyerEmailAddress: null },
+  };
+  const readChain = (rows: unknown[]): any => new Proxy(function () {}, {
+    get: (_t, p) => (p === "then" ? (res: any) => res(rows) : () => readChain(rows)),
+    apply: () => readChain(rows),
+  });
+  const failing: any = new Proxy(function () {}, {
+    get: (_t, p) => (p === "then" ? (_res: any, rej: any) => rej(new Error(SECRET)) : () => failing),
+    apply: () => failing,
+  });
+  const originals = { select: (db as any).select, update: (db as any).update, insert: (db as any).insert, delete: (db as any).delete, execute: (db as any).execute, transaction: (db as any).transaction };
+  (db as any).select = () => { reads++; return reads === 1 ? readChain([order]) : reads === 2 ? readChain([{ id: "seller-1" }]) : failing; };
+  for (const m of ["update", "insert", "delete"]) (db as any)[m] = () => failing;
+  (db as any).execute = async () => { throw new Error(SECRET); };
+  (db as any).transaction = async () => { transactionAttempts++; throw new Error(SECRET); };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (/squareup(sandbox)?\.com/.test(url)) {
+      squareCalls.push(`${init?.method ?? "GET"} ${new URL(url).pathname}`);
+      return new Response(JSON.stringify({ errors: [{ category: "PAYMENT_METHOD_ERROR", code: "CARD_DECLINED", detail: "Card declined" }] }), { status: 402, headers: { "content-type": "application/json" } });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const before = unhandled.length;
+    const res = await call("POST", "/api/payments/create-payment", { headers: { ...asUser(), ...json }, body: JSON.stringify({ orderId: "order-1" }) });
+    assert.equal(res.status, 500, `${res.status} ${res.text}`);
+    assert.deepEqual(res.json, { error: "Internal Server Error" }, "the global handler answered, not a payment success/failure payload");
+    assertSafe(res.text);
+    assert.ok(!/"ok":true|Payment processed|squarePaymentId|PAYMENT_DECLINED/.test(res.text));
+    assert.equal(reads, 2, "the route reached the capture stage");
+    assert.deepEqual(squareCalls, ["POST /v2/payments"], "exactly one Square capture request; the failed recovery did not trigger a second");
+    assert.equal(transactionAttempts, 1, "the recovery (reservation release) was attempted once and rejected");
+    assert.equal(writesSucceeded, 0, "no payment capture or ledger credit succeeded");
+    assert.equal(unhandled.length, before, "no unhandled rejection");
+    assert.equal((await call("GET", "/healthz")).status, 200, "process alive, unrelated request succeeds");
+  } finally {
+    globalThis.fetch = realFetch;
+    Object.assign(db as any, originals);
+  }
 });

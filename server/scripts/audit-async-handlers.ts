@@ -6,8 +6,8 @@
  *   error-handler    arity 4, never wrapped
  *   sync             not an async function (a sync throw is caught by Express itself)
  *   async-safe       async, no try/catch, nothing that can throw (static response)
- *   async-guarded    every risk site is inside a try/catch whose catch does not rethrow
- *   async-partial    has a try/catch, but a risk site (or a rethrow) sits outside it
+ *   async-guarded    every risk site is inside a try block that has a catch, and the catch/finally blocks themselves contain nothing that can throw
+ *   async-partial    has a try/catch, but a risk site sits outside a protected try block: in the body, in a catch (recovery) block or in a finally
  *   async-unguarded  no try/catch and at least one risk site
  * "At risk" = partial + unguarded. Severity "strong" = an unprotected await/throw/.then(); "potential" = only unprotected calls to helpers
  * the analysis cannot prove safe (never assumed safe). Neither is a proof that a rejection occurs at runtime: that is what the runtime
@@ -20,7 +20,7 @@ import "../lib/load-env";
 import { analyzeHandlerSource, type HandlerAnalysis } from "../lib/async-handler-analysis";
 
 type Cls = HandlerAnalysis["cls"] | "error-handler";
-type Row = { method: string; path: string; cls: Cls; severity: HandlerAnalysis["severity"]; category: string; forwarded: boolean; async: boolean; reasons: string[]; catchRisk: number };
+type Row = { method: string; path: string; cls: Cls; severity: HandlerAnalysis["severity"]; category: string; forwarded: boolean; async: boolean; reasons: string[]; catchRisk: number; onlyInRecovery: boolean };
 
 const CATEGORIES: Array<[string, RegExp]> = [
   ["square-payments-webhooks", /square|webhook|\/payments|\/payouts/i],
@@ -40,14 +40,14 @@ const ORIGINAL = Symbol.for("chefsire.asyncOriginal");
 
 function analyze(fn: any): { cls: Cls; severity: HandlerAnalysis["severity"]; async: boolean; reasons: string[]; catchRisk: number } {
   const original = fn?.[ORIGINAL] ?? fn; // classify what a wrapper wraps
-  if (typeof original !== "function") return { cls: "sync", severity: "none", async: false, reasons: [], catchRisk: 0 };
-  if (original.length === 4) return { cls: "error-handler", severity: "none", async: false, reasons: [], catchRisk: 0 };
+  if (typeof original !== "function") return { cls: "sync", severity: "none", async: false, reasons: [], catchRisk: 0, onlyInRecovery: false };
+  if (original.length === 4) return { cls: "error-handler", severity: "none", async: false, reasons: [], catchRisk: 0, onlyInRecovery: false };
   const isAsync = original.constructor?.name === "AsyncFunction";
-  if (!isAsync) return { cls: "sync", severity: "none", async: false, reasons: [], catchRisk: 0 };
+  if (!isAsync) return { cls: "sync", severity: "none", async: false, reasons: [], catchRisk: 0, onlyInRecovery: false };
   const a = analyzeHandlerSource(Function.prototype.toString.call(original));
   // An async function the analyser cannot parse is treated as unguarded/potential: never assumed safe.
-  if (a.cls === "unparsed") return { cls: "async-unguarded", severity: "potential", async: true, reasons: ["unparsed"], catchRisk: 0 };
-  return { cls: a.cls, severity: a.severity, async: true, reasons: a.sites.map((s) => `${s.kind}:${s.text}`), catchRisk: a.catchRisk.length };
+  if (a.cls === "unparsed") return { cls: "async-unguarded", severity: "potential", async: true, reasons: ["unparsed"], catchRisk: 0, onlyInRecovery: false };
+  return { cls: a.cls, severity: a.severity, async: true, reasons: a.sites.map((s) => `${s.kind}@${s.where}:${s.text}`), catchRisk: a.catchRisk.length, onlyInRecovery: a.sites.length > 0 && a.catchRisk.length === a.sites.length };
 }
 
 function mountPath(layer: any): string {
@@ -96,7 +96,7 @@ async function main() {
     atRiskExposed: atRisk.length,
     atRiskStrong: sev("strong"),
     atRiskPotentialCallOnly: sev("potential"),
-    asyncWithOnlyCatchBlockCalls: rows.filter((r) => r.cls === "async-guarded" && r.catchRisk > 0).length,
+    atRiskOnlyInCatchOrFinally: atRisk.filter((r) => r.onlyInRecovery).length,
     forwarded: rows.filter((r) => r.forwarded).length,
     uncoveredAsync,
     byClass: tally(rows),

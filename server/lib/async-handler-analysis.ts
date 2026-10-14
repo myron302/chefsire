@@ -8,7 +8,10 @@
  *
  * Method (TypeScript AST, conservative):
  *  - Walk the function body, NOT descending into nested functions (their bodies run later, under their own rules).
- *  - Code in a `try` block that has a `catch` clause is protected. Code in the `catch` block, in `finally`, and everywhere else is not.
+ *  - Code in a `try` block that has a `catch` clause is protected. Code in that try's own `catch` block, in its `finally`, and everywhere else is
+ *    not protected BY IT: recovery logic that awaits or calls a helper can reject just as well (a payment handler whose catch awaits a ledger
+ *    settlement is the motivating case). Protection nests: a catch/finally inside an OUTER try-with-catch's try block is protected by the outer
+ *    one; a try inside a catch protects only its own try block.
  *  - Unprotected "risk sites":
  *      throw        an explicit `throw`                                     (strong)
  *      await        an `await`                                              (strong)
@@ -17,21 +20,25 @@
  *    The allowlist is only response plumbing on `res` (`res.status().json()`, `.send`, `.set`, ...), `next(...)`, `console.*`, and a few
  *    side-effect-free builtins (RegExp#test, Math.*, parseInt, Array.isArray, ...). A handler whose ONLY calls are those is a static
  *    response and is NOT counted as a risk.
- *  - Risk inside a catch/finally block is reported separately (`catchRisk`), as informational: it only matters if the catch itself throws.
+ *  - Every unprotected site is a site, wherever it is (`where`: body | catch | finally). `catchRisk` is just the subset of `sites` located in a
+ *    catch/finally, so `sites`, `cls` and `severity` all describe the one escaping-rejection model. A handler is NOT safe merely because it
+ *    contains a try/catch.
  *  - Limits: property access on undefined (`req.body.x.y`), getters, and implicit conversions can throw without any call; they are not modelled.
  */
 import ts from "typescript";
 
 export type RiskKind = "throw" | "await" | "then" | "call";
-export type RiskSite = { kind: RiskKind; text: string };
+export type RiskSite = { kind: RiskKind; text: string; where: "body" | "catch" | "finally" };
 export type HandlerAnalysis = {
   isAsync: boolean;
   /** safe-static: async, no unprotected risk. guarded: try/catch covers every risk. partial/unguarded: unprotected risk exists. */
   cls: "sync" | "async-safe" | "async-guarded" | "async-partial" | "async-unguarded" | "unparsed";
-  /** strong = an await/throw/then is unprotected; potential = only unanalysed helper calls are unprotected; none = no unprotected risk. */
+  /** strong = an await/throw/then can escape; potential = only unanalysed helper calls can escape; none = nothing can escape. */
   severity: "strong" | "potential" | "none";
   hasTryCatch: boolean;
+  /** Every site whose failure escapes the handler as a rejection. */
   sites: RiskSite[];
+  /** The subset of `sites` that sits in a catch/finally block (recovery logic). */
   catchRisk: RiskSite[];
 };
 
@@ -95,14 +102,12 @@ export function analyzeHandlerSource(src: string): HandlerAnalysis {
   if (!isAsync) return empty("sync");
 
   const sites: RiskSite[] = [];
-  const catchRisk: RiskSite[] = [];
   let hasTryCatch = false;
   const text = (n: ts.Node) => n.getText().replace(/\s+/g, " ").slice(0, 80);
 
-  const walk = (node: ts.Node, protectedCode: boolean, inCatch: boolean) => {
+  const walk = (node: ts.Node, protectedCode: boolean, where: RiskSite["where"]) => {
     const sink = (kind: RiskKind) => {
-      if (protectedCode) return;
-      (inCatch ? catchRisk : sites).push({ kind, text: text(node) });
+      if (!protectedCode) sites.push({ kind, text: text(node), where });
     };
     if (ts.isFunctionLike(node) && node !== fn) return; // nested function: runs later, under its own rules
     if (ts.isThrowStatement(node)) sink("throw");
@@ -113,24 +118,22 @@ export function analyzeHandlerSource(src: string): HandlerAnalysis {
     }
     if (ts.isTryStatement(node)) {
       if (node.catchClause) hasTryCatch = true;
-      walk(node.tryBlock, protectedCode || !!node.catchClause, inCatch);
-      // Whatever the catch block does is NOT covered by its own try.
-      if (node.catchClause) walk(node.catchClause.block, protectedCode, true);
-      if (node.finallyBlock) walk(node.finallyBlock, protectedCode, true);
+      // The try block is protected by its own catch; the catch block and the finally block are protected only by an ENCLOSING try
+      // (`protectedCode` as inherited) -- never by the statement they belong to.
+      walk(node.tryBlock, protectedCode || !!node.catchClause, where);
+      if (node.catchClause) walk(node.catchClause.block, protectedCode, "catch");
+      if (node.finallyBlock) walk(node.finallyBlock, protectedCode, "finally");
       return;
     }
-    ts.forEachChild(node, (c) => walk(c, protectedCode, inCatch));
+    ts.forEachChild(node, (c) => walk(c, protectedCode, where));
   };
-  // Walk the body (or the single expression of an expression-bodied arrow); parameter default initialisers can also throw.
-  fn.parameters.forEach((p) => p.initializer && walk(p.initializer, false, false));
-  walk(fn.body, false, false);
+  // Parameter default initialisers can also throw.
+  fn.parameters.forEach((p) => p.initializer && walk(p.initializer, false, "body"));
+  walk(fn.body, false, "body");
 
-  // Rethrow inside a catch is the one catch-block site that is certain to reject: promote it into the main list.
-  const rethrows = catchRisk.filter((s) => s.kind === "throw");
-  const allSites = [...sites, ...rethrows];
-  const strong = allSites.some((s) => s.kind === "throw" || s.kind === "await" || s.kind === "then");
+  const strong = sites.some((s) => s.kind === "throw" || s.kind === "await" || s.kind === "then");
   let cls: HandlerAnalysis["cls"];
-  if (allSites.length === 0) cls = hasTryCatch ? "async-guarded" : "async-safe";
+  if (sites.length === 0) cls = hasTryCatch ? "async-guarded" : "async-safe";
   else cls = hasTryCatch ? "async-partial" : "async-unguarded";
-  return { isAsync, cls, severity: allSites.length === 0 ? "none" : strong ? "strong" : "potential", hasTryCatch, sites: allSites, catchRisk: catchRisk.filter((s) => s.kind !== "throw") };
+  return { isAsync, cls, severity: sites.length === 0 ? "none" : strong ? "strong" : "potential", hasTryCatch, sites, catchRisk: sites.filter((s) => s.where !== "body") };
 }

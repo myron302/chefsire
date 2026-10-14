@@ -24,51 +24,57 @@ Walks the real router tree (read-only; uses `router.stack` in a tool, never in r
 middleware layer (1,418 on `main`) with a TypeScript-AST analysis (`server/lib/async-handler-analysis.ts`). `--patched` installs the
 forwarding first and verifies coverage.
 
-**Method.** An `async` function turns *any* throw into a rejection: an `await`, a `.then()` chain, an explicit `throw`, **or a plain
-synchronous helper call that throws** (`res.send(renderPage(token))`). A handler is *at risk* when any of those sits outside a
-`try { } catch { }` whose catch does not rethrow (code inside `catch`/`finally` is not protected by its own try; a `throw` in a catch counts).
-Nested functions are not walked. Calls are risk sites unless allow-listed: only response plumbing on `res` (`status/json/send/set/type/...`),
-`next()`, `console.*`, and a few side-effect-free builtins (regex `.test`, `Math.*`, `parseInt`, `Array.isArray`, ...). An unanalysed helper is
-never assumed safe. Severity: **strong** = an unprotected `await`/`throw`/`.then()`; **potential** = only unprotected calls to helpers the
-analysis cannot prove safe. Neither proves a rejection happens at runtime; runtime failure is established separately by the tests below.
+**Method (escaping-rejection model).** An `async` function turns *any* throw into a rejection: an `await`, a `.then()` chain, an explicit
+`throw`, **or a plain synchronous helper call that throws**. A site is *protected* only if it is inside the `try` block of a statement that has a
+`catch`. The `catch` block and the `finally` block of that same statement are **not** protected by it: recovery logic (a ledger settlement, a
+database update, a logging/error-mapping helper) can reject just as well. Protection nests: a catch/finally that sits inside an *outer*
+try-with-catch's try block is protected by the outer one; a try inside a catch protects only its own try block; `try/finally` without `catch`
+protects nothing. Nested functions are not walked. Every unprotected site is counted wherever it is (`where`: body | catch | finally); `sites`,
+`catchRisk` (the subset in catch/finally), class and severity all describe this one model. A handler is never "safe" merely because it contains a try/catch.
+Calls are risk sites unless allow-listed: only response plumbing on `res` (`status/json/send/set/type/...`), `next()`, `console.*` and a few
+side-effect-free builtins (regex `.test`, `Math.*`, `parseInt`, `Array.isArray`, ...). Business-logic helpers are never assumed safe.
+Severity: **strong** = an unprotected `await`/`throw`/`.then()` can escape; **potential** = only unprotected calls to helpers the analysis cannot
+prove safe can escape. Neither proves a rejection happens at runtime; that is established separately by the runtime tests below.
 
-*Correction (Codex P2).* The first version of this audit only counted `await`/`.then(` in unguarded handlers, so call-only handlers such as
-`GET /api/auth/verify-email` (`verifyEmailPage(token)`) were omitted, while handlers that merely called `res.status().json()` outside a
-`try` were over-counted. The previously reported "60" is superseded.
+*Corrections.* (1) Codex P2 #1: the first audit counted only `await`/`.then(` and so missed call-only handlers such as `GET /api/auth/verify-email`.
+(2) Codex P2 #2: the second version promoted only explicit `throw`s found in catch/finally, so handlers whose *recovery* awaited or called something
+(`POST /api/payments/create-payment` -> `await settleMarketplaceCaptureFailure(...)`, `POST /api/payments/refund` -> `await db.update(orders)...`)
+were classified as guarded. Reported counts: 60 (first), 41 (second), **267** (this model). Each earlier set is contained in the next (all 41 remain).
 
-Results on `main`: 1,418 layers; 1,363 async (async fully guarded 1,314, static-safe 8), 55 sync/error-handler. Running the same audit on this
-branch without the forwarding installed gives the same 41 exposed layers (23 `asyncHandler`-wrapped layers are excluded as already forwarding).
-**41 layers are exposed on `main`: 25 strong (await/throw/then) + 16 potential (call-only).** Previous report: 60. Against that list:
-37 kept, **22 removed** as false positives of the old heuristic (19 meal-social paths flagged only through the shared, fully guarded
-`requireMealSocialSchema` middleware, `USE /api/meal-planner` (`initGuard`), and `resend-verification` / `drops/:dropId/click`, whose only code
-outside the `try` is `res.*`), **4 added**, all call-only:
-`GET /api/auth/verify-email`, `POST /api/square/subscription-link`, `POST /api/subscriptions/upgrade`, `POST /api/subscriptions/downgrade`
-(each calls a zod `.safeParse`/`.object(...)` or template helper outside any `try`).
-With the forwarding installed: `atRiskExposed 0`, `uncoveredAsync 0`, 1,418/1,418 layers forwarded.
-A further 226 fully guarded handlers call a helper inside their `catch` block (informational: only matters if the catch itself throws).
+Results on `main` (the audit run on this branch without the forwarding installed gives the identical list; 23 `asyncHandler`-wrapped layers
+are excluded as already forwarding): 1,418 layers; 1,363 async (guarded 1,088, static-safe 8, **at risk 267**), 55 sync/error-handler.
+**267 layers are exposed on `main`: 27 strong (an await/throw/.then can escape) + 240 potential (only unanalysed helper calls can escape).**
+228 of the 267 have their risk *only* inside a catch/finally block (recovery/logging/error-mapping helpers); the 39 others have unprotected code in the body.
+The potential findings are dominated by error-reporting helpers inside catch blocks (`logCollectionRouteError` 170, `collectionServerError` 154,
+`invalid` 39, `collectionDbErrorResponse`/`classifyCollectionError` 15 each): they are plausible to be harmless, but the analysis does not read
+them and so does not clear them. With the forwarding installed: `atRiskExposed 0`, `uncoveredAsync 0`, 1,418/1,418 layers forwarded.
 
-| Category | At risk | Strong | Call-only (potential) | Examples |
+| Category | At risk | Strong | Potential (helper calls) | Notes |
 | --- | ---: | ---: | ---: | --- |
-| Users / social | 16 | 12 | 4 | `/api/follows/*`, recipe search/imports, `/api/reviews`, `GET /api/posts/feed` |
-| Nutrition / meal planning | 7 | 0 | 7 | `/api/meal-planner/campaigns/*`, AI lookup/suggestions, substitutions |
-| Messaging / notifications | 6 | 6 | 0 | `/api/dm/threads*`, thread read/messages |
+| Other (mostly drinks collections) | 160 | 1 | 159 | catch blocks calling `logCollectionRouteError`/`collectionServerError` |
+| Catering bookings & billing | 37 | 0 | 37 | no unprotected await/throw/.then; 37 catch blocks call `invalid(error, res, next)` |
+| Users / social | 35 | 12 | 23 | `/api/follows/*`, recipe imports, `PUT /api/users/:id/subscription`, quests admin |
+| Messaging / notifications | 8 | 6 | 2 | `/api/dm/threads*` |
+| Square payments / payouts | 7 | 3 | 4 | **`POST /api/payments/create-payment`, `POST /api/payments/refund`** (strong, in catch), payouts admin middleware, drinks Square webhook catch helpers |
+| Nutrition / meal planning | 7 | 0 | 7 | campaigns, AI lookup/suggestions, substitutions |
+| Marketplace / subscriptions | 6 | 1 | 5 | `/api/subscriptions/*` |
+| Auth / OAuth | 3 | 0 | 3 | `GET /api/auth/verify-email` (call-only) and two catch helpers |
 | Wedding | 3 | 3 | 0 | `/api/wedding/vendor-listings*` |
-| Marketplace / subscriptions | 3 | 1 | 2 | `/api/subscriptions/upgrade|downgrade|cancel` |
-| Square payments / payouts | 2 | 1 | 1 | admin middleware on `/api/payouts/process-seller-payout`; `POST /api/square/subscription-link` (disabled stub) |
-| Other | 2 | 1 | 1 | drinks admin summary, barcode lookup |
-| Auth / OAuth | 1 | 0 | 1 | `GET /api/auth/verify-email` |
 | Uploads / media | 1 | 1 | 0 | `POST /api/recipes/import-paprika` |
-| Catering bookings & billing | **0** | 0 | 0 | every handler has a full `try/catch` |
 
-**Runtime-confirmed** (the failure was actually reproduced, see `async-failure-http.test.ts` and the isolated-process tests):
-`GET /api/dm/threads` (and the same process-exit on `main`), `GET /api/dm/threads/:id/messages`, `POST /api/dm/threads/:id/read`,
-`GET /api/follows/requests/incoming`, `DELETE /api/follows/:id`, `POST /api/follows/requests/:id/accept`, plus the synthetic `await` and
-call-only handlers in `async-error-forwarding.test.ts`. All other at-risk layers are **static findings**; for the call-only ones
-(including `verify-email`, whose `verifyEmailPage` is a pure template function) a runtime failure is possible but not demonstrated.
-The meal-social routes tested earlier are `asyncHandler`-wrapped and guarded by `initGuard` on `main`, so they are not in the exposed list.
+The 27 strong layers: `import-paprika/anylist/plan-to-eat/url`, `PUT /api/users/:id/subscription`, drinks admin checkout-attribution summary,
+6 `/api/dm/*`, `quests/create|seed`, `follows/*` (6), `POST /api/subscriptions/cancel`, **`payments/create-payment`, `payments/refund`**,
+`payouts/process-seller-payout` (admin middleware), 3 `wedding/vendor-listings*`.
+
+**Runtime-confirmed** (the failure was actually reproduced): `GET /api/dm/threads` and the other DM/follows routes in
+`async-failure-http.test.ts`; `POST /api/payments/create-payment` with a Square decline (faked at the HTTP layer, no network) **and** a rejecting
+recovery transaction -> exactly one Square request, one recovery attempt, `500 {"error":"Internal Server Error"}`, no ledger write, no
+unhandled rejection, next request succeeds (on unpatched Express 4 that recovery rejection is an unhandled rejection -> `exit(1)`). The synthetic
+await and call-only handlers are in `async-error-forwarding.test.ts`. Everything else is a **static finding**.
 
 Limits of the audit: it cannot see promises returned from non-`async` functions, un-awaited fire-and-forget calls, property access that
-throws (`req.body.x.y` on `undefined`), implicit conversions, or `router.param` callbacks (see residual risks).
+throws (`req.body.x.y` on `undefined`), implicit conversions, or `router.param` callbacks; it does not read helper implementations, so
+error-reporting helpers are over-reported as potential risks (the conservative direction).
 
 ## 3. Architecture
 
@@ -104,12 +110,13 @@ No provider credentials, driver text, hostnames, SQL or stacks appear in any fai
 
 ## 5. Tests
 
-* `server/lib/async-handler-analysis.test.ts` (12): the audit detects call-only, no-await helper calls, expression-bodied arrows, explicit throws,
-  `await`, `.then()`, partial try/catch, catch-rethrow, nested calls; does not flag static-response handlers; classifies the real `GET /api/auth/verify-email`.
+* `server/lib/async-handler-analysis.test.ts` (29): call-only helper calls, expression-bodied arrows, explicit throws, `await`, `.then()`, partial try/catch;
+  catch/finally recovery (await, helper call, `.then`, throw, database update); nested try/catch (handled internally vs. escaping); static responses; rejected-promise
+  recovery; nested-function exclusion; the real `GET /api/auth/verify-email`, `POST /api/payments/create-payment` and `POST /api/payments/refund`.
 * `server/lib/async-error-forwarding.test.ts` (16): isolated-process BASELINE (crash) and FIXED (survival), GET/POST/middleware rejections, sync
   throws, 401-before-handler, inline/array/nested arrays, `route()`, mounted + nested routers, preserved intentional statuses
   (400/401/403/404/409/429/503), error after headers sent, `next()`-then-reject, non-Error and control-flow rejection values, arity-4/router/idempotency.
-* `server/routes/async-failure-http.test.ts` (16): real `app.ts`; 7 real failing routes; log-once; auth before DB; static 503s; Square webhook
+* `server/routes/async-failure-http.test.ts` (17): real `app.ts`; create-payment with a Square decline whose recovery also rejects (fake Square via fetch interception); 7 real failing routes; log-once; auth before DB; static 503s; Square webhook
   fail-closed and processing-failure; payment status/pay under DB failure; origin protection; isolated-process survival with the `exit(1)` policy.
 
 ## 6. Residual risks / not covered
@@ -139,10 +146,11 @@ No provider credentials, driver text, hostnames, SQL or stacks appear in any fai
 * `npm run check` (`tsc`): fails on the repository's known errors, **identical to `main`**: 3,193 errors on both after normalising line numbers
   (`diff` empty); 0 introduced by this branch.
 
-### Verification after the Codex P2 correction (audit-only change; runtime forwarding untouched)
+### Verification after the Codex P2 corrections (audit/test/docs only; runtime forwarding untouched)
 
-* Focused runtime/regression files (analysis, forwarding, async-failure HTTP, Phase 2A init isolation/CORS/retryable-init/mount safety, Square env guard,
-  catering Square payments): 99 tests, 98 pass, 0 fail, 1 skipped (PostgreSQL-backed, covered by the earlier disposable-database run).
+* Focused files (analysis, forwarding, async-failure HTTP, Phase 2A init isolation / CORS / retryable-init / mount safety, Square environment guard,
+  catering Square payments, marketplace payment/reconciliation tests): 232 tests, 232 pass, 0 fail, 0 skipped, run against a disposable local PostgreSQL
+  with all three test-database variables set (without it: 172 tests, 154 pass, 0 fail, 18 skipped).
 * The earlier full PostgreSQL-backed run (4,026 pass / 0 fail / 10 skipped, plus the 10 skipped files rerun with their own env vars: 440 pass / 0 fail)
-  was against the unchanged runtime; this commit changes only the audit tool, its tests, a test child script and docs.
-* `build:server`, `build:client` succeed; `tsc --incremental false`: 3,193 errors on both main and branch, diff empty, 0 in new files.
+  was against the unchanged runtime; these commits change only the audit tool, its tests, test child scripts and docs.
+* `build:server`, `build:client` succeed; `tsc --incremental false`: identical error set on main and branch, 0 in new files.
