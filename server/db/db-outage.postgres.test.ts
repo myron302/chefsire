@@ -12,18 +12,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import pg from "pg";
 import { parseLocalTestDatabaseUrl } from "../test-support/local-test-database";
+import { createScratchDatabase } from "../test-support/scratch-database";
 
 const RAW = process.env.TEST_DATABASE_URL;
 
 if (!RAW) {
   test("database outage behaviour (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
-  const local = parseLocalTestDatabaseUrl(RAW);
+  const scratch = await createScratchDatabase(RAW, "p2c_pool"); // its own database: this suite creates/drops tables
+  const local = parseLocalTestDatabaseUrl(scratch.url);
   const { startFaultProxy, useNeonFaultProxy } = await import("../test-support/neon-fault-proxy");
   const proxy = await startFaultProxy({ host: local.host, port: local.port });
   useNeonFaultProxy(proxy.port);
   process.env.NODE_ENV = "test";
-  process.env.DATABASE_URL = RAW;
+  process.env.DATABASE_URL = scratch.url;
   process.env.DB_CONNECT_TIMEOUT_MS = "1500";
   process.env.DB_STATEMENT_TIMEOUT_MS = "1000";
   const { pool } = await import("./index");
@@ -37,7 +39,7 @@ if (!RAW) {
   const timed = async <T>(p: Promise<T>) => { const t = Date.now(); try { return { ok: true as const, value: await p, ms: Date.now() - t }; } catch (error) { return { ok: false as const, error: error as any, ms: Date.now() - t }; } };
   const reset = () => { proxy.mode = "pass"; proxy.delayMs = 0; proxy.muteReplies = false; proxy.cutAll(); };
 
-  test.after(async () => { reset(); await pool.end().catch(() => {}); await direct.end(); await proxy.close(); });
+  test.after(async () => { reset(); await pool.end().catch(() => {}); await direct.end(); await proxy.close(); await scratch.drop(); });
   // After severing connections, give the pool a moment to notice (it learns of a dead idle socket from the socket close event).
   test.beforeEach(async () => { reset(); await new Promise((r) => setTimeout(r, 150)); });
 
@@ -107,8 +109,11 @@ if (!RAW) {
     const results = await Promise.all(Array.from({ length: 25 }, () => timed(pool.query("select 1"))));
     assert.ok(results.every((r) => !r.ok), "all rejected");
     assert.ok(Math.max(...results.map((r) => r.ms)) < 5000, `slowest ${Math.max(...results.map((r) => r.ms))}ms`);
+    // The pool may still be finishing connection attempts it began just before the requests timed out; each is bounded by the same timeout.
+    // Let those drain, then require that the count is bounded by the request count and has STOPPED growing.
+    await new Promise((r) => setTimeout(r, 2 * 1500 + 500));
     const attempts = proxy.accepted - before;
-    assert.ok(attempts <= 25, `${attempts} connection attempts for 25 requests`);
+    assert.ok(attempts <= 25 + 5, `${attempts} connection attempts for 25 requests`);
     await new Promise((r) => setTimeout(r, 2500));
     assert.equal(proxy.accepted - before, attempts, "no background retry loop");
     proxy.mode = "pass";

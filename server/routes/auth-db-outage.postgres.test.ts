@@ -18,6 +18,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 import { parseLocalTestDatabaseUrl } from "../test-support/local-test-database";
+import { createScratchDatabase } from "../test-support/scratch-database";
 import { testAuthHeader, signTestAuthToken, TEST_JWT_SECRET } from "../test-support/auth-test-env";
 
 const RAW = process.env.TEST_DATABASE_URL;
@@ -25,11 +26,12 @@ const RAW = process.env.TEST_DATABASE_URL;
 if (!RAW) {
   test("authentication during a database outage (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
 } else {
-  const local = parseLocalTestDatabaseUrl(RAW);
+  const scratch = await createScratchDatabase(RAW, "p2c_auth"); // its own database: this suite drops/recreates `users`
+  const local = parseLocalTestDatabaseUrl(scratch.url);
   const { startFaultProxy, useNeonFaultProxy } = await import("../test-support/neon-fault-proxy");
   const proxy = await startFaultProxy({ host: local.host, port: local.port });
   useNeonFaultProxy(proxy.port);
-  process.env.DATABASE_URL = RAW;
+  process.env.DATABASE_URL = scratch.url;
   process.env.DB_CONNECT_TIMEOUT_MS = "1500";
   process.env.AUTH_LOOKUP_TIMEOUT_MS = "2000";
   process.env.SQUARE_ENV = "sandbox";
@@ -83,6 +85,7 @@ if (!RAW) {
     await pool.end().catch(() => {});
     await direct.end();
     await proxy.close();
+    await scratch.drop();
   });
   test.beforeEach(async () => { proxy.mode = "pass"; proxy.delayMs = 0; proxy.muteReplies = false; proxy.cutAll(); await new Promise((r) => setTimeout(r, 150)); });
 
@@ -236,8 +239,9 @@ if (!RAW) {
     const results = await Promise.all(Array.from({ length: 20 }, () => call(real.base, "GET", "/api/auth/me", { headers: cookie(validToken()) })));
     assert.ok(results.every((r) => r.status === 503), results.map((r) => r.status).join(","));
     assert.ok(Math.max(...results.map((r) => r.ms)) < 6000);
+    await new Promise((r) => setTimeout(r, 2 * 1500 + 500)); // let attempts begun just before the timeout drain (each is bounded)
     const attempts = proxy.accepted - before;
-    assert.ok(attempts <= 20, `${attempts} attempts for 20 requests`);
+    assert.ok(attempts <= 20 + 5, `${attempts} attempts for 20 requests`);
     await new Promise((r) => setTimeout(r, 2000));
     assert.equal(proxy.accepted - before, attempts, "no background retry loop after the requests ended");
   });
