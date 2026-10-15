@@ -19,7 +19,7 @@ const USERS: Record<string, U> = {
 };
 const parseUser = (p: unknown): U => { if (!p || typeof p !== "object" || !("id" in p) || !("email" in p)) throw new Error("incomplete"); return p as U; };
 
-type Outcome = "ok" | "reject" | "network" | "malformed" | "no-user" | "truncated" | "bad-user";
+type Outcome = "ok" | "reject" | "network" | "malformed" | "no-user" | "truncated" | "bad-user" | "applied-answer-lost";
 type Pending = { n: number; email?: string; deliver: (outcome?: Outcome) => void };
 
 function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?: boolean; url?: string; deadline?: boolean } = {}) {
@@ -57,6 +57,7 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
         init.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), { once: true });
         logins.push({ n, email, deliver: (outcome = "ok") => {
           if (outcome === "network") return reject(new TypeError("Failed to fetch"));
+          if (outcome === "applied-answer-lost") { jar.cookie = USERS[email!].id; delivered.push(`login#${n}:cookie applied, answer lost`); return; } // never resolves
           if (outcome === "reject") { delivered.push(`login#${n}:401`); return resolve(new Response(JSON.stringify({ error: "Invalid email or password" }), { status: 401 })); }
           jar.cookie = USERS[email].id; // Set-Cookie takes effect when the response is delivered -- even if the BODY is unusable
           delivered.push(`login#${n}:200 cookie=${jar.cookie}`);
@@ -519,4 +520,162 @@ test("a failed (non-2xx) login with a body that is not JSON changes nothing and 
   assert.equal(s.jar.cookie, "alice");
   assert.equal(s.controller.getState().user?.id, "alice");
   s.assertSynchronized("non-2xx");
+});
+
+// ---- Codex P1-2: a foreign cookie must not survive a failed replacement login --------------------------------------------------
+async function aliceBobCarol(s: ReturnType<typeof site>) {
+  const a = s.controller.login("a@example.test", "pw");
+  await s.flush();
+  const b = s.controller.login("b@example.test", "pw"); // supersedes A (queued behind it)
+  const c = s.controller.login("c@example.test", "pw"); // supersedes B (never sent)
+  await s.flush();
+  s.logins[0].deliver("ok"); // Alice's login was accepted by the server: her cookie is in the jar, but nobody wants it any more
+  await Promise.all([a, b]);
+  await s.flush();
+  return { c }; // wrapped: returning the promise itself would make the caller wait for it
+}
+
+test("Alice → Bob → Carol: Carol's login fails at the NETWORK layer -> Alice's leftover cookie is removed (a logout is sent), nobody is displayed or stored", async () => {
+  const s = site();
+  const { c } = await aliceBobCarol(s);
+  assert.equal(s.jar.cookie, "alice");
+  assert.deepEqual(s.sent, ["login#1:a@example.test", "login#2:c@example.test"], "Bob's superseded login was never sent");
+  s.logins[1].deliver("network");
+  await s.flush();
+  assert.equal(s.sent.at(-1), "logout#1", "cleanup runs inside Carol's own queue slot");
+  s.logouts[0].deliver("ok");
+  assert.equal((await c).ok, false);
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.cached(), null);
+  s.assertSynchronized("A,B,C(network)");
+});
+
+test("…and when that cleanup logout ALSO fails: signed out locally, logout intent persisted; a reload does not restore Alice and finishes the cleanup", async () => {
+  const s = site();
+  const { c } = await aliceBobCarol(s);
+  s.logins[1].deliver("network");
+  await s.flush();
+  s.logouts[0].deliver("network");
+  assert.equal((await c).ok, false);
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.cached(), null);
+  assert.equal(s.jar.cookie, "alice", "the server-side session is still there");
+  assert.equal(s.store.get(LOGOUT_PENDING_KEY), "1");
+  const reload = site({ cookie: "alice", logoutPending: true });
+  reload.controller.start();
+  await reload.flush();
+  assert.equal(reload.controller.getState().user, null);
+  assert.deepEqual(reload.sent, ["logout#1"]);
+  reload.logouts[0].deliver("ok");
+  await reload.flush();
+  assert.equal(reload.jar.cookie, null);
+  assert.equal(reload.store.has(LOGOUT_PENDING_KEY), false);
+});
+
+test("Carol's login TIMES OUT (deadline) while Alice's stale cookie is in the jar: Alice is not adopted; the leftover session is cleared", async () => {
+  const s = site();
+  const { c } = await aliceBobCarol(s);
+  s.deadlines.at(-1)!(); // the deadline of the in-flight login (the last one armed)
+  await s.flush();
+  assert.equal(s.controller.getState().user, null, "never Alice");
+  assert.equal(s.sent.at(-1), "logout#1");
+  s.logouts[0].deliver("ok");
+  assert.equal((await c).ok, false);
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  s.assertSynchronized("A,B,C(timeout)");
+});
+
+test("a newer successful login queued behind the cleanup survives it: A(stale) → C(network) → cleanup logout → D succeeds", async () => {
+  const s = site();
+  const { c } = await aliceBobCarol(s);
+  const d = s.controller.login("d@example.test", "pw"); // supersedes C while C is in flight
+  await s.flush();
+  s.logins[1].deliver("network"); // C fails, but it is superseded: it must not clean up on D's behalf... D's slot is next
+  assert.equal((await c).ok, false);
+  await s.flush();
+  // C was superseded by D, so cleanup is D's job only if D fails; D now runs.
+  assert.equal(s.sent.at(-1), "login#3:d@example.test");
+  s.logins[2].deliver("ok");
+  assert.deepEqual(await d, { ok: true });
+  await s.flush();
+  assert.equal(s.jar.cookie, "dave");
+  assert.ok(!s.sent.some((x) => x.startsWith("logout")), "no cleanup was needed: D replaced Alice's cookie");
+  s.assertSynchronized("A,C(network, superseded),D");
+});
+
+test("the answer to Carol's login is LOST after the server applied her cookie (deadline): the server-authoritative identity (Carol) is adopted, never assumed", async () => {
+  const s = site();
+  const c = s.controller.login("c@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver("applied-answer-lost"); // Set-Cookie applied, response never delivered
+  s.deadlines.at(-1)!();
+  await s.flush();
+  assert.equal((await c).ok, true, "the typed account is the one now authenticated");
+  assert.equal(s.controller.getState().user?.id, "carol");
+  s.assertSynchronized("answer lost");
+});
+
+test("deadline with an existing Alice session and a hung login for Bob that did NOT apply: the reconciliation confirms Alice; nothing is lost", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const b = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.deadlines.at(-1)!();
+  assert.equal((await b).ok, false);
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "alice");
+  s.assertSynchronized("hung login, session unchanged");
+});
+
+test("answer lost after the cookie was applied AND the identity check is unavailable (503): the uncertain session is cleared and the cleanup logout is sent", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const c = s.controller.login("c@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver("applied-answer-lost");
+  s.meScript.push(503);
+  s.deadlines.at(-1)!();
+  await s.flush();
+  assert.equal(s.controller.getState().user, null, "neither Alice nor Carol is shown on an unverified cookie");
+  assert.equal(s.cached(), null);
+  assert.equal(s.sent.at(-1), "logout#1");
+  s.logouts[0].deliver("ok");
+  assert.equal((await c).ok, false);
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  s.assertSynchronized("answer lost + /me unavailable");
+});
+
+test("a fetch that IGNORES the abort cannot leave the operation pending forever: after the grace period the exchange is abandoned, the session cleared, and the queue moves on", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const b = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.meScript.push(() => new Promise<Response>(() => {})); // the reconciliation request hangs and does not honour abort
+  s.logins[0].deliver("malformed"); // unusable body -> reconcile
+  await s.flush();
+  const before = s.deadlines.length;
+  s.deadlines[before - 1](); // reconcile's deadline: aborts (ignored by this fetch)
+  await s.flush();
+  s.deadlines[s.deadlines.length - 1](); // the grace period ends: abandoned
+  await s.flush();
+  assert.equal(s.sent.at(-1), "logout#1", "abandoned reconciliation -> uncertain session cleared");
+  s.logouts[0].deliver("ok");
+  assert.equal((await b).ok, false);
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.jar.cookie, null);
+  // The queue is free: a later login runs.
+  const c = s.controller.login("c@example.test", "pw");
+  await s.flush();
+  s.logins[1].deliver("ok");
+  assert.deepEqual(await c, { ok: true });
+  s.assertSynchronized("queue still usable");
 });

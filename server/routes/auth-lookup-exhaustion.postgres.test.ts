@@ -46,6 +46,12 @@ if (!RAW) {
 
   const { default: app } = await import("../app");
   const { pool } = await import("../db");
+  // Test hook: swallow the reply to COMMIT on pool clients (the SELECT has answered; the COMMIT never completes from the client's point of view).
+  const commit = { stall: false };
+  (pool as any).on("connect", (client: any) => {
+    const original = client.query.bind(client);
+    client.query = (...args: any[]) => (commit.stall && args[0] === "COMMIT" ? new Promise(() => {}) : original(...args));
+  });
   const server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -64,7 +70,7 @@ if (!RAW) {
     await proxy.close();
     await scratch.drop();
   });
-  test.beforeEach(async () => { proxy.mode = "pass"; proxy.muteReplies = false; await new Promise((r) => setTimeout(r, 100)); });
+  test.beforeEach(async () => { proxy.mode = "pass"; proxy.muteReplies = false; commit.stall = false; await new Promise((r) => setTimeout(r, 100)); });
 
   const token = () => signTestAuthToken({ id: "u-valid", av: 1 });
   const me = async () => {
@@ -152,6 +158,35 @@ if (!RAW) {
       await client.query("COMMIT");
     } finally { client.release(); }
     assert.equal((await direct.query("select count(*)::int as n from ledger_probe")).rows[0].n, 1);
+  });
+
+  const idleInTransaction = async () =>
+    (await direct.query(`select count(*)::int as n from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() and state like 'idle in transaction%'`)).rows[0].n as number;
+
+  test("STALLED COMMIT (Codex P1-3): five stalled authentication requests cannot permanently exhaust the five-client pool -- their clients are destroyed within a bounded time", async () => {
+    commit.stall = true;
+    const results = await Promise.all(Array.from({ length: 5 }, () => me()));
+    assert.ok(results.every((r) => r.status === 200), "the SELECT answered, so the sessions are valid: " + results.map((r) => r.status).join(","));
+    // The COMMIT never completes. Without a bound all five clients would stay checked out forever.
+    assert.ok(await settled(() => poolBusy() === 0, 5000), `${poolBusy()} pool clients still checked out`);
+    assert.ok(await settled(async () => (await idleInTransaction()) === 0, 5000), "no backend is left idle in transaction");
+    commit.stall = false;
+    const t = Date.now();
+    assert.equal((await pool.query("select 1 as one")).rows[0].one, 1);
+    assert.ok(Date.now() - t < 1500, "a fresh connection is available at once");
+    assert.equal((await me()).status, 200);
+  });
+
+  test("repeated concurrent stalled-COMMIT waves (3 x 10 requests) return the pool to its idle baseline every time", async () => {
+    for (let wave = 0; wave < 3; wave++) {
+      commit.stall = true;
+      const results = await Promise.all(Array.from({ length: 10 }, () => me()));
+      assert.ok(results.every((r) => r.status === 200 || r.status === 503), results.map((r) => r.status).join(","));
+      assert.ok(await settled(() => poolBusy() === 0, 6000), `wave ${wave}: ${poolBusy()} clients in use`);
+    }
+    commit.stall = false;
+    assert.equal((await me()).status, 200);
+    assert.ok((pool as any).totalCount <= 5);
   });
 
   test("destroying stalled connections raised no uncaught exception and no unhandled rejection", () => {

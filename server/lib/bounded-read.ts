@@ -9,6 +9,14 @@
  *     so the backend is freed and the query fails definitively.
  *   - NETWORK-side (replies never arrive): no server setting helps; the client gives up and DESTROYS the connection (`release(true)` removes it from
  *     the pool and ends its socket), so its slot is free for a fresh connection immediately.
+ *   - EVERY phase is bounded, because a client is only safe once it has been returned or destroyed:
+ *       acquire (pool.connect) ......... the pool's connectionTimeoutMillis, and the overall deadline (a connection arriving late is released unused)
+ *       BEGIN + SET LOCAL .............. overall deadline -> destroy
+ *       SELECT ......................... overall deadline (+ server-side statement_timeout) -> destroy
+ *       COMMIT ......................... its OWN deadline (commitTimeoutMs): the SELECT has answered, but if the COMMIT reply never comes the client
+ *                                        is destroyed -- the transaction is read-only, so the server simply rolls it back when the connection closes
+ *       release ........................ `release(false)` only after a confirmed COMMIT; every other path `release(true)` (destroy)
+ *     Nothing here ends in a Promise.race that merely abandons an operation while keeping its connection: each deadline ends in release/destroy.
  * Scope: ONLY for reads whose abandonment has no side effect (session lookup). A write, a payment or a COMMIT must never go through here:
  * for them "timed out" cannot be told apart from "happened".
  */
@@ -25,9 +33,10 @@ type PoolLike = { connect: () => Promise<ClientLike> };
 export async function runBoundedRead<T>(
   pool: PoolLike,
   work: (client: ClientLike) => Promise<T>,
-  options: { timeoutMs: number; label: string },
+  options: { timeoutMs: number; label: string; commitTimeoutMs?: number },
 ): Promise<T> {
   const { timeoutMs, label } = options;
+  const commitTimeoutMs = options.commitTimeoutMs ?? Math.min(timeoutMs, 2_000);
   const serverTimeoutMs = Math.max(250, timeoutMs - 250); // the server cancels just before the client gives up
   let abandoned = false;
   let timer: NodeJS.Timeout | undefined;
@@ -62,7 +71,14 @@ export async function runBoundedRead<T>(
     const result = await Promise.race([attempt, expired]);
     // Healthy path: finish the transaction OFF the request's critical path, then hand the connection back (or destroy it if that fails).
     const finishing = client!;
-    finishing.query("COMMIT").then(() => release(false), () => release(true));
+    // COMMIT has its own deadline. If its reply never arrives the connection is destroyed (release is idempotent, so a COMMIT that completes
+    // after that point changes nothing). A read-only transaction has nothing to lose: the server rolls it back when the socket closes.
+    const commitTimer = setTimeout(() => release(true), commitTimeoutMs);
+    commitTimer.unref?.();
+    finishing.query("COMMIT").then(
+      () => { clearTimeout(commitTimer); release(false); },
+      () => { clearTimeout(commitTimer); release(true); },
+    );
     return result;
   } catch (error) {
     // Timed out, cancelled by the server, or failed: the connection's state is unknown or mid-transaction -- never return it to the pool.

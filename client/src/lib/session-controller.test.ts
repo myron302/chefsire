@@ -486,3 +486,42 @@ test("patchUser edits only a signed-in user and persists locally; after logout i
   s.controller.patchUser({ name: "Zombie" });
   assert.equal(s.store.has(USER_STORAGE_KEY), false);
 });
+
+// ---- neighbouring failure paths of the same lifecycle --------------------------------------------------------------------------------------
+test("localStorage that throws (private mode / quota) does not break sign-in, sign-out or the session decision", async () => {
+  let calls = 0;
+  const angry = () => { calls++; throw new Error("QuotaExceededError"); };
+  const controller = createSessionController<U>({
+    fetch: (async () => new Response(JSON.stringify({ success: true, user: bob }), { status: 200 })) as unknown as typeof fetch,
+    storage: { getItem: angry, setItem: angry, removeItem: angry },
+    getLocation: () => ({ pathname: "/", search: "", hash: "" }),
+    replaceUrl: () => {},
+    sleep: async () => {},
+    parseUser,
+    onChange: () => {},
+  });
+  controller.start();
+  assert.deepEqual(await controller.login("b@example.test", "pw"), { ok: true });
+  assert.equal(controller.getState().user?.id, "bob", "state is set even though the cache could not be written");
+  await controller.logout();
+  assert.equal(controller.getState().user, null);
+  assert.ok(calls > 0);
+});
+
+test("an unexpected exception inside a login slot resolves to an error (never rejects the caller) and does not wedge the queue", async () => {
+  let boom = true;
+  const seen: Array<unknown> = [];
+  const controller = createSessionController<U>({
+    fetch: (async () => new Response(JSON.stringify({ success: true, user: bob }), { status: 200 })) as unknown as typeof fetch,
+    storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    getLocation: () => ({ pathname: "/", search: "", hash: "" }),
+    replaceUrl: () => {},
+    sleep: async () => {},
+    parseUser,
+    onChange: (st) => { seen.push(st); if (boom && st.user) { boom = false; throw new Error("listener exploded"); } },
+  });
+  const r1 = await controller.login("b@example.test", "pw");
+  assert.equal(r1.ok, false);
+  const r2 = await controller.login("b@example.test", "pw"); // the queue still works
+  assert.equal(r2.ok, true);
+});

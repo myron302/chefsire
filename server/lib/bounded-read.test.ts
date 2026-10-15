@@ -4,7 +4,7 @@ import { runBoundedRead } from "./bounded-read";
 import { DatabaseTimeoutError } from "./db-availability";
 
 type Call = { sql: string };
-function fakePool(opts: { connectDelayMs?: number; hang?: boolean; failOn?: RegExp } = {}) {
+function fakePool(opts: { connectDelayMs?: number; hang?: boolean; failOn?: RegExp; stallOn?: RegExp; slowOn?: { re: RegExp; ms: number } } = {}) {
   const log: string[] = [];
   const state = { released: [] as boolean[], connected: 0 };
   const listeners = new Set<() => void>();
@@ -12,6 +12,8 @@ function fakePool(opts: { connectDelayMs?: number; hang?: boolean; failOn?: RegE
     query: (sql: string) => {
       log.push(sql);
       if (opts.failOn?.test(sql)) return Promise.reject(Object.assign(new Error("boom"), { code: "57014" }));
+      if (opts.stallOn?.test(sql)) return new Promise(() => {});
+      if (opts.slowOn?.re.test(sql)) return new Promise((r) => setTimeout(() => r({ rows: [] }), opts.slowOn!.ms));
       if (opts.hang && !/^COMMIT|BEGIN/.test(sql)) return new Promise(() => {});
       return Promise.resolve({ rows: [] });
     },
@@ -92,4 +94,51 @@ test("a checked-out client always has an error listener (so a dying connection c
   assert.equal(hung.listeners.size, 1, "attached while in use");
   await assert.rejects(p, DatabaseTimeoutError);
   assert.equal(hung.listeners.size, 1, "kept on a destroyed client: it may still emit while closing");
+});
+
+// ---- Codex P1-3: every phase releases or destroys its client within a bound ---------------------------------------------------------------
+test("STALLED COMMIT: the request already has its answer, but the connection is destroyed at the commit deadline instead of being held forever", async () => {
+  const f = fakePool({ stallOn: /^COMMIT$/ });
+  const out = await runBoundedRead(f.pool, async () => "answer", { timeoutMs: 1000, label: "t", commitTimeoutMs: 80 });
+  assert.equal(out, "answer", "the caller is not delayed by the COMMIT");
+  assert.deepEqual(f.state.released, [], "still checked out for the moment");
+  await wait(160);
+  assert.deepEqual(f.state.released, [true], "destroyed once the commit deadline passed");
+});
+
+test("a COMMIT that completes late (after the deadline destroyed the client) does not release twice", async () => {
+  const f = fakePool({ slowOn: { re: /^COMMIT$/, ms: 120 } });
+  await runBoundedRead(f.pool, async () => 1, { timeoutMs: 1000, label: "t", commitTimeoutMs: 40 });
+  await wait(250);
+  assert.deepEqual(f.state.released, [true]);
+});
+
+test("a COMMIT that completes within its deadline returns the client normally and leaves no timer behind", async () => {
+  const f = fakePool({ slowOn: { re: /^COMMIT$/, ms: 20 } });
+  await runBoundedRead(f.pool, async () => 1, { timeoutMs: 1000, label: "t", commitTimeoutMs: 500 });
+  await wait(80);
+  assert.deepEqual(f.state.released, [false]);
+  await wait(600);
+  assert.deepEqual(f.state.released, [false], "the commit-deadline timer was cleared");
+});
+
+test("a COMMIT that fails destroys the client", async () => {
+  const f = fakePool({ failOn: /^COMMIT$/ });
+  await runBoundedRead(f.pool, async () => 1, { timeoutMs: 1000, label: "t" });
+  await wait(30);
+  assert.deepEqual(f.state.released, [true]);
+});
+
+test("a stalled transaction start (BEGIN … SET LOCAL) is bounded by the overall deadline and destroys the client", async () => {
+  const f = fakePool({ stallOn: /^BEGIN READ ONLY/ });
+  await assert.rejects(runBoundedRead(f.pool, async (c) => c.query("select 1"), { timeoutMs: 100, label: "t" }), DatabaseTimeoutError);
+  assert.deepEqual(f.state.released, [true]);
+  assert.ok(!f.log.includes("select 1"));
+});
+
+test("five concurrent requests whose COMMITs all stall free all five clients (pool of five cannot be exhausted permanently)", async () => {
+  const pools = Array.from({ length: 5 }, () => fakePool({ stallOn: /^COMMIT$/ }));
+  await Promise.all(pools.map((f) => runBoundedRead(f.pool, async () => 1, { timeoutMs: 1000, label: "t", commitTimeoutMs: 60 })));
+  await wait(150);
+  assert.deepEqual(pools.map((f) => f.state.released), [[true], [true], [true], [true], [true]]);
 });
