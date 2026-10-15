@@ -213,6 +213,45 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
     }
   }
 
+  /**
+   * The cookie may have changed to a session we were not told about. Show nobody until the SERVER says who it is, then adopt exactly that identity.
+   * If the server cannot say (outage / malformed answer) the session is uncertain and is cleared rather than guessed at. Runs inside a queue slot.
+   * Returns true when a server-verified user was adopted.
+   */
+  async function reconcileUncertainSession(seq: number): Promise<boolean> {
+    deps.storage.removeItem(USER_STORAGE_KEY);
+    set({ user: null, sessionStatus: "checking", pendingOAuth: false });
+    const ac = new AbortController();
+    mutationAborts.add(ac);
+    const deadline = mutationDeadline(deps.mutationTimeoutMs ?? 30_000, ac.signal).then(() => { ac.abort(); });
+    void deadline;
+    let result: Awaited<ReturnType<typeof verifySessionOnce<U>>>;
+    try {
+      result = await verifySessionOnce(deps.fetch, ac.signal, deps.parseUser);
+    } finally {
+      mutationAborts.delete(ac);
+      ac.abort();
+    }
+    if (disposed || seq !== mutationSeq) {
+      foreignCookieSuspected = true; // a newer intent follows in the queue; it decides the final state
+      return false;
+    }
+    if (result.kind === "valid") {
+      deps.storage.removeItem(LOGOUT_PENDING_KEY);
+      foreignCookieSuspected = false;
+      commitVerifiedUser(result.user);
+      epoch += 1;
+      return true;
+    }
+    if (result.kind === "invalid") {
+      foreignCookieSuspected = false; // the server says there is no session
+      commitSignedOut();
+      return false;
+    }
+    await dropForeignSession(); // cannot tell who the cookie belongs to: clear it
+    return false;
+  }
+
   /** A superseded login left a session in the jar and the newest intent did not replace it: remove it, and show signed-out like the jar. */
   async function dropForeignSession(): Promise<void> {
     deps.storage.setItem(LOGOUT_PENDING_KEY, "1");
@@ -263,7 +302,6 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
         // Superseded while waiting its turn (a newer login or a logout was requested): it is never sent.
         if (disposed || seq !== mutationSeq) return { ...SUPERSEDED_LOGIN };
         let res: Response;
-        let data: any;
         try {
           res = await mutationFetch("/api/auth/login", {
             method: "POST",
@@ -272,35 +310,46 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
           });
         } catch (e) {
           console.error("Login failed:", e);
-          return { ok: false, error: "Network error. Please try again." };
+          return { ok: false, error: "Network error. Please try again." }; // no response, so no Set-Cookie was processed
         }
+        const superseded = () => disposed || seq !== mutationSeq;
+        let data: any;
         try {
-          data = await res.json().catch(() => ({}));
-          const accepted = res.ok && !!data?.success;
-          if (disposed || seq !== mutationSeq) {
-            // A newer intent exists. Do NOT adopt this result and do NOT send a cleanup request from here: the server may have just set a cookie
-            // for this login, and whatever the newer intent is (logout / another login) is already queued behind this slot and will replace it.
-            if (accepted) foreignCookieSuspected = true;
-            return { ...SUPERSEDED_LOGIN };
-          }
-          if (!res.ok) {
-            if (foreignCookieSuspected) await dropForeignSession(); // cookie, UI and storage must not disagree
-            const msg = data?.error || (res.status === 403 ? "Please verify your email to log in." : "Invalid email or password");
-            return { ok: false, error: msg };
-          }
-          if (!data?.success || !data?.user) return { ok: false, error: "Unexpected server response" };
-          const user = deps.parseUser(data.user);
+          data = await res.json();
+        } catch {
+          data = undefined; // missing / truncated / not JSON
+        }
+
+        if (!res.ok) {
+          if (superseded()) return { ...SUPERSEDED_LOGIN };
+          if (foreignCookieSuspected) await dropForeignSession(); // cookie, UI and storage must not disagree
+          const msg = data?.error || (res.status === 403 ? "Please verify your email to log in." : "Invalid email or password");
+          return { ok: false, error: msg };
+        }
+
+        // From here the response is a 2xx: the browser has ALREADY applied its Set-Cookie, whatever the body says. A 2xx whose body we cannot use
+        // therefore means "the cookie may belong to someone we cannot name", not "nothing happened".
+        let user: U | null = null;
+        if (data?.success && data?.user) {
+          try { user = deps.parseUser(data.user); } catch { user = null; }
+        }
+        if (superseded()) {
+          // A newer intent exists. Do NOT adopt this result and do NOT send a cleanup request from here: whatever the newer intent is (logout / another
+          // login) is already queued behind this slot and replaces the cookie. If that intent turns out not to replace it, foreignCookieSuspected lets it.
+          foreignCookieSuspected = true;
+          return { ...SUPERSEDED_LOGIN };
+        }
+        if (user) {
           deps.storage.removeItem(LOGOUT_PENDING_KEY);
           foreignCookieSuspected = false; // this response's cookie is the one in the jar and the one we display
           commitVerifiedUser(user);
           epoch += 1; // checks that began while this login was in flight may have read the previous cookie: they must not apply
           return { ok: true };
-        } catch (e) {
-          // The server answered (a cookie may have been set) but we could not use the answer.
-          console.error("Login failed:", e);
-          foreignCookieSuspected = true;
-          return { ok: false, error: "Network error. Please try again." };
         }
+        console.error("Login response was successful but its body was unusable; reconciling the session with the server.");
+        return (await reconcileUncertainSession(seq))
+          ? { ok: true }
+          : { ok: false, error: "We couldn't confirm your sign-in. Please try again." };
       });
     },
 

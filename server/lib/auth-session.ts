@@ -27,7 +27,8 @@ type SessionLookup = (id: string) => Promise<any>;
 
 // `storage` is imported on first use, not at module load: this module sits under the token layer, which
 // must stay importable without dragging the database layer in.
-const liveLookup: SessionLookup = async (id) => (await import("../storage")).storage.getUser(id);
+// Phase 2C (P1-2): the live lookup is a bounded read -- it cannot keep a pool connection past its deadline (see lib/bounded-read).
+const liveLookup: SessionLookup = async (id) => (await import("./session-user-read")).readSessionUserBounded(id, resolveDbSettings().authLookupTimeoutMs);
 let lookup: SessionLookup = liveLookup;
 
 /**
@@ -71,7 +72,10 @@ export async function checkSession(claims: { id?: unknown; av?: unknown } | null
   const av = claims?.av;
   if (!id || typeof av !== "number" || !Number.isInteger(av)) return { status: "invalid" };
   try {
-    const user = await withReadTimeout(Promise.resolve(lookup(id)), resolveDbSettings().authLookupTimeoutMs, "session lookup");
+    // The live lookup enforces its own deadline AND releases its connection. This outer bound only covers substituted lookups (tests) and is a
+    // little longer so the inner, resource-freeing deadline is the one that normally fires.
+    const ms = resolveDbSettings().authLookupTimeoutMs;
+    const user = await withReadTimeout(Promise.resolve(lookup(id)), ms + 1_500, "session lookup");
     if (!user || typeof user.authVersion !== "number" || user.authVersion !== av) return { status: "invalid" };
     return { status: "valid", user };
   } catch (error) {

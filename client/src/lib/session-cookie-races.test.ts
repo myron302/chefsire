@@ -19,7 +19,8 @@ const USERS: Record<string, U> = {
 };
 const parseUser = (p: unknown): U => { if (!p || typeof p !== "object" || !("id" in p) || !("email" in p)) throw new Error("incomplete"); return p as U; };
 
-type Pending = { n: number; email?: string; deliver: (outcome?: "ok" | "reject" | "network") => void };
+type Outcome = "ok" | "reject" | "network" | "malformed" | "no-user" | "truncated" | "bad-user";
+type Pending = { n: number; email?: string; deliver: (outcome?: Outcome) => void };
 
 function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?: boolean; url?: string; deadline?: boolean } = {}) {
   const jar = { cookie: opts.cookie ?? null as string | null };
@@ -33,7 +34,7 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
   const delivered: string[] = [];
   const logins: Pending[] = [];
   const logouts: Pending[] = [];
-  const meScript: Array<number> = [];
+  const meScript: Array<number | (() => Promise<Response>)> = [];
   const sleeps: Array<() => void> = [];
   const deadlines: Array<() => void> = [];
   let loginN = 0, logoutN = 0;
@@ -42,6 +43,7 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
     if (url === "/api/auth/me") {
       sent.push("me");
       const forced = meScript.shift();
+      if (typeof forced === "function") return forced();
       if (forced && forced !== 200) return new Response("{}", { status: forced });
       if (!jar.cookie) return new Response("{}", { status: 401 });
       const user = Object.values(USERS).find((u) => u.id === jar.cookie)!;
@@ -56,9 +58,16 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
         logins.push({ n, email, deliver: (outcome = "ok") => {
           if (outcome === "network") return reject(new TypeError("Failed to fetch"));
           if (outcome === "reject") { delivered.push(`login#${n}:401`); return resolve(new Response(JSON.stringify({ error: "Invalid email or password" }), { status: 401 })); }
-          jar.cookie = USERS[email].id; // Set-Cookie takes effect when the response is delivered
+          jar.cookie = USERS[email].id; // Set-Cookie takes effect when the response is delivered -- even if the BODY is unusable
           delivered.push(`login#${n}:200 cookie=${jar.cookie}`);
-          resolve(new Response(JSON.stringify({ success: true, user: USERS[email] }), { status: 200 }));
+          const bodies: Record<string, string> = {
+            ok: JSON.stringify({ success: true, user: USERS[email] }),
+            malformed: "<html>proxy error page</html>",
+            truncated: '{"success":true,"user":{"id":"bo',
+            "no-user": JSON.stringify({ success: true }),
+            "bad-user": JSON.stringify({ success: true, user: { id: USERS[email].id } }), // parseUser rejects: no email
+          };
+          resolve(new Response(bodies[outcome], { status: 200 }));
         } });
       });
     }
@@ -341,4 +350,173 @@ test("a hung login cannot block logout forever: the deadline aborts it, the queu
   await s.flush();
   assert.equal(s.jar.cookie, null);
   s.assertSynchronized();
+});
+
+// ---- P1-1: a 2xx login can change the cookie even when its body is unusable ---------------------------------------------------
+const unusable: Outcome[] = ["malformed", "truncated", "no-user", "bad-user"];
+
+for (const outcome of unusable) {
+  test(`account switching: signed in as Alice, login as Bob answers 200 with a ${outcome} body (cookie IS Bob's): the server-authoritative identity (Bob) replaces Alice -- never Alice with Bob's cookie`, async () => {
+    const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+    s.controller.start();
+    await s.flush();
+    assert.equal(s.controller.getState().user?.id, "alice");
+    const p = s.controller.login("b@example.test", "pw");
+    await s.flush();
+    s.logins[0].deliver(outcome);
+    const result = await p;
+    await s.flush();
+    assert.equal(s.jar.cookie, "bob");
+    assert.equal(s.controller.getState().user?.id, "bob", "reconciled against /api/auth/me");
+    assert.deepEqual(result, { ok: true });
+    s.assertSynchronized(outcome);
+    assert.deepEqual(s.sent.slice(-2), ["login#1:b@example.test", "me"], "one authoritative read, inside the same queue slot");
+  });
+}
+
+test("while the identity is being reconciled nobody is displayed: the previous user is cleared the moment the cookie may have changed", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  s.meScript.push(async () => { await gate; return new Response(JSON.stringify({ success: true, user: USERS["b@example.test"] }), { status: 200 }); });
+  s.logins[0].deliver("malformed");
+  await s.flush();
+  assert.equal(s.controller.getState().user, null, "Alice is no longer shown while Bob's cookie is unverified");
+  assert.equal(s.cached(), null, "and no longer stored");
+  release();
+  assert.deepEqual(await p, { ok: true });
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "bob");
+  s.assertSynchronized("reconciled");
+});
+
+test("malformed 2xx and the identity check is itself unavailable (503): the uncertain session is cleared -- signed out locally, logout requested, intent persisted", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.meScript.push(503);
+  s.logins[0].deliver("malformed");
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.cached(), null);
+  assert.equal(s.store.get(LOGOUT_PENDING_KEY), "1");
+  assert.equal(s.sent.at(-1), "logout#1");
+  s.logouts[0].deliver("ok");
+  assert.equal((await p).ok, false);
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  assert.equal(s.store.has(LOGOUT_PENDING_KEY), false);
+  s.assertSynchronized("cleared");
+});
+
+test("malformed 2xx and /me says 401: signed out, nothing displayed or stored", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.meScript.push(401);
+  s.logins[0].deliver("truncated");
+  assert.equal((await p).ok, false);
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.cached(), null);
+});
+
+test("superseded login with an unusable body: not adopted, not reconciled (no /me, no cleanup from its handler); the newer login decides the final identity", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const a = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  const b = s.controller.login("c@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver("malformed"); // cookie = bob, body unusable, and a newer intent exists
+  assert.equal((await a).ok, false);
+  await s.flush();
+  assert.ok(!s.sent.slice(s.sent.indexOf("login#1:b@example.test") + 1).slice(0, 1).includes("me"), "no reconcile for a superseded login");
+  s.logins[1].deliver("ok");
+  assert.deepEqual(await b, { ok: true });
+  await s.flush();
+  assert.equal(s.jar.cookie, "carol");
+  s.assertSynchronized("superseded malformed");
+});
+
+test("logout requested while the identity reconciliation is in flight: the reconciled user is discarded and the logout wins", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver("malformed");
+  const out = s.controller.logout(); // intent arrives right after the unusable response
+  await s.flush();
+  s.logouts[0].deliver("ok");
+  await Promise.all([p, out]);
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  assert.equal(s.controller.getState().user, null);
+  s.assertSynchronized("logout wins");
+});
+
+test("concurrent authentication operations: login(malformed) + logout + login(ok) -> final state is the last intent, cookie = UI = storage", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const a = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  const out = s.controller.logout();
+  const c = s.controller.login("c@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver("no-user");
+  await a;
+  await s.flush();
+  s.logouts[0].deliver("ok");
+  await out;
+  await s.flush();
+  s.logins[1].deliver("ok");
+  assert.deepEqual(await c, { ok: true });
+  await s.flush();
+  assert.equal(s.jar.cookie, "carol");
+  s.assertSynchronized("concurrent");
+});
+
+test("superseded login with an unusable body AND the newer login is rejected: the leftover session is cleared (cookie, UI, storage agree)", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const a = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  const b = s.controller.login("c@example.test", "wrong");
+  await s.flush();
+  s.logins[0].deliver("malformed"); // cookie = bob, body unusable
+  await a;
+  await s.flush();
+  s.logins[1].deliver("reject");
+  await s.flush();
+  s.logouts[0].deliver("ok");
+  assert.equal((await b).ok, false);
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  s.assertSynchronized("superseded malformed + rejected");
+});
+
+test("a failed (non-2xx) login with a body that is not JSON changes nothing and signs nobody out", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  const p = s.controller.login("b@example.test", "wrong");
+  await s.flush();
+  s.logins[0].deliver("reject");
+  assert.equal((await p).ok, false);
+  await s.flush();
+  assert.equal(s.jar.cookie, "alice");
+  assert.equal(s.controller.getState().user?.id, "alice");
+  s.assertSynchronized("non-2xx");
 });

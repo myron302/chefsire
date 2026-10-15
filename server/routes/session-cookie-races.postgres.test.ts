@@ -58,12 +58,14 @@ if (!RAW) {
     await scratch.drop();
   });
 
+  let addrSeq = 1;
   type Held = { label: string; deliver: (mode?: "ok" | "network") => void };
   function browser(opts: { cookie?: string | null; logoutPending?: boolean } = {}) {
     const jar = { cookie: opts.cookie ?? null as string | null };
     const store = new Map<string, string>();
     if (opts.logoutPending) store.set(LOGOUT_PENDING_KEY, "1");
     const held: Held[] = [];
+    const mangle = { next: null as null | "truncated" | "html" | "no-user" };
     const sent: string[] = [];
     const delivered: string[] = [];
     const applySetCookie = (res: Response) => {
@@ -78,9 +80,16 @@ if (!RAW) {
     const fetchFn = (async (url: string, init: RequestInit = {}) => {
       const isMutation = url.endsWith("/login") || url.endsWith("/logout");
       sent.push(url.replace("/api/auth/", ""));
-      const headers = { ...(init.headers as Record<string, string> | undefined), ...(jar.cookie ? { cookie: `auth_token=${jar.cookie}` } : {}) };
+      // Each request comes from a distinct client address so the real per-IP login rate limiter (10/window) does not interfere with these scenarios.
+      const headers = { ...(init.headers as Record<string, string> | undefined), ...(jar.cookie ? { cookie: `auth_token=${jar.cookie}` } : {}), "x-forwarded-for": `10.${(addrSeq >> 8) & 255}.${addrSeq & 255}.7` };
+      addrSeq += 1;
       const real = await fetch(base + url, { ...init, headers, redirect: "manual" });
-      const body = await real.text();
+      let body = await real.text();
+      if (url.endsWith("/login") && real.ok && mangle.next) {
+        // The server really logged this user in and really sent Set-Cookie; the body that reaches the page is unusable.
+        body = mangle.next === "truncated" ? body.slice(0, Math.floor(body.length / 2)) : mangle.next === "html" ? "<html>502</html>" : JSON.stringify({ success: true });
+        mangle.next = null;
+      }
       const rebuilt = () => new Response(body, { status: real.status, headers: real.headers });
       if (!isMutation) { applySetCookie(real); return rebuilt(); }
       return new Promise<Response>((resolve, reject) => {
@@ -115,7 +124,7 @@ if (!RAW) {
       assert.equal(controller.getState().user?.id ?? null, authoritative, `${label}: UI vs server session`);
       assert.equal(JSON.parse(store.get(USER_STORAGE_KEY) ?? "null")?.id ?? null, authoritative, `${label}: localStorage vs server session`);
     };
-    return { jar, store, held, sent, delivered, controller, flush, serverView, assertSynchronized };
+    return { jar, store, held, sent, delivered, controller, flush, serverView, assertSynchronized, mangle };
   }
   const login = (b: ReturnType<typeof browser>, who: string, pw = "pw-correct") => b.controller.login(`${who}@example.test`, pw);
 
@@ -204,4 +213,29 @@ if (!RAW) {
     assert.equal(await reload.serverView(), null);
     assert.equal(reload.store.has(LOGOUT_PENDING_KEY), false);
   });
+
+  for (const kind of ["truncated", "html", "no-user"] as const) {
+    test(`real server, account switching: Alice is signed in, Bob's real login answers 200 with a ${kind} body -> the REAL /me identity (Bob) replaces Alice; never Alice with Bob's cookie`, async () => {
+      // Sign Alice in for real, through the controller.
+      const b = browser();
+      const first = login(b, "alice");
+      await b.flush();
+      b.held[0].deliver();
+      assert.deepEqual(await first, { ok: true });
+      await b.flush();
+      assert.equal(b.controller.getState().user?.id, "u-alice");
+      // Now Bob, with the body mangled in transit.
+      b.mangle.next = kind;
+      const second = login(b, "bob");
+      await b.flush();
+      b.held[1].deliver();
+      assert.deepEqual(await second, { ok: true });
+      await b.flush();
+      assert.equal(b.jar.cookie !== null, true);
+      assert.equal(await b.serverView(), "u-bob");
+      assert.equal(b.controller.getState().user?.id, "u-bob");
+      await b.assertSynchronized(`switch(${kind})`);
+      assert.deepEqual(b.sent, ["login", "login", "me"], "exactly one authoritative read to reconcile");
+    });
+  }
 }
