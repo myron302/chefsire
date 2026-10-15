@@ -376,21 +376,24 @@ test("a check that BEGINS during a login but finishes after it is also stale", a
   assert.deepEqual(s.controller.getState().user, bob);
 });
 
-test("login superseded by logout: not signed in, and the cookie the server just set is dropped again", async () => {
+test("login superseded by logout: not signed in; the logout is sent only AFTER the login response (so it removes that cookie), exactly once", async () => {
   const s = setup();
   const loginGate = deferred();
   s.loginPlans.push(loginGate.plan);
-  s.logoutPlans.push(status(200), status(200));
+  s.logoutPlans.push(status(200));
   const loginPromise = s.controller.login("bob@example.test", "pw");
   await s.flush();
-  await s.controller.logout();
+  const logoutPromise = s.controller.logout();
+  await s.flush();
+  assert.equal(s.requests.filter((r) => r.url === "/api/auth/logout").length, 0, "cookie-changing requests are serialized: logout waits for the login to be delivered");
   loginGate.release(new Response(JSON.stringify({ success: true, user: bob }), { status: 200 }));
   const result = await loginPromise;
+  await logoutPromise;
   await s.flush();
   assert.equal(result.ok, false);
   assert.equal(s.controller.getState().user, null);
   assert.equal(s.store.has(USER_STORAGE_KEY), false);
-  assert.equal(s.requests.filter((r) => r.url === "/api/auth/logout").length, 2, "a second logout removes the stray cookie");
+  assert.equal(s.requests.filter((r) => r.url === "/api/auth/logout").length, 1, "one logout: the user's own, which also removes the stray cookie");
 });
 
 test("refresh is stale-safe too: a refresh answered after logout applies nothing", async () => {

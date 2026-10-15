@@ -9,6 +9,12 @@
  *           body parsing, sleep), checks it is still current before it touches state or localStorage. A stale step does nothing.
  *   RUN     Verification runs supersede each other (starting a new run aborts the previous one) but, unlike the epoch, do not discard a login.
  *
+ * COOKIE ORDER. The session is one cookie in one jar, and what ends up in the jar is decided by the order in which login/logout RESPONSES are
+ * delivered -- something a client cannot reorder once requests are in flight. So every cookie-changing request (login, logout) is SERIALIZED through
+ * one queue: a request is sent only after the previous one has been fully delivered (its Set-Cookie already applied). The final cookie is therefore
+ * always the one belonging to the LAST intent, and a superseded login never needs a "cleanup" logout issued from its own (late) response handler -- the
+ * logout/login the user actually asked for is already queued behind it. A queued login that was superseded before it started is never sent at all.
+ *
  * Authority: the server cookie decides who is authenticated; this controller only decides what the UI shows. A cached profile shown during an
  * outage is continuity, not authorization -- every protected API call is still checked by the server. With no cache (e.g. the first load after
  * Google OAuth) no user is invented: the state stays signed-out/"unavailable" and offers a retry.
@@ -45,7 +51,13 @@ export type SessionControllerDeps<U extends { id: string }> = {
   parseUser: (payload: unknown) => U;
   onChange: (state: SessionState<U>) => void;
   delaysMs?: readonly number[];
+  /** Resolves after `ms` or when the signal aborts. Used only as the deadline of a cookie-changing request. Defaults to a real timer. */
+  mutationDeadline?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** Longest a login/logout request may hold the queue. Default 30s. */
+  mutationTimeoutMs?: number;
 };
+
+const SUPERSEDED_LOGIN = { ok: false, error: "Sign-in was superseded by a newer request." } as const;
 
 export const USER_STORAGE_KEY = "user";
 /** Set when the user asked to log out; cleared only when the server confirmed it (or a new login happens). Prevents restoring a lingering cookie. */
@@ -59,6 +71,19 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
   let runSeq = 0;
   let runAbort: AbortController | undefined;
   const inflight = new Set<AbortController>();
+  // Cookie-changing requests: one at a time, in intent order.
+  let mutationTail: Promise<unknown> = Promise.resolve();
+  let mutationSeq = 0; // identifies the LATEST login/logout intent
+  let queuedMutations = 0;
+  const mutationAborts = new Set<AbortController>(); // aborted only by the deadline or unmount, never by a newer intent
+  /** True when the jar may hold a session the UI did not adopt (a superseded login that the server accepted, or an uncertain one). */
+  let foreignCookieSuspected = false;
+  const mutationDeadline = deps.mutationDeadline ?? ((ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
+    if (signal.aborted) return resolve();
+    const timer = setTimeout(done, ms);
+    function done() { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); }
+    signal.addEventListener("abort", done, { once: true });
+  }));
   let state: SessionState<U> = { user: null, loading: true, sessionStatus: "checking", pendingOAuth: false, verifying: false };
 
   const set = (patch: Partial<SessionState<U>>) => {
@@ -152,14 +177,47 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
     }
   }
 
-  /** Ask the server to drop the cookie. Confirmed (2xx, or 401 = already gone) clears the local logout intent; anything else keeps it. */
+  function enqueue<T>(task: () => Promise<T>): Promise<T> {
+    queuedMutations += 1;
+    const run = mutationTail.then(task, task).finally(() => {
+      queuedMutations -= 1;
+      if (queuedMutations === 0 && !disposed) set({ loading: false });
+    });
+    mutationTail = run.catch(() => undefined);
+    return run;
+  }
+
+  /** One cookie-changing request with a deadline so a hung request cannot hold the queue forever. Resolves to the Response, or throws. */
+  async function mutationFetch(url: string, init: RequestInit): Promise<Response> {
+    const ac = new AbortController();
+    mutationAborts.add(ac);
+    const deadline = mutationDeadline(deps.mutationTimeoutMs ?? 30_000, ac.signal).then(() => { ac.abort(); });
+    try {
+      return await Promise.race([deps.fetch(url, { ...init, signal: ac.signal }), deadline.then(() => { throw new Error("request deadline"); })]);
+    } finally {
+      mutationAborts.delete(ac);
+      ac.abort(); // releases the deadline timer
+    }
+  }
+
+  /** Ask the server to drop the cookie. Confirmed (2xx, or 401 = already gone) settles the local logout intent; anything else keeps it. Runs INSIDE a queue slot. */
   async function serverLogout(): Promise<void> {
     try {
-      const res = await deps.fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-      if (res.ok || res.status === 401) deps.storage.removeItem(LOGOUT_PENDING_KEY);
+      const res = await mutationFetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      if (res.ok || res.status === 401) {
+        deps.storage.removeItem(LOGOUT_PENDING_KEY);
+        foreignCookieSuspected = false;
+      }
     } catch {
       /* intent stays recorded */
     }
+  }
+
+  /** A superseded login left a session in the jar and the newest intent did not replace it: remove it, and show signed-out like the jar. */
+  async function dropForeignSession(): Promise<void> {
+    deps.storage.setItem(LOGOUT_PENDING_KEY, "1");
+    commitSignedOut();
+    await serverLogout();
   }
 
   return {
@@ -178,7 +236,7 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
         // The user logged out but the server never confirmed. The cookie may still be valid; it must not bring them back.
         set({ user: null, loading: false, sessionStatus: "anonymous" });
         deps.storage.removeItem(USER_STORAGE_KEY);
-        void serverLogout();
+        void enqueue(serverLogout);
         return;
       }
       const cached = readCachedUser();
@@ -197,45 +255,61 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
       void verifyRun(state.pendingOAuth ? null : cached);
     },
 
-    async login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
+    login(email: string, password: string): Promise<{ ok: boolean; error?: string }> {
       invalidateAll(); // any earlier session's checks end here, before the new identity can exist
-      const myEpoch = epoch;
+      const seq = ++mutationSeq; // this is now the latest intent: every earlier login/logout is superseded
       set({ loading: true });
-      try {
-        const res = await deps.fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (disposed || myEpoch !== epoch) {
-          // Superseded (e.g. logout pressed meanwhile). If the server accepted this login it set a cookie nobody asked to keep.
-          if (res.ok && data?.success) void serverLogout();
-          return { ok: false, error: "Sign-in was cancelled." };
+      return enqueue(async () => {
+        // Superseded while waiting its turn (a newer login or a logout was requested): it is never sent.
+        if (disposed || seq !== mutationSeq) return { ...SUPERSEDED_LOGIN };
+        let res: Response;
+        let data: any;
+        try {
+          res = await mutationFetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
+          });
+        } catch (e) {
+          console.error("Login failed:", e);
+          return { ok: false, error: "Network error. Please try again." };
         }
-        if (!res.ok) {
-          const msg = data?.error || (res.status === 403 ? "Please verify your email to log in." : "Invalid email or password");
-          return { ok: false, error: msg };
+        try {
+          data = await res.json().catch(() => ({}));
+          const accepted = res.ok && !!data?.success;
+          if (disposed || seq !== mutationSeq) {
+            // A newer intent exists. Do NOT adopt this result and do NOT send a cleanup request from here: the server may have just set a cookie
+            // for this login, and whatever the newer intent is (logout / another login) is already queued behind this slot and will replace it.
+            if (accepted) foreignCookieSuspected = true;
+            return { ...SUPERSEDED_LOGIN };
+          }
+          if (!res.ok) {
+            if (foreignCookieSuspected) await dropForeignSession(); // cookie, UI and storage must not disagree
+            const msg = data?.error || (res.status === 403 ? "Please verify your email to log in." : "Invalid email or password");
+            return { ok: false, error: msg };
+          }
+          if (!data?.success || !data?.user) return { ok: false, error: "Unexpected server response" };
+          const user = deps.parseUser(data.user);
+          deps.storage.removeItem(LOGOUT_PENDING_KEY);
+          foreignCookieSuspected = false; // this response's cookie is the one in the jar and the one we display
+          commitVerifiedUser(user);
+          epoch += 1; // checks that began while this login was in flight may have read the previous cookie: they must not apply
+          return { ok: true };
+        } catch (e) {
+          // The server answered (a cookie may have been set) but we could not use the answer.
+          console.error("Login failed:", e);
+          foreignCookieSuspected = true;
+          return { ok: false, error: "Network error. Please try again." };
         }
-        if (!data?.success || !data?.user) return { ok: false, error: "Unexpected server response" };
-        const user = deps.parseUser(data.user);
-        deps.storage.removeItem(LOGOUT_PENDING_KEY);
-        commitVerifiedUser(user);
-        epoch += 1; // checks that began while this login was in flight may have seen the previous cookie: they must not apply
-        return { ok: true };
-      } catch (e) {
-        console.error("Login failed:", e);
-        return { ok: false, error: "Network error. Please try again." };
-      } finally {
-        set({ loading: false });
-      }
+      });
     },
 
-    async logout(): Promise<void> {
+    logout(): Promise<void> {
       invalidateAll(); // FIRST: nothing in flight may write the user back after this line
+      ++mutationSeq; // supersedes every login that has not been adopted yet
       deps.storage.setItem(LOGOUT_PENDING_KEY, "1");
       commitSignedOut();
-      await serverLogout();
+      return enqueue(serverLogout); // behind any login still in flight: its cookie lands first and this logout then removes it
     },
 
     /** Re-read the account from the server. Resolves quietly if superseded; rejects when the server could not confirm. */
@@ -264,6 +338,7 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
     dispose() {
       invalidateAll();
       disposed = true;
+      for (const ac of Array.from(mutationAborts)) ac.abort();
     },
   };
 }

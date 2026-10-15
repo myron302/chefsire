@@ -56,6 +56,7 @@ export const db = pool ? drizzle(pool, { schema }) : (null as any);
 // Gracefully end pool only when it's present
 process.on("beforeExit", () => {
   try {
-    if (pool && typeof (pool as any).end === "function") (pool as any).end();
+    // end() returns a promise; a second call (e.g. the pool was already ended) rejects, and an unobserved rejection would be fatal here.
+    if (pool && typeof (pool as any).end === "function") Promise.resolve((pool as any).end()).catch(() => {});
   } catch {}
 });
