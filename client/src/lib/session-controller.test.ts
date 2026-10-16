@@ -4,7 +4,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createSessionController, LOGOUT_PENDING_KEY, USER_STORAGE_KEY, type SessionState } from "./session-controller";
+import { beginGoogleSignIn, createSessionController, LOGOUT_PENDING_KEY, OAUTH_INITIATION_KEY, USER_STORAGE_KEY, type SessionState } from "./session-controller";
 import { SESSION_RECHECK_DELAYS_MS } from "./session-verification";
 
 type U = { id: string; email: string; name?: string };
@@ -330,17 +330,28 @@ test("server logout FAILS with the old cookie still valid: local logout intent i
   assert.equal(reload.store.has(LOGOUT_PENDING_KEY), false, "and settled once the server confirms");
 });
 
-test("an explicit new sign-in clears a pending logout intent (password login and Google return)", async () => {
+test("an explicit new sign-in clears a pending logout intent: a password login, or a Google return that carries the nonce this browser created (a bare marker does not)", async () => {
   const s = setup({ logoutPending: true });
   s.loginPlans.push(json(200, { success: true, user: bob }));
   assert.deepEqual(await s.controller.login("B@Example.test ", "pw"), { ok: true });
   assert.equal(s.store.has(LOGOUT_PENDING_KEY), false);
-  const g = setup({ logoutPending: true, url: "https://app.test/?google-login=success" });
+  // Google: the click recorded a nonce; the callback echoed it.
+  const nonce = beginGoogleSignIn({ getItem: (k) => s.store.get(k) ?? null, setItem: (k, v) => void s.store.set(k, v), removeItem: (k) => void s.store.delete(k) } as never, Date.now());
+  const store = new Map<string, string>([[LOGOUT_PENDING_KEY, "1"], [OAUTH_INITIATION_KEY, s.store.get(OAUTH_INITIATION_KEY)!]]);
+  const g = setup({ logoutPending: true, url: `https://app.test/?google-login=success&oauth_state=${nonce}` });
+  g.store.set(OAUTH_INITIATION_KEY, store.get(OAUTH_INITIATION_KEY)!);
   g.mePlans.push(me(bob));
   g.controller.start();
   await g.flush();
   assert.deepEqual(g.controller.getState().user, bob);
   assert.equal(g.store.has(LOGOUT_PENDING_KEY), false);
+  // …whereas the bare marker does not.
+  const forged = setup({ logoutPending: true, url: "https://app.test/?google-login=success" });
+  forged.logoutPlans.push(status(200));
+  forged.controller.start();
+  await forged.flush();
+  assert.equal(forged.controller.getState().user, null);
+  assert.equal(forged.meRequests().length, 0);
 });
 
 test("new account login while an old session check is in flight: the old response is aborted/ignored and never overwrites the new user", async () => {

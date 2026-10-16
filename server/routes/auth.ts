@@ -32,6 +32,12 @@ const oauthReturnCookieOptions = {
   maxAge: 10 * 60 * 1000,
 };
 
+// The browser-created nonce of a Google sign-in (see client/src/lib/session-controller): carried through the OAuth round trip in this cookie and
+// echoed on the success redirect as `oauth_state`, so the page can tell a sign-in IT started from a URL someone merely typed or replayed.
+// Opaque to the server and never trusted for anything: strict shape, short-lived, httpOnly, scoped to the callback.
+const OAUTH_CLIENT_STATE_COOKIE = "oauth_client_state";
+const OAUTH_CLIENT_STATE_SHAPE = /^[A-Za-z0-9_-]{16,64}$/;
+
 function safeInternalDestination(value: unknown): string | null {
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
   try {
@@ -365,6 +371,9 @@ router.post("/auth/resend-verification", emailSendLimiter, async (req, res) => {
 
     if (result.success) {
       res.json({ message: "Verification email sent" });
+    } else if (result.cause === "database_unavailable") {
+      // The token could not be stored (database unreachable): nothing was sent, and a retry is the right response.
+      return sendServiceUnavailable(res);
     } else {
       console.error('⚠️ Failed to resend email:', result.error);
       res.status(500).json({ error: "Failed to send verification email. Please try again later." });
@@ -492,6 +501,9 @@ router.get("/auth/google", (req, res, next) => {
   const destination = safeInternalDestination(req.query.next);
   if (destination) res.cookie(OAUTH_RETURN_COOKIE, destination, oauthReturnCookieOptions);
   else res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
+  const clientState = typeof req.query.client_state === "string" && OAUTH_CLIENT_STATE_SHAPE.test(req.query.client_state) ? req.query.client_state : null;
+  if (clientState) res.cookie(OAUTH_CLIENT_STATE_COOKIE, clientState, oauthReturnCookieOptions);
+  else res.clearCookie(OAUTH_CLIENT_STATE_COOKIE, { path: oauthReturnCookieOptions.path });
   passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
@@ -511,6 +523,9 @@ router.get("/auth/google/signup", passport.authenticate("google", {
 router.get("/auth/google/callback", (req, res, next) => {
   const destination = safeInternalDestination(req.cookies?.[OAUTH_RETURN_COOKIE]);
   res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
+  const presentedState = req.cookies?.[OAUTH_CLIENT_STATE_COOKIE];
+  const clientState = typeof presentedState === "string" && OAUTH_CLIENT_STATE_SHAPE.test(presentedState) ? presentedState : null;
+  res.clearCookie(OAUTH_CLIENT_STATE_COOKIE, { path: oauthReturnCookieOptions.path });
   passport.authenticate("google", { session: false }, async (error, user) => {
     if (error) {
       const postgresError = error as Error & { code?: string; column?: string };
@@ -549,6 +564,7 @@ router.get("/auth/google/callback", (req, res, next) => {
       // Keep the established success marker while returning to a validated internal page.
       const successUrl = new URL(destination ?? "/", "https://chefsire.internal");
       successUrl.searchParams.set("google-login", "success");
+      if (clientState) successUrl.searchParams.set("oauth_state", clientState);
       res.redirect(`${successUrl.pathname}${successUrl.search}${successUrl.hash}`);
     } catch (error) {
       console.error("💥 Error in Google OAuth callback:", error);

@@ -55,6 +55,8 @@ export type SessionControllerDeps<U extends { id: string }> = {
   mutationDeadline?: (ms: number, signal: AbortSignal) => Promise<void>;
   /** Longest a login/logout request may hold the queue. Default 30s. */
   mutationTimeoutMs?: number;
+  /** Clock, for the lifetime of a Google sign-in initiation. Defaults to Date.now. */
+  now?: () => number;
 };
 
 /** After the deadline aborts a request, how long a fetch that ignores the abort is given before the exchange is abandoned. */
@@ -66,6 +68,41 @@ export const USER_STORAGE_KEY = "user";
 /** Set when the user asked to log out; cleared only when the server confirmed it (or a new login happens). Prevents restoring a lingering cookie. */
 export const LOGOUT_PENDING_KEY = "auth_logout_pending";
 export const OAUTH_MARKER_PARAM = "google-login";
+/**
+ * The marker (`?google-login=success`) is only a URL: anyone can type it, a bookmark can replay it. It must never be able to cancel an explicit
+ * logout. A genuine Google sign-in is instead BOUND to this browser: clicking "Continue with Google" records a single-use nonce here, the server echoes
+ * it back through the OAuth round trip as `oauth_state`, and only a callback carrying that exact, unexpired, unconsumed nonce may supersede a pending logout.
+ */
+export const OAUTH_STATE_PARAM = "oauth_state";
+export const OAUTH_INITIATION_KEY = "auth_oauth_initiation";
+const OAUTH_INITIATION_TTL_MS = 10 * 60_000; // same lifetime as the server's oauth cookies
+const OAUTH_NONCE_SHAPE = /^[A-Za-z0-9_-]{16,64}$/;
+
+type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+function randomNonce(): string {
+  const bytes = new Uint8Array(24);
+  globalThis.crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...Array.from(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Record that THIS browser is starting a Google sign-in now; returns the nonce to pass to `/api/auth/google?client_state=`. */
+export function beginGoogleSignIn(storage: StorageLike, nowMs: number = Date.now(), random: () => string = randomNonce): string {
+  const nonce = random();
+  try { storage.setItem(OAUTH_INITIATION_KEY, JSON.stringify({ nonce, at: nowMs })); } catch { /* best effort: without it a pending logout simply wins */ }
+  return nonce;
+}
+
+/** True only for the exact nonce recorded by `beginGoogleSignIn`, unexpired. Single use: the record is removed on a match and whenever it has expired. */
+export function consumeOAuthInitiation(storage: StorageLike, presented: string | null, nowMs: number): boolean {
+  let record: { nonce?: unknown; at?: unknown } | null = null;
+  try { record = JSON.parse(storage.getItem(OAUTH_INITIATION_KEY) ?? "null"); } catch { record = null; }
+  if (!record || typeof record.nonce !== "string" || typeof record.at !== "number") return false;
+  const fresh = nowMs - record.at >= 0 && nowMs - record.at <= OAUTH_INITIATION_TTL_MS;
+  const matches = fresh && presented !== null && OAUTH_NONCE_SHAPE.test(presented) && presented === record.nonce;
+  if (matches || !fresh) { try { storage.removeItem(OAUTH_INITIATION_KEY); } catch { /* nothing to do */ } }
+  return matches;
+}
 
 export function createSessionController<U extends { id: string }>(deps: SessionControllerDeps<U>) {
   const delays = deps.delaysMs ?? SESSION_RECHECK_DELAYS_MS;
@@ -116,8 +153,9 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
   const stripOAuthMarker = () => {
     const loc = deps.getLocation();
     const params = new URLSearchParams(loc.search);
-    if (!params.has(OAUTH_MARKER_PARAM)) return;
+    if (!params.has(OAUTH_MARKER_PARAM) && !params.has(OAUTH_STATE_PARAM)) return;
     params.delete(OAUTH_MARKER_PARAM);
+    params.delete(OAUTH_STATE_PARAM);
     const search = params.toString();
     deps.replaceUrl(`${loc.pathname}${search ? `?${search}` : ""}${loc.hash}`);
   };
@@ -324,8 +362,22 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
     /** Decide the initial state and, when there is something to verify, start the single verification run. */
     start() {
       if (oauthMarkerPresent()) {
+        const presentedState = new URLSearchParams(deps.getLocation().search).get(OAUTH_STATE_PARAM);
+        const bound = consumeOAuthInitiation(storage, presentedState, (deps.now ?? Date.now)());
+        if (storage.getItem(LOGOUT_PENDING_KEY) && !bound) {
+          // The user explicitly logged out and the server never confirmed. A URL that merely CONTAINS the marker -- typed, bookmarked, replayed from
+          // history, or with a stale/forged state -- proves nothing about a new sign-in, so it cannot cancel that intent. Stay signed out, drop the
+          // untrusted parameters, and finish the logout.
+          stripOAuthMarker();
+          storage.removeItem(USER_STORAGE_KEY);
+          set({ user: null, loading: false, sessionStatus: "anonymous", pendingOAuth: false });
+          void enqueue(serverLogout);
+          return;
+        }
+        // Either nothing is pending (an ordinary return from Google: the server is asked who the cookie belongs to) or the callback carried the nonce
+        // this browser created when the user clicked "Google": a genuine new sign-in that supersedes the pending logout.
+        if (bound) storage.removeItem(LOGOUT_PENDING_KEY);
         // Returning from Google: the cookie was just set by the server. Whatever was cached may belong to another account, so it is not shown.
-        storage.removeItem(LOGOUT_PENDING_KEY);
         set({ pendingOAuth: true, user: null, sessionStatus: "checking" });
         void verifyRun(null);
         return;

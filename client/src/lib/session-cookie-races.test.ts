@@ -679,3 +679,111 @@ test("a fetch that IGNORES the abort cannot leave the operation pending forever:
   assert.deepEqual(await c, { ok: true });
   s.assertSynchronized("queue still usable");
 });
+
+// ---- Codex P2-1: the ?google-login=success URL marker is NOT proof of a Google sign-in ------------------------------------------------------
+// A failed logout leaves a valid cookie plus a persisted logout intent. An untrusted URL parameter must not be able to cancel that intent.
+import { beginGoogleSignIn, OAUTH_INITIATION_KEY } from "./session-controller";
+
+const withMarker = (extra = "") => `https://app.test/recipes/9?google-login=success${extra}#top`;
+
+test("FORGED marker: after a failed logout, ?google-login=success alone does NOT cancel the logout intent or restore the old session", async () => {
+  const s = site({ cookie: "alice", logoutPending: true, url: withMarker() });
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().user, null, "Alice is not restored");
+  assert.ok(!s.sent.includes("me"), "no verification of the lingering cookie is even attempted");
+  assert.equal(s.store.get(LOGOUT_PENDING_KEY), "1", "the explicit logout intent survives");
+  assert.equal(s.sent[0], "logout#1", "the logout is retried instead");
+  assert.equal(s.url(), "/recipes/9#top", "the untrusted marker is removed from the URL");
+  s.logouts[0].deliver("ok");
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  assert.equal(s.store.has(LOGOUT_PENDING_KEY), false);
+  s.assertSynchronized("forged marker");
+});
+
+test("marker with a WRONG state, an EXPIRED state, or a REPLAYED (already consumed) state is ignored the same way", async () => {
+  // wrong
+  const w = site({ cookie: "alice", logoutPending: true, url: withMarker("&oauth_state=AAAAAAAAAAAAAAAAAAAAAAAA") });
+  w.store.set(OAUTH_INITIATION_KEY, JSON.stringify({ nonce: "BBBBBBBBBBBBBBBBBBBBBBBB", at: Date.now() }));
+  w.controller.start();
+  await w.flush();
+  assert.equal(w.controller.getState().user, null);
+  assert.ok(!w.sent.includes("me"));
+  assert.equal(w.store.get(LOGOUT_PENDING_KEY), "1");
+  // expired (initiated 11 minutes ago)
+  const e = site({ cookie: "alice", logoutPending: true, url: withMarker("&oauth_state=CCCCCCCCCCCCCCCCCCCCCCCC") });
+  e.store.set(OAUTH_INITIATION_KEY, JSON.stringify({ nonce: "CCCCCCCCCCCCCCCCCCCCCCCC", at: Date.now() - 11 * 60_000 }));
+  e.controller.start();
+  await e.flush();
+  assert.equal(e.controller.getState().user, null);
+  assert.ok(!e.sent.includes("me"));
+  assert.equal(e.store.get(LOGOUT_PENDING_KEY), "1");
+  // replayed: no initiation record at all (it was consumed by the genuine completion)
+  const r = site({ cookie: "alice", logoutPending: true, url: withMarker("&oauth_state=DDDDDDDDDDDDDDDDDDDDDDDD") });
+  r.controller.start();
+  await r.flush();
+  assert.equal(r.controller.getState().user, null);
+  assert.ok(!r.sent.includes("me"));
+});
+
+test("GENUINE Google sign-in after a failed logout: the click recorded a nonce, the callback echoed it, so the new sign-in supersedes the pending logout and the SERVER's identity is adopted", async () => {
+  const store0 = new Map<string, string>();
+  const nonce = beginGoogleSignIn({ getItem: (k) => store0.get(k) ?? null, setItem: (k, v) => void store0.set(k, v), removeItem: (k) => void store0.delete(k) }, Date.now());
+  assert.match(nonce, /^[A-Za-z0-9_-]{16,64}$/);
+  const s = site({ cookie: "carol", logoutPending: true, url: withMarker(`&oauth_state=${nonce}`) });
+  s.store.set(OAUTH_INITIATION_KEY, store0.get(OAUTH_INITIATION_KEY)!);
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "carol");
+  assert.equal(s.store.has(LOGOUT_PENDING_KEY), false, "cleared by the bound transition, not by the bare marker");
+  assert.equal(s.store.has(OAUTH_INITIATION_KEY), false, "the nonce is single-use");
+  assert.equal(s.url(), "/recipes/9#top", "both the marker and the state are removed; path and fragment preserved");
+  s.assertSynchronized("genuine");
+});
+
+test("browser RELOAD after a genuine completion: the URL is clean, nothing is re-adopted from a marker; and a later failed logout is not undone by revisiting the old callback URL", async () => {
+  const store0 = new Map<string, string>();
+  const nonce = beginGoogleSignIn({ getItem: (k) => store0.get(k) ?? null, setItem: (k, v) => void store0.set(k, v), removeItem: (k) => void store0.delete(k) }, Date.now());
+  const first = site({ cookie: "carol", url: withMarker(`&oauth_state=${nonce}`) });
+  first.store.set(OAUTH_INITIATION_KEY, store0.get(OAUTH_INITIATION_KEY)!);
+  first.controller.start();
+  await first.flush();
+  assert.equal(first.controller.getState().user?.id, "carol");
+  // reload: same storage, URL already cleaned
+  const reload = site({ cookie: "carol", stored: USERS["c@example.test"], url: `https://app.test${first.url()}` });
+  reload.controller.start();
+  await reload.flush();
+  assert.equal(reload.sent.filter((x) => x === "me").length, 1, "an ordinary cached-user check, not an OAuth adoption");
+  // The user logs out, the server call fails, and they open the OLD callback URL again (bookmark / history).
+  const again = site({ cookie: "carol", logoutPending: true, url: withMarker(`&oauth_state=${nonce}`) });
+  again.controller.start();
+  await again.flush();
+  assert.equal(again.controller.getState().user, null, "the consumed nonce cannot be replayed");
+  assert.ok(!again.sent.includes("me"));
+});
+
+test("account switching: signed in as Alice (no pending logout), a genuine Google sign-in as Bob -> Bob (server identity), via the same verification run", async () => {
+  const s = site({ cookie: "bob", stored: USERS["a@example.test"], url: withMarker() });
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "bob", "no pending logout, so the marker triggers an authoritative /me read exactly as before");
+  s.assertSynchronized("switch");
+});
+
+test("a genuine sign-in whose callback never arrives (user abandoned Google): the nonce expires harmlessly and the pending logout still holds", async () => {
+  const s = site({ cookie: "alice", logoutPending: true, url: "https://app.test/login" });
+  s.store.set(OAUTH_INITIATION_KEY, JSON.stringify({ nonce: "EEEEEEEEEEEEEEEEEEEEEEEE", at: Date.now() - 20 * 60_000 }));
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.store.get(LOGOUT_PENDING_KEY), "1");
+});
+
+test("forged marker while NOT logged out and with a cached user is still verified by the server (no behaviour change when there is no pending logout)", async () => {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"], url: withMarker() });
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "alice");
+  assert.deepEqual(s.sent, ["me"]);
+});
