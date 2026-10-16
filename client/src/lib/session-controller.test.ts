@@ -94,7 +94,8 @@ test("OAuth return, no cached user, 503 then 200: stays pending (marker kept), r
   await s.flush();
   let st = s.controller.getState();
   assert.equal(st.user, null, "no user is invented without verified identity");
-  assert.equal(st.sessionStatus, "unavailable");
+  assert.equal(st.loading, true, "guards must keep waiting while OAuth verification is indeterminate");
+  assert.equal(st.sessionStatus, "checking");
   assert.equal(st.pendingOAuth, true);
   assert.equal(st.verifying, true, "a bounded retry is scheduled");
   assert.equal(s.sleeps[0].ms, SESSION_RECHECK_DELAYS_MS[0]);
@@ -114,7 +115,7 @@ test("OAuth return, no cached user, network failure then 200: recovers", async (
   s.mePlans.push(network, me(alice));
   s.controller.start();
   await s.flush();
-  assert.equal(s.controller.getState().sessionStatus, "unavailable");
+  assert.equal(s.controller.getState().sessionStatus, "checking");
   assert.equal(s.controller.getState().user, null);
   await s.tick();
   assert.deepEqual(s.controller.getState().user, alice);
@@ -535,4 +536,45 @@ test("an unexpected exception inside a login slot resolves to an error (never re
   assert.equal(r1.ok, false);
   const r2 = await controller.login("b@example.test", "pw"); // the queue still works
   assert.equal(r2.ok, true);
+});
+
+test("OAuth: indeterminate through every transient failure; exhaustion is recoverable; no signed-out-looking state published", async () => {
+  const states: any[] = [];
+  const s = setup({ url: "https://app.test/services/catering/provider?x=1&google-login=success" });
+  s.controller.subscribe?.((st: any) => states.push(st));
+  s.mePlans.push(status(503), network, status(503), status(503));
+  s.controller.start();
+  await s.flush();
+  for (let i = 0; i < 3; i++) {
+    const st = s.controller.getState();
+    assert.equal(st.loading, true);
+    assert.equal(st.sessionStatus, "checking");
+    assert.equal(st.user, null);
+    await s.tick();
+  }
+  const done = s.controller.getState();
+  assert.equal(done.loading, false);
+  assert.equal(done.sessionStatus, "unavailable", "recoverable, not anonymous");
+  assert.equal(done.verifying, false);
+  assert.equal(done.user, null);
+  s.mePlans.push(me(alice));
+  s.controller.retry();
+  await s.flush();
+  assert.deepEqual(s.controller.getState().user, alice);
+  assert.equal(s.controller.getState().sessionStatus, "authenticated");
+});
+
+test("OAuth: definitive 401 is confirmed anonymous; immediate success needs no retry", async () => {
+  const a = setup({ url: "https://app.test/?google-login=success" });
+  a.mePlans.push(status(401));
+  a.controller.start();
+  await a.flush();
+  assert.equal(a.controller.getState().sessionStatus, "anonymous");
+  assert.equal(a.controller.getState().loading, false);
+  const b = setup({ url: "https://app.test/?google-login=success" });
+  b.mePlans.push(me(alice));
+  b.controller.start();
+  await b.flush();
+  assert.deepEqual(b.controller.getState().user, alice);
+  assert.equal(b.sleeps.length, 0);
 });

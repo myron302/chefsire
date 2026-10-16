@@ -34,7 +34,9 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
   const delivered: string[] = [];
   const logins: Pending[] = [];
   const logouts: Pending[] = [];
-  const meScript: Array<number | (() => Promise<Response>)> = [];
+  const meScript: Array<number | ((signal?: AbortSignal) => Promise<Response>)> = [];
+  const states: Array<{ user: U | null; loading: boolean; sessionStatus: string; pendingOAuth: boolean; verifying: boolean }> = [];
+  const verifyDeadlines: Array<() => void> = [];
   const sleeps: Array<() => void> = [];
   const deadlines: Array<() => void> = [];
   let loginN = 0, logoutN = 0;
@@ -43,7 +45,7 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
     if (url === "/api/auth/me") {
       sent.push("me");
       const forced = meScript.shift();
-      if (typeof forced === "function") return forced();
+      if (typeof forced === "function") return forced(init.signal ?? undefined);
       if (forced && forced !== 200) return new Response("{}", { status: forced });
       if (!jar.cookie) return new Response("{}", { status: 401 });
       const user = Object.values(USERS).find((u) => u.id === jar.cookie)!;
@@ -97,8 +99,9 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
     replaceUrl: (u) => { loc = new URL(u, loc); },
     sleep: (_ms, signal) => new Promise<void>((resolve) => { if (signal.aborted) return resolve(); const done = () => resolve(); signal.addEventListener("abort", done, { once: true }); sleeps.push(done); }),
     mutationDeadline: (_ms, signal) => new Promise<void>((resolve) => { if (signal.aborted) return resolve(); const done = () => resolve(); signal.addEventListener("abort", done, { once: true }); deadlines.push(done); }),
+    verifyDeadline: (_ms: number, signal: AbortSignal) => new Promise<void>((resolve) => { if (signal.aborted) return resolve(); const done = () => resolve(); signal.addEventListener("abort", done, { once: true }); verifyDeadlines.push(done); }),
     parseUser,
-    onChange: () => {},
+    onChange: (st: never) => { states.push({ ...(st as object) } as never); },
   } as never);
 
   const flush = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r)); };
@@ -109,7 +112,7 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
     assert.equal(ui?.id ?? null, jar.cookie, `${label} UI user vs cookie`);
     assert.equal(cached()?.id ?? null, jar.cookie, `${label} localStorage vs cookie`);
   };
-  return { jar, store, controller, sent, delivered, logins, logouts, meScript, sleeps, deadlines, flush, cached, assertSynchronized, url: () => loc.pathname + loc.search + loc.hash };
+  return { jar, store, controller, sent, delivered, logins, logouts, meScript, sleeps, deadlines, verifyDeadlines, states, flush, cached, assertSynchronized, url: () => loc.pathname + loc.search + loc.hash };
 }
 
 test("Login A starts, then Login B starts; A's response is the one that would arrive last: B is not even sent until A is delivered, so A's Set-Cookie can never overwrite B's", async () => {
@@ -327,7 +330,7 @@ test("OAuth return during transient database unavailability retries and then sig
   s.meScript.push(503);
   s.controller.start();
   await s.flush();
-  assert.equal(s.controller.getState().sessionStatus, "unavailable");
+  assert.equal(s.controller.getState().sessionStatus, "checking");
   assert.equal(s.controller.getState().user, null);
   s.sleeps.shift()!();
   await s.flush();
@@ -947,4 +950,54 @@ test("the deadline path keeps its identity check: the requested account → succ
   assert.deepEqual(await p2, { ok: true });
   await match.flush();
   match.assertSynchronized("deadline match");
+});
+
+
+// ---- Codex P2: Google OAuth retries must not look like "logged out" to protected-route guards ----------------------------------------------------
+// The guard in catering-provider.tsx was `if (!loading && !user) navigate("/login…")`. With a 503 on the OAuth return the controller used to publish
+// { loading:false, user:null } while its retries were still running, so the page redirected away from the protected destination mid-sign-in.
+const pageGuardToday = (st: { loading: boolean; user: unknown }) => !st.loading && !st.user;
+const PROTECTED = "https://app.test/services/catering/provider?tab=menu&google-login=success#billing";
+
+test("REPRO/guard: during Google OAuth verification retries no published state is 'confirmed signed out' (loading=false, user=null) until the retries are finished", async () => {
+  const s = site({ cookie: "carol", url: PROTECTED });
+  s.meScript.push(503, 503);
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.states.some((st) => pageGuardToday(st)), false, "the first 503 must not publish a signed-out-looking state");
+  assert.equal(s.controller.getState().loading, true, "still indeterminate");
+  s.sleeps.shift()!();
+  await s.flush();
+  assert.equal(s.states.some((st) => pageGuardToday(st)), false, "nor the second");
+  s.sleeps.shift()!();
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "carol");
+  assert.equal(s.url(), "/services/catering/provider?tab=menu#billing", "the protected destination (path, query, fragment) was never left");
+  s.assertSynchronized("oauth recovered");
+});
+
+test("stalled /api/auth/me: deadline = unavailable (not invalid), bounded retry proceeds and succeeds; late body cannot overwrite; dispose settles", async () => {
+  const unhandled: unknown[] = [];
+  const onUnhandled = (e: unknown) => unhandled.push(e);
+  process.on("unhandledRejection", onUnhandled);
+  const s = site({ cookie: "carol", url: "https://app.test/?google-login=success" });
+  s.meScript.push((signal?: AbortSignal) => new Promise<Response>((_, reject) => signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true })));
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().sessionStatus, "checking");
+  assert.equal(s.verifyDeadlines.length, 1);
+  s.verifyDeadlines.shift()!(); // the per-attempt deadline fires
+  await s.flush();
+  const st = s.controller.getState();
+  assert.equal(st.sessionStatus, "checking", "timeout is unavailable, never anonymous; OAuth stays indeterminate");
+  assert.equal(st.user, null);
+  assert.equal(st.verifying, true);
+  s.sleeps.shift()!();
+  await s.flush();
+  assert.equal(s.controller.getState().sessionStatus, "authenticated");
+  assert.ok(!s.states.some((x: any) => !x.loading && !x.user && x.sessionStatus !== "unavailable" && x.sessionStatus !== "anonymous" && x.pendingOAuth));
+  s.controller.dispose();
+  await s.flush();
+  assert.deepEqual(unhandled, []);
+  process.off("unhandledRejection", onUnhandled);
 });

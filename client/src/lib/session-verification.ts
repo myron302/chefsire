@@ -26,15 +26,21 @@ export type SessionCheckResult<U> =
   | { kind: "valid"; user: U }
   | { kind: "invalid" }
   /** No authoritative answer. `reason` is for diagnostics/tests only; callers must treat every reason the same way. */
-  | { kind: "unavailable"; reason: "status" | "network" | "malformed" }
+  | { kind: "unavailable"; reason: "status" | "network" | "malformed" | "timeout" }
   /** The request was abandoned because the caller's generation ended (logout, login, unmount, newer run). Carries no information. */
   | { kind: "cancelled" };
 
-/**
- * One request, one answer. A 2xx whose body does not contain a user the caller accepts (`parseUser` throws) is NOT a verification:
- * it is reported as unavailable/"malformed" so it can neither be persisted nor mistaken for success.
- */
-export async function verifySessionOnce<U>(
+/** Longest ONE verification attempt may take, headers and body together. The bounded retry schedule is built on top of this. */
+export const SESSION_VERIFY_TIMEOUT_MS = 10_000;
+
+export type SessionVerifyOptions = {
+  timeoutMs?: number;
+  /** Resolves after `ms` or when `stop` aborts (the timer is released). Defaults to a real timer; tests inject a controllable one. */
+  deadline?: (ms: number, stop: AbortSignal) => Promise<void>;
+};
+
+/** The unbounded part: one request, its status classification and its body. Aborting `signal` ends it (headers wait AND body read). */
+async function readSession<U>(
   fetchFn: typeof fetch,
   signal: AbortSignal,
   parseUser: (payload: unknown) => U,
@@ -53,6 +59,54 @@ export async function verifySessionOnce<U>(
     return { kind: "valid", user: parseUser(body?.user) };
   } catch {
     return signal.aborted ? { kind: "cancelled" } : { kind: "unavailable", reason: "malformed" };
+  }
+}
+
+/**
+ * One request, one answer, ONE DEADLINE. A connection that stalls before the headers, or after them while the body is read, can no longer leave the
+ * attempt pending forever: at the deadline the request is aborted and the answer is "unavailable" (no information about the session -- never "invalid").
+ *
+ * The deadline is not tied to the arrival of headers, so a healthy response is never cut before its body is read. A fetch that ignores the abort
+ * still cannot hang the attempt: the verdict does not wait for it, and its late result is discarded. Cancellation by the caller ('signal') wins over the
+ * deadline and is reported as 'cancelled'. The timer and the listener are released on every outcome.
+ *
+ * A 2xx whose body does not contain a user the caller accepts (`parseUser` throws) is NOT a verification: it is reported as unavailable/"malformed".
+ */
+export async function verifySessionOnce<U>(
+  fetchFn: typeof fetch,
+  signal: AbortSignal,
+  parseUser: (payload: unknown) => U,
+  options: SessionVerifyOptions = {},
+): Promise<SessionCheckResult<U>> {
+  if (signal.aborted) return { kind: "cancelled" };
+  const attempt = new AbortController();
+  const stopTimer = new AbortController();
+  let finished = false;
+  let timedOut = false;
+  let announceCancelled!: () => void;
+  const cancelled = new Promise<"cancelled">((resolve) => { announceCancelled = () => resolve("cancelled"); });
+  const onCallerAbort = () => { attempt.abort(); announceCancelled(); };
+  signal.addEventListener("abort", onCallerAbort, { once: true });
+  const timeout = new Promise<"timeout">((resolve) => {
+    void (options.deadline ?? abortableSleep)(options.timeoutMs ?? SESSION_VERIFY_TIMEOUT_MS, stopTimer.signal).then(() => {
+      if (finished || signal.aborted) return;
+      timedOut = true;
+      attempt.abort();
+      resolve("timeout");
+    });
+  });
+  const work = readSession(fetchFn, attempt.signal, parseUser);
+  work.catch(() => undefined);
+  try {
+    const first = await Promise.race([work, timeout, cancelled]);
+    if (first === "cancelled") return { kind: "cancelled" };
+    if (first === "timeout") return { kind: "unavailable", reason: "timeout" };
+    if (first.kind === "cancelled") return signal.aborted ? { kind: "cancelled" } : timedOut ? { kind: "unavailable", reason: "timeout" } : first;
+    return first;
+  } finally {
+    finished = true;
+    stopTimer.abort(); // releases the timer
+    signal.removeEventListener("abort", onCallerAbort);
   }
 }
 

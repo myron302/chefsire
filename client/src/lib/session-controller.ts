@@ -57,6 +57,9 @@ export type SessionControllerDeps<U extends { id: string }> = {
   mutationTimeoutMs?: number;
   /** Clock, for the lifetime of a Google sign-in initiation. Defaults to Date.now. */
   now?: () => number;
+  /** Per-attempt deadline of a /api/auth/me verification (tests inject a controllable one). */
+  verifyDeadline?: (ms: number, stop: AbortSignal) => Promise<void>;
+  verifyTimeoutMs?: number;
 };
 
 /** After the deadline aborts a request, how long a fetch that ignores the abort is given before the exchange is abandoned. */
@@ -106,6 +109,7 @@ export function consumeOAuthInitiation(storage: StorageLike, presented: string |
 
 export function createSessionController<U extends { id: string }>(deps: SessionControllerDeps<U>) {
   const delays = deps.delaysMs ?? SESSION_RECHECK_DELAYS_MS;
+  const verifyOptions = () => ({ deadline: deps.verifyDeadline, timeoutMs: deps.verifyTimeoutMs });
   // localStorage can throw (private mode, quota, disabled). The session decision must never depend on it succeeding halfway: it is a best-effort cache.
   const storage = {
     getItem: (k: string) => { try { return deps.storage.getItem(k); } catch { return null; } },
@@ -141,6 +145,10 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
   const untrack = (ac: AbortController) => { inflight.delete(ac); };
   /** End the current identity: nothing started before this point may apply its result any more, and its requests are abandoned. */
   const invalidateAll = () => {
+    // A verification that is being superseded must not leave the PUBLISHED state saying "still checking" forever: whoever supersedes it (logout /
+    // login) will publish its own result, but a failed login would otherwise leave an indeterminate status that no one resolves. Honest and recoverable:
+    // the server never answered, so the session is "unavailable" (retryable), not invalid and not anonymous.
+    if (state.verifying) set({ verifying: false, ...(state.sessionStatus === "checking" ? { sessionStatus: "unavailable" as const } : {}) });
     epoch += 1;
     runSeq += 1;
     runAbort = undefined;
@@ -197,27 +205,35 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
     const myEpoch = epoch;
     const myRun = ++runSeq;
     const current = () => !disposed && myEpoch === epoch && myRun === runSeq;
-    set({ verifying: true });
+    // An OAuth return (or a user-initiated retry of one) has no verified identity yet. Stay INDETERMINATE -- loading, "checking" -- for as long as the
+    // run is active, so a guard reading `!loading && !user` cannot mistake "not verified yet" for "signed out" and redirect away from the destination.
+    const indeterminateIdentity = state.pendingOAuth && !state.user;
+    set({ verifying: true, ...(indeterminateIdentity ? { loading: true, sessionStatus: "checking" as const } : {}) });
     try {
       for (let attempt = 0; attempt <= delays.length; attempt++) {
         if (attempt > 0) {
           await deps.sleep(delays[attempt - 1], ac.signal);
           if (!current()) return;
         }
-        const result = await verifySessionOnce(deps.fetch, ac.signal, deps.parseUser);
+        const result = await verifySessionOnce(deps.fetch, ac.signal, deps.parseUser, verifyOptions());
         if (!current()) return; // logout / login / unmount / newer run happened while we waited: apply nothing
         if (result.kind === "valid") return commitVerifiedUser(result.user);
         if (result.kind === "invalid") return commitSignedOut();
         if (result.kind === "cancelled") return;
         // Unavailable: the answer says nothing about the session. Show the cached profile for continuity (never for an OAuth return,
         // where the account may be a different one), stay "unavailable", and let the loop try again.
-        set({
-          loading: false,
-          sessionStatus: "unavailable",
-          ...(attempt === 0 && cachedForContinuity && !state.user ? { user: cachedForContinuity } : {}),
-        });
+        if (indeterminateIdentity) {
+          set({ sessionStatus: "checking" }); // still nobody to show and nothing proven: keep waiting for the remaining attempts
+        } else {
+          set({
+            loading: false,
+            sessionStatus: "unavailable",
+            ...(attempt === 0 && cachedForContinuity && !state.user ? { user: cachedForContinuity } : {}),
+          });
+        }
       }
-      set({ verifying: false }); // retries exhausted: recoverable via retry(); never claimed invalid
+      // Retries exhausted: a definite, recoverable "unavailable" (never claimed invalid, never an endless spinner); retry() starts a new bounded run.
+      set({ verifying: false, loading: false, sessionStatus: "unavailable" });
     } finally {
       untrack(ac);
       if (runAbort === ac) runAbort = undefined;
@@ -337,7 +353,7 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
   async function reconcileUncertainSession(seq: number, requestedEmail: string, hadForeign: boolean): Promise<boolean> {
     storage.removeItem(USER_STORAGE_KEY);
     set({ user: null, sessionStatus: "checking", pendingOAuth: false });
-    const outcome = await withMutationDeadline((signal) => verifySessionOnce(deps.fetch, signal, deps.parseUser));
+    const outcome = await withMutationDeadline((signal) => verifySessionOnce(deps.fetch, signal, deps.parseUser, verifyOptions()));
     if (disposed || seq !== mutationSeq) {
       foreignCookieSuspected = true; // a newer intent follows in the queue; it decides the final state
       return false;
@@ -516,7 +532,7 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
       const myEpoch = epoch;
       const ac = track();
       try {
-        const result = await verifySessionOnce(deps.fetch, ac.signal, deps.parseUser);
+        const result = await verifySessionOnce(deps.fetch, ac.signal, deps.parseUser, verifyOptions());
         if (disposed || myEpoch !== epoch || result.kind === "cancelled") return;
         if (result.kind !== "valid") throw new Error("Unable to refresh your account");
         commitVerifiedUser(result.user);
@@ -535,8 +551,8 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
 
     /** Unmount: abandon everything, schedule nothing, apply nothing. */
     dispose() {
+      disposed = true; // first: invalidateAll()'s state settling must not publish after unmount
       invalidateAll();
-      disposed = true;
       for (const ac of Array.from(mutationAborts)) ac.abort();
     },
   };
