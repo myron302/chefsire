@@ -19,7 +19,7 @@ const USERS: Record<string, U> = {
 };
 const parseUser = (p: unknown): U => { if (!p || typeof p !== "object" || !("id" in p) || !("email" in p)) throw new Error("incomplete"); return p as U; };
 
-type Outcome = "ok" | "reject" | "network" | "malformed" | "no-user" | "truncated" | "bad-user" | "applied-answer-lost";
+type Outcome = "ok" | "reject" | "network" | "malformed" | "no-user" | "truncated" | "bad-user" | "applied-answer-lost" | "malformed-cookie-unchanged" | "stale-body-for-alice";
 type Pending = { n: number; email?: string; deliver: (outcome?: Outcome) => void };
 
 function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?: boolean; url?: string; deadline?: boolean } = {}) {
@@ -58,6 +58,8 @@ function site(opts: { cookie?: string | null; stored?: U | null; logoutPending?:
         logins.push({ n, email, deliver: (outcome = "ok") => {
           if (outcome === "network") return reject(new TypeError("Failed to fetch"));
           if (outcome === "applied-answer-lost") { jar.cookie = USERS[email!].id; delivered.push(`login#${n}:cookie applied, answer lost`); return; } // never resolves
+          if (outcome === "malformed-cookie-unchanged") { delivered.push(`login#${n}:200 garbage, cookie UNCHANGED (${jar.cookie})`); return resolve(new Response("<html>proxy error page</html>", { status: 200 })); }
+          if (outcome === "stale-body-for-alice") { delivered.push(`login#${n}:200 body names alice, cookie UNCHANGED`); return resolve(new Response(JSON.stringify({ success: true, user: USERS["a@example.test"] }), { status: 200 })); }
           if (outcome === "reject") { delivered.push(`login#${n}:401`); return resolve(new Response(JSON.stringify({ error: "Invalid email or password" }), { status: 401 })); }
           jar.cookie = USERS[email].id; // Set-Cookie takes effect when the response is delivered -- even if the BODY is unusable
           delivered.push(`login#${n}:200 cookie=${jar.cookie}`);
@@ -786,4 +788,163 @@ test("forged marker while NOT logged out and with a cached user is still verifie
   await s.flush();
   assert.equal(s.controller.getState().user?.id, "alice");
   assert.deepEqual(s.sent, ["me"]);
+});
+
+// ---- Codex P2: a reconciled identity must be the account the user asked for ---------------------------------------------------------------------
+async function signedInAlice() {
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "alice");
+  return s;
+}
+
+test("Alice is signed in and attempts Bob: a malformed 2xx that did NOT replace her cookie, reconciliation returns ALICE -> Bob's login FAILS, Alice's untouched session stays displayed (cookie = UI = storage)", async () => {
+  const s = await signedInAlice();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver("malformed-cookie-unchanged");
+  const result = await p;
+  await s.flush();
+  assert.equal(result.ok, false, "never a success for Bob");
+  assert.equal(s.jar.cookie, "alice");
+  assert.equal(s.controller.getState().user?.id, "alice", "the session that really exists is shown; nothing misleading");
+  s.assertSynchronized("Alice kept");
+  assert.ok(!s.sent.some((x) => x.startsWith("logout")), "her valid session is not logged out by the failed attempt");
+});
+
+test("a usable body that names a DIFFERENT account than the one requested is not trusted: reconciled with the server, and the login fails if the server says Alice", async () => {
+  const s = await signedInAlice();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver("stale-body-for-alice"); // e.g. a cached response
+  const result = await p;
+  await s.flush();
+  assert.equal(result.ok, false);
+  assert.equal(s.sent.at(-1), "me", "the body was cross-checked against the server");
+  assert.equal(s.controller.getState().user?.id, "alice");
+  s.assertSynchronized("body named another account");
+});
+
+test("a malformed 2xx that GENUINELY installed Bob's cookie: reconciliation confirms Bob -> login succeeds (typed address normalized: case and whitespace)", async () => {
+  const s = await signedInAlice();
+  const p = s.controller.login("  B@Example.TEST ", "pw");
+  await s.flush();
+  s.logins[0].deliver("malformed"); // cookie = bob
+  assert.deepEqual(await p, { ok: true });
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "bob");
+  s.assertSynchronized("Bob confirmed");
+});
+
+test("reconciliation meets a temporary database outage: login fails, nothing is displayed on an unverified cookie, cleanup logout is sent, nothing is left misleading", async () => {
+  const s = await signedInAlice();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.meScript.push(503);
+  s.logins[0].deliver("malformed-cookie-unchanged");
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.cached(), null);
+  s.logouts[0].deliver("ok");
+  assert.equal((await p).ok, false);
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  s.assertSynchronized("outage during reconciliation");
+});
+
+test("another LOGIN supersedes the pending reconciliation: the old verdict is discarded, the newer login decides, and no cleanup logout deletes its cookie", async () => {
+  const s = await signedInAlice();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  s.meScript.push(async () => { await gate; return new Response(JSON.stringify({ success: true, user: USERS["a@example.test"] }), { status: 200 }); });
+  s.logins[0].deliver("malformed-cookie-unchanged");
+  await s.flush();
+  const c = s.controller.login("c@example.test", "pw"); // newer intent while /me is in flight
+  await s.flush();
+  release();
+  assert.equal((await p).ok, false);
+  await s.flush();
+  assert.equal(s.sent.at(-1), "login#2:c@example.test", "Carol's login runs next; nothing was cleaned up on her behalf");
+  s.logins[1].deliver("ok");
+  assert.deepEqual(await c, { ok: true });
+  await s.flush();
+  assert.equal(s.jar.cookie, "carol");
+  assert.ok(!s.sent.some((x) => x.startsWith("logout")));
+  s.assertSynchronized("superseded by login");
+});
+
+test("a LOGOUT supersedes the pending reconciliation: nothing is adopted, the logout wins", async () => {
+  const s = await signedInAlice();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  s.meScript.push(async () => { await gate; return new Response(JSON.stringify({ success: true, user: USERS["a@example.test"] }), { status: 200 }); });
+  s.logins[0].deliver("malformed-cookie-unchanged");
+  await s.flush();
+  const out = s.controller.logout();
+  release();
+  await s.flush();
+  s.logouts[0].deliver("ok");
+  await Promise.all([p, out]);
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.jar.cookie, null);
+  s.assertSynchronized("superseded by logout");
+});
+
+test("a mismatching reconciled account while a FOREIGN session is already suspected (stale accepted login) is dropped, not adopted", async () => {
+  const s = site();
+  const a = s.controller.login("a@example.test", "pw");
+  await s.flush();
+  const b = s.controller.login("b@example.test", "pw"); // supersedes A
+  await s.flush();
+  s.logins[0].deliver("ok"); // Alice's cookie lands (stale); foreign session suspected
+  await a;
+  await s.flush();
+  s.logins[1].deliver("malformed-cookie-unchanged"); // Bob's 2xx is garbage and did not replace Alice's cookie
+  await s.flush();
+  assert.equal(s.controller.getState().user, null, "the abandoned account is never displayed");
+  assert.equal(s.sent.at(-1), "logout#1");
+  s.logouts[0].deliver("ok");
+  assert.equal((await b).ok, false);
+  await s.flush();
+  assert.equal(s.jar.cookie, null);
+  s.assertSynchronized("foreign dropped");
+});
+
+test("the cookie was changed by ANOTHER tab to Carol, then Bob's login yields garbage: the server's truth (Carol) is shown, Bob's login fails, and Carol's session is NOT logged out", async () => {
+  const s = await signedInAlice();
+  s.jar.cookie = "carol"; // another tab signed in as Carol
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver("malformed-cookie-unchanged");
+  assert.equal((await p).ok, false);
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "carol");
+  assert.ok(!s.sent.some((x) => x.startsWith("logout")), "cleanup must not destroy a session the user legitimately has");
+  s.assertSynchronized("other tab");
+});
+
+test("the deadline path keeps its identity check: the requested account → success, any other → failure", async () => {
+  const mismatch = await signedInAlice();
+  const p1 = mismatch.controller.login("b@example.test", "pw");
+  await mismatch.flush();
+  mismatch.deadlines.at(-1)!(); // hung; cookie unchanged (Alice)
+  assert.equal((await p1).ok, false);
+  await mismatch.flush();
+  assert.equal(mismatch.controller.getState().user?.id, "alice");
+  mismatch.assertSynchronized("deadline mismatch");
+
+  const match = await signedInAlice();
+  const p2 = match.controller.login("b@example.test", "pw");
+  await match.flush();
+  match.logins[0].deliver("applied-answer-lost");
+  match.deadlines.at(-1)!();
+  assert.deepEqual(await p2, { ok: true });
+  await match.flush();
+  match.assertSynchronized("deadline match");
 });

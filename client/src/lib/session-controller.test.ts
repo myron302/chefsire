@@ -361,7 +361,7 @@ test("new account login while an old session check is in flight: the old respons
   s.controller.start();
   await s.flush();
   s.loginPlans.push(json(200, { success: true, user: bob }));
-  const result = await s.controller.login("bob@example.test", "pw");
+  const result = await s.controller.login("b@example.test", "pw");
   assert.deepEqual(result, { ok: true });
   assert.deepEqual(s.controller.getState().user, bob);
   old.release(new Response(JSON.stringify({ success: true, user: alice }), { status: 200 }));
@@ -374,7 +374,7 @@ test("a check that BEGINS during a login but finishes after it is also stale", a
   const s = setup({ stored: alice });
   const loginGate = deferred();
   s.loginPlans.push(loginGate.plan);
-  const loginPromise = s.controller.login("bob@example.test", "pw");
+  const loginPromise = s.controller.login("b@example.test", "pw");
   await s.flush();
   const inflightCheck = deferred();
   s.mePlans.push(inflightCheck.plan);
@@ -392,7 +392,7 @@ test("login superseded by logout: not signed in; the logout is sent only AFTER t
   const loginGate = deferred();
   s.loginPlans.push(loginGate.plan);
   s.logoutPlans.push(status(200));
-  const loginPromise = s.controller.login("bob@example.test", "pw");
+  const loginPromise = s.controller.login("b@example.test", "pw");
   await s.flush();
   const logoutPromise = s.controller.logout();
   await s.flush();

@@ -319,34 +319,49 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
     // Anything else (network, deadline, 5xx): the intent stays recorded and is retried on the next start.
   }
 
+  /** The one comparison every login branch uses: what the user typed against the address of the account the server reports. */
+  const normalizedEmail = (value: unknown) => String(value ?? "").trim().toLowerCase();
+  const emailOf = (user: U) => normalizedEmail((user as { email?: unknown }).email);
+
   /**
-   * The cookie may have changed to a session we were not told about. Show nobody until the SERVER says who it is, then adopt exactly that identity.
+   * The cookie may have changed to a session we were not told about. Show nobody until the SERVER says who it is, then act on exactly that identity.
    * If the server cannot say (outage / malformed / deadline) the session is uncertain and is cleared rather than guessed at. Runs inside a queue slot.
-   * Returns the adopted user, or null.
+   *
+   * `requestedEmail` is the account the user asked to sign in as. Returns true ONLY when the server-authoritative identity is that account, so a login
+   * can never be reported successful because some OTHER session (typically the one that was already there) is what the server confirmed:
+   *   - requested account confirmed ........ adopted; true
+   *   - a different account confirmed ....... false. If a foreign session was already known to be in the jar (`hadForeign`) it is the abandoned one and is
+   *                                          dropped; otherwise it is the session that genuinely exists (the previous user, or one another tab created),
+   *                                          so it is shown -- UI, storage and cookie agree -- and is NOT logged out by a failed attempt
    */
-  async function reconcileUncertainSession(seq: number): Promise<U | null> {
+  async function reconcileUncertainSession(seq: number, requestedEmail: string, hadForeign: boolean): Promise<boolean> {
     storage.removeItem(USER_STORAGE_KEY);
     set({ user: null, sessionStatus: "checking", pendingOAuth: false });
     const outcome = await withMutationDeadline((signal) => verifySessionOnce(deps.fetch, signal, deps.parseUser));
     if (disposed || seq !== mutationSeq) {
       foreignCookieSuspected = true; // a newer intent follows in the queue; it decides the final state
-      return null;
+      return false;
     }
     const result = outcome.kind === "done" ? outcome.value : undefined;
     if (result?.kind === "valid") {
+      const requested = emailOf(result.user) === requestedEmail;
+      if (!requested && hadForeign) {
+        await dropForeignSession(); // the abandoned session is not what the user asked for, and nothing else is displayed on it
+        return false;
+      }
       storage.removeItem(LOGOUT_PENDING_KEY);
       foreignCookieSuspected = false;
       commitVerifiedUser(result.user);
       epoch += 1;
-      return result.user;
+      return requested;
     }
     if (result?.kind === "invalid") {
       foreignCookieSuspected = false; // the server says there is no session
       commitSignedOut();
-      return null;
+      return false;
     }
     await dropForeignSession(); // cannot tell who the cookie belongs to: clear it
-    return null;
+    return false;
   }
 
   /** A session may sit in the jar that the UI did not adopt: remove it, and show signed-out like the jar. Runs inside a queue slot. */
@@ -440,10 +455,8 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
             await dropForeignSession();
             return { ok: false, error: "Sign-in timed out. Please try again." };
           }
-          const adopted = await reconcileUncertainSession(seq);
-          const typed = email.toLowerCase().trim();
-          const sameAccount = !!adopted && String((adopted as { email?: string }).email ?? "").toLowerCase() === typed;
-          return sameAccount ? { ok: true } : { ok: false, error: "Sign-in timed out. Please try again." };
+          const requestedAccount = await reconcileUncertainSession(seq, normalizedEmail(email), false);
+          return requestedAccount ? { ok: true } : { ok: false, error: "Sign-in timed out. Please try again." };
         }
 
         const data = ex.body as any;
@@ -459,6 +472,9 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
         let user: U | null = null;
         if (ex.bodyReadable && data?.success && data?.user) {
           try { user = deps.parseUser(data.user); } catch { user = null; }
+          // A body naming some OTHER account than the one requested (a cached or substituted response) is not evidence of this login: cross-check
+          // it with the server like any other unusable answer.
+          if (user && emailOf(user) !== normalizedEmail(email)) user = null;
         }
         if (superseded()) {
           // A newer intent exists. Do NOT adopt this result and do NOT send a cleanup request from here: whatever the newer intent is (logout / another
@@ -473,8 +489,9 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
           epoch += 1; // checks that began while this login was in flight may have read the previous cookie: they must not apply
           return { ok: true };
         }
-        console.error("Login response was successful but its body was unusable; reconciling the session with the server.");
-        return (await reconcileUncertainSession(seq))
+        console.error("Login response was successful but its body was unusable or named another account; reconciling the session with the server.");
+        const hadForeignBefore = foreignCookieSuspected;
+        return (await reconcileUncertainSession(seq, normalizedEmail(email), hadForeignBefore))
           ? { ok: true }
           : { ok: false, error: "We couldn't confirm your sign-in. Please try again." };
         } catch (e) {
