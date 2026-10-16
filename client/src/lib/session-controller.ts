@@ -81,7 +81,14 @@ export const OAUTH_INITIATION_KEY = "auth_oauth_initiation";
 const OAUTH_INITIATION_TTL_MS = 10 * 60_000; // same lifetime as the server's oauth cookies
 const OAUTH_NONCE_SHAPE = /^[A-Za-z0-9_-]{16,64}$/;
 
-type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem"> & Partial<Pick<Storage, "key" | "length">>;
+
+/**
+ * Each initiation lives under its OWN key (`auth_oauth_initiation:<nonce>`), so two tabs that start Google sign-in concurrently can never overwrite each
+ * other (no read-modify-write of a shared record), and consuming one never touches another. The legacy single key is still honoured on consume.
+ */
+const OAUTH_INITIATION_PREFIX = `${OAUTH_INITIATION_KEY}:`;
+const OAUTH_INITIATION_MAX = 16; // bounds storage growth from repeated clicks / abandoned flows
 
 function randomNonce(): string {
   const bytes = new Uint8Array(24);
@@ -89,22 +96,51 @@ function randomNonce(): string {
   return btoa(String.fromCharCode(...Array.from(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+function parseInitiation(raw: string | null): { nonce: string; at: number } | null {
+  try {
+    const r = JSON.parse(raw ?? "null");
+    return r && typeof r.nonce === "string" && typeof r.at === "number" ? r : null;
+  } catch { return null; }
+}
+
+function pruneInitiations(storage: StorageLike, nowMs: number): void {
+  try {
+    if (typeof storage.key !== "function" || typeof storage.length !== "number") return;
+    const live: Array<{ k: string; at: number }> = [];
+    for (let i = storage.length - 1; i >= 0; i--) {
+      const k = storage.key(i);
+      if (!k || !k.startsWith(OAUTH_INITIATION_PREFIX)) continue;
+      const rec = parseInitiation(storage.getItem(k));
+      if (!rec || nowMs - rec.at > OAUTH_INITIATION_TTL_MS || nowMs - rec.at < 0) storage.removeItem(k);
+      else live.push({ k, at: rec.at });
+    }
+    live.sort((x, y) => y.at - x.at).slice(OAUTH_INITIATION_MAX).forEach((x) => storage.removeItem(x.k));
+  } catch { /* best effort */ }
+}
+
 /** Record that THIS browser is starting a Google sign-in now; returns the nonce to pass to `/api/auth/google?client_state=`. */
 export function beginGoogleSignIn(storage: StorageLike, nowMs: number = Date.now(), random: () => string = randomNonce): string {
   const nonce = random();
-  try { storage.setItem(OAUTH_INITIATION_KEY, JSON.stringify({ nonce, at: nowMs })); } catch { /* best effort: without it a pending logout simply wins */ }
+  pruneInitiations(storage, nowMs);
+  try { storage.setItem(OAUTH_INITIATION_PREFIX + nonce, JSON.stringify({ nonce, at: nowMs })); } catch { /* best effort: without it a pending logout simply wins */ }
   return nonce;
 }
 
-/** True only for the exact nonce recorded by `beginGoogleSignIn`, unexpired. Single use: the record is removed on a match and whenever it has expired. */
+/** True only for an exact nonce recorded by `beginGoogleSignIn`, unexpired. Single use: that record is removed on a match; expired ones whenever seen. */
 export function consumeOAuthInitiation(storage: StorageLike, presented: string | null, nowMs: number): boolean {
-  let record: { nonce?: unknown; at?: unknown } | null = null;
-  try { record = JSON.parse(storage.getItem(OAUTH_INITIATION_KEY) ?? "null"); } catch { record = null; }
-  if (!record || typeof record.nonce !== "string" || typeof record.at !== "number") return false;
-  const fresh = nowMs - record.at >= 0 && nowMs - record.at <= OAUTH_INITIATION_TTL_MS;
-  const matches = fresh && presented !== null && OAUTH_NONCE_SHAPE.test(presented) && presented === record.nonce;
-  if (matches || !fresh) { try { storage.removeItem(OAUTH_INITIATION_KEY); } catch { /* nothing to do */ } }
-  return matches;
+  const drop = (k: string) => { try { storage.removeItem(k); } catch { /* nothing to do */ } };
+  const check = (k: string): boolean => {
+    const rec = parseInitiation((() => { try { return storage.getItem(k); } catch { return null; } })());
+    if (!rec) return false;
+    const fresh = nowMs - rec.at >= 0 && nowMs - rec.at <= OAUTH_INITIATION_TTL_MS;
+    const matches = fresh && presented !== null && OAUTH_NONCE_SHAPE.test(presented) && presented === rec.nonce;
+    if (matches || !fresh) drop(k);
+    return matches;
+  };
+  if (presented !== null && OAUTH_NONCE_SHAPE.test(presented) && check(OAUTH_INITIATION_PREFIX + presented)) return true;
+  const legacy = check(OAUTH_INITIATION_KEY);
+  pruneInitiations(storage, nowMs);
+  return legacy;
 }
 
 export function createSessionController<U extends { id: string }>(deps: SessionControllerDeps<U>) {

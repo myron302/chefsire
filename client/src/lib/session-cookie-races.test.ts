@@ -737,12 +737,12 @@ test("GENUINE Google sign-in after a failed logout: the click recorded a nonce, 
   const nonce = beginGoogleSignIn({ getItem: (k) => store0.get(k) ?? null, setItem: (k, v) => void store0.set(k, v), removeItem: (k) => void store0.delete(k) }, Date.now());
   assert.match(nonce, /^[A-Za-z0-9_-]{16,64}$/);
   const s = site({ cookie: "carol", logoutPending: true, url: withMarker(`&oauth_state=${nonce}`) });
-  s.store.set(OAUTH_INITIATION_KEY, store0.get(OAUTH_INITIATION_KEY)!);
+  for (const [k, v] of store0) if (k.startsWith(OAUTH_INITIATION_KEY)) s.store.set(k, v);
   s.controller.start();
   await s.flush();
   assert.equal(s.controller.getState().user?.id, "carol");
   assert.equal(s.store.has(LOGOUT_PENDING_KEY), false, "cleared by the bound transition, not by the bare marker");
-  assert.equal(s.store.has(OAUTH_INITIATION_KEY), false, "the nonce is single-use");
+  assert.equal([...s.store.keys()].some((k) => k.startsWith(OAUTH_INITIATION_KEY)), false, "the nonce is single-use");
   assert.equal(s.url(), "/recipes/9#top", "both the marker and the state are removed; path and fragment preserved");
   s.assertSynchronized("genuine");
 });
@@ -751,7 +751,7 @@ test("browser RELOAD after a genuine completion: the URL is clean, nothing is re
   const store0 = new Map<string, string>();
   const nonce = beginGoogleSignIn({ getItem: (k) => store0.get(k) ?? null, setItem: (k, v) => void store0.set(k, v), removeItem: (k) => void store0.delete(k) }, Date.now());
   const first = site({ cookie: "carol", url: withMarker(`&oauth_state=${nonce}`) });
-  first.store.set(OAUTH_INITIATION_KEY, store0.get(OAUTH_INITIATION_KEY)!);
+  for (const [k, v] of store0) if (k.startsWith(OAUTH_INITIATION_KEY)) first.store.set(k, v);
   first.controller.start();
   await first.flush();
   assert.equal(first.controller.getState().user?.id, "carol");
@@ -1000,4 +1000,199 @@ test("stalled /api/auth/me: deadline = unavailable (not invalid), bounded retry 
   await s.flush();
   assert.deepEqual(unhandled, []);
   process.off("unhandledRejection", onUnhandled);
+});
+
+const adapt = (m: Map<string, string>) => ({ getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), key: (i: number) => [...m.keys()][i] ?? null, get length() { return m.size; } }) as any;
+
+test("two tabs click Google; first completes while a logout is pending: the first callback is trusted (not rejected), once", async () => {
+  const w = site({ cookie: "carol", url: "https://app.test/" });
+  const n1 = beginGoogleSignIn(adapt(w.store), Date.now());
+  const n2 = beginGoogleSignIn(adapt(w.store), Date.now() + 1);
+  assert.notEqual(n1, n2);
+  w.store.set("auth_logout_pending", "1");
+  const s = site({ cookie: "carol", url: `https://app.test/?google-login=success&oauth_state=${n1}` });
+  for (const [k, v] of w.store) s.store.set(k, v);
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.store.has("auth_logout_pending"), false, "genuine sign-in supersedes the pending logout");
+  assert.equal(s.logouts.length, 0);
+  assert.ok([...s.store.keys()].some((k) => k.endsWith(n2)), "the other tab's initiation is untouched");
+  assert.ok(![...s.store.keys()].some((k) => k.endsWith(n1)), "single use");
+});
+
+test("pending logout + untrusted/forged/replayed callback still stays signed out", async () => {
+  const s = site({ cookie: "carol", url: "https://app.test/?google-login=success&oauth_state=ZZZZZZZZZZZZZZZZZZZZZZZZ" });
+  s.store.set("auth_logout_pending", "1");
+  beginGoogleSignIn(adapt(s.store), Date.now());
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.controller.getState().sessionStatus, "anonymous");
+});
+
+// ---- Phase 2C coverage gaps: stalled /api/auth/me and OAuth supersession -------------------------------------------------------------------------
+function stallingMe(hits: { aborted: number; started: number }) {
+  return (signal?: AbortSignal) => new Promise<Response>((_, reject) => {
+    hits.started++;
+    signal?.addEventListener("abort", () => { hits.aborted++; reject(Object.assign(new Error("aborted"), { name: "AbortError" })); }, { once: true });
+  });
+}
+const never = async <T>(p: Promise<T>, ms = 500) => Promise.race([p, new Promise<"pending">((r) => setTimeout(() => r("pending"), ms))]);
+
+test("every verification attempt stalls: each hits its own deadline, retries are bounded, the end state is recoverable 'unavailable' (not anonymous), cached profile kept", async () => {
+  const hits = { aborted: 0, started: 0 };
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  for (let i = 0; i < 4; i++) s.meScript.push(stallingMe(hits));
+  s.controller.start();
+  await s.flush();
+  for (let i = 0; i < 4; i++) {
+    s.verifyDeadlines.shift()!();
+    await s.flush();
+    if (i < 3) { s.sleeps.shift()!(); await s.flush(); }
+  }
+  assert.equal(hits.started, 4);
+  assert.equal(hits.aborted, 4, "every stalled request was aborted by its deadline");
+  const st = s.controller.getState();
+  assert.equal(st.sessionStatus, "unavailable");
+  assert.equal(st.verifying, false);
+  assert.equal(st.loading, false);
+  assert.equal(st.user?.id, "alice", "cached continuity, never claimed as verified");
+  assert.equal(s.sleeps.length, 0, "no further retry is scheduled");
+  // recoverable
+  s.controller.retry();
+  await s.flush();
+  assert.equal(s.controller.getState().sessionStatus, "authenticated");
+});
+
+test("logout while verification is stalled: the stalled request is aborted, user is signed out, nothing re-adopts the old identity", async () => {
+  const unhandled: unknown[] = [];
+  const h = (e: unknown) => unhandled.push(e);
+  process.on("unhandledRejection", h);
+  const hits = { aborted: 0, started: 0 };
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.meScript.push(stallingMe(hits));
+  s.controller.start();
+  await s.flush();
+  const out = s.controller.logout();
+  await s.flush();
+  assert.equal(hits.aborted, 1);
+  assert.equal(s.controller.getState().user, null);
+  s.logouts[0].deliver();
+  await out;
+  await s.flush();
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.cached(), null);
+  assert.equal(s.store.has(LOGOUT_PENDING_KEY), false);
+  process.off("unhandledRejection", h);
+  assert.deepEqual(unhandled, []);
+});
+
+test("a newer login supersedes a stalled verification: the stalled request is aborted and the new identity wins", async () => {
+  const hits = { aborted: 0, started: 0 };
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.meScript.push(stallingMe(hits));
+  s.controller.start();
+  await s.flush();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver();
+  await s.flush();
+  await never(p);
+  assert.equal(hits.aborted, 1);
+  s.verifyDeadlines.splice(0).forEach((f) => f()); // late deadlines are harmless
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "bob");
+});
+
+test("a response that arrives AFTER its attempt timed out cannot overwrite the newer result", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const s = site({ cookie: "carol", url: "https://app.test/?google-login=success" });
+  s.meScript.push(async () => { await gate; return new Response(JSON.stringify({ success: true, user: USERS["a@example.test"] }), { status: 200 }); }); // ignores abort
+  s.controller.start();
+  await s.flush();
+  s.verifyDeadlines.shift()!();
+  await s.flush();
+  s.sleeps.shift()!();
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "carol");
+  release();
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "carol", "the late Alice body is ignored");
+  assert.ok(!s.states.some((x) => x.user?.id === "alice"));
+});
+
+test("refresh() settles after its deadline expires (and after dispose) instead of hanging", async () => {
+  const hits = { aborted: 0, started: 0 };
+  const s = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s.controller.start();
+  await s.flush();
+  for (let i = 0; i < 4; i++) s.meScript.push(stallingMe(hits));
+  const r = s.controller.refresh();
+  let settled = false;
+  void r.then(() => { settled = true; }, () => { settled = true; });
+  for (let i = 0; i < 8 && !settled; i++) {
+    await s.flush();
+    s.verifyDeadlines.shift()?.();
+    s.sleeps.shift()?.();
+  }
+  await s.flush();
+  assert.equal(settled, true, "refresh() resolved/rejected within the bounded retries");
+  const s2 = site({ cookie: "alice", stored: USERS["a@example.test"] });
+  s2.controller.start();
+  await s2.flush();
+  s2.meScript.push(stallingMe({ aborted: 0, started: 0 }));
+  const r2 = s2.controller.refresh();
+  let settled2 = false;
+  void r2.then(() => { settled2 = true; }, () => { settled2 = true; });
+  await s2.flush();
+  s2.controller.dispose();
+  await s2.flush();
+  assert.equal(settled2, true, "dispose settles a pending refresh");
+});
+
+test("Google OAuth superseded by logout: the callback identity is never adopted", async () => {
+  const hits = { aborted: 0, started: 0 };
+  const s = site({ cookie: "carol", url: "https://app.test/services/catering/provider?google-login=success" });
+  s.meScript.push(stallingMe(hits));
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().sessionStatus, "checking");
+  const out = s.controller.logout();
+  await s.flush();
+  s.logouts[0].deliver();
+  await out;
+  await s.flush();
+  assert.equal(hits.aborted, 1);
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.controller.getState().pendingOAuth, false);
+  assert.ok(!s.states.some((x) => x.user?.id === "carol"));
+});
+
+test("Google OAuth superseded by another login: the OAuth identity is never shown; the new login wins", async () => {
+  const hits = { aborted: 0, started: 0 };
+  const s = site({ cookie: "carol", url: "https://app.test/?google-login=success" });
+  s.meScript.push(stallingMe(hits));
+  s.controller.start();
+  await s.flush();
+  const p = s.controller.login("b@example.test", "pw");
+  await s.flush();
+  s.logins[0].deliver();
+  await s.flush();
+  await never(p);
+  assert.equal(hits.aborted, 1);
+  assert.ok(!s.states.some((x) => x.user?.id === "carol"));
+});
+
+test("OAuth callback with another account's cached identity: the cached user is never displayed or adopted while verifying", async () => {
+  const s = site({ cookie: "carol", stored: USERS["a@example.test"], url: "https://app.test/?google-login=success" });
+  s.meScript.push(503, 503);
+  s.controller.start();
+  await s.flush();
+  s.sleeps.shift()!();
+  await s.flush();
+  s.sleeps.shift()!();
+  await s.flush();
+  assert.equal(s.controller.getState().user?.id, "carol");
+  assert.ok(!s.states.some((x) => x.user?.id === "alice"), "Alice's cached profile never reached the UI");
 });

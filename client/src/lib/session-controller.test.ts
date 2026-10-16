@@ -338,9 +338,8 @@ test("an explicit new sign-in clears a pending logout intent: a password login, 
   assert.equal(s.store.has(LOGOUT_PENDING_KEY), false);
   // Google: the click recorded a nonce; the callback echoed it.
   const nonce = beginGoogleSignIn({ getItem: (k) => s.store.get(k) ?? null, setItem: (k, v) => void s.store.set(k, v), removeItem: (k) => void s.store.delete(k) } as never, Date.now());
-  const store = new Map<string, string>([[LOGOUT_PENDING_KEY, "1"], [OAUTH_INITIATION_KEY, s.store.get(OAUTH_INITIATION_KEY)!]]);
-  const g = setup({ logoutPending: true, url: `https://app.test/?google-login=success&oauth_state=${nonce}` });
-  g.store.set(OAUTH_INITIATION_KEY, store.get(OAUTH_INITIATION_KEY)!);
+    const g = setup({ logoutPending: true, url: `https://app.test/?google-login=success&oauth_state=${nonce}` });
+  for (const [k, v] of s.store) if (k.startsWith(OAUTH_INITIATION_KEY)) g.store.set(k, v);
   g.mePlans.push(me(bob));
   g.controller.start();
   await g.flush();
