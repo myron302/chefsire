@@ -21,6 +21,7 @@ import { isEmailAuthoritativelyVerified } from "../lib/email-verification-proven
 import { verifyAuthToken } from "../lib/jwt-config";
 import { issueAuthToken, checkSession } from "../lib/auth-session";
 import { isDatabaseUnavailableError, sendServiceUnavailable } from "../lib/db-availability";
+import { flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, openFlow, sealFlow } from "../lib/oauth-flow";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -36,6 +37,8 @@ const oauthReturnCookieOptions = {
 // echoed on the success redirect as `oauth_state`, so the page can tell a sign-in IT started from a URL someone merely typed or replayed.
 // Opaque to the server and never trusted for anything: strict shape, short-lived, httpOnly, scoped to the callback.
 const OAUTH_CLIENT_STATE_COOKIE = "oauth_client_state";
+// Flow cookies are scoped to /api/auth/google (not just the callback) so that an initiation can see, and evict, this browser's stale flows.
+const oauthFlowCookieOptions = { ...oauthReturnCookieOptions, path: "/api/auth/google" };
 const OAUTH_CLIENT_STATE_SHAPE = /^[A-Za-z0-9_-]{16,64}$/;
 
 function safeInternalDestination(value: unknown): string | null {
@@ -498,13 +501,14 @@ router.get("/auth/me", async (req, res) => {
  * Initiates Google OAuth flow for LOGIN (silent if already authenticated)
  */
 router.get("/auth/google", (req, res, next) => {
+  // One independent flow per initiation (see lib/oauth-flow): its own id as the OAuth `state`, its own cookie. Nothing here touches another flow's
+  // cookie except evicting expired/invalid ones and the oldest beyond the cap.
   const destination = safeInternalDestination(req.query.next);
-  if (destination) res.cookie(OAUTH_RETURN_COOKIE, destination, oauthReturnCookieOptions);
-  else res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
   const clientState = typeof req.query.client_state === "string" && OAUTH_CLIENT_STATE_SHAPE.test(req.query.client_state) ? req.query.client_state : null;
-  if (clientState) res.cookie(OAUTH_CLIENT_STATE_COOKIE, clientState, oauthReturnCookieOptions);
-  else res.clearCookie(OAUTH_CLIENT_STATE_COOKIE, { path: oauthReturnCookieOptions.path });
-  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+  for (const name of flowCookiesToEvict(req.cookies)) res.clearCookie(name, { path: oauthFlowCookieOptions.path });
+  const flowId = newFlowId();
+  res.cookie(flowCookieName(flowId), sealFlow(flowId, { destination, clientState }), oauthFlowCookieOptions);
+  passport.authenticate("google", { scope: ["profile", "email"], state: flowId })(req, res, next);
 });
 
 /**
@@ -521,10 +525,18 @@ router.get("/auth/google/signup", passport.authenticate("google", {
  * Google OAuth callback
  */
 router.get("/auth/google/callback", (req, res, next) => {
-  const destination = safeInternalDestination(req.cookies?.[OAUTH_RETURN_COOKIE]);
+  // Only the flow named by THIS callback's `state` is read and cleared. `state` is a lookup key, not proof: without a valid sealed cookie for it the
+  // callback is a plain Google sign-in (no destination, no nonce echo). Pre-upgrade cookies (shared single-value) are cleared and ignored.
+  const flowId = typeof req.query.state === "string" ? req.query.state : null;
+  let destination: string | null = null;
+  let clientState: string | null = null;
+  if (isFlowId(flowId)) {
+    const flow = openFlow(flowId, req.cookies?.[flowCookieName(flowId)]);
+    destination = safeInternalDestination(flow?.destination);
+    clientState = flow?.clientState ?? null;
+    res.clearCookie(flowCookieName(flowId), { path: oauthFlowCookieOptions.path });
+  }
   res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
-  const presentedState = req.cookies?.[OAUTH_CLIENT_STATE_COOKIE];
-  const clientState = typeof presentedState === "string" && OAUTH_CLIENT_STATE_SHAPE.test(presentedState) ? presentedState : null;
   res.clearCookie(OAUTH_CLIENT_STATE_COOKIE, { path: oauthReturnCookieOptions.path });
   passport.authenticate("google", { session: false }, async (error, user) => {
     if (error) {

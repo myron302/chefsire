@@ -37,28 +37,45 @@ const NONCE = "Zm9vYmFyYmF6cXV4MTIzNDU2";
 const get = (path: string, cookie?: string) => fetch(base + path, { redirect: "manual", headers: cookie ? { cookie } : {} });
 const setCookies = (r: Response) => r.headers.getSetCookie();
 
-test("initiation: a well-formed client_state is stored in an httpOnly cookie scoped to the callback path", async () => {
+const flowCookie = (r: Response) => setCookies(r).find((x) => x.startsWith("oauth_flow_"));
+const stateOf = (r: Response) => new URL(r.headers.get("location")!).searchParams.get("state");
+// FakeGoogle above forwards no state; wrap so the passport `state` option is visible like it is with the real strategy.
+const origAuthenticate = FakeGoogle.prototype.authenticate;
+FakeGoogle.prototype.authenticate = function (req: any, options: any = {}) {
+  if (!String(req.path).endsWith("/callback")) {
+    const u = new URL("https://accounts.google.test/o/oauth2/auth");
+    if (options.state) u.searchParams.set("state", options.state);
+    return (this as any).redirect(u.toString());
+  }
+  return origAuthenticate.call(this, req, options);
+};
+
+test("initiation: the flow is stored in its own httpOnly cookie scoped to the google routes, named by the OAuth state", async () => {
   const r = await get(`/api/auth/google?client_state=${NONCE}`);
   assert.equal(r.status, 302);
-  const c = setCookies(r).find((x) => x.startsWith("oauth_client_state="))!;
-  assert.ok(c.startsWith(`oauth_client_state=${NONCE};`), c);
+  const state = stateOf(r)!;
+  const c = flowCookie(r)!;
+  assert.ok(c.startsWith(`oauth_flow_${state}=`), c);
   assert.match(c, /HttpOnly/i);
-  assert.match(c, /Path=\/api\/auth\/google\/callback/);
+  assert.match(c, /Path=\/api\/auth\/google(;|$)/);
   assert.match(c, /Max-Age=600/);
+  assert.ok(!c.includes(NONCE), "the payload is sealed, not plain");
 });
 
 test("initiation: malformed / oversized / non-string client_state is never stored or reflected", async () => {
   for (const bad of ["short", "has space and ;semi=colon", "x".repeat(200), "<script>alert(1)</script>"]) {
     const r = await get(`/api/auth/google?client_state=${encodeURIComponent(bad)}`);
-    const c = setCookies(r).filter((x) => x.startsWith("oauth_client_state="));
-    assert.ok(c.every((x) => x.startsWith("oauth_client_state=;")), `${bad}: ${c.join("|")}`);
+    const cb = await get(`/api/auth/google/callback?state=${stateOf(r)}`, flowCookie(r)!.split(";")[0]);
+    assert.equal(new URL(cb.headers.get("location")!, "https://x.test").searchParams.has("oauth_state"), false, bad);
   }
   const arr = await get(`/api/auth/google?client_state=${NONCE}&client_state=${NONCE}`);
-  assert.ok(setCookies(arr).filter((x) => x.startsWith("oauth_client_state=")).every((x) => x.startsWith("oauth_client_state=;")), "repeated parameter (array) is rejected");
+  const cb = await get(`/api/auth/google/callback?state=${stateOf(arr)}`, flowCookie(arr)!.split(";")[0]);
+  assert.equal(new URL(cb.headers.get("location")!, "https://x.test").searchParams.has("oauth_state"), false, "repeated parameter (array) is rejected");
 });
 
-test("callback: the nonce from the cookie is echoed as oauth_state next to the marker; the destination is preserved; the cookie is cleared; the session cookie is issued", async () => {
-  const r = await get("/api/auth/google/callback", `oauth_client_state=${NONCE}; oauth_return_to=${encodeURIComponent("/recipes/9?tab=a#c")}`);
+test("callback: the nonce and destination of THIS flow are echoed next to the marker; its cookie is cleared; the session cookie is issued", async () => {
+  const init = await get(`/api/auth/google?client_state=${NONCE}&next=${encodeURIComponent("/recipes/9?tab=a#c")}`);
+  const r = await get(`/api/auth/google/callback?state=${stateOf(init)}`, flowCookie(init)!.split(";")[0]);
   assert.equal(r.status, 302);
   const location = new URL(r.headers.get("location")!, "https://x.test");
   assert.equal(location.pathname, "/recipes/9");
@@ -68,14 +85,15 @@ test("callback: the nonce from the cookie is echoed as oauth_state next to the m
   assert.equal(location.hash, "#c");
   const cookies = setCookies(r);
   assert.ok(cookies.some((x) => x.startsWith("auth_token=") && /HttpOnly/i.test(x)));
-  assert.ok(cookies.some((x) => x.startsWith("oauth_client_state=;")), "single use: cleared");
+  assert.ok(cookies.some((x) => x.startsWith(`oauth_flow_${stateOf(init)}=;`)), "single use: cleared");
 });
 
-test("callback without (or with a malformed) cookie behaves as before: marker only, no oauth_state", async () => {
-  for (const cookie of [undefined, "oauth_client_state=bad", `oauth_client_state=${"y".repeat(100)}`]) {
-    const r = await get("/api/auth/google/callback", cookie);
+test("callback without (or with a legacy shared / malformed) cookie behaves as a plain sign-in: marker only, no oauth_state, no trusted destination", async () => {
+  for (const [q, cookie] of [["", undefined], ["?state=short", undefined], ["", `oauth_client_state=${NONCE}; oauth_return_to=${encodeURIComponent("/evil")}`]] as const) {
+    const r = await get(`/api/auth/google/callback${q}`, cookie);
     const location = new URL(r.headers.get("location")!, "https://x.test");
     assert.equal(location.searchParams.get("google-login"), "success");
     assert.equal(location.searchParams.has("oauth_state"), false, String(cookie));
+    assert.equal(location.pathname, "/");
   }
 });
