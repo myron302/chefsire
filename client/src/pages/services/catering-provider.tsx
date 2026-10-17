@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { ArrowLeft, ChefHat, Loader2, MapPin } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
+import { shouldRedirectToLogin } from "@/lib/auth-guard";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +28,7 @@ import { applyInquiryBookingProjection, cateringOfferInvalidationKeys, cateringP
 type ProviderForm = { displayName: string; avatar: string; specialty: string; location: string; radius: string; bio: string; enabled: boolean };
 
 export default function CateringProviderPage() {
-  const { user, loading, refreshUser } = useUser();
+  const { user, loading, refreshUser, sessionStatus, retrySession } = useUser();
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -44,8 +45,9 @@ export default function CateringProviderPage() {
   };
 
   useEffect(() => {
-    if (!loading && !user) navigate("/login?next=%2Fservices%2Fcatering%2Fprovider", { replace: true });
-  }, [loading, navigate, user]);
+    // Only a CONFIRMED anonymous session leaves the page; "not verified yet" (OAuth retries) and "verification unavailable" stay on the destination.
+    if (shouldRedirectToLogin({ loading, user, sessionStatus })) navigate("/login?next=%2Fservices%2Fcatering%2Fprovider", { replace: true });
+  }, [loading, navigate, user, sessionStatus]);
   useEffect(() => {
     const syncSection = () => setSection(cateringProviderSectionFromHash(window.location.hash));
     window.addEventListener("hashchange", syncSection);
@@ -80,6 +82,7 @@ export default function CateringProviderPage() {
     finally { setSaving(false); }
   };
 
+  if (!user && !loading && sessionStatus === "unavailable") return <div className="min-h-[50vh] flex flex-col items-center justify-center gap-3" role="status"><p>We couldn’t confirm your sign-in because ChefSire is temporarily unavailable. You haven’t been signed out.</p><Button onClick={retrySession}>Try again</Button></div>;
   if (loading || !user || !form) return <div className="min-h-[50vh] flex items-center justify-center" role="status"><Loader2 className="h-7 w-7 animate-spin mr-2" /> Loading catering profile…</div>;
   const sections = CATERING_DASHBOARD_SECTIONS;
   return <main className="mx-auto max-w-6xl px-3 py-6 sm:px-4 sm:py-10">

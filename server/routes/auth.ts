@@ -19,7 +19,9 @@ import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { hashPassword } from "../lib/password-hash";
 import { isEmailAuthoritativelyVerified } from "../lib/email-verification-provenance";
 import { verifyAuthToken } from "../lib/jwt-config";
-import { issueAuthToken, resolveSessionUser } from "../lib/auth-session";
+import { issueAuthToken, checkSession } from "../lib/auth-session";
+import { isDatabaseUnavailableError, sendServiceUnavailable } from "../lib/db-availability";
+import { flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, openFlow, sealFlow } from "../lib/oauth-flow";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -30,6 +32,14 @@ const oauthReturnCookieOptions = {
   path: "/api/auth/google/callback",
   maxAge: 10 * 60 * 1000,
 };
+
+// The browser-created nonce of a Google sign-in (see client/src/lib/session-controller): carried through the OAuth round trip in this cookie and
+// echoed on the success redirect as `oauth_state`, so the page can tell a sign-in IT started from a URL someone merely typed or replayed.
+// Opaque to the server and never trusted for anything: strict shape, short-lived, httpOnly, scoped to the callback.
+const OAUTH_CLIENT_STATE_COOKIE = "oauth_client_state";
+// Flow cookies are scoped to /api/auth/google (not just the callback) so that an initiation can see, and evict, this browser's stale flows.
+const oauthFlowCookieOptions = { ...oauthReturnCookieOptions, path: "/api/auth/google" };
+const OAUTH_CLIENT_STATE_SHAPE = /^[A-Za-z0-9_-]{16,64}$/;
 
 function safeInternalDestination(value: unknown): string | null {
   if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
@@ -177,6 +187,11 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
     if ((error as { code?: string })?.code === "23505" && /email/i.test((error as { constraint?: string }).constraint ?? "")) {
       return res.status(400).json({ error: "Email already registered" });
     }
+    // The database could not be reached: nothing was created, and saying "failed to create account" would invite a duplicate attempt blindly.
+    if (isDatabaseUnavailableError(error)) {
+      console.error("Signup could not reach the database:", (error as Error)?.name);
+      return sendServiceUnavailable(res);
+    }
     console.error("Error during signup:", error);
     res.status(500).json({ error: "Failed to create account" });
   }
@@ -232,6 +247,11 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
       user: serializeAuthenticatedUser(user),
     });
   } catch (error) {
+    // An unreachable database is not "Login failed" and certainly not "Invalid email or password": retryable, nothing granted, nothing revealed.
+    if (isDatabaseUnavailableError(error)) {
+      console.error("Login could not reach the database:", (error as Error)?.name);
+      return sendServiceUnavailable(res);
+    }
     console.error("💥 CRITICAL ERROR during login:", error);
     console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
     res.status(500).json({ error: "Login failed" });
@@ -297,6 +317,12 @@ router.post("/auth/verify-email", verifyEmailLimiter, async (req, res) => {
 
     res.redirect(303, "/verify/success");
   } catch (error) {
+    if (isDatabaseUnavailableError(error)) {
+      // The token is only consumed inside the database transaction, so an unreachable database leaves it unused and the link still works.
+      console.error("Email verification could not reach the database:", (error as Error)?.name);
+      res.set("Retry-After", "5");
+      return res.status(503).send("Verification is temporarily unavailable. Please try the link again in a moment.");
+    }
     console.error("Error verifying email:", error);
     res.status(500).send("Verification failed");
   }
@@ -348,11 +374,18 @@ router.post("/auth/resend-verification", emailSendLimiter, async (req, res) => {
 
     if (result.success) {
       res.json({ message: "Verification email sent" });
+    } else if (result.cause === "database_unavailable") {
+      // The token could not be stored (database unreachable): nothing was sent, and a retry is the right response.
+      return sendServiceUnavailable(res);
     } else {
       console.error('⚠️ Failed to resend email:', result.error);
       res.status(500).json({ error: "Failed to send verification email. Please try again later." });
     }
   } catch (error) {
+    if (isDatabaseUnavailableError(error)) {
+      console.error("Resend verification could not reach the database:", (error as Error)?.name);
+      return sendServiceUnavailable(res);
+    }
     console.error("Error resending verification:", error);
     res.status(500).json({ error: "Failed to resend verification email" });
   }
@@ -374,7 +407,9 @@ router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => 
     // Verify token
     const decoded = verifyAuthToken(token) as { id: string; av?: number };
     // A signed token is not enough: it must still match the account's current auth version.
-    if (!(await resolveSessionUser(decoded))) {
+    const session = await checkSession(decoded);
+    if (session.status === "unavailable") return sendServiceUnavailable(res);
+    if (session.status !== "valid") {
       return res.status(401).json({ error: "Invalid token" });
     }
     const userId = decoded.id;
@@ -418,6 +453,8 @@ router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => 
     if (error instanceof jwt.JsonWebTokenError) {
       return res.status(401).json({ error: "Invalid token" });
     }
+    // The password write is a single UPDATE; if the connection fails the outcome is the caller's to re-check, not to be reported as a clean failure.
+    if (isDatabaseUnavailableError(error)) return sendServiceUnavailable(res);
     res.status(500).json({ error: "Failed to change password" });
   }
 });
@@ -435,12 +472,15 @@ router.get("/auth/me", async (req, res) => {
     }
 
     const decoded = verifyAuthToken(token) as { id: string; av?: number };
-    const user = await resolveSessionUser(decoded);
+    const session = await checkSession(decoded);
 
-    if (!user) {
+    // Case C: the database could not answer. 503, not 401 -- the client keeps the user signed in and retries (it clears local state on 401 only).
+    if (session.status === "unavailable") return sendServiceUnavailable(res);
+    if (session.status !== "valid") {
       // Unknown account and revoked session are indistinguishable to the caller.
       return res.status(401).json({ error: "Not authenticated" });
     }
+    const user = session.user;
 
     res.json({
       success: true,
@@ -451,6 +491,7 @@ router.get("/auth/me", async (req, res) => {
     if (error instanceof jwt.JsonWebTokenError) {
       return res.status(401).json({ error: "Invalid token" });
     }
+    if (isDatabaseUnavailableError(error)) return sendServiceUnavailable(res);
     res.status(500).json({ error: "Failed to fetch user" });
   }
 });
@@ -460,10 +501,14 @@ router.get("/auth/me", async (req, res) => {
  * Initiates Google OAuth flow for LOGIN (silent if already authenticated)
  */
 router.get("/auth/google", (req, res, next) => {
+  // One independent flow per initiation (see lib/oauth-flow): its own id as the OAuth `state`, its own cookie. Nothing here touches another flow's
+  // cookie except evicting expired/invalid ones and the oldest beyond the cap.
   const destination = safeInternalDestination(req.query.next);
-  if (destination) res.cookie(OAUTH_RETURN_COOKIE, destination, oauthReturnCookieOptions);
-  else res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
-  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+  const clientState = typeof req.query.client_state === "string" && OAUTH_CLIENT_STATE_SHAPE.test(req.query.client_state) ? req.query.client_state : null;
+  for (const name of flowCookiesToEvict(req.cookies)) res.clearCookie(name, { path: oauthFlowCookieOptions.path });
+  const flowId = newFlowId();
+  res.cookie(flowCookieName(flowId), sealFlow(flowId, { destination, clientState }), oauthFlowCookieOptions);
+  passport.authenticate("google", { scope: ["profile", "email"], state: flowId })(req, res, next);
 });
 
 /**
@@ -480,8 +525,19 @@ router.get("/auth/google/signup", passport.authenticate("google", {
  * Google OAuth callback
  */
 router.get("/auth/google/callback", (req, res, next) => {
-  const destination = safeInternalDestination(req.cookies?.[OAUTH_RETURN_COOKIE]);
+  // Only the flow named by THIS callback's `state` is read and cleared. `state` is a lookup key, not proof: without a valid sealed cookie for it the
+  // callback is a plain Google sign-in (no destination, no nonce echo). Pre-upgrade cookies (shared single-value) are cleared and ignored.
+  const flowId = typeof req.query.state === "string" ? req.query.state : null;
+  let destination: string | null = null;
+  let clientState: string | null = null;
+  if (isFlowId(flowId)) {
+    const flow = openFlow(flowId, req.cookies?.[flowCookieName(flowId)]);
+    destination = safeInternalDestination(flow?.destination);
+    clientState = flow?.clientState ?? null;
+    res.clearCookie(flowCookieName(flowId), { path: oauthFlowCookieOptions.path });
+  }
   res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
+  res.clearCookie(OAUTH_CLIENT_STATE_COOKIE, { path: oauthReturnCookieOptions.path });
   passport.authenticate("google", { session: false }, async (error, user) => {
     if (error) {
       const postgresError = error as Error & { code?: string; column?: string };
@@ -496,7 +552,8 @@ router.get("/auth/google/callback", (req, res, next) => {
         missingColumn,
         message,
       });
-      return res.redirect("/login?error=google-auth-failed");
+      // A database that could not be reached is not a failed Google sign-in; no session is issued either way.
+      return res.redirect(isDatabaseUnavailableError(error) ? "/login?error=service-unavailable" : "/login?error=google-auth-failed");
     }
 
     try {
@@ -519,6 +576,7 @@ router.get("/auth/google/callback", (req, res, next) => {
       // Keep the established success marker while returning to a validated internal page.
       const successUrl = new URL(destination ?? "/", "https://chefsire.internal");
       successUrl.searchParams.set("google-login", "success");
+      if (clientState) successUrl.searchParams.set("oauth_state", clientState);
       res.redirect(`${successUrl.pathname}${successUrl.search}${successUrl.hash}`);
     } catch (error) {
       console.error("💥 Error in Google OAuth callback:", error);

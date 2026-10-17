@@ -9,9 +9,15 @@
  * removes the credentials, so every token issued before then stops working immediately.
  *
  * Fails closed: a missing claim (including every token issued before this existed), a non-integer
- * claim, a missing account, a lookup error, or any mismatch all mean "not authenticated".
+ * claim, a missing account, or any mismatch all mean "not authenticated".
+ *
+ * Phase 2C: a lookup that could not be answered is a different thing from an answer of "no". Both deny access -- the verdict is never
+ * "valid" without the database's authoritative say-so -- but they are reported differently (`checkSession`): an invalid session is a 401,
+ * an unreachable database is a retryable 503 that must not make the client believe the user was logged out.
  */
 import { resolveAuthRuntimeMode, signAuthToken } from "./jwt-config";
+import { describeDatabaseError, withReadTimeout } from "./db-availability";
+import { resolveDbSettings } from "./db-config";
 
 type SessionUser = { id: string; email?: string | null; username?: string | null; authVersion?: number | null };
 
@@ -21,7 +27,8 @@ type SessionLookup = (id: string) => Promise<any>;
 
 // `storage` is imported on first use, not at module load: this module sits under the token layer, which
 // must stay importable without dragging the database layer in.
-const liveLookup: SessionLookup = async (id) => (await import("../storage")).storage.getUser(id);
+// Phase 2C (P1-2): the live lookup is a bounded read -- it cannot keep a pool connection past its deadline (see lib/bounded-read).
+const liveLookup: SessionLookup = async (id) => (await import("./session-user-read")).readSessionUserBounded(id, resolveDbSettings().authLookupTimeoutMs);
 let lookup: SessionLookup = liveLookup;
 
 /**
@@ -49,17 +56,36 @@ export function issueAuthToken(user: SessionUser): string {
   });
 }
 
-/** Resolve verified token claims to the live account, or `null` if the session is not (or no longer) valid. */
-export async function resolveSessionUser(claims: { id?: unknown; av?: unknown } | null | undefined) {
+export type SessionCheck =
+  | { status: "valid"; user: any }
+  /** The database answered and the session does not count (malformed claims, unknown account, auth version mismatch). */
+  | { status: "invalid" }
+  /** The database could not answer (unreachable, timed out, errored). Access is NOT granted; the session is NOT known to be bad. */
+  | { status: "unavailable" };
+
+/**
+ * Three-way verdict for verified token claims. Never returns "valid" unless the live account row was read and matches the claim.
+ * The lookup is a read-only SELECT, so bounding it (AUTH_LOOKUP_TIMEOUT_MS) and abandoning it on timeout has no side effects.
+ */
+export async function checkSession(claims: { id?: unknown; av?: unknown } | null | undefined): Promise<SessionCheck> {
   const id = typeof claims?.id === "string" ? claims.id.trim() : "";
   const av = claims?.av;
-  if (!id || typeof av !== "number" || !Number.isInteger(av)) return null;
+  if (!id || typeof av !== "number" || !Number.isInteger(av)) return { status: "invalid" };
   try {
-    const user = await lookup(id);
-    if (!user || typeof user.authVersion !== "number" || user.authVersion !== av) return null;
-    return user;
+    // The live lookup enforces its own deadline AND releases its connection. This outer bound only covers substituted lookups (tests) and is a
+    // little longer so the inner, resource-freeing deadline is the one that normally fires.
+    const ms = resolveDbSettings().authLookupTimeoutMs;
+    const user = await withReadTimeout(Promise.resolve(lookup(id)), ms + 1_500, "session lookup");
+    if (!user || typeof user.authVersion !== "number" || user.authVersion !== av) return { status: "invalid" };
+    return { status: "valid", user };
   } catch (error) {
-    console.error("[auth] Session lookup failed; denying.", error);
-    return null;
+    console.error(`[auth] Session lookup could not be completed; denying without invalidating the session. ${describeDatabaseError(error)}`);
+    return { status: "unavailable" };
   }
+}
+
+/** Resolve verified token claims to the live account, or `null` if the session is not (or no longer) valid -- or could not be verified. */
+export async function resolveSessionUser(claims: { id?: unknown; av?: unknown } | null | undefined) {
+  const check = await checkSession(claims);
+  return check.status === "valid" ? check.user : null;
 }

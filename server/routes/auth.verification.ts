@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { users } from "../../shared/schema";
 import { AuthService } from "../services/auth.service";
 import { emailSendLimiter } from "../middleware/rate-limit";
+import { isDatabaseUnavailableError } from "../lib/db-availability";
 
 const router = Router();
 
@@ -28,10 +29,17 @@ router.post("/send-email-verification", emailSendLimiter, async (req, res) => {
 
     if (result.success) {
       return res.json({ ok: true });
+    } else if (result.cause === "database_unavailable") {
+      res.set("Retry-After", "5");
+      return res.status(503).json({ ok: false, error: "Service temporarily unavailable", retryable: true });
     } else {
       return res.status(500).json({ ok: false, error: result.error || "Failed to send email" });
     }
   } catch (error) {
+    if (isDatabaseUnavailableError(error)) {
+      res.set("Retry-After", "5");
+      return res.status(503).json({ ok: false, error: "Service temporarily unavailable", retryable: true });
+    }
     console.error("send-email-verification error:", error);
     return res.status(500).json({ ok: false, error: "Internal error" });
   }
@@ -65,10 +73,17 @@ router.get("/_dev_send", async (req, res) => {
     if (result.success) {
       // Note: Can't include raw token in response since it's hashed by the service
       return res.send(`Sent to ${email}. Check your inbox.`);
+    } else if (result.cause === "database_unavailable") {
+      res.set("Retry-After", "5");
+      return res.status(503).send("Service temporarily unavailable. Please try again.");
     } else {
       return res.status(500).send(`Failed to send email: ${result.error}`);
     }
   } catch (error) {
+    if (isDatabaseUnavailableError(error)) {
+      res.set("Retry-After", "5");
+      return res.status(503).send("Service temporarily unavailable. Please try again.");
+    }
     console.error("_dev_send error:", error);
     return res.status(500).send("Internal error.");
   }

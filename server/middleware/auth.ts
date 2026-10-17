@@ -1,7 +1,8 @@
 // server/middleware/auth.ts
 import type { Request, Response, NextFunction } from "express";
 import { verifyAuthToken } from "../lib/jwt-config";
-import { resolveSessionUser } from "../lib/auth-session";
+import { checkSession } from "../lib/auth-session";
+import { sendServiceUnavailable } from "../lib/db-availability";
 import { hasCurrentAdminAuthority } from "../lib/admin-authority";
 
 /**
@@ -67,10 +68,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     // The signature proves the token was issued; only the live account row says it still counts.
-    const fullUser = await resolveSessionUser(decoded);
-    if (!fullUser) {
+    // Three outcomes (Phase 2C): valid; definitively not valid (401, as before); or the database could not answer (retryable 503). The
+    // last one grants nothing and does not claim the user is logged out.
+    const session = await checkSession(decoded);
+    if (session.status === "unavailable") return sendServiceUnavailable(res);
+    if (session.status !== "valid") {
       return res.status(401).json({ error: "Unauthorized", code: "BAD_TOKEN" });
     }
+    const fullUser = session.user;
 
     req.user = {
       id: String(decoded.id),
@@ -147,13 +152,18 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     }
 
     const decoded = verifyAuthToken(token) as JwtPayload;
-    // A revoked or stale session is anonymous, exactly like an invalid token.
-    if (decoded && decoded.id && (await resolveSessionUser(decoded))) {
-      req.user = {
-        id: String(decoded.id),
-        email: decoded.email,
-        username: decoded.username,
-      };
+    // A revoked or stale session is anonymous, exactly like an invalid token. A session that could NOT be checked is neither: answering
+    // as anonymous would show a signed-in user the logged-out view of private data (or accept an action as someone else), so it is a retryable 503.
+    if (decoded && decoded.id) {
+      const session = await checkSession(decoded);
+      if (session.status === "unavailable") return sendServiceUnavailable(res);
+      if (session.status === "valid") {
+        req.user = {
+          id: String(decoded.id),
+          email: decoded.email,
+          username: decoded.username,
+        };
+      }
     }
 
     next();
