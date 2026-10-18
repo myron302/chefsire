@@ -80,8 +80,8 @@ const SPENT_MAX = 10_000;
 
 /** True exactly once per flow id; false on any replay. */
 export function markFlowSpent(flowId: string, nowMs: number = Date.now()): boolean {
-  for (const [id, at] of spentFlows) {
-    if (nowMs - at > OAUTH_FLOW_TTL_MS) spentFlows.delete(id);
+  for (const id of Array.from(spentFlows.keys())) {
+    if (nowMs - (spentFlows.get(id) as number) > OAUTH_FLOW_TTL_MS) spentFlows.delete(id);
     else break; // insertion order == age order
   }
   if (spentFlows.has(flowId)) return false;
