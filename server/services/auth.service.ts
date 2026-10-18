@@ -7,6 +7,7 @@ import { sendVerificationEmail } from "../utils/mailer";
 import { hashPassword } from "../lib/password-hash";
 import { disconnectUserSockets } from "../realtime/socket-auth";
 import { EMAIL_VERIFIED_VIA_LINK } from "../lib/email-verification-provenance";
+import { describeDatabaseError, isDatabaseUnavailableError } from "../lib/db-availability";
 
 /** Minimum length for a password chosen while redeeming a verification link (matches change-password). */
 export const MIN_PASSWORD_LENGTH = 6;
@@ -165,23 +166,36 @@ export class AuthService {
    * @param userId - User ID
    * @param email - Email address
    * @param appUrl - Base URL of application
-   * @returns Object with success status and optional error
+   * @returns `{ success }`, and on failure a structured `cause` so callers can answer correctly:
+   *   - "database_unavailable": the token could not be stored because the database could not be reached (retryable; nothing was sent).
+   *     `error` is a fixed, detail-free message -- the driver text stays in the server log.
+   *   - "email_delivery": the token is stored but the mail could not be sent (`error` keeps the mailer's message, as before).
+   *   - "unknown": anything else.
+   *   The classification is by PHASE: only a failure of the token write can be "database_unavailable", so a mail server that refuses
+   *   connections is never mistaken for a database outage. The method still never throws.
    */
   static async createAndSendVerification(
     userId: string,
     email: string,
     appUrl: string = process.env.APP_URL || "https://chefsire.com"
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; cause?: "database_unavailable" | "email_delivery" | "unknown" }> {
+    let token: string;
     try {
-      const token = await this.createVerificationToken(userId, email);
+      token = await this.createVerificationToken(userId, email);
+    } catch (error) {
+      if (isDatabaseUnavailableError(error)) {
+        console.error(`Verification token could not be stored; database unavailable. ${describeDatabaseError(error)}`);
+        return { success: false, cause: "database_unavailable", error: "Service temporarily unavailable" };
+      }
+      console.error("Failed to create verification token:", error);
+      return { success: false, cause: "unknown", error: error instanceof Error ? error.message : "Unknown error" };
+    }
+    try {
       await this.sendVerificationEmail(email, token, appUrl);
       return { success: true };
     } catch (error) {
-      console.error("Failed to create and send verification:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
+      console.error("Failed to send verification email:", error);
+      return { success: false, cause: "email_delivery", error: error instanceof Error ? error.message : "Unknown error" };
     }
   }
 }

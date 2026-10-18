@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import { abortableSleep } from "@/lib/session-verification";
+import { createSessionController, type SessionController, type SessionState, type SessionStatus } from "@/lib/session-controller";
 
 type User = {
   id: string;
@@ -44,6 +46,13 @@ type UserContextType = {
   ) => Promise<{ ok: boolean; error?: string }>;
   updateUser: (updates: Partial<User>) => void;
   refreshUser: () => Promise<void>;
+  /**
+   * Additive (Phase 2C). "unavailable" = the server could not confirm the session (outage); NOT a logout. A cached profile may still be
+   * shown for continuity, but the server decides every protected request.
+   */
+  sessionStatus: SessionStatus;
+  /** User-initiated re-check after the automatic retries ran out. */
+  retrySession: () => void;
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -59,7 +68,7 @@ const REQUIRED_CATERING_FIELDS = [
   "cateringAvailable",
 ] as const;
 
-function authenticatedUserFromPayload(payload: unknown): User {
+export function authenticatedUserFromPayload(payload: unknown): User {
   if (!payload || typeof payload !== "object" || !("id" in payload) || !("email" in payload)) {
     throw new Error("Incomplete authenticated user response");
   }
@@ -77,120 +86,35 @@ export const useUser = () => {
   return ctx;
 };
 
+const NOT_READY = { ok: false, error: "Please try again in a moment." } as const;
+
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<SessionState<User>>({ user: null, loading: true, sessionStatus: "checking", pendingOAuth: false, verifying: false });
+  const [busy, setBusy] = useState(false);
+  const controllerRef = useRef<SessionController<User> | null>(null);
 
-  // Load user from localStorage on mount, then verify session with server
+  // All session decisions (cached-user check, Google OAuth return, background retries, login, logout, refresh) live in one controller with
+  // one epoch-based staleness rule -- see lib/session-controller. The provider only binds it to React and to the browser.
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        // Check if just logged in with OAuth
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('google-login') === 'success') {
-          // Fetch user from server using JWT cookie
-          const res = await fetch('/api/auth/me', { credentials: 'include' });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success && data.user) {
-              const cleanUser = authenticatedUserFromPayload(data.user);
-              localStorage.setItem("user", JSON.stringify(cleanUser));
-              setUser(cleanUser);
-              // Remove the OAuth marker without changing the requested destination.
-              params.delete('google-login');
-              const cleanSearch = params.toString();
-              window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash}`);
-              return;
-            }
-          }
-        }
-
-        // If localStorage has a user, verify the server session is still valid
-        const raw = localStorage.getItem("user");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") {
-            if (parsed.id && typeof parsed.id !== "string") parsed.id = String(parsed.id);
-            delete parsed.password;
-
-            // Verify the cookie/session is still valid before trusting localStorage
-            try {
-              const verifyRes = await fetch('/api/auth/me', { credentials: 'include' });
-              if (verifyRes.ok) {
-                // Session valid — refresh server-owned profile fields.
-                const verified = await verifyRes.json().catch(() => ({}));
-                const refreshedUser = authenticatedUserFromPayload(verified?.user);
-                localStorage.setItem("user", JSON.stringify(refreshedUser));
-                setUser(refreshedUser);
-              } else {
-                // Cookie expired or missing — clear stale localStorage
-                localStorage.removeItem("user");
-                setUser(null);
-              }
-            } catch {
-              // Network error — optimistically use localStorage so offline works
-              setUser(parsed as User);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Failed to load user:", e);
-        localStorage.removeItem("user");
-      } finally {
-        setLoading(false);
-      }
+    const controller = createSessionController<User>({
+      fetch: (input, init) => window.fetch(input, init),
+      storage: window.localStorage,
+      getLocation: () => window.location,
+      replaceUrl: (url) => window.history.replaceState({}, "", url),
+      sleep: abortableSleep,
+      parseUser: authenticatedUserFromPayload,
+      onChange: setSession,
+    });
+    controllerRef.current = controller;
+    controller.start();
+    return () => {
+      controller.dispose(); // unmount: abort everything, apply nothing
+      if (controllerRef.current === controller) controllerRef.current = null;
     };
-
-    loadUser();
   }, []);
 
-  const persist = (u: User | null) => {
-    if (!u) {
-      localStorage.removeItem("user");
-      setUser(null);
-      return;
-    }
-    localStorage.setItem("user", JSON.stringify(u));
-    setUser(u);
-  };
-
-  const login = async (email: string, password: string) => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        // Server returns messages like “Please verify your email…”
-        const msg =
-          data?.error ||
-          (res.status === 403
-            ? "Please verify your email to log in."
-            : "Invalid email or password");
-        return { ok: false, error: msg };
-      }
-
-      // Expect { success: true, user: {...} }
-      if (!data?.success || !data?.user) {
-        return { ok: false, error: "Unexpected server response" };
-      }
-
-      const cleanUser = authenticatedUserFromPayload(data.user);
-
-      persist(cleanUser);
-      return { ok: true };
-    } catch (e) {
-      console.error("Login failed:", e);
-      return { ok: false, error: "Network error. Please try again." };
-    } finally {
-      setLoading(false);
-    }
-  };
+  const user = session.user;
+  const login = async (email: string, password: string) => controllerRef.current?.login(email, password) ?? NOT_READY;
 
   const signup = async (
     name: string,
@@ -200,7 +124,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     meta?: Record<string, unknown>
   ) => {
     try {
-      setLoading(true);
+      setBusy(true);
 
       // Split name best-effort
       const [firstName, ...rest] = name.trim().split(/\s+/);
@@ -232,42 +156,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
       console.error("Signup failed:", e);
       return { ok: false, error: "Network error. Please try again." };
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
   const logout = async () => {
-    try {
-      // Call server to clear the auth cookie
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch (e) {
-      console.error("Logout API call failed:", e);
-    }
-    // Always clear local storage even if API call fails
-    persist(null);
+    await controllerRef.current?.logout();
   };
 
   const updateUser = async (updates: Partial<User>) => {
-    console.log('[UserContext] updateUser called with:', updates);
-
-    setUser((prev) => {
-      if (!prev) {
-        console.log('[UserContext] No previous user, skipping update');
-        return prev;
-      }
-      const merged = { ...prev, ...updates };
-      console.log('[UserContext] User updated in state:', merged);
-      localStorage.setItem("user", JSON.stringify(merged));
-      return merged;
-    });
+    controllerRef.current?.patchUser(updates);
 
     // Persist to server
     try {
       if (user?.id) {
-        console.log('[UserContext] Persisting to server for user:', user.id);
         const response = await fetch(`/api/users/${user.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -277,8 +179,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
         if (!response.ok) {
           console.error("[UserContext] Failed to update user on server:", await response.text());
-        } else {
-          console.log('[UserContext] Server update successful');
         }
       }
     } catch (error) {
@@ -287,16 +187,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshUser = async () => {
-    const response = await fetch('/api/auth/me', { credentials: 'include' });
-    if (!response.ok) throw new Error('Unable to refresh your account');
-    const data = await response.json();
-    if (!data?.user) throw new Error('Unable to refresh your account');
-    persist(authenticatedUserFromPayload(data.user));
+    if (!controllerRef.current) throw new Error("Unable to refresh your account");
+    await controllerRef.current.refresh();
   };
 
+  const retrySession = () => controllerRef.current?.retry();
+  const showOutageNotice = session.sessionStatus === "unavailable" && !session.verifying;
+
   return (
-    <UserContext.Provider value={{ user, loading, login, logout, signup, updateUser, refreshUser }}>
+    <UserContext.Provider value={{ user, loading: session.loading || busy, login, logout, signup, updateUser, refreshUser, sessionStatus: session.sessionStatus, retrySession }}>
       {children}
+      {showOutageNotice && (
+        <div role="status" data-testid="session-unavailable" style={{ position: "fixed", left: 12, right: 12, bottom: 12, zIndex: 2147483000, padding: "10px 14px", borderRadius: 8, background: "#1f2937", color: "#fff", fontSize: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
+          <span>We couldn’t confirm your sign-in because ChefSire is temporarily unavailable. You haven’t been signed out.</span>
+          <button type="button" onClick={retrySession} style={{ padding: "4px 12px", borderRadius: 6, border: 0, background: "#fff", color: "#1f2937", cursor: "pointer" }}>Try again</button>
+        </div>
+      )}
     </UserContext.Provider>
   );
 }

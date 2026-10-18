@@ -17,6 +17,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { storage } from "../storage";
 import { requireAdmin, requireAuth } from "./auth";
+import { setSessionLookupForTests } from "../lib/auth-session";
 
 const ADMIN_EMAIL = "ops@chefsire.test";
 const NORMAL_EMAIL = "cook@chefsire.test";
@@ -51,6 +52,10 @@ Object.assign(storage as any, {
     return world[id];
   },
 });
+
+// The session check (requireAuth) reads the account through its own bounded, read-only lookup (Phase 2C), no longer through `storage.getUser`; the
+// documented test seam substitutes it with the same in-memory world, so token validity and admin authority are still decided by one set of rows.
+setSessionLookupForTests(async (id: string) => world[id]);
 
 /* -------------------------------------------------------------------- the app */
 

@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useUser } from "@/contexts/UserContext";
 import { Crown, Castle, Shield, AlertCircle } from "lucide-react";
 import { FcGoogle } from 'react-icons/fc';
+import { googleSignInUrl } from "@/lib/google-signin";
 import { FaFacebook, FaInstagram, FaTiktok } from 'react-icons/fa';
 
 function safeInternalDestination(value: string | null): string | null {
@@ -181,6 +182,7 @@ export default function LoginPage() {
           <div className="grid grid-cols-2 gap-3">
             <a
               href={googleLoginUrl}
+              onClick={(e) => { e.preventDefault(); window.location.assign(googleSignInUrl(googleLoginUrl)); }}
               className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
             >
               <FcGoogle className="w-5 h-5" />
