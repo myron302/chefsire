@@ -164,3 +164,21 @@ test("REPLAY: after a genuine sign-in and a later logout that fails, revisiting 
   assert.equal(new URL(again.headers.get("location")!, "https://app.test").searchParams.has("oauth_state"), false);
   void nonce;
 });
+
+test("pending logout + a callback the server REFUSES (no flow for this browser): no session cookie, lands on /login, the logout stays pending", async () => {
+  const attacker = new Browser();
+  const init = await attacker.nav(`/api/auth/google?client_state=${"A".repeat(24)}`);
+  const stolenState = new URL(init.headers.get("location")!).searchParams.get("state");
+  const b = new Browser();
+  pendingLogout(b);
+  const cb = await b.nav(`/api/auth/google/callback?code=attacker-code&state=${stolenState}`);
+  const landed = new URL(cb.headers.get("location")!, "https://app.test");
+  assert.equal(landed.pathname, "/login");
+  assert.equal(b.cookies.has("auth_token"), false);
+  const c = b.controllerAt(landed);
+  c.start();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(c.getState().user, null);
+  assert.equal(b.ls.get(LOGOUT_PENDING_KEY), "1");
+  c.dispose();
+});

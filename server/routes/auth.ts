@@ -1,5 +1,5 @@
 // server/routes/auth.ts - WITH MAILER (won't crash if email fails)
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import passport from "passport";
@@ -21,7 +21,7 @@ import { isEmailAuthoritativelyVerified } from "../lib/email-verification-proven
 import { verifyAuthToken } from "../lib/jwt-config";
 import { issueAuthToken, checkSession } from "../lib/auth-session";
 import { isDatabaseUnavailableError, sendServiceUnavailable } from "../lib/db-availability";
-import { flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, openFlow, sealFlow } from "../lib/oauth-flow";
+import { flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, markFlowSpent, openFlow, sealFlow } from "../lib/oauth-flow";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -500,44 +500,43 @@ router.get("/auth/me", async (req, res) => {
  * GET /auth/google
  * Initiates Google OAuth flow for LOGIN (silent if already authenticated)
  */
-router.get("/auth/google", (req, res, next) => {
-  // One independent flow per initiation (see lib/oauth-flow): its own id as the OAuth `state`, its own cookie. Nothing here touches another flow's
-  // cookie except evicting expired/invalid ones and the oldest beyond the cap.
-  const destination = safeInternalDestination(req.query.next);
-  const clientState = typeof req.query.client_state === "string" && OAUTH_CLIENT_STATE_SHAPE.test(req.query.client_state) ? req.query.client_state : null;
-  for (const name of flowCookiesToEvict(req.cookies)) res.clearCookie(name, { path: oauthFlowCookieOptions.path });
-  const flowId = newFlowId();
-  res.cookie(flowCookieName(flowId), sealFlow(flowId, { destination, clientState }), oauthFlowCookieOptions);
-  passport.authenticate("google", { scope: ["profile", "email"], state: flowId })(req, res, next);
-});
+function startGoogleFlow(extra: { prompt?: string }) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    // One independent flow per initiation (see lib/oauth-flow): its own id as the OAuth `state`, its own cookie. Nothing here touches another flow's
+    // cookie except evicting expired/invalid ones and the oldest beyond the cap. Login and signup share this so neither is a weaker entry point.
+    const destination = safeInternalDestination(req.query.next);
+    const clientState = typeof req.query.client_state === "string" && OAUTH_CLIENT_STATE_SHAPE.test(req.query.client_state) ? req.query.client_state : null;
+    for (const name of flowCookiesToEvict(req.cookies)) res.clearCookie(name, { path: oauthFlowCookieOptions.path });
+    const flowId = newFlowId();
+    res.cookie(flowCookieName(flowId), sealFlow(flowId, { destination, clientState }), oauthFlowCookieOptions);
+    passport.authenticate("google", { scope: ["profile", "email"], state: flowId, ...extra } as never)(req, res, next);
+  };
+}
+
+router.get("/auth/google", startGoogleFlow({}));
 
 /**
  * GET /auth/google/signup
- * Initiates Google OAuth flow for SIGNUP (forces account selection)
+ * Initiates Google OAuth flow for SIGNUP (forces account selection); same browser-bound flow as login.
  */
-router.get("/auth/google/signup", passport.authenticate("google", {
-  scope: ["profile", "email"],
-  prompt: "select_account" // Forces account selection for signup
-}));
+router.get("/auth/google/signup", startGoogleFlow({ prompt: "select_account" }));
 
 /**
  * GET /auth/google/callback
  * Google OAuth callback
  */
 router.get("/auth/google/callback", (req, res, next) => {
-  // Only the flow named by THIS callback's `state` is read and cleared. `state` is a lookup key, not proof: without a valid sealed cookie for it the
-  // callback is a plain Google sign-in (no destination, no nonce echo). Pre-upgrade cookies (shared single-value) are cleared and ignored.
+  // Login CSRF defence: a callback is honoured ONLY for a flow this browser started. The `state` names the flow; the sealed, unexpired, unspent cookie of
+  // that name proves this browser initiated it. Anything else is refused BEFORE passport can exchange the code or we can issue a session, so an attacker's
+  // authorization code delivered to a victim's browser can never sign the victim into the attacker's account. Pre-upgrade shared cookies are ignored.
   const flowId = typeof req.query.state === "string" ? req.query.state : null;
-  let destination: string | null = null;
-  let clientState: string | null = null;
-  if (isFlowId(flowId)) {
-    const flow = openFlow(flowId, req.cookies?.[flowCookieName(flowId)]);
-    destination = safeInternalDestination(flow?.destination);
-    clientState = flow?.clientState ?? null;
-    res.clearCookie(flowCookieName(flowId), { path: oauthFlowCookieOptions.path });
-  }
+  const flow = isFlowId(flowId) ? openFlow(flowId, req.cookies?.[flowCookieName(flowId)]) : null;
+  if (isFlowId(flowId)) res.clearCookie(flowCookieName(flowId), { path: oauthFlowCookieOptions.path });
   res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
   res.clearCookie(OAUTH_CLIENT_STATE_COOKIE, { path: oauthReturnCookieOptions.path });
+  if (!flow || !isFlowId(flowId) || !markFlowSpent(flowId)) return res.redirect("/login?error=google-auth-failed");
+  const destination = safeInternalDestination(flow.destination);
+  const clientState = flow.clientState;
   passport.authenticate("google", { session: false }, async (error, user) => {
     if (error) {
       const postgresError = error as Error & { code?: string; column?: string };

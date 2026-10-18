@@ -88,12 +88,13 @@ test("callback: the nonce and destination of THIS flow are echoed next to the ma
   assert.ok(cookies.some((x) => x.startsWith(`oauth_flow_${stateOf(init)}=;`)), "single use: cleared");
 });
 
-test("callback without (or with a legacy shared / malformed) cookie behaves as a plain sign-in: marker only, no oauth_state, no trusted destination", async () => {
+test("callback without a flow (missing / malformed state, or only the legacy shared cookies) is REFUSED: no session, no oauth_state, no trusted destination", async () => {
   for (const [q, cookie] of [["", undefined], ["?state=short", undefined], ["", `oauth_client_state=${NONCE}; oauth_return_to=${encodeURIComponent("/evil")}`]] as const) {
     const r = await get(`/api/auth/google/callback${q}`, cookie);
     const location = new URL(r.headers.get("location")!, "https://x.test");
-    assert.equal(location.searchParams.get("google-login"), "success");
-    assert.equal(location.searchParams.has("oauth_state"), false, String(cookie));
-    assert.equal(location.pathname, "/");
+    assert.equal(location.pathname, "/login", String(cookie));
+    assert.equal(location.searchParams.has("google-login"), false);
+    assert.equal(location.searchParams.has("oauth_state"), false);
+    assert.equal(setCookies(r).some((x) => x.startsWith("auth_token=")), false);
   }
 });

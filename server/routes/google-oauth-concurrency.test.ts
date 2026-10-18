@@ -131,15 +131,16 @@ test("second callback fails while the first succeeds", async () => {
   assert.equal((await finish(jar, s2)).ok, false);
 });
 
-test("both succeed, then replay of either state yields NO nonce and NO destination (single use)", async () => {
+test("both succeed, then replay of either state is REFUSED (single use; no session, no nonce, no destination)", async () => {
   const jar = new Jar();
   const s1 = await begin(jar, N1, "/a");
   const s2 = await begin(jar, N2, "/b");
   await finish(jar, s1); await finish(jar, s2);
   for (const s of [s1, s2]) {
     const again = await finish(jar, s);
+    assert.equal(again.ok, false);
     assert.equal(again.nonce, null);
-    assert.equal(again.loc.pathname, "/");
+    assert.equal(again.loc.pathname, "/login");
   }
 });
 
@@ -151,15 +152,15 @@ test("an abandoned flow (never completes) does not affect a later one", async ()
   assert.deepEqual([b.nonce, b.loc.pathname], [N2, "/b"]);
 });
 
-test("forged / missing / malformed / unknown state: no nonce echoed, no destination, never another flow's data", async () => {
+test("forged / missing / malformed / unknown state: REFUSED (no session, no nonce, no destination), and the legitimate flow is untouched", async () => {
   const jar = new Jar();
   const s1 = await begin(jar, N1, "/secret");
   for (const bad of [null, "", "short", "x".repeat(200), "<script>", "Z".repeat(32), s1!.slice(0, -1) + (s1!.endsWith("A") ? "B" : "A")]) {
     const r = await finish(jar, bad);
+    assert.equal(r.ok, false, String(bad));
     assert.equal(r.nonce, null, String(bad));
-    assert.equal(r.loc.pathname, "/", String(bad));
+    assert.equal(r.loc.pathname, "/login", String(bad));
   }
-  // and the legitimate flow is untouched by those probes
   const ok = await finish(jar, s1);
   assert.deepEqual([ok.nonce, ok.loc.pathname], [N1, "/secret"]);
 });

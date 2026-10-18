@@ -69,3 +69,27 @@ export function flowCookiesToEvict(cookies: Record<string, unknown> | undefined,
   live.sort((a, b) => b.t - a.t).slice(OAUTH_FLOW_MAX - 1).forEach((x) => evict.push(x.name));
   return evict;
 }
+
+/**
+ * Server-side single use. Clearing the cookie in the browser is not enough: a saved copy of a still-valid sealed cookie could be re-injected within the
+ * TTL. Every flow id that reaches a validated callback is remembered until it could no longer verify anyway (TTL), and is then refused. Per process: with
+ * several server instances a replay landing on a different instance is limited by Google's own single-use authorization code and the 10 minute TTL.
+ */
+const spentFlows = new Map<string, number>();
+const SPENT_MAX = 10_000;
+
+/** True exactly once per flow id; false on any replay. */
+export function markFlowSpent(flowId: string, nowMs: number = Date.now()): boolean {
+  for (const [id, at] of spentFlows) {
+    if (nowMs - at > OAUTH_FLOW_TTL_MS) spentFlows.delete(id);
+    else break; // insertion order == age order
+  }
+  if (spentFlows.has(flowId)) return false;
+  if (spentFlows.size >= SPENT_MAX) return false; // fail closed under abuse rather than forget
+  spentFlows.set(flowId, nowMs);
+  return true;
+}
+
+export function resetSpentFlowsForTests(): void {
+  spentFlows.clear();
+}

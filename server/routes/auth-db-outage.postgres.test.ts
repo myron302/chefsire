@@ -212,12 +212,18 @@ if (!RAW) {
     let failure: Error = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), { code: "ECONNREFUSED" });
     class Fake extends (Strategy as any) { name = "google"; authenticate() { (this as any).error(failure); } }
     passport.use("google", new Fake() as any);
-    const down = await call(real.base, "GET", "/api/auth/google/callback");
+    // The callback only runs for a flow this browser started (login-CSRF defence), so present a genuine sealed flow cookie for each call.
+    const { flowCookieName, newFlowId, sealFlow } = await import("../lib/oauth-flow");
+    const flowCall = () => {
+      const id = newFlowId();
+      return call(real.base, "GET", `/api/auth/google/callback?state=${id}`, { headers: { cookie: `${flowCookieName(id)}=${sealFlow(id, { destination: null, clientState: null })}` } });
+    };
+    const down = await flowCall();
     assert.equal(down.status, 302);
     assert.equal(down.headers.get("location"), "/login?error=service-unavailable");
     assert.ok(!(down.headers.get("set-cookie") ?? "").includes("auth_token="));
     failure = Object.assign(new Error('column "x" does not exist'), { code: "42703" });
-    const other = await call(real.base, "GET", "/api/auth/google/callback");
+    const other = await flowCall();
     assert.equal(other.headers.get("location"), "/login?error=google-auth-failed");
   });
 
