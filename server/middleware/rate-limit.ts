@@ -124,3 +124,24 @@ export const cateringSquareStatusLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Too many status checks. Please try again shortly." },
 });
+
+/**
+ * Google OAuth initiation and callback. Generous on purpose (keyed per IP, so abuse only ever throttles the abuser's own address, and a person with
+ * several tabs is nowhere near it); it bounds resource use by one source rather than gating legitimate sign-ins. The OAuth replay state itself is
+ * designed not to depend on this (see lib/oauth-flow).
+ */
+export const oauthInitiationLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many sign-in attempts. Please try again later." },
+});
+
+export const oauthCallbackLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 100,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many sign-in attempts. Please try again later." },
+});

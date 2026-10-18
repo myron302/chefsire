@@ -13,6 +13,8 @@ import {
   passwordChangeLimiter,
   verifyEmailLimiter,
   verifyEmailPageLimiter,
+  oauthInitiationLimiter,
+  oauthCallbackLimiter,
 } from "../middleware/rate-limit";
 import { UnsupportedMediaError, storeVerifiedImage } from "../services/image-upload";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
@@ -21,7 +23,7 @@ import { isEmailAuthoritativelyVerified } from "../lib/email-verification-proven
 import { verifyAuthToken } from "../lib/jwt-config";
 import { issueAuthToken, checkSession } from "../lib/auth-session";
 import { isDatabaseUnavailableError, sendServiceUnavailable } from "../lib/db-availability";
-import { flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, markFlowSpent, openFlow, sealFlow } from "../lib/oauth-flow";
+import { claimFlow, finishFlow, flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, openFlow, releaseFlow, sealFlow } from "../lib/oauth-flow";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -513,19 +515,19 @@ function startGoogleFlow(extra: { prompt?: string }) {
   };
 }
 
-router.get("/auth/google", startGoogleFlow({}));
+router.get("/auth/google", oauthInitiationLimiter, startGoogleFlow({}));
 
 /**
  * GET /auth/google/signup
  * Initiates Google OAuth flow for SIGNUP (forces account selection); same browser-bound flow as login.
  */
-router.get("/auth/google/signup", startGoogleFlow({ prompt: "select_account" }));
+router.get("/auth/google/signup", oauthInitiationLimiter, startGoogleFlow({ prompt: "select_account" }));
 
 /**
  * GET /auth/google/callback
  * Google OAuth callback
  */
-router.get("/auth/google/callback", (req, res, next) => {
+router.get("/auth/google/callback", oauthCallbackLimiter, (req, res, next) => {
   // Login CSRF defence: a callback is honoured ONLY for a flow this browser started. The `state` names the flow; the sealed, unexpired, unspent cookie of
   // that name proves this browser initiated it. Anything else is refused BEFORE passport can exchange the code or we can issue a session, so an attacker's
   // authorization code delivered to a victim's browser can never sign the victim into the attacker's account. Pre-upgrade shared cookies are ignored.
@@ -534,10 +536,15 @@ router.get("/auth/google/callback", (req, res, next) => {
   if (isFlowId(flowId)) res.clearCookie(flowCookieName(flowId), { path: oauthFlowCookieOptions.path });
   res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
   res.clearCookie(OAUTH_CLIENT_STATE_COOKIE, { path: oauthReturnCookieOptions.path });
-  if (!flow || !isFlowId(flowId) || !markFlowSpent(flowId)) return res.redirect("/login?error=google-auth-failed");
+  if (!flow || !isFlowId(flowId)) return res.redirect("/login?error=google-auth-failed");
+  // Claim the flow for the duration of the Google verification: a concurrent or later callback for it is refused. The claim is released on every path
+  // (and if the connection drops), and only a VERIFIED sign-in leaves a durable record -- see lib/oauth-flow for why failures must not.
+  if (claimFlow(flowId) !== "claimed") return res.redirect("/login?error=google-auth-failed");
+  res.once("close", () => releaseFlow(flowId));
   const destination = safeInternalDestination(flow.destination);
   const clientState = flow.clientState;
   passport.authenticate("google", { session: false }, async (error, user) => {
+    if (error || !user) finishFlow(flowId, "failure");
     if (error) {
       const postgresError = error as Error & { code?: string; column?: string };
       const message = error instanceof Error ? error.message : String(error);
@@ -559,6 +566,10 @@ router.get("/auth/google/callback", (req, res, next) => {
       if (!user) {
         return res.redirect("/login?error=no-user");
       }
+
+      // Google verified the code and the account resolved: record the flow as spent BEFORE any session is issued. If that cannot be recorded
+      // (table full of unexpired entries) fail closed -- no session -- rather than leave a replayable flow.
+      if (!finishFlow(flowId, "success")) return res.redirect("/login?error=service-unavailable");
 
       // Create JWT token for the user
       const token = issueAuthToken(user);

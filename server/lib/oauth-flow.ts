@@ -71,25 +71,74 @@ export function flowCookiesToEvict(cookies: Record<string, unknown> | undefined,
 }
 
 /**
- * Server-side single use. Clearing the cookie in the browser is not enough: a saved copy of a still-valid sealed cookie could be re-injected within the
- * TTL. Every flow id that reaches a validated callback is remembered until it could no longer verify anyway (TTL), and is then refused. Per process: with
- * several server instances a replay landing on a different instance is limited by Google's own single-use authorization code and the 10 minute TTL.
+ * Server-side single use, designed so an unauthenticated client can never exhaust it.
+ *
+ * What an attacker can cheaply do is start flows and hit the callback with garbage codes, so those paths must cost the shared state NOTHING durable:
+ *  - IN-FLIGHT claim: a flow id being verified right now. Held only for the duration of the request (always released), so it prevents two concurrent
+ *    callbacks for one flow from both issuing sessions but cannot accumulate: its size is bounded by requests actually in progress.
+ *  - SPENT (success): recorded only after Google verified the authorization code and the account resolved -- an attacker needs a genuine Google sign-in
+ *    per entry. Reliable: if the table is somehow full of unexpired entries the callback fails CLOSED (no session; user retries) -- never evicts an
+ *    unexpired record, so a spent flow can never be reused.
+ *  - SPENT (failure): a failed/denied flow is tombstoned best-effort so a re-injected cookie cannot retry it. This one an attacker CAN generate, so it
+ *    must not be able to deny service: when full, new tombstones are simply not recorded (nothing is evicted, nothing is rejected). The remaining defence
+ *    for such a flow is the same one that always applied to it -- Google's single-use authorization code -- and the HMAC, TTL and browser binding.
+ * Per process: behind several instances a replay may reach an instance that has not seen the flow; see docs.
  */
-const spentFlows = new Map<string, number>();
-const SPENT_MAX = 10_000;
+const inFlight = new Set<string>();
+const spentOk = new Map<string, number>();
+const spentFailed = new Map<string, number>();
+export const SPENT_OK_MAX = 50_000;
+export const SPENT_FAILED_MAX = 10_000;
 
-/** True exactly once per flow id; false on any replay. */
-export function markFlowSpent(flowId: string, nowMs: number = Date.now()): boolean {
-  for (const id of Array.from(spentFlows.keys())) {
-    if (nowMs - (spentFlows.get(id) as number) > OAUTH_FLOW_TTL_MS) spentFlows.delete(id);
-    else break; // insertion order == age order
+/** Entries are inserted in time order with one shared TTL, so expired ones are always at the front. */
+function pruneExpired(m: Map<string, number>, nowMs: number): void {
+  const keys = m.keys();
+  for (let next = keys.next(); !next.done; next = keys.next()) {
+    if (nowMs - (m.get(next.value) as number) > OAUTH_FLOW_TTL_MS) m.delete(next.value);
+    else break;
   }
-  if (spentFlows.has(flowId)) return false;
-  if (spentFlows.size >= SPENT_MAX) return false; // fail closed under abuse rather than forget
-  spentFlows.set(flowId, nowMs);
+}
+
+export type FlowClaim = "claimed" | "spent" | "busy";
+
+/** Take the right to complete this flow. "spent": already finished; "busy": another callback for it is in progress. */
+export function claimFlow(flowId: string, nowMs: number = Date.now()): FlowClaim {
+  pruneExpired(spentOk, nowMs);
+  pruneExpired(spentFailed, nowMs);
+  if (spentOk.has(flowId) || spentFailed.has(flowId)) return "spent";
+  if (inFlight.has(flowId)) return "busy";
+  inFlight.add(flowId);
+  return "claimed";
+}
+
+/** Always call (idempotent): drops the in-flight claim, e.g. when the connection closes before an outcome. */
+export function releaseFlow(flowId: string): void {
+  inFlight.delete(flowId);
+}
+
+/**
+ * Record the terminal outcome and release the claim. For "success" returns false when the durable record cannot be stored (table full of unexpired
+ * entries): the caller must then NOT issue a session. "failure" always returns true.
+ */
+export function finishFlow(flowId: string, outcome: "success" | "failure", nowMs: number = Date.now()): boolean {
+  inFlight.delete(flowId);
+  if (outcome === "success") {
+    pruneExpired(spentOk, nowMs);
+    if (spentOk.size >= SPENT_OK_MAX) return false;
+    spentOk.set(flowId, nowMs);
+    return true;
+  }
+  pruneExpired(spentFailed, nowMs);
+  if (spentFailed.size < SPENT_FAILED_MAX) spentFailed.set(flowId, nowMs);
   return true;
 }
 
-export function resetSpentFlowsForTests(): void {
-  spentFlows.clear();
+export function flowStateSizes(): { inFlight: number; spentOk: number; spentFailed: number } {
+  return { inFlight: inFlight.size, spentOk: spentOk.size, spentFailed: spentFailed.size };
+}
+
+export function resetFlowStateForTests(): void {
+  inFlight.clear();
+  spentOk.clear();
+  spentFailed.clear();
 }
