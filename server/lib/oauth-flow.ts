@@ -25,10 +25,6 @@ const mac = (flowId: string, body: string) =>
 export const isFlowId = (v: unknown): v is string => typeof v === "string" && FLOW_ID_SHAPE.test(v);
 export const flowCookieName = (flowId: string) => `${OAUTH_FLOW_COOKIE_PREFIX}${flowId}`;
 
-export function newFlowId(): string {
-  return randomBytes(24).toString("base64url");
-}
-
 export function sealFlow(flowId: string, data: OAuthFlowData, nowMs: number = Date.now()): string {
   const body = Buffer.from(JSON.stringify({ d: data.destination, c: data.clientState, t: nowMs })).toString("base64url");
   return `${body}.${mac(flowId, body)}`;
@@ -71,74 +67,86 @@ export function flowCookiesToEvict(cookies: Record<string, unknown> | undefined,
 }
 
 /**
- * Server-side single use, designed so an unauthenticated client can never exhaust it.
+ * Server-authoritative single use with FIXED memory and no capacity cliffs for anyone to hit.
  *
- * What an attacker can cheaply do is start flows and hit the callback with garbage codes, so those paths must cost the shared state NOTHING durable:
- *  - IN-FLIGHT claim: a flow id being verified right now. Held only for the duration of the request (always released), so it prevents two concurrent
- *    callbacks for one flow from both issuing sessions but cannot accumulate: its size is bounded by requests actually in progress.
- *  - SPENT (success): recorded only after Google verified the authorization code and the account resolved -- an attacker needs a genuine Google sign-in
- *    per entry. Reliable: if the table is somehow full of unexpired entries the callback fails CLOSED (no session; user retries) -- never evicts an
- *    unexpired record, so a spent flow can never be reused.
- *  - SPENT (failure): a failed/denied flow is tombstoned best-effort so a re-injected cookie cannot retry it. This one an attacker CAN generate, so it
- *    must not be able to deny service: when full, new tombstones are simply not recorded (nothing is evicted, nothing is rejected). The remaining defence
- *    for such a flow is the same one that always applied to it -- Google's single-use authorization code -- and the HMAC, TTL and browser binding.
- * Per process: behind several instances a replay may reach an instance that has not seen the flow; see docs.
+ * Every flow id is minted by the server and encodes where its single-use bit lives: `[boot id | minute | index | random]`. Bits live in per-minute
+ * bitmaps (BUCKET_BITS each, allocated lazily, freed once the minute is older than the flow TTL). Consequences:
+ *  - A flow is CONSUMED by the atomic test-and-set in `claimFlow`, whatever the outcome (success, Google rejection, outage, client disconnect). There is no
+ *    release path, so ownership cannot be handed to a second callback by a disconnect, and no separate "failed" / "succeeded" tables whose capacity could
+ *    decide whether a flow is replayable.
+ *  - Nothing is ever evicted early and no entry is a "record" an attacker can multiply: the only way to take bits is to initiate flows, which per-IP
+ *    limiters bound and which costs ~1 bit. Exhausting a minute's bucket needs over BUCKET_BITS initiations in that single minute (> 17,000 requests per
+ *    second to this process) and only affects flow creation for the remainder of that minute (503, retry); verification of existing flows never depends on it.
+ *  - Memory is at most (TTL + 2 minutes) x BUCKET_BITS / 8 bytes (about 1.5 MB), regardless of traffic.
+ * The boot id makes a flow minted by a previous process, or by another instance, unverifiable here, so it is refused rather than guessed at (see docs for
+ * the single-process assumption of the Plesk/Passenger deployment).
  */
-const inFlight = new Set<string>();
-const spentOk = new Map<string, number>();
-const spentFailed = new Map<string, number>();
-export const SPENT_OK_MAX = 50_000;
-export const SPENT_FAILED_MAX = 10_000;
+export const BUCKET_BITS = 1 << 20;
+const BUCKET_MS = 60_000;
+const BUCKET_KEEP = Math.ceil(OAUTH_FLOW_TTL_MS / BUCKET_MS) + 2;
+const ID_BYTES = 6 + 4 + 4 + 18;
 
-/** Entries are inserted in time order with one shared TTL, so expired ones are always at the front. */
-function pruneExpired(m: Map<string, number>, nowMs: number): void {
-  const keys = m.keys();
-  for (let next = keys.next(); !next.done; next = keys.next()) {
-    if (nowMs - (m.get(next.value) as number) > OAUTH_FLOW_TTL_MS) m.delete(next.value);
-    else break;
-  }
+type Bucket = { issued: number; claimed: Uint8Array };
+let bootId = randomBytes(6);
+const buckets = new Map<number, Bucket>();
+
+export class FlowCapacityError extends Error {
+  constructor() { super("OAuth flow capacity for this minute is exhausted"); this.name = "FlowCapacityError"; }
 }
 
-export type FlowClaim = "claimed" | "spent" | "busy";
+function dropOldBuckets(nowMinute: number): void {
+  buckets.forEach((_b, minute) => { if (nowMinute - minute > BUCKET_KEEP) buckets.delete(minute); });
+}
 
-/** Take the right to complete this flow. "spent": already finished; "busy": another callback for it is in progress. */
+/** Mint a flow id and reserve its single-use bit. Throws FlowCapacityError only if this minute already issued BUCKET_BITS flows. */
+export function newFlowId(nowMs: number = Date.now()): string {
+  const minute = Math.floor(nowMs / BUCKET_MS);
+  dropOldBuckets(minute);
+  let bucket = buckets.get(minute);
+  if (!bucket) { bucket = { issued: 0, claimed: new Uint8Array(BUCKET_BITS / 8) }; buckets.set(minute, bucket); }
+  if (bucket.issued >= BUCKET_BITS) throw new FlowCapacityError();
+  const index = bucket.issued++;
+  const id = Buffer.alloc(ID_BYTES);
+  bootId.copy(id, 0);
+  id.writeUInt32BE(minute >>> 0, 6);
+  id.writeUInt32BE(index, 10);
+  randomBytes(18).copy(id, 14);
+  return id.toString("base64url");
+}
+
+export type FlowClaim = "claimed" | "spent" | "unknown";
+
+/**
+ * Atomically consume the flow (synchronous test-and-set). "claimed": this caller now exclusively owns the flow, permanently; "spent": already consumed;
+ * "unknown": not a flow this process issued within the TTL (foreign boot id, expired, or never issued).
+ */
 export function claimFlow(flowId: string, nowMs: number = Date.now()): FlowClaim {
-  pruneExpired(spentOk, nowMs);
-  pruneExpired(spentFailed, nowMs);
-  if (spentOk.has(flowId) || spentFailed.has(flowId)) return "spent";
-  if (inFlight.has(flowId)) return "busy";
-  inFlight.add(flowId);
+  const raw = Buffer.from(flowId, "base64url");
+  if (raw.length !== ID_BYTES || raw.toString("base64url") !== flowId) return "unknown";
+  if (!raw.subarray(0, 6).equals(bootId)) return "unknown";
+  const nowMinute = Math.floor(nowMs / BUCKET_MS);
+  const minute = raw.readUInt32BE(6);
+  const index = raw.readUInt32BE(10);
+  if (nowMinute - minute > BUCKET_KEEP || minute - nowMinute > 1) return "unknown";
+  const bucket = buckets.get(minute);
+  if (!bucket || index >= bucket.issued) return "unknown";
+  const byte = index >> 3, bit = 1 << (index & 7);
+  if (bucket.claimed[byte] & bit) return "spent";
+  bucket.claimed[byte] |= bit;
   return "claimed";
 }
 
-/** Always call (idempotent): drops the in-flight claim, e.g. when the connection closes before an outcome. */
-export function releaseFlow(flowId: string): void {
-  inFlight.delete(flowId);
-}
-
-/**
- * Record the terminal outcome and release the claim. For "success" returns false when the durable record cannot be stored (table full of unexpired
- * entries): the caller must then NOT issue a session. "failure" always returns true.
- */
-export function finishFlow(flowId: string, outcome: "success" | "failure", nowMs: number = Date.now()): boolean {
-  inFlight.delete(flowId);
-  if (outcome === "success") {
-    pruneExpired(spentOk, nowMs);
-    if (spentOk.size >= SPENT_OK_MAX) return false;
-    spentOk.set(flowId, nowMs);
-    return true;
-  }
-  pruneExpired(spentFailed, nowMs);
-  if (spentFailed.size < SPENT_FAILED_MAX) spentFailed.set(flowId, nowMs);
-  return true;
-}
-
-export function flowStateSizes(): { inFlight: number; spentOk: number; spentFailed: number } {
-  return { inFlight: inFlight.size, spentOk: spentOk.size, spentFailed: spentFailed.size };
+export function flowStateStats(): { buckets: number; bytes: number; issuedLive: number } {
+  let issuedLive = 0;
+  buckets.forEach((b) => { issuedLive += b.issued; });
+  return { buckets: buckets.size, bytes: buckets.size * (BUCKET_BITS / 8), issuedLive };
 }
 
 export function resetFlowStateForTests(): void {
-  inFlight.clear();
-  spentOk.clear();
-  spentFailed.clear();
+  buckets.clear();
+  bootId = randomBytes(6);
 }
+
+/** Upper bound on how long one callback may spend verifying with Google before it is abandoned (its flow stays consumed). */
+export let OAUTH_VERIFY_TIMEOUT_MS = 30_000;
+export function setOAuthVerifyTimeoutForTests(ms: number): void { OAUTH_VERIFY_TIMEOUT_MS = ms; }

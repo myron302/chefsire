@@ -23,7 +23,7 @@ import { isEmailAuthoritativelyVerified } from "../lib/email-verification-proven
 import { verifyAuthToken } from "../lib/jwt-config";
 import { issueAuthToken, checkSession } from "../lib/auth-session";
 import { isDatabaseUnavailableError, sendServiceUnavailable } from "../lib/db-availability";
-import { claimFlow, finishFlow, flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, openFlow, releaseFlow, sealFlow } from "../lib/oauth-flow";
+import { claimFlow, FlowCapacityError, flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, OAUTH_VERIFY_TIMEOUT_MS, openFlow, sealFlow } from "../lib/oauth-flow";
 
 const router = Router();
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
@@ -509,7 +509,13 @@ function startGoogleFlow(extra: { prompt?: string }) {
     const destination = safeInternalDestination(req.query.next);
     const clientState = typeof req.query.client_state === "string" && OAUTH_CLIENT_STATE_SHAPE.test(req.query.client_state) ? req.query.client_state : null;
     for (const name of flowCookiesToEvict(req.cookies)) res.clearCookie(name, { path: oauthFlowCookieOptions.path });
-    const flowId = newFlowId();
+    let flowId: string;
+    try {
+      flowId = newFlowId();
+    } catch (error) {
+      if (error instanceof FlowCapacityError) return res.redirect("/login?error=service-unavailable");
+      throw error;
+    }
     res.cookie(flowCookieName(flowId), sealFlow(flowId, { destination, clientState }), oauthFlowCookieOptions);
     passport.authenticate("google", { scope: ["profile", "email"], state: flowId, ...extra } as never)(req, res, next);
   };
@@ -537,14 +543,22 @@ router.get("/auth/google/callback", oauthCallbackLimiter, (req, res, next) => {
   res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
   res.clearCookie(OAUTH_CLIENT_STATE_COOKIE, { path: oauthReturnCookieOptions.path });
   if (!flow || !isFlowId(flowId)) return res.redirect("/login?error=google-auth-failed");
-  // Claim the flow for the duration of the Google verification: a concurrent or later callback for it is refused. The claim is released on every path
-  // (and if the connection drops), and only a VERIFIED sign-in leaves a durable record -- see lib/oauth-flow for why failures must not.
+  // Consume the flow. This is the single-use point: an atomic test-and-set that is NEVER undone -- not on failure, not on timeout, not when the client
+  // disconnects -- so ownership cannot pass to a second callback and no table's capacity decides whether a flow is replayable (see lib/oauth-flow).
   if (claimFlow(flowId) !== "claimed") return res.redirect("/login?error=google-auth-failed");
-  res.once("close", () => releaseFlow(flowId));
   const destination = safeInternalDestination(flow.destination);
   const clientState = flow.clientState;
+  // This handler is the flow's sole owner. Verification with Google is bounded, and whichever of {completion, timeout} settles first wins; a late
+  // completion (after a timeout, or after the response was already sent) must not issue a session.
+  let settled = false;
+  const settle = () => { if (settled) return false; settled = true; clearTimeout(deadline); return true; };
+  const deadline = setTimeout(() => {
+    if (!settle()) return;
+    if (!res.headersSent) res.redirect("/login?error=service-unavailable");
+  }, OAUTH_VERIFY_TIMEOUT_MS);
+  deadline.unref?.();
   passport.authenticate("google", { session: false }, async (error, user) => {
-    if (error || !user) finishFlow(flowId, "failure");
+    if (!settle()) return;
     if (error) {
       const postgresError = error as Error & { code?: string; column?: string };
       const message = error instanceof Error ? error.message : String(error);
@@ -566,10 +580,6 @@ router.get("/auth/google/callback", oauthCallbackLimiter, (req, res, next) => {
       if (!user) {
         return res.redirect("/login?error=no-user");
       }
-
-      // Google verified the code and the account resolved: record the flow as spent BEFORE any session is issued. If that cannot be recorded
-      // (table full of unexpired entries) fail closed -- no session -- rather than leave a replayable flow.
-      if (!finishFlow(flowId, "success")) return res.redirect("/login?error=service-unavailable");
 
       // Create JWT token for the user
       const token = issueAuthToken(user);
