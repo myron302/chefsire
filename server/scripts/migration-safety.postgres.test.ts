@@ -392,3 +392,70 @@ postgresTest("already-recorded ledger entries are unaffected by the stricter sca
     assert.deepEqual((await client.query(`SELECT filename, applied_at FROM _app_migrations WHERE filename = 'drizzle:000_old.sql'`)).rows, before);
   });
 });
+
+postgresTest("set_config with a computed name really changes parsing (why configuration changes are rejected)", async () => {
+  await sandbox(async ({ client }) => {
+    await client.query(`CREATE TABLE victim (id int); INSERT INTO victim VALUES (1), (2)`);
+    // Control, run directly against the disposable sandbox only: the sequence a scanner assuming standard strings
+    // would read as "two harmless string literals" deletes rows once the setting is off.
+    await client.query(`SELECT set_config('standard_conforming_' || 'strings', 'off', false)`);
+    await client.query(String.raw`SELECT '\''; DELETE FROM victim; SELECT '\'';`);
+    await client.query(`RESET standard_conforming_strings`);
+    assert.equal(await count(client, "victim"), 0);
+  });
+});
+
+postgresTest("configuration-changing migrations are rejected before execution on a real database", async () => {
+  await sandbox(async ({ client, db, dir }) => {
+    await client.query(`CREATE TABLE victim (id int); INSERT INTO victim VALUES (1), (2)`);
+    const hide = String.raw`SELECT '\''; DELETE FROM victim; SELECT '\'';`;
+    for (const sql of [
+      `SELECT set_config('standard_conforming_' || 'strings', 'off', false); ${hide}`,
+      `SELECT set_config(format('%s_%s_%s', 'standard', 'conforming', 'strings'), 'off', false); ${hide}`,
+      `SELECT pg_catalog."set_config"(lower('STANDARD_CONFORMING_') || 'strings', 'off', false); ${hide}`,
+      `UPDATE pg_settings SET setting = 'off' WHERE name = 'standard_conforming_' || 'strings'; ${hide}`,
+      `SET NAMES 'SJIS';`,
+      `DO $$ BEGIN PERFORM set_config('standard_conforming_' || 'strings', 'off', false); END $$;`,
+    ]) {
+      await assert.rejects(applyMigration(client, "t:config.sql", sql, quiet), DestructiveMigrationError, sql);
+    }
+    assert.equal(await count(client, "victim"), 2);
+    assert.equal((await client.query(`SHOW client_encoding`)).rows[0].client_encoding, "UTF8");
+    // Same through the routine command: nothing earlier in the batch runs either.
+    await writeFile(join(dir, "001_safe.sql"), "CREATE TABLE fine (id int);");
+    await writeFile(join(dir, "002_config.sql"), `SELECT set_config('standard_conforming_' || 'strings', 'off', false); ${hide}`);
+    await assert.rejects(runPendingMigrations(db, [{ dir, keyPrefix: "drizzle", priority: 0 }], quiet), /No migration was executed/);
+    assert.equal(await exists(client, "fine"), false);
+    assert.equal(await count(client, "victim"), 2);
+    assert.deepEqual(await ledger(client), []);
+  });
+});
+
+postgresTest("defence in depth: a change that evades the static guard (existing routine) is rolled back before COMMIT", async () => {
+  await sandbox(async ({ client, db, dir, schema }) => {
+    await client.query(`CREATE TABLE victim (id int); INSERT INTO victim VALUES (1)`);
+    // A routine that already exists in the database is outside what a static scan can see (documented limit).
+    await client.query(`CREATE FUNCTION ${schema}.preexisting() RETURNS text LANGUAGE plpgsql AS $f$
+      BEGIN RETURN set_config('standard_conforming_strings', 'off', false); END $f$`);
+    await writeFile(join(dir, "001_sneaky.sql"), "CREATE TABLE created_first (id int); SELECT preexisting(); CREATE TABLE created_after (id int);");
+    await assert.rejects(runPendingMigrations(db, [{ dir, keyPrefix: "drizzle", priority: 0 }], quiet), /standard_conforming_strings=off/);
+    assert.equal(await exists(client, "created_first"), false, "whole file rolled back");
+    assert.equal(await exists(client, "created_after"), false);
+    assert.deepEqual(await ledger(client), [], "no ledger entry for the rejected file");
+    assert.equal((await client.query(`SHOW standard_conforming_strings`)).rows[0].standard_conforming_strings, "on");
+
+    // Same for the authorized destructive path.
+    const sql = "DELETE FROM victim WHERE id = 1; SELECT preexisting();";
+    await assert.rejects(applyAuthorizedDestructiveMigration(client, "sneaky.sql", sql, await authFor(client, sql), opts()), /standard_conforming_strings=off/);
+    assert.equal(await count(client, "victim"), 1, "destructive statements rolled back");
+    assert.deepEqual(await ledger(client), []);
+  });
+});
+
+postgresTest("harmless migrations with timeouts and ordinary SET clauses still run", async () => {
+  await sandbox(async ({ client, db, dir }) => {
+    await writeFile(join(dir, "001_ok.sql"), "SET LOCAL lock_timeout = '5s'; CREATE TABLE t (id int, x int); INSERT INTO t VALUES (1, 1); UPDATE t SET x = 2 WHERE id = 1;");
+    assert.deepEqual((await runPendingMigrations(db, [{ dir, keyPrefix: "drizzle", priority: 0 }], quiet)).applied, ["drizzle:001_ok.sql"]);
+    assert.equal((await client.query(`SELECT x FROM t`)).rows[0].x, 2);
+  });
+});

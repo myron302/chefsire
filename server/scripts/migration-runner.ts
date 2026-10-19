@@ -129,6 +129,7 @@ export async function applyAuthorizedDestructiveMigration(
       position = index + 1;
       await client.query(statements[index]);
     }
+    await assertLexingAssumptions(client);
     await client.query("COMMIT");
   } catch (error: any) {
     try {
@@ -154,6 +155,9 @@ async function runInTransaction(client: MigrationClient, ledgerKey: string, sql:
       await client.query(statements[index]);
     }
     position = statements.length + 1;
+    // Defence in depth: if anything above changed how SQL is lexed, the validation no longer describes what ran.
+    // Everything is still inside the transaction, so refusing here rolls the whole file back.
+    await assertLexingAssumptions(client as any);
     await client.query(`insert into _app_migrations (filename) values ($1) on conflict (filename) do nothing`, [ledgerKey]);
     await client.query("COMMIT");
   } catch (error: any) {

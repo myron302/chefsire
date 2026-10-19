@@ -359,3 +359,94 @@ test("PostgreSQL whitespace is exactly space, tab, CR, LF, FF, VT", () => {
   assert.deepEqual(tokenize("a b").map((t) => t.text), ["A B"]);
   assert.deepEqual(tokenize("a\u000bb\fc").map((t) => t.text), ["A", "B", "C"]);
 });
+
+// ---- Configuration changes (Codex 772f582): one policy, no name-matching ------------------------------------------
+const HIDE = "SELECT '\\''; DELETE FROM victim; SELECT '\\'';";
+const CONFIG_CHANGES: Record<string, string> = {
+  "direct set_config": "SELECT set_config('standard_conforming_strings', 'off', false);",
+  "concatenated setting name": `SELECT set_config('standard_conforming_' || 'strings', 'off', false); ${HIDE}`,
+  "format()-built setting name": `SELECT set_config(format('%s_%s_%s', 'standard', 'conforming', 'strings'), 'off', false); ${HIDE}`,
+  "setting name from a query": "SELECT set_config((SELECT name FROM pg_settings LIMIT 1), 'off', false);",
+  "harmless-looking setting (policy is name-independent)": "SELECT set_config('application_name', 'x', true);",
+  "upper case": "SELECT SET_CONFIG('a.b', 'c', false);",
+  "mixed case": "SELECT Set_Config('a.b', 'c', false);",
+  "quoted": 'SELECT "set_config"(\'a.b\', \'c\', false);',
+  "schema-qualified": "SELECT pg_catalog.set_config('a.b', 'c', false);",
+  "schema-qualified + quoted": 'SELECT pg_catalog."set_config"(\'a.b\', \'c\', false);',
+  "unicode-escaped": 'SELECT U&"set\\005fconfig"(\'a.b\', \'c\', false);',
+  "unicode-escaped UESCAPE": "SELECT U&\"set!005fconfig\" UESCAPE '!'('a.b', 'c', false);",
+  "inside DO body": "DO $$ BEGIN PERFORM set_config('a.b', 'c', false); END $$;",
+  "inside DO body (single-quoted)": "DO 'BEGIN PERFORM set_config(''a.b'', ''c'', false); END';",
+  "inside function body": "CREATE FUNCTION f() RETURNS text AS $$ SELECT set_config('a.b', 'c', false) $$ LANGUAGE sql;",
+  "inside a view": "CREATE VIEW v AS SELECT set_config('a.b', 'c', true) AS x;",
+  "as a column default": "ALTER TABLE t ADD COLUMN c text DEFAULT set_config('a.b', 'c', true);",
+  "via dynamic SQL": "DO $$ BEGIN EXECUTE 'SELECT set_config(''a.b'', ''c'', false)'; END $$;",
+  "via query_to_xml": "SELECT query_to_xml($q$SELECT set_config('a.b','c',false)$q$, false, false, '');",
+  "UPDATE pg_settings (computed name)": `UPDATE pg_settings SET setting = 'off' WHERE name = 'standard_conforming_' || 'strings'; ${HIDE}`,
+  "pg_settings read": "SELECT * FROM pg_settings;",
+  "pg_catalog.pg_settings": "SELECT 1 FROM pg_catalog.pg_settings;",
+  "pg_show_all_settings": "SELECT * FROM pg_show_all_settings();",
+  "SET lexing setting": `SET standard_conforming_strings = off; ${HIDE}`,
+  "SET NAMES": "SET NAMES 'SJIS';",
+  "SET search_path": "SET search_path TO evil, public;",
+  "SET LOCAL search_path": "SET LOCAL search_path = evil;",
+  "SET SCHEMA": "SET SCHEMA 'evil';",
+  "SET ROLE": "SET ROLE other;",
+  "SET SESSION AUTHORIZATION": "SET SESSION AUTHORIZATION other;",
+  "SET TIME ZONE": "SET TIME ZONE 'UTC';",
+  "SET TRANSACTION": "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;",
+  "SET SESSION CHARACTERISTICS": "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;",
+  "SET extension GUC": "SET my.custom = 'x';",
+  "SET FROM CURRENT": "SET search_path FROM CURRENT;",
+  "RESET ALL": "RESET ALL;",
+  "RESET a parse-relevant setting": "RESET standard_conforming_strings;",
+  "RESET search_path": "RESET search_path;",
+  "safe setting with malformed assignment": "SET lock_timeout;",
+  "lower-case set": "set search_path to evil;",
+  "SET inside DO (after THEN)": "DO $$ BEGIN IF true THEN SET search_path = evil; END IF; END $$;",
+  "SET inside DO (first statement)": "DO $$ BEGIN SET LOCAL search_path = evil; END $$;",
+  "SET inside DO (loop/else)": "DO $$ BEGIN IF false THEN PERFORM 1; ELSE RESET ALL; END IF; END $$;",
+  "ALTER DATABASE SET": "ALTER DATABASE x SET standard_conforming_strings = off;",
+  "ALTER ROLE SET": "ALTER ROLE r SET search_path = evil;",
+  "ALTER USER": "ALTER USER r PASSWORD 'x';",
+  "ALTER SYSTEM": "ALTER SYSTEM SET work_mem = '1GB';",
+};
+for (const [name, sql] of Object.entries(CONFIG_CHANGES)) {
+  test(`configuration change rejected: ${name}`, () => {
+    assert.ok(findDestructiveOperations(sql).length > 0, sql);
+  });
+}
+
+test("a configuration change in an earlier statement is located and stops the whole file", () => {
+  const found = findDestructiveOperations(`CREATE TABLE a (id int);\nSELECT set_config('a' || '.b', 'c', false);\n${HIDE}`);
+  assert.ok(found.some((f) => f.statement === 2 && f.operation.startsWith("CONFIGURATION CHANGE")), JSON.stringify(found));
+});
+
+test("configuration findings name the construct", () => {
+  assert.ok(ops("SELECT pg_catalog.\"set_config\"('a', 'b', false);").includes("CONFIGURATION CHANGE (set_config)"));
+  assert.ok(ops("SET NAMES 'SJIS';").includes("CONFIGURATION CHANGE (SET NAMES)"));
+  assert.ok(ops("RESET ALL;").includes("CONFIGURATION CHANGE (RESET ALL)"));
+  assert.ok(ops("ALTER ROLE r SET x = 1;").includes("UNSUPPORTED ALTER (ROLE)"));
+});
+
+test("harmless migrations that mention SET/settings without changing configuration still pass", () => {
+  assert.deepEqual(
+    findDestructiveOperations(`
+      SET LOCAL lock_timeout = '5s';
+      SET statement_timeout TO 0;
+      SET idle_in_transaction_session_timeout = 0;
+      RESET lock_timeout;
+      UPDATE t SET x = 1, y = 2 WHERE id = 1;
+      INSERT INTO t (id) VALUES (1) ON CONFLICT (id) DO UPDATE SET x = EXCLUDED.x;
+      ALTER TABLE t ALTER COLUMN c SET DEFAULT 0, ALTER COLUMN d SET NOT NULL, ALTER COLUMN e SET DATA TYPE bigint;
+      ALTER TABLE t ADD CONSTRAINT fk FOREIGN KEY (p) REFERENCES u(id) ON DELETE SET NULL;
+      ALTER TABLE t SET (fillfactor = 90);
+      CREATE TABLE settings (name text, "set_config_note" text, pg_settings_backup int);
+      SELECT current_setting('server_version_num');
+      COMMENT ON TABLE settings IS 'does not call set_config or touch pg_settings';
+      DO $$ BEGIN IF true THEN UPDATE t SET x = 2 WHERE id = 2; END IF; END $$;
+      CREATE FUNCTION g() RETURNS int LANGUAGE sql AS $$ SELECT 1 $$;
+    `),
+    []
+  );
+});

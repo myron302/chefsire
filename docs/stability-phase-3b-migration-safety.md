@@ -41,7 +41,8 @@ Rejected:
 | Unparseable input | Unterminated comment/string/identifier/dollar quote. |
 | Unicode-escaped identifiers | Every `U&"…"` identifier (any case of `U`, with or without `UESCAPE`, any escape character) and the `UESCAPE` keyword are rejected **without decoding**. |
 | Ambiguous procedural bodies | A `DO` must contain exactly one body literal (the operand of `LANGUAGE` is excluded, so `DO LANGUAGE 'plpgsql' $$…$$` is analysed); adjacent literals (`'a'⏎'b'`, which PostgreSQL concatenates) and multi-literal function definitions are rejected. |
-| Lexing-changing settings | Any mention of `standard_conforming_strings` or `client_encoding` (word, quoted identifier or string, e.g. `set_config(…)`). The runners additionally verify the live session has `standard_conforming_strings = on` and `client_encoding = UTF8` before running anything (routine and destructive). |
+| Configuration changes | **One policy: routine migrations may not change session configuration.** Rejected: any mention of `set_config` (any case, quoted, schema-qualified), `pg_settings` and `pg_show_all_settings` (writable view / settings dump) regardless of arguments; every statement that *starts* with `SET`/`RESET` (including inside `DO`/function bodies after `THEN`/`ELSE`/`LOOP`/`BEGIN`) except `[SET|RESET] [SESSION|LOCAL] lock_timeout | statement_timeout | idle_in_transaction_session_timeout`; `SET NAMES`, `SET ROLE`, `SET SESSION AUTHORIZATION`, `SET TIME ZONE`, `SET SCHEMA`, `SET TRANSACTION`, `RESET ALL`; `ALTER DATABASE|ROLE|USER|GROUP|SYSTEM`. Additionally any mention of `standard_conforming_strings`/`client_encoding` (word, quoted identifier or string). |
+| Session lexing assumptions | The runners verify the live session has `standard_conforming_strings = on` and `client_encoding = UTF8` **before running anything and again before COMMIT** (routine and destructive). A violation rolls the whole file back and writes no ledger entry. |
 
 `DO` and `CREATE FUNCTION|PROCEDURE` bodies are lexed and analysed recursively as code (depth-limited).
 
@@ -90,6 +91,7 @@ A database name is not an identity (two servers or Neon branches can share one).
 ## Remaining risks
 
 * The ledger stores filenames only, not checksums: an applied file edited later is not detected. Adding a checksum column would alter the production ledger and was deliberately left out.
+* Pre-existing database routines can change session state the guard only re-checks for two settings (see Round 4).
 * See "Not detected" above: the guard is structural and cannot see into pre-existing routines or prove a predicate is selective.
 * Restricting routine migrations to the constructs listed above may reject a legitimate future migration (for example `EXECUTE format(…)` for constraint-name discovery); such a migration must be restructured or go through review.
 * Concurrent *routine* `db:migrate` runs are not serialized by this PR (only destructive runs are).
@@ -129,3 +131,19 @@ The guarantee is now: *a statement is accepted only if every token the guard und
 Constructs that cannot be analysed reliably and are therefore rejected explicitly: dynamic SQL, `CALL`, `COPY`, non-plpgsql/sql languages, `E''`/`U&''` procedural bodies, adjacent/multiple body literals, Unicode-escaped identifiers and `UESCAPE`, lexing-changing settings, unknown statement kinds, meta-commands, unterminated tokens.
 
 Remaining limits (unchanged in kind, listed for honesty): the guard is a static analysis of text. It cannot see what an *existing* routine does when called, lossy `ALTER COLUMN … TYPE … USING`, `UPDATE` without `WHERE`, always-true predicates beyond the trivial forms, server-side settings changed outside the file (checked only for the two above), or PostgreSQL grammar added after this review. New server versions should be re-reviewed against this list.
+
+## Round 4: computed `set_config()` names (Codex, commit `772f582`)
+
+**Finding.** Round 3 rejected any token spelling a parse-relevant setting name, but a name can be *computed*: `SELECT set_config('standard_conforming_' || 'strings', 'off', false);` contains no such token. The next statements were then lexed by PostgreSQL under non-standard string rules while the guard had read them under standard rules, so `SELECT '\''; DELETE FROM victim; SELECT '\'';` looked like two string literals and executed a DELETE.
+
+**Reproduced on `772f582`** (disposable database): concatenated name, `format()`-built name, `pg_catalog."set_config"(lower(…)||…)` and `UPDATE pg_settings SET setting = 'off' WHERE name = 'standard_conforming_' || 'strings'` were all accepted and each emptied the table; `SET NAMES 'SJIS'` was accepted and silently switched the session's `client_encoding` (a second, separate hole in the name-matching approach — `NAMES` is an alias).
+
+**Root cause.** Name-matching is the wrong abstraction for configuration. The set of dangerous settings is open-ended and names can be computed, so the guard cannot decide *which setting* is being changed. The correct rule is name-independent: a routine migration does not change configuration at all.
+
+**Correction.**
+1. `set_config`, `pg_settings` and `pg_show_all_settings` are rejected wherever they appear as an identifier (unquoted in any case, quoted, schema-qualified; `U&"…"` spellings are already rejected as unicode-escaped identifiers). Arguments are never inspected. Strings and bodies cannot indirectly call them because `EXECUTE`, `query_to_xml`, `dblink`, `CALL`, `PREPARE` and `COPY` are all rejected, and function/DO bodies are lexed as code.
+2. A statement that starts with `SET`/`RESET` is a configuration command and is rejected unless it is one of three timeouts that cannot affect parsing. "Starts a statement" includes the first token of a piece and the token after `THEN`/`ELSE`/`LOOP`/`BEGIN`/`ATOMIC` in procedural bodies. `UPDATE … SET`, `ON DELETE SET NULL`, `ALTER … SET DEFAULT/NOT NULL/DATA TYPE` never start a statement and are unaffected. No historical migration contains a `SET`/`RESET` command, `set_config` or `pg_settings`.
+3. `ALTER DATABASE|ROLE|USER|GROUP|SYSTEM` is rejected (persistent configuration; `ALTER ROLE/USER` also changes credentials).
+4. **Defence in depth:** the live-session assertion (standard strings on, UTF-8) is repeated immediately before COMMIT, inside the transaction, for routine and destructive runs. If anything the static scan could not see — for example a function that already exists in the database and calls `set_config` — changes lexing, the whole file (and the destructive claim) rolls back. Tested with exactly such a pre-existing function.
+
+**Assessment of the boundary.** The guard cannot be made reliable by recognising specific *settings*; it is reliable only where the rule is structural and name-independent. The design now has three layers: (a) structural rejection of everything that can change configuration or run computed SQL, (b) a live check of the two assumptions the lexer makes, before the work and before COMMIT, (c) single-transaction execution so a failed layer-(b) check undoes the file. What it still cannot do is understand what an *existing* routine does when called; that is the residual risk, now bounded by layer (b) for the lexing assumptions only. Settings that influence semantics without affecting lexing (for example `search_path` changed inside a pre-existing routine) are not re-checked.

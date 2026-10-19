@@ -77,6 +77,18 @@ const DYNAMIC_SQL_FUNCTIONS = new Set([
 ]);
 /** Session settings that change how the SAME bytes lex (string escapes, multibyte decoding). Never legitimate here. */
 const LEXING_SETTINGS = ["standard_conforming_strings", "client_encoding"];
+/**
+ * Configuration is a single policy: routine migrations may not change session configuration, because any such change
+ * can alter how LATER text is parsed (string escapes, encoding, search_path-based name resolution) and so invalidate
+ * everything this guard concluded about it. The only exceptions are three timeouts that cannot affect parsing.
+ */
+const CONFIG_SAFE_SETTINGS = new Set(["LOCK_TIMEOUT", "STATEMENT_TIMEOUT", "IDLE_IN_TRANSACTION_SESSION_TIMEOUT"]);
+/** Any mention (qualified, quoted or not) is rejected: the function takes a COMPUTED name, pg_settings is writable. */
+const CONFIG_OBJECTS = new Set(["set_config", "pg_settings", "pg_show_all_settings"]);
+/** ALTER targets whose SET/RESET clauses persist configuration (and ALTER ROLE/USER also changes credentials). */
+const CONFIG_ALTER_TARGETS = new Set(["DATABASE", "ROLE", "USER", "GROUP", "SYSTEM"]);
+/** Words after which a PL/pgSQL statement can begin, so a SET/RESET there is a configuration command. */
+const STATEMENT_LEAD_WORDS = new Set(["THEN", "ELSE", "LOOP", "BEGIN", "ATOMIC"]);
 const MAX_BODY_DEPTH = 3;
 
 type Add = (operation: string) => void;
@@ -168,6 +180,23 @@ function analysePiece(piece: Token[], top: boolean, depth: number, add: Add): vo
     ) {
       add(`DYNAMIC SQL FUNCTION (${asciiLower(t.value)})`);
     }
+    if (
+      (t.kind === "word" && CONFIG_OBJECTS.has(asciiLower(t.value))) ||
+      (t.kind === "qident" && t.flavor === "plain" && CONFIG_OBJECTS.has(t.value))
+    ) {
+      add(`CONFIGURATION CHANGE (${asciiLower(t.value)})`);
+    }
+    if ((w === "SET" || w === "RESET") && (k === 0 || STATEMENT_LEAD_WORDS.has(prev ?? ""))) {
+      // A configuration command (a statement that STARTS with SET/RESET). UPDATE … SET, ON DELETE SET NULL,
+      // ALTER … SET DEFAULT and friends never start a statement, so they are not affected.
+      let j = k + 1;
+      if (word(piece[j]) === "SESSION" || word(piece[j]) === "LOCAL") j++;
+      const name = word(piece[j]);
+      const assignment = piece[j + 1];
+      const wellFormed = w === "RESET" ? assignment === undefined : word(assignment) === "TO" || assignment?.text === "=";
+      if (!(name && CONFIG_SAFE_SETTINGS.has(name) && wellFormed)) add(`CONFIGURATION CHANGE (${w} ${name ?? "?"})`);
+    }
+    if (w === "ALTER" && CONFIG_ALTER_TARGETS.has(next ?? "")) add(`UNSUPPORTED ALTER (${next})`);
     if (t.kind !== "punct" && t.kind !== "number") {
       const text = asciiLower(t.kind === "word" || t.kind === "qident" || t.kind === "string" ? t.value : "");
       const setting = LEXING_SETTINGS.find((name) => text.includes(name));
