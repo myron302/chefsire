@@ -24,6 +24,7 @@ import {
 } from "../../shared/schema.js";
 import { z } from "zod";
 import { requireAuth } from "../middleware";
+import { recipeVisibleToViewer } from "../lib/recipe-visibility.js";
 import {
   familyMealProfilePatchSchema,
   groceryListItemPatchSchema,
@@ -115,10 +116,13 @@ router.post("/meal-recommendations/generate", requireAuth, async (req: Request, 
       .select()
       .from(recipes)
       .where(
-        sql`
+        and(
+          sql`
           ${recipes.calories} BETWEEN ${Math.max(0, calorieGoal / 4 - 200)}
           AND ${calorieGoal / 4 + 200}
-        `
+        `,
+          recipeVisibleToViewer(sql`${recipes.id}`, userId),
+        )
       )
       .limit(10);
 
@@ -180,6 +184,9 @@ router.get("/meal-recommendations", requireAuth, async (req: Request, res: Respo
     if (hasDefinedQueryValue(dismissed)) {
       whereConditions.push(eq(mealRecommendations.dismissed, parseQueryBoolean(dismissed)));
     }
+
+    // A stored recommendation never keeps a recipe readable once the user can no longer see it.
+    whereConditions.push(sql`(${mealRecommendations.recipeId} IS NULL OR ${recipeVisibleToViewer(sql`${mealRecommendations.recipeId}`, userId)})`);
 
     const recommendations = await db
       .select({

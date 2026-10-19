@@ -38,6 +38,16 @@ Model: `recipes.origin_club_id` (migration `server/migrations/20261019_recipe_or
 - Legacy backfill touches only rows with no post and no external source that a club post references. The club of the earliest referencing post is taken as the creating club; ties or missing timestamps resolve to a private referencing club, never to public. Unreferenced or post-linked recipes are left untouched.
 - Apply the migration before (or with) the deploy: recipe reads select the new column.
 
+## Meal-planner recipe references and shared weeks (review follow-up)
+
+Two further findings: `POST /week/entry` rejected external provider recipes (`sourceRecipeId: "mealdb_123"`) because it treated every reference as a local id, and a shared week could carry private-club recipe data to people who were never entitled to it.
+
+- **Local vs external** is decided by the recipes table (`classifyLocalRecipeRefs`), not by how an id looks. `recipeId` (the foreign key) must be a local recipe the actor can see (else the same 404 `Recipe not found`). `sourceRecipeId` is provenance text: if it matches a local recipe that recipe must be visible; otherwise it is stored as external metadata. A private recipe cannot be disguised as external, because its real id always matches its row. `assistant-apply` follows the same rules and now accepts external provenance (it used to demand a local row).
+- **Reads re-check access every time** (`redactUnavailableRecipes`): own week, shared preview, copy responses, generate response and the public summary totals. A reader who is not currently entitled gets the slot with the recipe row, recipe link, recipe-derived name and item list removed (`recipeUnavailable: true`, name `Recipe unavailable`). This also covers a member who later leaves the club. Nothing is snapshotted in the share row.
+- **Copying** omits entries whose local recipe the receiver cannot see and reports `skippedUnavailableRecipesCount` (also in `copy-impact`). If nothing is copyable the request is refused with `SHARED_WEEK_NOTHING_COPYABLE` before the target week is touched. Public, external and custom entries are copied as before; a share grants no membership.
+- Recommendation generation and the stored-recommendation list in `meal-planner-advanced.ts` use the same visibility rule. Week generation's recipe pool already did.
+- No migration beyond the one above.
+
 ## Running the new suites
 
 They use a real local PostgreSQL, like the other `*.postgres.test.ts` suites, and recreate the tables they need. Run them one file at a time (they share table names):

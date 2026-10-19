@@ -38,3 +38,42 @@ export async function filterVisibleRecipeIds(ids: string[], viewerId?: string | 
 export async function canViewRecipe(recipeId: string, viewerId?: string | null): Promise<boolean> {
   return (await filterVisibleRecipeIds([recipeId], viewerId)).has(recipeId);
 }
+
+/**
+ * Classify recipe references by what the DATABASE says, never by how the id looks.
+ *
+ * Only ids that match a row in `recipes` appear in the result (`visible` or `hidden` for this viewer). Any other value -- an
+ * external provider reference such as `mealdb_123`, or garbage -- is absent, i.e. "not a local recipe". An id cannot be disguised
+ * as external to dodge this: a private local recipe's real id matches its row whatever label the client attaches to it.
+ */
+export async function classifyLocalRecipeRefs(ids: string[], viewerId?: string | null): Promise<Map<string, "visible" | "hidden">> {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  const out = new Map<string, "visible" | "hidden">();
+  if (!unique.length) return out;
+  const result = await db.execute(sql`
+    SELECT r.id, ${recipeVisibleToViewer(sql`r.id`, viewerId)} AS visible FROM recipes r
+    WHERE r.id IN (${sql.join(unique.map((id) => sql`${id}`), sql`, `)})
+  `);
+  for (const row of ((result as any).rows ?? []) as Array<{ id: string; visible: boolean }>) {
+    out.set(String(row.id), row.visible ? "visible" : "hidden");
+  }
+  return out;
+}
+
+export const UNAVAILABLE_RECIPE_NAME = "Recipe unavailable";
+
+/**
+ * Reader-time redaction for planner entries hydrated with a joined recipe. If the reader may no longer (or never could) see the
+ * recipe, the entry keeps its slot and the numbers the planner owner typed in, but loses the recipe row, the recipe link, the
+ * name (which was copied from the recipe title) and any stored item list. Entries with no recipe pass through untouched.
+ */
+export async function redactUnavailableRecipes<T extends { recipe?: any; recipeId?: string | null }>(entries: T[], viewerId?: string | null): Promise<Array<T & { recipeUnavailable?: true }>> {
+  const refs = entries.map((entry) => entry.recipe?.id ?? entry.recipeId).filter(Boolean) as string[];
+  if (!refs.length) return entries;
+  const visible = await filterVisibleRecipeIds(refs, viewerId);
+  return entries.map((entry) => {
+    const ref = entry.recipe?.id ?? entry.recipeId;
+    if (!ref || visible.has(ref)) return entry;
+    return { ...entry, recipe: null, recipeId: null, customName: UNAVAILABLE_RECIPE_NAME, mealItems: null, recipeUnavailable: true as const };
+  });
+}

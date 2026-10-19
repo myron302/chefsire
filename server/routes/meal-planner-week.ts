@@ -16,7 +16,7 @@ import { ensureMealPlannerWeekSchema, mealPlannerWeekSchemaInit } from "./meal-p
 import { initGuard } from "../lib/retryable-init.js";
 import { ensureMealSocialSchema, getSharedWeekSocialStats } from "./meal-social.js";
 import { recordMealPlannerEvent } from "./meal-planner-events.js";
-import { filterVisibleRecipeIds, recipeVisibleToViewer } from "../lib/recipe-visibility.js";
+import { classifyLocalRecipeRefs, filterVisibleRecipeIds, recipeVisibleToViewer, redactUnavailableRecipes } from "../lib/recipe-visibility.js";
 import {
   addDays,
   assertPremiumNutrition,
@@ -130,6 +130,19 @@ type SharedWeekSourceEntry = {
   source: string | null;
 };
 
+/**
+ * Sharing a week grants no recipe access. Entries whose local recipe the RECEIVING user cannot see are left out of a copy
+ * (their private title and nutrition never reach the receiver's plan); everything else, including entries that merely carry
+ * external-provider metadata, is kept.
+ */
+async function splitCopyableEntries<T extends { recipeId?: string | null }>(entries: T[], receiverId: string) {
+  const refs = entries.map((entry) => entry.recipeId).filter(Boolean) as string[];
+  if (!refs.length) return { allowed: entries, omittedCount: 0 };
+  const visible = await filterVisibleRecipeIds(refs, receiverId);
+  const allowed = entries.filter((entry) => !entry.recipeId || visible.has(entry.recipeId));
+  return { allowed, omittedCount: entries.length - allowed.length };
+}
+
 type CopyImpactAffectedSlot = {
   day: string;
   mealType: string;
@@ -241,7 +254,7 @@ router.use(initGuard(mealPlannerWeekSchemaInit, {
   code: "meal_planner_week_unavailable",
 }));
 
-async function buildRecipePool(args: {
+export async function buildRecipePool(args: {
   mealType: MealType;
   maxCookTime?: number | null;
   targetCalories?: number | null;
@@ -291,7 +304,7 @@ type PublicWeekSummary = {
   avgProteinPerPlannedDay: number;
 };
 
-async function buildPublicWeekSummary(userId: string, weekAnchorRaw: Date | string): Promise<PublicWeekSummary> {
+async function buildPublicWeekSummary(userId: string, weekAnchorRaw: Date | string, viewerId?: string | null): Promise<PublicWeekSummary> {
   const weekStart = startOfWeekMonday(new Date(weekAnchorRaw));
   const weekEnd = endOfDay(addDays(weekStart, 6));
 
@@ -333,6 +346,8 @@ async function buildPublicWeekSummary(userId: string, weekAnchorRaw: Date | stri
       .leftJoin(recipes, eq(mealPlanEntries.recipeId, recipes.id))
       .where(eq(mealPlanEntries.mealPlanId, plan.id))
       .orderBy(mealPlanEntries.date);
+    // Totals must not carry a recipe's nutrition for a reader who cannot see that recipe.
+    entries = await redactUnavailableRecipes(entries, viewerId);
 
     groceryItems = await db
       .select({ purchased: groceryListItems.purchased })
@@ -488,12 +503,15 @@ router.get("/week", requireAuth, async (req: Request, res: Response) => {
       .where(eq(mealPlanEntries.mealPlanId, plan.id))
       .orderBy(mealPlanEntries.date);
 
+    // Recipe access is re-evaluated on every read: a saved entry never keeps a private recipe readable after the owner loses access.
+    const readableEntries = await redactUnavailableRecipes(entries, userId);
+
     res.json({
       weekStart: fmtISODate(weekStart),
       weekEnd: fmtISODate(weekEnd),
       plan,
-      entries,
-      weeklyMeals: mapEntriesToWeeklyMeals(entries),
+      entries: readableEntries,
+      weeklyMeals: mapEntriesToWeeklyMeals(readableEntries),
     });
   } catch (error) {
     console.error("Error fetching week plan:", error);
@@ -642,7 +660,7 @@ router.get("/week/shared", optionalAuth, async (req: Request, res: Response) => 
 
     let items = await Promise.all(
       shareRows.map(async (row) => {
-        const summary = await buildPublicWeekSummary(row.user_id, row.week_anchor);
+        const summary = await buildPublicWeekSummary(row.user_id, row.week_anchor, viewerId);
         return {
           token: row.public_share_token,
           weekAnchor: summary.weekAnchor,
@@ -752,7 +770,7 @@ router.get("/week/shared/:token", optionalAuth, async (req: Request, res: Respon
       return res.status(404).json({ message: "Shared week not found" });
     }
 
-    const summary = await buildPublicWeekSummary(shareRow.user_id, shareRow.week_anchor);
+    const summary = await buildPublicWeekSummary(shareRow.user_id, shareRow.week_anchor, (req.user as any)?.id);
 
     const weekStart = startOfWeekMonday(new Date(shareRow.week_anchor));
     const weekEnd = endOfDay(addDays(weekStart, 6));
@@ -770,7 +788,7 @@ router.get("/week/shared/:token", optionalAuth, async (req: Request, res: Respon
       )
       .orderBy(desc(mealPlans.createdAt))
       .limit(1);
-    const entries = plan
+    const rawEntries = plan
       ? await db
           .select({
             id: mealPlanEntries.id,
@@ -792,6 +810,8 @@ router.get("/week/shared/:token", optionalAuth, async (req: Request, res: Respon
           .where(eq(mealPlanEntries.mealPlanId, plan.id))
           .orderBy(mealPlanEntries.date)
       : [];
+    // A public share grants no recipe permissions: private recipes are redacted for any viewer who is not entitled to them.
+    const entries = await redactUnavailableRecipes(rawEntries, (req.user as any)?.id);
 
     const weeklyMeals = mapEntriesToWeeklyMeals(entries);
 
@@ -913,7 +933,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       return res.status(404).json({ message: "Shared plan data is no longer available." });
     }
 
-    const sourceEntries: SharedWeekSourceEntry[] = await db
+    const allSourceEntries: SharedWeekSourceEntry[] = await db
       .select({
         date: mealPlanEntries.date,
         mealType: mealPlanEntries.mealType,
@@ -931,8 +951,12 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       .where(eq(mealPlanEntries.mealPlanId, sourcePlan.id))
       .orderBy(mealPlanEntries.date);
 
-    if (!sourceEntries.length) {
+    if (!allSourceEntries.length) {
       return res.status(400).json({ message: "This shared week has no meals to copy yet." });
+    }
+    const { allowed: sourceEntries, omittedCount: skippedUnavailableRecipesCount } = await splitCopyableEntries(allSourceEntries, userId);
+    if (!sourceEntries.length) {
+      return res.status(400).json({ code: "SHARED_WEEK_NOTHING_COPYABLE", message: "None of the meals in this shared week can be copied: their recipes are not available to you." });
     }
 
     const targetWeekStart = startOfWeekMonday(parsedTargetDate);
@@ -1106,6 +1130,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       copiedEntriesCount: entriesToInsert.length,
       sourceEntriesCount: sourceEntries.length,
       skippedDuplicatesCount,
+      skippedUnavailableRecipesCount,
       mergeMode: copyMode,
       targetWeekStart: fmtISODate(targetWeekStart),
       targetWeekEnd: fmtISODate(targetWeekEnd),
@@ -1114,7 +1139,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       appliedSummary,
       appliedAffectedSlots,
       appliedAffectedSlotsPreviewCount: Math.min(12, appliedAffectedSlots.length),
-      weeklyMeals: mapEntriesToWeeklyMeals(copiedEntries),
+      weeklyMeals: mapEntriesToWeeklyMeals(await redactUnavailableRecipes(copiedEntries, userId)),
     });
   } catch (error) {
     console.error("Error copying shared meal planner week:", error);
@@ -1175,7 +1200,7 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
       return res.status(404).json({ message: "Shared plan data is no longer available." });
     }
 
-    const sourceEntries: SharedWeekSourceEntry[] = await db
+    const allSourceEntries: SharedWeekSourceEntry[] = await db
       .select({
         date: mealPlanEntries.date,
         mealType: mealPlanEntries.mealType,
@@ -1193,8 +1218,12 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
       .where(eq(mealPlanEntries.mealPlanId, sourcePlan.id))
       .orderBy(mealPlanEntries.date);
 
-    if (!sourceEntries.length) {
+    if (!allSourceEntries.length) {
       return res.status(400).json({ message: "This shared week has no meals to copy yet." });
+    }
+    const { allowed: sourceEntries, omittedCount: skippedUnavailableRecipesCount } = await splitCopyableEntries(allSourceEntries, userId);
+    if (!sourceEntries.length) {
+      return res.status(400).json({ code: "SHARED_WEEK_NOTHING_COPYABLE", message: "None of the meals in this shared week can be copied: their recipes are not available to you." });
     }
 
     const targetWeekStart = startOfWeekMonday(parsedTargetDate);
@@ -1298,6 +1327,7 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
       targetWeekEnd: fmtISODate(targetWeekEnd),
       targetWeekMealsCount,
       sourceEntriesCount,
+      skippedUnavailableRecipesCount,
       estimatedAddedCount,
       estimatedSkippedDuplicatesCount,
       willReplaceExisting,
@@ -1509,14 +1539,15 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
       .leftJoin(recipes, eq(mealPlanEntries.recipeId, recipes.id))
       .where(eq(mealPlanEntries.mealPlanId, plan.id))
       .orderBy(mealPlanEntries.date);
+    const readableFullEntries = await redactUnavailableRecipes(fullEntries, userId);
 
     res.json({
       message: "Week plan generated",
       weekStart: fmtISODate(weekStart),
       weekEnd: fmtISODate(weekEnd),
       plan,
-      entries: fullEntries,
-      weeklyMeals: mapEntriesToWeeklyMeals(fullEntries),
+      entries: readableFullEntries,
+      weeklyMeals: mapEntriesToWeeklyMeals(readableFullEntries),
       groceryList: { created: groceryCreated },
     });
   } catch (error) {
@@ -1550,11 +1581,11 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Meal name is required" });
     }
 
-    const requestedRecipeIds = [recipeId, sourceRecipeId].filter(Boolean).map(String);
-    if (requestedRecipeIds.length) {
-      const visible = await filterVisibleRecipeIds(requestedRecipeIds, userId);
-      if (requestedRecipeIds.some((id) => !visible.has(id))) return res.status(404).json({ message: "Recipe not found" });
-    }
+    // `recipeId` is the local recipe link (a foreign key); `sourceRecipeId` is free-form provenance text that may name an external
+    // provider recipe such as `mealdb_123`. Whether a value is a LOCAL recipe is decided by the recipes table, not by its spelling.
+    const refs = await classifyLocalRecipeRefs([recipeId, sourceRecipeId].filter(Boolean).map(String), userId);
+    if (recipeId && refs.get(String(recipeId)) !== "visible") return res.status(404).json({ message: "Recipe not found" });
+    if (sourceRecipeId && refs.get(String(sourceRecipeId)) === "hidden") return res.status(404).json({ message: "Recipe not found" });
 
     const weekStart = startOfWeekMonday(parsed);
     const weekEnd = endOfDay(addDays(weekStart, 6));
@@ -1740,11 +1771,19 @@ router.post("/week/assistant-apply", requireAuth, async (req: Request, res: Resp
     if (normalized.some((operation: any) => isNaN(operation.date.getTime()) || !["breakfast", "lunch", "dinner", "snack"].includes(operation.mealType) || !String(operation.meal?.name || "").trim())) {
       return res.status(400).json({ message: "One or more planner operations are invalid" });
     }
-    const recipeIds = normalized.map((operation: any) => operation.meal.recipeId || operation.meal.sourceRecipeId).filter(Boolean).map(String);
-    if (recipeIds.length) {
-      const found = await db.select({ id: recipes.id }).from(recipes).where(and(inArray(recipes.id, Array.from(new Set(recipeIds))), recipeVisibleToViewer(sql`${recipes.id}`, userId)));
-      if (found.length !== new Set(recipeIds).size) return res.status(400).json({ message: "A proposed recipe no longer exists and was not applied" });
-    }
+    // Same classification as POST /week/entry: `recipeId` must be a local recipe this user can see; `sourceRecipeId` is provenance
+    // text unless it names a local recipe, in which case that recipe must be visible too. External references stay metadata only.
+    const refIds = normalized.flatMap((operation: any) => [operation.meal.recipeId, operation.meal.sourceRecipeId]).filter(Boolean).map(String);
+    const refs = await classifyLocalRecipeRefs(refIds, userId);
+    const unusable = normalized.some((operation: any) => {
+      const { recipeId, sourceRecipeId } = operation.meal;
+      return (recipeId && refs.get(String(recipeId)) !== "visible") || (sourceRecipeId && refs.get(String(sourceRecipeId)) === "hidden");
+    });
+    if (unusable) return res.status(400).json({ message: "A proposed recipe no longer exists and was not applied" });
+    const localRecipeIdFor = (meal: any): string | null => {
+      if (meal.recipeId) return String(meal.recipeId);
+      return meal.sourceRecipeId && refs.get(String(meal.sourceRecipeId)) === "visible" ? String(meal.sourceRecipeId) : null;
+    };
     const weekStart = startOfWeekMonday(normalized[0].date);
     const weekEnd = endOfDay(addDays(weekStart, 6));
     const result = await db.transaction(async (tx) => {
@@ -1757,7 +1796,7 @@ router.post("/week/assistant-apply", requireAuth, async (req: Request, res: Resp
           await tx.delete(mealPlanEntries).where(eq(mealPlanEntries.id, operation.currentMealId));
         }
         const meal = operation.meal;
-        await tx.insert(mealPlanEntries).values({ mealPlanId: plan.id, recipeId: meal.recipeId || meal.sourceRecipeId || null, date: startOfDay(operation.date), mealType: operation.mealType, servings: 1, customName: String(meal.name).trim(), customCalories: toNonNegativeRoundedInt(meal.calories), customProtein: toNonNegativeRoundedInt(meal.protein), customCarbs: toNonNegativeRoundedInt(meal.carbs), customFat: toNonNegativeRoundedInt(meal.fat), mealItems: Array.isArray(meal.mealItems) ? meal.mealItems : null, source: "ai-plan-assistant", sourceRecipeId: meal.sourceRecipeId ? String(meal.sourceRecipeId) : null, sourceRecipeTitle: meal.sourceRecipeTitle ? String(meal.sourceRecipeTitle) : null, sourceRecipeImageUrl: meal.sourceRecipeImageUrl ? String(meal.sourceRecipeImageUrl) : null, sourceRecipeServings: meal.sourceRecipeServings ? toNonNegativeRoundedInt(meal.sourceRecipeServings) : null, sourceRecipeUrl: meal.sourceRecipeUrl ? String(meal.sourceRecipeUrl) : null });
+        await tx.insert(mealPlanEntries).values({ mealPlanId: plan.id, recipeId: localRecipeIdFor(meal), date: startOfDay(operation.date), mealType: operation.mealType, servings: 1, customName: String(meal.name).trim(), customCalories: toNonNegativeRoundedInt(meal.calories), customProtein: toNonNegativeRoundedInt(meal.protein), customCarbs: toNonNegativeRoundedInt(meal.carbs), customFat: toNonNegativeRoundedInt(meal.fat), mealItems: Array.isArray(meal.mealItems) ? meal.mealItems : null, source: "ai-plan-assistant", sourceRecipeId: meal.sourceRecipeId ? String(meal.sourceRecipeId) : null, sourceRecipeTitle: meal.sourceRecipeTitle ? String(meal.sourceRecipeTitle) : null, sourceRecipeImageUrl: meal.sourceRecipeImageUrl ? String(meal.sourceRecipeImageUrl) : null, sourceRecipeServings: meal.sourceRecipeServings ? toNonNegativeRoundedInt(meal.sourceRecipeServings) : null, sourceRecipeUrl: meal.sourceRecipeUrl ? String(meal.sourceRecipeUrl) : null });
       }
       return plan;
     });
