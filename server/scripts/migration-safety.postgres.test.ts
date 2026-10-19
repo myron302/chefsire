@@ -13,6 +13,7 @@ import {
   type MigrationPool,
 } from "./migration-runner";
 import { DestructiveMigrationError, sha256 } from "./migration-safety";
+import { describeTarget, targetFingerprint, TargetVerificationError } from "./migration-target";
 
 const candidates = [
   process.env.TEST_DATABASE_URL,
@@ -189,19 +190,148 @@ postgresTest("DO-block and comment-obfuscated destructive SQL is rejected agains
   });
 });
 
-postgresTest("authorized destructive procedure requires the exact hash and database, runs atomically, and runs once", async () => {
+const authFor = async (client: pg.Client, sql: string, url = connectionString!) => {
+  const identity = await describeTarget(client, url);
+  return { sha256: sha256(sql), databaseName: identity.databaseName, targetFingerprint: targetFingerprint(identity) };
+};
+const opts = (url = connectionString!) => ({ connectionString: url, logger: quiet });
+const count = async (c: pg.Client, table: string) => (await c.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n;
+
+postgresTest("authorized destructive procedure: exact hash + verified target, atomic, runs once", async () => {
   await sandbox(async ({ client }) => {
     await client.query(`CREATE TABLE doomed (id int)`);
     const sql = "DROP TABLE IF EXISTS doomed CASCADE;";
-    const dbName = (await client.query(`SELECT current_database() AS n`)).rows[0].n;
+    const good = await authFor(client, sql);
 
-    await assert.rejects(applyAuthorizedDestructiveMigration(client, "d.sql", sql, { sha256: "0".repeat(64), databaseName: dbName }, quiet), /hash does not match/);
-    await assert.rejects(applyAuthorizedDestructiveMigration(client, "d.sql", sql, { sha256: sha256(sql), databaseName: "some_other_db" }, quiet), /nothing was executed/);
+    await assert.rejects(applyAuthorizedDestructiveMigration(client, "d.sql", sql, { ...good, sha256: "0".repeat(64) }, opts()), /hash does not match/);
+    await assert.rejects(applyAuthorizedDestructiveMigration(client, "d.sql", sql, { ...good, databaseName: "some_other_db" }, opts()), TargetVerificationError);
+    await assert.rejects(applyAuthorizedDestructiveMigration(client, "d.sql", sql, { ...good, targetFingerprint: "f".repeat(64) }, opts()), TargetVerificationError);
     assert.equal(await exists(client, "doomed"), true);
+    assert.deepEqual(await ledger(client), []);
 
-    await applyAuthorizedDestructiveMigration(client, "d.sql", sql, { sha256: sha256(sql), databaseName: dbName }, quiet);
+    await applyAuthorizedDestructiveMigration(client, "d.sql", sql, good, opts());
     assert.equal(await exists(client, "doomed"), false);
     assert.deepEqual(await ledger(client), ["destructive:d.sql"]);
-    await assert.rejects(applyAuthorizedDestructiveMigration(client, "d.sql", sql, { sha256: sha256(sql), databaseName: dbName }, quiet), /already applied/);
+    await assert.rejects(applyAuthorizedDestructiveMigration(client, "d.sql", sql, good, opts()), /already applied/);
+  });
+});
+
+postgresTest("a different server/route (same database name) is rejected and zero destructive statements run", async () => {
+  await sandbox(async ({ client }) => {
+    await client.query(`CREATE TABLE victim (id int); INSERT INTO victim VALUES (1)`);
+    const sql = "DELETE FROM victim WHERE id = 1; DROP TABLE victim;";
+    const auth = await authFor(client, sql);
+    // Same database name, same server, but the authorization was issued for another host/port route.
+    const routeUrl = new URL(connectionString!);
+    routeUrl.searchParams.set("host", "db-prod.example.internal");
+    const otherRoute = routeUrl.toString();
+    assert.notEqual(targetFingerprint(await describeTarget(client, otherRoute)), auth.targetFingerprint);
+    await assert.rejects(applyAuthorizedDestructiveMigration(client, "wrong-route.sql", sql, auth, opts(otherRoute)), /does not match the authorized target/);
+    assert.equal(await count(client, "victim"), 1);
+    assert.deepEqual(await ledger(client), []);
+  });
+});
+
+postgresTest("target identity that cannot be verified fails closed", async () => {
+  await sandbox(async ({ client }) => {
+    await client.query(`CREATE TABLE victim (id int)`);
+    const sql = "DROP TABLE victim;";
+    const auth = await authFor(client, sql);
+    try {
+      // A role/server that will not disclose pg_control_system() (stood in for by a wrapper that denies it).
+      const denied = {
+        query: async (text: string, params?: unknown[]) => {
+          if (/pg_control_system/.test(text)) throw Object.assign(new Error("permission denied for function pg_control_system"), { code: "42501" });
+          return client.query(text, params as any[]);
+        },
+      };
+      await assert.rejects(describeTarget(denied, connectionString!), /pg_control_system\(\) is not readable/);
+      await assert.rejects(
+        applyAuthorizedDestructiveMigration(denied as any, "unverifiable.sql", sql, auth, opts()),
+        TargetVerificationError
+      );
+      // A Neon host whose compute reports neither endpoint nor timeline id is refused rather than guessed.
+      const neonUrl = "postgres://u@ep-cool-123-pooler.us-east-2.aws.neon.tech/db";
+      await assert.rejects(describeTarget(client, neonUrl), /neither neon\.endpoint_id nor neon\.timeline_id/);
+      await assert.rejects(describeTarget(client, "not a url"), TargetVerificationError);
+      // Simulated Neon compute reporting its ids (session-level custom GUC stands in for the neon extension).
+      await client.query(`SELECT set_config('neon.timeline_id', 'tl-abc', false), set_config('neon.endpoint_id', 'ep-cool-123', false)`);
+      const pooled = await describeTarget(client, neonUrl);
+      const direct = await describeTarget(client, neonUrl.replace("-pooler", ""));
+      assert.equal(targetFingerprint(pooled), targetFingerprint(direct), "pooler and direct endpoints of one compute match");
+      assert.notEqual(targetFingerprint(pooled), auth.targetFingerprint);
+    } finally {
+      await client.query(`RESET neon.timeline_id`);
+      await client.query(`RESET neon.endpoint_id`);
+    }
+    assert.equal(await exists(client, "victim"), true);
+    assert.deepEqual(await ledger(client), []);
+  });
+});
+
+async function extraClient(schema: string) {
+  const c = new pg.Client({ connectionString: connectionString! });
+  await c.connect();
+  await c.query(`SET search_path TO ${schema}`);
+  return c;
+}
+
+postgresTest("concurrent invocations: exactly one executes the destructive SQL", async () => {
+  await sandbox(async ({ client, schema }) => {
+    await client.query(`CREATE TABLE runs (n int); CREATE TABLE doomed (id int)`);
+    const sql = "INSERT INTO runs VALUES (1); SELECT pg_sleep(1); DROP TABLE IF EXISTS doomed;";
+    const auth = await authFor(client, sql);
+    const clients = [client, await extraClient(schema), await extraClient(schema)];
+    try {
+      const results = await Promise.allSettled(clients.map((c) => applyAuthorizedDestructiveMigration(c, "race.sql", sql, auth, opts())));
+      assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+      for (const r of results.filter((x) => x.status === "rejected")) assert.match(String((r as PromiseRejectedResult).reason.message), /already applied/);
+      assert.equal(await count(client, "runs"), 1, "destructive SQL ran exactly once");
+      assert.deepEqual(await ledger(client), ["destructive:race.sql"]);
+    } finally {
+      await Promise.all(clients.slice(1).map((c) => c.end()));
+    }
+  });
+});
+
+postgresTest("failure rolls back every statement and the claim; a corrected retry then succeeds; lock is released", async () => {
+  await sandbox(async ({ client, schema }) => {
+    await client.query(`CREATE TABLE doomed (id int); INSERT INTO doomed VALUES (1)`);
+    const broken = "DELETE FROM doomed WHERE id = 1; INSERT INTO no_such_table VALUES (1);";
+    await assert.rejects(applyAuthorizedDestructiveMigration(client, "retry.sql", broken, await authFor(client, broken), opts()), (e: any) => e.code === "42P01");
+    assert.equal(await count(client, "doomed"), 1, "first statement rolled back");
+    assert.deepEqual(await ledger(client), [], "claim rolled back");
+
+    // A second connection can take the lock immediately (it was released by the rollback).
+    const other = await extraClient(schema);
+    try {
+      const fixed = "DELETE FROM doomed WHERE id = 1;";
+      await applyAuthorizedDestructiveMigration(other, "retry.sql", fixed, await authFor(other, fixed), opts());
+      assert.equal(await count(client, "doomed"), 0);
+      assert.deepEqual(await ledger(client), ["destructive:retry.sql"]);
+    } finally {
+      await other.end();
+    }
+  });
+});
+
+postgresTest("integrated: routine runner rejects unsafe/dynamic input, runs safe input, and never writes a ledger entry for rejected files", async () => {
+  await sandbox(async ({ client, db, dir }) => {
+    await client.query(`CREATE TABLE users (id int); INSERT INTO users VALUES (1)`);
+    const sources = [{ dir, keyPrefix: "drizzle", priority: 0 }];
+    await writeFile(join(dir, "001_safe.sql"), "CREATE TABLE ok_table (id int);");
+    await writeFile(join(dir, "002_dyn.sql"), "DO 'BEGIN EXECUTE ''DROP TABLE users''; END';");
+    await assert.rejects(runPendingMigrations(db, sources, quiet), /No migration was executed/);
+    assert.equal(await exists(client, "ok_table"), false, "earlier safe file did not execute");
+    assert.equal(await count(client, "users"), 1);
+    await rm(join(dir, "002_dyn.sql"));
+    await writeFile(join(dir, "002_cte.sql"), "WITH marker AS (SELECT 1 WHERE true) DELETE FROM users;");
+    await assert.rejects(runPendingMigrations(db, sources, quiet), /No migration was executed/);
+    assert.equal(await count(client, "users"), 1);
+    assert.deepEqual(await ledger(client), []);
+    await rm(join(dir, "002_cte.sql"));
+    await writeFile(join(dir, "002_bounded.sql"), "DELETE FROM users WHERE id = 1;");
+    assert.deepEqual((await runPendingMigrations(db, sources, quiet)).applied, ["drizzle:001_safe.sql", "drizzle:002_bounded.sql"]);
+    assert.equal(await count(client, "users"), 0);
   });
 });

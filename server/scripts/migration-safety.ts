@@ -1,13 +1,24 @@
 import { createHash } from "node:crypto";
 import { splitPostgresStatements } from "./postgres-sql-scan";
+import { tokenize, type Token } from "./sql-tokens";
 
 /**
  * Fail-closed destructive-SQL validation for the routine migration command (`npm run db:migrate`).
  *
- * The validator never executes SQL. It tokenises each statement (comments removed, string literals and quoted
- * identifiers neutralised, dollar-quoted DO/function bodies analysed recursively as code, including string
- * literals inside them because those can be EXECUTE'd) and then classifies the remaining code. Anything it
- * cannot tokenise (unterminated comment/string) is rejected. See docs/stability-phase-3b-migration-safety.md.
+ * TRUST MODEL. The validator never executes or evaluates SQL. It lexes exactly the statements the executor will send
+ * (`splitPostgresStatements`), then checks tokens structurally. It only accepts what it can PROVE is outside its
+ * deny rules; constructs whose effect depends on runtime values are rejected rather than evaluated:
+ *   - dynamic SQL: PL/pgSQL `EXECUTE`, `CALL`, `COPY`, `PREPARE`d `EXECUTE`, functions that run SQL text
+ *     (query_to_xml, dblink, ...), DO/function bodies in any language other than plpgsql/sql or written as E''/U&''
+ *     strings (not decoded);
+ *   - any top-level statement kind outside a fixed allowlist;
+ *   - any DROP other than a small set of reversible object kinds, any `DROP … CASCADE`;
+ *   - TRUNCATE; a DELETE whose OWN where-clause is missing, trivially true, or that cannot be parsed.
+ * DO and CREATE FUNCTION/PROCEDURE bodies are lexed and analysed recursively as code. The lexer and the executor's
+ * splitter are cross-checked: if they disagree about statement boundaries the file is rejected.
+ * Not detected (documented): destructive effects of calling routines that already exist in the database, lossy
+ * `ALTER COLUMN … TYPE … USING`, UPDATE without WHERE, `DELETE … WHERE <always-true expression>`.
+ * See docs/stability-phase-3b-migration-safety.md.
  */
 
 export type DestructiveFinding = {
@@ -49,110 +60,184 @@ export const REVIEWED_HISTORICAL_DESTRUCTIVE: Readonly<Record<string, { sha256: 
   },
 };
 
-type Cleaned = { code: string; bodies: string[]; literals: string[] };
+const TOP_LEVEL_ALLOWED = new Set([
+  "CREATE", "ALTER", "INSERT", "UPDATE", "DELETE", "WITH", "SELECT", "VALUES", "TABLE", "COMMENT", "GRANT", "REVOKE",
+  "SET", "RESET", "DO", "DROP", "TRUNCATE", "ANALYZE", "REINDEX", "REFRESH", "LOCK", "NOTIFY", "BEGIN", "COMMIT",
+  "END", "SAVEPOINT", "RELEASE", "ROLLBACK",
+]);
+/** DROP targets that only remove definitions, never row data (and are not cascaded). */
+const DROP_ALLOWED = new Set(["INDEX", "TRIGGER", "POLICY", "RULE", "VIEW", "FUNCTION", "PROCEDURE", "TYPE", "DOMAIN", "CONSTRAINT", "DEFAULT", "NOT"]);
+/** Inside ALTER TABLE only these DROP subcommands are definition-only; anything else is a column drop. */
+const ALTER_TABLE_DROP_ALLOWED = new Set(["CONSTRAINT", "DEFAULT", "NOT"]);
+const PLPGSQL_LANGUAGES = new Set(["PLPGSQL", "SQL"]);
+/** Functions that execute SQL text supplied as an argument. */
+const DYNAMIC_SQL_FUNCTIONS = new Set([
+  "query_to_xml", "query_to_xml_and_xmlschema", "query_to_xmlschema", "cursor_to_xml", "cursor_to_xmlschema",
+  "dblink", "dblink_exec", "dblink_send_query", "dblink_connect", "pg_execute",
+]);
+const MAX_BODY_DEPTH = 3;
 
-/** Remove comments, neutralise quoted text, and lift dollar-quoted bodies out of a single SQL string. */
-function clean(sql: string): Cleaned {
-  let code = "";
+type Add = (operation: string) => void;
+
+function word(t: Token | undefined): string | undefined {
+  return t?.kind === "word" ? t.text : undefined;
+}
+
+/** Paren depth of each token (a ')' carries the depth AFTER it closes). */
+function depths(piece: Token[]): number[] {
+  let d = 0;
+  return piece.map((t) => {
+    if (t.text === "(" && t.kind === "punct") return d++;
+    if (t.text === ")" && t.kind === "punct") return --d;
+    return d;
+  });
+}
+
+/** Validate ONE DELETE command: its own WHERE (same paren depth, before any RETURNING) must exist and not be trivial. */
+function checkDelete(piece: Token[], at: number, depth: number[], add: Add): void {
+  const prev = word(piece[at - 1]);
+  const next = piece[at + 1];
+  if (word(next) !== "FROM") {
+    // Not a DELETE command: DELETE as an event/privilege/action keyword. Only well-known shapes are accepted.
+    const benign =
+      prev !== "THEN" &&
+      next !== undefined &&
+      (["ON", "OR", "CASCADE", "SET", "NO", "RESTRICT", "TO"].includes(word(next) ?? "") ||
+        next.text === "," || next.text === ")" ||
+        (word(next) === "USING" && prev === "FOR"));
+    if (!benign) add("UNSUPPORTED DELETE FORM");
+    return;
+  }
+  const d0 = depth[at];
+  let end = at + 1;
+  while (end < piece.length && depth[end] >= d0) end++;
+  let where = -1;
+  let returning = -1;
+  for (let k = at + 2; k < end; k++) {
+    if (depth[k] !== d0) continue;
+    if (word(piece[k]) === "WHERE" && where === -1) where = k;
+    if (word(piece[k]) === "RETURNING" && returning === -1) returning = k;
+  }
+  if (where === -1 || (returning !== -1 && returning < where)) return void add("DELETE without WHERE");
+  const predicate = piece.slice(where + 1, returning === -1 ? end : returning).map((t) => t.text);
+  const joined = predicate.join(" ");
+  const trivial =
+    predicate.length === 0 ||
+    /^\(* *(TRUE|NOT FALSE) *\)*$/.test(joined) ||
+    (predicate.length === 3 && predicate[1] === "=" && predicate[0] === predicate[2] && /^[0-9]/.test(predicate[0]));
+  if (trivial) add("DELETE with trivially true WHERE");
+}
+
+function bodyOf(t: Token | undefined, add: Add, what: string): string | null {
+  if (t?.kind !== "string") return null;
+  if (t.flavor === "escape" || t.flavor === "unicode") {
+    add(`UNSUPPORTED ${what} BODY (E''/U&'' strings are not decoded)`);
+    return null;
+  }
+  return t.value;
+}
+
+function analysePiece(piece: Token[], top: boolean, depth: number, add: Add): void {
+  const first = word(piece[0]);
+  if (top && (first === undefined || !TOP_LEVEL_ALLOWED.has(first))) {
+    add(`UNSUPPORTED STATEMENT (${piece[0].text.slice(0, 20)})`);
+    return;
+  }
+  const d = depths(piece);
+  const alterTableAt = piece.findIndex(
+    (t, k) => word(t) === "ALTER" && (word(piece[k + 1]) === "TABLE" || (word(piece[k + 1]) === "FOREIGN" && word(piece[k + 2]) === "TABLE"))
+  );
+  const isCreateTrigger = piece.some(
+    (t, k) => word(t) === "CREATE" && piece.slice(k + 1, k + 5).some((x) => word(x) === "TRIGGER")
+  );
+  const hasDrop = piece.some((t) => word(t) === "DROP");
+
+  piece.forEach((t, k) => {
+    const w = word(t);
+    const prev = word(piece[k - 1]);
+    const next = word(piece[k + 1]);
+    if ((t.kind === "word" && DYNAMIC_SQL_FUNCTIONS.has(t.value.toLowerCase())) || (t.kind === "qident" && DYNAMIC_SQL_FUNCTIONS.has(t.value))) {
+      add(`DYNAMIC SQL FUNCTION (${t.value.toLowerCase()})`);
+    }
+    if (w === "EXECUTE" && !(isCreateTrigger && (next === "FUNCTION" || next === "PROCEDURE"))) add("DYNAMIC SQL (EXECUTE)");
+    if (w === "CALL") add("PROCEDURAL CALL");
+    if (w === "COPY") add("COPY");
+    if (w === "TRUNCATE" && !(isCreateTrigger && (prev === "AFTER" || prev === "BEFORE" || prev === "OR"))) add("TRUNCATE");
+    if (w === "CASCADE" && hasDrop && prev !== "DELETE" && prev !== "UPDATE") add("DROP ... CASCADE");
+    if (w === "DELETE") checkDelete(piece, k, d, add);
+    if (w === "DROP") {
+      const inAlterTable = alterTableAt !== -1 && k > alterTableAt;
+      if (inAlterTable) {
+        if (!ALTER_TABLE_DROP_ALLOWED.has(next ?? "")) add("DROP COLUMN");
+      } else if (!DROP_ALLOWED.has(next ?? "")) {
+        add(`DROP ${next ?? "?"}`);
+      }
+    }
+  });
+
+  // Procedural bodies are code: DO blocks and CREATE FUNCTION/PROCEDURE definitions are lexed and analysed too.
+  const language = (() => {
+    const at = piece.findIndex((t) => word(t) === "LANGUAGE");
+    return at === -1 ? undefined : (word(piece[at + 1]) ?? piece[at + 1]?.value.toUpperCase());
+  })();
   const bodies: string[] = [];
-  const literals: string[] = [];
-  let i = 0;
-  while (i < sql.length) {
-    if (sql.startsWith("--", i)) {
-      const end = sql.indexOf("\n", i);
-      i = end === -1 ? sql.length : end;
-      code += " ";
-    } else if (sql.startsWith("/*", i)) {
-      let depth = 1;
-      i += 2;
-      while (i < sql.length && depth > 0) {
-        if (sql.startsWith("/*", i)) { depth++; i += 2; }
-        else if (sql.startsWith("*/", i)) { depth--; i += 2; }
-        else i++;
-      }
-      if (depth > 0) throw new Error("unterminated block comment");
-      code += " ";
-    } else if (sql[i] === "'") {
-      const escape = /[eE]/.test(sql[i - 1] ?? "") && !/[A-Za-z0-9_$]/.test(sql[i - 2] ?? "");
-      let j = i + 1;
-      let text = "";
-      let closed = false;
-      while (j < sql.length) {
-        if (escape && sql[j] === "\\") { text += sql.slice(j, j + 2); j += 2; }
-        else if (sql[j] === "'" && sql[j + 1] === "'") { text += "'"; j += 2; }
-        else if (sql[j] === "'") { closed = true; j++; break; }
-        else text += sql[j++];
-      }
-      if (!closed) throw new Error("unterminated string literal");
-      literals.push(text);
-      code += " '' ";
-      i = j;
-    } else if (sql[i] === '"') {
-      let j = i + 1;
-      let closed = false;
-      while (j < sql.length) {
-        if (sql[j] === '"' && sql[j + 1] === '"') j += 2;
-        else if (sql[j] === '"') { closed = true; j++; break; }
-        else j++;
-      }
-      if (!closed) throw new Error("unterminated quoted identifier");
-      code += " QIDENT ";
-      i = j;
-    } else if (sql[i] === "$") {
-      const tag = sql.slice(i).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/)?.[0];
-      if (tag && !/[A-Za-z0-9_]/.test(sql[i - 1] ?? "")) {
-        const end = sql.indexOf(tag, i + tag.length);
-        if (end === -1) throw new Error("unterminated dollar-quoted body");
-        bodies.push(sql.slice(i + tag.length, end));
-        code += " BODY ";
-        i = end + tag.length;
-      } else {
-        code += sql[i++];
-      }
-    } else {
-      code += sql[i++];
+  if (first === "DO") {
+    const at = piece.findIndex((t) => t.kind === "string");
+    const body = at === -1 ? null : bodyOf(piece[at], add, "DO");
+    if (body !== null) bodies.push(body);
+    else if (at === -1) add("UNSUPPORTED DO BODY");
+    if (language !== undefined && language !== "PLPGSQL") add(`UNSUPPORTED LANGUAGE (${language})`);
+  } else if (first === "CREATE") {
+    const kind = piece.slice(1, 5).map(word).find((x) => x === "FUNCTION" || x === "PROCEDURE");
+    if (kind) {
+      piece.forEach((t, k) => {
+        if (word(t) === "AS" && piece[k + 1]?.kind === "string") {
+          const body = bodyOf(piece[k + 1], add, "FUNCTION");
+          if (body !== null) bodies.push(body);
+        }
+      });
+      if (bodies.length > 0 && !(language && PLPGSQL_LANGUAGES.has(language))) add(`UNSUPPORTED LANGUAGE (${language ?? "none"})`);
     }
   }
-  return { code, bodies, literals };
-}
-
-function classify(code: string): string[] {
-  const text = code.replace(/\s+/g, " ").trim().toUpperCase();
-  const ops: string[] = [];
-  if (/\bDROP\s+TABLE\b/.test(text)) ops.push("DROP TABLE");
-  if (/\bDROP\s+SCHEMA\b/.test(text)) ops.push("DROP SCHEMA");
-  if (/\bDROP\s+DATABASE\b/.test(text)) ops.push("DROP DATABASE");
-  if (/\bDROP\s+OWNED\b/.test(text)) ops.push("DROP OWNED");
-  if (/\bTRUNCATE\b/.test(text)) ops.push("TRUNCATE");
-  if (/\bDROP\b[^;]*\bCASCADE\b/.test(text)) ops.push("DROP ... CASCADE");
-  if (/\bALTER\s+(?:FOREIGN\s+)?TABLE\b/.test(text)) {
-    // ALTER TABLE ... DROP [COLUMN] name. Only these subcommands are non-destructive after DROP.
-    if (/\bDROP\s+(?!CONSTRAINT\b|DEFAULT\b|NOT\s+NULL\b|IDENTITY\b|EXPRESSION\b)\S/.test(text)) {
-      ops.push("DROP COLUMN");
-    }
+  for (const body of bodies) {
+    if (depth >= MAX_BODY_DEPTH) add("UNSUPPORTED NESTING");
+    else analyseSql(body, depth + 1, add);
   }
-  if (/\bDROP\s+COLUMN\b/.test(text) && !ops.includes("DROP COLUMN")) ops.push("DROP COLUMN");
-  if (/\bDELETE\s+FROM\b/.test(text) && !/\bWHERE\b/.test(text)) ops.push("DELETE without WHERE");
-  return ops;
 }
 
-/** Classify cleaned code, then recurse into dollar-quoted bodies and the string literals inside them. */
-function analyse(sql: string, insideBody: boolean, found: Set<string>): void {
-  const { code, bodies, literals } = clean(sql);
-  // Outside a body, ';' has already been used to split. Inside a body the code holds several statements.
-  for (const piece of insideBody ? code.split(";") : [code]) for (const op of classify(piece)) found.add(op);
-  for (const body of bodies) analyse(body, true, found);
-  // Literals inside DO/function bodies can be passed to EXECUTE, so they are scanned as SQL.
-  if (insideBody) for (const literal of literals) analyse(literal, true, found);
+function countPieces(tokens: Token[]): number {
+  let count = 0;
+  let open = false;
+  for (const t of tokens) {
+    if (t.kind === "punct" && t.text === ";") open = false;
+    else if (!open) { open = true; count++; }
+  }
+  return count;
+}
+
+function analyseSql(sql: string, depth: number, add: Add): void {
+  const tokens = tokenize(sql);
+  let piece: Token[] = [];
+  const flush = () => {
+    if (piece.length > 0) analysePiece(piece, depth === 0, depth, add);
+    piece = [];
+  };
+  for (const t of tokens) {
+    if (t.kind === "punct" && t.text === ";") flush();
+    else piece.push(t);
+  }
+  flush();
 }
 
 export function findDestructiveOperations(sql: string): DestructiveFinding[] {
   const findings: DestructiveFinding[] = [];
-  const statements = splitPostgresStatements(sql);
-  statements.forEach((statement, index) => {
+  splitPostgresStatements(sql).forEach((statement, index) => {
     const found = new Set<string>();
     try {
-      analyse(statement, false, found);
+      // Boundary cross-check: the executor sends this chunk as one query. If the lexer sees more than one statement
+      // in it, PostgreSQL would run them all, so the splitter and the validator disagree: reject.
+      if (countPieces(tokenize(statement)) > 1) found.add("PARSER DISAGREEMENT (multiple statements in one chunk)");
+      analyseSql(statement, 0, (op) => found.add(op));
     } catch (error) {
       found.add(`UNPARSEABLE SQL (${error instanceof Error ? error.message : String(error)})`);
     }

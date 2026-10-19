@@ -23,33 +23,59 @@ A second unsafe path existed: `npm run db:fix:phase2` / `fix-phase2-migration.sh
 
 Code: `migration-safety.ts` (validator), `postgres-sql-scan.ts` (statement splitter, moved verbatim out of `migration-runner.ts` and re-exported), `migration-runner.ts` (guard in `applyMigration`, `discoverMigrations`, `runPendingMigrations`, `applyAuthorizedDestructiveMigration`), `run-migrations.ts` (now a thin CLI over `runPendingMigrations`).
 
-## The guard
+## The guard (revised after Codex review of `6af3a8e`)
 
-Not a keyword grep. Each top-level statement (split with the existing quote/comment/dollar-aware splitter) is tokenised: comments removed, string literals and quoted identifiers neutralised, and dollar-quoted `DO`/function bodies analysed recursively as code — including string literals inside them, since those can be `EXECUTE`d. Unterminated comments/strings/bodies are rejected. Blocked:
+The first version scanned for keywords and treated string literals inside procedural bodies as data or as SQL depending on position. Codex found four defects in it (all reproduced against that commit on a disposable database — see "Review findings" below). The guard is now one coherent design with a stated trust model.
 
-`DROP TABLE`, `DROP SCHEMA`, `DROP DATABASE`, `DROP OWNED`, `TRUNCATE`, `ALTER TABLE … DROP [COLUMN] x` (also without the `COLUMN` keyword), any `DROP … CASCADE`, `DELETE FROM` with no `WHERE`.
+**Trust model.** The validator never executes or evaluates SQL. It lexes exactly the statements the executor will send (`sql-tokens.ts`, a PostgreSQL-faithful lexer: comments dropped; strings, quoted identifiers and dollar-quoted bodies are single tokens), then applies structural rules (`migration-safety.ts`). It accepts only what it can *prove* is outside its deny rules, and **rejects anything whose effect depends on a runtime value instead of trying to evaluate it**. The lexer and the executor's splitter are cross-checked; if they disagree about statement boundaries the file is rejected (`PARSER DISAGREEMENT`).
 
-Allowed (still ordinary): `CREATE …`, `ADD COLUMN`, `ALTER COLUMN … SET/DROP DEFAULT/NOT NULL`, `DROP CONSTRAINT`, `DROP INDEX`, `UPDATE`, `DELETE … WHERE …`, mentions of these words in comments or string data.
+Rejected:
+
+| Class | Rule |
+| --- | --- |
+| Dynamic SQL / procedural execution | PL/pgSQL `EXECUTE` (any argument shape), `CALL`, `COPY`, top-level `EXECUTE`/`PREPARE`, functions that run SQL text (`query_to_xml*`, `cursor_to_xml*`, `dblink*`), `DO`/`CREATE FUNCTION|PROCEDURE` in any language except plpgsql/sql, bodies written as `E''`/`U&''` strings (not decoded). `EXECUTE FUNCTION|PROCEDURE` inside `CREATE TRIGGER` is allowed. |
+| Unknown statement kinds | Top-level statements must begin with one of a fixed allowlist (`CREATE, ALTER, INSERT, UPDATE, DELETE, WITH, SELECT, VALUES, TABLE, COMMENT, GRANT, REVOKE, SET, RESET, DO, DROP, TRUNCATE, ANALYZE, REINDEX, REFRESH, LOCK, NOTIFY, BEGIN, COMMIT, END, SAVEPOINT, RELEASE, ROLLBACK`). Everything else (`MERGE`, `REASSIGN`, `COPY`, …) is rejected. |
+| `DROP` | Default-deny: only `INDEX, TRIGGER, POLICY, RULE, VIEW, FUNCTION, PROCEDURE, TYPE, DOMAIN` plus `ALTER … DROP CONSTRAINT / DEFAULT / NOT NULL` pass. Inside `ALTER TABLE`, any other `DROP` is treated as a column drop (including `DROP "col"`, `DROP IDENTITY`, `DROP EXPRESSION`). Any `DROP … CASCADE` is rejected (`ON DELETE/UPDATE CASCADE` is not). |
+| `TRUNCATE` | Rejected (except as a trigger event in `CREATE TRIGGER`). |
+| `DELETE` | Parsed as a command: `DELETE FROM … [WHERE …] [RETURNING …]`. The `WHERE` must be at the **same parenthesis depth as that DELETE** and before its `RETURNING`; a `WHERE` inside a CTE, subquery or `USING (…)` does not count. Missing or trivially true (`TRUE`, `NOT FALSE`, `1 = 1`, empty) predicates are rejected. `DELETE` used as an event/privilege/action keyword (`ON DELETE CASCADE`, `AFTER DELETE ON`, `GRANT DELETE`, `FOR DELETE USING`) is recognised by shape; any other shape, and `MERGE … THEN DELETE`, is rejected as ambiguous. |
+| Unparseable input | Unterminated comment/string/identifier/dollar quote. |
+
+`DO` and `CREATE FUNCTION|PROCEDURE` bodies are lexed and analysed recursively as code (depth-limited).
+
+**Intentionally unsupported in routine migrations** (move to the authorized procedure or restructure): dynamic SQL of any kind, `CALL`, `COPY`, `MERGE`, non-plpgsql/sql procedural languages, `E''`/`U&''` DO bodies, `ALTER TABLE … DROP COLUMN`, `DROP TABLE/SCHEMA/…`, `TRUNCATE`, unbounded `DELETE`.
+
+**Not detected** (a static guard cannot): effects of *calling* routines that already exist in the database; lossy `ALTER COLUMN … TYPE … USING`; `UPDATE` without `WHERE`; `DELETE … WHERE <always-true expression other than the trivial forms above>`; `CREATE EXTENSION`. A structurally bounded DELETE is not a proof it is semantically bounded — review remains required.
 
 ### Reviewed historical exception
 
-`server:20260928_square_oauth_hardening.sql` (empties the short-lived `square_oauth_transactions` table, drops its transient `superseded_at` column) is the only existing scanned file that trips the guard. It is allowed by `REVIEWED_HISTORICAL_DESTRUCTIVE`, which is **pinned to the file's sha256**: any edit re-arms the guard, and the list is code, not an env var or flag. A test asserts it has exactly one entry and that no scanned file is otherwise flagged. New entries need code review.
+`server:20260928_square_oauth_hardening.sql` is the only file in the scanned directories that trips the guard, and for exactly two operations (a test pins this): `DELETE FROM square_oauth_transactions;` (step 2: short-lived OAuth attempts that predate browser binding and can never be claimed again) and `DROP COLUMN IF EXISTS superseded_at` (a transient bookkeeping column of that same table). Reviewed again in this revision: neither statement touches `payment_methods`, stored seller credentials or any other table. The exception is pinned to the file's SHA-256 (`37df1397…1099`) in `REVIEWED_HISTORICAL_DESTRUCTIVE`; any edit re-arms the guard. There is no environment variable or flag that adds to it.
 
 ## Procedure for intentional destructive SQL
 
 1. Put the SQL in `server/migration-quarantine/` (never in a scanned directory) in a reviewed PR.
 2. Take and verify a backup / Neon branch.
-3. Compute its hash: `sha256sum server/migration-quarantine/<file>.sql`.
-4. Run, deliberately, against the intended database only:
+3. Against the **intended** target, read-only, print its identity: `DATABASE_URL=… npx tsx server/scripts/run-destructive-migration.ts --print-target-identity`. Compare the reported database, host and (on Neon) endpoint/timeline ids with the console.
+4. Compute the file hash: `sha256sum server/migration-quarantine/<file>.sql`.
+5. Run, deliberately:
 
 ```
 DATABASE_URL=… npx tsx server/scripts/run-destructive-migration.ts \
   --file server/migration-quarantine/<file>.sql \
-  --expect-database <current_database() of the target> \
+  --expect-database <database name> \
+  --expect-target-fingerprint <fingerprint from step 3> \
   --authorize-sha256 <hash> --i-understand-data-loss
 ```
 
-The script refuses unless the file is under the quarantine directory, the hash matches the bytes on disk, `current_database()` equals `--expect-database`, and the entry has not already run. It executes atomically and records `destructive:<file>` in the ledger. No npm script, deploy hook or `db:migrate` reaches it (a test enforces this).
+Safeguards, in order, inside **one transaction**: SQL hash equals the authorization (before any database access) → `BEGIN` → transaction-scoped advisory lock (overlapping invocations queue) → the target's identity is re-read and must equal the authorized database name **and** fingerprint → the ledger row `destructive:<file>` is claimed with `INSERT … ON CONFLICT DO NOTHING RETURNING` (no row = already applied or owned elsewhere → stop) → only then are the statements executed → `COMMIT`. Any failure rolls back statements *and* the claim, so a corrected retry is possible. No npm script, deploy hook or `db:migrate` reaches it (a test enforces this).
+
+### Target identity: what is and is not proven
+
+A database name is not an identity (two servers or Neon branches can share one). The fingerprint is a SHA-256 over: database name; `pg_database.oid`; `pg_control_system().system_identifier`; host and port from the connection string (Neon `-pooler` suffix removed); and, when the compute reports them, `neon.endpoint_id` / `neon.timeline_id`.
+
+* Server-reported (not a label): system identifier, database OID, Neon ids. Client-side: host/port — it proves *where this invocation is connecting*, not what is behind it.
+* **Fails closed** when `pg_control_system()` is unreadable, when the server reports no identity, when the connection string is unparseable, and when a `*.neon.tech` host is used but the compute reports neither `neon.endpoint_id` nor `neon.timeline_id`. In those cases destructive execution is refused, not skipped.
+* **Limit (unverified here):** a database branch created from another may share `system_identifier` and database OID with its parent. Branch separation therefore rests on the Neon ids/host. I could not check, without touching Neon, whether Neon computes expose `neon.endpoint_id`/`neon.timeline_id`; if they do not, destructive execution is simply unavailable against Neon until target verification is extended. The Neon behaviour is exercised only by a simulation (a session setting standing in for the extension) in the tests.
+* The fingerprint also binds the route: authorizing via a direct URL and running via another route changes the host and is refused.
 
 ## Compatibility
 
@@ -61,7 +87,19 @@ The script refuses unless the file is under the quarantine directory, the hash m
 ## Remaining risks
 
 * The ledger stores filenames only, not checksums: an applied file edited later is not detected. Adding a checksum column would alter the production ledger and was deliberately left out.
-* `ALTER COLUMN … TYPE` with a lossy `USING`, `UPDATE` without `WHERE`, `DELETE … WHERE true`, `DROP TYPE/VIEW/FUNCTION` (without `CASCADE`) and `DROP EXTENSION` are not blocked; the validator targets structural data loss, not every possible semantic one.
-* Dollar-quoted text used as plain data that happens to contain a blocked phrase is rejected (fail closed; use a normal `'…'` literal).
+* See "Not detected" above: the guard is structural and cannot see into pre-existing routines or prove a predicate is selective.
+* Restricting routine migrations to the constructs listed above may reject a legitimate future migration (for example `EXECUTE format(…)` for constraint-name discovery); such a migration must be restructured or go through review.
+* Concurrent *routine* `db:migrate` runs are not serialized by this PR (only destructive runs are).
 * `run-migrations.ts` itself uses the Neon driver, so the CLI wrapper cannot be exercised against local PostgreSQL; the logic it calls (`runPendingMigrations`) is tested against real PostgreSQL.
 * Whether production already ran `cleanup_phase2.sql` is still unknown.
+
+## Review findings addressed (Codex, commit `6af3a8e`)
+
+Reproduced against the reviewed commit on a disposable local database before fixing:
+
+| # | Finding | Reproduction (old code) | Root cause | Fix |
+| --- | --- | --- | --- | --- |
+| 1 (P1) | Dynamic SQL bypass | `DO 'BEGIN EXECUTE ''DROP TABLE users''; END';`, `DO $$ BEGIN EXECUTE 'DR' \|\| 'OP TABLE users'; END $$;`, `EXECUTE format('DROP %s users','TABLE')` were accepted and the table was dropped | String literals were inspected independently of their role; single-quoted bodies were treated as data and concatenated/assembled SQL was never visible | Reject `EXECUTE`/dynamic-SQL functions/`CALL`/`COPY`; parse single-quoted and dollar-quoted bodies as code; default-deny statements and `DROP` kinds |
+| 2 (P1) | DELETE guard used any WHERE | `WITH marker AS (SELECT 1 WHERE true) DELETE FROM users;` was accepted and emptied the table | Statement-wide `\bWHERE\b` test | Per-command parse; WHERE must be at the DELETE's own depth |
+| 3 (P1) | Authorization named only the database | Authorization accepted for any server with the same database name | `current_database()` is not an identity | Target fingerprint (server-reported ids + route), fail-closed |
+| 4 (P2) | Check-then-run race | Two overlapping runs both succeeded and the destructive SQL executed twice (`INSERT … ON CONFLICT DO NOTHING` hid the collision) | Ledger read before the transaction, no mutual exclusion | Advisory xact lock + atomic ledger claim before any statement, one transaction |

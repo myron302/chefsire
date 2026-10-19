@@ -1,10 +1,14 @@
 // server/scripts/run-destructive-migration.ts
 // The ONLY supported way to execute intentionally destructive SQL. It is deliberately NOT wired to any npm script,
 // deploy hook or `db:migrate`. Every run needs all of:
-//   --file <path>                 SQL file (must live under server/migration-quarantine/)
-//   --expect-database <name>      must equal current_database() on the connection
-//   --authorize-sha256 <hash>     must equal the SHA-256 of the file as it is on disk right now
-//   --i-understand-data-loss      literal flag
+//   --file <path>                      SQL file (must live under server/migration-quarantine/)
+//   --expect-database <name>           must equal current_database() on the connection
+//   --expect-target-fingerprint <hex>  fingerprint of the intended server (see below); verified inside the transaction
+//   --authorize-sha256 <hash>          must equal the SHA-256 of the file as it is on disk right now
+//   --i-understand-data-loss           literal flag
+// Get the fingerprint FIRST, read-only, against the intended target:
+//   DATABASE_URL=… npx tsx server/scripts/run-destructive-migration.ts --print-target-identity
+// Execution is refused if the server's identity cannot be verified (e.g. pg_control_system() is not readable).
 // and a human who has taken a verified backup first. See docs/stability-phase-3b-migration-safety.md.
 
 import "../lib/load-env";
@@ -14,6 +18,7 @@ import { basename, dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 import { applyAuthorizedDestructiveMigration } from "./migration-runner";
 import { sha256 } from "./migration-safety";
+import { describeTarget, targetFingerprint } from "./migration-target";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const QUARANTINE_DIR = resolve(__dirname, "../migration-quarantine");
@@ -24,12 +29,28 @@ function arg(name: string): string | undefined {
 }
 
 async function main() {
+  const url = process.env.DATABASE_URL?.trim();
+  if (!url) throw new Error("DATABASE_URL is missing.");
+
+  if (process.argv.includes("--print-target-identity")) {
+    const pool = new Pool({ connectionString: url, max: 1 });
+    try {
+      const identity = await describeTarget(pool, url);
+      console.log(JSON.stringify({ ...identity, fingerprint: targetFingerprint(identity) }, null, 2));
+    } finally {
+      await pool.end();
+    }
+    return;
+  }
+
   const file = arg("--file");
   const database = arg("--expect-database");
+  const fingerprint = arg("--expect-target-fingerprint");
   const authorized = arg("--authorize-sha256");
-  if (!file || !database || !authorized || !process.argv.includes("--i-understand-data-loss")) {
+  if (!file || !database || !fingerprint || !authorized || !process.argv.includes("--i-understand-data-loss")) {
     throw new Error(
-      "Refusing to run. Required: --file <path> --expect-database <name> --authorize-sha256 <hash> --i-understand-data-loss"
+      "Refusing to run. Required: --file <path> --expect-database <name> --expect-target-fingerprint <hex> " +
+        "--authorize-sha256 <hash> --i-understand-data-loss (or --print-target-identity to obtain the fingerprint)"
     );
   }
   const path = resolve(file);
@@ -41,14 +62,18 @@ async function main() {
     throw new Error(`SHA-256 mismatch: file is ${sha256(sql)}, authorization is ${authorized}. Nothing was executed.`);
   }
 
-  const url = process.env.DATABASE_URL?.trim();
-  if (!url) throw new Error("DATABASE_URL is missing.");
   const pool = new Pool({ connectionString: url, max: 1 });
   const client = await pool.connect();
   try {
     await client.query(`create table if not exists _app_migrations (filename text primary key, applied_at timestamptz not null default now())`);
     console.warn(`⚠️  Applying DESTRUCTIVE SQL ${basename(path)} to database "${database}"`);
-    await applyAuthorizedDestructiveMigration(client, basename(path), sql, { sha256: authorized, databaseName: database });
+    await applyAuthorizedDestructiveMigration(
+      client,
+      basename(path),
+      sql,
+      { sha256: authorized, databaseName: database, targetFingerprint: fingerprint },
+      { connectionString: url }
+    );
     console.log("Done.");
   } finally {
     client.release();

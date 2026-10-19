@@ -42,11 +42,12 @@ test("comments, whitespace and case cannot hide a destructive statement", () => 
   }
 });
 
-test("destructive statements inside DO/function bodies and EXECUTE strings are found", () => {
+test("destructive statements written directly inside DO/function bodies are found", () => {
   assert.ok(ops("DO $$ BEGIN DROP TABLE users; END $$;").includes("DROP TABLE"));
-  assert.ok(ops("DO $x$ BEGIN EXECUTE 'DROP TABLE users'; END $x$;").includes("DROP TABLE"));
-  assert.ok(ops("CREATE FUNCTION f() RETURNS void AS $$ TRUNCATE users $$ LANGUAGE sql;").includes("TRUNCATE"));
-  assert.ok(ops("DO $a$ BEGIN EXECUTE $b$ALTER TABLE t DROP COLUMN c$b$; END $a$;").includes("DROP COLUMN"));
+  assert.ok(ops("DO 'BEGIN DROP TABLE users; END';").includes("DROP TABLE"));
+  assert.ok(ops("CREATE FUNCTION f() RETURNS void AS $$ BEGIN TRUNCATE users; END $$ LANGUAGE plpgsql;").includes("TRUNCATE"));
+  assert.ok(ops("DO $a$ BEGIN ALTER TABLE t DROP COLUMN c; END $a$;").includes("DROP COLUMN"));
+  assert.ok(ops("DO $a$ BEGIN DELETE FROM t; END $a$;").includes("DELETE without WHERE"));
 });
 
 test("mentions in comments and string literals are not destructive", () => {
@@ -147,4 +148,122 @@ test("the normal migration command never references the quarantine directory and
   for (const [name, command] of Object.entries<string>(pkg.scripts)) {
     assert.doesNotMatch(command, /run-destructive-migration/, `npm script ${name} must not run destructive migrations`);
   }
+});
+
+// ---- Finding 1: dynamic SQL / procedural execution is rejected, never evaluated -----------------------------------
+const DYNAMIC_BYPASSES: Record<string, string> = {
+  "single-quoted DO body": "DO 'BEGIN EXECUTE ''DROP TABLE users''; END';",
+  "concatenated fragments": "DO $$ BEGIN EXECUTE 'DR' || 'OP TABLE users'; END $$;",
+  "format() assembled": "DO $$ BEGIN EXECUTE format('DROP %s users', 'TABLE'); END $$;",
+  "variable assembled": "DO $$ DECLARE s text := 'DROP TABLE users'; BEGIN EXECUTE s; END $$;",
+  "EXECUTE in nested dollar tags": "DO $outer$ BEGIN EXECUTE $inner$DROP TABLE users$inner$; END $outer$;",
+  "DO LANGUAGE before body": "DO LANGUAGE plpgsql $x$ BEGIN EXECUTE 'TRUNCATE users'; END $x$;",
+  "DO body after LANGUAGE": "DO $x$ BEGIN EXECUTE 'TRUNCATE users'; END $x$ LANGUAGE plpgsql;",
+  "E'' DO body (not decoded)": "DO E'BEGIN PERFORM 1; END';",
+  "U&'' DO body (not decoded)": "DO U&'BEGIN PERFORM 1; END';",
+  "other procedural language": "DO LANGUAGE plpython3u $$ plpy.execute('drop table users') $$;",
+  "function in C": "CREATE FUNCTION f() RETURNS void AS 'lib', 'sym' LANGUAGE c;",
+  "function in plpython": "CREATE FUNCTION f() RETURNS void AS $$ plpy.execute('x') $$ LANGUAGE plpython3u;",
+  "function with EXECUTE": "CREATE FUNCTION f() RETURNS void AS $$ BEGIN EXECUTE 'DROP TABLE users'; END $$ LANGUAGE plpgsql;",
+  "query_to_xml": "SELECT query_to_xml('drop table users', false, false, '');",
+  "schema-qualified query_to_xml": "SELECT pg_catalog.query_to_xml('delete from users', false, false, '');",
+  "quoted query_to_xml": 'SELECT "query_to_xml"(\'x\', false, false, \'\');',
+  "dblink_exec": "SELECT dblink_exec('dbname=x', 'drop table users');",
+  "CALL": "CALL dangerous_procedure();",
+  "CALL inside DO": "DO $$ BEGIN CALL dangerous_procedure(); END $$;",
+  "prepared EXECUTE": "PREPARE p AS SELECT 1; EXECUTE p;",
+  "COPY PROGRAM": "COPY users TO PROGRAM 'rm -rf /';",
+  "unknown statement kind": "REASSIGN OWNED BY a TO b;",
+  "DO inside function-shaped nesting": "DO $a$ BEGIN EXECUTE $b$ DO $c$ BEGIN EXECUTE 'x'; END $c$ $b$; END $a$;",
+};
+for (const [name, sql] of Object.entries(DYNAMIC_BYPASSES)) {
+  test(`dynamic/procedural bypass rejected: ${name}`, () => {
+    assert.ok(findDestructiveOperations(sql).length > 0, sql);
+  });
+}
+
+test("a splitter/lexer disagreement about statement boundaries is rejected", () => {
+  // The executor's splitter treats `$b$` inside the identifier as a dollar-quote opener and sends ONE chunk;
+  // PostgreSQL would run all three statements in it.
+  const sql = "SELECT 1 AS a$b$; DROP TABLE users; SELECT 2 AS a$b$;";
+  const found = ops(sql);
+  assert.ok(found.some((o) => o.startsWith("PARSER DISAGREEMENT")), String(found));
+  assert.ok(found.includes("DROP TABLE"));
+});
+
+test("ordinary procedural migrations (triggers, DO guards, plpgsql functions) are still supported", () => {
+  assert.deepEqual(
+    findDestructiveOperations(`
+      CREATE OR REPLACE FUNCTION guard() RETURNS trigger AS $$
+      BEGIN
+        IF OLD.id IS DISTINCT FROM NEW.id THEN RAISE EXCEPTION 'id is immutable; DELETE FROM x is not allowed'; END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'guard_trigger') THEN
+          CREATE TRIGGER guard_trigger BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION guard();
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'c1') THEN
+          ALTER TABLE t ADD CONSTRAINT c1 CHECK (id > 0) NOT VALID;
+        END IF;
+        DELETE FROM t WHERE id < 0;
+      END $$;
+      ALTER TABLE child DROP CONSTRAINT IF EXISTS fk, ADD CONSTRAINT fk FOREIGN KEY (p) REFERENCES t(id) ON DELETE CASCADE;
+      CREATE TABLE c2 (p int REFERENCES t(id) ON DELETE SET NULL ON UPDATE CASCADE);
+      CREATE TRIGGER after_del AFTER INSERT OR DELETE ON t FOR EACH ROW EXECUTE PROCEDURE guard();
+      CREATE POLICY p ON t FOR DELETE USING (true);
+      GRANT SELECT, INSERT, DELETE ON t TO app;
+    `),
+    []
+  );
+});
+
+// ---- Finding 2: DELETE validation is specific to the DELETE command ----------------------------------------------
+const UNBOUNDED_DELETES: Record<string, string> = {
+  "unrelated WHERE inside a CTE": "WITH marker AS (SELECT 1 WHERE true) DELETE FROM users;",
+  "multiline with comments": "WITH marker AS (\n  SELECT 1 -- WHERE true\n  WHERE true /* WHERE */\n)\nDELETE /* c */ FROM\n  users;",
+  "WHERE only inside USING subquery": "DELETE FROM users USING (SELECT 1 WHERE true) s;",
+  "WHERE only inside RETURNING subquery": "DELETE FROM users RETURNING (SELECT 1 WHERE true);",
+  "second DELETE in CTE chain unbounded": "WITH d AS (DELETE FROM a WHERE id = 1 RETURNING *) DELETE FROM b;",
+  "bounded CTE delete + unbounded outer": "WITH d AS (DELETE FROM a WHERE id = 1 RETURNING *) DELETE FROM d_log;",
+  "trivial WHERE true": "DELETE FROM users WHERE true;",
+  "trivial WHERE (true)": "DELETE FROM users WHERE (TRUE);",
+  "trivial WHERE 1=1": "DELETE FROM users WHERE 1 = 1;",
+  "MERGE … THEN DELETE": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE;",
+  "unknown DELETE shape": "SELECT delete;",
+  "DELETE ONLY without WHERE": "DELETE FROM ONLY users;",
+};
+for (const [name, sql] of Object.entries(UNBOUNDED_DELETES)) {
+  test(`unbounded/ambiguous DELETE rejected: ${name}`, () => {
+    assert.ok(ops(sql).length > 0, sql);
+    if (!/MERGE/.test(sql)) assert.ok(ops(sql).some((o) => /DELETE/.test(o)), `${sql} -> ${ops(sql)}`);
+  });
+}
+
+test("DELETE in a later statement of a multi-statement file is located precisely", () => {
+  const found = findDestructiveOperations("DELETE FROM a WHERE id = 1;\nUPDATE b SET x = 1;\nDELETE FROM c;");
+  assert.deepEqual(found.map((f) => [f.operation, f.statement]), [["DELETE without WHERE", 3]]);
+});
+
+test("bounded DELETE statements remain supported", () => {
+  for (const sql of [
+    "DELETE FROM users WHERE id = 1;",
+    "DELETE FROM ONLY users AS u WHERE u.id = 1 RETURNING u.id;",
+    "DELETE FROM users WHERE id IN (SELECT id FROM banned WHERE reason IS NOT NULL);",
+    "DELETE FROM users WHERE id IN (SELECT id FROM banned WHERE true);", // inner WHERE is irrelevant; outer is bounded
+    "WITH s AS (SELECT id FROM old WHERE ok) DELETE FROM users USING s WHERE users.id = s.id;",
+    "WITH d AS (DELETE FROM users WHERE id = 1 RETURNING *) INSERT INTO log SELECT * FROM d;",
+    "DELETE FROM users WHERE CURRENT OF c;",
+    "-- DELETE FROM users;\nSELECT 'DELETE FROM users';",
+  ]) {
+    assert.deepEqual(ops(sql), [], sql);
+  }
+});
+
+test("the reviewed historical exception covers exactly the two operations it was reviewed for", () => {
+  const sql = readFileSync(join(serverDir, "migrations", "20260928_square_oauth_hardening.sql"), "utf-8");
+  assert.deepEqual(ops(sql).sort(), ["DELETE without WHERE", "DROP COLUMN"]);
+  assert.equal(sha256(sql), REVIEWED_HISTORICAL_DESTRUCTIVE["server:20260928_square_oauth_hardening.sql"].sha256);
 });

@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { describeTarget, targetFingerprint, TargetVerificationError } from "./migration-target";
 import { assertNonDestructive, DestructiveMigrationError, sha256 } from "./migration-safety";
 import { scanPostgresSql, splitPostgresStatements } from "./postgres-sql-scan";
 
@@ -45,37 +46,80 @@ export type DestructiveAuthorization = {
   sha256: string;
   /** Must equal current_database() of the connection the SQL will run on. */
   databaseName: string;
+  /** targetFingerprint() of the intended server, produced by `run-destructive-migration.ts --print-target-identity`. */
+  targetFingerprint: string;
 };
+
+type DestructiveClient = {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }>;
+};
+
+/** Serialises every destructive migration on a server. Value is arbitrary but fixed. */
+const DESTRUCTIVE_LOCK_KEY = "chefsire:destructive-migration";
 
 /**
  * The ONLY path that executes destructive SQL. It is not reachable from `npm run db:migrate`; it is used solely by
- * server/scripts/run-destructive-migration.ts. The caller must name the exact content hash and the exact target
- * database. The ledger key uses a distinct "destructive:" prefix so it can never collide with a routine entry.
+ * server/scripts/run-destructive-migration.ts. Order of operations, all inside ONE transaction:
+ *   1. (before BEGIN, no database access) the SQL hash must equal the authorization;
+ *   2. BEGIN, then a transaction-scoped advisory lock so overlapping invocations queue instead of interleaving;
+ *   3. the target's verified identity must equal the authorized fingerprint and database name;
+ *   4. the ledger row is CLAIMED (INSERT … ON CONFLICT DO NOTHING RETURNING). No row returned means someone else owns
+ *      or already finished it, and the invocation stops;
+ *   5. only then are the destructive statements executed, and COMMIT releases lock, claim and effects together.
+ * Any failure ROLLBACKs everything, including the claim, so a corrected retry is possible and nothing is half-applied.
+ * The ledger key uses a distinct "destructive:" prefix so it can never collide with a routine entry.
  */
 export async function applyAuthorizedDestructiveMigration(
-  client: MigrationClient & { query: (sql: string, params?: unknown[]) => Promise<any> },
+  client: DestructiveClient,
   name: string,
   sql: string,
   authorization: DestructiveAuthorization,
-  logger: MigrationLogger = console
+  options: { connectionString: string; logger?: MigrationLogger }
 ): Promise<void> {
+  const logger = options.logger ?? console;
   if (sha256(sql) !== authorization.sha256) {
     throw new Error(`Authorization hash does not match the content of ${name}; nothing was executed.`);
   }
-  const current = (await client.query("select current_database() as name")) as { rows: Array<{ name: string }> };
-  if (current.rows[0]?.name !== authorization.databaseName) {
-    throw new Error(
-      `Authorization names database "${authorization.databaseName}" but the connection is to ` +
-        `"${current.rows[0]?.name}"; nothing was executed.`
-    );
-  }
+  assertTransactionCompatible(name, sql);
+  const statements = splitPostgresStatements(sql);
   const ledgerKey = `destructive:${name}`;
-  const already = (await client.query("select 1 from _app_migrations where filename = $1", [ledgerKey])) as {
-    rows: unknown[];
-  };
-  if (already.rows.length > 0) throw new Error(`${ledgerKey} was already applied; refusing to run it again.`);
-  // Same atomic path as routine migrations, minus the destructive guard.
-  await runInTransaction(client, ledgerKey, sql, logger);
+  let position = 0;
+
+  await client.query("BEGIN");
+  try {
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [DESTRUCTIVE_LOCK_KEY]);
+
+    const identity = await describeTarget(client, options.connectionString);
+    if (identity.databaseName !== authorization.databaseName || targetFingerprint(identity) !== authorization.targetFingerprint) {
+      throw new TargetVerificationError(
+        `connected target (database "${identity.databaseName}", fingerprint ${targetFingerprint(identity).slice(0, 12)}…) ` +
+          `does not match the authorized target (database "${authorization.databaseName}", ` +
+          `fingerprint ${authorization.targetFingerprint.slice(0, 12)}…)`
+      );
+    }
+
+    const claim = await client.query(
+      `insert into _app_migrations (filename) values ($1) on conflict (filename) do nothing returning filename`,
+      [ledgerKey]
+    );
+    if (claim.rows.length === 0) throw new Error(`${ledgerKey} was already applied; refusing to run it again.`);
+
+    for (let index = 0; index < statements.length; index++) {
+      position = index + 1;
+      await client.query(statements[index]);
+    }
+    await client.query("COMMIT");
+  } catch (error: any) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      logger.error(`Migration rollback failed in ${ledgerKey}: ${safeMessage(rollbackError)}`);
+    }
+    const code = typeof error?.code === "string" ? error.code : "unknown";
+    const context = position > 0 ? `statement ${position}/${statements.length}` : "pre-execution checks";
+    logger.error(`Destructive migration ${ledgerKey} failed at ${context} (SQLSTATE ${code}): ${safeMessage(error)}`);
+    throw error;
+  }
 }
 
 async function runInTransaction(client: MigrationClient, ledgerKey: string, sql: string, logger: MigrationLogger) {
