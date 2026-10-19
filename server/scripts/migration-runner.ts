@@ -1,110 +1,16 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { describeTarget, targetFingerprint, TargetVerificationError } from "./migration-target";
+import { assertNonDestructive, DestructiveMigrationError, sha256 } from "./migration-safety";
+import { scanPostgresSql, splitPostgresStatements } from "./postgres-sql-scan";
+
+export { splitPostgresStatements };
+
 export type MigrationClient = {
   query: (sql: string, params?: unknown[]) => Promise<unknown>;
 };
 
 export type MigrationLogger = Pick<Console, "error">;
-
-/**
- * Split PostgreSQL source only at top-level semicolons. In particular, semicolons in comments,
- * quoted strings/identifiers and dollar-quoted function or DO bodies are not terminators.
- */
-function scanPostgresSql(sql: string): { statements: string[]; topLevelSql: string } {
-  const statements: string[] = [];
-  const topLevel = Array.from({ length: sql.length }, () => " ");
-  let start = 0;
-  let i = 0;
-  let singleQuoted = false;
-  let escapeSingleQuoted = false;
-  let doubleQuoted = false;
-  let lineComment = false;
-  let blockCommentDepth = 0;
-  let dollarTag: string | null = null;
-
-  while (i < sql.length) {
-    if (lineComment) {
-      if (sql[i] === "\n") lineComment = false;
-      i++;
-      continue;
-    }
-    if (blockCommentDepth > 0) {
-      if (sql.startsWith("/*", i)) {
-        blockCommentDepth++;
-        i += 2;
-      } else if (sql.startsWith("*/", i)) {
-        blockCommentDepth--;
-        i += 2;
-      } else {
-        i++;
-      }
-      continue;
-    }
-    if (dollarTag) {
-      if (sql.startsWith(dollarTag, i)) {
-        i += dollarTag.length;
-        dollarTag = null;
-      } else {
-        i++;
-      }
-      continue;
-    }
-    if (singleQuoted) {
-      if (escapeSingleQuoted && sql[i] === "\\") i += Math.min(2, sql.length - i);
-      else if (sql[i] === "'" && sql[i + 1] === "'") i += 2;
-      else if (sql[i++] === "'") {
-        singleQuoted = false;
-        escapeSingleQuoted = false;
-      }
-      continue;
-    }
-    if (doubleQuoted) {
-      if (sql[i] === '"' && sql[i + 1] === '"') i += 2;
-      else if (sql[i++] === '"') doubleQuoted = false;
-      continue;
-    }
-
-    if (sql.startsWith("--", i)) {
-      lineComment = true;
-      i += 2;
-    } else if (sql.startsWith("/*", i)) {
-      blockCommentDepth = 1;
-      i += 2;
-    } else if (sql[i] === "'") {
-      singleQuoted = true;
-      // PostgreSQL E/e strings give backslash special meaning. The prefix must be a standalone
-      // token; an identifier ending in e does not turn the following string into an escape string.
-      escapeSingleQuoted = /[eE]/.test(sql[i - 1] ?? "") &&
-        !/[A-Za-z0-9_$]/.test(sql[i - 2] ?? "");
-      i++;
-    } else if (sql[i] === '"') {
-      doubleQuoted = true;
-      i++;
-    } else if (sql[i] === "$") {
-      const match = sql.slice(i).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/);
-      if (match) {
-        dollarTag = match[0];
-        i += match[0].length;
-      } else {
-        i++;
-      }
-    } else if (sql[i] === ";") {
-      topLevel[i] = sql[i];
-      const statement = sql.slice(start, i).trim();
-      if (statement) statements.push(statement);
-      start = ++i;
-    } else {
-      topLevel[i] = sql[i];
-      i++;
-    }
-  }
-
-  const trailing = sql.slice(start).trim();
-  if (trailing) statements.push(trailing);
-  return { statements, topLevelSql: topLevel.join("") };
-}
-
-export function splitPostgresStatements(sql: string): string[] {
-  return scanPostgresSql(sql).statements;
-}
 
 function assertTransactionCompatible(ledgerKey: string, sql: string): void {
   const { topLevelSql } = scanPostgresSql(sql);
@@ -130,21 +36,100 @@ export async function applyMigration(
   // ChefSire migrations must remain transaction-compatible. Reject known incompatible operations
   // before BEGIN rather than silently weakening atomic execution for an individual file.
   assertTransactionCompatible(ledgerKey, sql);
+  // Fail closed on destructive SQL before BEGIN, so nothing is executed and no ledger row is written.
+  assertNonDestructive(ledgerKey, sql);
+  await runInTransaction(client, ledgerKey, sql, logger);
+}
+
+export type DestructiveAuthorization = {
+  /** SHA-256 of the exact file content being authorized. */
+  sha256: string;
+  /** Must equal current_database() of the connection the SQL will run on. */
+  databaseName: string;
+  /** targetFingerprint() of the intended server, produced by `run-destructive-migration.ts --print-target-identity`. */
+  targetFingerprint: string;
+};
+
+type DestructiveClient = {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }>;
+};
+
+/**
+ * The guard lexes SQL assuming standard string rules and UTF-8. Verify the session really has them; otherwise the
+ * same bytes could parse differently in PostgreSQL than in the guard, so nothing may run.
+ */
+export async function assertLexingAssumptions(db: {
+  query: (sql: string) => Promise<{ rows: any[] }>;
+}): Promise<void> {
+  const rows = (
+    await db.query(
+      `select current_setting('standard_conforming_strings') as scs, current_setting('client_encoding') as enc`
+    )
+  ).rows[0];
+  if (rows?.scs !== "on" || String(rows?.enc).toUpperCase() !== "UTF8") {
+    throw new Error(
+      `Refusing to run migrations: standard_conforming_strings=${rows?.scs}, client_encoding=${rows?.enc} ` +
+        "(required: on / UTF8). The safety guard cannot validate SQL under other lexing rules; nothing was executed."
+    );
+  }
+}
+
+/** Serialises every destructive migration on a server. Value is arbitrary but fixed. */
+const DESTRUCTIVE_LOCK_KEY = "chefsire:destructive-migration";
+
+/**
+ * The ONLY path that executes destructive SQL. It is not reachable from `npm run db:migrate`; it is used solely by
+ * server/scripts/run-destructive-migration.ts. Order of operations, all inside ONE transaction:
+ *   1. (before BEGIN, no database access) the SQL hash must equal the authorization;
+ *   2. BEGIN, then a transaction-scoped advisory lock so overlapping invocations queue instead of interleaving;
+ *   3. the target's verified identity must equal the authorized fingerprint and database name;
+ *   4. the ledger row is CLAIMED (INSERT … ON CONFLICT DO NOTHING RETURNING). No row returned means someone else owns
+ *      or already finished it, and the invocation stops;
+ *   5. only then are the destructive statements executed, and COMMIT releases lock, claim and effects together.
+ * Any failure ROLLBACKs everything, including the claim, so a corrected retry is possible and nothing is half-applied.
+ * The ledger key uses a distinct "destructive:" prefix so it can never collide with a routine entry.
+ */
+export async function applyAuthorizedDestructiveMigration(
+  client: DestructiveClient,
+  name: string,
+  sql: string,
+  authorization: DestructiveAuthorization,
+  options: { connectionString: string; logger?: MigrationLogger }
+): Promise<void> {
+  const logger = options.logger ?? console;
+  if (sha256(sql) !== authorization.sha256) {
+    throw new Error(`Authorization hash does not match the content of ${name}; nothing was executed.`);
+  }
+  assertTransactionCompatible(name, sql);
   const statements = splitPostgresStatements(sql);
+  const ledgerKey = `destructive:${name}`;
   let position = 0;
 
   await client.query("BEGIN");
   try {
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [DESTRUCTIVE_LOCK_KEY]);
+    await assertLexingAssumptions(client);
+
+    const identity = await describeTarget(client, options.connectionString);
+    if (identity.databaseName !== authorization.databaseName || targetFingerprint(identity) !== authorization.targetFingerprint) {
+      throw new TargetVerificationError(
+        `connected target (database "${identity.databaseName}", fingerprint ${targetFingerprint(identity).slice(0, 12)}…) ` +
+          `does not match the authorized target (database "${authorization.databaseName}", ` +
+          `fingerprint ${authorization.targetFingerprint.slice(0, 12)}…)`
+      );
+    }
+
+    const claim = await client.query(
+      `insert into _app_migrations (filename) values ($1) on conflict (filename) do nothing returning filename`,
+      [ledgerKey]
+    );
+    if (claim.rows.length === 0) throw new Error(`${ledgerKey} was already applied; refusing to run it again.`);
+
     for (let index = 0; index < statements.length; index++) {
       position = index + 1;
       await client.query(statements[index]);
     }
-    position = statements.length + 1;
-    await client.query(
-      `insert into _app_migrations (filename) values ($1)
-       on conflict (filename) do nothing`,
-      [ledgerKey]
-    );
+    await assertLexingAssumptions(client);
     await client.query("COMMIT");
   } catch (error: any) {
     try {
@@ -153,10 +138,113 @@ export async function applyMigration(
       logger.error(`Migration rollback failed in ${ledgerKey}: ${safeMessage(rollbackError)}`);
     }
     const code = typeof error?.code === "string" ? error.code : "unknown";
-    const context = position <= statements.length
-      ? `statement ${position}/${statements.length}`
-      : "migration ledger write";
+    const context = position > 0 ? `statement ${position}/${statements.length}` : "pre-execution checks";
+    logger.error(`Destructive migration ${ledgerKey} failed at ${context} (SQLSTATE ${code}): ${safeMessage(error)}`);
+    throw error;
+  }
+}
+
+async function runInTransaction(client: MigrationClient, ledgerKey: string, sql: string, logger: MigrationLogger) {
+  assertTransactionCompatible(ledgerKey, sql);
+  const statements = splitPostgresStatements(sql);
+  let position = 0;
+  await client.query("BEGIN");
+  try {
+    for (let index = 0; index < statements.length; index++) {
+      position = index + 1;
+      await client.query(statements[index]);
+    }
+    position = statements.length + 1;
+    // Defence in depth: if anything above changed how SQL is lexed, the validation no longer describes what ran.
+    // Everything is still inside the transaction, so refusing here rolls the whole file back.
+    await assertLexingAssumptions(client as any);
+    await client.query(`insert into _app_migrations (filename) values ($1) on conflict (filename) do nothing`, [ledgerKey]);
+    await client.query("COMMIT");
+  } catch (error: any) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      logger.error(`Migration rollback failed in ${ledgerKey}: ${safeMessage(rollbackError)}`);
+    }
+    const code = typeof error?.code === "string" ? error.code : "unknown";
+    const context = position <= statements.length ? `statement ${position}/${statements.length}` : "migration ledger write";
     logger.error(`Migration failed in ${ledgerKey} at ${context} (SQLSTATE ${code}): ${safeMessage(error)}`);
     throw error;
   }
+}
+
+export type MigrationSource = { dir: string; keyPrefix: string; priority: number };
+export type DiscoveredMigration = { sourceDir: string; filename: string; ledgerKey: string; priority: number };
+export type MigrationPool = {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }>;
+  connect: () => Promise<MigrationClient & { release: () => void }>;
+};
+
+/** Every *.sql file under the given directories, deduplicated by filename (lowest priority number wins), sorted. */
+export async function discoverMigrations(sources: MigrationSource[]): Promise<DiscoveredMigration[]> {
+  const byName = new Map<string, DiscoveredMigration>();
+  for (const source of sources) {
+    const files = await readdir(source.dir).catch(() => [] as string[]);
+    for (const filename of files.filter((f) => f.endsWith(".sql")).sort()) {
+      const next = { sourceDir: source.dir, filename, ledgerKey: `${source.keyPrefix}:${filename}`, priority: source.priority };
+      const existing = byName.get(filename);
+      if (!existing || next.priority < existing.priority) byName.set(filename, next);
+    }
+  }
+  return Array.from(byName.values()).sort((a, b) => a.filename.localeCompare(b.filename));
+}
+
+/**
+ * Apply every unrecorded migration. All pending files are validated BEFORE any is executed, so one unsafe file
+ * stops the whole run with nothing applied. Already-recorded files are never re-read or re-validated.
+ */
+export async function runPendingMigrations(
+  db: MigrationPool,
+  sources: MigrationSource[],
+  logger: Pick<Console, "log" | "error"> = console
+): Promise<{ applied: string[]; skipped: string[] }> {
+  await assertLexingAssumptions(db);
+  const all = await discoverMigrations(sources);
+  const pending: Array<DiscoveredMigration & { sql: string }> = [];
+  const skipped: string[] = [];
+  for (const file of all) {
+    const recorded = await db.query(`select filename from _app_migrations where filename = $1`, [file.ledgerKey]);
+    if (recorded.rows.length > 0) {
+      logger.log(`⏭️  Skipping already recorded: ${file.ledgerKey}`);
+      skipped.push(file.ledgerKey);
+    } else {
+      pending.push({ ...file, sql: await readFile(join(file.sourceDir, file.filename), "utf-8") });
+    }
+  }
+
+  const rejected = pending.flatMap((file) => {
+    try {
+      assertNonDestructive(file.ledgerKey, file.sql);
+      return [];
+    } catch (error) {
+      if (error instanceof DestructiveMigrationError) return [error];
+      throw error;
+    }
+  });
+  if (rejected.length > 0) {
+    for (const error of rejected) logger.error(`❌ ${error.message}`);
+    throw new Error(
+      `Refusing to run migrations: ${rejected.length} pending file(s) contain destructive SQL ` +
+        `(${rejected.map((e) => e.ledgerKey).join(", ")}). No migration was executed.`
+    );
+  }
+
+  const applied: string[] = [];
+  for (const file of pending) {
+    logger.log(`▶️  Running migration: ${file.ledgerKey}`);
+    const client = await db.connect();
+    try {
+      await applyMigration(client, file.ledgerKey, file.sql, logger);
+      applied.push(file.ledgerKey);
+      logger.log(`✅ Completed: ${file.ledgerKey}\n`);
+    } finally {
+      client.release();
+    }
+  }
+  return { applied, skipped };
 }

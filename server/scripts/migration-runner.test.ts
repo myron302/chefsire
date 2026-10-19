@@ -42,6 +42,8 @@ class TransactionalFake implements MigrationClient {
         throw error;
       }
       this.state.rows.push(value);
+    } else if (/current_setting\('standard_conforming_strings'\)/.test(sql)) {
+      return { rows: [{ scs: "on", enc: "UTF8" }] };
     } else if (/insert into _app_migrations/i.test(sql)) {
       const key = String(params[0]);
       if (!this.state.ledger.includes(key)) this.state.ledger.push(key);
