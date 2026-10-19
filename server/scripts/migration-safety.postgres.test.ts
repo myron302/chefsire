@@ -335,3 +335,60 @@ postgresTest("integrated: routine runner rejects unsafe/dynamic input, runs safe
     assert.equal(await count(client, "users"), 0);
   });
 });
+
+postgresTest("PostgreSQL itself resolves a unicode-escaped name to the prohibited function (why it must be rejected)", async () => {
+  await sandbox(async ({ client }) => {
+    const viaEscape = await client.query(String.raw`SELECT U&"query\005fto\005fxml"('select 1 as one', false, false, '') AS x`);
+    const direct = await client.query(`SELECT query_to_xml('select 1 as one', false, false, '') AS x`);
+    assert.equal(viaEscape.rows[0].x, direct.rows[0].x);
+  });
+});
+
+postgresTest("unicode-escaped and lexing-boundary bypasses are rejected before execution on a real database", async () => {
+  await sandbox(async ({ client }) => {
+    await client.query(`CREATE TABLE victim (id int); INSERT INTO victim VALUES (1), (2)`);
+    for (const sql of [
+      `SELECT U&"query\\005fto\\005fxml"('select 1', false, false, '');`,
+      `SELECT U&"query!005fto!005fxml" UESCAPE '!'('select 1', false, false, '');`,
+      `DO $$ BEGIN PERFORM U&"query\\005fto\\005fxml"('delete from victim', false, false, ''); END $$;`,
+      "DO 'BEGIN '\n'EXECUTE ''delete from victim''; END';",
+      "SET standard_conforming_strings = off; SELECT '\\''; DELETE FROM victim; SELECT '\\'';",
+    ]) {
+      await assert.rejects(applyMigration(client, "t:bypass.sql", sql, quiet), DestructiveMigrationError, sql);
+    }
+    assert.equal(await count(client, "victim"), 2);
+    assert.deepEqual(await ledger(client), []);
+  });
+});
+
+postgresTest("a session with non-standard string rules refuses to run migrations (routine and destructive)", async () => {
+  await sandbox(async ({ client, db, dir }) => {
+    await client.query(`CREATE TABLE victim (id int); INSERT INTO victim VALUES (1)`);
+    await writeFile(join(dir, "001_safe.sql"), "CREATE TABLE fine (id int);");
+    const sources = [{ dir, keyPrefix: "drizzle", priority: 0 }];
+    const sql = "DELETE FROM victim WHERE id = 1;";
+    const auth = await authFor(client, sql);
+    await client.query(`SET standard_conforming_strings = off`);
+    try {
+      await assert.rejects(runPendingMigrations(db, sources, quiet), /standard_conforming_strings=off/);
+      await assert.rejects(applyAuthorizedDestructiveMigration(client, "scs.sql", sql, auth, opts()), /standard_conforming_strings=off/);
+    } finally {
+      await client.query(`RESET standard_conforming_strings`);
+    }
+    assert.equal(await exists(client, "fine"), false);
+    assert.equal(await count(client, "victim"), 1);
+    assert.deepEqual(await ledger(client), []);
+  });
+});
+
+postgresTest("already-recorded ledger entries are unaffected by the stricter scanner", async () => {
+  await sandbox(async ({ client, db, dir }) => {
+    await client.query(`INSERT INTO _app_migrations (filename, applied_at) VALUES ('drizzle:000_old.sql', '2020-01-01T00:00:00Z')`);
+    const before = (await client.query(`SELECT filename, applied_at FROM _app_migrations`)).rows;
+    await writeFile(join(dir, "000_old.sql"), `SELECT U&"query\\005fto\\005fxml"('select 1', false, false, '');`);
+    await writeFile(join(dir, "001_new.sql"), `CREATE TABLE "Mixed Case" ("Col" int);`);
+    const result = await runPendingMigrations(db, [{ dir, keyPrefix: "drizzle", priority: 0 }], quiet);
+    assert.deepEqual(result.applied, ["drizzle:001_new.sql"]);
+    assert.deepEqual((await client.query(`SELECT filename, applied_at FROM _app_migrations WHERE filename = 'drizzle:000_old.sql'`)).rows, before);
+  });
+});

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { splitPostgresStatements } from "./postgres-sql-scan";
-import { tokenize, type Token } from "./sql-tokens";
+import { asciiLower, asciiUpper, tokenize, type Token } from "./sql-tokens";
 
 /**
  * Fail-closed destructive-SQL validation for the routine migration command (`npm run db:migrate`).
@@ -75,6 +75,8 @@ const DYNAMIC_SQL_FUNCTIONS = new Set([
   "query_to_xml", "query_to_xml_and_xmlschema", "query_to_xmlschema", "cursor_to_xml", "cursor_to_xmlschema",
   "dblink", "dblink_exec", "dblink_send_query", "dblink_connect", "pg_execute",
 ]);
+/** Session settings that change how the SAME bytes lex (string escapes, multibyte decoding). Never legitimate here. */
+const LEXING_SETTINGS = ["standard_conforming_strings", "client_encoding"];
 const MAX_BODY_DEPTH = 3;
 
 type Add = (operation: string) => void;
@@ -156,8 +158,20 @@ function analysePiece(piece: Token[], top: boolean, depth: number, add: Add): vo
     const w = word(t);
     const prev = word(piece[k - 1]);
     const next = word(piece[k + 1]);
-    if ((t.kind === "word" && DYNAMIC_SQL_FUNCTIONS.has(t.value.toLowerCase())) || (t.kind === "qident" && DYNAMIC_SQL_FUNCTIONS.has(t.value))) {
-      add(`DYNAMIC SQL FUNCTION (${t.value.toLowerCase()})`);
+    // Identifiers: unicode-escaped identifiers (U&"…" [UESCAPE '…']) are never decoded, so they could spell any name
+    // (including a prohibited function). They are rejected outright rather than treated as ordinary quoted names.
+    if (t.kind === "qident" && t.flavor === "unicode") add("UNICODE-ESCAPED IDENTIFIER");
+    if (w === "UESCAPE") add("UNICODE ESCAPE (UESCAPE)");
+    if (
+      (t.kind === "word" && DYNAMIC_SQL_FUNCTIONS.has(asciiLower(t.value))) ||
+      (t.kind === "qident" && t.flavor === "plain" && DYNAMIC_SQL_FUNCTIONS.has(t.value))
+    ) {
+      add(`DYNAMIC SQL FUNCTION (${asciiLower(t.value)})`);
+    }
+    if (t.kind !== "punct" && t.kind !== "number") {
+      const text = asciiLower(t.kind === "word" || t.kind === "qident" || t.kind === "string" ? t.value : "");
+      const setting = LEXING_SETTINGS.find((name) => text.includes(name));
+      if (setting) add(`UNSUPPORTED SESSION SETTING (${setting})`);
     }
     if (w === "EXECUTE" && !(isCreateTrigger && (next === "FUNCTION" || next === "PROCEDURE"))) add("DYNAMIC SQL (EXECUTE)");
     if (w === "CALL") add("PROCEDURAL CALL");
@@ -176,25 +190,33 @@ function analysePiece(piece: Token[], top: boolean, depth: number, add: Add): vo
   });
 
   // Procedural bodies are code: DO blocks and CREATE FUNCTION/PROCEDURE definitions are lexed and analysed too.
-  const language = (() => {
-    const at = piece.findIndex((t) => word(t) === "LANGUAGE");
-    return at === -1 ? undefined : (word(piece[at + 1]) ?? piece[at + 1]?.value.toUpperCase());
-  })();
+  const langAt = piece.findIndex((t) => word(t) === "LANGUAGE");
+  const langTok = langAt === -1 ? undefined : piece[langAt + 1];
+  const language =
+    langTok === undefined ? undefined
+    : langTok.kind === "word" ? langTok.text
+    : langTok.kind === "string" && langTok.flavor === "plain" ? asciiUpper(langTok.value)
+    : "?";
   const bodies: string[] = [];
   if (first === "DO") {
-    const at = piece.findIndex((t) => t.kind === "string");
-    const body = at === -1 ? null : bodyOf(piece[at], add, "DO");
-    if (body !== null) bodies.push(body);
-    else if (at === -1) add("UNSUPPORTED DO BODY");
+    // Every string except LANGUAGE's operand is a body candidate, and exactly one is accepted. Adjacent literals
+    // ('a' <newline> 'b') are concatenated by PostgreSQL, so more than one candidate is ambiguous: rejected.
+    const candidates = piece.map((t, k) => k).filter((k) => piece[k].kind === "string" && k !== langAt + 1);
+    if (candidates.length !== 1) add("UNSUPPORTED DO BODY (expected exactly one body literal)");
+    else {
+      const body = bodyOf(piece[candidates[0]], add, "DO");
+      if (body !== null) bodies.push(body);
+    }
     if (language !== undefined && language !== "PLPGSQL") add(`UNSUPPORTED LANGUAGE (${language})`);
   } else if (first === "CREATE") {
     const kind = piece.slice(1, 5).map(word).find((x) => x === "FUNCTION" || x === "PROCEDURE");
     if (kind) {
       piece.forEach((t, k) => {
-        if (word(t) === "AS" && piece[k + 1]?.kind === "string") {
-          const body = bodyOf(piece[k + 1], add, "FUNCTION");
-          if (body !== null) bodies.push(body);
-        }
+        if (word(t) !== "AS" || piece[k + 1]?.kind !== "string") return;
+        const after = piece[k + 2];
+        if (after?.kind === "string" || after?.text === ",") return void add("UNSUPPORTED FUNCTION BODY (multiple literals)");
+        const body = bodyOf(piece[k + 1], add, "FUNCTION");
+        if (body !== null) bodies.push(body);
       });
       if (bodies.length > 0 && !(language && PLPGSQL_LANGUAGES.has(language))) add(`UNSUPPORTED LANGUAGE (${language ?? "none"})`);
     }

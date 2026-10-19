@@ -39,6 +39,9 @@ Rejected:
 | `TRUNCATE` | Rejected (except as a trigger event in `CREATE TRIGGER`). |
 | `DELETE` | Parsed as a command: `DELETE FROM … [WHERE …] [RETURNING …]`. The `WHERE` must be at the **same parenthesis depth as that DELETE** and before its `RETURNING`; a `WHERE` inside a CTE, subquery or `USING (…)` does not count. Missing or trivially true (`TRUE`, `NOT FALSE`, `1 = 1`, empty) predicates are rejected. `DELETE` used as an event/privilege/action keyword (`ON DELETE CASCADE`, `AFTER DELETE ON`, `GRANT DELETE`, `FOR DELETE USING`) is recognised by shape; any other shape, and `MERGE … THEN DELETE`, is rejected as ambiguous. |
 | Unparseable input | Unterminated comment/string/identifier/dollar quote. |
+| Unicode-escaped identifiers | Every `U&"…"` identifier (any case of `U`, with or without `UESCAPE`, any escape character) and the `UESCAPE` keyword are rejected **without decoding**. |
+| Ambiguous procedural bodies | A `DO` must contain exactly one body literal (the operand of `LANGUAGE` is excluded, so `DO LANGUAGE 'plpgsql' $$…$$` is analysed); adjacent literals (`'a'⏎'b'`, which PostgreSQL concatenates) and multi-literal function definitions are rejected. |
+| Lexing-changing settings | Any mention of `standard_conforming_strings` or `client_encoding` (word, quoted identifier or string, e.g. `set_config(…)`). The runners additionally verify the live session has `standard_conforming_strings = on` and `client_encoding = UTF8` before running anything (routine and destructive). |
 
 `DO` and `CREATE FUNCTION|PROCEDURE` bodies are lexed and analysed recursively as code (depth-limited).
 
@@ -103,3 +106,26 @@ Reproduced against the reviewed commit on a disposable local database before fix
 | 2 (P1) | DELETE guard used any WHERE | `WITH marker AS (SELECT 1 WHERE true) DELETE FROM users;` was accepted and emptied the table | Statement-wide `\bWHERE\b` test | Per-command parse; WHERE must be at the DELETE's own depth |
 | 3 (P1) | Authorization named only the database | Authorization accepted for any server with the same database name | `current_database()` is not an identity | Target fingerprint (server-reported ids + route), fail-closed |
 | 4 (P2) | Check-then-run race | Two overlapping runs both succeeded and the destructive SQL executed twice (`INSERT … ON CONFLICT DO NOTHING` hid the collision) | Ledger read before the transaction, no mutual exclusion | Advisory xact lock + atomic ledger claim before any statement, one transaction |
+
+## Round 3: Unicode-escaped identifiers and the lexing boundary (Codex, commit `d4b6a8c`)
+
+**Finding.** The prohibited-function check compared a quoted identifier's *raw* text against a list, but `U&"query\005fto\005fxml"` (and `UESCAPE` variants) is a quoted identifier PostgreSQL decodes to `query_to_xml` — the scanner accepted it. Verified on a disposable database: PostgreSQL returns the same result for the escaped and plain spelling, and `d4b6a8c` accepted the escaped statement. `postgres-sql-scan.ts` (the splitter) was reviewed too: it only needs `"…"` pairing, which is identical for `U&"…"`, so it is not affected; only the classification was.
+
+**Correction chosen: reject, not decode.** Two options were evaluated. Decoding would require re-implementing PostgreSQL's identifier rules (four-/six-digit escapes, surrogate pairs, `UESCAPE` operand restrictions, doubled escape characters, malformed-sequence errors) and then trusting that our decoder and the server agree forever; any divergence is a bypass. Rejecting needs no decoder, handles malformed and alternate-delimiter forms for free (they are all `U&"` tokens), and costs nothing in practice: no migration in the repository uses a Unicode-escaped identifier. Standard quoted identifiers (`"Order Items"`, `"Query_To_Xml"`) and `U&'…'` *string data* still work; the tokenizer tags identifier flavour (`plain`/`unicode`) so a unicode identifier can never be treated as an ordinary quoted name.
+
+**Same-class weaknesses found while reviewing the tokenizer, all reproduced against `d4b6a8c` and fixed here** (each emptied a table on the disposable database):
+
+| Bypass | Why it worked | Fix |
+| --- | --- | --- |
+| `DO 'BEGIN '⏎'EXECUTE …'` | adjacent literals are concatenated by PostgreSQL; only the first was analysed | exactly one body literal; adjacent/multi-literal rejected |
+| `DO LANGUAGE 'plpgsql' $$…$$` shape | the language literal was mistaken for the body | `LANGUAGE`'s operand excluded from body candidates |
+| `SET standard_conforming_strings = off; SELECT '\''; DELETE …; SELECT '\''` | under non-standard strings `\'` escapes the quote, so the guard saw a string where PostgreSQL saw code | setting names rejected anywhere + runtime assertion that the session has standard strings and UTF-8 |
+| Unicode spaces (U+00A0, …) | JS `\s` treats them as whitespace; PostgreSQL does not | lexer whitespace is exactly ` \t\n\r\f\v`; keyword folding is ASCII-only like PostgreSQL |
+
+### Is the fail-closed claim sufficient?
+
+The guarantee is now: *a statement is accepted only if every token the guard understood is permitted and nothing in it depends on a construct the guard cannot lex or decode.* What backs that: an allowlist of statement kinds; deny-by-default `DROP`; rejection of every dynamic/escaped/ambiguous construct listed above; a lexer/splitter cross-check; and a live check of the two session settings the lexer assumes.
+
+Constructs that cannot be analysed reliably and are therefore rejected explicitly: dynamic SQL, `CALL`, `COPY`, non-plpgsql/sql languages, `E''`/`U&''` procedural bodies, adjacent/multiple body literals, Unicode-escaped identifiers and `UESCAPE`, lexing-changing settings, unknown statement kinds, meta-commands, unterminated tokens.
+
+Remaining limits (unchanged in kind, listed for honesty): the guard is a static analysis of text. It cannot see what an *existing* routine does when called, lossy `ALTER COLUMN … TYPE … USING`, `UPDATE` without `WHERE`, always-true predicates beyond the trivial forms, server-side settings changed outside the file (checked only for the two above), or PostgreSQL grammar added after this review. New server versions should be re-reviewed against this list.

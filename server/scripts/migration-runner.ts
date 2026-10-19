@@ -54,6 +54,26 @@ type DestructiveClient = {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }>;
 };
 
+/**
+ * The guard lexes SQL assuming standard string rules and UTF-8. Verify the session really has them; otherwise the
+ * same bytes could parse differently in PostgreSQL than in the guard, so nothing may run.
+ */
+export async function assertLexingAssumptions(db: {
+  query: (sql: string) => Promise<{ rows: any[] }>;
+}): Promise<void> {
+  const rows = (
+    await db.query(
+      `select current_setting('standard_conforming_strings') as scs, current_setting('client_encoding') as enc`
+    )
+  ).rows[0];
+  if (rows?.scs !== "on" || String(rows?.enc).toUpperCase() !== "UTF8") {
+    throw new Error(
+      `Refusing to run migrations: standard_conforming_strings=${rows?.scs}, client_encoding=${rows?.enc} ` +
+        "(required: on / UTF8). The safety guard cannot validate SQL under other lexing rules; nothing was executed."
+    );
+  }
+}
+
 /** Serialises every destructive migration on a server. Value is arbitrary but fixed. */
 const DESTRUCTIVE_LOCK_KEY = "chefsire:destructive-migration";
 
@@ -88,6 +108,7 @@ export async function applyAuthorizedDestructiveMigration(
   await client.query("BEGIN");
   try {
     await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [DESTRUCTIVE_LOCK_KEY]);
+    await assertLexingAssumptions(client);
 
     const identity = await describeTarget(client, options.connectionString);
     if (identity.databaseName !== authorization.databaseName || targetFingerprint(identity) !== authorization.targetFingerprint) {
@@ -178,6 +199,7 @@ export async function runPendingMigrations(
   sources: MigrationSource[],
   logger: Pick<Console, "log" | "error"> = console
 ): Promise<{ applied: string[]; skipped: string[] }> {
+  await assertLexingAssumptions(db);
   const all = await discoverMigrations(sources);
   const pending: Array<DiscoveredMigration & { sql: string }> = [];
   const skipped: string[] = [];

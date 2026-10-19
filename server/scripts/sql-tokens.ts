@@ -8,11 +8,20 @@ export type Token = {
   kind: "word" | "qident" | "string" | "number" | "punct";
   /** Words are upper-cased; every other kind keeps its source text. */
   text: string;
-  /** string/qident: the unquoted content (for dollar quotes, the body). */
+  /** string/qident: the unquoted content (for dollar quotes, the body). Unicode escapes are NEVER decoded. */
   value: string;
-  /** string tokens only: how the literal was written. Escape (E'') and unicode (U&'') are not decoded. */
+  /**
+   * How the token was written. Escape (E''), unicode (U&'' / U&"") and their contents are not decoded; the guard
+   * rejects every unicode-escaped IDENTIFIER and treats unicode/escape strings as unanalysable text.
+   */
   flavor?: "plain" | "escape" | "unicode" | "dollar";
 };
+
+/** PostgreSQL's lexer whitespace: space, \t, \n, \r, \f, \v only (NOT Unicode spaces such as U+00A0). */
+const PG_SPACE = /[ \t\n\r\f\v]/;
+/** PostgreSQL folds only ASCII letters in unquoted identifiers/keywords. */
+export const asciiUpper = (text: string) => text.replace(/[a-z]/g, (ch) => ch.toUpperCase());
+export const asciiLower = (text: string) => text.replace(/[A-Z]/g, (ch) => ch.toLowerCase());
 
 const WORD_START = /[A-Za-z_\u0080-￿]/;
 const WORD_CHAR = /[A-Za-z0-9_$\u0080-￿]/;
@@ -36,7 +45,7 @@ export function tokenize(sql: string): Token[] {
 
   while (i < n) {
     const c = sql[i];
-    if (/\s/.test(c)) {
+    if (PG_SPACE.test(c)) {
       i++;
     } else if (sql.startsWith("--", i)) {
       const end = sql.indexOf("\n", i);
@@ -56,7 +65,7 @@ export function tokenize(sql: string): Token[] {
       i = end;
     } else if (c === '"') {
       const { value, end } = readQuoted(i, '"', false);
-      tokens.push({ kind: "qident", text: sql.slice(i, end), value });
+      tokens.push({ kind: "qident", text: sql.slice(i, end), value, flavor: "plain" });
       i = end;
     } else if (c === "$") {
       const tag = sql.slice(i).match(/^\$(?:[A-Za-z_\u0080-￿][A-Za-z0-9_\u0080-￿]*)?\$/)?.[0];
@@ -72,7 +81,7 @@ export function tokenize(sql: string): Token[] {
     } else if (WORD_START.test(c)) {
       let j = i + 1;
       while (j < n && WORD_CHAR.test(sql[j])) j++;
-      const word = sql.slice(i, j).toUpperCase();
+      const word = asciiUpper(sql.slice(i, j));
       if (sql[j] === "'" && (word === "E" || word === "B" || word === "X" || word === "N")) {
         const { value, end } = readQuoted(j, "'", word === "E");
         tokens.push({ kind: "string", text: sql.slice(i, end), value, flavor: word === "E" ? "escape" : "plain" });
@@ -83,7 +92,7 @@ export function tokenize(sql: string): Token[] {
         i = end;
       } else if (word === "U" && sql[j] === "&" && sql[j + 1] === '"') {
         const { value, end } = readQuoted(j + 1, '"', false);
-        tokens.push({ kind: "qident", text: sql.slice(i, end), value });
+        tokens.push({ kind: "qident", text: sql.slice(i, end), value, flavor: "unicode" });
         i = end;
       } else {
         tokens.push({ kind: "word", text: word, value: sql.slice(i, j) });
