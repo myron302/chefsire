@@ -459,3 +459,55 @@ postgresTest("harmless migrations with timeouts and ordinary SET clauses still r
     assert.equal((await client.query(`SELECT x FROM t`)).rows[0].x, 2);
   });
 });
+
+postgresTest("PostgreSQL honours the real LANGUAGE clause, not a parameter named language (why the scan must too)", async () => {
+  await sandbox(async ({ client }) => {
+    const superuser = (await client.query(`SELECT rolsuper FROM pg_roles WHERE rolname = current_user`)).rows[0].rolsuper;
+    if (!superuser) return; // the `internal` language is superuser-only; the scanner tests above still cover the shape
+    await client.query(`CREATE DOMAIN sql AS text`);
+    await client.query(`CREATE FUNCTION sneaky(language sql, b text, c bool) RETURNS text AS 'set_config_by_name' LANGUAGE internal`);
+    const row = (await client.query(
+      `SELECT l.lanname FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang WHERE p.proname = 'sneaky' AND p.pronamespace = current_schema()::regnamespace`
+    )).rows[0];
+    assert.equal(row.lanname, "internal");
+  });
+});
+
+postgresTest("unsupported-language definitions are rejected before execution on a real database", async () => {
+  await sandbox(async ({ client, db, dir }) => {
+    await client.query(`CREATE TABLE victim (id int); INSERT INTO victim VALUES (1)`);
+    for (const sql of [
+      `CREATE DOMAIN sql AS text; CREATE FUNCTION sneaky(language sql, b text, c bool) RETURNS text AS 'set_config_by_name' LANGUAGE internal;`,
+      `CREATE FUNCTION sneaky2(language text) RETURNS void AS $$ DROP TABLE victim $$ LANGUAGE plperl;`,
+      `CREATE FUNCTION sneaky3() RETURNS int AS $$ SELECT 1 $$;`,
+      `DO $$ BEGIN CREATE FUNCTION sneaky4() RETURNS text AS 'pg_sleep' LANGUAGE internal; END $$;`,
+    ]) {
+      await assert.rejects(applyMigration(client, "t:lang.sql", sql, quiet), DestructiveMigrationError, sql);
+    }
+    const created = (await client.query(
+      `SELECT count(*)::int AS n FROM pg_proc WHERE proname LIKE 'sneaky%' AND pronamespace = current_schema()::regnamespace`
+    )).rows[0].n;
+    assert.equal(created, 0);
+    assert.equal(await exists(client, "sql"), false);
+    // Through the routine command: an earlier safe file in the same run does not execute either.
+    await writeFile(join(dir, "001_safe.sql"), "CREATE TABLE fine (id int);");
+    await writeFile(join(dir, "002_lang.sql"), `CREATE FUNCTION sneaky(language text) RETURNS void AS $$ x $$ LANGUAGE plpythonu;`);
+    await assert.rejects(runPendingMigrations(db, [{ dir, keyPrefix: "drizzle", priority: 0 }], quiet), /No migration was executed/);
+    assert.equal(await exists(client, "fine"), false);
+    assert.deepEqual(await ledger(client), []);
+  });
+});
+
+postgresTest("legitimate functions (including a parameter named language) still run and work", async () => {
+  await sandbox(async ({ client, db, dir }) => {
+    await writeFile(
+      join(dir, "001_funcs.sql"),
+      `CREATE FUNCTION describe(language text) RETURNS text AS $$ SELECT 'lang=' || language $$ LANGUAGE sql IMMUTABLE;
+       CREATE FUNCTION add_one(n int) RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN n + 1; END $$;
+       CREATE PROCEDURE noop(IN language text) LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;`
+    );
+    assert.deepEqual((await runPendingMigrations(db, [{ dir, keyPrefix: "drizzle", priority: 0 }], quiet)).applied, ["drizzle:001_funcs.sql"]);
+    assert.equal((await client.query(`SELECT describe('sql') AS x, add_one(1) AS y`)).rows[0].x, "lang=sql");
+    assert.equal((await client.query(`SELECT add_one(1) AS y`)).rows[0].y, 2);
+  });
+});

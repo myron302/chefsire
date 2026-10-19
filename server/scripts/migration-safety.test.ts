@@ -450,3 +450,100 @@ test("harmless migrations that mention SET/settings without changing configurati
     []
   );
 });
+
+// ---- Function/procedure language identification (Codex 395df8b) ----------------------------------------------------
+const UNSAFE_FUNCTIONS: Record<string, string> = {
+  "parameter named language, real LANGUAGE internal": "CREATE FUNCTION f(language sql) RETURNS text AS 'set_config_by_name' LANGUAGE internal;",
+  "parameter named language, real LANGUAGE plperl": "CREATE FUNCTION f(language plpgsql) RETURNS void AS $$ print 1 $$ LANGUAGE plperl;",
+  "parameter named language, real LANGUAGE plpythonu": "CREATE FUNCTION f(language text) RETURNS void AS $$ pass $$ LANGUAGE plpythonu;",
+  "parameter named language, real LANGUAGE plpython3u (clause first)": "CREATE FUNCTION f(language sql) RETURNS void LANGUAGE plpython3u AS $$ pass $$;",
+  "LANGUAGE plperl": "CREATE FUNCTION f() RETURNS void AS $$ 1 $$ LANGUAGE plperl;",
+  "LANGUAGE plperlu": "CREATE FUNCTION f() RETURNS void AS $$ 1 $$ LANGUAGE plperlu;",
+  "LANGUAGE plpython (string operand)": "CREATE FUNCTION f() RETURNS void AS $$ pass $$ LANGUAGE 'plpython3u';",
+  "LANGUAGE pltcl (quoted operand)": 'CREATE FUNCTION f() RETURNS void AS $$ x $$ LANGUAGE "pltcl";',
+  "LANGUAGE c": "CREATE FUNCTION f() RETURNS void AS 'lib' LANGUAGE c;",
+  "LANGUAGE internal": "CREATE FUNCTION f() RETURNS void AS 'pg_sleep' LANGUAGE internal;",
+  "quoted language differs by case": 'CREATE FUNCTION f() RETURNS void AS $$ BEGIN END $$ LANGUAGE "PLPGSQL";',
+  "return type named language, real LANGUAGE plperl": "CREATE FUNCTION f() RETURNS language AS $$ 1 $$ LANGUAGE plperl;",
+  "duplicate: sql then plperl": "CREATE FUNCTION f() RETURNS void LANGUAGE sql AS $$ SELECT 1 $$ LANGUAGE plperl;",
+  "duplicate: plpgsql then plpgsql": "CREATE FUNCTION f() RETURNS void LANGUAGE plpgsql LANGUAGE plpgsql AS $$ BEGIN END $$;",
+  "missing language": "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$;",
+  "LANGUAGE only in a comment": "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ -- LANGUAGE sql\n;",
+  "LANGUAGE only inside the body": "CREATE FUNCTION f() RETURNS int AS $$ -- LANGUAGE sql\n SELECT 1 $$;",
+  "LANGUAGE only inside a string": "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ SET application_name = 'LANGUAGE sql';",
+  "LANGUAGE without operand": "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE;",
+  "LANGUAGE with numeric operand": "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE 5;",
+  "LANGUAGE with unicode-escaped operand": 'CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE U&"plpg\\0073ql";',
+  "LANGUAGE with escape-string operand": "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE E'sql';",
+  "missing AS definition": "CREATE FUNCTION f() RETURNS int LANGUAGE sql;",
+  "two AS definitions": "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ AS $$ SELECT 2 $$ LANGUAGE sql;",
+  "AS not followed by a literal": "CREATE FUNCTION f() RETURNS int AS SELECT 1 LANGUAGE sql;",
+  "SQL-standard BEGIN ATOMIC body": "CREATE FUNCTION f() RETURNS int LANGUAGE sql BEGIN ATOMIC SELECT 1; END;",
+  "SQL-standard RETURN body": "CREATE FUNCTION f() RETURNS int LANGUAGE sql RETURN 1;",
+  "no argument list": "CREATE FUNCTION f AS $$ SELECT 1 $$ LANGUAGE sql;",
+  "no function name": "CREATE FUNCTION (a int) RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+  "unbalanced argument list": "CREATE FUNCTION f(a int RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+  "unicode-escaped function name": 'CREATE FUNCTION U&"f\\0031"() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;',
+  "procedure with unsupported language": "CREATE PROCEDURE p(language sql) LANGUAGE plperl AS $$ 1 $$;",
+  "CREATE OR REPLACE FUNCTION with unsupported language": "CREATE OR REPLACE FUNCTION public.f(language sql) RETURNS void AS $$ 1 $$ LANGUAGE plperl;",
+  "nested in a DO body": "DO $$ BEGIN CREATE FUNCTION f() RETURNS void AS 'pg_sleep' LANGUAGE internal; END $$;",
+  "nested in a DO body after THEN": "DO $$ BEGIN IF true THEN CREATE FUNCTION f(language sql) RETURNS void AS $f$ 1 $f$ LANGUAGE plperl; END IF; END $$;",
+  "nested DO with unsupported language": "DO $$ BEGIN DO LANGUAGE plperl $x$ 1 $x$; END $$;",
+  "nested DO with dynamic SQL": "DO $$ BEGIN DO $x$ BEGIN EXECUTE 'select 1'; END $x$; END $$;",
+  "DO with duplicate languages": "DO LANGUAGE plpgsql $$ BEGIN END $$ LANGUAGE plperl;",
+  "DO with unsupported language after body": "DO $$ 1 $$ LANGUAGE plperl;",
+};
+for (const [name, sql] of Object.entries(UNSAFE_FUNCTIONS)) {
+  test(`function definition rejected: ${name}`, () => {
+    assert.ok(findDestructiveOperations(sql).length > 0, sql);
+  });
+}
+
+test("destructive SQL hidden inside a body whose language is rejected is still reported", () => {
+  const found = ops("CREATE FUNCTION f(language sql) RETURNS void AS $$ BEGIN DROP TABLE users; DELETE FROM t; END $$ LANGUAGE plperl;");
+  assert.ok(found.includes("UNSUPPORTED LANGUAGE (plperl)"), String(found));
+  assert.ok(found.includes("DROP TABLE"));
+  assert.ok(found.includes("DELETE without WHERE"));
+});
+
+test("findings name the real language, never a parameter or type", () => {
+  assert.ok(ops("CREATE FUNCTION f(language sql) RETURNS void AS $$ 1 $$ LANGUAGE plperl;").includes("UNSUPPORTED LANGUAGE (plperl)"));
+  assert.ok(ops("CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$;").includes("UNSUPPORTED LANGUAGE (none declared)"));
+  assert.ok(ops("CREATE FUNCTION f() RETURNS int LANGUAGE sql LANGUAGE sql AS $$ SELECT 1 $$;").includes("UNSUPPORTED LANGUAGE (declared more than once)"));
+});
+
+test("supported function and procedure definitions pass, in any valid clause order", () => {
+  const safe: string[] = [
+    "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+    "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS $$ SELECT 1 $$;",
+    "CREATE FUNCTION f() RETURNS void AS $$ BEGIN NULL; END $$ LANGUAGE plpgsql;",
+    "CREATE OR REPLACE FUNCTION public.f() RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;",
+    "CREATE FUNCTION f() RETURNS void AS $$ BEGIN NULL; END $$ LANGUAGE PLPGSQL;",
+    "CREATE FUNCTION f() RETURNS void AS $$ BEGIN NULL; END $$ LANGUAGE 'plpgsql';",
+    'CREATE FUNCTION f() RETURNS void AS $$ BEGIN NULL; END $$ LANGUAGE "plpgsql";',
+    "CREATE FUNCTION f() RETURNS int LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE COST 10 SECURITY DEFINER SET search_path = public AS $$ SELECT 1 $$;",
+    "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql IMMUTABLE LEAKPROOF CALLED ON NULL INPUT;",
+    // A parameter, column or type spelled like a clause keyword is irrelevant to the decision.
+    "CREATE FUNCTION f(language text) RETURNS text AS $$ SELECT language $$ LANGUAGE sql;",
+    "CREATE FUNCTION f(language text, \"as\" int) RETURNS text AS $$ SELECT language $$ LANGUAGE sql;",
+    "CREATE FUNCTION f(a int DEFAULT CAST('1' AS int)) RETURNS int AS $$ SELECT a $$ LANGUAGE sql;",
+    "CREATE FUNCTION f() RETURNS TABLE (language text, \"as\" int) AS $$ SELECT 'a', 1 $$ LANGUAGE sql;",
+    "CREATE PROCEDURE p(IN language text) LANGUAGE plpgsql AS $$ BEGIN NULL; END $$;",
+    "DO LANGUAGE plpgsql $$ BEGIN NULL; END $$;",
+    "DO $$ BEGIN NULL; END $$ LANGUAGE plpgsql;",
+    "DO $$ BEGIN CREATE FUNCTION g() RETURNS int AS 'SELECT 1' LANGUAGE sql; END $$;",
+    // Mentions inside comments and strings are inert.
+    "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ /* LANGUAGE plperl */ LANGUAGE sql; -- LANGUAGE c\n",
+    "CREATE FUNCTION f() RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;\nCOMMENT ON FUNCTION f() IS 'LANGUAGE plperl AS $$ x $$';",
+  ];
+  for (const sql of safe) assert.deepEqual(findDestructiveOperations(sql), [], sql);
+});
+
+test("a column named \"trigger\" does not unlock trigger-only syntax", () => {
+  assert.ok(ops("CREATE TABLE t (trigger int) EXECUTE FUNCTION f();").includes("DYNAMIC SQL (EXECUTE)"));
+  assert.deepEqual(
+    findDestructiveOperations("CREATE CONSTRAINT TRIGGER t AFTER INSERT ON x DEFERRABLE FOR EACH ROW EXECUTE FUNCTION f();"),
+    []
+  );
+  assert.deepEqual(findDestructiveOperations("CREATE OR REPLACE TRIGGER t AFTER TRUNCATE ON x FOR EACH STATEMENT EXECUTE PROCEDURE f();"), []);
+});

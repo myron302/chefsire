@@ -69,7 +69,8 @@ const TOP_LEVEL_ALLOWED = new Set([
 const DROP_ALLOWED = new Set(["INDEX", "TRIGGER", "POLICY", "RULE", "VIEW", "FUNCTION", "PROCEDURE", "TYPE", "DOMAIN", "CONSTRAINT", "DEFAULT", "NOT"]);
 /** Inside ALTER TABLE only these DROP subcommands are definition-only; anything else is a column drop. */
 const ALTER_TABLE_DROP_ALLOWED = new Set(["CONSTRAINT", "DEFAULT", "NOT"]);
-const PLPGSQL_LANGUAGES = new Set(["PLPGSQL", "SQL"]);
+/** Procedural languages whose bodies the guard can lex and analyse. Everything else is rejected. */
+const FUNCTION_LANGUAGES = new Set(["plpgsql", "sql"]);
 /** Functions that execute SQL text supplied as an argument. */
 const DYNAMIC_SQL_FUNCTIONS = new Set([
   "query_to_xml", "query_to_xml_and_xmlschema", "query_to_xmlschema", "cursor_to_xml", "cursor_to_xmlschema",
@@ -151,6 +152,94 @@ function bodyOf(t: Token | undefined, add: Add, what: string): string | null {
   return t.value;
 }
 
+/**
+ * `CREATE [OR REPLACE] [CONSTRAINT|EVENT] TRIGGER …` — the statement itself, not any CREATE that merely has the
+ * word TRIGGER somewhere nearby (a column named "trigger" must not unlock trigger-only syntax).
+ */
+function startsCreateTrigger(piece: Token[]): boolean {
+  const start = piece.findIndex((t, k) => word(t) === "CREATE" && (k === 0 || STATEMENT_LEAD_WORDS.has(word(piece[k - 1]) ?? "")));
+  if (start === -1) return false;
+  let k = start + 1;
+  if (word(piece[k]) === "OR" && word(piece[k + 1]) === "REPLACE") k += 2;
+  if (word(piece[k]) === "CONSTRAINT" || word(piece[k]) === "EVENT") k++;
+  return word(piece[k]) === "TRIGGER";
+}
+
+/**
+ * Locate a function/procedure definition header: `CREATE [OR REPLACE] FUNCTION|PROCEDURE name ( args )`.
+ * Returns null for any other CREATE, "malformed" when it is a function statement the guard cannot parse, otherwise
+ * the index of the closing parenthesis of the argument list. Everything BEFORE that index (parameter names,
+ * types, defaults) is never consulted for clause decisions; they sit inside the parentheses.
+ */
+function functionHeader(piece: Token[], d: number[]): { close: number } | "malformed" | null {
+  let k = 1;
+  if (word(piece[k]) === "OR" && word(piece[k + 1]) === "REPLACE") k += 2;
+  if (word(piece[k]) !== "FUNCTION" && word(piece[k]) !== "PROCEDURE") return null;
+  k++;
+  const isName = (t: Token | undefined) => t !== undefined && (t.kind === "word" || (t.kind === "qident" && t.flavor === "plain"));
+  if (!isName(piece[k])) return "malformed";
+  k++;
+  while (piece[k]?.kind === "punct" && piece[k].text === "." && isName(piece[k + 1])) k += 2;
+  if (piece[k]?.kind !== "punct" || piece[k].text !== "(") return "malformed";
+  const close = piece.findIndex((t, i) => i > k && t.kind === "punct" && t.text === ")" && d[i] === d[k]);
+  return close === -1 ? "malformed" : { close };
+}
+
+/** The operand of the (single) LANGUAGE clause, normalised the way PostgreSQL resolves it; undefined + finding if unusable. */
+function languageOperand(piece: Token[], clauses: number[], add: Add): string | undefined {
+  if (clauses.length === 0) return void add("UNSUPPORTED LANGUAGE (none declared)");
+  if (clauses.length > 1) return void add("UNSUPPORTED LANGUAGE (declared more than once)");
+  const operand = piece[clauses[0] + 1];
+  if (operand?.kind === "word") return asciiLower(operand.value); // unquoted: folded like any identifier
+  if ((operand?.kind === "qident" || operand?.kind === "string") && operand.flavor === "plain") return operand.value;
+  return void add("UNSUPPORTED LANGUAGE (malformed clause)");
+}
+
+/**
+ * Validate the clauses that follow the argument list of a function/procedure definition. Only tokens at the
+ * statement's own parenthesis depth AFTER the argument list are clause candidates, so a parameter, type or
+ * default expression that happens to be spelled `language` or `as` can never be mistaken for a clause. Because a
+ * valid definition has exactly one LANGUAGE clause and exactly one AS definition, finding any other count means
+ * either invalid SQL or a form the guard cannot attribute reliably — both are rejected.
+ */
+function analyseFunctionClauses(piece: Token[], d: number[], close: number, bodies: string[], add: Add): void {
+  const level = d[close];
+  const clauseWords = (name: string) =>
+    piece.map((t, k) => k).filter((k) => k > close && d[k] === level && word(piece[k]) === name);
+
+  if (clauseWords("ATOMIC").length > 0 || clauseWords("RETURN").length > 0) {
+    add("UNSUPPORTED FUNCTION BODY (SQL-standard BEGIN ATOMIC / RETURN bodies are not supported)");
+    return;
+  }
+  const language = languageOperand(piece, clauseWords("LANGUAGE"), add);
+  if (language !== undefined && !FUNCTION_LANGUAGES.has(language)) add(`UNSUPPORTED LANGUAGE (${language})`);
+
+  const asClauses = clauseWords("AS");
+  if (asClauses.length !== 1) return void add("UNSUPPORTED FUNCTION BODY (expected exactly one AS definition)");
+  const definition = piece[asClauses[0] + 1];
+  const after = piece[asClauses[0] + 2];
+  if (definition?.kind !== "string") return void add("UNSUPPORTED FUNCTION BODY (AS is not followed by a literal)");
+  if (after?.kind === "string" || (after?.kind === "punct" && after.text === ",")) {
+    return void add("UNSUPPORTED FUNCTION BODY (multiple literals)");
+  }
+  const body = bodyOf(definition, add, "FUNCTION");
+  if (body !== null) bodies.push(body);
+}
+
+/** DO [LANGUAGE x] 'code' [LANGUAGE x]: no parentheses exist, so every LANGUAGE word is a clause. */
+function analyseDo(piece: Token[], bodies: string[], add: Add): void {
+  const clauses = piece.map((t, k) => k).filter((k) => word(piece[k]) === "LANGUAGE");
+  const language = clauses.length === 0 ? "plpgsql" : languageOperand(piece, clauses, add);
+  if (language !== undefined && language !== "plpgsql") add(`UNSUPPORTED LANGUAGE (${language})`);
+  // Every string except LANGUAGE's operand is a body candidate, and exactly one is accepted. Adjacent literals
+  // ('a' <newline> 'b') are concatenated by PostgreSQL, so more than one candidate is ambiguous: rejected.
+  const operandAt = clauses.length === 1 ? clauses[0] + 1 : -1;
+  const candidates = piece.map((t, k) => k).filter((k) => piece[k].kind === "string" && k !== operandAt);
+  if (candidates.length !== 1) return void add("UNSUPPORTED DO BODY (expected exactly one body literal)");
+  const body = bodyOf(piece[candidates[0]], add, "DO");
+  if (body !== null) bodies.push(body);
+}
+
 function analysePiece(piece: Token[], top: boolean, depth: number, add: Add): void {
   const first = word(piece[0]);
   if (top && (first === undefined || !TOP_LEVEL_ALLOWED.has(first))) {
@@ -161,9 +250,7 @@ function analysePiece(piece: Token[], top: boolean, depth: number, add: Add): vo
   const alterTableAt = piece.findIndex(
     (t, k) => word(t) === "ALTER" && (word(piece[k + 1]) === "TABLE" || (word(piece[k + 1]) === "FOREIGN" && word(piece[k + 2]) === "TABLE"))
   );
-  const isCreateTrigger = piece.some(
-    (t, k) => word(t) === "CREATE" && piece.slice(k + 1, k + 5).some((x) => word(x) === "TRIGGER")
-  );
+  const isCreateTrigger = startsCreateTrigger(piece);
   const hasDrop = piece.some((t) => word(t) === "DROP");
 
   piece.forEach((t, k) => {
@@ -219,37 +306,21 @@ function analysePiece(piece: Token[], top: boolean, depth: number, add: Add): vo
   });
 
   // Procedural bodies are code: DO blocks and CREATE FUNCTION/PROCEDURE definitions are lexed and analysed too.
-  const langAt = piece.findIndex((t) => word(t) === "LANGUAGE");
-  const langTok = langAt === -1 ? undefined : piece[langAt + 1];
-  const language =
-    langTok === undefined ? undefined
-    : langTok.kind === "word" ? langTok.text
-    : langTok.kind === "string" && langTok.flavor === "plain" ? asciiUpper(langTok.value)
-    : "?";
+  // They are recognised wherever a STATEMENT begins (start of the piece, or after BEGIN/THEN/ELSE/LOOP inside a
+  // procedural body), not only as the first token: PL/pgSQL can run `CREATE FUNCTION` and `DO` as plain statements.
   const bodies: string[] = [];
-  if (first === "DO") {
-    // Every string except LANGUAGE's operand is a body candidate, and exactly one is accepted. Adjacent literals
-    // ('a' <newline> 'b') are concatenated by PostgreSQL, so more than one candidate is ambiguous: rejected.
-    const candidates = piece.map((t, k) => k).filter((k) => piece[k].kind === "string" && k !== langAt + 1);
-    if (candidates.length !== 1) add("UNSUPPORTED DO BODY (expected exactly one body literal)");
-    else {
-      const body = bodyOf(piece[candidates[0]], add, "DO");
-      if (body !== null) bodies.push(body);
+  piece.forEach((t, k) => {
+    const startsStatement = k === 0 || STATEMENT_LEAD_WORDS.has(word(piece[k - 1]) ?? "");
+    if (!startsStatement) return;
+    if (word(t) === "DO") analyseDo(piece.slice(k), bodies, add);
+    else if (word(t) === "CREATE") {
+      const sub = piece.slice(k);
+      const subDepth = depths(sub);
+      const header = functionHeader(sub, subDepth);
+      if (header === "malformed") add("UNSUPPORTED FUNCTION DEFINITION (header could not be parsed)");
+      else if (header !== null) analyseFunctionClauses(sub, subDepth, header.close, bodies, add);
     }
-    if (language !== undefined && language !== "PLPGSQL") add(`UNSUPPORTED LANGUAGE (${language})`);
-  } else if (first === "CREATE") {
-    const kind = piece.slice(1, 5).map(word).find((x) => x === "FUNCTION" || x === "PROCEDURE");
-    if (kind) {
-      piece.forEach((t, k) => {
-        if (word(t) !== "AS" || piece[k + 1]?.kind !== "string") return;
-        const after = piece[k + 2];
-        if (after?.kind === "string" || after?.text === ",") return void add("UNSUPPORTED FUNCTION BODY (multiple literals)");
-        const body = bodyOf(piece[k + 1], add, "FUNCTION");
-        if (body !== null) bodies.push(body);
-      });
-      if (bodies.length > 0 && !(language && PLPGSQL_LANGUAGES.has(language))) add(`UNSUPPORTED LANGUAGE (${language ?? "none"})`);
-    }
-  }
+  });
   for (const body of bodies) {
     if (depth >= MAX_BODY_DEPTH) add("UNSUPPORTED NESTING");
     else analyseSql(body, depth + 1, add);
