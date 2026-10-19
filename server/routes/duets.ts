@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
+import { recipeVisibleToViewer } from "../lib/recipe-visibility";
 import { sendDuetNotification } from "../services/notification-service";
 
 const router = Router();
@@ -147,7 +148,7 @@ router.post("/create", requireAuth, async (req, res) => {
 
     // Check if recipe exists
     const recipe = await db.execute(sql`
-      SELECT id FROM recipes WHERE id = ${data.originalRecipeId}
+      SELECT id FROM recipes WHERE id = ${data.originalRecipeId} AND ${recipeVisibleToViewer(sql`recipes.id`, req.user?.id)}
     `);
 
     if (recipe.rows.length === 0) {

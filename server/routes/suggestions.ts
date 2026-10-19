@@ -1,6 +1,7 @@
 // server/routes/suggestions.ts
+import { recipeVisibleToViewer } from "../lib/recipe-visibility";
 import { Router } from "express";
-import { and, eq, desc, gte, lte } from "drizzle-orm";
+import { and, eq, desc, gte, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { aiSuggestions, recipes, customDrinks, userDrinkStats, nutritionLogs, users } from "../../shared/schema";
 import { requireAuth } from "../middleware";
@@ -142,7 +143,7 @@ async function generateDailySuggestions(userId: string) {
     const [morningRecipe] = await db
       .select()
       .from(recipes)
-      .where(eq(recipes.difficulty, "Easy"))
+      .where(and(eq(recipes.difficulty, "Easy"), recipeVisibleToViewer(sql`${recipes.id}`, userId)))
       .limit(1)
       .offset(Math.floor(Math.random() * 10));
 
@@ -172,7 +173,7 @@ async function generateDailySuggestions(userId: string) {
       const [proteinRecipe] = await db
         .select()
         .from(recipes)
-        .where(eq(recipes.difficulty, "Easy"))
+        .where(and(eq(recipes.difficulty, "Easy"), recipeVisibleToViewer(sql`${recipes.id}`, userId)))
         .limit(1)
         .offset(Math.floor(Math.random() * 5));
 
@@ -202,6 +203,7 @@ async function generateDailySuggestions(userId: string) {
     const [streakRecipe] = await db
       .select()
       .from(recipes)
+      .where(recipeVisibleToViewer(sql`${recipes.id}`, userId))
       .limit(1)
       .offset(Math.floor(Math.random() * 20));
 

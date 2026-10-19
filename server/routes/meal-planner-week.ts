@@ -16,6 +16,7 @@ import { ensureMealPlannerWeekSchema, mealPlannerWeekSchemaInit } from "./meal-p
 import { initGuard } from "../lib/retryable-init.js";
 import { ensureMealSocialSchema, getSharedWeekSocialStats } from "./meal-social.js";
 import { recordMealPlannerEvent } from "./meal-planner-events.js";
+import { filterVisibleRecipeIds, recipeVisibleToViewer } from "../lib/recipe-visibility.js";
 import {
   addDays,
   assertPremiumNutrition,
@@ -245,8 +246,9 @@ async function buildRecipePool(args: {
   maxCookTime?: number | null;
   targetCalories?: number | null;
   excludeRecipeIds: Set<string>;
+  viewerId?: string | null;
 }) {
-  const { mealType, maxCookTime, targetCalories, excludeRecipeIds } = args;
+  const { mealType, maxCookTime, targetCalories, excludeRecipeIds, viewerId } = args;
 
   // Broad query + refine in JS
   const rows = await db
@@ -254,6 +256,7 @@ async function buildRecipePool(args: {
     .from(recipes)
     .where(
       and(
+        recipeVisibleToViewer(sql`${recipes.id}`, viewerId),
         mealType ? eq(recipes.mealType, mealType) : sql`TRUE`,
         maxCookTime ? lte(recipes.cookTime, maxCookTime) : sql`TRUE`,
         targetCalories
@@ -1394,6 +1397,7 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
 
       for (const mt of chosenMealTypes) {
         const pool = await buildRecipePool({
+          viewerId: userId,
           mealType: mt,
           maxCookTime: maxCook,
           targetCalories: perMealTarget,
@@ -1544,6 +1548,12 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
     const mealName = String(name || "").trim();
     if (!mealName) {
       return res.status(400).json({ message: "Meal name is required" });
+    }
+
+    const requestedRecipeIds = [recipeId, sourceRecipeId].filter(Boolean).map(String);
+    if (requestedRecipeIds.length) {
+      const visible = await filterVisibleRecipeIds(requestedRecipeIds, userId);
+      if (requestedRecipeIds.some((id) => !visible.has(id))) return res.status(404).json({ message: "Recipe not found" });
     }
 
     const weekStart = startOfWeekMonday(parsed);
@@ -1732,7 +1742,7 @@ router.post("/week/assistant-apply", requireAuth, async (req: Request, res: Resp
     }
     const recipeIds = normalized.map((operation: any) => operation.meal.recipeId || operation.meal.sourceRecipeId).filter(Boolean).map(String);
     if (recipeIds.length) {
-      const found = await db.select({ id: recipes.id }).from(recipes).where(inArray(recipes.id, Array.from(new Set(recipeIds))));
+      const found = await db.select({ id: recipes.id }).from(recipes).where(and(inArray(recipes.id, Array.from(new Set(recipeIds))), recipeVisibleToViewer(sql`${recipes.id}`, userId)));
       if (found.length !== new Set(recipeIds).size) return res.status(400).json({ message: "A proposed recipe no longer exists and was not applied" });
     }
     const weekStart = startOfWeekMonday(normalized[0].date);

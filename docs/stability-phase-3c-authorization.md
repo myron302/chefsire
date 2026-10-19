@@ -26,6 +26,18 @@ Clubs: `is_public = true` clubs are unchanged. Otherwise (including NULL) detail
 
 Seller analytics: `requireAuth`; only the seller (session id === `:sellerId`) or a current administrator (`hasCurrentAdminAuthority`) may read. Other callers get the same 403 whether or not the seller exists. Public product/storefront responses embed `serializePublicUser(seller)` only.
 
+## Recipe visibility (review follow-up)
+
+Codex noted that excluding "any recipe a private-club post references" from search hides public recipes that were merely shared into a private club (reproduced: a public recipe shared by a member vanished from search), and lets any member suppress someone else's recipe by referencing its id.
+
+Model: `recipes.origin_club_id` (migration `server/migrations/20261019_recipe_origin_club.sql`, additive and idempotent, passes the Phase 3B destructive-SQL guard) records the club a recipe was **created for**. It is written once, when `POST /clubs/:id/posts` creates a recipe from an inline template, and never by referencing an existing recipe.
+- `origin_club_id IS NULL`: ordinary recipe, never restricted, however many club posts share it.
+- set: visible to everyone while that club is public; otherwise only to the club's creator and members.
+- Sharing an existing recipe only links it. The id is validated (unknown or unreadable: 404), and a recipe private to another club cannot be pushed into this one (403).
+- One rule (`server/lib/recipe-visibility.ts`) is applied by public search, club posts, recipe saves and saved lists, suggestions, duets, cook-together, remixes (create and lists) and the meal planner (pool, add entry, AI plan).
+- Legacy backfill touches only rows with no post and no external source that a club post references. The club of the earliest referencing post is taken as the creating club; ties or missing timestamps resolve to a private referencing club, never to public. Unreferenced or post-linked recipes are left untouched.
+- Apply the migration before (or with) the deploy: recipe reads select the new column.
+
 ## Running the new suites
 
 They use a real local PostgreSQL, like the other `*.postgres.test.ts` suites, and recreate the tables they need. Run them one file at a time (they share table names):

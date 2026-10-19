@@ -3,7 +3,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { searchRecipes } from "../services/recipes-service";
 import { storage } from "../storage";
-import { requireAuth } from "../middleware/auth";
+import { optionalAuth, requireAuth } from "../middleware/auth";
+import { canViewRecipe } from "../lib/recipe-visibility";
 import { resolveSelfUserId } from "../lib/self-scope";
 import { resolveSaveRouteUserId } from "./recipes/auth";
 import { normalizeIngredients, normalizeInstructions, withItemsFromResults } from "./recipes/serializers";
@@ -172,7 +173,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
  * GET /api/recipes/search
  * If q is missing/empty => returns a random page (fresh each request)
  */
-router.get("/search", async (req, res) => {
+router.get("/search", optionalAuth, async (req, res) => {
   noStore(res);
   try {
     const { q, cuisines, diets, mealTypes, source, pageSize, offset } = parseRecipeSearchParams(
@@ -187,6 +188,7 @@ router.get("/search", async (req, res) => {
       source,
       pageSize,
       offset,
+      viewerId: req.user?.id,
     });
 
     // Return `items` (what the client expects) aliased from `results`.
@@ -201,7 +203,7 @@ router.get("/search", async (req, res) => {
  * GET /api/recipes/random
  * Returns a random page of recipes (fresh each request)
  */
-router.get("/random", async (req, res) => {
+router.get("/random", optionalAuth, async (req, res) => {
   noStore(res);
   try {
     const { source } = parseRecipeSearchParams(req.query as Record<string, unknown>);
@@ -213,7 +215,7 @@ router.get("/random", async (req, res) => {
     );
     const pageSize =
       Number.isFinite(requestedCount) && requestedCount > 0 ? requestedCount : DEFAULT_RECIPES_PAGE_SIZE;
-    const result = await searchRecipes({ pageSize, source });
+    const result = await searchRecipes({ pageSize, source, viewerId: req.user?.id });
     res.json({ ok: true, ...withItemsFromResults(result) });
   } catch (err: any) {
     console.error("recipes random error:", err);
@@ -246,6 +248,9 @@ router.post("/:id/save", requireAuth, async (req, res) => {
     const recipeId = req.params.id;
     const userId = resolveSaveRouteUserId(req, res);
     if (!userId) return;
+
+    // Saving is a read of the recipe: a recipe the user cannot see is indistinguishable from a missing one.
+    if (!(await canViewRecipe(recipeId, userId))) return res.status(404).json({ ok: false, error: "Recipe not found" });
 
     const save = await storage.saveRecipe(userId, recipeId);
     res.status(201).json({ ok: true, save });

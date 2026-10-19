@@ -11,6 +11,8 @@ type SearchParams = {
   pageSize?: number;
   offset?: number;
   source?: ContentSourceFilter;
+  /** Signed-in viewer (if any); decides whether club-created recipes of private clubs are included. */
+  viewerId?: string | null;
 };
 
 // Fisher-Yates shuffle algorithm for randomizing arrays
@@ -189,6 +191,7 @@ export async function searchRecipes(params: SearchParams): Promise<{
     if (offset === 0 && includeChefsire) {
       try {
         const localRecipes = await RecipeService.searchLocalRecipes(db, {
+          viewerId: params.viewerId,
           cuisines: params.cuisines,
           diets: params.diets,
           mealTypes: params.mealTypes,
@@ -252,6 +255,7 @@ export async function searchRecipes(params: SearchParams): Promise<{
 
   // Search local database
   const localRecipes = await RecipeService.searchLocalRecipes(db, {
+    viewerId: params.viewerId,
     q,
     cuisines: params.cuisines,
     diets: params.diets,

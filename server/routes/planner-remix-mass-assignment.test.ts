@@ -177,7 +177,11 @@ function rowsMatching(table: unknown, clause: any) {
 function installDatabaseDouble() {
   const anyDb = db as any;
 
-  anyDb.execute = () => Promise.resolve({ rows: [] });
+  // The Phase 3C recipe-visibility lookup answers with every recipe id it was asked about (no private-club recipes in this world).
+  anyDb.execute = (statement?: any) => {
+    const { sql: text, params } = statement ? new PgDialect().sqlToQuery(statement) : { sql: "", params: [] as unknown[] };
+    return Promise.resolve({ rows: /origin_club_id/.test(text) ? (params as unknown[]).filter((v) => typeof v === "string" && (storeFor(recipes)?.rows ?? []).some((row: any) => row.id === v)).map((id) => ({ id })) : [] });
+  };
 
   anyDb.select = (fields?: any) => {
     let table: unknown;

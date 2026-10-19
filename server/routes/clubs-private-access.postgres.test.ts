@@ -47,7 +47,7 @@ if (!PG_URL) {
     }
     const mkClub = async (key: string, creator: string, isPublic: boolean | null, name: string) => {
       club[key] = (await local.query(`INSERT INTO clubs (creator_id, name, is_public) VALUES ($1, $2, $3) RETURNING id`, [ids[creator], name, isPublic])).rows[0].id;
-      const recipe = (await local.query(`INSERT INTO recipes (title, ingredients, instructions) VALUES ($1, '["x"]'::jsonb, '["y"]'::jsonb) RETURNING id`, [`${key}-${RECIPE_SECRET}`])).rows[0].id;
+      const recipe = (await local.query(`INSERT INTO recipes (title, ingredients, instructions, origin_club_id) VALUES ($1, '["x"]'::jsonb, '["y"]'::jsonb, $2) RETURNING id`, [`${key}-${RECIPE_SECRET}`, club[key]])).rows[0].id;
       await local.query(`INSERT INTO club_posts (club_id, user_id, content, recipe_id) VALUES ($1, $2, $3, $4)`, [club[key], ids[creator], `${key}-${POST_SECRET}`, recipe]);
     };
     await mkClub("private", "owner", false, CLUB_SECRET);

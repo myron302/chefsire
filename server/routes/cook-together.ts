@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
+import { recipeVisibleToViewer } from "../lib/recipe-visibility";
 import { resolveSelfUserId } from "../lib/self-scope";
 
 const router = Router();
@@ -173,7 +174,7 @@ router.post("/create", requireAuth, async (req, res) => {
 
     // Check if recipe exists
     const recipe = await db.execute(sql`
-      SELECT id FROM recipes WHERE id = ${data.recipeId}
+      SELECT id FROM recipes WHERE id = ${data.recipeId} AND ${recipeVisibleToViewer(sql`recipes.id`, req.user?.id)}
     `);
 
     if (recipe.rows.length === 0) {

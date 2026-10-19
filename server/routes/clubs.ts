@@ -14,6 +14,7 @@ import {
   recipes,
 } from "../../shared/schema.js";
 import { requireAuth, optionalAuth } from "../middleware/index";
+import { filterVisibleRecipeIds } from "../lib/recipe-visibility";
 
 const router = express.Router();
 
@@ -312,6 +313,12 @@ router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
       .limit(parseInt(limit as string))
       .offset(parseInt(offset as string));
 
+    // A post may reference a recipe created for a DIFFERENT private club (shared by someone in both); only show what this viewer may see.
+    const visibleRecipeIds = await filterVisibleRecipeIds(
+      rows.map((row: any) => row.recipe?.id).filter(Boolean),
+      req.user?.id,
+    );
+
     // Flatten into the shape the club page expects
     const posts = rows.map((row: any) => {
       const p = row.post;
@@ -339,7 +346,7 @@ router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
           username: row.author.username,
           avatarUrl: row.author.avatar ?? null,
         },
-        recipe: row.recipe && row.recipe.id ? row.recipe : null,
+        recipe: row.recipe && row.recipe.id && visibleRecipeIds.has(row.recipe.id) ? row.recipe : null,
       };
     });
 
@@ -399,8 +406,24 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       return res.status(403).json({ message: "You must be a member to post" });
     }
 
-    // If this is a recipe template post, create a recipe record and link it.
+    // Referencing an existing recipe only LINKS it: the recipe's own visibility never changes, and it is not copied. The poster must be
+    // able to see it, and a recipe that is private to another club cannot be pushed into this one.
     let linkedRecipeId: string | null = recipeId || null;
+    if (linkedRecipeId) {
+      const [referenced] = await db
+        .select({ id: recipes.id, originClubId: recipes.originClubId })
+        .from(recipes)
+        .where(eq(recipes.id, String(linkedRecipeId)))
+        .limit(1);
+      const readable = referenced ? (await filterVisibleRecipeIds([referenced.id], userId)).has(referenced.id) : false;
+      if (!referenced || !readable) return res.status(404).json({ message: "Recipe not found" });
+      if (referenced.originClubId && referenced.originClubId !== clubId) {
+        const [origin] = await db.select({ isPublic: clubs.isPublic }).from(clubs).where(eq(clubs.id, referenced.originClubId)).limit(1);
+        if (origin?.isPublic !== true) {
+          return res.status(403).json({ message: "This recipe is private to another club" });
+        }
+      }
+    }
 
     const isRecipeTemplate =
       postType === "recipe" ||
@@ -439,6 +462,7 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
         .insert(recipes)
         .values({
           postId: null, // club recipes are not linked to a social post row
+          originClubId: clubId, // created for this club: private exactly while the club is private
           title,
           imageUrl: (recipe.imageUrl ?? imageUrl) ?? null,
           ingredients: cleanIngredients,

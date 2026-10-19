@@ -1,4 +1,5 @@
 // server/routes/remixes.ts
+import { filterVisibleRecipeIds, recipeVisibleToViewer } from "../lib/recipe-visibility";
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
@@ -12,7 +13,7 @@ import {
   users,
 } from "../../shared/schema";
 import { z } from "zod";
-import { requireAuth } from "../middleware";
+import { optionalAuth, requireAuth } from "../middleware";
 import {
   remixCreateSchema,
   remixPatchSchema,
@@ -24,7 +25,7 @@ import { applyRemixEngagement } from "../lib/remix-engagement-cleanup";
 const router = Router();
 
 // GET /api/remixes - Get all public remixes
-router.get("/", async (req, res) => {
+router.get("/", optionalAuth, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -38,7 +39,7 @@ router.get("/", async (req, res) => {
       .from(recipeRemixes)
       .innerJoin(recipes, eq(recipeRemixes.originalRecipeId, recipes.id))
       .innerJoin(users, eq(recipeRemixes.userId, users.id))
-      .where(eq(recipeRemixes.isPublic, true))
+      .where(and(eq(recipeRemixes.isPublic, true), recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, req.user?.id), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, req.user?.id)))
       .orderBy(desc(recipeRemixes.createdAt))
       .limit(limit)
       .offset(offset);
@@ -50,7 +51,7 @@ router.get("/", async (req, res) => {
 });
 
 // GET /api/remixes/recipe/:recipeId - Get all remixes of a specific recipe
-router.get("/recipe/:recipeId", async (req, res) => {
+router.get("/recipe/:recipeId", optionalAuth, async (req, res) => {
   try {
     const { recipeId } = req.params;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -67,7 +68,8 @@ router.get("/recipe/:recipeId", async (req, res) => {
       .where(
         and(
           eq(recipeRemixes.originalRecipeId, recipeId),
-          eq(recipeRemixes.isPublic, true)
+          eq(recipeRemixes.isPublic, true),
+          recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, req.user?.id), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, req.user?.id)
         )
       )
       .orderBy(desc(recipeRemixes.likesCount))
@@ -91,7 +93,7 @@ router.get("/my-remixes", requireAuth, async (req, res) => {
       })
       .from(recipeRemixes)
       .innerJoin(recipes, eq(recipeRemixes.originalRecipeId, recipes.id))
-      .where(eq(recipeRemixes.userId, userId))
+      .where(and(eq(recipeRemixes.userId, userId), recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, req.user?.id), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, req.user?.id)))
       .orderBy(desc(recipeRemixes.createdAt));
 
     return res.json({ remixes });
@@ -101,7 +103,7 @@ router.get("/my-remixes", requireAuth, async (req, res) => {
 });
 
 // GET /api/remixes/user/:userId - Get user's PUBLIC remixes only
-router.get("/user/:userId", async (req, res) => {
+router.get("/user/:userId", optionalAuth, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -115,7 +117,8 @@ router.get("/user/:userId", async (req, res) => {
       .where(
         and(
           eq(recipeRemixes.userId, userId),
-          eq(recipeRemixes.isPublic, true)
+          eq(recipeRemixes.isPublic, true),
+          recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, req.user?.id), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, req.user?.id)
         )
       )
       .orderBy(desc(recipeRemixes.createdAt));
@@ -197,6 +200,11 @@ router.post("/", requireAuth, async (req, res) => {
     const remixed = await loadRecipeWithOwner(remixedRecipeId);
 
     if (original.missing || remixed.missing) {
+      return res.status(404).json({ error: "Recipe not found" });
+    }
+    // A recipe the caller cannot see is indistinguishable from a missing one.
+    const readable = await filterVisibleRecipeIds([originalRecipeId, remixedRecipeId], req.user!.id);
+    if (!readable.has(originalRecipeId) || !readable.has(remixedRecipeId)) {
       return res.status(404).json({ error: "Recipe not found" });
     }
 
