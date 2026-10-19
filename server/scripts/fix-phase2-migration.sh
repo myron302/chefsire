@@ -1,18 +1,5 @@
 #!/bin/bash
-# Fix Phase 2 migration by cleaning up partial tables and re-running migrations
-
-set -e  # Exit on any error
-
-echo "🧹 Cleaning up partial Phase 2 tables..."
-psql "$DATABASE_URL" < server/drizzle/cleanup_phase2.sql
-
-echo ""
-echo "🚀 Running Phase 2 migration..."
-psql "$DATABASE_URL" < server/drizzle/0002_phase2_social_explosion.sql
-
-echo ""
-echo "🚀 Running Phase 3 migration..."
-psql "$DATABASE_URL" < server/drizzle/0003_phase3_power_user.sql
-
-echo ""
-echo "✅ Migrations completed successfully!"
+# DISABLED (Stability Phase 3B): this ran cleanup_phase2.sql (DROP TABLE … CASCADE) directly against $DATABASE_URL.
+# The SQL is quarantined in server/migration-quarantine/. See docs/stability-phase-3b-migration-safety.md.
+echo "fix-phase2-migration.sh is disabled; see docs/stability-phase-3b-migration-safety.md" >&2
+exit 1
