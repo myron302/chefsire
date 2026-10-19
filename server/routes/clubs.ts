@@ -17,6 +17,55 @@ import { requireAuth, optionalAuth } from "../middleware/index";
 
 const router = express.Router();
 
+/**
+ * Who may read a club's contents.
+ *
+ * Public clubs (`is_public = true`) stay readable by everyone, exactly as before. Anything else -- including a
+ * NULL flag -- is private and readable only by a row in club_memberships (owner/admin/moderator/member) or the
+ * club's creator. A pending join request is not a membership, so an applicant is treated as a non-member.
+ */
+type ClubReadAccess =
+  | { kind: "not_found" }
+  | { kind: "private" }
+  | { kind: "ok"; isMember: boolean; isAdmin: boolean };
+
+async function resolveClubReadAccess(clubId: string, userId: string | undefined): Promise<ClubReadAccess> {
+  const [club] = await db
+    .select({ creatorId: clubs.creatorId, isPublic: clubs.isPublic })
+    .from(clubs)
+    .where(eq(clubs.id, clubId))
+    .limit(1);
+  if (!club) return { kind: "not_found" };
+
+  let isMember = false;
+  let isAdmin = false;
+  if (userId) {
+    const [membership] = await db
+      .select({ role: clubMemberships.role })
+      .from(clubMemberships)
+      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
+      .limit(1);
+    if (membership) {
+      isMember = true;
+      const role = (membership.role as any) ?? "member";
+      isAdmin = role === "owner" || role === "admin" || role === "moderator";
+    }
+    // The creator is treated as member/admin even if their membership row is missing.
+    if (club.creatorId === userId) {
+      isMember = true;
+      isAdmin = true;
+    }
+  }
+
+  if (club.isPublic !== true && !isMember) return { kind: "private" };
+  return { kind: "ok", isMember, isAdmin };
+}
+
+function sendClubAccessDenied(res: Response, access: ClubReadAccess) {
+  if (access.kind === "not_found") return res.status(404).json({ message: "Club not found" });
+  return res.status(403).json({ message: "This club is private", code: "CLUB_PRIVATE" });
+}
+
 // ============================================================
 // CLUBS MANAGEMENT
 // ============================================================
@@ -236,10 +285,13 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
 // ============================================================
 
 // Get club posts
-router.get("/:id/posts", async (req: Request, res: Response) => {
+router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
     const { limit = 20, offset = 0 } = req.query;
+
+    const access = await resolveClubReadAccess(clubId, req.user?.id);
+    if (access.kind !== "ok") return sendClubAccessDenied(res, access);
 
     const rows = await db
       .select({
@@ -453,6 +505,10 @@ router.patch(
       if (!nextContent) {
         return res.status(400).json({ message: "Post content is required" });
       }
+
+      // Editing is a club action: a user who has left (or never joined) a private club cannot reach its posts.
+      const access = await resolveClubReadAccess(clubId, userId);
+      if (access.kind !== "ok") return sendClubAccessDenied(res, access);
 
       const [existingPost] = await db
         .select()
@@ -711,6 +767,10 @@ router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
 
+    const access = await resolveClubReadAccess(clubId, req.user?.id);
+    if (access.kind !== "ok") return sendClubAccessDenied(res, access);
+    const { isMember, isAdmin } = access;
+
     const [row] = await db
       .select({
         club: clubs,
@@ -743,38 +803,6 @@ router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
 
     const memberCount = Number((counts as any)?.memberCount ?? 0);
     const postCount = Number((counts as any)?.postCount ?? 0);
-
-    // IMPORTANT: the club page needs isMember/isAdmin to gate posting.
-    // The creator is inserted into club_memberships as role=owner, but the old
-    // response did not include membership state, so the UI showed "Join to post".
-    let isMember = false;
-    let isAdmin = false;
-
-    const userId = req.user?.id;
-    if (userId) {
-      const [membership] = await db
-        .select({ role: clubMemberships.role })
-        .from(clubMemberships)
-        .where(
-          and(
-            eq(clubMemberships.clubId, clubId),
-            eq(clubMemberships.userId, userId)
-          )
-        )
-        .limit(1);
-
-      if (membership) {
-        isMember = true;
-        const role = (membership.role as any) ?? "member";
-        isAdmin = role === "owner" || role === "admin" || role === "moderator";
-      }
-
-      // Safety: treat the creator as member/admin even if membership row is missing
-      if (row.club.creatorId === userId) {
-        isMember = true;
-        isAdmin = true;
-      }
-    }
 
     res.json({
       // Flatten `club` for the client (client expects club fields directly)

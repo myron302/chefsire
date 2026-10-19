@@ -2,17 +2,25 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
+import { hasCurrentAdminAuthority } from "../lib/admin-authority";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import {
   addDeliveryMethods,
-  mapProductsWithDeliveryMethods,
   parseDeliveryMethods,
 } from "./marketplace/deliveryMethods";
 import { createProductSchema, searchProductsSchema, updateProductSchema } from "./marketplace/schemas";
 import { countProductsByCategory } from "./marketplace/utils";
+import { serializePublicUser } from "../serializers/public-user";
 
 const r = Router();
+
+/**
+ * Storage joins the full `users` row onto every product. Public product responses carry only the seller's public
+ * identity: never the password hash, email, payment/OAuth ids or revenue figures that live on that row.
+ */
+const toPublicProduct = (product: any) =>
+  addDeliveryMethods(product?.seller ? { ...product, seller: serializePublicUser(product.seller) } : product);
 
 /**
  * Marketplace CRUD + search + simple analytics
@@ -81,7 +89,7 @@ r.get("/products/:id", async (req, res) => {
   try {
     const prod = await storage.getProductWithSeller(req.params.id);
     if (!prod) return res.status(404).json({ message: "Product not found" });
-    res.json(addDeliveryMethods(prod));
+    res.json(toPublicProduct(prod));
   } catch (error) {
     console.error("marketplace/get error", error);
     res.status(500).json({ message: "Failed to fetch product" });
@@ -100,7 +108,7 @@ r.get("/products", async (req, res) => {
       filters.limit
     );
 
-    const productsWithDelivery = mapProductsWithDeliveryMethods(products);
+    const productsWithDelivery = products.map(toPublicProduct);
     res.json({ products: productsWithDelivery, total: productsWithDelivery.length, filters });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid search parameters", errors: e.issues });
@@ -117,7 +125,7 @@ r.get("/sellers/:sellerId/products", async (req, res) => {
     const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
     const limit = Number.isFinite(parsedLimit) && parsedLimit >= 1 ? Math.min(parsedLimit, 50) : 20;
     const items = await storage.getUserProducts(req.params.sellerId, offset, limit);
-    const itemsWithDelivery = mapProductsWithDeliveryMethods(items);
+    const itemsWithDelivery = items.map(toPublicProduct);
     res.json({ products: itemsWithDelivery, total: itemsWithDelivery.length, sellerId: req.params.sellerId });
   } catch (error) {
     console.error("marketplace/seller products error", error);
@@ -191,7 +199,7 @@ r.get("/storefront/:username", async (req, res) => {
           isChef: user.isChef,
           followersCount: user.followersCount,
         },
-        products: products.map(addDeliveryMethods),
+        products: products.map(toPublicProduct),
         subscriptionTier: effectiveMarketplaceTier(user as any),
       },
     });
@@ -213,9 +221,16 @@ r.get("/categories", async (_req, res) => {
   }
 });
 
-// Simple seller analytics
-r.get("/sellers/:sellerId/analytics", async (req, res) => {
+// Simple seller analytics (private: revenue and sales belong to the seller; administrators may also read them)
+r.get("/sellers/:sellerId/analytics", requireAuth, async (req, res) => {
   try {
+    const isOwner = String(req.params.sellerId) === String(req.user!.id);
+    // Admin authority is re-read from the database (see lib/admin-authority); the token only names the account.
+    if (!isOwner && !(await hasCurrentAdminAuthority(req.user!.id))) {
+      // Same answer whether or not the seller exists, so this cannot be used to probe for accounts.
+      return res.status(403).json({ message: "Not allowed to view these analytics" });
+    }
+
     const user = await storage.getUser(req.params.sellerId);
     if (!user) return res.status(404).json({ message: "Seller not found" });
 
