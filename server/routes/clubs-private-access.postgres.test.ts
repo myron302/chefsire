@@ -111,6 +111,13 @@ if (!PG_URL) {
     assert.ok(!browse.text.includes(CLUB_SECRET));
   });
 
+  test("private-club recipes do not surface in the public recipe search", async () => {
+    const { RecipeService } = await import("../services/recipe.service");
+    const { db } = await import("../db/index");
+    const titles = async (q: string) => (await RecipeService.searchLocalRecipes(db, { q })).map((r: any) => r.title);
+    assert.deepEqual(await titles(RECIPE_SECRET), ["public-" + RECIPE_SECRET]);
+  });
+
   test("a missing club is a 404 for everyone", async () => {
     assert.equal((await call("GET", "/api/clubs/nope", "anon")).status, 404);
     assert.equal((await call("GET", "/api/clubs/nope/posts", "outsider")).status, 404);

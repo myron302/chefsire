@@ -51,9 +51,17 @@ router.post("/meal-planner/events", optionalAuth, async (req: Request, res: Resp
     if (mealPlanId) {
       const planResult = await db.execute(sql`SELECT creator_id, status FROM meal_plan_blueprints WHERE id = ${mealPlanId} LIMIT 1`);
       const plan = (planResult as any).rows?.[0];
-      const actorId = (req.user as any)?.id;
-      // Analytics events must not confirm or touch an unpublished plan for anyone but its creator.
-      if (!plan || (plan.status !== "published" && (eventType === "plan_view" || String(plan.creator_id) !== String(actorId ?? "")))) return res.status(404).json({ message: "Meal plan not found" });
+      const actorId: string | null = (req.user as any)?.id ?? null;
+      // Same decision as the details endpoint: unpublished plans exist only for the creator and entitlement holders.
+      const planAccess = plan
+        ? decideMealPlanAccess({
+            status: plan.status,
+            creatorId: plan.creator_id,
+            viewerId: actorId,
+            hasEntitlement: await viewerHoldsMealPlanEntitlement(actorId, mealPlanId),
+          })
+        : "none";
+      if (planAccess === "none") return res.status(404).json({ message: "Meal plan not found" });
       creatorId = plan.creator_id;
     }
 

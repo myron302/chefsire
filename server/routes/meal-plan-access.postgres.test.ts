@@ -141,6 +141,20 @@ if (!PG_URL) {
     assert.equal((await call("GET", `/api/meal-plans/${plan.draft}/comments`, "creator")).status, 200);
   });
 
+  test("DELETE like/save on an invisible plan cannot read its stats; events follow the access decision", async () => {
+    await local.query(`INSERT INTO meal_plan_likes (user_id, blueprint_id) VALUES ($1, $2)`, [ids.creator, plan.draft]);
+    for (const path of ["like", "save"]) {
+      const r = await call("DELETE", `/api/meal-plans/${plan.draft}/${path}`, "stranger");
+      assert.equal(r.status, 404, path);
+      assert.ok(!r.text.includes("likeCount"));
+    }
+    const ev = (who: string, planKey: string, eventType = "plan_view") => call("POST", "/api/meal-planner/events", who, { eventType, mealPlanId: plan[planKey] });
+    assert.equal((await ev("creator", "draft")).status, 200, "creator keeps tracking on their own draft");
+    assert.equal((await ev("buyer", "unpublished")).status, 200, "an entitled purchaser keeps tracking after unpublish");
+    assert.equal((await ev("stranger", "unpublished")).status, 404);
+    assert.equal((await ev("anon", "draft")).status, 404);
+  });
+
   test("a draft saved before it was unpublished does not leak through the saved-items list", async () => {
     await local.query(`INSERT INTO meal_plan_saves (user_id, blueprint_id) VALUES ($1, $2)`, [ids.stranger, plan.draft]);
     const r = await call("GET", "/api/me/saved-meal-planner-items", "stranger");

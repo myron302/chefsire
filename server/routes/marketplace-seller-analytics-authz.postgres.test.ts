@@ -46,7 +46,7 @@ if (!PG_URL) {
     await mk("otherseller", "other@example.com", "99");
     await mk("buyer", "buyer@example.com", "0");
     await mk("admin", "ops@chefsire.test", "0");
-    await local.query(`INSERT INTO products (seller_id, name, price, category, is_active, sales_count) VALUES ($1, 'cake', '5.00', 'baked', true, 7)`, [ids.seller]);
+    await local.query(`INSERT INTO products (seller_id, name, price, category, is_active, sales_count, views_count, is_digital, digital_file_url) VALUES ($1, 'cake', '5.00', 'baked', true, 7, 31337, true, 'https://files.example/PAID-DOWNLOAD.pdf')`, [ids.seller]);
   });
 
   const analytics = (sellerKey: string, as: string) => call("GET", `/api/marketplace/sellers/${ids[sellerKey] ?? sellerKey}/analytics`, as);
@@ -111,5 +111,14 @@ if (!PG_URL) {
       }
     }
     assert.equal((await call("GET", `${base}/products/${productId}`, "anon")).json.seller.username, "seller");
+    // Paid download links and the protected sales/view counters are not public product data...
+    for (const r of reads) {
+      for (const hidden of ["PAID-DOWNLOAD", "digitalFileUrl", "salesCount", "viewsCount", "31337"]) assert.ok(!r.text.includes(hidden), `public read leaked ${hidden}`);
+    }
+    // ...but the seller still sees them on their own listing (edit form, dashboard); other users do not.
+    const own = await call("GET", `${base}/sellers/${ids.seller}/products`, "seller");
+    assert.equal(own.json.products[0].digitalFileUrl, "https://files.example/PAID-DOWNLOAD.pdf");
+    assert.equal(own.json.products[0].salesCount, 7);
+    assert.ok(!(await call("GET", `${base}/sellers/${ids.seller}/products`, "buyer")).text.includes("PAID-DOWNLOAD"));
   });
 }

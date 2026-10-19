@@ -98,7 +98,13 @@ export class RecipeService {
   ): Promise<any[]> {
     try {
       let query = db.select().from(recipes);
-      const conditions = [];
+      // Recipes posted into a private club (club_posts.recipe_id) are member-only; they must not surface in public search.
+      const conditions: any[] = [
+        sql`NOT EXISTS (
+          SELECT 1 FROM club_posts cp INNER JOIN clubs c ON c.id = cp.club_id
+          WHERE cp.recipe_id = ${recipes.id} AND c.is_public IS NOT TRUE
+        )`,
+      ];
 
       if (searchParams.q) {
         const searchTerm = `%${searchParams.q}%`;

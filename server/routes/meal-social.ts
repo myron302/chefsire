@@ -217,6 +217,7 @@ router.post("/meal-plans/:id/like", requireAuth, requireMealSocialSchema, asyncH
 
 router.delete("/meal-plans/:id/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   await db.execute(sql`DELETE FROM meal_plan_likes WHERE user_id = ${(req.user as any).id} AND blueprint_id = ${planId}`);
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
 }));
@@ -234,6 +235,7 @@ router.post("/meal-plans/:id/save", requireAuth, requireMealSocialSchema, asyncH
 
 router.delete("/meal-plans/:id/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   await db.execute(sql`DELETE FROM meal_plan_saves WHERE user_id = ${(req.user as any).id} AND blueprint_id = ${planId}`);
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
 }));
