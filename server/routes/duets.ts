@@ -4,8 +4,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { requireAuth } from "../middleware";
-import { recipeVisibleToViewer } from "../lib/recipe-visibility";
+import { optionalAuth, requireAuth } from "../middleware";
+import { canViewRecipe, recipeVisibleToViewer } from "../lib/recipe-visibility";
 import { sendDuetNotification } from "../services/notification-service";
 
 const router = Router();
@@ -18,9 +18,12 @@ const router = Router();
  * GET /api/duets/recipe/:recipeId
  * Get all duets for a specific recipe
  */
-router.get("/recipe/:recipeId", async (req, res) => {
+router.get("/recipe/:recipeId", optionalAuth, async (req, res) => {
   try {
     const { recipeId } = req.params;
+
+    // Duets are conversations about a recipe: a recipe the viewer cannot read has none to show (same as a recipe with no duets).
+    if (!(await canViewRecipe(recipeId, viewerIdFrom(req)))) return res.json({ duets: [] });
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
 
@@ -54,7 +57,7 @@ router.get("/recipe/:recipeId", async (req, res) => {
  * GET /api/duets/user/:userId
  * Get all duets created by a specific user
  */
-router.get("/user/:userId", async (req, res) => {
+router.get("/user/:userId", optionalAuth, async (req, res) => {
   try {
     const { userId } = req.params;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -73,6 +76,7 @@ router.get("/user/:userId", async (req, res) => {
       JOIN users u ON rd.duet_user_id = u.id
       WHERE rd.duet_user_id = ${userId}
         AND rd.is_public = true
+        AND ${recipeVisibleToViewer(sql`rd.original_recipe_id`, viewerIdFrom(req))}
       ORDER BY rd.created_at DESC
       LIMIT ${limit}
       OFFSET ${offset}
@@ -113,6 +117,7 @@ router.get("/feed", requireAuth, async (req, res) => {
       JOIN follows f ON rd.duet_user_id = f.followed_id
       WHERE f.follower_id = ${userId}
         AND rd.is_public = true
+        AND ${recipeVisibleToViewer(sql`rd.original_recipe_id`, userId)}
       ORDER BY rd.created_at DESC
       LIMIT ${limit}
       OFFSET ${offset}
@@ -216,6 +221,17 @@ router.post("/:duetId/like", requireAuth, async (req, res) => {
   try {
     const userId = (req as any).user?.id;
     const { duetId } = req.params;
+
+    // The duet must exist and its recipe must be readable by this user NOW, for liking and unliking alike. A duet that does not
+    // exist or whose recipe is restricted is one plain 404: no like row, no counter change, no notification.
+    const target = await db.execute(sql`
+      SELECT rd.id FROM recipe_duets rd
+      WHERE rd.id = ${duetId}
+        AND ${recipeVisibleToViewer(sql`rd.original_recipe_id`, userId)}
+    `);
+    if (target.rows.length === 0) {
+      return res.status(404).json({ error: "Duet not found" });
+    }
 
     // Check if already liked
     const existing = await db.execute(sql`
@@ -324,7 +340,7 @@ router.delete("/:duetId", requireAuth, async (req, res) => {
  * GET /api/duets/trending
  * Get trending duets (most liked in last 7 days)
  */
-router.get("/trending", async (req, res) => {
+router.get("/trending", optionalAuth, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
 
@@ -340,6 +356,7 @@ router.get("/trending", async (req, res) => {
       JOIN recipes r ON rd.original_recipe_id = r.id
       JOIN users u ON rd.duet_user_id = u.id
       WHERE rd.is_public = true
+        AND ${recipeVisibleToViewer(sql`rd.original_recipe_id`, viewerIdFrom(req))}
         AND rd.created_at > NOW() - INTERVAL '7 days'
       ORDER BY rd.likes_count DESC, rd.views_count DESC
       LIMIT ${limit}

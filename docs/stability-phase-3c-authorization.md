@@ -67,6 +67,13 @@ Two further findings: `POST /week/entry` rejected external provider recipes (`so
 - **Club challenges** (`challenges.club_id`): list, detail, join and progress use one shared club read rule (`server/lib/club-visibility.ts`, also now the basis of recipe visibility, so there is a single membership rule). Challenges with no club or a public club are unchanged; a private club's challenges exist only for its creator and members, a hidden detail is the same 404 as a missing one, and join/progress re-verify membership on every call.
 - **Club posts** redact an unreadable recipe reference as a whole: `recipeId`, the nested `recipe`, and the `recipe` post type derived from it. This applies to the list and the PATCH response. The stored link is never rewritten; authorized viewers and public recipes shared into private clubs are unchanged.
 
+## Cook Together and duets (review follow-up)
+
+Both features hang off a recipe, so they follow the recipe's CURRENT visibility.
+- **Cook Together:** `join` looks the session up with the recipe-visibility predicate in the same query, so a user who cannot read the recipe gets the plain `Session not found` 404 before capacity, status or participation are looked at and before anything is written (no slot used, no status change). Session detail, the `active` and `scheduled` lists and the user's history apply the same predicate. `leave`, `complete` (host) and `rate` (your own participation row) are cleanup on your own data and do not require recipe access.
+- **Duets:** `like` (toggle) resolves the duet and checks its recipe first, for liking and unliking alike; an unknown duet or a restricted recipe is one 404 with no like row, counter change or notification. The by-recipe, by-user, feed and trending reads filter by the same predicate. Deleting your own duet remains available.
+- Pre-existing and unchanged: the duet like/feed routes use `likes.target_type/target_id` and `follows.followed_id`, which the Drizzle schema does not declare; the new tests build tables in that shape.
+
 ## Running the new suites
 
 They use a real local PostgreSQL, like the other `*.postgres.test.ts` suites, and recreate the tables they need. Run them one file at a time (they share table names):
