@@ -14,7 +14,8 @@ import {
 } from "../../shared/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import multer from "multer";
-import { requireAuth } from "../middleware/auth";
+import { optionalAuth, requireAuth } from "../middleware/auth";
+import { classifyLocalRecipeRefs } from "../lib/recipe-visibility";
 import { RecipeService } from "../services/recipe.service";
 import { sendRecipeReviewNotification } from "../services/notification-service";
 import { UnsupportedMediaError, storeVerifiedImage } from "../services/image-upload";
@@ -218,6 +219,22 @@ async function resolveRecipeIdentityForReview(recipeId: string): Promise<Resolve
 }
 
 /**
+ * Reviews (and their photos, ratings and helpful counts) belong to the recipe they review, so they are exactly as visible as that
+ * recipe. Called AFTER identity resolution with every linked id, so an alternate or external reference cannot be used to dodge it.
+ * A recipe that is not stored locally is not restricted (nothing to protect); one that exists and is hidden from this viewer is.
+ */
+async function recipeReviewsReadable(recipeIds: string[], viewerId?: string | null): Promise<boolean> {
+  const refs = await classifyLocalRecipeRefs(recipeIds, viewerId);
+  return !Array.from(refs.values()).includes("hidden");
+}
+
+/** Review-level actions (edit, photo, helpful vote): the review's recipe must still be readable by the actor; else a plain 404. */
+async function reviewRecipeReadable(reviewId: string, viewerId: string): Promise<boolean> {
+  const [row] = await db.select({ recipeId: recipeReviews.recipeId }).from(recipeReviews).where(eq(recipeReviews.id, reviewId)).limit(1);
+  return Boolean(row) && (await recipeReviewsReadable([row.recipeId], viewerId));
+}
+
+/**
  * Review photos.
  *
  * The previous filter tested an unanchored `/jpeg|jpg|png|webp/` against the original filename's extension and
@@ -245,11 +262,14 @@ const reviewPhotoUpload = multer({
 const upload = (req: Request, res: Response, next: (err?: any) => void) => reviewPhotoUpload.single("photo")(req, res, next);
 
 // Get all reviews for a recipe
-router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
+router.get("/recipe/:recipeId", optionalAuth, async (req: Request, res: Response) => {
   try {
     const { recipeId } = req.params;
     const userId = (req as any).user?.id;
     const identity = await resolveRecipeIdentityForReview(recipeId);
+    if (!(await recipeReviewsReadable([identity.canonicalRecipeId, ...identity.linkedRecipeIds], userId))) {
+      return res.status(404).json({ error: "Recipe not found" });
+    }
     const reviewRecipeFilter = identity.linkedRecipeIds.length > 1
       ? inArray(recipeReviews.recipeId, identity.linkedRecipeIds)
       : eq(recipeReviews.recipeId, identity.canonicalRecipeId);
@@ -401,6 +421,11 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
         requestId: diagnostics.requestId,
         debug: debugContext,
       });
+    }
+
+    // A recipe the author cannot currently read cannot be rated or reviewed; same non-disclosing answer as a missing recipe.
+    if (!(await recipeReviewsReadable([recipeId, ...linkedRecipeIdsForIdentity], userId))) {
+      return res.status(404).json({ error: "Recipe not found" });
     }
 
     // Check if user already reviewed this recipe
@@ -615,6 +640,11 @@ router.put("/:reviewId", requireAuth, async (req: Request, res: Response) => {
       return res.status(403).json({ error: "You can only edit your own reviews" });
     }
 
+    // Editing changes the recipe's ratings: it needs current access to the recipe (deleting your own review does not).
+    if (!(await recipeReviewsReadable([existingReview.recipeId], userId))) {
+      return res.status(404).json({ error: "Review not found" });
+    }
+
     // Update review
     const updateData: any = { updatedAt: new Date() };
     if (rating !== undefined) updateData.rating = rating;
@@ -704,6 +734,10 @@ router.post(
         return res.status(403).json({ error: "You can only add photos to your own reviews" });
       }
 
+      if (!(await recipeReviewsReadable([existingReview.recipeId], userId))) {
+        return res.status(404).json({ error: "Review not found" });
+      }
+
       // Ownership has been established above; only now are any bytes verified and stored. Both destinations get
       // the same generated name and the same server-decided content type.
       const photoUrl = await storeVerifiedImage(req.file, {
@@ -740,6 +774,10 @@ router.post("/:reviewId/helpful", requireAuth, async (req: Request, res: Respons
     const { reviewId } = req.params;
 
     // Check if already marked as helpful
+    if (!(await reviewRecipeReadable(reviewId, userId))) {
+      return res.status(404).json({ error: "Review not found" });
+    }
+
     const existing = await db
       .select()
       .from(reviewHelpful)

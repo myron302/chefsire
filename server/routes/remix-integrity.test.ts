@@ -193,6 +193,11 @@ function makeRunner() {
     const run = () => {
       if (!statement) return { rows: [] };
       const { sql: text, params } = dialect.sqlToQuery(statement);
+      // Phase 3C recipe-visibility lookup (lib/recipe-visibility): this world has no private-club recipes, so every stored recipe is visible.
+      if (/origin_club_id/.test(text)) {
+        const known = new Set(rowsOf(recipes).map((row: any) => row.id));
+        return { rows: params.filter((value: unknown) => known.has(value)).map((id: unknown) => ({ id })) };
+      }
       const match = text
         .replace(/\s+/g, " ")
         .trim()

@@ -87,6 +87,10 @@ export const recipes = pgTable("recipes", {
   cuisine: text("cuisine"),
   mealType: text("meal_type"),
   sourceUrl: text("source_url"),
+  // Club the recipe was created for (POST /clubs/:id/posts with an inline recipe). NULL = an ordinary recipe whose visibility is never
+  // restricted. Set, it is private exactly while that club is private (clubs.is_public IS NOT TRUE). It is written once at creation and
+  // never by sharing/referencing an existing recipe. The FK to clubs is declared in the migration (clubs live in another schema domain).
+  originClubId: varchar("origin_club_id"),
 });
 
 export const recipeReviews = pgTable("recipe_reviews", {

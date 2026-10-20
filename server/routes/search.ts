@@ -287,7 +287,7 @@ router.get("/autocomplete", optionalAuth, async (req, res) => {
         )
         .catch(() => []),
 
-      searchRecipes({ q: trimmedQuery, pageSize: 5, offset: 0, source })
+      searchRecipes({ q: trimmedQuery, pageSize: 5, offset: 0, source, viewerId: viewerIdFrom(req) })
         .then((result) =>
           result.results.map((recipe) => ({
             id: recipe.id,

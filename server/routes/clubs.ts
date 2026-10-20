@@ -1,4 +1,5 @@
 // server/routes/clubs.ts
+import { viewerIdFrom } from "../lib/post-visibility";
 import express, { type Request, type Response } from "express";
 import { db } from "../db/index.js";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -14,8 +15,59 @@ import {
   recipes,
 } from "../../shared/schema.js";
 import { requireAuth, optionalAuth } from "../middleware/index";
+import { filterVisibleRecipeIds } from "../lib/recipe-visibility";
+import { clubReadableToViewer } from "../lib/club-visibility";
 
 const router = express.Router();
+
+/**
+ * Who may read a club's contents.
+ *
+ * Public clubs (`is_public = true`) stay readable by everyone, exactly as before. Anything else -- including a
+ * NULL flag -- is private and readable only by a row in club_memberships (owner/admin/moderator/member) or the
+ * club's creator. A pending join request is not a membership, so an applicant is treated as a non-member.
+ */
+type ClubReadAccess =
+  | { kind: "not_found" }
+  | { kind: "private" }
+  | { kind: "ok"; isMember: boolean; isAdmin: boolean };
+
+async function resolveClubReadAccess(clubId: string, userId: string | null | undefined): Promise<ClubReadAccess> {
+  const [club] = await db
+    .select({ creatorId: clubs.creatorId, isPublic: clubs.isPublic })
+    .from(clubs)
+    .where(eq(clubs.id, clubId))
+    .limit(1);
+  if (!club) return { kind: "not_found" };
+
+  let isMember = false;
+  let isAdmin = false;
+  if (userId) {
+    const [membership] = await db
+      .select({ role: clubMemberships.role })
+      .from(clubMemberships)
+      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
+      .limit(1);
+    if (membership) {
+      isMember = true;
+      const role = (membership.role as any) ?? "member";
+      isAdmin = role === "owner" || role === "admin" || role === "moderator";
+    }
+    // The creator is treated as member/admin even if their membership row is missing.
+    if (club.creatorId === userId) {
+      isMember = true;
+      isAdmin = true;
+    }
+  }
+
+  if (club.isPublic !== true && !isMember) return { kind: "private" };
+  return { kind: "ok", isMember, isAdmin };
+}
+
+function sendClubAccessDenied(res: Response, access: ClubReadAccess) {
+  if (access.kind === "not_found") return res.status(404).json({ message: "Club not found" });
+  return res.status(403).json({ message: "This club is private", code: "CLUB_PRIVATE" });
+}
 
 // ============================================================
 // CLUBS MANAGEMENT
@@ -236,10 +288,13 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
 // ============================================================
 
 // Get club posts
-router.get("/:id/posts", async (req: Request, res: Response) => {
+router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
     const { limit = 20, offset = 0 } = req.query;
+
+    const access = await resolveClubReadAccess(clubId, viewerIdFrom(req));
+    if (access.kind !== "ok") return sendClubAccessDenied(res, access);
 
     const rows = await db
       .select({
@@ -260,12 +315,21 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
       .limit(parseInt(limit as string))
       .offset(parseInt(offset as string));
 
+    // A post may reference a recipe created for a DIFFERENT private club (shared by someone in both); only show what this viewer may see.
+    const visibleRecipeIds = await filterVisibleRecipeIds(
+      rows.map((row: any) => row.post.recipeId).filter(Boolean),
+      viewerIdFrom(req),
+    );
+
     // Flatten into the shape the club page expects
     const posts = rows.map((row: any) => {
       const p = row.post;
       const caption = String(p.content ?? "");
 
-      const inferredType: "post" | "recipe" | "review" = p.recipeId
+      // The recipe reference is redacted as a whole -- id, nested object and the "recipe" post type derived from it -- when this viewer
+      // cannot read that recipe (e.g. a historical post linking a recipe private to another club). The stored link is untouched.
+      const recipeRef: string | null = p.recipeId && visibleRecipeIds.has(p.recipeId) ? p.recipeId : null;
+      const inferredType: "post" | "recipe" | "review" = recipeRef
         ? "recipe"
         : caption.trim().startsWith("📝 Review:")
         ? "review"
@@ -279,7 +343,7 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
         imageUrl: p.imageUrl ?? null,
         tags: null,
         postType: inferredType,
-        recipeId: p.recipeId ?? null,
+        recipeId: recipeRef,
         reviewId: null,
         createdAt: p.createdAt,
         user: {
@@ -287,7 +351,7 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
           username: row.author.username,
           avatarUrl: row.author.avatar ?? null,
         },
-        recipe: row.recipe && row.recipe.id ? row.recipe : null,
+        recipe: recipeRef && row.recipe && row.recipe.id === recipeRef ? row.recipe : null,
       };
     });
 
@@ -347,8 +411,24 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       return res.status(403).json({ message: "You must be a member to post" });
     }
 
-    // If this is a recipe template post, create a recipe record and link it.
+    // Referencing an existing recipe only LINKS it: the recipe's own visibility never changes, and it is not copied. The poster must be
+    // able to see it, and a recipe that is private to another club cannot be pushed into this one.
     let linkedRecipeId: string | null = recipeId || null;
+    if (linkedRecipeId) {
+      const [referenced] = await db
+        .select({ id: recipes.id, originClubId: recipes.originClubId })
+        .from(recipes)
+        .where(eq(recipes.id, String(linkedRecipeId)))
+        .limit(1);
+      const readable = referenced ? (await filterVisibleRecipeIds([referenced.id], userId)).has(referenced.id) : false;
+      if (!referenced || !readable) return res.status(404).json({ message: "Recipe not found" });
+      if (referenced.originClubId && referenced.originClubId !== clubId) {
+        const [origin] = await db.select({ isPublic: clubs.isPublic }).from(clubs).where(eq(clubs.id, referenced.originClubId)).limit(1);
+        if (origin?.isPublic !== true) {
+          return res.status(403).json({ message: "This recipe is private to another club" });
+        }
+      }
+    }
 
     const isRecipeTemplate =
       postType === "recipe" ||
@@ -387,6 +467,7 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
         .insert(recipes)
         .values({
           postId: null, // club recipes are not linked to a social post row
+          originClubId: clubId, // created for this club: private exactly while the club is private
           title,
           imageUrl: (recipe.imageUrl ?? imageUrl) ?? null,
           ingredients: cleanIngredients,
@@ -454,6 +535,10 @@ router.patch(
         return res.status(400).json({ message: "Post content is required" });
       }
 
+      // Editing is a club action: a user who has left (or never joined) a private club cannot reach its posts.
+      const access = await resolveClubReadAccess(clubId, userId);
+      if (access.kind !== "ok") return sendClubAccessDenied(res, access);
+
       const [existingPost] = await db
         .select()
         .from(clubPosts)
@@ -476,7 +561,9 @@ router.patch(
         .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
         .returning();
 
-      return res.json({ post });
+      // Same redaction as the list: the raw row would otherwise carry a recipe id the author may no longer be able to read.
+      const readable = post.recipeId ? await filterVisibleRecipeIds([post.recipeId], userId) : new Set<string>();
+      return res.json({ post: { ...post, recipeId: post.recipeId && readable.has(post.recipeId) ? post.recipeId : null } });
     } catch (error) {
       console.error("Error updating post:", error);
       return res.status(500).json({ message: "Failed to update post" });
@@ -489,7 +576,7 @@ router.patch(
 // ============================================================
 
 // Browse challenges (MUST come before GET /:id)
-router.get("/challenges", async (req: Request, res: Response) => {
+router.get("/challenges", optionalAuth, async (req: Request, res: Response) => {
   try {
     const { status } = req.query;
 
@@ -503,6 +590,8 @@ router.get("/challenges", async (req: Request, res: Response) => {
         challengeProgress,
         eq(challenges.id, challengeProgress.challengeId)
       )
+      // Challenges that belong to a private club exist only for that club's creator and members (shared club rule).
+      .where(clubReadableToViewer(sql`${challenges.clubId}`, viewerIdFrom(req)))
       .groupBy(challenges.id)
       .orderBy(desc(challenges.startDate))
       .$dynamic();
@@ -529,14 +618,15 @@ router.get("/challenges", async (req: Request, res: Response) => {
 });
 
 // Get challenge details
-router.get("/challenges/:id", async (req: Request, res: Response) => {
+router.get("/challenges/:id", optionalAuth, async (req: Request, res: Response) => {
   try {
     const challengeId = req.params.id;
 
+    // A private-club challenge the viewer cannot read is indistinguishable from a missing one.
     const [challenge] = await db
       .select()
       .from(challenges)
-      .where(eq(challenges.id, challengeId))
+      .where(and(eq(challenges.id, challengeId), clubReadableToViewer(sql`${challenges.clubId}`, viewerIdFrom(req))))
       .limit(1);
 
     if (!challenge) {
@@ -568,10 +658,11 @@ router.post(
       const userId = req.user!.id;
       const challengeId = req.params.id;
 
+      // Membership is re-verified on every mutation, whatever the caller could see before.
       const [challenge] = await db
         .select()
         .from(challenges)
-        .where(eq(challenges.id, challengeId))
+        .where(and(eq(challenges.id, challengeId), clubReadableToViewer(sql`${challenges.clubId}`, userId)))
         .limit(1);
 
       if (!challenge) {
@@ -625,6 +716,16 @@ router.post(
       const userId = req.user!.id;
       const challengeId = req.params.id;
       const { step, recipeId } = req.body;
+
+      // Current access to the challenge's club is required to record progress; a removed member gets the same 404 as a missing challenge.
+      const [accessible] = await db
+        .select({ id: challenges.id })
+        .from(challenges)
+        .where(and(eq(challenges.id, challengeId), clubReadableToViewer(sql`${challenges.clubId}`, userId)))
+        .limit(1);
+      if (!accessible) {
+        return res.status(404).json({ message: "Challenge not found" });
+      }
 
       const [progress] = await db
         .select()
@@ -711,6 +812,10 @@ router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
 
+    const access = await resolveClubReadAccess(clubId, viewerIdFrom(req));
+    if (access.kind !== "ok") return sendClubAccessDenied(res, access);
+    const { isMember, isAdmin } = access;
+
     const [row] = await db
       .select({
         club: clubs,
@@ -743,38 +848,6 @@ router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
 
     const memberCount = Number((counts as any)?.memberCount ?? 0);
     const postCount = Number((counts as any)?.postCount ?? 0);
-
-    // IMPORTANT: the club page needs isMember/isAdmin to gate posting.
-    // The creator is inserted into club_memberships as role=owner, but the old
-    // response did not include membership state, so the UI showed "Join to post".
-    let isMember = false;
-    let isAdmin = false;
-
-    const userId = req.user?.id;
-    if (userId) {
-      const [membership] = await db
-        .select({ role: clubMemberships.role })
-        .from(clubMemberships)
-        .where(
-          and(
-            eq(clubMemberships.clubId, clubId),
-            eq(clubMemberships.userId, userId)
-          )
-        )
-        .limit(1);
-
-      if (membership) {
-        isMember = true;
-        const role = (membership.role as any) ?? "member";
-        isAdmin = role === "owner" || role === "admin" || role === "moderator";
-      }
-
-      // Safety: treat the creator as member/admin even if membership row is missing
-      if (row.club.creatorId === userId) {
-        isMember = true;
-        isAdmin = true;
-      }
-    }
 
     res.json({
       // Flatten `club` for the client (client expects club fields directly)

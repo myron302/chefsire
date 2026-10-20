@@ -1,9 +1,11 @@
 // server/routes/cook-together.ts
+import { viewerIdFrom } from "../lib/post-visibility";
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { requireAuth } from "../middleware";
+import { optionalAuth, requireAuth } from "../middleware";
+import { recipeVisibleToViewer } from "../lib/recipe-visibility";
 import { resolveSelfUserId } from "../lib/self-scope";
 
 const router = Router();
@@ -28,7 +30,7 @@ function generateRoomCode(): string {
  * GET /api/cook-together/active
  * Get currently active sessions
  */
-router.get("/active", async (req, res) => {
+router.get("/active", optionalAuth, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
 
@@ -48,6 +50,7 @@ router.get("/active", async (req, res) => {
       LEFT JOIN cook_together_participants ctp ON cts.id = ctp.session_id AND ctp.left_at IS NULL
       WHERE cts.status = 'active'
         AND cts.is_public = true
+        AND ${recipeVisibleToViewer(sql`cts.recipe_id`, viewerIdFrom(req))}
       GROUP BY cts.id, r.id, u.id
       ORDER BY cts.started_at DESC
       LIMIT ${limit}
@@ -64,7 +67,7 @@ router.get("/active", async (req, res) => {
  * GET /api/cook-together/scheduled
  * Get upcoming scheduled sessions
  */
-router.get("/scheduled", async (req, res) => {
+router.get("/scheduled", optionalAuth, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 20;
 
@@ -84,6 +87,7 @@ router.get("/scheduled", async (req, res) => {
       WHERE cts.status = 'scheduled'
         AND cts.scheduled_for > NOW()
         AND cts.is_public = true
+        AND ${recipeVisibleToViewer(sql`cts.recipe_id`, viewerIdFrom(req))}
       GROUP BY cts.id, r.id, u.id
       ORDER BY cts.scheduled_for ASC
       LIMIT ${limit}
@@ -100,7 +104,7 @@ router.get("/scheduled", async (req, res) => {
  * GET /api/cook-together/:sessionId
  * Get session details
  */
-router.get("/:sessionId", async (req, res) => {
+router.get("/:sessionId", optionalAuth, async (req, res) => {
   try {
     const { sessionId } = req.params;
 
@@ -120,8 +124,10 @@ router.get("/:sessionId", async (req, res) => {
       JOIN recipes r ON cts.recipe_id = r.id
       JOIN users u ON cts.host_user_id = u.id
       WHERE cts.id = ${sessionId}
+        AND ${recipeVisibleToViewer(sql`cts.recipe_id`, viewerIdFrom(req))}
     `);
 
+    // A session whose recipe the viewer cannot read is indistinguishable from a missing one.
     if (session.rows.length === 0) {
       return res.status(404).json({ error: "Session not found" });
     }
@@ -173,7 +179,7 @@ router.post("/create", requireAuth, async (req, res) => {
 
     // Check if recipe exists
     const recipe = await db.execute(sql`
-      SELECT id FROM recipes WHERE id = ${data.recipeId}
+      SELECT id FROM recipes WHERE id = ${data.recipeId} AND ${recipeVisibleToViewer(sql`recipes.id`, viewerIdFrom(req))}
     `);
 
     if (recipe.rows.length === 0) {
@@ -245,7 +251,8 @@ router.post("/:sessionId/join", requireAuth, async (req, res) => {
     const userId = (req as any).user?.id;
     const { sessionId } = req.params;
 
-    // Check session status and capacity
+    // Check session status and capacity. Access to the session's recipe is part of the lookup itself, so a user who cannot (or no longer
+    // can) read the recipe gets the same 404 as a missing session before anything else is read or written.
     const session = await db.execute(sql`
       SELECT
         cts.*,
@@ -253,6 +260,7 @@ router.post("/:sessionId/join", requireAuth, async (req, res) => {
       FROM cook_together_sessions cts
       LEFT JOIN cook_together_participants ctp ON cts.id = ctp.session_id AND ctp.left_at IS NULL
       WHERE cts.id = ${sessionId}
+        AND ${recipeVisibleToViewer(sql`cts.recipe_id`, viewerIdFrom(req))}
       GROUP BY cts.id
     `);
 
@@ -440,6 +448,7 @@ router.get("/user/:userId/history", requireAuth, async (req, res) => {
       JOIN users u ON cts.host_user_id = u.id
       JOIN cook_together_participants ctp ON cts.id = ctp.session_id
       WHERE ctp.user_id = ${userId}
+        AND ${recipeVisibleToViewer(sql`cts.recipe_id`, userId)}
       ORDER BY ctp.joined_at DESC
       LIMIT ${limit}
       OFFSET ${offset}

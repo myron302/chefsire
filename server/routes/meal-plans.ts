@@ -27,6 +27,7 @@ import {
   mealPlanEntitlementPredicate,
   mealPlanReviewEntitlementPredicate,
 } from "../lib/meal-plan-entitlement.js";
+import { decideMealPlanAccess, viewerHoldsMealPlanEntitlement } from "../lib/meal-plan-access.js";
 
 const router = express.Router();
 
@@ -50,7 +51,17 @@ router.post("/meal-planner/events", optionalAuth, async (req: Request, res: Resp
     if (mealPlanId) {
       const planResult = await db.execute(sql`SELECT creator_id, status FROM meal_plan_blueprints WHERE id = ${mealPlanId} LIMIT 1`);
       const plan = (planResult as any).rows?.[0];
-      if (!plan || (eventType === "plan_view" && plan.status !== "published")) return res.status(404).json({ message: "Meal plan not found" });
+      const actorId: string | null = (req.user as any)?.id ?? null;
+      // Same decision as the details endpoint: unpublished plans exist only for the creator and entitlement holders.
+      const planAccess = plan
+        ? decideMealPlanAccess({
+            status: plan.status,
+            creatorId: plan.creator_id,
+            viewerId: actorId,
+            hasEntitlement: await viewerHoldsMealPlanEntitlement(actorId, mealPlanId),
+          })
+        : "none";
+      if (planAccess === "none") return res.status(404).json({ message: "Meal plan not found" });
       creatorId = plan.creator_id;
     }
 
@@ -400,12 +411,27 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
       return res.status(404).json({ message: "Meal plan not found" });
     }
 
-    const [version] = await db
-      .select()
-      .from(blueprintVersions)
-      .where(eq(blueprintVersions.blueprintId, planId))
-      .orderBy(desc(blueprintVersions.version))
-      .limit(1);
+    // Drafts/unpublished plans exist only for their creator (and holders of an entitlement); everyone else gets the
+    // same 404 as a missing id. Published plans give non-entitled viewers the storefront preview without contents.
+    const viewerId: string | null = (req.user as any)?.id ?? null;
+    const access = decideMealPlanAccess({
+      status: plan.blueprint.status,
+      creatorId: plan.blueprint.creatorId,
+      viewerId,
+      hasEntitlement: await viewerHoldsMealPlanEntitlement(viewerId, planId),
+    });
+    if (access === "none") {
+      return res.status(404).json({ message: "Meal plan not found" });
+    }
+
+    const [version] = access === "full"
+      ? await db
+          .select()
+          .from(blueprintVersions)
+          .where(eq(blueprintVersions.blueprintId, planId))
+          .orderBy(desc(blueprintVersions.version))
+          .limit(1)
+      : [];
 
     const reviews = await db
       .select({
@@ -471,7 +497,8 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
 
     res.json({
       plan,
-      version,
+      version: version ?? null,
+      access: { level: access, contentLocked: access !== "full" },
       reviews,
       ratingStats: normalizeRatingStats(ratingStats),
       social: await getMealPlanSocialStats(planId, (req.user as any)?.id),

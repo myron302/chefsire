@@ -174,8 +174,23 @@ function normalizeCommentText(raw: unknown) {
   return String(raw ?? "").trim().slice(0, COMMENT_LIMIT);
 }
 
-async function mealPlanExists(planId: string) {
-  const result = await db.execute(sql`SELECT id FROM meal_plan_blueprints WHERE id = ${planId} LIMIT 1`);
+/** A plan is addressable by social actions only when published, or when the viewer is its creator or holds an entitlement. */
+async function mealPlanExists(planId: string, viewerId?: string | null) {
+  const viewer = viewerId || "";
+  const result = await db.execute(sql`
+    SELECT b.id FROM meal_plan_blueprints b
+    WHERE b.id = ${planId}
+      AND (
+        b.status = 'published'
+        OR b.creator_id = ${viewer}
+        OR EXISTS (
+          SELECT 1 FROM meal_plan_purchases e
+          WHERE e.blueprint_id = b.id AND e.user_id = ${viewer}
+            AND e.payment_status IN ('verified_paid', 'free_acquired')
+        )
+      )
+    LIMIT 1
+  `);
   return Boolean((result as any).rows?.[0]);
 }
 
@@ -191,7 +206,7 @@ async function publicSharedWeekExists(token: string) {
 
 router.post("/meal-plans/:id/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
-  if (!(await mealPlanExists(planId))) return res.status(404).json({ message: "Meal plan not found" });
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   await db.execute(sql`
     INSERT INTO meal_plan_likes (user_id, blueprint_id)
     VALUES (${(req.user as any).id}, ${planId})
@@ -202,13 +217,14 @@ router.post("/meal-plans/:id/like", requireAuth, requireMealSocialSchema, asyncH
 
 router.delete("/meal-plans/:id/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   await db.execute(sql`DELETE FROM meal_plan_likes WHERE user_id = ${(req.user as any).id} AND blueprint_id = ${planId}`);
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
 }));
 
 router.post("/meal-plans/:id/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
-  if (!(await mealPlanExists(planId))) return res.status(404).json({ message: "Meal plan not found" });
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   await db.execute(sql`
     INSERT INTO meal_plan_saves (user_id, blueprint_id)
     VALUES (${(req.user as any).id}, ${planId})
@@ -219,13 +235,14 @@ router.post("/meal-plans/:id/save", requireAuth, requireMealSocialSchema, asyncH
 
 router.delete("/meal-plans/:id/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   await db.execute(sql`DELETE FROM meal_plan_saves WHERE user_id = ${(req.user as any).id} AND blueprint_id = ${planId}`);
   res.json(await getMealPlanSocialStats(planId, (req.user as any).id));
 }));
 
 router.get("/meal-plans/:id/comments", optionalAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const planId = req.params.id;
-  if (!(await mealPlanExists(planId))) return res.status(404).json({ message: "Meal plan not found" });
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   const commentsResult = await db.execute(sql`
     SELECT c.id, c.user_id, c.comment, c.created_at, c.updated_at,
            u.username, u.display_name, u.avatar
@@ -242,7 +259,7 @@ router.post("/meal-plans/:id/comments", requireAuth, requireMealSocialSchema, as
   const planId = req.params.id;
   const comment = normalizeCommentText(req.body?.comment ?? req.body?.text);
   if (!comment) return res.status(400).json({ message: "Comment text is required" });
-  if (!(await mealPlanExists(planId))) return res.status(404).json({ message: "Meal plan not found" });
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   const result = await db.execute(sql`
     INSERT INTO meal_plan_comments (user_id, blueprint_id, comment)
     VALUES (${(req.user as any).id}, ${planId}, ${comment})
@@ -253,6 +270,9 @@ router.post("/meal-plans/:id/comments", requireAuth, requireMealSocialSchema, as
 
 router.delete("/meal-plans/:id/comments/:commentId", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const { id: planId, commentId } = req.params;
+  // Same visibility rule as every other meal-plan social action: a plan the viewer can no longer see is a plain 404, nothing is modified
+  // and no engagement counts are returned.
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   const result = await db.execute(sql`
     UPDATE meal_plan_comments
     SET deleted_at = NOW(), updated_at = NOW()
@@ -272,6 +292,7 @@ router.post("/meal-planner/week/shared/:token/like", requireAuth, requireMealSoc
 
 router.delete("/meal-planner/week/shared/:token/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
+  if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   await db.execute(sql`DELETE FROM shared_week_likes WHERE user_id = ${(req.user as any).id} AND public_share_token = ${token}`);
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
 }));
@@ -285,6 +306,7 @@ router.post("/meal-planner/week/shared/:token/save", requireAuth, requireMealSoc
 
 router.delete("/meal-planner/week/shared/:token/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
+  if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   await db.execute(sql`DELETE FROM shared_week_saves WHERE user_id = ${(req.user as any).id} AND public_share_token = ${token}`);
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
 }));
@@ -315,6 +337,8 @@ router.post("/meal-planner/week/shared/:token/comments", requireAuth, requireMea
 
 router.delete("/meal-planner/week/shared/:token/comments/:commentId", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const { token, commentId } = req.params;
+  // Same gate as the other shared-week social routes: an unshared week returns no engagement stats and changes nothing.
+  if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   const result = await db.execute(sql`
     UPDATE shared_week_comments
     SET deleted_at = NOW(), updated_at = NOW()
@@ -500,6 +524,8 @@ router.get("/me/saved-meal-planner-items", requireAuth, requireMealSocialSchema,
     INNER JOIN meal_plan_blueprints b ON b.id = s.blueprint_id
     INNER JOIN users u ON u.id = b.creator_id
     WHERE s.user_id = ${(req.user as any).id}
+      AND (b.status = 'published' OR b.creator_id = ${(req.user as any).id}
+        OR EXISTS (SELECT 1 FROM meal_plan_purchases e WHERE e.blueprint_id = b.id AND e.user_id = ${(req.user as any).id} AND e.payment_status IN ('verified_paid', 'free_acquired')))
     ORDER BY s.created_at DESC
     LIMIT 50
   `);

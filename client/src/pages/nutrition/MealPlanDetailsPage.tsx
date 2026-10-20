@@ -43,6 +43,7 @@ type MealPlanDetailsResponse = {
       displayName: string;
     };
   };
+  access?: { level: "full" | "preview" | "none"; contentLocked: boolean };
   version: {
     id: string;
     blueprintId: string;
@@ -283,13 +284,17 @@ export default function MealPlanDetailsPage() {
               <CardDescription>
                 {data?.version
                   ? `Latest version: v${data.version.version}${data.version.changeLog ? ` • ${data.version.changeLog}` : ""}`
-                  : "No structure found yet"}
+                  : data?.access?.contentLocked
+                    ? "Available after you purchase or acquire this plan"
+                    : "No structure found yet"}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {!data?.version ? (
                 <div className="text-sm text-muted-foreground">
-                  This plan doesn't have a saved structure yet.
+                  {data?.access?.contentLocked
+                    ? "The full meal structure is included with the plan. Get this plan from the Marketplace to unlock it."
+                    : "This plan doesn't have a saved structure yet."}
                 </div>
               ) : (
                 <pre className="text-xs bg-muted/40 border rounded-lg p-4 overflow-x-auto whitespace-pre-wrap">

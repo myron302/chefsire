@@ -1,6 +1,7 @@
 // server/services/recipe.service.ts
 import { eq, desc, and, or, sql, ilike } from "drizzle-orm";
 import { recipes, posts, users, type Recipe, type InsertRecipe, type PostWithUser } from "@shared/schema";
+import { recipeVisibleToViewer } from "../lib/recipe-visibility";
 
 /**
  * RecipeService - Handles all recipe-related database operations
@@ -94,11 +95,13 @@ export class RecipeService {
       mealTypes?: string[];
       pageSize?: number;
       offset?: number;
+      viewerId?: string | null;
     }
   ): Promise<any[]> {
     try {
       let query = db.select().from(recipes);
-      const conditions = [];
+      // Club-created recipes are visible per the club's privacy; merely being shared into a club changes nothing.
+      const conditions: any[] = [recipeVisibleToViewer(sql`${recipes.id}`, searchParams.viewerId)];
 
       if (searchParams.q) {
         const searchTerm = `%${searchParams.q}%`;

@@ -76,6 +76,7 @@ import {
 } from "@shared/schema";
 import { isProviderInRange, milesBetween, type Coordinates } from "./services/catering-geo";
 import { visiblePostsCondition } from "./lib/post-visibility";
+import { recipeVisibleToViewer } from "./lib/recipe-visibility";
 import { serializePublicUser } from "./serializers/public-user";
 import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
 import { purgeRemixEngagementForUser } from "./lib/remix-engagement-cleanup";
@@ -145,6 +146,7 @@ export interface IStorage {
     mealTypes?: string[];
     pageSize?: number;
     offset?: number;
+    viewerId?: string | null;
   }): Promise<any[]>;
 
   // Stories/Bites, Likes, Comments, Follows
@@ -785,11 +787,12 @@ export class DrizzleStorage implements IStorage {
     mealTypes?: string[];
     pageSize?: number;
     offset?: number;
+    viewerId?: string | null;
   }): Promise<any[]> {
     const db = getDb();
     try {
       let query = db.select().from(recipes);
-      const conditions = [];
+      const conditions: any[] = [recipeVisibleToViewer(sql`${recipes.id}`, searchParams.viewerId)];
 
       if (searchParams.q) {
         const searchTerm = `%${searchParams.q}%`;
@@ -2264,7 +2267,8 @@ export class DrizzleStorage implements IStorage {
       .select({ recipe: recipes })
       .from(recipeSaves)
       .innerJoin(recipes, eq(recipeSaves.recipeId, recipes.id))
-      .where(eq(recipeSaves.userId, userId))
+      // A recipe saved while the user was a member of a private club is no longer readable once they leave it.
+      .where(and(eq(recipeSaves.userId, userId), recipeVisibleToViewer(sql`${recipes.id}`, userId)))
       .orderBy(desc(recipeSaves.createdAt));
     
     return result.map(row => row.recipe);
