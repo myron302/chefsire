@@ -7,6 +7,8 @@ import { adoptLegacy, checkInventoryAgainstRepo, DEFAULT_ROOT, importBatch, inde
 import { inspectPng } from "../lib/png.mjs";
 import { makePng, makeRoot, makeTar, makeZip, tmpDir, writeInput } from "./helpers.mjs";
 
+const REPO_ROOT = path.resolve(DEFAULT_ROOT, "..", ".."); // assets/drink-image-review -> repository root
+const verifyIsolated = (root) => verify(root, { repoRoot: null }); // temp roots have no ChefSire checkout
 const NOW = new Date("2026-10-20T12:00:00Z");
 const run = (root, input, extra = {}) => importBatch({ root, input, batchId: "test-batch-1", now: NOW, ...extra });
 const reasons = (r) => r.rejected.map((x) => x.reason).join("\n");
@@ -22,7 +24,7 @@ test("single-file import preserves exact bytes and records hash, size and dimens
   assert.equal(rec.sha256, sha256Hex(png)); assert.equal(rec.bytes, png.length);
   assert.deepEqual([rec.width, rec.height], [30, 20]);
   assert.equal(rec.route, "/drinks"); assert.equal(rec.generation.prompt, null, "missing metadata must stay null, not invented");
-  assert.equal(verify(root).ok, true, verify(root).errors.join("\n"));
+  assert.equal(verifyIsolated(root).ok, true, verifyIsolated(root).errors.join("\n"));
 });
 
 test("multi-file import from a directory, with metadata from batch.json", () => {
@@ -34,7 +36,7 @@ test("multi-file import from a directory, with metadata from batch.json", () => 
   assert.equal(r.imported.length, 2);
   const gin = loadRecords(root).find((x) => x.categoryId === "gin");
   assert.equal(gin.generation.provider, "OpenAI image generation"); assert.equal(gin.generation.generationId, "abc");
-  assert.equal(verify(root).ok, true);
+  assert.equal(verifyIsolated(root).ok, true);
 });
 
 test("zip archive (deflate and stored) and tar.gz batches import in one go", () => {
@@ -159,7 +161,7 @@ test("approval decisions are separate, bound to the hash, and a rejected master 
   const gin = manifest.categories.find((c) => c.id === "gin");
   assert.equal(gin.approvalStatus, "pending"); assert.equal(gin.activeRecord.sha256, sha256Hex(second)); assert.equal(gin.supersededRecords.length, 1);
   recordDecision({ root, categoryId: "gin", sha256: sha256Hex(second), status: "approved", decidedBy: "owner", now: NOW });
-  assert.equal(verify(root).ok, true, verify(root).errors.join("\n"));
+  assert.equal(verifyIsolated(root).ok, true, verifyIsolated(root).errors.join("\n"));
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8")).counts.approved, 1);
 });
 
@@ -169,7 +171,7 @@ test("verify detects tampering with a preserved master, a stale manifest and str
   fs.chmodSync(master, 0o644); fs.appendFileSync(master, "x");
   fs.writeFileSync(path.join(root, "batches/test-batch-1/masters/stray.png"), "x");
   fs.writeFileSync(path.join(root, "manifest.json"), "{}\n");
-  const v = verify(root);
+  const v = verifyIsolated(root);
   assert.equal(v.ok, false);
   const text = v.errors.join("\n");
   assert.match(text, /no longer matches/); assert.match(text, /unreferenced file/); assert.match(text, /manifest.json is out of date/);
@@ -193,6 +195,7 @@ test("invalid inventory (duplicate ids/filenames) is refused", () => {
 });
 
 test("real repository: historical masters unchanged, inventory unique, legacy records and derived files current", () => {
+  assert.ok(fs.existsSync(path.join(REPO_ROOT, "client/src/App.tsx")), "REPO_ROOT must be the repository root");
   const v = verify(DEFAULT_ROOT);
   assert.equal(v.ok, true, v.errors.join("\n"));
   const pilot = JSON.parse(fs.readFileSync(path.join(DEFAULT_ROOT, "pilot-records.json"), "utf8"));
@@ -203,7 +206,7 @@ test("real repository: historical masters unchanged, inventory unique, legacy re
   assert.deepEqual(adoptLegacy({ root: copy }).created, []);
   const r = run(copy, writeInput({ "daiquiri-original.png": makePng(12, 8, 21) }));
   assert.equal(r.imported.length, 0); assert.match(reasons(r), /conflicting hash/);
-  assert.equal(verify(copy).ok, true);
+  assert.equal(verify(copy, { repoRoot: REPO_ROOT }).ok, true);
 });
 
 // ---------------------------------------------------------------- alias normalisation (Virgin Cocktails -> Mocktails)
@@ -218,7 +221,7 @@ test("alias filename resolves to the canonical category and is stored under the 
   assert.equal(fs.existsSync(path.join(root, "batches/test-batch-1/masters/virgin-cocktails-original.png")), false);
   const [rec] = loadRecords(root);
   assert.equal(rec.categoryId, "mocktails"); assert.equal(rec.route, "/drinks/potent-potables/mocktails"); assert.equal(rec.resolvedFromAlias, "virgin-cocktails-original.png");
-  assert.equal(verify(root).ok, true, verify(root).errors.join("\n"));
+  assert.equal(verifyIsolated(root).ok, true, verifyIsolated(root).errors.join("\n"));
 });
 
 test("alias never adds a required image: inventory, manifest counts and report", () => {
@@ -269,7 +272,7 @@ test("inventory validation rejects alias collisions and a wrong reconciled count
 });
 
 test("real inventory: 51 canonical destinations, Virgin Cocktails is a verified redirect alias of Mocktails", () => {
-  const inv = loadInventory(DEFAULT_ROOT); const repoRoot = path.resolve(DEFAULT_ROOT, "../../..");
+  const inv = loadInventory(DEFAULT_ROOT); const repoRoot = REPO_ROOT;
   assert.equal(inv.categories.length, 51); assert.equal(inv.reconciliation.status, "RECONCILED");
   assert.equal(inv.categories.filter((c) => c.level === "hub").length, 7);
   const m = inv.categories.find((c) => c.id === "mocktails");
@@ -285,12 +288,76 @@ test("real inventory: 51 canonical destinations, Virgin Cocktails is a verified 
   assert.equal(manifest.categories.find((c) => c.id === "drinks-hub").generationStatus, "missing", "hub photo is not marked generated until its file is imported");
 });
 
-test("repo check flags a missing redirect, an unlisted registry route and a missing hub page", () => {
-  const fake = tmpDir("dpt-app-");
-  fs.mkdirSync(path.join(fake, "client/src/data/drinks"), { recursive: true });
-  fs.writeFileSync(path.join(fake, "client/src/data/drinks/route-registry.ts"), 'route: "/drinks/potent-potables/mocktails", route: "/drinks/potent-potables/virgin-cocktails", route: "/drinks/potent-potables/gin"');
-  fs.writeFileSync(path.join(fake, "client/src/App.tsx"), '<Route path="/drinks/potent-potables/virgin-cocktails"><Redirect to="/drinks/elsewhere" /></Route>');
-  const errs = checkInventoryAgainstRepo(loadInventory(makeRoot()), fake).join("\n");
-  assert.match(errs, /does not redirect to \/drinks\/potent-potables\/mocktails/); assert.match(errs, /has no page at/);
-  assert.match(errs, /canonical route \/drinks\/smoothies\/tropical/);
+// ---------------------------------------------------------------- inventory-vs-application validation (temporary fixtures only)
+
+const REGISTRY = "client/src/data/drinks/route-registry.ts";
+const APP = "client/src/App.tsx";
+const canonicalRoutesOf = (inv) => inv.categories.filter((c) => c.level === "leaf").map((c) => c.route);
+
+/** Copy only the two real source files (and hub page stubs) into a temp repo so failures can be injected without touching the app. */
+function fixtureRepo({ mutateRegistry = (t) => t, mutateApp = (t) => t, skip = [] } = {}) {
+  const repo = tmpDir("dpt-repo-");
+  const inv = loadInventory(DEFAULT_ROOT);
+  for (const [rel, mutate] of [[REGISTRY, mutateRegistry], [APP, mutateApp]]) {
+    if (skip.includes(rel)) continue;
+    const dest = path.join(repo, rel); fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, mutate(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8")));
+  }
+  for (const c of inv.categories.filter((x) => x.level === "hub")) {
+    const page = path.join(repo, c.route === "/drinks" ? "client/src/pages/drinks/index.tsx" : `client/src/pages/drinks/${c.route.split("/")[2]}/index.tsx`);
+    fs.mkdirSync(path.dirname(page), { recursive: true }); fs.writeFileSync(page, "");
+  }
+  return repo;
+}
+
+test("real source files pass, and the unmodified fixture copy passes too (control)", () => {
+  const inv = loadInventory(DEFAULT_ROOT);
+  assert.equal(inv.categories.length, 51);
+  assert.deepEqual(checkInventoryAgainstRepo(inv, REPO_ROOT), []);
+  assert.deepEqual(checkInventoryAgainstRepo(inv, fixtureRepo()), [], "control: fixture must pass before failures are injected");
+});
+
+test("removing a canonical route from the registry fails validation", () => {
+  const inv = loadInventory(DEFAULT_ROOT); const target = "/drinks/potent-potables/gin";
+  assert.ok(canonicalRoutesOf(inv).includes(target));
+  const repo = fixtureRepo({ mutateRegistry: (t) => { assert.ok(t.includes(`route: "${target}"`)); return t.replaceAll(`route: "${target}"`, 'route: "/drinks/removed-for-test"'); } });
+  const errs = checkInventoryAgainstRepo(inv, repo).join("\n");
+  assert.match(errs, /canonical route \/drinks\/potent-potables\/gin .* not in the route registry/);
+  assert.match(errs, /registry route \/drinks\/removed-for-test is neither/);
+});
+
+test("removing the Virgin Cocktails redirect fails validation", () => {
+  const inv = loadInventory(DEFAULT_ROOT);
+  const repo = fixtureRepo({ mutateApp: (t) => {
+    const marker = 'path="/drinks/potent-potables/virgin-cocktails"'; assert.ok(t.includes(marker));
+    return t.replace(marker, 'path="/drinks/potent-potables/virgin-cocktails-removed"');
+  } });
+  assert.match(checkInventoryAgainstRepo(inv, repo).join("\n"), /alias \/drinks\/potent-potables\/virgin-cocktails does not redirect to \/drinks\/potent-potables\/mocktails/);
+});
+
+test("an incorrect alias redirect target is detected", () => {
+  const inv = loadInventory(DEFAULT_ROOT);
+  const repo = fixtureRepo({ mutateApp: (t) => {
+    const re = /(path="\/drinks\/potent-potables\/virgin-cocktails">\s*<Redirect to=")[^"]+(")/; assert.match(t, re);
+    return t.replace(re, "$1/drinks/potent-potables/gin$2");
+  } });
+  assert.match(checkInventoryAgainstRepo(inv, repo).join("\n"), /does not redirect to \/drinks\/potent-potables\/mocktails/);
+  // and an inventory alias pointing at a non-canonical category is refused as well
+  const bad = structuredClone(inv); bad.categories.find((c) => c.id === "mocktails").route = "/drinks/potent-potables/not-a-route";
+  assert.match(checkInventoryAgainstRepo(bad, fixtureRepo()).join("\n"), /does not redirect to \/drinks\/potent-potables\/not-a-route|not in the route registry/);
+});
+
+test("missing or empty source files fail explicitly instead of passing silently", () => {
+  const inv = loadInventory(DEFAULT_ROOT);
+  assert.match(checkInventoryAgainstRepo(inv, tmpDir("dpt-empty-")).join("\n"), /cannot read client\/src\/data\/drinks\/route-registry.ts[\s\S]*cannot read client\/src\/App.tsx/);
+  assert.match(checkInventoryAgainstRepo(inv, fixtureRepo({ skip: [APP] })).join("\n"), /cannot read client\/src\/App.tsx/);
+  assert.match(checkInventoryAgainstRepo(inv, fixtureRepo({ skip: [REGISTRY] })).join("\n"), /cannot read client\/src\/data\/drinks\/route-registry.ts/);
+  assert.match(checkInventoryAgainstRepo(inv, fixtureRepo({ mutateRegistry: () => "// no routes" })).join("\n"), /contains no routes/);
+});
+
+test("verify() fails when its repository root has no source files, and the CLI default root is the real checkout", () => {
+  const v = verify(DEFAULT_ROOT, { repoRoot: tmpDir("dpt-norepo-") });
+  assert.equal(v.ok, false); assert.match(v.errors.join("\n"), /inventory could not be validated/);
+  assert.equal(path.resolve(DEFAULT_ROOT, "..", ".."), REPO_ROOT);
+  assert.equal(verify(DEFAULT_ROOT).ok, true, "default repo root must resolve to the real repository");
 });

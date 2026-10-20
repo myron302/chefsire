@@ -467,7 +467,8 @@ export function recordDecision({ root = DEFAULT_ROOT, categoryId: requestedId, s
 
 // ---------------------------------------------------------------- verification
 
-export function verify(root = DEFAULT_ROOT) {
+/** repoRoot: ChefSire checkout to validate the inventory against (default: two levels above root). Pass null to skip, for isolated test roots only. */
+export function verify(root = DEFAULT_ROOT, { repoRoot = path.resolve(root, "..", "..") } = {}) {
   const p = paths(root);
   const errors = [];
   let inv;
@@ -530,7 +531,7 @@ export function verify(root = DEFAULT_ROOT) {
   }
 
   // When run inside the ChefSire checkout, every canonical route must exist and every alias must really redirect.
-  errors.push(...checkInventoryAgainstRepo(inv, path.resolve(root, "..", "..")));
+  if (repoRoot !== null) errors.push(...checkInventoryAgainstRepo(inv, repoRoot));
 
   // Derived outputs must be current.
   try {
@@ -545,14 +546,25 @@ export function verify(root = DEFAULT_ROOT) {
 
 // ---------------------------------------------------------------- inventory vs. application (read-only)
 
-/** Compare the inventory with the route registry, hub pages and redirects. Skipped outside a ChefSire checkout. */
+/**
+ * Compare the inventory with the route registry, hub pages and redirects. Returns a list of errors.
+ * Unreadable or empty source files are errors: validation never passes by silently skipping.
+ */
 export function checkInventoryAgainstRepo(inv, repoRoot) {
-  const registryFile = path.join(repoRoot, "client/src/data/drinks/route-registry.ts");
-  const appFile = path.join(repoRoot, "client/src/App.tsx");
-  if (!fs.existsSync(registryFile) || !fs.existsSync(appFile)) return [];
+  const sources = { registry: "client/src/data/drinks/route-registry.ts", app: "client/src/App.tsx" };
+  const text = {};
   const errors = [];
-  const registryRoutes = new Set([...fs.readFileSync(registryFile, "utf8").matchAll(/route: "([^"]+)"/g)].map((m) => m[1]));
-  const app = fs.readFileSync(appFile, "utf8");
+  for (const [key, rel] of Object.entries(sources)) {
+    try {
+      text[key] = fs.readFileSync(path.join(repoRoot, rel), "utf8");
+    } catch (e) {
+      errors.push(`cannot read ${rel} under ${repoRoot} (${e.code ?? e.message}); inventory could not be validated`);
+    }
+  }
+  if (errors.length) return errors;
+  const registryRoutes = new Set([...text.registry.matchAll(/route: "([^"]+)"/g)].map((m) => m[1]));
+  if (registryRoutes.size === 0) return [`${sources.registry} contains no routes; inventory could not be validated`];
+  const app = text.app;
   const aliasRoutes = new Map(); // alias route -> canonical route
   for (const c of inv.categories) for (const a of c.aliases ?? []) aliasRoutes.set(a.route, c.route);
 
