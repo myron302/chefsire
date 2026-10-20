@@ -1,0 +1,363 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { test } from "node:test";
+import zlib from "node:zlib";
+import { adoptLegacy, checkInventoryAgainstRepo, DEFAULT_ROOT, importBatch, indexInventory, loadInventory, loadRecords, recordDecision, sha256Hex, verify } from "../lib/core.mjs";
+import { inspectPng } from "../lib/png.mjs";
+import { makePng, makeRoot, makeTar, makeZip, tmpDir, writeInput } from "./helpers.mjs";
+
+const REPO_ROOT = path.resolve(DEFAULT_ROOT, "..", ".."); // assets/drink-image-review -> repository root
+const verifyIsolated = (root) => verify(root, { repoRoot: null }); // temp roots have no ChefSire checkout
+const NOW = new Date("2026-10-20T12:00:00Z");
+const run = (root, input, extra = {}) => importBatch({ root, input, batchId: "test-batch-1", now: NOW, ...extra });
+const reasons = (r) => r.rejected.map((x) => x.reason).join("\n");
+const snapshot = (dir) => Object.fromEntries(fs.readdirSync(dir, { recursive: true }).filter((f) => fs.statSync(path.join(dir, f)).isFile()).sort().map((f) => [f, sha256Hex(fs.readFileSync(path.join(dir, f)))]));
+
+test("single-file import preserves exact bytes and records hash, size and dimensions", () => {
+  const root = makeRoot(); const png = makePng(30, 20, 1);
+  const r = run(root, writeInput({ "drinks-hub-original.png": png }));
+  assert.equal(r.imported.length, 1); assert.equal(r.rejected.length, 0);
+  const dest = path.join(root, "batches/test-batch-1/masters/drinks-hub-original.png");
+  assert.ok(fs.readFileSync(dest).equals(png), "master must be byte-identical");
+  const [rec] = loadRecords(root);
+  assert.equal(rec.sha256, sha256Hex(png)); assert.equal(rec.bytes, png.length);
+  assert.deepEqual([rec.width, rec.height], [30, 20]);
+  assert.equal(rec.route, "/drinks"); assert.equal(rec.generation.prompt, null, "missing metadata must stay null, not invented");
+  assert.equal(verifyIsolated(root).ok, true, verifyIsolated(root).errors.join("\n"));
+});
+
+test("multi-file import from a directory, with metadata from batch.json", () => {
+  const root = makeRoot();
+  const r = run(root, writeInput({
+    "drinks-hub-original.png": makePng(12, 8, 1), "gin-original.png": makePng(12, 8, 2),
+    "batch.json": { defaults: { provider: "OpenAI image generation" }, files: { "gin-original.png": { generationId: "abc", prompt: "p" } } },
+  }));
+  assert.equal(r.imported.length, 2);
+  const gin = loadRecords(root).find((x) => x.categoryId === "gin");
+  assert.equal(gin.generation.provider, "OpenAI image generation"); assert.equal(gin.generation.generationId, "abc");
+  assert.equal(verifyIsolated(root).ok, true);
+});
+
+test("zip archive (deflate and stored) and tar.gz batches import in one go", () => {
+  for (const [label, make] of [["zip", (e) => makeZip(e)], ["zip-stored", (e) => makeZip(e, { deflate: false })], ["tar.gz", (e) => zlib.gzipSync(makeTar(e))]]) {
+    const root = makeRoot(); const dir = tmpDir();
+    const a = makePng(12, 8, 3); const b = makePng(12, 8, 4);
+    const ext = label.startsWith("zip") ? "zip" : "tar.gz";
+    const file = path.join(dir, `batch.${ext}`);
+    fs.writeFileSync(file, make({ "inbox/drinks-hub-original.png": a, "inbox/gin-original.png": b, "__MACOSX/._x": Buffer.from("x") }));
+    const r = run(root, file);
+    assert.equal(r.imported.length, 2, `${label}: ${reasons(r)}`);
+    assert.ok(fs.readFileSync(path.join(root, "batches/test-batch-1/masters/gin-original.png")).equals(b), `${label}: bytes`);
+  }
+});
+
+test("archive path traversal and duplicate names are rejected", () => {
+  const root = makeRoot(); const dir = tmpDir(); const file = path.join(dir, "evil.zip");
+  fs.writeFileSync(file, makeZip({ "../escape.png": makePng(), "a/gin-original.png": makePng(12, 8, 1), "b/gin-original.png": makePng(12, 8, 2) }));
+  const r = run(root, file);
+  assert.equal(r.imported.length, 0); assert.match(reasons(r), /path traversal/); assert.match(reasons(r), /duplicate file name/);
+  assert.equal(fs.existsSync(path.join(dir, "escape.png")), false);
+});
+
+test("repeated import is idempotent and rewrites nothing", () => {
+  const root = makeRoot(); const input = writeInput({ "gin-original.png": makePng(12, 8, 5) });
+  run(root, input); const before = snapshot(root);
+  const again = run(root, input);
+  assert.equal(again.imported.length, 0); assert.equal(again.unchanged.length, 1); assert.equal(again.rejected.length, 0);
+  assert.deepEqual(snapshot(root), before);
+  assert.equal(run(root, input, {}).unchanged.length, 1);
+});
+
+test("a different image for an already-preserved category is a conflict and never overwrites", () => {
+  const root = makeRoot(); const original = makePng(12, 8, 6);
+  run(root, writeInput({ "gin-original.png": original })); const before = snapshot(root);
+  const r = run(root, writeInput({ "gin-original.png": makePng(12, 8, 7) }));
+  assert.equal(r.imported.length, 0); assert.match(reasons(r), /conflicting hash/);
+  assert.deepEqual(snapshot(root), before);
+});
+
+test("duplicate content: same image for two categories, in one batch or across batches", () => {
+  const root = makeRoot(); const same = makePng(12, 8, 8);
+  const r1 = run(root, writeInput({ "gin-original.png": same, "drinks-hub-original.png": same }));
+  assert.equal(r1.imported.length, 0); assert.match(reasons(r1), /multiple categories/);
+  run(root, writeInput({ "gin-original.png": same }));
+  const r2 = importBatch({ root, input: writeInput({ "drinks-hub-original.png": same }), batchId: "test-batch-2", now: NOW });
+  assert.match(reasons(r2), /already preserved for category "gin"/);
+});
+
+test("invalid mappings are rejected: unknown name, wrong id, non-canonical name, non-PNG", () => {
+  const root = makeRoot();
+  const r = run(root, writeInput({
+    "mystery.png": makePng(), "notes.jpg": Buffer.from("jpeg"), "gin-original.png": makePng(12, 8, 9),
+    "batch.json": { files: { "gin-original.png": { categoryId: "vodka" }, "mystery.png": { categoryId: "drinks-hub" } } },
+  }));
+  assert.equal(r.imported.length, 0);
+  assert.match(reasons(r), /unknown category id "vodka"/); assert.match(reasons(r), /canonical master filename/); assert.match(reasons(r), /not a PNG/);
+  assert.equal(loadRecords(root).length, 0);
+});
+
+test("corrupted PNGs are rejected: truncated, bad CRC, damaged image data, trailing bytes, garbage", () => {
+  const root = makeRoot(); const good = makePng(12, 8, 10);
+  const badCrc = Buffer.from(good); badCrc[badCrc.length - 20] ^= 0xff;
+  const badData = Buffer.from(good); const idat = badData.indexOf("IDAT"); badData[idat + 6] ^= 0xff;
+  const r = run(root, writeInput({
+    "gin-original.png": good.subarray(0, good.length - 30), "drinks-hub-original.png": badCrc,
+    "tropical-smoothies-original.png": Buffer.concat([good, Buffer.from("junk")]),
+  }));
+  assert.equal(r.imported.length, 0); assert.equal(r.rejected.length, 3);
+  assert.ok(r.rejected.every((x) => /corrupted or invalid PNG/.test(x.reason)), reasons(r));
+  assert.equal(inspectPng(badData).ok, false);
+  assert.equal(inspectPng(Buffer.from("not a png at all, just text")).ok, false);
+  assert.equal(inspectPng(good).ok, true);
+});
+
+test("hash mismatch (SHA256SUMS and batch.json) and missing declared files are rejected", () => {
+  const root = makeRoot(); const png = makePng(12, 8, 11); const sha = sha256Hex(png);
+  const r = run(root, writeInput({
+    "gin-original.png": png, "drinks-hub-original.png": makePng(12, 8, 12),
+    "SHA256SUMS": `${"0".repeat(64)}  gin-original.png\n${sha}  ghost-original.png\n`,
+    "batch.json": { files: { "drinks-hub-original.png": { expectedSha256: "f".repeat(64) } } },
+  }));
+  assert.equal(r.imported.length, 0);
+  assert.match(reasons(r), /hash mismatch/); assert.match(reasons(r), /ghost-original.png|missing from the input/);
+  const ok = run(root, writeInput({ "gin-original.png": png, "SHA256SUMS": `${sha}  gin-original.png\n` }));
+  assert.equal(ok.imported.length, 1);
+});
+
+test("fixtures declared in batch.json are never preserved as originals", () => {
+  const root = makeRoot();
+  const r = run(root, writeInput({ "gin-original.png": makePng(), "batch.json": { files: { "gin-original.png": { fixture: true } } } }));
+  assert.equal(r.imported.length, 0); assert.match(reasons(r), /test fixture/);
+});
+
+test("dry run validates without writing", () => {
+  const root = makeRoot(); const before = snapshot(root);
+  const r = run(root, writeInput({ "gin-original.png": makePng(12, 8, 13) }), { dryRun: true });
+  assert.equal(r.imported.length, 1); assert.deepEqual(snapshot(root), before);
+});
+
+test("an interrupted import (master without record) is adopted only if byte-identical", () => {
+  const root = makeRoot(); const png = makePng(12, 8, 14);
+  const dest = path.join(root, "batches/test-batch-1/masters/gin-original.png");
+  fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.writeFileSync(dest, png);
+  assert.equal(run(root, writeInput({ "gin-original.png": png })).imported.length, 1);
+  const root2 = makeRoot(); const dest2 = path.join(root2, "batches/test-batch-1/masters/gin-original.png");
+  fs.mkdirSync(path.dirname(dest2), { recursive: true }); fs.writeFileSync(dest2, makePng(12, 8, 99));
+  assert.match(reasons(run(root2, writeInput({ "gin-original.png": png }))), /refusing to overwrite/);
+});
+
+test("approval decisions are separate, bound to the hash, and a rejected master can be replaced without deleting it", () => {
+  const root = makeRoot(); const first = makePng(12, 8, 15); const second = makePng(12, 8, 16);
+  run(root, writeInput({ "gin-original.png": first }));
+  const recordFile = path.join(root, loadRecords(root)[0].recordPath); const recordBytes = fs.readFileSync(recordFile);
+  assert.throws(() => recordDecision({ root, categoryId: "gin", sha256: "0".repeat(64), status: "approved", decidedBy: "owner" }), /exact file content/);
+  recordDecision({ root, categoryId: "gin", sha256: sha256Hex(first), status: "rejected", decidedBy: "owner", note: "too dark", now: NOW });
+  assert.ok(fs.readFileSync(recordFile).equals(recordBytes), "generation record must not change when a decision is recorded");
+  const r = importBatch({ root, input: writeInput({ "gin-original.png": second }), batchId: "replace-1", now: NOW });
+  assert.equal(r.imported.length, 1, reasons(r));
+  assert.ok(fs.readFileSync(path.join(root, "batches/test-batch-1/masters/gin-original.png")).equals(first), "rejected master stays preserved");
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+  const gin = manifest.categories.find((c) => c.id === "gin");
+  assert.equal(gin.approvalStatus, "pending"); assert.equal(gin.activeRecord.sha256, sha256Hex(second)); assert.equal(gin.supersededRecords.length, 1);
+  recordDecision({ root, categoryId: "gin", sha256: sha256Hex(second), status: "approved", decidedBy: "owner", now: NOW });
+  assert.equal(verifyIsolated(root).ok, true, verifyIsolated(root).errors.join("\n"));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8")).counts.approved, 1);
+});
+
+test("verify detects tampering with a preserved master, a stale manifest and stray files", () => {
+  const root = makeRoot(); run(root, writeInput({ "gin-original.png": makePng(12, 8, 17) }));
+  const master = path.join(root, "batches/test-batch-1/masters/gin-original.png");
+  fs.chmodSync(master, 0o644); fs.appendFileSync(master, "x");
+  fs.writeFileSync(path.join(root, "batches/test-batch-1/masters/stray.png"), "x");
+  fs.writeFileSync(path.join(root, "manifest.json"), "{}\n");
+  const v = verifyIsolated(root);
+  assert.equal(v.ok, false);
+  const text = v.errors.join("\n");
+  assert.match(text, /no longer matches/); assert.match(text, /unreferenced file/); assert.match(text, /manifest.json is out of date/);
+});
+
+test("report lists completed, pending, rejected and missing images", () => {
+  const root = makeRoot(); const a = makePng(12, 8, 18); const b = makePng(12, 8, 19);
+  run(root, writeInput({ "gin-original.png": a, "drinks-hub-original.png": b }));
+  recordDecision({ root, categoryId: "gin", sha256: sha256Hex(a), status: "approved", decidedBy: "owner", now: NOW });
+  recordDecision({ root, categoryId: "drinks-hub", sha256: sha256Hex(b), status: "rejected", decidedBy: "owner", now: NOW });
+  const report = fs.readFileSync(path.join(root, "REPORT.md"), "utf8");
+  assert.match(report, /1 approved · 0 pending review · 1 rejected \(replacement needed\) · 2 not yet received/);
+  assert.match(report, /Missing[\s\S]*tropical-smoothies-original\.png/);
+});
+
+test("invalid inventory (duplicate ids/filenames) is refused", () => {
+  const root = makeRoot();
+  const file = path.join(root, "categories.json"); const inv = JSON.parse(fs.readFileSync(file, "utf8"));
+  inv.categories.push({ ...inv.categories[0] }); fs.writeFileSync(file, JSON.stringify(inv));
+  assert.throws(() => run(root, writeInput({ "gin-original.png": makePng() })), /duplicate/);
+});
+
+test("real repository: historical masters unchanged, inventory unique, legacy records and derived files current", () => {
+  assert.ok(fs.existsSync(path.join(REPO_ROOT, "client/src/App.tsx")), "REPO_ROOT must be the repository root");
+  const v = verify(DEFAULT_ROOT);
+  assert.equal(v.ok, true, v.errors.join("\n"));
+  const pilot = JSON.parse(fs.readFileSync(path.join(DEFAULT_ROOT, "pilot-records.json"), "utf8"));
+  for (const h of pilot) assert.equal(sha256Hex(fs.readFileSync(path.join(DEFAULT_ROOT, "masters", `${h.name}.png`))), h.sha256);
+  assert.equal(loadRecords(DEFAULT_ROOT).filter((r) => r.batch === "pilot-2026-10-19").length, 5);
+  // Re-adopting is a no-op, and importing a legacy category's filename with different bytes is refused.
+  const copy = tmpDir("dpt-repo-"); fs.cpSync(DEFAULT_ROOT, copy, { recursive: true });
+  assert.deepEqual(adoptLegacy({ root: copy }).created, []);
+  const r = run(copy, writeInput({ "daiquiri-original.png": makePng(12, 8, 21) }));
+  assert.equal(r.imported.length, 0); assert.match(reasons(r), /conflicting hash/);
+  assert.equal(verify(copy, { repoRoot: REPO_ROOT }).ok, true);
+});
+
+// ---------------------------------------------------------------- alias normalisation (Virgin Cocktails -> Mocktails)
+
+const mockOf = (root) => JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8")).categories.find((c) => c.id === "mocktails");
+
+test("alias filename resolves to the canonical category and is stored under the canonical master name", () => {
+  const root = makeRoot(); const png = makePng(12, 8, 30);
+  const r = run(root, writeInput({ "virgin-cocktails-original.png": png }));
+  assert.equal(r.imported.length, 1, reasons(r)); assert.equal(r.imported[0].categoryId, "mocktails");
+  assert.ok(fs.readFileSync(path.join(root, "batches/test-batch-1/masters/mocktails-original.png")).equals(png));
+  assert.equal(fs.existsSync(path.join(root, "batches/test-batch-1/masters/virgin-cocktails-original.png")), false);
+  const [rec] = loadRecords(root);
+  assert.equal(rec.categoryId, "mocktails"); assert.equal(rec.route, "/drinks/potent-potables/mocktails"); assert.equal(rec.resolvedFromAlias, "virgin-cocktails-original.png");
+  assert.equal(verifyIsolated(root).ok, true, verifyIsolated(root).errors.join("\n"));
+});
+
+test("alias never adds a required image: inventory, manifest counts and report", () => {
+  const root = makeRoot(); const inv = loadInventory(root);
+  assert.equal(inv.categories.length, 4); assert.equal(inv.categories.some((c) => c.id === "virgin-cocktails"), false);
+  run(root, writeInput({ "gin-original.png": makePng(12, 8, 31) }));
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+  assert.equal(manifest.counts.total, 4); assert.equal(manifest.counts.missing, 3);
+  assert.deepEqual(mockOf(root).aliasRoutes, ["/drinks/potent-potables/virgin-cocktails"]);
+  const report = fs.readFileSync(path.join(root, "REPORT.md"), "utf8");
+  assert.match(report, /Mocktails \| `\/drinks\/potent-potables\/mocktails` \(alias: `\/drinks\/potent-potables\/virgin-cocktails`\)/);
+  assert.doesNotMatch(report, /virgin-cocktails-original\.png/);
+});
+
+test("category lookup, batch.json and review accept the alias id", () => {
+  const { byId, byFilename } = indexInventory(loadInventory(makeRoot()));
+  assert.equal(byId.get("virgin-cocktails").id, "mocktails"); assert.equal(byFilename.get("virgin-cocktails-original.png").id, "mocktails");
+  const root = makeRoot(); const png = makePng(12, 8, 32);
+  const r = run(root, writeInput({ "virgin-cocktails-original.png": png, "batch.json": { files: { "virgin-cocktails-original.png": { categoryId: "virgin-cocktails" } } } }));
+  assert.equal(r.imported[0].categoryId, "mocktails", reasons(r));
+  const d = recordDecision({ root, categoryId: "virgin-cocktails", sha256: sha256Hex(png), status: "approved", decidedBy: "owner", now: NOW });
+  assert.equal(d.categoryId, "mocktails"); assert.equal(mockOf(root).approvalStatus, "approved");
+});
+
+test("canonical and alias filenames for the same category are ambiguous and both rejected", () => {
+  const root = makeRoot();
+  const r = run(root, writeInput({ "mocktails-original.png": makePng(12, 8, 33), "virgin-cocktails-original.png": makePng(12, 8, 34) }));
+  assert.equal(r.imported.length, 0); assert.equal(r.rejected.length, 2); assert.match(reasons(r), /duplicate category assignment/);
+  assert.equal(loadRecords(root).length, 0);
+});
+
+test("alias and canonical imports share duplicate and conflict detection, and stay idempotent", () => {
+  const root = makeRoot(); const png = makePng(12, 8, 35);
+  run(root, writeInput({ "virgin-cocktails-original.png": png })); const before = snapshot(root);
+  assert.equal(run(root, writeInput({ "mocktails-original.png": png })).unchanged.length, 1, "same bytes via the canonical name is unchanged");
+  assert.equal(run(root, writeInput({ "virgin-cocktails-original.png": png })).unchanged.length, 1);
+  assert.match(reasons(run(root, writeInput({ "mocktails-original.png": makePng(12, 8, 36) }))), /conflicting hash/);
+  assert.match(reasons(run(root, writeInput({ "gin-original.png": png }))), /already preserved for category "mocktails"/);
+  assert.deepEqual(snapshot(root), before);
+});
+
+test("inventory validation rejects alias collisions and a wrong reconciled count", () => {
+  const root = makeRoot(); const file = path.join(root, "categories.json"); const inv = JSON.parse(fs.readFileSync(file, "utf8"));
+  const bad = structuredClone(inv); bad.categories[1].aliases = [{ id: "gin", route: "/drinks/x", masterFilename: null }];
+  fs.writeFileSync(file, JSON.stringify(bad)); assert.throws(() => loadInventory(root), /collides/);
+  const wrong = structuredClone(inv); wrong.reconciliation.expectedDestinationCount = 51;
+  fs.writeFileSync(file, JSON.stringify(wrong)); assert.throws(() => loadInventory(root), /marked RECONCILED/);
+});
+
+test("real inventory: 51 canonical destinations, Virgin Cocktails is a verified redirect alias of Mocktails", () => {
+  const inv = loadInventory(DEFAULT_ROOT); const repoRoot = REPO_ROOT;
+  assert.equal(inv.categories.length, 51); assert.equal(inv.reconciliation.status, "RECONCILED");
+  assert.equal(inv.categories.filter((c) => c.level === "hub").length, 7);
+  const m = inv.categories.find((c) => c.id === "mocktails");
+  assert.deepEqual(m.aliases.map((a) => a.route), ["/drinks/potent-potables/virgin-cocktails", "/drinks/potent-potables/virgin"]);
+  assert.deepEqual(checkInventoryAgainstRepo(inv, repoRoot), []);
+  const manifest = JSON.parse(fs.readFileSync(path.join(DEFAULT_ROOT, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.counts, { total: 51, approved: 0, pendingReview: 5, rejectedNeedsReplacement: 0, missing: 46 });
+  const assigned = Object.fromEntries(manifest.categories.filter((c) => c.activeRecord).map((c) => [c.id, c.activeRecord.masterPath.split("/").pop()]));
+  assert.deepEqual(assigned, {
+    "smoothies-hub": "strawberry-banana-smoothie-original.png", "protein-shakes-hub": "chocolate-whey-protein-shake-original.png",
+    daiquiri: "daiquiri-original.png", martinis: "classic-dry-gin-martini-original.png", "whiskey-bourbon": "bourbon-large-ice-rocks-original.png",
+  });
+  assert.equal(manifest.categories.find((c) => c.id === "drinks-hub").generationStatus, "missing", "hub photo is not marked generated until its file is imported");
+});
+
+// ---------------------------------------------------------------- inventory-vs-application validation (temporary fixtures only)
+
+const REGISTRY = "client/src/data/drinks/route-registry.ts";
+const APP = "client/src/App.tsx";
+const canonicalRoutesOf = (inv) => inv.categories.filter((c) => c.level === "leaf").map((c) => c.route);
+
+/** Copy only the two real source files (and hub page stubs) into a temp repo so failures can be injected without touching the app. */
+function fixtureRepo({ mutateRegistry = (t) => t, mutateApp = (t) => t, skip = [] } = {}) {
+  const repo = tmpDir("dpt-repo-");
+  const inv = loadInventory(DEFAULT_ROOT);
+  for (const [rel, mutate] of [[REGISTRY, mutateRegistry], [APP, mutateApp]]) {
+    if (skip.includes(rel)) continue;
+    const dest = path.join(repo, rel); fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, mutate(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8")));
+  }
+  for (const c of inv.categories.filter((x) => x.level === "hub")) {
+    const page = path.join(repo, c.route === "/drinks" ? "client/src/pages/drinks/index.tsx" : `client/src/pages/drinks/${c.route.split("/")[2]}/index.tsx`);
+    fs.mkdirSync(path.dirname(page), { recursive: true }); fs.writeFileSync(page, "");
+  }
+  return repo;
+}
+
+test("real source files pass, and the unmodified fixture copy passes too (control)", () => {
+  const inv = loadInventory(DEFAULT_ROOT);
+  assert.equal(inv.categories.length, 51);
+  assert.deepEqual(checkInventoryAgainstRepo(inv, REPO_ROOT), []);
+  assert.deepEqual(checkInventoryAgainstRepo(inv, fixtureRepo()), [], "control: fixture must pass before failures are injected");
+});
+
+test("removing a canonical route from the registry fails validation", () => {
+  const inv = loadInventory(DEFAULT_ROOT); const target = "/drinks/potent-potables/gin";
+  assert.ok(canonicalRoutesOf(inv).includes(target));
+  const repo = fixtureRepo({ mutateRegistry: (t) => { assert.ok(t.includes(`route: "${target}"`)); return t.replaceAll(`route: "${target}"`, 'route: "/drinks/removed-for-test"'); } });
+  const errs = checkInventoryAgainstRepo(inv, repo).join("\n");
+  assert.match(errs, /canonical route \/drinks\/potent-potables\/gin .* not in the route registry/);
+  assert.match(errs, /registry route \/drinks\/removed-for-test is neither/);
+});
+
+test("removing the Virgin Cocktails redirect fails validation", () => {
+  const inv = loadInventory(DEFAULT_ROOT);
+  const repo = fixtureRepo({ mutateApp: (t) => {
+    const marker = 'path="/drinks/potent-potables/virgin-cocktails"'; assert.ok(t.includes(marker));
+    return t.replace(marker, 'path="/drinks/potent-potables/virgin-cocktails-removed"');
+  } });
+  assert.match(checkInventoryAgainstRepo(inv, repo).join("\n"), /alias \/drinks\/potent-potables\/virgin-cocktails does not redirect to \/drinks\/potent-potables\/mocktails/);
+});
+
+test("an incorrect alias redirect target is detected", () => {
+  const inv = loadInventory(DEFAULT_ROOT);
+  const repo = fixtureRepo({ mutateApp: (t) => {
+    const re = /(path="\/drinks\/potent-potables\/virgin-cocktails">\s*<Redirect to=")[^"]+(")/; assert.match(t, re);
+    return t.replace(re, "$1/drinks/potent-potables/gin$2");
+  } });
+  assert.match(checkInventoryAgainstRepo(inv, repo).join("\n"), /does not redirect to \/drinks\/potent-potables\/mocktails/);
+  // and an inventory alias pointing at a non-canonical category is refused as well
+  const bad = structuredClone(inv); bad.categories.find((c) => c.id === "mocktails").route = "/drinks/potent-potables/not-a-route";
+  assert.match(checkInventoryAgainstRepo(bad, fixtureRepo()).join("\n"), /does not redirect to \/drinks\/potent-potables\/not-a-route|not in the route registry/);
+});
+
+test("missing or empty source files fail explicitly instead of passing silently", () => {
+  const inv = loadInventory(DEFAULT_ROOT);
+  assert.match(checkInventoryAgainstRepo(inv, tmpDir("dpt-empty-")).join("\n"), /cannot read client\/src\/data\/drinks\/route-registry.ts[\s\S]*cannot read client\/src\/App.tsx/);
+  assert.match(checkInventoryAgainstRepo(inv, fixtureRepo({ skip: [APP] })).join("\n"), /cannot read client\/src\/App.tsx/);
+  assert.match(checkInventoryAgainstRepo(inv, fixtureRepo({ skip: [REGISTRY] })).join("\n"), /cannot read client\/src\/data\/drinks\/route-registry.ts/);
+  assert.match(checkInventoryAgainstRepo(inv, fixtureRepo({ mutateRegistry: () => "// no routes" })).join("\n"), /contains no routes/);
+});
+
+test("verify() fails when its repository root has no source files, and the CLI default root is the real checkout", () => {
+  const v = verify(DEFAULT_ROOT, { repoRoot: tmpDir("dpt-norepo-") });
+  assert.equal(v.ok, false); assert.match(v.errors.join("\n"), /inventory could not be validated/);
+  assert.equal(path.resolve(DEFAULT_ROOT, "..", ".."), REPO_ROOT);
+  assert.equal(verify(DEFAULT_ROOT).ok, true, "default repo root must resolve to the real repository");
+});

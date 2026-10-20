@@ -26,3 +26,7 @@ coverage/
 .vite/
 .eslintcache
 *.log
+
+# Drink photography inbox: staged archives/PNGs are inputs, never committed (see docs/drink-photography-preservation.md)
+assets/drink-image-review/incoming/*
+!assets/drink-image-review/incoming/README.md
