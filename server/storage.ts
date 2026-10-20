@@ -146,6 +146,7 @@ export interface IStorage {
     mealTypes?: string[];
     pageSize?: number;
     offset?: number;
+    viewerId?: string | null;
   }): Promise<any[]>;
 
   // Stories/Bites, Likes, Comments, Follows
@@ -786,11 +787,12 @@ export class DrizzleStorage implements IStorage {
     mealTypes?: string[];
     pageSize?: number;
     offset?: number;
+    viewerId?: string | null;
   }): Promise<any[]> {
     const db = getDb();
     try {
       let query = db.select().from(recipes);
-      const conditions = [];
+      const conditions: any[] = [recipeVisibleToViewer(sql`${recipes.id}`, searchParams.viewerId)];
 
       if (searchParams.q) {
         const searchTerm = `%${searchParams.q}%`;

@@ -48,6 +48,12 @@ Two further findings: `POST /week/entry` rejected external provider recipes (`so
 - Recommendation generation and the stored-recommendation list in `meal-planner-advanced.ts` use the same visibility rule. Week generation's recipe pool already did.
 - No migration beyond the one above.
 
+## Autocomplete and meal-plan comment deletion (review follow-up)
+
+- `GET /api/search/autocomplete` now passes the session viewer (`viewerIdFrom(req)`, from `optionalAuth`, never a query parameter) to `searchRecipes()`. Before, members and owners were treated as anonymous and could not find their own private-club recipes. `/api/recipes/search` and `/random` already forwarded the viewer; the unused `storage.searchLocalRecipes` now applies the same visibility rule so it cannot become an unfiltered entry point.
+- `DELETE /meal-plans/:id/comments/:commentId` runs `mealPlanExists(planId, viewerId)` first: an inaccessible plan is the plain `Meal plan not found` 404, the comment is not touched and no engagement counts are returned. Ownership of the comment is still enforced.
+- The shared-week `DELETE` routes (like, save, comment) returned engagement stats for a week that is no longer public, unlike their POST/GET siblings. They now use the same `publicSharedWeekExists` gate.
+
 ## Running the new suites
 
 They use a real local PostgreSQL, like the other `*.postgres.test.ts` suites, and recreate the tables they need. Run them one file at a time (they share table names):

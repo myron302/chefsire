@@ -155,6 +155,74 @@ if (!PG_URL) {
     assert.equal((await ev("anon", "draft")).status, 404);
   });
 
+  test("DELETE comment: ownership AND plan visibility are both required (non-disclosing 404, no state change, no counts)", async () => {
+    const comment = async (who: string, planKey: string, text = `c-${who}-${planKey}`) =>
+      (await local.query(`INSERT INTO meal_plan_comments (user_id, blueprint_id, comment) VALUES ($1, $2, $3) RETURNING id`, [ids[who], plan[planKey], text])).rows[0].id as string;
+    const gone = async (id: string) => (await local.query(`SELECT deleted_at FROM meal_plan_comments WHERE id = $1`, [id])).rows[0].deleted_at !== null;
+    const del = (who: string, planKey: string, id: string) => call("DELETE", `/api/meal-plans/${plan[planKey]}/comments/${id}`, who);
+
+    // 1 + 2: own comment on an accessible plan works; someone else's does not.
+    const own = await comment("stranger", "paid");
+    const others = await comment("buyer", "paid");
+    assert.equal((await del("stranger", "paid", others)).status, 404);
+    assert.equal(await gone(others), false);
+    const ok = await del("stranger", "paid", own);
+    assert.equal(ok.status, 200);
+    assert.equal(typeof ok.json.commentCount, "number", "an authorized delete still returns the engagement stats");
+    assert.equal(await gone(own), true);
+
+    // 3 + 4 + 5: a former viewer (plan no longer accessible to them) cannot delete; state unchanged; nothing about the plan disclosed.
+    const stale = await comment("stranger", "draft");
+    const denied = await del("stranger", "draft", stale);
+    assert.equal(denied.status, 404);
+    assert.deepEqual(denied.json, { message: "Meal plan not found" });
+    assert.equal(await gone(stale), false, "the comment must be untouched");
+    for (const key of ["likeCount", "saveCount", "commentCount", "viewerHasLiked", "viewerHasSaved"]) assert.ok(!denied.text.includes(key), `${key} disclosed`);
+    assert.deepEqual((await del("anon", "draft", stale)).status, 401);
+
+    // 6: the creator keeps access to their own draft plan's comments (deleting their own comment).
+    const mine = await comment("creator", "draft");
+    assert.equal((await del("creator", "draft", mine)).status, 200);
+    assert.equal(await gone(mine), true);
+
+    // 7: an entitled purchaser keeps access after the plan is unpublished.
+    const bought = await comment("buyer", "unpublished");
+    assert.equal((await del("buyer", "unpublished", bought)).status, 200);
+    assert.equal(await gone(bought), true);
+    // ...while a non-entitled commenter on that same now-unpublished plan cannot.
+    const lost = await comment("stranger", "unpublished");
+    assert.equal((await del("stranger", "unpublished", lost)).status, 404);
+    assert.equal(await gone(lost), false);
+
+    // 8: the other social endpoints still behave on an accessible plan.
+    assert.equal((await call("GET", `/api/meal-plans/${plan.paid}/comments`, "anon")).status, 200);
+    assert.equal((await call("POST", `/api/meal-plans/${plan.paid}/comments`, "stranger", { comment: "hello" })).status, 201);
+    assert.equal((await call("DELETE", `/api/meal-plans/${plan.paid}/like`, "stranger")).status, 200);
+  });
+
+  test("shared-week DELETE like/save/comment follow the same public-share gate as the other shared-week social routes", async () => {
+    const token = "sharedwk12345";
+    await local.query(`INSERT INTO meal_plan_week_shares (user_id, week_anchor, visibility, public_share_token) VALUES ($1, '2030-01-14', 'public', $2)`, [ids.creator, token]);
+    const cid = (await local.query(`INSERT INTO shared_week_comments (user_id, public_share_token, comment) VALUES ($1, $2, 'hi') RETURNING id`, [ids.stranger, token])).rows[0].id;
+    await local.query(`INSERT INTO shared_week_likes (user_id, public_share_token) VALUES ($1, $2)`, [ids.stranger, token]);
+    const base = `/api/meal-planner/week/shared/${token}`;
+    // Public share: all three deletes work and still return stats.
+    assert.equal((await call("DELETE", `${base}/like`, "stranger")).status, 200);
+    assert.equal((await call("DELETE", `${base}/save`, "stranger")).status, 200);
+    assert.equal((await call("DELETE", `${base}/comments/${cid}`, "stranger")).status, 200);
+    // Once the week is no longer public: 404, nothing modified, no counts.
+    await local.query(`UPDATE meal_plan_week_shares SET visibility = 'private'`);
+    const cid2 = (await local.query(`INSERT INTO shared_week_comments (user_id, public_share_token, comment) VALUES ($1, $2, 'again') RETURNING id`, [ids.stranger, token])).rows[0].id;
+    await local.query(`INSERT INTO shared_week_likes (user_id, public_share_token) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [ids.stranger, token]);
+    for (const path of [`${base}/like`, `${base}/save`, `${base}/comments/${cid2}`]) {
+      const r = await call("DELETE", path, "stranger");
+      assert.equal(r.status, 404, path);
+      assert.ok(!r.text.includes("likeCount") && !r.text.includes("commentCount"), `${path} disclosed counts`);
+    }
+    assert.equal((await local.query(`SELECT deleted_at FROM shared_week_comments WHERE id = $1`, [cid2])).rows[0].deleted_at, null);
+    assert.equal(Number((await local.query(`SELECT count(*) FROM shared_week_likes WHERE user_id = $1`, [ids.stranger])).rows[0].count), 1);
+  });
+
   test("a draft saved before it was unpublished does not leak through the saved-items list", async () => {
     await local.query(`INSERT INTO meal_plan_saves (user_id, blueprint_id) VALUES ($1, $2)`, [ids.stranger, plan.draft]);
     const r = await call("GET", "/api/me/saved-meal-planner-items", "stranger");

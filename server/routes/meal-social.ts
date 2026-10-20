@@ -270,6 +270,9 @@ router.post("/meal-plans/:id/comments", requireAuth, requireMealSocialSchema, as
 
 router.delete("/meal-plans/:id/comments/:commentId", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const { id: planId, commentId } = req.params;
+  // Same visibility rule as every other meal-plan social action: a plan the viewer can no longer see is a plain 404, nothing is modified
+  // and no engagement counts are returned.
+  if (!(await mealPlanExists(planId, (req.user as any)?.id))) return res.status(404).json({ message: "Meal plan not found" });
   const result = await db.execute(sql`
     UPDATE meal_plan_comments
     SET deleted_at = NOW(), updated_at = NOW()
@@ -289,6 +292,7 @@ router.post("/meal-planner/week/shared/:token/like", requireAuth, requireMealSoc
 
 router.delete("/meal-planner/week/shared/:token/like", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
+  if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   await db.execute(sql`DELETE FROM shared_week_likes WHERE user_id = ${(req.user as any).id} AND public_share_token = ${token}`);
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
 }));
@@ -302,6 +306,7 @@ router.post("/meal-planner/week/shared/:token/save", requireAuth, requireMealSoc
 
 router.delete("/meal-planner/week/shared/:token/save", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const token = req.params.token;
+  if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   await db.execute(sql`DELETE FROM shared_week_saves WHERE user_id = ${(req.user as any).id} AND public_share_token = ${token}`);
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
 }));
@@ -332,6 +337,8 @@ router.post("/meal-planner/week/shared/:token/comments", requireAuth, requireMea
 
 router.delete("/meal-planner/week/shared/:token/comments/:commentId", requireAuth, requireMealSocialSchema, asyncHandler(async (req, res) => {
   const { token, commentId } = req.params;
+  // Same gate as the other shared-week social routes: an unshared week returns no engagement stats and changes nothing.
+  if (!(await publicSharedWeekExists(token))) return res.status(404).json({ message: "Shared week not found" });
   const result = await db.execute(sql`
     UPDATE shared_week_comments
     SET deleted_at = NOW(), updated_at = NOW()
