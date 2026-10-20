@@ -54,6 +54,13 @@ Two further findings: `POST /week/entry` rejected external provider recipes (`so
 - `DELETE /meal-plans/:id/comments/:commentId` runs `mealPlanExists(planId, viewerId)` first: an inaccessible plan is the plain `Meal plan not found` 404, the comment is not touched and no engagement counts are returned. Ownership of the comment is still enforced.
 - The shared-week `DELETE` routes (like, save, comment) returned engagement stats for a week that is no longer public, unlike their POST/GET siblings. They now use the same `publicSharedWeekExists` gate.
 
+## Stored AI suggestions (review follow-up)
+
+`ai_suggestions` rows keep the recipe id and a title/reason written from the recipe's title, so a suggestion made while a user was a club member kept exposing that recipe after membership was removed.
+- `GET /api/suggestions/today` (and `POST /generate`) re-check every recipe-backed suggestion against the user's current rights (`filterVisibleRecipeIds`, the shared rule) and omit inaccessible ones whole. Stored rows are never deleted or edited, so history and usage counters survive and access restored later brings the suggestion back. New suggestions are generated only when nothing is stored for today, so an inaccessible row does not cause regeneration.
+- `accept` and `dismiss` put the same visibility check inside the UPDATE's own WHERE clause (evaluated at write time). An inaccessible suggestion is the same plain 404 as a missing one: no metadata, no mutation.
+- Drink, nutrition, weather and other recipe-less suggestions are unaffected. Visibility is never taken from the client.
+
 ## Running the new suites
 
 They use a real local PostgreSQL, like the other `*.postgres.test.ts` suites, and recreate the tables they need. Run them one file at a time (they share table names):

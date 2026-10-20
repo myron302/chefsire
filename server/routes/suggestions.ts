@@ -1,5 +1,5 @@
 // server/routes/suggestions.ts
-import { recipeVisibleToViewer } from "../lib/recipe-visibility";
+import { filterVisibleRecipeIds, recipeVisibleToViewer } from "../lib/recipe-visibility";
 import { Router } from "express";
 import { and, eq, desc, gte, lte, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -7,6 +7,21 @@ import { aiSuggestions, recipes, customDrinks, userDrinkStats, nutritionLogs, us
 import { requireAuth } from "../middleware";
 
 const router = Router();
+
+/**
+ * A stored suggestion that points at a recipe is only as visible as that recipe is RIGHT NOW. Its title and reason were written from
+ * the recipe (they embed its title), so an inaccessible suggestion is dropped whole -- never trimmed, never returned -- and the
+ * stored row is left untouched as history. Suggestions with no recipe (drinks, nutrition, etc.) pass through unchanged.
+ */
+async function onlyCurrentlyVisible<T extends { recipeId?: string | null }>(rows: T[], userId: string): Promise<T[]> {
+  const ids = rows.map((row) => row.recipeId).filter(Boolean) as string[];
+  if (!ids.length) return rows;
+  const visible = await filterVisibleRecipeIds(ids, userId);
+  return rows.filter((row) => !row.recipeId || visible.has(row.recipeId));
+}
+
+/** Matches a suggestion whose recipe (if any) the user can still see; recipe-less suggestions always match. */
+const suggestionRecipeStillVisible = (userId: string) => recipeVisibleToViewer(sql`${aiSuggestions.recipeId}`, userId);
 
 // GET /api/suggestions/today - Get today's AI suggestions
 router.get("/today", requireAuth, async (req, res) => {
@@ -27,13 +42,14 @@ router.get("/today", requireAuth, async (req, res) => {
       )
       .orderBy(desc(aiSuggestions.createdAt));
 
-    // If no suggestions for today, generate some
+    // Generate only when nothing is stored for today. A stored suggestion that merely became inaccessible is hidden, not replaced,
+    // so losing access to a recipe does not make this endpoint mint new suggestions on every request.
     if (suggestions.length === 0) {
       const generated = await generateDailySuggestions(userId);
-      return res.json({ suggestions: generated });
+      return res.json({ suggestions: await onlyCurrentlyVisible(generated, userId) });
     }
 
-    return res.json({ suggestions });
+    return res.json({ suggestions: await onlyCurrentlyVisible(suggestions, userId) });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
@@ -53,7 +69,8 @@ router.post("/:id/accept", requireAuth, async (req, res) => {
         viewed: true,
         viewedAt: new Date(),
       })
-      .where(and(eq(aiSuggestions.id, id), eq(aiSuggestions.userId, userId)))
+      // Visibility is part of the UPDATE's own predicate, so access is evaluated at the moment of the write, not before it.
+      .where(and(eq(aiSuggestions.id, id), eq(aiSuggestions.userId, userId), suggestionRecipeStillVisible(userId)))
       .returning();
 
     if (!updated) {
@@ -80,7 +97,8 @@ router.post("/:id/dismiss", requireAuth, async (req, res) => {
         viewed: true,
         viewedAt: new Date(),
       })
-      .where(and(eq(aiSuggestions.id, id), eq(aiSuggestions.userId, userId)))
+      // Visibility is part of the UPDATE's own predicate, so access is evaluated at the moment of the write, not before it.
+      .where(and(eq(aiSuggestions.id, id), eq(aiSuggestions.userId, userId), suggestionRecipeStillVisible(userId)))
       .returning();
 
     if (!updated) {
@@ -98,7 +116,7 @@ router.post("/generate", requireAuth, async (req, res) => {
   try {
     const userId = req.user!.id;
     const suggestions = await generateDailySuggestions(userId);
-    return res.json({ suggestions });
+    return res.json({ suggestions: await onlyCurrentlyVisible(suggestions, userId) });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
