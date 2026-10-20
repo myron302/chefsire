@@ -54,8 +54,40 @@ export function loadInventory(root = DEFAULT_ROOT) {
       seen[k].add(v);
     }
   }
+  // Aliases (e.g. redirected routes) must not collide with any canonical or alias identity.
+  for (const c of inv.categories) {
+    for (const a of c.aliases ?? []) {
+      if (!/^[a-z0-9-]+$/.test(a.id ?? "")) errors.push(`${c.id}: invalid alias id "${a.id}"`);
+      if (!a.route?.startsWith("/drinks")) errors.push(`${c.id}: alias ${a.id} route must start with /drinks`);
+      if (a.masterFilename != null && !/^[a-z0-9][a-z0-9-]*\.png$/.test(a.masterFilename)) errors.push(`${c.id}: alias ${a.id} has an invalid masterFilename`);
+      const claims = [["id", a.id, seen.id], ["route", a.route, seen.route], ["file", a.masterFilename, seen.file]];
+      for (const [k, v, set] of claims) {
+        if (v == null) continue;
+        if (set.has(v)) errors.push(`alias ${a.id}: ${k} "${v}" collides with another category or alias`);
+        set.add(v);
+      }
+    }
+  }
+  if (inv.reconciliation?.status === "RECONCILED" && inv.reconciliation.expectedDestinationCount !== inv.categories.length) {
+    errors.push(`inventory marked RECONCILED but lists ${inv.categories.length} canonical categories (expected ${inv.reconciliation.expectedDestinationCount})`);
+  }
   if (errors.length) throw new Error(`categories.json invalid:\n  ${errors.join("\n  ")}`);
   return inv;
+}
+
+/** Lookup tables that normalise aliases to their canonical category. */
+export function indexInventory(inv) {
+  const byId = new Map();
+  const byFilename = new Map();
+  for (const c of inv.categories) {
+    byId.set(c.id, c);
+    byFilename.set(c.masterFilename, c);
+    for (const a of c.aliases ?? []) {
+      byId.set(a.id, c);
+      if (a.masterFilename) byFilename.set(a.masterFilename, c);
+    }
+  }
+  return { byId, byFilename };
 }
 
 // ---------------------------------------------------------------- records & approvals
@@ -109,6 +141,7 @@ export function buildManifest(root = DEFAULT_ROOT) {
     if (active) approvalStatus = latestDecision(approvals, c.id, active.sha256)?.status ?? "pending";
     return {
       id: c.id, title: c.title, level: c.level, route: c.route, masterFilename: c.masterFilename,
+      aliasRoutes: (c.aliases ?? []).map((a) => a.route),
       generationStatus: active ? "preserved" : "missing",
       approvalStatus,
       activeRecord: active ? summarize(active) : null,
@@ -135,7 +168,8 @@ export function buildReport(manifest, inventoryNote) {
   const short = (s) => `\`${s.slice(0, 12)}…\``;
   const rowFor = (c) => {
     const r = c.activeRecord;
-    return `| ${c.title} | \`${c.route}\` | [${path.basename(r.masterPath)}](${r.masterPath}) | ${r.width} × ${r.height} | ${short(r.sha256)} | ${r.batch} |`;
+    const alias = c.aliasRoutes?.length ? ` (alias: ${c.aliasRoutes.map((a) => `\`${a}\``).join(", ")})` : "";
+    return `| ${c.title} | \`${c.route}\`${alias} | [${path.basename(r.masterPath)}](${r.masterPath}) | ${r.width} × ${r.height} | ${short(r.sha256)} | ${r.batch} |`;
   };
   const section = (title, list, empty) => [
     `## ${title} (${list.length})`, "",
@@ -158,7 +192,7 @@ export function buildReport(manifest, inventoryNote) {
     `## Missing — no photograph received (${manifest.counts.missing})`, "",
     ...(manifest.counts.missing
       ? ["| Category | Route | Expected filename |", "|---|---|---|",
-         ...cats.filter((c) => c.generationStatus === "missing").map((c) => `| ${c.title} | \`${c.route}\` | \`${c.masterFilename}\` |`)]
+         ...cats.filter((c) => c.generationStatus === "missing").map((c) => `| ${c.title} | \`${c.route}\`${c.aliasRoutes?.length ? ` (alias: ${c.aliasRoutes.map((a) => `\`${a}\``).join(", ")})` : ""} | \`${c.masterFilename}\` |`)]
       : ["None."]),
     "",
   );
@@ -231,8 +265,7 @@ export function importBatch({ root = DEFAULT_ROOT, input, batchId, now = new Dat
   const approvals = loadApprovals(root);
   const byCat = recordsByCategory(records);
   const shaOwner = new Map(records.map((r) => [r.sha256, r.categoryId]));
-  const byFilename = new Map(inv.categories.map((c) => [c.masterFilename, c]));
-  const byId = new Map(inv.categories.map((c) => [c.id, c]));
+  const { byId, byFilename } = indexInventory(inv);
 
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "drink-photo-import-"));
   const result = { batchId, source: null, imported: [], unchanged: [], rejected: [], warnings: [], dryRun };
@@ -279,7 +312,8 @@ export function importBatch({ root = DEFAULT_ROOT, input, batchId, now = new Dat
         const declared = byId.get(fm.categoryId);
         if (!declared) { reject(f.name, `unknown category id "${fm.categoryId}"`); continue; }
         if (category && category.id !== declared.id) { reject(f.name, `batch.json assigns "${declared.id}" but the file name belongs to "${category.id}"`, declared.id); continue; }
-        if (declared.masterFilename !== f.name) { reject(f.name, `file name must be the canonical master filename "${declared.masterFilename}"`, declared.id); continue; }
+        const allowedNames = [declared.masterFilename, ...(declared.aliases ?? []).map((a) => a.masterFilename).filter(Boolean)];
+        if (!allowedNames.includes(f.name)) { reject(f.name, `file name must be the canonical master filename "${declared.masterFilename}"`, declared.id); continue; }
         category = declared;
       }
       if (!category) { reject(f.name, "file name does not match any category's canonical master filename"); continue; }
@@ -294,6 +328,16 @@ export function importBatch({ root = DEFAULT_ROOT, input, batchId, now = new Dat
       const png = inspectPng(buf);
       if (!png.ok) { reject(f.name, `corrupted or invalid PNG: ${png.reason}`, category.id); continue; }
       plan.push({ f, fm, category, buf, sha, png });
+    }
+
+    // Two files resolving to the same canonical category (e.g. canonical + alias filename) are ambiguous: reject both.
+    const perCategory = new Map();
+    for (const e of plan) perCategory.set(e.category.id, [...(perCategory.get(e.category.id) ?? []), e]);
+    for (const [id, list] of perCategory) {
+      if (list.length > 1) {
+        for (const e of list) reject(e.f.name, `duplicate category assignment: ${list.map((x) => x.f.name).join(" and ")} all resolve to canonical category "${id}"`, id);
+        for (const e of list) plan.splice(plan.indexOf(e), 1);
+      }
     }
 
     // The same image content submitted for two categories in one input is a conflict for both.
@@ -339,6 +383,7 @@ export function importBatch({ root = DEFAULT_ROOT, input, batchId, now = new Dat
         categoryId: category.id, route: category.route, masterFilename: category.masterFilename,
         batch: batchId, masterPath, sha256: sha, bytes: buf.length, width: png.width, height: png.height, format: "png",
         importedAt: now.toISOString(), importSource: result.source, originalFilename: f.name,
+        ...(f.name !== category.masterFilename ? { resolvedFromAlias: f.name } : {}),
         generation, supersedes,
         usageTerms: "Generated with OpenAI image generation. Commercial use is subject to the applicable OpenAI terms and applicable law. Exclusive ownership or copyright protection is not guaranteed.",
       };
@@ -405,7 +450,8 @@ export function adoptLegacy({ root = DEFAULT_ROOT, now = new Date() } = {}) {
 
 // ---------------------------------------------------------------- review decisions
 
-export function recordDecision({ root = DEFAULT_ROOT, categoryId, sha256, status, decidedBy, note = null, now = new Date() }) {
+export function recordDecision({ root = DEFAULT_ROOT, categoryId: requestedId, sha256, status, decidedBy, note = null, now = new Date() }) {
+  const categoryId = indexInventory(loadInventory(root)).byId.get(requestedId)?.id ?? requestedId;
   if (!APPROVAL_STATUSES.includes(status)) throw new Error(`status must be one of ${APPROVAL_STATUSES.join(", ")}`);
   if (!decidedBy) throw new Error("decidedBy is required");
   const group = recordsByCategory(loadRecords(root)).get(categoryId);
@@ -483,6 +529,9 @@ export function verify(root = DEFAULT_ROOT) {
     }
   }
 
+  // When run inside the ChefSire checkout, every canonical route must exist and every alias must really redirect.
+  errors.push(...checkInventoryAgainstRepo(inv, path.resolve(root, "..", "..")));
+
   // Derived outputs must be current.
   try {
     const manifest = buildManifest(root);
@@ -492,4 +541,37 @@ export function verify(root = DEFAULT_ROOT) {
   } catch (e) { errors.push(`cannot build manifest: ${e.message}`); }
 
   return { ok: errors.length === 0, errors, warnings };
+}
+
+// ---------------------------------------------------------------- inventory vs. application (read-only)
+
+/** Compare the inventory with the route registry, hub pages and redirects. Skipped outside a ChefSire checkout. */
+export function checkInventoryAgainstRepo(inv, repoRoot) {
+  const registryFile = path.join(repoRoot, "client/src/data/drinks/route-registry.ts");
+  const appFile = path.join(repoRoot, "client/src/App.tsx");
+  if (!fs.existsSync(registryFile) || !fs.existsSync(appFile)) return [];
+  const errors = [];
+  const registryRoutes = new Set([...fs.readFileSync(registryFile, "utf8").matchAll(/route: "([^"]+)"/g)].map((m) => m[1]));
+  const app = fs.readFileSync(appFile, "utf8");
+  const aliasRoutes = new Map(); // alias route -> canonical route
+  for (const c of inv.categories) for (const a of c.aliases ?? []) aliasRoutes.set(a.route, c.route);
+
+  for (const c of inv.categories) {
+    if (c.level === "leaf" && !registryRoutes.has(c.route)) errors.push(`canonical route ${c.route} (${c.id}) is not in the route registry`);
+    if (c.level === "hub") {
+      const page = c.route === "/drinks" ? "client/src/pages/drinks/index.tsx" : `client/src/pages/drinks/${c.route.split("/")[2]}/index.tsx`;
+      if (!fs.existsSync(path.join(repoRoot, page))) errors.push(`hub route ${c.route} (${c.id}) has no page at ${page}`);
+    }
+  }
+  const canonicalLeaves = new Set(inv.categories.filter((c) => c.level === "leaf").map((c) => c.route));
+  for (const r of registryRoutes) {
+    if (!canonicalLeaves.has(r) && !aliasRoutes.has(r)) errors.push(`registry route ${r} is neither a canonical category nor a declared alias`);
+  }
+  for (const [alias, canonical] of aliasRoutes) {
+    const at = app.indexOf(`path="${alias}"`);
+    const window = at < 0 ? "" : app.slice(at, at + 160);
+    if (!window.includes(`<Redirect to="${canonical}"`)) errors.push(`alias ${alias} does not redirect to ${canonical} in client/src/App.tsx`);
+    if (!inv.categories.some((c) => c.route === canonical)) errors.push(`alias ${alias} points at ${canonical}, which is not a canonical category`);
+  }
+  return errors;
 }

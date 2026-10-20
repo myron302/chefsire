@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "masterFilenameRule": "<id>-original.png unless masterFilename says otherwise (five legacy PR #1322 masters keep their historical filenames)",
+  "masterFilenameRule": "<id>-original.png unless masterFilename says otherwise (five legacy PR #1322 masters keep their historical filenames). Aliases are alternate routes/filenames of a canonical category; they never need their own photograph and are normalised to the canonical category on import.",
   "reconciliation": {
-    "status": "UNRECONCILED",
+    "status": "RECONCILED",
     "expectedDestinationCount": 51,
-    "listedDestinationCount": 52,
-    "note": "The Codex-verified 51-destination inventory is not stored in the repository. This list is derived from client/src/data/drinks/route-registry.ts (45 leaf routes) plus 7 hub pages (/drinks and six sub-hubs) and therefore has 52 entries, one more than expected. The discrepancy must be resolved once the owner or Codex supplies the authoritative 51-item list (an entry may need removing, or the list otherwise correcting). Legacy-image category assignments for the Smoothies and Protein Shakes images (hub vs. leaf) are inferred from the category labels in pilot-records.json and must be confirmed."
+    "listedDestinationCount": 51,
+    "note": "51 canonical destinations: 7 hubs + 44 leaf routes. Virgin Cocktails (and the legacy /virgin route) are redirect aliases of Mocktails (see aliases on the mocktails entry), not separate photography destinations. Verified against client/src/App.tsx and the route registry by `npm run photos:verify`. The owner confirmed the Smoothies and Protein Shakes legacy images belong to the hub destinations."
   },
   "categories": [
     {
@@ -24,7 +24,7 @@
       "group": "smoothies",
       "masterFilename": "strawberry-banana-smoothie-original.png",
       "legacyBatch": "pilot-2026-10-19",
-      "mappingConfidence": "inferred-from-category-label"
+      "mappingConfidence": "owner-confirmed"
     },
     {
       "id": "protein-shakes-hub",
@@ -34,7 +34,7 @@
       "group": "protein-shakes",
       "masterFilename": "chocolate-whey-protein-shake-original.png",
       "legacyBatch": "pilot-2026-10-19",
-      "mappingConfidence": "inferred-from-category-label"
+      "mappingConfidence": "owner-confirmed"
     },
     {
       "id": "potent-potables-hub",
@@ -366,7 +366,23 @@
       "level": "leaf",
       "route": "/drinks/potent-potables/mocktails",
       "group": "potent-potables",
-      "masterFilename": "mocktails-original.png"
+      "masterFilename": "mocktails-original.png",
+      "aliases": [
+        {
+          "id": "virgin-cocktails",
+          "route": "/drinks/potent-potables/virgin-cocktails",
+          "masterFilename": "virgin-cocktails-original.png",
+          "kind": "redirect",
+          "evidence": "client/src/App.tsx redirects this route to /drinks/potent-potables/mocktails; its page module re-exports the mocktails page"
+        },
+        {
+          "id": "virgin",
+          "route": "/drinks/potent-potables/virgin",
+          "masterFilename": null,
+          "kind": "redirect",
+          "evidence": "client/src/App.tsx redirects this legacy route to /drinks/potent-potables/mocktails"
+        }
+      ]
     },
     {
       "id": "rum",
@@ -407,14 +423,6 @@
       "route": "/drinks/potent-potables/tequila-mezcal",
       "group": "potent-potables",
       "masterFilename": "tequila-mezcal-original.png"
-    },
-    {
-      "id": "virgin-cocktails",
-      "title": "Virgin Cocktails",
-      "level": "leaf",
-      "route": "/drinks/potent-potables/virgin-cocktails",
-      "group": "potent-potables",
-      "masterFilename": "virgin-cocktails-original.png"
     },
     {
       "id": "vodka",

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import zlib from "node:zlib";
-import { adoptLegacy, DEFAULT_ROOT, importBatch, loadRecords, recordDecision, sha256Hex, verify } from "../lib/core.mjs";
+import { adoptLegacy, checkInventoryAgainstRepo, DEFAULT_ROOT, importBatch, indexInventory, loadInventory, loadRecords, recordDecision, sha256Hex, verify } from "../lib/core.mjs";
 import { inspectPng } from "../lib/png.mjs";
 import { makePng, makeRoot, makeTar, makeZip, tmpDir, writeInput } from "./helpers.mjs";
 
@@ -181,7 +181,7 @@ test("report lists completed, pending, rejected and missing images", () => {
   recordDecision({ root, categoryId: "gin", sha256: sha256Hex(a), status: "approved", decidedBy: "owner", now: NOW });
   recordDecision({ root, categoryId: "drinks-hub", sha256: sha256Hex(b), status: "rejected", decidedBy: "owner", now: NOW });
   const report = fs.readFileSync(path.join(root, "REPORT.md"), "utf8");
-  assert.match(report, /1 approved · 0 pending review · 1 rejected \(replacement needed\) · 1 not yet received/);
+  assert.match(report, /1 approved · 0 pending review · 1 rejected \(replacement needed\) · 2 not yet received/);
   assert.match(report, /Missing[\s\S]*tropical-smoothies-original\.png/);
 });
 
@@ -204,4 +204,93 @@ test("real repository: historical masters unchanged, inventory unique, legacy re
   const r = run(copy, writeInput({ "daiquiri-original.png": makePng(12, 8, 21) }));
   assert.equal(r.imported.length, 0); assert.match(reasons(r), /conflicting hash/);
   assert.equal(verify(copy).ok, true);
+});
+
+// ---------------------------------------------------------------- alias normalisation (Virgin Cocktails -> Mocktails)
+
+const mockOf = (root) => JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8")).categories.find((c) => c.id === "mocktails");
+
+test("alias filename resolves to the canonical category and is stored under the canonical master name", () => {
+  const root = makeRoot(); const png = makePng(12, 8, 30);
+  const r = run(root, writeInput({ "virgin-cocktails-original.png": png }));
+  assert.equal(r.imported.length, 1, reasons(r)); assert.equal(r.imported[0].categoryId, "mocktails");
+  assert.ok(fs.readFileSync(path.join(root, "batches/test-batch-1/masters/mocktails-original.png")).equals(png));
+  assert.equal(fs.existsSync(path.join(root, "batches/test-batch-1/masters/virgin-cocktails-original.png")), false);
+  const [rec] = loadRecords(root);
+  assert.equal(rec.categoryId, "mocktails"); assert.equal(rec.route, "/drinks/potent-potables/mocktails"); assert.equal(rec.resolvedFromAlias, "virgin-cocktails-original.png");
+  assert.equal(verify(root).ok, true, verify(root).errors.join("\n"));
+});
+
+test("alias never adds a required image: inventory, manifest counts and report", () => {
+  const root = makeRoot(); const inv = loadInventory(root);
+  assert.equal(inv.categories.length, 4); assert.equal(inv.categories.some((c) => c.id === "virgin-cocktails"), false);
+  run(root, writeInput({ "gin-original.png": makePng(12, 8, 31) }));
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+  assert.equal(manifest.counts.total, 4); assert.equal(manifest.counts.missing, 3);
+  assert.deepEqual(mockOf(root).aliasRoutes, ["/drinks/potent-potables/virgin-cocktails"]);
+  const report = fs.readFileSync(path.join(root, "REPORT.md"), "utf8");
+  assert.match(report, /Mocktails \| `\/drinks\/potent-potables\/mocktails` \(alias: `\/drinks\/potent-potables\/virgin-cocktails`\)/);
+  assert.doesNotMatch(report, /virgin-cocktails-original\.png/);
+});
+
+test("category lookup, batch.json and review accept the alias id", () => {
+  const { byId, byFilename } = indexInventory(loadInventory(makeRoot()));
+  assert.equal(byId.get("virgin-cocktails").id, "mocktails"); assert.equal(byFilename.get("virgin-cocktails-original.png").id, "mocktails");
+  const root = makeRoot(); const png = makePng(12, 8, 32);
+  const r = run(root, writeInput({ "virgin-cocktails-original.png": png, "batch.json": { files: { "virgin-cocktails-original.png": { categoryId: "virgin-cocktails" } } } }));
+  assert.equal(r.imported[0].categoryId, "mocktails", reasons(r));
+  const d = recordDecision({ root, categoryId: "virgin-cocktails", sha256: sha256Hex(png), status: "approved", decidedBy: "owner", now: NOW });
+  assert.equal(d.categoryId, "mocktails"); assert.equal(mockOf(root).approvalStatus, "approved");
+});
+
+test("canonical and alias filenames for the same category are ambiguous and both rejected", () => {
+  const root = makeRoot();
+  const r = run(root, writeInput({ "mocktails-original.png": makePng(12, 8, 33), "virgin-cocktails-original.png": makePng(12, 8, 34) }));
+  assert.equal(r.imported.length, 0); assert.equal(r.rejected.length, 2); assert.match(reasons(r), /duplicate category assignment/);
+  assert.equal(loadRecords(root).length, 0);
+});
+
+test("alias and canonical imports share duplicate and conflict detection, and stay idempotent", () => {
+  const root = makeRoot(); const png = makePng(12, 8, 35);
+  run(root, writeInput({ "virgin-cocktails-original.png": png })); const before = snapshot(root);
+  assert.equal(run(root, writeInput({ "mocktails-original.png": png })).unchanged.length, 1, "same bytes via the canonical name is unchanged");
+  assert.equal(run(root, writeInput({ "virgin-cocktails-original.png": png })).unchanged.length, 1);
+  assert.match(reasons(run(root, writeInput({ "mocktails-original.png": makePng(12, 8, 36) }))), /conflicting hash/);
+  assert.match(reasons(run(root, writeInput({ "gin-original.png": png }))), /already preserved for category "mocktails"/);
+  assert.deepEqual(snapshot(root), before);
+});
+
+test("inventory validation rejects alias collisions and a wrong reconciled count", () => {
+  const root = makeRoot(); const file = path.join(root, "categories.json"); const inv = JSON.parse(fs.readFileSync(file, "utf8"));
+  const bad = structuredClone(inv); bad.categories[1].aliases = [{ id: "gin", route: "/drinks/x", masterFilename: null }];
+  fs.writeFileSync(file, JSON.stringify(bad)); assert.throws(() => loadInventory(root), /collides/);
+  const wrong = structuredClone(inv); wrong.reconciliation.expectedDestinationCount = 51;
+  fs.writeFileSync(file, JSON.stringify(wrong)); assert.throws(() => loadInventory(root), /marked RECONCILED/);
+});
+
+test("real inventory: 51 canonical destinations, Virgin Cocktails is a verified redirect alias of Mocktails", () => {
+  const inv = loadInventory(DEFAULT_ROOT); const repoRoot = path.resolve(DEFAULT_ROOT, "../../..");
+  assert.equal(inv.categories.length, 51); assert.equal(inv.reconciliation.status, "RECONCILED");
+  assert.equal(inv.categories.filter((c) => c.level === "hub").length, 7);
+  const m = inv.categories.find((c) => c.id === "mocktails");
+  assert.deepEqual(m.aliases.map((a) => a.route), ["/drinks/potent-potables/virgin-cocktails", "/drinks/potent-potables/virgin"]);
+  assert.deepEqual(checkInventoryAgainstRepo(inv, repoRoot), []);
+  const manifest = JSON.parse(fs.readFileSync(path.join(DEFAULT_ROOT, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.counts, { total: 51, approved: 0, pendingReview: 5, rejectedNeedsReplacement: 0, missing: 46 });
+  const assigned = Object.fromEntries(manifest.categories.filter((c) => c.activeRecord).map((c) => [c.id, c.activeRecord.masterPath.split("/").pop()]));
+  assert.deepEqual(assigned, {
+    "smoothies-hub": "strawberry-banana-smoothie-original.png", "protein-shakes-hub": "chocolate-whey-protein-shake-original.png",
+    daiquiri: "daiquiri-original.png", martinis: "classic-dry-gin-martini-original.png", "whiskey-bourbon": "bourbon-large-ice-rocks-original.png",
+  });
+  assert.equal(manifest.categories.find((c) => c.id === "drinks-hub").generationStatus, "missing", "hub photo is not marked generated until its file is imported");
+});
+
+test("repo check flags a missing redirect, an unlisted registry route and a missing hub page", () => {
+  const fake = tmpDir("dpt-app-");
+  fs.mkdirSync(path.join(fake, "client/src/data/drinks"), { recursive: true });
+  fs.writeFileSync(path.join(fake, "client/src/data/drinks/route-registry.ts"), 'route: "/drinks/potent-potables/mocktails", route: "/drinks/potent-potables/virgin-cocktails", route: "/drinks/potent-potables/gin"');
+  fs.writeFileSync(path.join(fake, "client/src/App.tsx"), '<Route path="/drinks/potent-potables/virgin-cocktails"><Redirect to="/drinks/elsewhere" /></Route>');
+  const errs = checkInventoryAgainstRepo(loadInventory(makeRoot()), fake).join("\n");
+  assert.match(errs, /does not redirect to \/drinks\/potent-potables\/mocktails/); assert.match(errs, /has no page at/);
+  assert.match(errs, /canonical route \/drinks\/smoothies\/tropical/);
 });

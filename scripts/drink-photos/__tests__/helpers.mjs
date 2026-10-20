@@ -28,9 +28,11 @@ export function makeRoot(extra = {}) {
   const categories = [
     { id: "drinks-hub", title: "Main Drinks Hub", level: "hub", route: "/drinks", group: null, masterFilename: "drinks-hub-original.png" },
     { id: "tropical-smoothies", title: "Tropical Smoothies", level: "leaf", route: "/drinks/smoothies/tropical", group: "smoothies", masterFilename: "tropical-smoothies-original.png" },
+    { id: "mocktails", title: "Mocktails", level: "leaf", route: "/drinks/potent-potables/mocktails", group: "potent-potables", masterFilename: "mocktails-original.png",
+      aliases: [{ id: "virgin-cocktails", route: "/drinks/potent-potables/virgin-cocktails", masterFilename: "virgin-cocktails-original.png", kind: "redirect" }] },
     { id: "gin", title: "Gin", level: "leaf", route: "/drinks/potent-potables/gin", group: "potent-potables", masterFilename: "gin-original.png" },
   ];
-  fs.writeFileSync(path.join(root, "categories.json"), JSON.stringify({ schemaVersion: 1, reconciliation: { status: "RECONCILED", expectedDestinationCount: 3 }, categories, ...extra }, null, 2));
+  fs.writeFileSync(path.join(root, "categories.json"), JSON.stringify({ schemaVersion: 1, reconciliation: { status: "RECONCILED", expectedDestinationCount: 4 }, categories, ...extra }, null, 2));
   return root;
 }
 

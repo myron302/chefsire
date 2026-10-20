@@ -27,13 +27,16 @@ Generation records and approval decisions are separate files: recording a decisi
 - Master filename = `<category-id>-original.png`. The five legacy masters keep their historical names (`categories.json` → `masterFilename`).
 - Batch id = `[a-z0-9-]`, 3–61 chars, e.g. `hub-and-smoothies-2026-10-20`.
 
-## Inventory status (action needed)
+## Inventory status
 
-The Codex-verified 51-destination list is **not stored in the repository**, so `categories.json` is derived from
-`client/src/data/drinks/route-registry.ts` (45 leaf routes) plus the seven hub pages = **52 entries**, and is marked
-`UNRECONCILED`. The two legacy Smoothies/Protein Shakes images are mapped to the `/drinks/smoothies` and
-`/drinks/protein-shakes` hubs from their category labels in `pilot-records.json`. Please confirm or send the authoritative list;
-reconciling is a data-only edit to `categories.json` (set `reconciliation.status` to `RECONCILED`). `npm run photos:verify` warns until then.
+`categories.json` lists **51 canonical photography destinations** (7 hubs + 44 leaf routes) and is `RECONCILED`.
+The route registry has 45 leaf routes; `/drinks/potent-potables/virgin-cocktails` is **not** a separate destination: `client/src/App.tsx` redirects it
+(and the older `/drinks/potent-potables/virgin`) to `/drinks/potent-potables/mocktails`, so it is recorded as an **alias** of the canonical `mocktails` category.
+Aliases never need their own photograph and are normalised to the canonical category in lookup, filename validation (`virgin-cocktails-original.png` is accepted and stored as `mocktails-original.png`),
+`batch.json`, review decisions, duplicate detection, the manifest and the report. The routes themselves are untouched.
+
+`npm run photos:verify` re-checks the inventory against the application (read-only): every canonical leaf route is in the route registry, every hub has a page,
+every registry route is canonical or a declared alias, and every alias really redirects to its canonical route. The Smoothies and Protein Shakes legacy images are confirmed as the hub assignments.
 
 ## Getting a batch into the environment (simplest repeatable method)
 
