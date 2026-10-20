@@ -1,4 +1,5 @@
 // server/routes/marketplace.ts
+import { viewerIdFrom } from "../lib/post-visibility";
 import { Router } from "express";
 import { storage } from "../storage";
 import { optionalAuth, requireAuth } from "../middleware";
@@ -94,7 +95,7 @@ r.get("/products/:id", optionalAuth, async (req, res) => {
   try {
     const prod = await storage.getProductWithSeller(req.params.id);
     if (!prod) return res.status(404).json({ message: "Product not found" });
-    res.json(toPublicProduct(req.user?.id)(prod));
+    res.json(toPublicProduct(viewerIdFrom(req))(prod));
   } catch (error) {
     console.error("marketplace/get error", error);
     res.status(500).json({ message: "Failed to fetch product" });
@@ -113,7 +114,7 @@ r.get("/products", optionalAuth, async (req, res) => {
       filters.limit
     );
 
-    const productsWithDelivery = products.map(toPublicProduct(req.user?.id));
+    const productsWithDelivery = products.map(toPublicProduct(viewerIdFrom(req)));
     res.json({ products: productsWithDelivery, total: productsWithDelivery.length, filters });
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid search parameters", errors: e.issues });
@@ -130,7 +131,7 @@ r.get("/sellers/:sellerId/products", optionalAuth, async (req, res) => {
     const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
     const limit = Number.isFinite(parsedLimit) && parsedLimit >= 1 ? Math.min(parsedLimit, 50) : 20;
     const items = await storage.getUserProducts(req.params.sellerId, offset, limit);
-    const itemsWithDelivery = items.map(toPublicProduct(req.user?.id));
+    const itemsWithDelivery = items.map(toPublicProduct(viewerIdFrom(req)));
     res.json({ products: itemsWithDelivery, total: itemsWithDelivery.length, sellerId: req.params.sellerId });
   } catch (error) {
     console.error("marketplace/seller products error", error);
@@ -204,7 +205,7 @@ r.get("/storefront/:username", optionalAuth, async (req, res) => {
           isChef: user.isChef,
           followersCount: user.followersCount,
         },
-        products: products.map(toPublicProduct(req.user?.id)),
+        products: products.map(toPublicProduct(viewerIdFrom(req))),
         subscriptionTier: effectiveMarketplaceTier(user as any),
       },
     });
@@ -229,9 +230,11 @@ r.get("/categories", async (_req, res) => {
 // Simple seller analytics (private: revenue and sales belong to the seller; administrators may also read them)
 r.get("/sellers/:sellerId/analytics", requireAuth, async (req, res) => {
   try {
-    const isOwner = String(req.params.sellerId) === String(req.user!.id);
+    const actorId = viewerIdFrom(req);
+    if (!actorId) return res.status(401).json({ error: "Unauthorized", code: "NO_TOKEN" }); // unreachable behind requireAuth; fail closed
+    const isOwner = String(req.params.sellerId) === actorId;
     // Admin authority is re-read from the database (see lib/admin-authority); the token only names the account.
-    if (!isOwner && !(await hasCurrentAdminAuthority(req.user!.id))) {
+    if (!isOwner && !(await hasCurrentAdminAuthority(actorId))) {
       // Same answer whether or not the seller exists, so this cannot be used to probe for accounts.
       return res.status(403).json({ message: "Not allowed to view these analytics" });
     }

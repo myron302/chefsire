@@ -1,4 +1,5 @@
 // server/routes/clubs.ts
+import { viewerIdFrom } from "../lib/post-visibility";
 import express, { type Request, type Response } from "express";
 import { db } from "../db/index.js";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -31,7 +32,7 @@ type ClubReadAccess =
   | { kind: "private" }
   | { kind: "ok"; isMember: boolean; isAdmin: boolean };
 
-async function resolveClubReadAccess(clubId: string, userId: string | undefined): Promise<ClubReadAccess> {
+async function resolveClubReadAccess(clubId: string, userId: string | null | undefined): Promise<ClubReadAccess> {
   const [club] = await db
     .select({ creatorId: clubs.creatorId, isPublic: clubs.isPublic })
     .from(clubs)
@@ -292,7 +293,7 @@ router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
     const clubId = req.params.id;
     const { limit = 20, offset = 0 } = req.query;
 
-    const access = await resolveClubReadAccess(clubId, req.user?.id);
+    const access = await resolveClubReadAccess(clubId, viewerIdFrom(req));
     if (access.kind !== "ok") return sendClubAccessDenied(res, access);
 
     const rows = await db
@@ -317,7 +318,7 @@ router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
     // A post may reference a recipe created for a DIFFERENT private club (shared by someone in both); only show what this viewer may see.
     const visibleRecipeIds = await filterVisibleRecipeIds(
       rows.map((row: any) => row.post.recipeId).filter(Boolean),
-      req.user?.id,
+      viewerIdFrom(req),
     );
 
     // Flatten into the shape the club page expects
@@ -590,7 +591,7 @@ router.get("/challenges", optionalAuth, async (req: Request, res: Response) => {
         eq(challenges.id, challengeProgress.challengeId)
       )
       // Challenges that belong to a private club exist only for that club's creator and members (shared club rule).
-      .where(clubReadableToViewer(sql`${challenges.clubId}`, req.user?.id))
+      .where(clubReadableToViewer(sql`${challenges.clubId}`, viewerIdFrom(req)))
       .groupBy(challenges.id)
       .orderBy(desc(challenges.startDate))
       .$dynamic();
@@ -625,7 +626,7 @@ router.get("/challenges/:id", optionalAuth, async (req: Request, res: Response) 
     const [challenge] = await db
       .select()
       .from(challenges)
-      .where(and(eq(challenges.id, challengeId), clubReadableToViewer(sql`${challenges.clubId}`, req.user?.id)))
+      .where(and(eq(challenges.id, challengeId), clubReadableToViewer(sql`${challenges.clubId}`, viewerIdFrom(req))))
       .limit(1);
 
     if (!challenge) {
@@ -811,7 +812,7 @@ router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
 
-    const access = await resolveClubReadAccess(clubId, req.user?.id);
+    const access = await resolveClubReadAccess(clubId, viewerIdFrom(req));
     if (access.kind !== "ok") return sendClubAccessDenied(res, access);
     const { isMember, isAdmin } = access;
 

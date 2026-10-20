@@ -1,4 +1,5 @@
 // server/routes/remixes.ts
+import { viewerIdFrom } from "../lib/post-visibility";
 import { filterVisibleRecipeIds, recipeVisibleToViewer } from "../lib/recipe-visibility";
 import { Router } from "express";
 import type { Request, Response } from "express";
@@ -39,7 +40,7 @@ router.get("/", optionalAuth, async (req, res) => {
       .from(recipeRemixes)
       .innerJoin(recipes, eq(recipeRemixes.originalRecipeId, recipes.id))
       .innerJoin(users, eq(recipeRemixes.userId, users.id))
-      .where(and(eq(recipeRemixes.isPublic, true), recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, req.user?.id), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, req.user?.id)))
+      .where(and(eq(recipeRemixes.isPublic, true), recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, viewerIdFrom(req)), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, viewerIdFrom(req))))
       .orderBy(desc(recipeRemixes.createdAt))
       .limit(limit)
       .offset(offset);
@@ -69,7 +70,7 @@ router.get("/recipe/:recipeId", optionalAuth, async (req, res) => {
         and(
           eq(recipeRemixes.originalRecipeId, recipeId),
           eq(recipeRemixes.isPublic, true),
-          recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, req.user?.id), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, req.user?.id)
+          recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, viewerIdFrom(req)), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, viewerIdFrom(req))
         )
       )
       .orderBy(desc(recipeRemixes.likesCount))
@@ -93,7 +94,7 @@ router.get("/my-remixes", requireAuth, async (req, res) => {
       })
       .from(recipeRemixes)
       .innerJoin(recipes, eq(recipeRemixes.originalRecipeId, recipes.id))
-      .where(and(eq(recipeRemixes.userId, userId), recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, req.user?.id), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, req.user?.id)))
+      .where(and(eq(recipeRemixes.userId, userId), recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, userId), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, userId)))
       .orderBy(desc(recipeRemixes.createdAt));
 
     return res.json({ remixes });
@@ -118,7 +119,7 @@ router.get("/user/:userId", optionalAuth, async (req, res) => {
         and(
           eq(recipeRemixes.userId, userId),
           eq(recipeRemixes.isPublic, true),
-          recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, req.user?.id), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, req.user?.id)
+          recipeVisibleToViewer(sql`${recipeRemixes.originalRecipeId}`, viewerIdFrom(req)), recipeVisibleToViewer(sql`${recipeRemixes.remixedRecipeId}`, viewerIdFrom(req))
         )
       )
       .orderBy(desc(recipeRemixes.createdAt));
@@ -203,7 +204,7 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Recipe not found" });
     }
     // A recipe the caller cannot see is indistinguishable from a missing one.
-    const readable = await filterVisibleRecipeIds([originalRecipeId, remixedRecipeId], req.user!.id);
+    const readable = await filterVisibleRecipeIds([originalRecipeId, remixedRecipeId], userId);
     if (!readable.has(originalRecipeId) || !readable.has(remixedRecipeId)) {
       return res.status(404).json({ error: "Recipe not found" });
     }

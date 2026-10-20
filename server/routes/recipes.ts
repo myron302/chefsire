@@ -1,4 +1,5 @@
 // server/routes/recipes.ts
+import { viewerIdFrom } from "../lib/post-visibility";
 import { Router } from "express";
 import { z } from "zod";
 import { searchRecipes } from "../services/recipes-service";
@@ -188,7 +189,7 @@ router.get("/search", optionalAuth, async (req, res) => {
       source,
       pageSize,
       offset,
-      viewerId: req.user?.id,
+      viewerId: viewerIdFrom(req),
     });
 
     // Return `items` (what the client expects) aliased from `results`.
@@ -215,7 +216,7 @@ router.get("/random", optionalAuth, async (req, res) => {
     );
     const pageSize =
       Number.isFinite(requestedCount) && requestedCount > 0 ? requestedCount : DEFAULT_RECIPES_PAGE_SIZE;
-    const result = await searchRecipes({ pageSize, source, viewerId: req.user?.id });
+    const result = await searchRecipes({ pageSize, source, viewerId: viewerIdFrom(req) });
     res.json({ ok: true, ...withItemsFromResults(result) });
   } catch (err: any) {
     console.error("recipes random error:", err);

@@ -1,4 +1,5 @@
 // server/routes/duets.ts
+import { viewerIdFrom } from "../lib/post-visibility";
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
@@ -148,7 +149,7 @@ router.post("/create", requireAuth, async (req, res) => {
 
     // Check if recipe exists
     const recipe = await db.execute(sql`
-      SELECT id FROM recipes WHERE id = ${data.originalRecipeId} AND ${recipeVisibleToViewer(sql`recipes.id`, req.user?.id)}
+      SELECT id FROM recipes WHERE id = ${data.originalRecipeId} AND ${recipeVisibleToViewer(sql`recipes.id`, viewerIdFrom(req))}
     `);
 
     if (recipe.rows.length === 0) {
