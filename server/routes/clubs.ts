@@ -15,6 +15,7 @@ import {
 } from "../../shared/schema.js";
 import { requireAuth, optionalAuth } from "../middleware/index";
 import { filterVisibleRecipeIds } from "../lib/recipe-visibility";
+import { clubReadableToViewer } from "../lib/club-visibility";
 
 const router = express.Router();
 
@@ -315,7 +316,7 @@ router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
 
     // A post may reference a recipe created for a DIFFERENT private club (shared by someone in both); only show what this viewer may see.
     const visibleRecipeIds = await filterVisibleRecipeIds(
-      rows.map((row: any) => row.recipe?.id).filter(Boolean),
+      rows.map((row: any) => row.post.recipeId).filter(Boolean),
       req.user?.id,
     );
 
@@ -324,7 +325,10 @@ router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
       const p = row.post;
       const caption = String(p.content ?? "");
 
-      const inferredType: "post" | "recipe" | "review" = p.recipeId
+      // The recipe reference is redacted as a whole -- id, nested object and the "recipe" post type derived from it -- when this viewer
+      // cannot read that recipe (e.g. a historical post linking a recipe private to another club). The stored link is untouched.
+      const recipeRef: string | null = p.recipeId && visibleRecipeIds.has(p.recipeId) ? p.recipeId : null;
+      const inferredType: "post" | "recipe" | "review" = recipeRef
         ? "recipe"
         : caption.trim().startsWith("📝 Review:")
         ? "review"
@@ -338,7 +342,7 @@ router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
         imageUrl: p.imageUrl ?? null,
         tags: null,
         postType: inferredType,
-        recipeId: p.recipeId ?? null,
+        recipeId: recipeRef,
         reviewId: null,
         createdAt: p.createdAt,
         user: {
@@ -346,7 +350,7 @@ router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
           username: row.author.username,
           avatarUrl: row.author.avatar ?? null,
         },
-        recipe: row.recipe && row.recipe.id && visibleRecipeIds.has(row.recipe.id) ? row.recipe : null,
+        recipe: recipeRef && row.recipe && row.recipe.id === recipeRef ? row.recipe : null,
       };
     });
 
@@ -556,7 +560,9 @@ router.patch(
         .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
         .returning();
 
-      return res.json({ post });
+      // Same redaction as the list: the raw row would otherwise carry a recipe id the author may no longer be able to read.
+      const readable = post.recipeId ? await filterVisibleRecipeIds([post.recipeId], userId) : new Set<string>();
+      return res.json({ post: { ...post, recipeId: post.recipeId && readable.has(post.recipeId) ? post.recipeId : null } });
     } catch (error) {
       console.error("Error updating post:", error);
       return res.status(500).json({ message: "Failed to update post" });
@@ -569,7 +575,7 @@ router.patch(
 // ============================================================
 
 // Browse challenges (MUST come before GET /:id)
-router.get("/challenges", async (req: Request, res: Response) => {
+router.get("/challenges", optionalAuth, async (req: Request, res: Response) => {
   try {
     const { status } = req.query;
 
@@ -583,6 +589,8 @@ router.get("/challenges", async (req: Request, res: Response) => {
         challengeProgress,
         eq(challenges.id, challengeProgress.challengeId)
       )
+      // Challenges that belong to a private club exist only for that club's creator and members (shared club rule).
+      .where(clubReadableToViewer(sql`${challenges.clubId}`, req.user?.id))
       .groupBy(challenges.id)
       .orderBy(desc(challenges.startDate))
       .$dynamic();
@@ -609,14 +617,15 @@ router.get("/challenges", async (req: Request, res: Response) => {
 });
 
 // Get challenge details
-router.get("/challenges/:id", async (req: Request, res: Response) => {
+router.get("/challenges/:id", optionalAuth, async (req: Request, res: Response) => {
   try {
     const challengeId = req.params.id;
 
+    // A private-club challenge the viewer cannot read is indistinguishable from a missing one.
     const [challenge] = await db
       .select()
       .from(challenges)
-      .where(eq(challenges.id, challengeId))
+      .where(and(eq(challenges.id, challengeId), clubReadableToViewer(sql`${challenges.clubId}`, req.user?.id)))
       .limit(1);
 
     if (!challenge) {
@@ -648,10 +657,11 @@ router.post(
       const userId = req.user!.id;
       const challengeId = req.params.id;
 
+      // Membership is re-verified on every mutation, whatever the caller could see before.
       const [challenge] = await db
         .select()
         .from(challenges)
-        .where(eq(challenges.id, challengeId))
+        .where(and(eq(challenges.id, challengeId), clubReadableToViewer(sql`${challenges.clubId}`, userId)))
         .limit(1);
 
       if (!challenge) {
@@ -705,6 +715,16 @@ router.post(
       const userId = req.user!.id;
       const challengeId = req.params.id;
       const { step, recipeId } = req.body;
+
+      // Current access to the challenge's club is required to record progress; a removed member gets the same 404 as a missing challenge.
+      const [accessible] = await db
+        .select({ id: challenges.id })
+        .from(challenges)
+        .where(and(eq(challenges.id, challengeId), clubReadableToViewer(sql`${challenges.clubId}`, userId)))
+        .limit(1);
+      if (!accessible) {
+        return res.status(404).json({ message: "Challenge not found" });
+      }
 
       const [progress] = await db
         .select()

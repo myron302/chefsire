@@ -61,6 +61,12 @@ Two further findings: `POST /week/entry` rejected external provider recipes (`so
 - `accept` and `dismiss` put the same visibility check inside the UPDATE's own WHERE clause (evaluated at write time). An inaccessible suggestion is the same plain 404 as a missing one: no metadata, no mutation.
 - Drink, nutrition, weather and other recipe-less suggestions are unaffected. Visibility is never taken from the client.
 
+## Reviews, club challenges, club-post recipe ids (review follow-up)
+
+- **Recipe reviews** are exactly as visible as their recipe. `GET /api/reviews/recipe/:id` (now behind `optionalAuth`) and `POST /api/reviews` resolve the canonical recipe first, then check every linked id against the shared recipe rule; a restricted recipe is the plain `Recipe not found` 404 (nothing read, nothing written, no rating/count change). Editing a review, adding a photo and voting a review helpful re-check the review's recipe; a removed member gets `Review not found`. Deleting or withdrawing your own contribution stays possible.
+- **Club challenges** (`challenges.club_id`): list, detail, join and progress use one shared club read rule (`server/lib/club-visibility.ts`, also now the basis of recipe visibility, so there is a single membership rule). Challenges with no club or a public club are unchanged; a private club's challenges exist only for its creator and members, a hidden detail is the same 404 as a missing one, and join/progress re-verify membership on every call.
+- **Club posts** redact an unreadable recipe reference as a whole: `recipeId`, the nested `recipe`, and the `recipe` post type derived from it. This applies to the list and the PATCH response. The stored link is never rewritten; authorized viewers and public recipes shared into private clubs are unchanged.
+
 ## Running the new suites
 
 They use a real local PostgreSQL, like the other `*.postgres.test.ts` suites, and recreate the tables they need. Run them one file at a time (they share table names):

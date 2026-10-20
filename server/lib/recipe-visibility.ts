@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db/index.js";
+import { clubReadableToViewer } from "./club-visibility.js";
 
 /**
  * The one visibility rule for a recipe, used by every read surface.
@@ -9,18 +10,12 @@ import { db } from "../db/index.js";
  * referenced by a club post says nothing: sharing a recipe into a club neither hides it nor exposes it.
  */
 export function recipeVisibleToViewer(recipeId: SQL | string, viewerId?: string | null): SQL {
-  const viewer = viewerId || "";
   const id = typeof recipeId === "string" ? sql`${recipeId}` : recipeId;
   return sql`NOT EXISTS (
-    SELECT 1 FROM recipes rv INNER JOIN clubs rc ON rc.id = rv.origin_club_id
+    SELECT 1 FROM recipes rv
     WHERE rv.id = ${id}
-      AND rc.is_public IS NOT TRUE
-      AND NOT (
-        ${viewer} <> '' AND (
-          rc.creator_id = ${viewer}
-          OR EXISTS (SELECT 1 FROM club_memberships rm WHERE rm.club_id = rc.id AND rm.user_id = ${viewer})
-        )
-      )
+      AND rv.origin_club_id IS NOT NULL
+      AND NOT ${clubReadableToViewer(sql`rv.origin_club_id`, viewerId)}
   )`;
 }
 

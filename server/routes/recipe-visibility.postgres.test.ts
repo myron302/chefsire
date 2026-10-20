@@ -184,9 +184,52 @@ if (!PG_URL) {
     assert.deepEqual(titlesVisibleToPublic, ["L3", "L6", "L7", `${MARK}-public`]);
   });
 
+  test("club post serialization: membership in club A never reveals a recipe id private to club B, in any field, on any response path", async () => {
+    // `member` belongs to private + private2? Build a viewer who belongs only to club A (private2) and a historical post there
+    // linking club B's (private) recipe.
+    recipe.priv = await createClubRecipe("member", "private", `${MARK}-private`);
+    const lonely = ids.pubowner; // member of `public` only; make them a member of private2 as club A
+    await local.query(`INSERT INTO club_memberships (club_id, user_id, role) VALUES ($1, $2, 'member')`, [club.private2, lonely]);
+    const hist = (await local.query(`INSERT INTO club_posts (club_id, user_id, content, recipe_id) VALUES ($1, $2, 'shared long ago', $3) RETURNING id`, [club.private2, ids.owner, recipe.priv])).rows[0].id;
+    await shareExisting("owner", "private2", recipe.public); // a public recipe shared into the same private club
+
+    const r = await call("GET", `/api/clubs/${club.private2}/posts`, "pubowner");
+    assert.equal(r.status, 200);
+    assert.ok(!r.text.includes(recipe.priv), "club B's recipe id appears somewhere in the response");
+    assert.ok(!r.text.includes(`${MARK}-private`));
+    const old = r.json.posts.find((p: any) => p.id === hist);
+    assert.equal(old.recipeId, null);
+    assert.equal(old.recipe, null);
+    assert.equal(old.postType, "post", "the post type derived from the hidden recipe is redacted too");
+    // The public recipe shared into the private club keeps its id and details.
+    const shared = r.json.posts.find((p: any) => p.recipeId === recipe.public);
+    assert.equal(shared.recipe.title, `${MARK}-public`);
+    assert.equal(shared.postType, "recipe");
+    // An authorized viewer (member of both clubs) still sees the id and details.
+    await local.query(`INSERT INTO club_memberships (club_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`, [club.private2, ids.member]);
+    const both = (await call("GET", `/api/clubs/${club.private2}/posts`, "member")).json.posts.find((p: any) => p.id === hist);
+    assert.equal(both.recipeId, recipe.priv);
+    assert.equal(both.recipe.title, `${MARK}-private`);
+    assert.equal(both.postType, "recipe");
+    // Nothing was rewritten in storage just to sanitize a response.
+    assert.equal((await local.query(`SELECT recipe_id FROM club_posts WHERE id = $1`, [hist])).rows[0].recipe_id, recipe.priv);
+  });
+
+  test("PATCH of a post whose historical recipe link is private to another club does not echo that recipe id", async () => {
+    recipe.priv = await createClubRecipe("member", "private", `${MARK}-private`);
+    await local.query(`INSERT INTO club_memberships (club_id, user_id, role) VALUES ($1, $2, 'member')`, [club.private2, ids.pubowner]);
+    const hist = (await local.query(`INSERT INTO club_posts (club_id, user_id, content, recipe_id) VALUES ($1, $2, 'old', $3) RETURNING id`, [club.private2, ids.pubowner, recipe.priv])).rows[0].id;
+    const r = await call("PATCH", `/api/clubs/${club.private2}/posts/${hist}`, "pubowner", { content: "edited" });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.post.content, "edited");
+    assert.equal(r.json.post.recipeId, null);
+    assert.ok(!r.text.includes(recipe.priv));
+    assert.equal((await local.query(`SELECT recipe_id FROM club_posts WHERE id = $1`, [hist])).rows[0].recipe_id, recipe.priv, "stored link untouched");
+  });
+
   test("every recipe read surface applies the shared visibility rule", () => {
     const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
-    for (const f of ["./recipes.ts", "./suggestions.ts", "./duets.ts", "./cook-together.ts", "./remixes.ts", "./meal-planner-week.ts", "./clubs.ts", "../storage.ts", "../services/recipe.service.ts"]) {
+    for (const f of ["./recipes.ts", "./suggestions.ts", "./duets.ts", "./cook-together.ts", "./remixes.ts", "./meal-planner-week.ts", "./clubs.ts", "./reviews.ts", "../storage.ts", "../services/recipe.service.ts"]) {
       assert.match(read(f), /recipe-visibility/, `${f} must use lib/recipe-visibility`);
     }
     assert.doesNotMatch(read("../services/recipe.service.ts"), /FROM club_posts/, "visibility must not be inferred from club-post references");
