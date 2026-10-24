@@ -22,6 +22,7 @@ test("authenticated Wedding routes persist onboarding in scoped history only aft
     ["legacy-paid", { weddingTier: "premium" }],
     ["other", { weddingTier: "free" }],
   ]);
+  for (const [id, user] of users) user.id = id;
   const history: any[] = [{ userId: "existing-free", subscriptionType: "wedding", id: "old" }];
   let failWrite = false;
   let failHistory = false;

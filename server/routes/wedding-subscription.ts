@@ -172,7 +172,7 @@ r.get("/subscription", requireAuth, async (req, res) => {
     await ensureSubscriptionHistoryTable();
     const [selection] = await db.select({ id: subscriptionHistory.id })
       .from(subscriptionHistory)
-      .where(and(eq(subscriptionHistory.userId, req.user!.id), eq(subscriptionHistory.subscriptionType, "wedding")))
+      .where(and(eq(subscriptionHistory.userId, user.id), eq(subscriptionHistory.subscriptionType, "wedding")))
       .limit(1);
 
     res.json({
