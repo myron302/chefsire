@@ -22,7 +22,7 @@ export default function Layout({ children }: LayoutProps) {
   const [pathname, setLocation] = useLocation();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
-  const { user, logout } = useUser();
+  const { user, logout, loading, sessionStatus } = useUser();
 
   useEffect(() => {
     const link = document.createElement("link");
@@ -847,7 +847,7 @@ export default function Layout({ children }: LayoutProps) {
                     )}
                   </div>
                 </>
-              ) : (
+              ) : (!loading && sessionStatus === "anonymous" && (
                 /* Show login/signup buttons when not logged in */
                 <div className="flex items-center space-x-2">
                   <Button
@@ -865,7 +865,7 @@ export default function Layout({ children }: LayoutProps) {
                     Sign Up
                   </Button>
                 </div>
-              )}
+              ))}
             </div>
           </div>
 

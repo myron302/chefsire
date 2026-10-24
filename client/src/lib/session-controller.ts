@@ -457,12 +457,21 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
         return;
       }
       const cached = readCachedUser();
-      if (!cached) {
-        set({ loading: false, sessionStatus: "anonymous" });
-        return;
-      }
       set({ sessionStatus: "checking" });
       void verifyRun(cached);
+    },
+
+    /** Other windows can change the shared cookie. Observe it without issuing login/logout requests. */
+    sync() {
+      if (disposed || queuedMutations > 0) return;
+      if (storage.getItem(LOGOUT_PENDING_KEY)) {
+        invalidateAll();
+        commitSignedOut();
+        return;
+      }
+      if (state.verifying) return;
+      set({ sessionStatus: "checking", loading: true });
+      void verifyRun(state.pendingOAuth ? null : readCachedUser());
     },
 
     /** User-initiated retry after the automatic retries were exhausted (or the answer was malformed). */

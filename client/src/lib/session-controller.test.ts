@@ -207,12 +207,13 @@ test("the cached user is not shown before the server has answered (loading until
   assert.deepEqual(s.controller.getState().user, alice);
 });
 
-test("no stored user and no OAuth marker: nothing to verify, no request", async () => {
+test("no stored profile: verify the cookie on refresh", async () => {
   const s = setup();
+  s.mePlans.push(me(alice));
   s.controller.start();
   await s.flush();
-  assert.equal(s.requests.length, 0);
-  assert.equal(s.controller.getState().sessionStatus, "anonymous");
+  assert.equal(s.requests.length, 1);
+  assert.equal(s.controller.getState().sessionStatus, "authenticated");
   assert.equal(s.controller.getState().loading, false);
 });
 
@@ -576,4 +577,60 @@ test("OAuth: definitive 401 is confirmed anonymous; immediate success needs no r
   await b.flush();
   assert.deepEqual(b.controller.getState().user, alice);
   assert.equal(b.sleeps.length, 0);
+});
+
+
+test("refresh without cache recovers a valid cookie after temporary backend failure", async () => {
+  const s = setup();
+  s.mePlans.push(status(503), me(alice));
+  s.controller.start();
+  await s.flush();
+  assert.equal(s.controller.getState().sessionStatus, "unavailable");
+  assert.equal(s.store.has(LOGOUT_PENDING_KEY), false);
+  await s.tick();
+  assert.equal(s.controller.getState().sessionStatus, "authenticated");
+  assert.deepEqual(s.controller.getState().user, alice);
+  assert.ok(s.requests.every(r => r.method === "GET"));
+});
+
+test("other windows recheck the cookie without echoing login/logout mutations", async () => {
+  const s = setup({ stored: alice });
+  s.mePlans.push(me(alice), me(bob), status(401));
+  s.controller.start(); await s.flush();
+  s.controller.sync(); await s.flush();
+  assert.equal(s.controller.getState().user?.id, bob.id);
+  s.controller.sync(); await s.flush();
+  assert.equal(s.controller.getState().sessionStatus, "anonymous");
+  s.store.set(LOGOUT_PENDING_KEY, "1");
+  s.controller.sync(); await s.flush();
+  assert.ok(s.requests.every(r => r.method === "GET"));
+});
+
+test("a pending logout in another window cancels a stale successful verification without sending another logout", async () => {
+  const s = setup({ stored: alice });
+  const d = deferred();
+  s.mePlans.push(d.plan);
+  s.controller.start();
+  await s.flush();
+  s.store.set(LOGOUT_PENDING_KEY, "1");
+  s.controller.sync();
+  d.release(new Response(JSON.stringify({ success: true, user: alice }), { status: 200 }));
+  await s.flush();
+  assert.equal(s.controller.getState().sessionStatus, "anonymous");
+  assert.equal(s.controller.getState().user, null);
+  assert.equal(s.store.get(LOGOUT_PENDING_KEY), "1");
+  assert.ok(s.requests.every(r => r.method === "GET"));
+});
+
+test("window sync during an explicit login does not interfere with the cookie mutation", async () => {
+  const s = setup();
+  const d = deferred();
+  s.loginPlans.push(d.plan);
+  const pending = s.controller.login(alice.email, "secret");
+  await s.flush();
+  s.controller.sync();
+  assert.equal(s.requests.length, 1);
+  d.release(new Response(JSON.stringify({ success: true, user: alice }), { status: 200 }));
+  assert.equal((await pending).ok, true);
+  assert.equal(s.controller.getState().user?.id, alice.id);
 });

@@ -1,3 +1,4 @@
+import { authEntryDestination } from "@/lib/auth-entry";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@/contexts/UserContext";
@@ -6,24 +7,12 @@ import { FcGoogle } from 'react-icons/fc';
 import { googleSignInUrl } from "@/lib/google-signin";
 import { FaFacebook, FaInstagram, FaTiktok } from 'react-icons/fa';
 
-function safeInternalDestination(value: string | null): string | null {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
-  try {
-    const parsed = new URL(value, window.location.origin);
-    return parsed.origin === window.location.origin
-      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export default function LoginPage() {
   const [errors, setErrors] = useState({ email: "", password: "", general: "" });
   const [loading, setLoading] = useState(false);
   const [, setLocation] = useLocation();
   const { login } = useUser();
-  const destination = safeInternalDestination(new URLSearchParams(window.location.search).get("next")) ?? "/feed";
+  const destination = authEntryDestination(window.location.search);
   const googleLoginUrl = destination === "/feed"
     ? "/api/auth/google"
     : `/api/auth/google?next=${encodeURIComponent(destination)}`;
@@ -58,7 +47,7 @@ export default function LoginPage() {
     }
 
     alert("Welcome back to your kingdom!");
-    setLocation(destination);
+    setLocation(destination, { replace: true });
   };
 
   return (

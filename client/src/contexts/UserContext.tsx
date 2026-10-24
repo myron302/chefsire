@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { abortableSleep } from "@/lib/session-verification";
-import { createSessionController, type SessionController, type SessionState, type SessionStatus } from "@/lib/session-controller";
+import { createSessionController, type SessionController, type SessionState, type SessionStatus, USER_STORAGE_KEY, LOGOUT_PENDING_KEY } from "@/lib/session-controller";
 
 type User = {
   id: string;
@@ -106,8 +106,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
       onChange: setSession,
     });
     controllerRef.current = controller;
+    const sync = () => controller.sync();
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea === window.localStorage &&
+          (event.key === null || event.key === USER_STORAGE_KEY || event.key === LOGOUT_PENDING_KEY)) sync();
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") sync(); };
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", sync);
+    window.addEventListener("pageshow", sync);
+    document.addEventListener("visibilitychange", onVisible);
     controller.start();
     return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("pageshow", sync);
+      document.removeEventListener("visibilitychange", onVisible);
       controller.dispose(); // unmount: abort everything, apply nothing
       if (controllerRef.current === controller) controllerRef.current = null;
     };
