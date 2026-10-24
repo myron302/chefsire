@@ -80,7 +80,7 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
 
   // Get user context and check subscription status
   const { user } = useUser();
-  const { subscription, selectPlan } = useWeddingSubscription(user?.id);
+  const { subscription, subscriptionError, retrySubscription, selectPlan } = useWeddingSubscription(user?.id);
   const currentTier = subscription?.currentTier || "free";
   const isPremium = subscription?.status === "active" && (currentTier === "premium" || currentTier === "elite");
   const isElite = isPremium && currentTier === "elite";
@@ -2012,6 +2012,17 @@ const displaySmartTips = useMemo(() => {
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
       <WeddingTrialSelector open={showTrialSelector} onSelect={handleTrialSelect} />
+      {subscriptionError && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {subscriptionError}
+            <Button variant="outline" className="ml-3" onClick={retrySubscription}>
+              Retry loading plan
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card className="mb-4 md:mb-6 border-dashed">
         <CardContent className="p-3 md:p-4">

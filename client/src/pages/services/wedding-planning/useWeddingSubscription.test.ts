@@ -70,10 +70,26 @@ test("Wedding onboarding survives navigation, refresh and a subsequent login", a
     await unmount();
     await mount();
     assert.equal(result!.subscription, undefined, "read failure never opens onboarding");
+    assert.match(result!.subscriptionError!, /Unable to load/);
+    await act(async () => { result!.retrySubscription(); });
+    assert.match(result!.subscriptionError!, /Unable to load/, "failed retry stays recoverable");
     fail = false;
+    pending = () => {};
+    await act(async () => { result!.retrySubscription(); });
+    assert.equal(result!.subscription, undefined, "retry loading never opens onboarding");
+    assert.equal(result!.subscriptionError, undefined, "retry clears the old error");
+    await act(async () => { pending!(); pending = undefined; });
+    assert.equal(result!.subscription?.onboardingCompleted, true, "same account recovers without remounting");
+    assert.equal(result!.subscriptionError, undefined);
     account = "another-new-account";
     await act(async () => { renderer.update(createElement(Probe, { userId: account })); });
     assert.equal(result!.subscription?.onboardingCompleted, false, "selection belongs to the account");
+    fail = true;
+    await act(async () => { result!.retrySubscription(); });
+    assert.match(result!.subscriptionError!, /Unable to load/);
+    fail = false;
+    await act(async () => { result!.retrySubscription(); });
+    assert.equal(result!.subscription?.onboardingCompleted, false, "first-time account can onboard after recovery");
   } finally {
     await unmount();
     globalThis.fetch = originalFetch;
