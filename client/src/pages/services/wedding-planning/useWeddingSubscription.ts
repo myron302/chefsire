@@ -7,6 +7,7 @@ export function useWeddingSubscription(userId?: string) {
   const [attempt, setAttempt] = useState(0);
   const readPending = useRef(false);
   const generation = useRef(0);
+  const mounted = useRef(false);
   const account = useRef(userId);
   account.current = userId;
   const mutations = useRef(new Map<string, Promise<void>>());
@@ -20,6 +21,7 @@ export function useWeddingSubscription(userId?: string) {
 
   useEffect(() => {
     let active = true;
+    mounted.current = true;
     const requestGeneration = ++generation.current;
     setLoaded(undefined);
     setFailure(undefined);
@@ -33,7 +35,7 @@ export function useWeddingSubscription(userId?: string) {
         if (active) readPending.current = false;
       });
     }
-    return () => { active = false; generation.current += 1; };
+    return () => { active = false; mounted.current = false; generation.current += 1; };
   }, [userId, attempt]);
 
   const selectPlan = useCallback((tier: WeddingTier): Promise<void> => {
@@ -41,9 +43,29 @@ export function useWeddingSubscription(userId?: string) {
     const existing = mutations.current.get(userId);
     if (existing) return existing;
     const requestGeneration = ++generation.current;
-    const pending: Promise<void> = requestWeddingSubscription(tier).then((subscription) => {
-      if (account.current === userId && generation.current === requestGeneration) {
+    const pending: Promise<void> = requestWeddingSubscription(tier).then(async (subscription) => {
+      if (!mounted.current || account.current !== userId) return;
+      if (generation.current === requestGeneration) {
         setLoaded({ userId, subscription });
+        return;
+      }
+
+      // The account returned while this shared write was pending. Its earlier
+      // read may predate the write: reconcile once, without replaying the POST.
+      const refreshGeneration = ++generation.current;
+      setLoaded(undefined);
+      setFailure(undefined);
+      readPending.current = true;
+      const isCurrent = () => mounted.current && account.current === userId && generation.current === refreshGeneration;
+      try {
+        const refreshed = await requestWeddingSubscription();
+        if (!isCurrent()) throw new Error("Plan saved, but the active account changed. Please reload your Wedding Planner plan to confirm.");
+        setLoaded({ userId, subscription: refreshed });
+      } catch (error) {
+        if (isCurrent()) setFailure({ userId, message: "Your plan was saved, but could not be reloaded. Please try again." });
+        throw error;
+      } finally {
+        if (isCurrent()) readPending.current = false;
       }
     }).finally(() => {
       if (mutations.current.get(userId) === pending) mutations.current.delete(userId);

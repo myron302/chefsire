@@ -148,8 +148,19 @@ test("accessible retry recovers, ignores stale account responses and deduplicate
     await act(async () => { respond(4, false); });
     await act(async () => { respond(3, true); });
     assert.equal(result!.subscription?.onboardingCompleted, false, "stale account read is ignored");
-    await act(async () => { respond(2, true); await write!; });
-    assert.equal(result!.subscription?.onboardingCompleted, false, "stale write cannot overwrite a newer read");
+    assert.equal(result!.selectPlan("free"), write!, "returning account shares its original pending write");
+    let resolved = false;
+    void write!.then(() => { resolved = true; });
+    await act(async () => { respond(2, true); });
+    assert.equal(requests.length, 6, "stale write completion triggers one authoritative GET");
+    assert.equal(requests[5].method, "GET");
+    assert.equal(result!.subscriptionLoading, true);
+    assert.equal(result!.subscription, undefined, "stale response is never applied");
+    assert.equal(resolved, false, "selection cannot report success before reconciliation");
+    await act(async () => { respond(5, true); await write!; });
+    assert.equal(result!.subscription?.onboardingCompleted, true, "successful reconciliation closes onboarding");
+    assert.equal(result!.subscriptionLoading, false);
+    assert.equal(resolved, true);
     assert.equal(requests.filter((request) => request.method === "POST").length, 1, "read retries never write");
     await act(async () => { renderer!.update(createElement(Probe, {})); });
     assert.equal(result!.subscriptionLoading, false);
@@ -157,6 +168,67 @@ test("accessible retry recovers, ignores stale account responses and deduplicate
     assert.equal(result!.subscriptionError, undefined);
   } finally {
     await act(async () => { renderer?.unmount(); });
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("reconciliation failures stay recoverable and stale refreshes cannot affect another account", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const scenario of ["write-fails", "refresh-fails", "switch-during-refresh"] as const) {
+      const requests: { method: string; resolve: (response: Response) => void }[] = [];
+      globalThis.fetch = (_url, init) => new Promise<Response>((resolve) => {
+        requests.push({ method: init?.method || "GET", resolve });
+      });
+      let result: ReturnType<typeof useWeddingSubscription>;
+      function Probe({ userId }: { userId: string }) {
+        result = useWeddingSubscription(userId);
+        return null;
+      }
+      const respond = (index: number, completed: boolean, status = 200) => requests[index].resolve(new Response(JSON.stringify({
+        ok: status === 200, currentTier: "free", status: "inactive", onboardingCompleted: completed,
+      }), { status }));
+      let renderer: ReactTestRenderer;
+      await act(async () => { renderer = create(createElement(Probe, { userId: "a" })); });
+      try {
+        await act(async () => { respond(0, false); });
+        const write = result!.selectPlan("free");
+        // Handle the rejection immediately, including when the refresh is superseded.
+        const rejected = assert.rejects(write);
+        await act(async () => { renderer!.update(createElement(Probe, { userId: "b" })); });
+        await act(async () => { respond(2, false); });
+        await act(async () => { renderer!.update(createElement(Probe, { userId: "a" })); });
+        await act(async () => { respond(3, false); });
+        assert.equal(result!.selectPlan("free"), write);
+        if (scenario === "write-fails") {
+          await act(async () => { respond(1, false, 503); await rejected; });
+          assert.equal(result!.subscription?.onboardingCompleted, false);
+          assert.equal(requests.length, 4, "failed writes never trigger successful reconciliation");
+        } else {
+          await act(async () => { respond(1, true); });
+          assert.equal(result!.subscriptionLoading, true);
+          if (scenario === "refresh-fails") {
+            await act(async () => { respond(4, false, 503); await rejected; });
+            assert.equal(result!.subscription, undefined);
+            assert.match(result!.subscriptionError!, /could not be reloaded/);
+            await act(async () => { result!.retrySubscription(); });
+            await act(async () => { respond(5, true); });
+            assert.equal(result!.subscription?.onboardingCompleted, true);
+            assert.equal(result!.subscriptionError, undefined);
+          } else {
+            await act(async () => { renderer!.update(createElement(Probe, { userId: "b" })); });
+            await act(async () => { respond(5, false); });
+            await act(async () => { respond(4, true); await rejected; });
+            assert.equal(result!.subscription?.onboardingCompleted, false, "A's refresh cannot overwrite B");
+            assert.equal(result!.subscriptionError, undefined);
+          }
+        }
+        assert.equal(requests.filter((request) => request.method === "POST").length, 1, scenario);
+      } finally {
+        await act(async () => { renderer!.unmount(); });
+      }
+    }
+  } finally {
     globalThis.fetch = originalFetch;
   }
 });
