@@ -123,7 +123,7 @@ export default function RemixesPage() {
               Log in to explore creative recipe remixes from the community!
             </p>
             <Button asChild>
-              <a href="/auth">Log In</a>
+              <a href="/login">Log In</a>
             </Button>
           </CardContent>
         </Card>

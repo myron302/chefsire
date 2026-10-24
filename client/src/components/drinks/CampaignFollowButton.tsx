@@ -91,7 +91,7 @@ export default function CampaignFollowButton({
 
   if (!user) {
     return (
-      <Link href="/auth/login">
+      <Link href="/login">
         <Button type="button" size={size} variant={variant ?? "default"} className={className}>
           Sign in to follow
         </Button>

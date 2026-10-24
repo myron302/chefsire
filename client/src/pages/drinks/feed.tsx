@@ -96,7 +96,7 @@ export default function DrinkCreatorPostsFeedPage() {
             <Link href="/drinks/discover"><Button variant="outline">Discover hub</Button></Link>
             <Link href="/drinks/drops"><Button variant="outline">Drops calendar</Button></Link>
             <Link href="/drinks/creator-dashboard#posts"><Button variant="outline">Creator dashboard</Button></Link>
-            {!user ? <Link href="/auth/login"><Button>Sign in for your full feed</Button></Link> : null}
+            {!user ? <Link href="/login"><Button>Sign in for your full feed</Button></Link> : null}
           </div>
         </div>
 
@@ -109,7 +109,7 @@ export default function DrinkCreatorPostsFeedPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
-              <Link href="/auth/login"><Button>Sign in</Button></Link>
+              <Link href="/login"><Button>Sign in</Button></Link>
               <Link href="/drinks/creators/trending"><Button variant="outline">Find creators to follow</Button></Link>
             </CardContent>
           </Card>

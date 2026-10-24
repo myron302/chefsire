@@ -109,7 +109,7 @@ export default function DrinkGiftClaimPage() {
 
               {!viewer?.signedIn ? (
                 <div className="flex flex-wrap gap-2">
-                  <Link href="/auth/login"><Button>Sign in to claim</Button></Link>
+                  <Link href="/login"><Button>Sign in to claim</Button></Link>
                   <Link href={gift.targetRoute}><Button variant="outline">View premium detail</Button></Link>
                 </div>
               ) : null}

@@ -85,7 +85,7 @@ export default function DropRsvpButton({
 
   if (!user) {
     return (
-      <Link href="/auth/login">
+      <Link href="/login">
         <Button type="button" size="sm">
           <Bell className="mr-2 h-4 w-4" />
           Notify me

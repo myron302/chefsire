@@ -87,7 +87,7 @@ export default function DrinkDropsPage() {
             <Link href="/drinks/feed"><Button variant="outline">Creator feed</Button></Link>
             <Link href="/drinks/roadmap"><Button variant="outline">Roadmap + archive</Button></Link>
             <Link href="/drinks/creator-dashboard#drops"><Button variant="outline">Manage drops</Button></Link>
-            {!user ? <Link href="/auth/login"><Button>Sign in for personalized drops</Button></Link> : null}
+            {!user ? <Link href="/login"><Button>Sign in for personalized drops</Button></Link> : null}
           </div>
         </div>
 

@@ -113,7 +113,7 @@ export default function DrinkMembershipsPage() {
             <CardDescription>Sign in to see the creators you support and the member-only collections you can open.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Link href="/auth/login"><Button>Sign in</Button></Link>
+            <Link href="/login"><Button>Sign in</Button></Link>
             <Link href="/drinks/creators/trending"><Button variant="outline">Browse creators</Button></Link>
           </CardContent>
         </Card>

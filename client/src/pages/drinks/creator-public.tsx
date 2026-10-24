@@ -673,7 +673,7 @@ export default function PublicDrinkCreatorPage() {
                   <Button>Open my memberships</Button>
                 </Link>
               ) : !user ? (
-                <Link href="/auth/login">
+                <Link href="/login">
                   <Button>Sign in to subscribe</Button>
                 </Link>
               ) : (
@@ -1154,7 +1154,7 @@ export default function PublicDrinkCreatorPage() {
                           {membershipActive ? (
                             <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="text-xs underline underline-offset-2">Open member collection</Link>
                           ) : !user ? (
-                            <Link href="/auth/login"><Button size="sm">Sign in to join</Button></Link>
+                            <Link href="/login"><Button size="sm">Sign in to join</Button></Link>
                           ) : (
                             <Button size="sm" onClick={() => { setMembershipError(""); setMembershipMessage(""); joinMembershipMutation.mutate(); }} disabled={joinMembershipMutation.isPending}>
                               {joinMembershipMutation.isPending ? "Opening Square…" : "Join Membership"}

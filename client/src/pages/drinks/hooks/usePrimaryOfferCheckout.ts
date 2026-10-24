@@ -55,7 +55,7 @@ export function usePrimaryOfferCheckout({ offer, isAuthenticated, popupNamePrefi
 
     if (!isAuthenticated) {
       const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      window.location.href = `/auth/login?next=${encodeURIComponent(next)}`;
+      window.location.href = `/login?next=${encodeURIComponent(next)}`;
       return;
     }
 

@@ -175,14 +175,14 @@ function GuestBanner() {
           </p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          <Link href="/auth">
+          <Link href="/signup">
             <a>
               <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white">
                 Join free
               </Button>
             </a>
           </Link>
-          <Link href="/auth">
+          <Link href="/login">
             <a>
               <Button size="sm" variant="outline">Sign in</Button>
             </a>
@@ -387,7 +387,7 @@ export default function Feed() {
           <div className="mt-10 rounded-2xl border border-orange-100 dark:border-orange-900/30 bg-orange-50 dark:bg-orange-950/20 p-6 text-center">
             <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Ready to join the kitchen?</p>
             <p className="text-sm text-muted-foreground mb-4">Sign up free to like, comment, save recipes, and more.</p>
-            <Link href="/auth">
+            <Link href="/signup">
               <a>
                 <Button className="bg-orange-500 hover:bg-orange-600 text-white px-8">
                   Create your free account
@@ -407,7 +407,7 @@ export default function Feed() {
               <ChefHat className="w-7 h-7 text-orange-500 mx-auto mb-2" />
               <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 mb-1">Join ChefSire</p>
               <p className="text-xs text-muted-foreground mb-3">Free to join. Start sharing your recipes today.</p>
-              <Link href="/auth">
+              <Link href="/signup">
                 <a>
                   <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white w-full">
                     Sign up free
@@ -510,7 +510,7 @@ export default function Feed() {
                         <p className="text-xs text-muted-foreground">{u.specialty}</p>
                       </div>
                     </div>
-                    <Link href="/auth">
+                    <Link href="/login">
                       <a><Button size="sm" variant="outline">Follow</Button></a>
                     </Link>
                   </div>

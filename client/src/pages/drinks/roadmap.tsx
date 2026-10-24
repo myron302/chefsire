@@ -110,7 +110,7 @@ export default function DrinkRoadmapPage() {
             <Link href="/drinks/feed"><Button variant="outline">Creator feed</Button></Link>
             <Link href="/drinks/drops"><Button variant="outline">Drops calendar</Button></Link>
             <Link href="/drinks/creator-dashboard#roadmap"><Button variant="outline">Manage roadmap</Button></Link>
-            {!user ? <Link href="/auth/login"><Button>Sign in for full visibility</Button></Link> : null}
+            {!user ? <Link href="/login"><Button>Sign in for full visibility</Button></Link> : null}
           </div>
         </div>
 

@@ -98,7 +98,7 @@ export default function DrinkOrdersPage() {
             <CardDescription>Sign in to view your premium drink collection order history.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Link href="/auth/login">
+            <Link href="/login">
               <Button>Sign in</Button>
             </Link>
             <Link href="/drinks/collections/explore">
