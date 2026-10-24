@@ -18,12 +18,12 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function setup(page: "login" | "signup") {
+async function setup(page: "login" | "signup" | "dashboard") {
   const browser = new EventTarget();
   const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const storage = new Map<string, string>();
   const requests: string[] = [];
-  let meReply = () => Promise.resolve(json(401));
+  let meReply = () => Promise.resolve(page === "dashboard" ? json(200, { success: true, user: verifiedUser }) : json(401));
   let loginReply = () => Promise.resolve(json(401, { error: "Invalid email or password" }));
   const fetchMock = async (url: unknown) => {
     requests.push(String(url));
@@ -49,14 +49,30 @@ async function setup(page: "login" | "signup") {
   }
   const location = memoryLocation({ path: `/${page}`, record: true });
   let session!: ReturnType<typeof useUser>;
+  let mounts = 0;
+  let unmounts = 0;
+  function Editor() {
+    const { user } = useUser();
+    const [owner] = React.useState(user!.id);
+    const [draft, setDraft] = React.useState("");
+    React.useEffect(() => { mounts++; return () => { unmounts++; }; }, []);
+    return <textarea data-owner={owner} value={draft} onChange={(e) => setDraft(e.target.value)} />;
+  }
+  function Dashboard() {
+    const { user, loading } = useUser();
+    if (loading) return <p>Loading dashboard</p>;
+    if (!user) return <p>Signed out</p>;
+    return <Editor />;
+  }
   function Screen() {
     session = useUser();
+    if (page === "dashboard") return <Dashboard />;
     return <AuthEntryGate {...session} destination="/feed" navigate={location.navigate}>{page === "login" ? <LoginPage /> : <SignupPage />}</AuthEntryGate>;
   }
   let view!: ReactTestRenderer;
   await act(async () => { view = create(<Router hook={location.hook}><UserProvider><Screen /></UserProvider></Router>); });
   return {
-    view, requests, location, session: () => session,
+    view, requests, location, session: () => session, mounts: () => mounts, unmounts: () => unmounts,
     setMe: (reply: typeof meReply) => { meReply = reply; },
     setLogin: (reply: typeof loginReply) => { loginReply = reply; },
     async signal(kind: "focus" | "visibilitychange" | "storage") {
@@ -162,3 +178,55 @@ test("successful login redirects with replacement", async () => {
     assert.equal(s.view.root.findAllByType("form").length, 0);
   } finally { await s.close(); }
 });
+
+
+test("authenticated dashboard keeps its unsaved editor through focus, visibility, same-user checks and outages", async () => {
+  const s = await setup("dashboard");
+  try {
+    const editor = s.view.root.findByType("textarea");
+    await act(async () => { editor.props.onChange({ target: { value: "unsaved recipe" } }); });
+    for (const kind of ["focus", "visibilitychange", "storage"] as const) {
+      const check = deferred<Response>();
+      s.setMe(() => check.promise);
+      await s.signal(kind);
+      assert.equal(s.session().loading, false);
+      assert.equal(s.session().sessionStatus, "checking");
+      assert.equal(s.view.root.findByType("textarea"), editor);
+      await act(async () => { check.resolve(json(200, { success: true, user: { ...verifiedUser, displayName: "Updated profile" } })); });
+      assert.equal(s.session().sessionStatus, "authenticated");
+      assert.equal(editor.props.value, "unsaved recipe");
+      assert.equal(s.mounts(), 1);
+      assert.equal(s.unmounts(), 0);
+    }
+    s.setMe(() => Promise.resolve(json(503)));
+    await s.signal("focus");
+    assert.equal(s.session().sessionStatus, "unavailable");
+    assert.equal(s.session().user?.id, verifiedUser.id);
+    assert.equal(s.view.root.findByType("textarea"), editor);
+    assert.equal(editor.props.value, "unsaved recipe");
+    assert.equal(s.unmounts(), 0);
+    assert.ok(s.requests.every(url => url === "/api/auth/me"));
+  } finally { await s.close(); }
+});
+
+for (const result of ["different account", "logout"] as const) {
+  test(`background verification confirms ${result}: discard the previous account's private editor state`, async () => {
+    const s = await setup("dashboard");
+    try {
+      const editor = s.view.root.findByType("textarea");
+      await act(async () => { editor.props.onChange({ target: { value: "account one's private draft" } }); });
+      s.setMe(() => Promise.resolve(result === "logout" ? json(401) : json(200, { success: true, user: { ...verifiedUser, id: "2", email: "other@example.test" } })));
+      await s.signal("storage");
+      assert.equal(s.unmounts(), 1);
+      assert.ok(!JSON.stringify(s.view.toJSON()).includes("account one's private draft"));
+      if (result === "logout") {
+        assert.equal(s.session().sessionStatus, "anonymous");
+        assert.equal(s.view.root.findAllByType("textarea").length, 0);
+      } else {
+        assert.equal(s.session().user?.id, "2");
+        assert.equal(s.view.root.findByType("textarea").props["data-owner"], "2");
+        assert.equal(s.view.root.findByType("textarea").props.value, "");
+      }
+    } finally { await s.close(); }
+  });
+}

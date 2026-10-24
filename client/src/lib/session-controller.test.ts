@@ -634,3 +634,41 @@ test("window sync during an explicit login does not interfere with the cookie mu
   assert.equal((await pending).ok, true);
   assert.equal(s.controller.getState().user?.id, alice.id);
 });
+
+for (const stored of [alice, null]) {
+  test(`background verification after ${stored ? "authentication" : "anonymous resolution"} never raises initial loading, including outage retries`, async () => {
+    const s = setup({ stored });
+    s.mePlans.push(stored ? me(alice) : status(401));
+    s.controller.start(); await s.flush();
+    const firstBackgroundFrame = s.states.length;
+    s.mePlans.push(status(503), network, status(503), status(503));
+    s.controller.sync(); await s.flush();
+    for (let i = 0; i < 3; i++) await s.tick();
+    assert.equal(s.controller.getState().sessionStatus, "unavailable");
+    assert.equal(s.controller.getState().verifying, false);
+    assert.deepEqual(s.controller.getState().user, stored);
+    s.mePlans.push(stored ? me(alice) : status(401));
+    s.controller.retry(); await s.flush();
+    assert.equal(s.controller.getState().sessionStatus, stored ? "authenticated" : "anonymous");
+    assert.ok(s.states.slice(firstBackgroundFrame).every(state => !state.loading));
+    assert.ok(s.requests.every(request => request.method === "GET"));
+  });
+}
+
+for (const next of [bob, null]) {
+  test(`background ${next ? "account switch" : "confirmed logout"} invalidates a late refresh of the previous account`, async () => {
+    const s = setup({ stored: alice });
+    s.mePlans.push(me(alice));
+    s.controller.start(); await s.flush();
+    const old = slowBody(alice);
+    s.mePlans.push(old.plan);
+    const refresh = s.controller.refresh();
+    await s.flush();
+    s.mePlans.push(next ? me(next) : status(401));
+    s.controller.sync(); await s.flush();
+    assert.deepEqual(s.controller.getState().user, next);
+    old.release(); await refresh; await s.flush();
+    assert.deepEqual(s.controller.getState().user, next, "old work cannot restore a previous identity");
+    assert.equal(s.controller.getState().loading, false);
+  });
+}

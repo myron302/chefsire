@@ -220,11 +220,14 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
   };
 
   const commitVerifiedUser = (user: U) => {
+    // A server-confirmed account switch ends work belonging to the old account.
+    if (state.user && state.user.id !== user.id) invalidateAll();
     storage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
     set({ user, loading: false, sessionStatus: "authenticated", pendingOAuth: false, verifying: false });
     stripOAuthMarker();
   };
   const commitSignedOut = () => {
+    if (state.user) invalidateAll();
     storage.removeItem(USER_STORAGE_KEY);
     set({ user: null, loading: false, sessionStatus: "anonymous", pendingOAuth: false, verifying: false });
     stripOAuthMarker();
@@ -470,7 +473,9 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
         return;
       }
       if (state.verifying) return;
-      set({ sessionStatus: "checking", loading: true });
+      // A read-only recheck is not initial resolution. Keep mounted consumers
+      // alive; verifyRun tracks its own progress and publishes any new identity.
+      set({ sessionStatus: "checking" });
       void verifyRun(state.pendingOAuth ? null : readCachedUser());
     },
 
