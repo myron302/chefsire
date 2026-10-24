@@ -44,3 +44,18 @@ test("both auth routes use the gate and the public header waits for confirmed an
   const layout = readFileSync(new URL("./layout.tsx", import.meta.url), "utf8");
   assert.ok(layout.includes('!loading && sessionStatus === "anonymous" && ('));
 });
+
+test("an admitted form survives indeterminate checks without trusting a cached profile for redirects", () => {
+  const calls: unknown[] = [];
+  const navigate = (...args: unknown[]) => { calls.push(args); };
+  const props = { user: null as unknown, loading: false, sessionStatus: "anonymous" as const, destination: "/feed", navigate };
+  let view!: ReturnType<typeof create>;
+  act(() => { view = create(<AuthEntryGate {...props}><form /></AuthEntryGate>); });
+  const form = view.root.findByType("form");
+  for (const sessionStatus of ["checking", "unavailable"] as const) {
+    act(() => { view.update(<AuthEntryGate {...props} loading={true} sessionStatus={sessionStatus} user={{ id: "cached" }}><form /></AuthEntryGate>); });
+    assert.equal(view.root.findByType("form"), form);
+    assert.deepEqual(calls, [], "only a verified identity may redirect");
+  }
+  act(() => { view.unmount(); });
+});
