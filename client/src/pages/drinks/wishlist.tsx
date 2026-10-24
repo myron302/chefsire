@@ -128,7 +128,7 @@ export default function DrinkCollectionsWishlistPage() {
             <CardDescription>Sign in to save premium collections for later and watch for active promos.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Link href="/auth/login">
+            <Link href="/login">
               <Button>Sign in</Button>
             </Link>
             <Link href="/drinks/collections/explore">

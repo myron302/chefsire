@@ -67,7 +67,7 @@ export default function DrinkCampaignFollowingPage() {
             <CardDescription>Sign in to follow creator seasons/campaigns and keep their themed updates in one cleaner lane.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Link href="/auth/login"><Button>Sign in</Button></Link>
+            <Link href="/login"><Button>Sign in</Button></Link>
             <Link href="/drinks/campaigns"><Button variant="outline">Browse campaigns</Button></Link>
           </CardContent>
         </Card>

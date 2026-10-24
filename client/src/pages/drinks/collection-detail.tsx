@@ -878,7 +878,7 @@ export default function DrinkCollectionDetailPage() {
                             : "Add to Wishlist"}
                       </Button>
                     ) : !user ? (
-                      <Link href="/auth/login">
+                      <Link href="/login">
                         <Button type="button" variant="outline">Sign in to wishlist</Button>
                       </Link>
                     ) : null}
@@ -1070,7 +1070,7 @@ export default function DrinkCollectionDetailPage() {
                         {currentUserReview ? "Edit Your Review" : "Leave a Review"}
                       </Button>
                     ) : !user ? (
-                      <Link href="/auth/login">
+                      <Link href="/login">
                         <Button type="button" variant="outline">Sign in to review</Button>
                       </Link>
                     ) : collection.userId === user.id ? (

@@ -505,7 +505,7 @@ export default function MealPlannerSharedBrowsePage() {
                       </Button>
                     ) : (
                       <Button asChild size="sm">
-                        <a href="/auth/login">Sign in to use</a>
+                        <a href="/login">Sign in to use</a>
                       </Button>
                     )}
                     <Button asChild size="sm" variant="outline">

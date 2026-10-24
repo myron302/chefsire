@@ -136,7 +136,7 @@ export default function SuggestionsPage() {
               Log in to get personalized AI-powered drink suggestions!
             </p>
             <Button asChild>
-              <a href="/auth">Log In</a>
+              <a href="/login">Log In</a>
             </Button>
           </CardContent>
         </Card>

@@ -99,7 +99,7 @@ export default function QuestsPage() {
               Log in to view your daily quests and start earning XP!
             </p>
             <Button asChild>
-              <a href="/auth">Log In</a>
+              <a href="/login">Log In</a>
             </Button>
           </CardContent>
         </Card>

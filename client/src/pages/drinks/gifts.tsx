@@ -78,7 +78,7 @@ export default function DrinkGiftsPage() {
             <CardDescription>Sign in to manage premium collection and bundle gifts.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Link href="/auth/login"><Button>Sign in</Button></Link>
+            <Link href="/login"><Button>Sign in</Button></Link>
             <Link href="/drinks/collections/explore"><Button variant="outline">Browse premium drinks</Button></Link>
           </CardContent>
         </Card>

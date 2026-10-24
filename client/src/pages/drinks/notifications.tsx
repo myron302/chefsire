@@ -147,7 +147,7 @@ export default function DrinksNotificationsPage() {
             <CardDescription>Sign in to track promos, price drops, and creator launches for premium drink collections.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            <Link href="/auth/login">
+            <Link href="/login">
               <Button>Sign in</Button>
             </Link>
             <Link href="/drinks/collections/explore">

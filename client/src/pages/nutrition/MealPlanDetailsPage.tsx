@@ -364,7 +364,7 @@ export default function MealPlanDetailsPage() {
             </CardHeader>
             <CardContent>
               {!user ? (
-                <Button variant="outline" className="w-full" onClick={() => setLocation("/auth/login")}>
+                <Button variant="outline" className="w-full" onClick={() => setLocation("/login")}>
                   Sign in to review
                 </Button>
               ) : (

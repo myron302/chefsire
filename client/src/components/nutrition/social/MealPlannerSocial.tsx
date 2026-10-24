@@ -71,7 +71,7 @@ export function MealPlannerSocialActions({
   const mutate = async (kind: "like" | "save") => {
     if (!user) {
       toast({ title: "Sign in required", description: `Sign in to ${kind} this ${target === "meal-plan" ? "meal plan" : "shared week"}.` });
-      setLocation("/auth/login");
+      setLocation("/login");
       return;
     }
     const active = kind === "like" ? stats.viewerHasLiked : stats.viewerHasSaved;
@@ -168,7 +168,7 @@ export function MealPlannerCommentsPanel({
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!user) {
-      setLocation("/auth/login");
+      setLocation("/login");
       return;
     }
     const comment = draft.trim();
@@ -220,7 +220,7 @@ export function MealPlannerCommentsPanel({
             </Button>
           </form>
         ) : (
-          <Button variant="outline" onClick={() => setLocation("/auth/login")}>Sign in to comment</Button>
+          <Button variant="outline" onClick={() => setLocation("/login")}>Sign in to comment</Button>
         )}
 
         <div className="space-y-3">
@@ -273,7 +273,7 @@ export function CreatorFollowButton({ creatorId, compact = false }: { creatorId?
 
   const toggle = async () => {
     if (!user) {
-      setLocation("/auth/login");
+      setLocation("/login");
       return;
     }
     setBusy(true);

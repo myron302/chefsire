@@ -458,7 +458,7 @@ export default function MealPlannerSharedWeekPage() {
             </Button>
           ) : (
             <Button asChild size="sm">
-              <a href="/auth/login">Sign in to copy this week</a>
+              <a href="/login">Sign in to copy this week</a>
             </Button>
           )}
           <Button asChild size="sm" variant="outline" className="ml-auto">
