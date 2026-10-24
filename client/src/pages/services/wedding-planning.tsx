@@ -32,10 +32,11 @@ import { ToastAction } from "@/components/ui/toast";
 
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { WeddingSubscriptionStatus } from "./wedding-planning/WeddingSubscriptionStatus";
+import { useWeddingSubscription } from "./wedding-planning/useWeddingSubscription";
 import { useUser } from "@/contexts/UserContext";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
 import WeddingTrialSelector from "@/components/WeddingTrialSelector";
-import { couplePlans } from "@/config/wedding-pricing";
 
 import {
   DEFAULT_BUDGET_ALLOCATIONS,
@@ -79,10 +80,11 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
   const isGoogleMapsLoaded = useGoogleMaps();
 
   // Get user context and check subscription status
-  const { user, updateUser } = useUser();
-  const currentTier = user?.subscriptionTier || "free";
-  const isPremium = currentTier === "premium" || currentTier === "elite";
-  const isElite = currentTier === "elite";
+  const { user } = useUser();
+  const { subscription, subscriptionError, subscriptionLoading, retrySubscription, selectPlan } = useWeddingSubscription(user?.id);
+  const currentTier = subscription?.currentTier;
+  const isPremium = subscription?.status === "active" && (currentTier === "premium" || currentTier === "elite");
+  const isElite = isPremium && currentTier === "elite";
 
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
@@ -188,16 +190,11 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
   const vendorLocationRef = useRef<HTMLInputElement>(null);
   const vendorLocationAutocompleteRef = useRef<any>(null);
 
-  // Trial selector modal - only show once if user is on free tier
-  const [showTrialSelector, setShowTrialSelector] = useState(() => currentTier === "free");
-
-  // Hide selector + trial banner if user already has premium/elite tier
+  // No automatic promotion: only accounts without a persisted selection see onboarding.
+  const showTrialSelector = subscription?.onboardingCompleted === false;
   useEffect(() => {
-    if (currentTier === "premium" || currentTier === "elite") {
-      setShowTrialSelector(false);
-      setShowTrialBanner(false);
-    }
-  }, [currentTier]);
+    if (isPremium) setShowTrialBanner(false);
+  }, [isPremium]);
 
   usePlanningTasksPersistence({
     userId: user?.id,
@@ -1964,26 +1961,11 @@ const displaySmartTips = useMemo(() => {
     async (tier: "free" | "premium" | "elite") => {
       if (currentTier === "premium" || currentTier === "elite") {
         toast({ title: "Already Subscribed", description: "You already have an active subscription!" });
-        setShowTrialSelector(false);
         return;
       }
 
-      const plan = (couplePlans as any)[tier];
-
       try {
-        const response = await fetch("/api/wedding/subscription/change", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ tier }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error((data as any)?.error || "Wedding subscription billing is unavailable");
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setShowTrialSelector(false);
+        await selectPlan(tier);
 
         if (tier === "free") {
           toast({
@@ -1992,8 +1974,8 @@ const displaySmartTips = useMemo(() => {
           });
         } else {
           toast({
-            title: `${plan.trialDays}-Day ${plan.name} Trial Started!`,
-            description: `Enjoy all ${plan.name} features for free. Features should unlock immediately!`,
+            title: "Wedding Plan Updated",
+            description: "Your Wedding Planner subscription has been updated.",
           });
         }
       } catch (error) {
@@ -2005,7 +1987,7 @@ const displaySmartTips = useMemo(() => {
         });
       }
     },
-    [updateUser, toast, currentTier]
+    [selectPlan, toast, currentTier]
   );
 
 
@@ -2031,6 +2013,11 @@ const displaySmartTips = useMemo(() => {
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
       <WeddingTrialSelector open={showTrialSelector} onSelect={handleTrialSelect} />
+      <WeddingSubscriptionStatus
+        loading={subscriptionLoading}
+        error={subscriptionError}
+        onRetry={retrySubscription}
+      />
 
       <Card className="mb-4 md:mb-6 border-dashed">
         <CardContent className="p-3 md:p-4">

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
@@ -167,8 +167,17 @@ r.get("/subscription", requireAuth, async (req, res) => {
     const currentTier = hasAuthoritativePaidEntitlement() ? recordedTier : "free";
     const effectiveState = effectiveSubscriptionPresentation(currentTier, (user as any).weddingStatus, (user as any).weddingEndsAt);
 
+    // A Free default is not a selection. Successful changes already have durable,
+    // Wedding-specific history, including legacy Free selections and cancellations.
+    await ensureSubscriptionHistoryTable();
+    const [selection] = await db.select({ id: subscriptionHistory.id })
+      .from(subscriptionHistory)
+      .where(and(eq(subscriptionHistory.userId, user.id), eq(subscriptionHistory.subscriptionType, "wedding")))
+      .limit(1);
+
     res.json({
       ok: true,
+      onboardingCompleted: Boolean(selection) || recordedTier !== "free",
       currentTier,
       status: effectiveState.status,
       endsAt: effectiveState.endsAt,
@@ -215,6 +224,7 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
       return res.json({
         ok: true,
         message: `${(WEDDING_SUBSCRIPTION_TIERS as any)[tier].name} is already active.`,
+        onboardingCompleted: true,
         currentTier: tier,
         status: "active",
         endsAt: previousEndsAt,
@@ -247,6 +257,7 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
       return res.json({
         ok: true,
         message: "Wedding subscription downgraded to Free.",
+        onboardingCompleted: true,
         currentTier: "free",
         status: "inactive",
         endsAt: null,
