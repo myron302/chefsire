@@ -672,3 +672,31 @@ for (const next of [bob, null]) {
     assert.equal(s.controller.getState().loading, false);
   });
 }
+
+test("cached cross-window profiles never become the verified identity; authoritative recovery invalidates stale work", async () => {
+  const s = setup();
+  s.mePlans.push(status(401));
+  s.controller.start(); await s.flush();
+  assert.equal(s.controller.getState().verifiedUserId, null);
+  const stale = slowBody(bob);
+  s.mePlans.push(stale.plan);
+  const refresh = s.controller.refresh();
+  await s.flush();
+  // A successful login in another window writes shared continuity data, but
+  // this window cannot verify the cookie until the backend recovers.
+  s.store.set(USER_STORAGE_KEY, JSON.stringify(alice));
+  s.mePlans.push(status(503), me(alice));
+  s.controller.sync(); await s.flush();
+  assert.equal(s.controller.getState().user?.id, alice.id, "continuity only");
+  assert.equal(s.controller.getState().sessionStatus, "unavailable");
+  assert.equal(s.controller.getState().verifiedUserId, null);
+  await s.tick();
+  assert.equal(s.controller.getState().verifiedUserId, alice.id);
+  stale.release(); await refresh; await s.flush();
+  assert.equal(s.controller.getState().user?.id, alice.id);
+  assert.equal(s.controller.getState().verifiedUserId, alice.id);
+  s.mePlans.push(status(401));
+  s.controller.sync(); await s.flush();
+  assert.equal(s.controller.getState().verifiedUserId, null);
+  assert.equal(s.controller.getState().user, null);
+});

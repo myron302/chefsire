@@ -33,6 +33,8 @@ export type SessionStatus =
 
 export type SessionState<U> = {
   user: U | null;
+  /** Last server-confirmed account; continuity cache reads never change this identity. */
+  verifiedUserId: string | null;
   loading: boolean;
   sessionStatus: SessionStatus;
   /** True from the Google OAuth return until the session is resolved (the URL marker is kept until then). */
@@ -170,7 +172,7 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
     function done() { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); }
     signal.addEventListener("abort", done, { once: true });
   }));
-  let state: SessionState<U> = { user: null, loading: true, sessionStatus: "checking", pendingOAuth: false, verifying: false };
+  let state: SessionState<U> = { user: null, verifiedUserId: null, loading: true, sessionStatus: "checking", pendingOAuth: false, verifying: false };
 
   const set = (patch: Partial<SessionState<U>>) => {
     if (disposed) return;
@@ -221,15 +223,15 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
 
   const commitVerifiedUser = (user: U) => {
     // A server-confirmed account switch ends work belonging to the old account.
-    if (state.user && state.user.id !== user.id) invalidateAll();
+    if (state.verifiedUserId !== user.id) invalidateAll();
     storage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-    set({ user, loading: false, sessionStatus: "authenticated", pendingOAuth: false, verifying: false });
+    set({ user, verifiedUserId: user.id, loading: false, sessionStatus: "authenticated", pendingOAuth: false, verifying: false });
     stripOAuthMarker();
   };
   const commitSignedOut = () => {
     if (state.user) invalidateAll();
     storage.removeItem(USER_STORAGE_KEY);
-    set({ user: null, loading: false, sessionStatus: "anonymous", pendingOAuth: false, verifying: false });
+    set({ user: null, verifiedUserId: null, loading: false, sessionStatus: "anonymous", pendingOAuth: false, verifying: false });
     stripOAuthMarker();
   };
 

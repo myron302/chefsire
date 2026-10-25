@@ -89,7 +89,7 @@ export const useUser = () => {
 const NOT_READY = { ok: false, error: "Please try again in a moment." } as const;
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionState<User>>({ user: null, loading: true, sessionStatus: "checking", pendingOAuth: false, verifying: false });
+  const [session, setSession] = useState<SessionState<User>>({ user: null, verifiedUserId: null, loading: true, sessionStatus: "checking", pendingOAuth: false, verifying: false });
   const [busy, setBusy] = useState(false);
   const controllerRef = useRef<SessionController<User> | null>(null);
 
@@ -211,8 +211,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   return (
     <UserContext.Provider value={{ user, loading: session.loading || busy, login, logout, signup, updateUser, refreshUser, sessionStatus: session.sessionStatus, retrySession }}>
       {/* Preserve local state for the same account, but never carry private page
-          state across an account switch or a confirmed sign-out. */}
-      <React.Fragment key={user ? `user:${user.id}` : "anonymous"}>{children}</React.Fragment>
+          state across a verified account switch or a confirmed sign-out. Cached
+          continuity profiles must never change this key. */}
+      <React.Fragment key={session.verifiedUserId ? `user:${session.verifiedUserId}` : "anonymous"}>{children}</React.Fragment>
       {showOutageNotice && (
         <div role="status" data-testid="session-unavailable" style={{ position: "fixed", left: 12, right: 12, bottom: 12, zIndex: 2147483000, padding: "10px 14px", borderRadius: 8, background: "#1f2937", color: "#fff", fontSize: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
           <span>We couldn’t confirm your sign-in because ChefSire is temporarily unavailable. You haven’t been signed out.</span>

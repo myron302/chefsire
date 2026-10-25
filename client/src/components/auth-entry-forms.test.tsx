@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
-import { UserProvider, useUser } from "../contexts/UserContext";
+import { authenticatedUserFromPayload, UserProvider, useUser } from "../contexts/UserContext";
+import { createSessionController } from "../lib/session-controller";
 import { AuthEntryGate } from "./auth-entry";
 import LoginPage from "../pages/auth/login";
 import SignupPage from "../pages/auth/signup";
@@ -72,7 +73,7 @@ async function setup(page: "login" | "signup" | "dashboard") {
   let view!: ReactTestRenderer;
   await act(async () => { view = create(<Router hook={location.hook}><UserProvider><Screen /></UserProvider></Router>); });
   return {
-    view, requests, location, session: () => session, mounts: () => mounts, unmounts: () => unmounts,
+    view, requests, location, storage, session: () => session, mounts: () => mounts, unmounts: () => unmounts,
     setMe: (reply: typeof meReply) => { meReply = reply; },
     setLogin: (reply: typeof loginReply) => { loginReply = reply; },
     async signal(kind: "focus" | "visibilitychange" | "storage") {
@@ -227,6 +228,64 @@ for (const result of ["different account", "logout"] as const) {
         assert.equal(s.view.root.findByType("textarea").props["data-owner"], "2");
         assert.equal(s.view.root.findByType("textarea").props.value, "");
       }
+    } finally { await s.close(); }
+  });
+}
+
+
+for (const page of ["login", "signup"] as const) {
+  test(`${page}: another window's cached login during an outage cannot reset an admitted form`, async () => {
+    const s = await setup(page);
+    try {
+      const form = s.view.root.findByType("form");
+      const email = s.view.root.findByProps({ id: "email" });
+      const password = s.view.root.findByProps({ id: "password" });
+      if (page === "signup") {
+        await act(async () => {
+          email.props.onChange({ target: { value: "unfinished@example.test" } });
+          password.props.onChange({ target: { value: "unfinished-password" } });
+          form.props.onSubmit({ preventDefault() {} });
+        });
+      } else {
+        await act(async () => {
+          await form.props.onSubmit({ preventDefault() {}, currentTarget: { values: { email: "unfinished@example.test", password: "incorrect-password" } } });
+        });
+        assert.ok(JSON.stringify(s.view.toJSON()).includes("Invalid email or password"));
+      }
+      const before = JSON.stringify(s.view.toJSON());
+      // Window B has signed in successfully and published its profile to shared
+      // storage. Window A must still ask the server who owns the shared cookie.
+      const windowB = createSessionController({
+        storage: window.localStorage,
+        fetch: (async (url) => {
+          assert.equal(url, "/api/auth/login");
+          return json(200, { success: true, user: verifiedUser });
+        }) as typeof fetch,
+        getLocation: () => new URL("https://chefsire.test/login"),
+        replaceUrl: () => {}, sleep: async () => {},
+        parseUser: authenticatedUserFromPayload, onChange: () => {},
+      });
+      try {
+        assert.equal((await windowB.login(verifiedUser.email, "valid-password")).ok, true);
+      } finally { windowB.dispose(); }
+      s.setMe(() => Promise.resolve(json(503)));
+      await s.signal("storage");
+      assert.equal(s.session().sessionStatus, "unavailable");
+      assert.equal(s.view.root.findByType("form"), form);
+      assert.equal(s.view.root.findByProps({ id: "email" }), email);
+      assert.equal(s.view.root.findByProps({ id: "password" }), password);
+      assert.equal(JSON.stringify(s.view.toJSON()), before, "inputs, validation and auth errors survive cached continuity");
+      assert.deepEqual(s.location.history, [`/${page}`], "cache alone must not redirect");
+      if (page === "signup") {
+        assert.equal(email.props.value, "unfinished@example.test");
+        assert.equal(password.props.value, "unfinished-password");
+      }
+      s.setMe(() => Promise.resolve(json(200, { success: true, user: verifiedUser })));
+      // Allow the existing first scheduled retry to verify the recovered backend.
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 5100)); });
+      assert.equal(s.session().sessionStatus, "authenticated");
+      assert.deepEqual(s.location.history, ["/feed"]);
+      assert.equal(s.view.root.findAllByType("form").length, 0);
     } finally { await s.close(); }
   });
 }
