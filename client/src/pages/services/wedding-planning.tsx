@@ -1731,7 +1731,16 @@ const displaySmartTips = useMemo(() => {
     registryDeleteQueue.current = { ownerId: user?.id, active: true, tail: Promise.resolve() };
   }
   useEffect(() => {
-    const queue = registryDeleteQueue.current;
+    // StrictMode replays effect setup after cleanup. Create a new queue each
+    // time rather than reviving an invalidated queue with pending operations.
+    const previous = registryDeleteQueue.current;
+    previous.active = false;
+    const queue = {
+      ownerId: user?.id,
+      active: true,
+      tail: Promise.resolve() as Promise<void>,
+    };
+    registryDeleteQueue.current = queue;
     return () => { queue.active = false; };
   }, [user?.id]);
   const handleRemoveRegistry = useCallback((registryId: number) => {
