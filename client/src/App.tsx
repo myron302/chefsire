@@ -7,6 +7,7 @@ import { queryClient } from "@/lib/queryClient";
 
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import AuthEntry from "@/components/auth-entry";
 import Layout from "@/components/layout";
 
 import { UserProvider } from "@/contexts/UserContext";
@@ -187,8 +188,8 @@ export default function App() {
                 </Route>
 
                 {/* Auth - ADDED VERIFY ROUTES */}
-                <Route path="/signup" component={Signup} />
-                <Route path="/login" component={Login} />
+                <Route path="/signup"><AuthEntry><Signup /></AuthEntry></Route>
+                <Route path="/login"><AuthEntry><Login /></AuthEntry></Route>
                 <Route path="/verify-email" component={VerifyEmailPage} />
                 <Route path="/verify/success" component={VerifySuccessPage} />
 

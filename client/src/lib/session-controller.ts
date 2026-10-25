@@ -33,6 +33,8 @@ export type SessionStatus =
 
 export type SessionState<U> = {
   user: U | null;
+  /** Last server-confirmed account; continuity cache reads never change this identity. */
+  verifiedUserId: string | null;
   loading: boolean;
   sessionStatus: SessionStatus;
   /** True from the Google OAuth return until the session is resolved (the URL marker is kept until then). */
@@ -170,7 +172,7 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
     function done() { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); }
     signal.addEventListener("abort", done, { once: true });
   }));
-  let state: SessionState<U> = { user: null, loading: true, sessionStatus: "checking", pendingOAuth: false, verifying: false };
+  let state: SessionState<U> = { user: null, verifiedUserId: null, loading: true, sessionStatus: "checking", pendingOAuth: false, verifying: false };
 
   const set = (patch: Partial<SessionState<U>>) => {
     if (disposed) return;
@@ -220,13 +222,16 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
   };
 
   const commitVerifiedUser = (user: U) => {
+    // A server-confirmed account switch ends work belonging to the old account.
+    if (state.verifiedUserId !== user.id) invalidateAll();
     storage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-    set({ user, loading: false, sessionStatus: "authenticated", pendingOAuth: false, verifying: false });
+    set({ user, verifiedUserId: user.id, loading: false, sessionStatus: "authenticated", pendingOAuth: false, verifying: false });
     stripOAuthMarker();
   };
   const commitSignedOut = () => {
+    if (state.user) invalidateAll();
     storage.removeItem(USER_STORAGE_KEY);
-    set({ user: null, loading: false, sessionStatus: "anonymous", pendingOAuth: false, verifying: false });
+    set({ user: null, verifiedUserId: null, loading: false, sessionStatus: "anonymous", pendingOAuth: false, verifying: false });
     stripOAuthMarker();
   };
 
@@ -457,12 +462,23 @@ export function createSessionController<U extends { id: string }>(deps: SessionC
         return;
       }
       const cached = readCachedUser();
-      if (!cached) {
-        set({ loading: false, sessionStatus: "anonymous" });
-        return;
-      }
       set({ sessionStatus: "checking" });
       void verifyRun(cached);
+    },
+
+    /** Other windows can change the shared cookie. Observe it without issuing login/logout requests. */
+    sync() {
+      if (disposed || queuedMutations > 0) return;
+      if (storage.getItem(LOGOUT_PENDING_KEY)) {
+        invalidateAll();
+        commitSignedOut();
+        return;
+      }
+      if (state.verifying) return;
+      // A read-only recheck is not initial resolution. Keep mounted consumers
+      // alive; verifyRun tracks its own progress and publishes any new identity.
+      set({ sessionStatus: "checking" });
+      void verifyRun(state.pendingOAuth ? null : readCachedUser());
     },
 
     /** User-initiated retry after the automatic retries were exhausted (or the answer was malformed). */

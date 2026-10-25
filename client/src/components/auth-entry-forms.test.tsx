@@ -1,0 +1,291 @@
+import React from "react";
+import test from "node:test";
+import assert from "node:assert/strict";
+import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { Router } from "wouter";
+import { memoryLocation } from "wouter/memory-location";
+import { authenticatedUserFromPayload, UserProvider, useUser } from "../contexts/UserContext";
+import { createSessionController } from "../lib/session-controller";
+import { AuthEntryGate } from "./auth-entry";
+import LoginPage from "../pages/auth/login";
+import SignupPage from "../pages/auth/signup";
+
+const json = (status: number, body: unknown = {}) => new Response(JSON.stringify(body), { status });
+const verifiedUser = { id: "1", email: "chef@example.test", specialty: null, cateringEnabled: false, cateringLocation: null, cateringLatitude: null, cateringLongitude: null, cateringRadius: null, cateringBio: null, cateringAvailable: false };
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+async function setup(page: "login" | "signup" | "dashboard") {
+  const browser = new EventTarget();
+  const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
+  const storage = new Map<string, string>();
+  const requests: string[] = [];
+  let meReply = () => Promise.resolve(page === "dashboard" ? json(200, { success: true, user: verifiedUser }) : json(401));
+  let loginReply = () => Promise.resolve(json(401, { error: "Invalid email or password" }));
+  const fetchMock = async (url: unknown) => {
+    requests.push(String(url));
+    if (url === "/api/auth/me") return meReply();
+    if (url === "/api/auth/login") return loginReply();
+    throw new Error(`Unexpected request ${url}`);
+  };
+  const win = Object.assign(browser, {
+    fetch: fetchMock,
+    location: new URL(`https://chefsire.test/${page}`),
+    history: { replaceState() {} },
+    localStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) },
+  });
+  const previous = new Map<string, PropertyDescriptor | undefined>();
+  for (const [key, value] of Object.entries({ React, window: win, document: doc, alert: () => {}, FormData: class extends FormData {
+    constructor(form?: { values: Record<string, string> }) {
+      super();
+      for (const [key, value] of Object.entries(form?.values ?? {})) this.set(key, value);
+    }
+  } })) {
+    previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  }
+  const location = memoryLocation({ path: `/${page}`, record: true });
+  let session!: ReturnType<typeof useUser>;
+  let mounts = 0;
+  let unmounts = 0;
+  function Editor() {
+    const { user } = useUser();
+    const [owner] = React.useState(user!.id);
+    const [draft, setDraft] = React.useState("");
+    React.useEffect(() => { mounts++; return () => { unmounts++; }; }, []);
+    return <textarea data-owner={owner} value={draft} onChange={(e) => setDraft(e.target.value)} />;
+  }
+  function Dashboard() {
+    const { user, loading } = useUser();
+    if (loading) return <p>Loading dashboard</p>;
+    if (!user) return <p>Signed out</p>;
+    return <Editor />;
+  }
+  function Screen() {
+    session = useUser();
+    if (page === "dashboard") return <Dashboard />;
+    return <AuthEntryGate {...session} destination="/feed" navigate={location.navigate}>{page === "login" ? <LoginPage /> : <SignupPage />}</AuthEntryGate>;
+  }
+  let view!: ReactTestRenderer;
+  await act(async () => { view = create(<Router hook={location.hook}><UserProvider><Screen /></UserProvider></Router>); });
+  return {
+    view, requests, location, storage, session: () => session, mounts: () => mounts, unmounts: () => unmounts,
+    setMe: (reply: typeof meReply) => { meReply = reply; },
+    setLogin: (reply: typeof loginReply) => { loginReply = reply; },
+    async signal(kind: "focus" | "visibilitychange" | "storage") {
+      await act(async () => {
+        if (kind === "visibilitychange") doc.dispatchEvent(new Event(kind));
+        else if (kind === "storage") {
+          const event = Object.assign(new Event(kind), { storageArea: win.localStorage, key: "user" });
+          browser.dispatchEvent(event);
+        } else browser.dispatchEvent(new Event(kind));
+      });
+    },
+    async close() {
+      await act(async () => { view.unmount(); });
+      for (const [key, descriptor] of Array.from(previous)) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+    },
+  };
+}
+
+for (const [name, status, message] of [
+  ["incorrect password", 401, "Invalid email or password"],
+  ["unverified email", 403, "Please verify your email to log in."],
+  ["network failure", 0, "Network error. Please try again."],
+] as const) {
+  test(`${name}: the real login form stays mounted and displays the error`, async () => {
+    const s = await setup("login");
+    try {
+      const reply = deferred<Response>();
+      s.setLogin(() => reply.promise);
+      const email = s.view.root.findByProps({ id: "email" });
+      const password = s.view.root.findByProps({ id: "password" });
+      let submitted!: Promise<void>;
+      await act(async () => {
+        submitted = s.view.root.findByType("form").props.onSubmit({ preventDefault() {}, currentTarget: { values: { email: "chef@example.test", password: "wrong-password" } } });
+      });
+      assert.equal(s.session().loading, true);
+      assert.equal(s.view.root.findByProps({ id: "email" }), email, "uncontrolled email input is not remounted");
+      assert.equal(s.view.root.findByProps({ id: "password" }), password, "uncontrolled password input is not remounted");
+      await act(async () => {
+        if (status) reply.resolve(json(status, { error: message }));
+        else reply.reject(new TypeError("Failed to fetch"));
+        await submitted;
+      });
+      assert.equal(s.view.root.findByProps({ id: "email" }), email);
+      assert.equal(s.view.root.findByProps({ id: "password" }), password);
+      assert.ok(JSON.stringify(s.view.toJSON()).includes(message));
+      assert.deepEqual(s.location.history, ["/login"]);
+    } finally { await s.close(); }
+  });
+}
+
+for (const page of ["login", "signup"] as const) {
+  test(`${page}: focus, visibility and cross-tab checks retain fields and validation; outage remains retryable`, async () => {
+    const s = await setup(page);
+    try {
+      const form = s.view.root.findByType("form");
+      if (page === "signup") {
+        await act(async () => {
+          s.view.root.findByProps({ name: "signup_email" }).props.onChange({ target: { value: "unfinished@example.test" } });
+          s.view.root.findByProps({ name: "signup_password" }).props.onChange({ target: { value: "unfinished-password" } });
+          form.props.onSubmit({ preventDefault() {} });
+        });
+      } else {
+        await act(async () => { await form.props.onSubmit({ preventDefault() {}, currentTarget: { values: { email: "unfinished", password: "x" } } }); });
+      }
+      const before = JSON.stringify(s.view.toJSON());
+      for (const kind of ["focus", "visibilitychange", "storage"] as const) {
+        const check = deferred<Response>();
+        s.setMe(() => check.promise);
+        await s.signal(kind);
+        assert.equal(s.session().sessionStatus, "checking");
+        assert.equal(s.view.root.findByType("form"), form);
+        assert.equal(JSON.stringify(s.view.toJSON()), before);
+        await act(async () => { check.resolve(json(401)); });
+        assert.equal(JSON.stringify(s.view.toJSON()), before);
+      }
+      s.setMe(() => Promise.resolve(json(503)));
+      await s.signal("focus");
+      assert.equal(s.session().sessionStatus, "unavailable");
+      assert.equal(s.view.root.findByType("form"), form);
+      if (page === "signup") {
+        assert.equal(s.view.root.findByProps({ name: "signup_email" }).props.value, "unfinished@example.test");
+        assert.equal(s.view.root.findByProps({ name: "signup_password" }).props.value, "unfinished-password");
+      }
+      // The existing recovery run is still active; uncertainty must not trigger logout.
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+      assert.equal(typeof s.session().retrySession, "function");
+      assert.equal(s.requests.some(url => url === "/api/auth/logout"), false);
+    } finally { await s.close(); }
+  });
+}
+
+test("successful login redirects with replacement", async () => {
+  const s = await setup("login");
+  try {
+    s.setLogin(() => Promise.resolve(json(200, { success: true, user: verifiedUser })));
+    await act(async () => {
+      await s.view.root.findByType("form").props.onSubmit({ preventDefault() {}, currentTarget: { values: { email: verifiedUser.email, password: "valid-password" } } });
+    });
+    assert.deepEqual(s.location.history, ["/feed"]);
+    assert.equal(s.view.root.findAllByType("form").length, 0);
+  } finally { await s.close(); }
+});
+
+
+test("authenticated dashboard keeps its unsaved editor through focus, visibility, same-user checks and outages", async () => {
+  const s = await setup("dashboard");
+  try {
+    const editor = s.view.root.findByType("textarea");
+    await act(async () => { editor.props.onChange({ target: { value: "unsaved recipe" } }); });
+    for (const kind of ["focus", "visibilitychange", "storage"] as const) {
+      const check = deferred<Response>();
+      s.setMe(() => check.promise);
+      await s.signal(kind);
+      assert.equal(s.session().loading, false);
+      assert.equal(s.session().sessionStatus, "checking");
+      assert.equal(s.view.root.findByType("textarea"), editor);
+      await act(async () => { check.resolve(json(200, { success: true, user: { ...verifiedUser, displayName: "Updated profile" } })); });
+      assert.equal(s.session().sessionStatus, "authenticated");
+      assert.equal(editor.props.value, "unsaved recipe");
+      assert.equal(s.mounts(), 1);
+      assert.equal(s.unmounts(), 0);
+    }
+    s.setMe(() => Promise.resolve(json(503)));
+    await s.signal("focus");
+    assert.equal(s.session().sessionStatus, "unavailable");
+    assert.equal(s.session().user?.id, verifiedUser.id);
+    assert.equal(s.view.root.findByType("textarea"), editor);
+    assert.equal(editor.props.value, "unsaved recipe");
+    assert.equal(s.unmounts(), 0);
+    assert.ok(s.requests.every(url => url === "/api/auth/me"));
+  } finally { await s.close(); }
+});
+
+for (const result of ["different account", "logout"] as const) {
+  test(`background verification confirms ${result}: discard the previous account's private editor state`, async () => {
+    const s = await setup("dashboard");
+    try {
+      const editor = s.view.root.findByType("textarea");
+      await act(async () => { editor.props.onChange({ target: { value: "account one's private draft" } }); });
+      s.setMe(() => Promise.resolve(result === "logout" ? json(401) : json(200, { success: true, user: { ...verifiedUser, id: "2", email: "other@example.test" } })));
+      await s.signal("storage");
+      assert.equal(s.unmounts(), 1);
+      assert.ok(!JSON.stringify(s.view.toJSON()).includes("account one's private draft"));
+      if (result === "logout") {
+        assert.equal(s.session().sessionStatus, "anonymous");
+        assert.equal(s.view.root.findAllByType("textarea").length, 0);
+      } else {
+        assert.equal(s.session().user?.id, "2");
+        assert.equal(s.view.root.findByType("textarea").props["data-owner"], "2");
+        assert.equal(s.view.root.findByType("textarea").props.value, "");
+      }
+    } finally { await s.close(); }
+  });
+}
+
+
+for (const page of ["login", "signup"] as const) {
+  test(`${page}: another window's cached login during an outage cannot reset an admitted form`, async () => {
+    const s = await setup(page);
+    try {
+      const form = s.view.root.findByType("form");
+      const email = s.view.root.findByProps({ id: "email" });
+      const password = s.view.root.findByProps({ id: "password" });
+      if (page === "signup") {
+        await act(async () => {
+          email.props.onChange({ target: { value: "unfinished@example.test" } });
+          password.props.onChange({ target: { value: "unfinished-password" } });
+          form.props.onSubmit({ preventDefault() {} });
+        });
+      } else {
+        await act(async () => {
+          await form.props.onSubmit({ preventDefault() {}, currentTarget: { values: { email: "unfinished@example.test", password: "incorrect-password" } } });
+        });
+        assert.ok(JSON.stringify(s.view.toJSON()).includes("Invalid email or password"));
+      }
+      const before = JSON.stringify(s.view.toJSON());
+      // Window B has signed in successfully and published its profile to shared
+      // storage. Window A must still ask the server who owns the shared cookie.
+      const windowB = createSessionController({
+        storage: window.localStorage,
+        fetch: (async (url) => {
+          assert.equal(url, "/api/auth/login");
+          return json(200, { success: true, user: verifiedUser });
+        }) as typeof fetch,
+        getLocation: () => new URL("https://chefsire.test/login"),
+        replaceUrl: () => {}, sleep: async () => {},
+        parseUser: authenticatedUserFromPayload, onChange: () => {},
+      });
+      try {
+        assert.equal((await windowB.login(verifiedUser.email, "valid-password")).ok, true);
+      } finally { windowB.dispose(); }
+      s.setMe(() => Promise.resolve(json(503)));
+      await s.signal("storage");
+      assert.equal(s.session().sessionStatus, "unavailable");
+      assert.equal(s.view.root.findByType("form"), form);
+      assert.equal(s.view.root.findByProps({ id: "email" }), email);
+      assert.equal(s.view.root.findByProps({ id: "password" }), password);
+      assert.equal(JSON.stringify(s.view.toJSON()), before, "inputs, validation and auth errors survive cached continuity");
+      assert.deepEqual(s.location.history, [`/${page}`], "cache alone must not redirect");
+      if (page === "signup") {
+        assert.equal(email.props.value, "unfinished@example.test");
+        assert.equal(password.props.value, "unfinished-password");
+      }
+      s.setMe(() => Promise.resolve(json(200, { success: true, user: verifiedUser })));
+      // Allow the existing first scheduled retry to verify the recovered backend.
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 5100)); });
+      assert.equal(s.session().sessionStatus, "authenticated");
+      assert.deepEqual(s.location.history, ["/feed"]);
+      assert.equal(s.view.root.findAllByType("form").length, 0);
+    } finally { await s.close(); }
+  });
+}
