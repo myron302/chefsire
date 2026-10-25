@@ -50,6 +50,7 @@ interface ReminderAction {
 
 interface WeddingPlanningInsightsSectionProps {
   mode: WeddingPlanningView;
+  canEditInsights: boolean;
   daysUntilWedding: number | null;
   nextAutomatedStep: RoadmapStep | null;
   openProgressEditor: () => void;
@@ -76,6 +77,7 @@ interface WeddingPlanningInsightsSectionProps {
 
 export function WeddingPlanningInsightsSection({
   mode,
+  canEditInsights,
   daysUntilWedding,
   nextAutomatedStep,
   openProgressEditor,
@@ -302,13 +304,13 @@ export function WeddingPlanningInsightsSection({
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pinned Notes (Optional)</p>
                   <p className="text-xs text-muted-foreground mt-1">Your own reminders — separate from the automated roadmap.</p>
                 </div>
-                <Badge variant="secondary" className="text-[10px]">Saved</Badge>
+                <Badge variant="secondary" className="text-[10px]">{canEditInsights ? "Auto-save" : "Elite editing"}</Badge>
               </div>
 
               <div className="space-y-2 mb-3">
-                <Input value={newCustomTipTitle} onChange={(e) => setNewCustomTipTitle(e.target.value)} placeholder="Short note title (e.g., Ask aunt about cake stand)" />
-                <Textarea value={newCustomTipDetail} onChange={(e) => setNewCustomTipDetail(e.target.value)} placeholder="Optional details" rows={2} />
-                <div className="flex justify-end"><Button size="sm" onClick={addCustomTip}>Pin note</Button></div>
+                <Input disabled={!canEditInsights} value={newCustomTipTitle} onChange={(e) => setNewCustomTipTitle(e.target.value)} placeholder="Short note title (e.g., Ask aunt about cake stand)" />
+                <Textarea disabled={!canEditInsights} value={newCustomTipDetail} onChange={(e) => setNewCustomTipDetail(e.target.value)} placeholder="Optional details" rows={2} />
+                <div className="flex justify-end"><Button size="sm" disabled={!canEditInsights} onClick={addCustomTip}>Pin note</Button></div>
               </div>
 
               {customTips.length === 0 ? <p className="text-xs text-muted-foreground">No pinned notes yet.</p> : (
@@ -320,7 +322,7 @@ export function WeddingPlanningInsightsSection({
                           <p className="text-sm font-medium whitespace-normal break-words">{tip.title || "Pinned note"}</p>
                           {tip.detail ? <p className="mt-0.5 text-xs text-muted-foreground whitespace-normal break-words leading-relaxed">{tip.detail}</p> : null}
                         </div>
-                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={() => removeCustomTip(tip.id)} aria-label="Remove pinned note">
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" disabled={!canEditInsights} onClick={() => removeCustomTip(tip.id)} aria-label="Remove pinned note">
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -340,8 +342,8 @@ export function WeddingPlanningInsightsSection({
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2 mb-3">
-                <Input value={newCustomActionLabel} onChange={(e) => setNewCustomActionLabel(e.target.value)} placeholder="Add a personal reminder" className="flex-1" />
-                <Button size="sm" onClick={addCustomAction} className="sm:w-auto w-full">Add reminder</Button>
+                <Input disabled={!canEditInsights} value={newCustomActionLabel} onChange={(e) => setNewCustomActionLabel(e.target.value)} placeholder="Add a personal reminder" className="flex-1" />
+                <Button size="sm" disabled={!canEditInsights} onClick={addCustomAction} className="sm:w-auto w-full">Add reminder</Button>
               </div>
 
               {customActions.length === 0 ? <p className="text-xs text-muted-foreground">No personal reminders yet.</p> : (
@@ -351,7 +353,7 @@ export function WeddingPlanningInsightsSection({
                       <div className="flex items-start gap-2">
                         <button
                           type="button"
-                          onClick={() => toggleCustomActionDone(a.id)}
+                          disabled={!canEditInsights} onClick={() => toggleCustomActionDone(a.id)}
                           className={["mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors", a.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-muted-foreground/30"].join(" ")}
                           aria-label={a.done ? "Mark reminder not done" : "Mark reminder done"}
                         >
@@ -362,7 +364,7 @@ export function WeddingPlanningInsightsSection({
                           <p className={["text-sm leading-relaxed whitespace-normal break-words", a.done ? "line-through text-muted-foreground" : ""].join(" ")}>{a.label}</p>
                         </div>
 
-                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" onClick={() => removeCustomAction(a.id)} aria-label="Remove personal reminder">
+                        <Button type="button" variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0" disabled={!canEditInsights} onClick={() => removeCustomAction(a.id)} aria-label="Remove personal reminder">
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
