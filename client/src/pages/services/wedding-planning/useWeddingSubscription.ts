@@ -89,18 +89,23 @@ export function useWeddingSubscription(userId?: string) {
   // server still independently authorizes every protected action.
   useEffect(() => {
     if (!userId || subscription?.trial?.status !== "active" || !subscription.trial.expiresAt) return;
-    // Use a recurring tick, not a one-shot timer tied to the subscription object.
-    // A failed read deliberately retains that object, but must not stop retries.
-    // Server-side authorization always uses the actual database expiration.
-    const timer = window.setInterval(() => {
-      if (!readPending.current && !mutations.current.has(userId)) {
-        setAttempt((value) => value + 1);
-      }
-    }, (() => {
-      const remaining = new Date(subscription.trial.expiresAt).getTime() - Date.now();
-      return remaining > 0 ? Math.min(60_000, Math.max(1_000, remaining)) : 60_000;
-    })());
-    return () => window.clearInterval(timer);
+    // Recalculate the delay after each tick. Near expiration we check promptly,
+    // then fall back to a minute, including after failed reads that preserve the
+    // same subscription reference. Never poll every second indefinitely.
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = (nextDelay: number) => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        if (!readPending.current && !mutations.current.has(userId)) {
+          setAttempt((value) => value + 1);
+        }
+        schedule(60_000);
+      }, nextDelay);
+    };
+    const remaining = new Date(subscription.trial.expiresAt).getTime() - Date.now();
+    schedule(remaining > 0 ? Math.min(60_000, Math.max(1_000, remaining)) : 60_000);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [userId, subscription]);
   const subscriptionError = failure?.userId === userId ? failure?.message : undefined;
   return {
