@@ -1719,10 +1719,21 @@ const displaySmartTips = useMemo(() => {
     toast({ title: "Registry Added", description: "Add your registry URL, then press Save." });
   }, [isPremium, isEditingRegistryLinks, registryLinks, toast]);
 
-  // Serialize deletes so an older response cannot restore a later-removed link.
-  const registryOwnerRef = useRef(user?.id);
-  registryOwnerRef.current = user?.id;
-  const registryDeleteQueue = useRef<Promise<void>>(Promise.resolve());
+  // Each mounted account gets its own cancellable deletion queue. Never send
+  // queued requests using another user's session cookie after an account switch.
+  const registryDeleteQueue = useRef<{
+    ownerId: string | undefined;
+    active: boolean;
+    tail: Promise<void>;
+  }>({ ownerId: user?.id, active: true, tail: Promise.resolve() });
+  if (registryDeleteQueue.current.ownerId !== user?.id) {
+    registryDeleteQueue.current.active = false;
+    registryDeleteQueue.current = { ownerId: user?.id, active: true, tail: Promise.resolve() };
+  }
+  useEffect(() => {
+    const queue = registryDeleteQueue.current;
+    return () => { queue.active = false; };
+  }, [user?.id]);
   const handleRemoveRegistry = useCallback((registryId: number) => {
     if (isPremium) {
       setRegistryDraft((prev) => prev.filter((r) => r.id !== registryId));
@@ -1734,9 +1745,10 @@ const displaySmartTips = useMemo(() => {
       toast({ title: "Sign in required", variant: "destructive" });
       return;
     }
+    const queue = registryDeleteQueue.current;
     const remove = async () => {
-      // A queued operation must never run with another account's cookie.
-      if (registryOwnerRef.current !== ownerId) return;
+      // Cancel pending work when this component unmounts or the account changes.
+      if (!queue.active || queue.ownerId !== ownerId) return;
       try {
         const response = await fetch(`/api/wedding/registry-links/${encodeURIComponent(registryId)}`, {
           method: "DELETE", credentials: "include",
@@ -1744,17 +1756,17 @@ const displaySmartTips = useMemo(() => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data?.ok) throw new Error(data?.error || "Could not remove registry link");
         // Account changes must not apply a previous account's registry response.
-        if (registryOwnerRef.current !== ownerId) return;
+        if (!queue.active || queue.ownerId !== ownerId) return;
         const saved = normalizeRegistryLinks(data.registryLinks);
         setRegistryLinks(saved);
         setRegistryDraft(saved);
         toast({ title: "Registry Removed", description: "This link was removed from your public registry." });
       } catch (error) {
-        if (registryOwnerRef.current === ownerId)
+        if (queue.active && queue.ownerId === ownerId)
           toast({ title: "Remove Failed", description: error instanceof Error ? error.message : "Please retry.", variant: "destructive" });
       }
     };
-    registryDeleteQueue.current = registryDeleteQueue.current.then(remove, remove);
+    queue.tail = queue.tail.then(remove, remove);
   }, [isPremium, user?.id, toast]);
   const handleShareRegistry = useCallback(
     (platform: string) => {
