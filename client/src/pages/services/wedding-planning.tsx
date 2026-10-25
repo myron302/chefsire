@@ -1720,6 +1720,8 @@ const displaySmartTips = useMemo(() => {
   }, [isPremium, isEditingRegistryLinks, registryLinks, toast]);
 
   // Serialize deletes so an older response cannot restore a later-removed link.
+  const registryOwnerRef = useRef(user?.id);
+  registryOwnerRef.current = user?.id;
   const registryDeleteQueue = useRef<Promise<void>>(Promise.resolve());
   const handleRemoveRegistry = useCallback((registryId: number) => {
     if (isPremium) {
@@ -1733,6 +1735,8 @@ const displaySmartTips = useMemo(() => {
       return;
     }
     const remove = async () => {
+      // A queued operation must never run with another account's cookie.
+      if (registryOwnerRef.current !== ownerId) return;
       try {
         const response = await fetch(`/api/wedding/registry-links/${encodeURIComponent(registryId)}`, {
           method: "DELETE", credentials: "include",
@@ -1752,9 +1756,6 @@ const displaySmartTips = useMemo(() => {
     };
     registryDeleteQueue.current = registryDeleteQueue.current.then(remove, remove);
   }, [isPremium, user?.id, toast]);
-  const registryOwnerRef = useRef(user?.id);
-  registryOwnerRef.current = user?.id;
-
   const handleShareRegistry = useCallback(
     (platform: string) => {
       const registrySlug = user?.username || user?.id || "my-registry";
