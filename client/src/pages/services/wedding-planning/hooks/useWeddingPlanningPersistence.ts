@@ -271,6 +271,7 @@ export function useRegistryLinksPersistence({
 }
 
 interface InsightsPersistenceOptions {
+  canSaveInsights: boolean;
   userId?: number | string | null;
   customTips: PlanningInsightTip[];
   customActions: PlanningInsightAction[];
@@ -282,6 +283,7 @@ interface InsightsPersistenceOptions {
 
 export function useInsightsPersistence({
   userId,
+  canSaveInsights,
   customTips,
   customActions,
   hasLoadedInsights,
@@ -335,21 +337,23 @@ export function useInsightsPersistence({
   }, [userId, setCustomActions, setCustomTips, setHasLoadedInsights]);
 
   useEffect(() => {
-    if (!userId || !hasLoadedInsights) return;
+    if (!userId || !hasLoadedInsights || !canSaveInsights) return;
 
     const timeout = window.setTimeout(async () => {
       try {
-        await fetch("/api/wedding/insights", {
+        const response = await fetch("/api/wedding/insights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ tips: customTips, actions: customActions }),
         });
+        if (!response.ok) throw new Error(`Save rejected (HTTP ${response.status}). Notes were not saved.`);
       } catch (e) {
         console.error("[Wedding Planning] save insights failed:", e);
+        window.dispatchEvent(new CustomEvent("wedding-insights-save-error", { detail: e instanceof Error ? e.message : "Insights save failed" }));
       }
     }, 800);
 
     return () => window.clearTimeout(timeout);
-  }, [customTips, customActions, userId, hasLoadedInsights]);
+  }, [customTips, customActions, userId, hasLoadedInsights, canSaveInsights]);
 }
