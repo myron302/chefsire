@@ -23,7 +23,9 @@ export function useWeddingSubscription(userId?: string) {
     let active = true;
     mounted.current = true;
     const requestGeneration = ++generation.current;
-    setLoaded(undefined);
+    // Keep the last verified subscription for this same account during background refresh.
+    // Account changes still discard the previous account's entitlement immediately.
+    setLoaded((current) => current?.userId === userId ? current : undefined);
     setFailure(undefined);
     readPending.current = Boolean(userId);
     if (userId) {
