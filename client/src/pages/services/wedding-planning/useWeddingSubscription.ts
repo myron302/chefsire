@@ -96,7 +96,10 @@ export function useWeddingSubscription(userId?: string) {
       if (!readPending.current && !mutations.current.has(userId)) {
         setAttempt((value) => value + 1);
       }
-    }, Math.min(60_000, Math.max(1_000, new Date(subscription.trial.expiresAt).getTime() - Date.now())));
+    }, (() => {
+      const remaining = new Date(subscription.trial.expiresAt).getTime() - Date.now();
+      return remaining > 0 ? Math.min(60_000, Math.max(1_000, remaining)) : 60_000;
+    })());
     return () => window.clearInterval(timer);
   }, [userId, subscription]);
   const subscriptionError = failure?.userId === userId ? failure?.message : undefined;
