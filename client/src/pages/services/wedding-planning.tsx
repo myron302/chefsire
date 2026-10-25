@@ -614,6 +614,7 @@ const [newCustomActionLabel, setNewCustomActionLabel] = useState("");
 
 useInsightsPersistence({
   userId: user?.id,
+  canSaveInsights: isElite,
   customTips,
   customActions,
   hasLoadedInsights,
@@ -1664,63 +1665,32 @@ const displaySmartTips = useMemo(() => {
   }, [registryLinks]);
 
   const saveRegistryLinks = useCallback(async () => {
-    const saved = normalizeRegistryLinks(registryDraft);
-
-    // Update UI immediately (optimistic UI).
-    setRegistryLinks(saved);
-    setRegistryDraft(saved);
-    setIsEditingRegistryLinks(false);
-
-    // Guests: no persistence (in-memory only).
-    if (!user?.id) {
-      toast({
-        title: "Saved",
-        description: "Registry links updated for this session. Sign in to save across devices.",
-      });
+    if (!isPremium) {
+      toast({ title: "Premium required", description: "Existing registries can still be removed on Free; editing or adding requires Premium.", variant: "destructive" });
       return;
     }
-
-    // Signed-in users: save to DB so it works across devices.
+    const saved = normalizeRegistryLinks(registryDraft);
+    if (!user?.id) {
+      toast({ title: "Sign in required", description: "Sign in to save registry links.", variant: "destructive" });
+      return;
+    }
     try {
       const response = await fetch("/api/wedding/registry-links", {
-        method: "POST",
-        credentials: "include",
+        method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          registryLinks: saved.map((l) => ({ id: l.id, name: l.name, url: l.url, icon: l.icon })),
-        }),
+        body: JSON.stringify({ registryLinks: saved }),
       });
-
-      let data: any = null;
-      try {
-        data = await response.json();
-      } catch {}
-
-      if (!response.ok || !data?.ok) {
-        const msg = data?.error || response.statusText || "Failed to save registry links";
-        throw new Error(msg);
-      }
-
-      // Server may normalize/overwrite; trust DB copy for cross-device consistency.
-      if (Array.isArray(data.registryLinks)) {
-        const fromServer = normalizeRegistryLinks(data.registryLinks);
-        setRegistryLinks(fromServer);
-        setRegistryDraft(fromServer);
-      }
-
-      toast({
-        title: "Saved",
-        description: "Your registry links were saved to your account (works on all devices).",
-      });
-    } catch (error: any) {
-      console.error("[Wedding Planning] Failed to save registry links to DB:", error);
-      toast({
-        title: "Save Failed",
-        description: "Couldn't save registry links to your account. Please try again.",
-        variant: "destructive",
-      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) throw new Error(data?.error || "Failed to save registry links");
+      const persisted = normalizeRegistryLinks(data.registryLinks);
+      setRegistryLinks(persisted);
+      setRegistryDraft(persisted);
+      setIsEditingRegistryLinks(false);
+      toast({ title: "Saved", description: "Registry links saved to your account." });
+    } catch (error) {
+      toast({ title: "Save Failed", description: error instanceof Error ? error.message : "Registry links could not be saved. Your draft is still available.", variant: "destructive" });
     }
-  }, [registryDraft, user?.id, toast]);
+  }, [registryDraft, user?.id, toast, isPremium]);
 
   // Backwards-compatible handler names (older JSX referenced these)
   const handleStartRegistryEdit = beginEditRegistryLinks;
@@ -1728,23 +1698,42 @@ const displaySmartTips = useMemo(() => {
   const handleSaveRegistryLinks = saveRegistryLinks;
 
   const handleAddRegistry = useCallback(() => {
+    if (!isPremium) {
+      toast({ title: "Premium required", description: "Upgrade to add or edit registry links.", variant: "destructive" });
+      return;
+    }
     const newRegistry = { id: Date.now(), name: "Custom Registry", url: "", icon: "🎁" };
     if (!isEditingRegistryLinks) {
       setRegistryDraft([...registryLinks, newRegistry]);
       setIsEditingRegistryLinks(true);
-    } else {
-      setRegistryDraft((prev) => [...prev, newRegistry]);
-    }
+    } else setRegistryDraft((prev) => [...prev, newRegistry]);
     toast({ title: "Registry Added", description: "Add your registry URL, then press Save." });
-  }, [isEditingRegistryLinks, registryLinks, toast]);
+  }, [isPremium, isEditingRegistryLinks, registryLinks, toast]);
 
-  const handleRemoveRegistry = useCallback(
-    (registryId: number) => {
+  const handleRemoveRegistry = useCallback(async (registryId: number) => {
+    if (isPremium) {
       setRegistryDraft((prev) => prev.filter((r) => r.id !== registryId));
-      toast({ title: "Registry Removed", description: "Registry removed (press Save to keep changes)." });
-    },
-    [toast]
-  );
+      toast({ title: "Registry Removed", description: "Press Save to keep changes." });
+      return;
+    }
+    if (!user?.id) {
+      toast({ title: "Sign in required", variant: "destructive" });
+      return;
+    }
+    try {
+      const response = await fetch(`/api/wedding/registry-links/${encodeURIComponent(registryId)}`, {
+        method: "DELETE", credentials: "include",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) throw new Error(data?.error || "Could not remove registry link");
+      const saved = normalizeRegistryLinks(data.registryLinks);
+      setRegistryLinks(saved);
+      setRegistryDraft(saved);
+      toast({ title: "Registry Removed", description: "This link was removed from your public registry." });
+    } catch (error) {
+      toast({ title: "Remove Failed", description: error instanceof Error ? error.message : "Please retry.", variant: "destructive" });
+    }
+  }, [isPremium, user?.id, toast]);
 
   const handleShareRegistry = useCallback(
     (platform: string) => {
@@ -2199,6 +2188,7 @@ const displaySmartTips = useMemo(() => {
         {showRoadmapSection && (
           <WeddingPlanningInsightsSection
             mode={mode}
+            canEditInsights={isElite}
             daysUntilWedding={daysUntilWedding}
             nextAutomatedStep={nextAutomatedStep}
             openProgressEditor={openProgressEditor}
@@ -2339,6 +2329,7 @@ const displaySmartTips = useMemo(() => {
             }}
             onRemoveRegistry={handleRemoveRegistry}
             onAddRegistry={handleAddRegistry}
+            canEditRegistry={isPremium}
             onShareRegistry={handleShareRegistry}
             registrySlug={user?.username || user?.id || "my-registry"}
           />
