@@ -1,3 +1,4 @@
+import { requireWeddingTier } from "../lib/wedding-entitlement";
 import { Router } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
@@ -86,7 +87,7 @@ router.get("/registry-links", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/registry-links", requireAuth, async (req, res) => {
+router.post("/registry-links", requireAuth, requireWeddingTier("premium"), async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });

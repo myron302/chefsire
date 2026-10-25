@@ -1,3 +1,4 @@
+import { requireWeddingTier } from "../lib/wedding-entitlement";
 // server/routes/wedding-event-details.ts
 //
 // Robust Wedding Event Details API (Neon/Postgres)
@@ -137,7 +138,7 @@ router.get("/event-details", requireAuth, async (req, res) => {
  * POST /api/wedding/event-details
  * Body: { details: { ... } }
  */
-router.post("/event-details", requireAuth, async (req, res) => {
+router.post("/event-details", requireAuth, requireWeddingTier("premium"), async (req, res) => {
   try {
     await ensureWeddingEventDetailsTable();
 

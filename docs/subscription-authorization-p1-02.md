@@ -52,3 +52,11 @@ Marketplace product limits and commission calculation resolve the canonical effe
 The canonical paid marketplace identifiers are `starter`, `professional`, `enterprise`, and `premium_plus`; StoreDashboard currently displays the first three. Subscription checkout validates this closed set before returning `SUBSCRIPTION_BILLING_UNAVAILABLE`. The historical `pro` checkout alias was not used by the current subscription model and is rejected.
 
 Effective subscription reads return one internally consistent state. When authoritative evidence is absent, marketplace, nutrition, wedding, and vendor reads return the domain's Free tier with `status: "inactive"` and `endsAt: null`. Historical stored tier/status/end-date values remain in the database for reconciliation but are neither returned as effective state nor used for authorization. The settings UI likewise derives status and renewal display from effective tier and never falls back to raw user subscription fields.
+
+## Wedding trial exception (2026-10-25)
+
+Wedding Planner now has a separate, database-issued introductory trial entitlement.
+The paid-authorization policy above is unchanged. See
+[Wedding introductory trials](wedding-intro-trials.md) for account uniqueness,
+server-time expiration, protected operations and the mandatory content-preservation
+policy. Expired/cancelled Wedding trials resolve to Free and never purge content.

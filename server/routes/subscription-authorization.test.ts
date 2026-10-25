@@ -65,6 +65,6 @@ test("Square checkout is authenticated, strict, and disabled before provider acc
 test("premium backend feature gates use canonical authoritative entitlement", () => {
   assert.match(marketplace, /effectiveMarketplaceTier\(seller as any\)/);
   assert.match(orders, /effectiveMarketplaceTier/);
-  assert.match(weddingRsvp, /hasAuthoritativePaidEntitlement\(\)/);
+  assert.match(weddingRsvp, /requireWeddingTier\("premium"\)/);
   assert.match(nutritionGate, /hasAuthoritativePaidEntitlement\(\)/);
 });

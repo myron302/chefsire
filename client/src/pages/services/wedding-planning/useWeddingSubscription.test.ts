@@ -21,7 +21,7 @@ test("Wedding onboarding survives navigation, refresh and a subsequent login", a
     return null;
   }
   globalThis.fetch = async (url, init) => {
-    assert.match(String(url), /^\/api\/wedding\/subscription(?:\/change)?$/);
+    assert.match(String(url), /^\/api\/wedding\/subscription(?:\/(?:change|trial))?$/);
     assert.equal(init?.credentials, "include");
     const requestAccount = account;
     if (pending) await new Promise<void>((resolve) => { pending = resolve; });

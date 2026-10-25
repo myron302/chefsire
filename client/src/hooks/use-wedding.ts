@@ -156,17 +156,11 @@ export function useSaveVendor() {
 
 export function useSendMessageToVendor() {
   const { toast } = useToast();
-  // Get user context to check subscription status
-  const { user } = useUser();
-  const isPremium = user?.subscription === 'premium';
-
   return useMutation({
     mutationFn: async (data: { vendorId: string; message: string }) => {
-      if (!isPremium) {
-        // Enforce the premium lock before making the API call
-        // This error will be caught by the onError handler below
-        throw new Error('Direct vendor messaging is a Premium feature. Please upgrade to contact vendors directly.');
-      }
+      const { requestWeddingSubscription } = await import("@/pages/services/wedding-planning/weddingSubscription");
+      const entitlement = await requestWeddingSubscription();
+      if (entitlement.currentTier === "free") throw new Error('Direct vendor messaging requires Premium or Elite Wedding access.');
 
       const { data: responseData } = await fetchWeddingWithFallback([
         '/api/wedding/vendor-message',

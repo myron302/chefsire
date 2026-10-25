@@ -1231,3 +1231,5 @@ export type AiSuggestionWithRecipe = AiSuggestion & {
   recipe?: Recipe;
   customDrink?: CustomDrink;
 };
+
+export { weddingIntroTrials } from "./schema/domains/ops-wedding";

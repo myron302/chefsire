@@ -92,6 +92,7 @@ export function WeddingPlanningBudgetReportDialog({
               <Button variant="outline" onClick={onClose}>
                 Close
               </Button>
+              <Button variant="outline" onClick={onExportBudgetCsv}>Export saved budget CSV</Button>
               <Button onClick={onGoPremium}>
                 <Sparkles className="h-4 w-4 mr-2 text-white" />
                 Upgrade to Premium

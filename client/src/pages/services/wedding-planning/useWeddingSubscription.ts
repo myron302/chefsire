@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { requestWeddingSubscription, type WeddingSubscription, type WeddingTier } from "./weddingSubscription";
+import { WeddingSubscriptionError, requestWeddingSubscription, type WeddingSubscription, type WeddingTier } from "./weddingSubscription";
 
 export function useWeddingSubscription(userId?: string) {
   const [loaded, setLoaded] = useState<{ userId: string; subscription: WeddingSubscription }>();
@@ -67,6 +67,14 @@ export function useWeddingSubscription(userId?: string) {
       } finally {
         if (isCurrent()) readPending.current = false;
       }
+    }).catch(async (error) => {
+      // A conflict may follow a successful request whose response was lost.
+      // Reconcile without replaying activation or reopening onboarding.
+      if (error instanceof WeddingSubscriptionError && error.code === "WEDDING_TRIAL_USED") {
+        const refreshed = await requestWeddingSubscription();
+        if (mounted.current && account.current === userId && generation.current === requestGeneration) setLoaded({ userId, subscription: refreshed });
+      }
+      throw error;
     }).finally(() => {
       if (mutations.current.get(userId) === pending) mutations.current.delete(userId);
     });
@@ -75,6 +83,14 @@ export function useWeddingSubscription(userId?: string) {
   }, [userId]);
 
   const subscription = loaded?.userId === userId ? loaded?.subscription : undefined;
+  // Refresh active trials at expiration and while the page remains open. The
+  // server still independently authorizes every protected action.
+  useEffect(() => {
+    if (subscription?.trial?.status !== "active" || !subscription.trial.expiresAt) return;
+    const delay = Math.min(60_000, Math.max(1, new Date(subscription.trial.expiresAt).getTime() - Date.now()));
+    const timer = setTimeout(() => setAttempt((value) => value + 1), delay);
+    return () => clearTimeout(timer);
+  }, [subscription]);
   const subscriptionError = failure?.userId === userId ? failure?.message : undefined;
   return {
     subscription,

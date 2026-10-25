@@ -191,7 +191,8 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
   const vendorLocationAutocompleteRef = useRef<any>(null);
 
   // No automatic promotion: only accounts without a persisted selection see onboarding.
-  const showTrialSelector = subscription?.onboardingCompleted === false;
+  const [trialSelectorRequested, setTrialSelectorRequested] = useState(false);
+  const showTrialSelector = subscription?.onboardingCompleted === false || (trialSelectorRequested && subscription?.trial?.eligible === true);
   useEffect(() => {
     if (isPremium) setShowTrialBanner(false);
   }, [isPremium]);
@@ -405,12 +406,7 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
     }
   }, [isGoogleMapsLoaded, isPremium, useSameLocation]);
 
-  const handleStartTrial = () => {
-    setShowTrialBanner(false);
-    toast({
-      description: "🎉 All wedding planning features are completely free! Enjoy unlimited access.",
-    });
-  };
+  const handleStartTrial = () => setTrialSelectorRequested(true);
 
   const budgetBreakdown = useMemo(
     () =>
@@ -1172,6 +1168,10 @@ const displaySmartTips = useMemo(() => {
   }, [progressEditorTasks, toast]);
 
   const addGuest = useCallback(async () => {
+    if (!isPremium || (!isElite && guestList.length >= 150)) {
+      toast({ title: "Wedding Plan Limit", description: !isPremium ? "Premium or Elite access is required to add guests. Your saved guests are preserved." : "Premium supports 150 guests. Elite supports unlimited guests. Your saved guests are preserved.", variant: "destructive" });
+      return;
+    }
     if (newGuestName && newGuestEmail) {
       const plusOneAllowed = newGuestPlusOneAllowed || !!newGuestPartner;
 
@@ -1211,7 +1211,7 @@ const displaySmartTips = useMemo(() => {
         description: `${guestDisplayName} has been added to your guest list.`,
       });
     }
-  }, [newGuestName, newGuestEmail, newGuestPartner, newGuestPlusOneAllowed, user?.id, toast]);
+  }, [newGuestName, newGuestEmail, newGuestPartner, newGuestPlusOneAllowed, user?.id, toast, isPremium, isElite, guestList.length]);
 
   const removeGuest = useCallback(
     async (guestId: number | string) => {
@@ -1639,7 +1639,7 @@ const displaySmartTips = useMemo(() => {
   const handleGoPremium = useCallback(() => {
     toast({
       title: "Upgrade to Premium",
-      description: "Redirecting to subscription page...",
+      description: "Paid upgrades will be available once verified billing is ready. Your saved content is preserved.",
     });
     setTimeout(() => {
       toast({
@@ -1966,6 +1966,7 @@ const displaySmartTips = useMemo(() => {
 
       try {
         await selectPlan(tier);
+        setTrialSelectorRequested(false);
 
         if (tier === "free") {
           toast({
@@ -1974,8 +1975,8 @@ const displaySmartTips = useMemo(() => {
           });
         } else {
           toast({
-            title: "Wedding Plan Updated",
-            description: "Your Wedding Planner subscription has been updated.",
+            title: "14-Day Wedding Trial Activated",
+            description: "No credit card required. No automatic charge at expiration. Your saved content is preserved.",
           });
         }
       } catch (error) {
@@ -2012,6 +2013,18 @@ const displaySmartTips = useMemo(() => {
   const showVendorCtaSection = mode === "hub" || mode === "vendors";
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
+      {subscription?.trial?.status === "active" && (
+        <div role="status" className="mb-4 rounded-lg border p-4">
+          {subscription.trial.tier === "elite" ? "Elite" : "Premium"} trial: {subscription.trial.remainingDays} day(s) remaining.
+          Ends {new Date(subscription.trial.expiresAt!).toLocaleString()}. No automatic charge at expiration.
+        </div>
+      )}
+      {(subscription?.trial?.status === "expired" || subscription?.trial?.status === "cancelled") && (
+        <div role="status" className="mb-4 rounded-lg border p-4">
+          Your trial has ended. Your saved content is preserved and no charge was made.
+          <Button variant="outline" onClick={handleGoPremium}>Upgrade Wedding Plan</Button>
+        </div>
+      )}
       <WeddingTrialSelector open={showTrialSelector} onSelect={handleTrialSelect} />
       <WeddingSubscriptionStatus
         loading={subscriptionLoading}
@@ -2060,7 +2073,7 @@ const displaySmartTips = useMemo(() => {
         </CardContent>
       </Card>
 
-      {showTrialBanner && (
+      {showTrialBanner && subscription?.trial?.eligible && (
         <Card className="mb-4 md:mb-6 border-2 border-purple-500 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
           <CardContent className="p-3 md:p-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">

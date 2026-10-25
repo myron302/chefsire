@@ -1,3 +1,4 @@
+import { requireWeddingTier } from "../lib/wedding-entitlement";
 // server/routes/wedding-insights.ts
 //
 // Wedding Planning - Custom Smart Tips & Next Steps (per user) backed by Neon/Postgres.
@@ -113,7 +114,7 @@ r.get("/insights", requireAuth, async (req, res) => {
  * POST /api/wedding/insights
  * Body: { tips: InsightTip[], actions: InsightAction[] }
  */
-r.post("/insights", requireAuth, async (req, res) => {
+r.post("/insights", requireAuth, requireWeddingTier("elite"), async (req, res) => {
   try {
     await ensureWeddingPlanningInsightsTable();
 
