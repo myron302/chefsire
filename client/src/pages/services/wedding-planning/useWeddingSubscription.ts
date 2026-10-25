@@ -88,11 +88,17 @@ export function useWeddingSubscription(userId?: string) {
   // Refresh active trials at expiration and while the page remains open. The
   // server still independently authorizes every protected action.
   useEffect(() => {
-    if (subscription?.trial?.status !== "active" || !subscription.trial.expiresAt) return;
-    const delay = Math.min(60_000, Math.max(1, new Date(subscription.trial.expiresAt).getTime() - Date.now()));
-    const timer = setTimeout(() => setAttempt((value) => value + 1), delay);
-    return () => clearTimeout(timer);
-  }, [subscription]);
+    if (!userId || subscription?.trial?.status !== "active" || !subscription.trial.expiresAt) return;
+    // Use a recurring tick, not a one-shot timer tied to the subscription object.
+    // A failed read deliberately retains that object, but must not stop retries.
+    // Server-side authorization always uses the actual database expiration.
+    const timer = window.setInterval(() => {
+      if (!readPending.current && !mutations.current.has(userId)) {
+        setAttempt((value) => value + 1);
+      }
+    }, Math.min(60_000, Math.max(1_000, new Date(subscription.trial.expiresAt).getTime() - Date.now())));
+    return () => window.clearInterval(timer);
+  }, [userId, subscription]);
   const subscriptionError = failure?.userId === userId ? failure?.message : undefined;
   return {
     subscription,
