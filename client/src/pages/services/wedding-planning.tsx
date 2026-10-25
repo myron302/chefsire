@@ -86,6 +86,15 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
   const isPremium = subscription?.status === "active" && (currentTier === "premium" || currentTier === "elite");
   const isElite = isPremium && currentTier === "elite";
 
+  useEffect(() => {
+    const onInsightsSaveError = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail || "Changes could not be saved.";
+      toast({ title: "Wedding notes not saved", description: message, variant: "destructive" });
+    };
+    window.addEventListener("wedding-insights-save-error", onInsightsSaveError);
+    return () => window.removeEventListener("wedding-insights-save-error", onInsightsSaveError);
+  }, [toast]);
+
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
 
