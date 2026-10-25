@@ -232,7 +232,7 @@ export function useRegistryLinksPersistence({
             data?.ok && Array.isArray(data.registryLinks) ? normalizeRegistryLinks(data.registryLinks) : null;
 
           if (!cancelled) {
-            if (fromServer && fromServer.length > 0) {
+            if (fromServer) {
               setRegistryLinks(fromServer);
               setRegistryDraft(fromServer);
             } else {
