@@ -1719,30 +1719,41 @@ const displaySmartTips = useMemo(() => {
     toast({ title: "Registry Added", description: "Add your registry URL, then press Save." });
   }, [isPremium, isEditingRegistryLinks, registryLinks, toast]);
 
-  const handleRemoveRegistry = useCallback(async (registryId: number) => {
+  // Serialize deletes so an older response cannot restore a later-removed link.
+  const registryDeleteQueue = useRef<Promise<void>>(Promise.resolve());
+  const handleRemoveRegistry = useCallback((registryId: number) => {
     if (isPremium) {
       setRegistryDraft((prev) => prev.filter((r) => r.id !== registryId));
       toast({ title: "Registry Removed", description: "Press Save to keep changes." });
       return;
     }
-    if (!user?.id) {
+    const ownerId = user?.id;
+    if (!ownerId) {
       toast({ title: "Sign in required", variant: "destructive" });
       return;
     }
-    try {
-      const response = await fetch(`/api/wedding/registry-links/${encodeURIComponent(registryId)}`, {
-        method: "DELETE", credentials: "include",
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data?.ok) throw new Error(data?.error || "Could not remove registry link");
-      const saved = normalizeRegistryLinks(data.registryLinks);
-      setRegistryLinks(saved);
-      setRegistryDraft(saved);
-      toast({ title: "Registry Removed", description: "This link was removed from your public registry." });
-    } catch (error) {
-      toast({ title: "Remove Failed", description: error instanceof Error ? error.message : "Please retry.", variant: "destructive" });
-    }
+    const remove = async () => {
+      try {
+        const response = await fetch(`/api/wedding/registry-links/${encodeURIComponent(registryId)}`, {
+          method: "DELETE", credentials: "include",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.ok) throw new Error(data?.error || "Could not remove registry link");
+        // Account changes must not apply a previous account's registry response.
+        if (registryOwnerRef.current !== ownerId) return;
+        const saved = normalizeRegistryLinks(data.registryLinks);
+        setRegistryLinks(saved);
+        setRegistryDraft(saved);
+        toast({ title: "Registry Removed", description: "This link was removed from your public registry." });
+      } catch (error) {
+        if (registryOwnerRef.current === ownerId)
+          toast({ title: "Remove Failed", description: error instanceof Error ? error.message : "Please retry.", variant: "destructive" });
+      }
+    };
+    registryDeleteQueue.current = registryDeleteQueue.current.then(remove, remove);
   }, [isPremium, user?.id, toast]);
+  const registryOwnerRef = useRef(user?.id);
+  registryOwnerRef.current = user?.id;
 
   const handleShareRegistry = useCallback(
     (platform: string) => {
