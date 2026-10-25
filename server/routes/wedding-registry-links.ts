@@ -58,7 +58,7 @@ function normalizeRegistryLinks(input: unknown): RegistryLink[] {
       icon: typeof item.icon === "string" && item.icon.trim() ? item.icon.trim().slice(0, 8) : "🎁",
     }));
 
-  return normalized.length > 0 ? normalized : DEFAULT_REGISTRY_LINKS;
+  return normalized;
 }
 
 router.get("/registry-links", requireAuth, async (req, res) => {
@@ -108,6 +108,73 @@ router.post("/registry-links", requireAuth, requireWeddingTier("premium"), async
   } catch (error: any) {
     console.error("[wedding-registry-links] POST error:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to save registry links" });
+  }
+});
+
+// Removing a registry link remains an account-owner operation even on Free.
+router.delete("/registry-links/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id)) return res.status(400).json({ ok: false, error: "Invalid registry link" });
+    await ensureWeddingRegistryLinksTable();
+    // The JSONB transformation is atomic: concurrent additions/edits cannot be
+    // overwritten by a stale client copy. It only removes the requested ID.
+    const result: any = await db.execute(sql`
+      UPDATE wedding_registry_links
+      SET registry_links = COALESCE((
+        SELECT jsonb_agg(value ORDER BY ordinality)
+        FROM jsonb_array_elements(registry_links) WITH ORDINALITY AS entries(value, ordinality)
+        WHERE CASE WHEN value->>'id' ~ '^-?[0-9]+
+  try {
+    const slug = String(req.params.slug || "").trim();
+    if (!slug) {
+      return res.status(400).json({ ok: false, error: "Registry slug is required" });
+    }
+
+    await ensureWeddingRegistryLinksTable();
+
+    const result: any = await db.execute(sql`
+      SELECT
+        w.registry_links AS "registryLinks",
+        u.username AS "username"
+      FROM wedding_registry_links w
+      INNER JOIN users u ON u.id = w.user_id
+      WHERE LOWER(u.username) = LOWER(${slug}) OR w.user_id = ${slug}
+      LIMIT 1
+    `);
+
+    const row = result?.rows?.[0] ?? result?.[0] ?? null;
+    if (!row) {
+      return res.status(404).json({ ok: false, error: "Registry not found" });
+    }
+
+    // ✅ Conflict resolved: handle JSONB that may arrive as string or array
+    const registryLinks = normalizeRegistryLinks(parseRegistryLinksPayload(row.registryLinks ?? []));
+    const publicLinks = registryLinks.filter((link) => !!link.url?.trim());
+
+    return res.json({ ok: true, username: row.username ?? slug, registryLinks: publicLinks });
+  } catch (error: any) {
+    console.error("[wedding-registry-links] public GET error:", error);
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to load public registry" });
+  }
+});
+
+export default router;
+
+          THEN (value->>'id')::numeric <> ${id} ELSE TRUE END
+      ), '[]'::jsonb),
+      updated_at = NOW()
+      WHERE user_id = ${userId}
+      RETURNING registry_links AS "registryLinks"
+    `);
+    const row = result?.rows?.[0] ?? result?.[0];
+    if (!row) return res.status(404).json({ ok: false, error: "Registry not found" });
+    return res.json({ ok: true, registryLinks: normalizeRegistryLinks(parseRegistryLinksPayload(row.registryLinks)) });
+  } catch (error) {
+    console.error("[wedding-registry-links] DELETE error:", error);
+    return res.status(500).json({ ok: false, error: "Failed to remove registry link" });
   }
 });
 
