@@ -1,6 +1,7 @@
 // server/routes/wedding-rsvp.ts
 import { Router } from "express";
-import { hasAuthoritativePaidEntitlement } from "../lib/subscription-security";
+import { requireWeddingTier } from "../lib/wedding-entitlement";
+import { createWeddingInvitation } from "../lib/wedding-invitations";
 import crypto from "node:crypto";
 import { db } from "../db";
 import { eq, and, gt, isNull } from "drizzle-orm";
@@ -40,7 +41,7 @@ function hashToken(token: string): string {
  *   }
  * }
  */
-router.post("/send-invitations", requireAuth, async (req, res) => {
+router.post("/send-invitations", requireAuth, requireWeddingTier("premium"), async (req, res) => {
   try {
     // Check if user is authenticated
     if (!req.user?.id) {
@@ -58,27 +59,6 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user) {
       return res.status(404).json({ ok: false, error: "User not found" });
-    }
-
-    const weddingTier = String((user as any).weddingTier || "free");
-    const weddingStatus = String((user as any).weddingStatus || (weddingTier === "free" ? "inactive" : "active"));
-    const weddingEndsAtRaw = (user as any).weddingEndsAt;
-    const weddingEndsAt =
-      weddingEndsAtRaw && !Number.isNaN(new Date(weddingEndsAtRaw).getTime())
-        ? new Date(weddingEndsAtRaw)
-        : null;
-
-    const hasPaidWeddingPlan =
-      (weddingTier === "premium" || weddingTier === "elite") && hasAuthoritativePaidEntitlement();
-    const isActive = String(weddingStatus).toLowerCase() === "active";
-    const isCancelledButValid =
-      String(weddingStatus).toLowerCase() === "cancelled" && weddingEndsAt && weddingEndsAt.getTime() > Date.now();
-
-    if (!hasPaidWeddingPlan || (!isActive && !isCancelledButValid)) {
-      return res.status(403).json({
-        ok: false,
-        error: "Premium or Elite wedding subscription required to send wedding invitations",
-      });
     }
 
     const appUrl = process.env.APP_URL || "http://localhost:5173";
@@ -100,9 +80,7 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
         const tokenHash = hashToken(token);
 
         // Create invitation record
-        const [invitation] = await db
-          .insert(weddingRsvpInvitations)
-          .values({
+        const invitation = await createWeddingInvitation(userId, {
             userId,
             guestName: name,
             guestEmail: email.toLowerCase().trim(),
@@ -113,8 +91,7 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
               : null,
             eventLocation: eventDetails?.eventLocation || null,
             eventMessage: eventDetails?.message || null,
-          })
-          .returning();
+          });
 
         // Generate RSVP links
         const acceptLink = `${appUrl}/api/wedding/rsvp?token=${token}&response=accept`;

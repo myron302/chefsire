@@ -9,6 +9,7 @@ import { RegistryLink } from "@/pages/services/lib/wedding-planning-core";
 
 interface WeddingPlanningRegistrySectionProps {
   isEditingRegistryLinks: boolean;
+  canEditRegistry: boolean;
   registryLinks: RegistryLink[];
   registryDraft: RegistryLink[];
   onCancelRegistryEdit: () => void;
@@ -23,6 +24,7 @@ interface WeddingPlanningRegistrySectionProps {
 
 export function WeddingPlanningRegistrySection({
   isEditingRegistryLinks,
+  canEditRegistry,
   registryLinks,
   registryDraft,
   onCancelRegistryEdit,
@@ -52,12 +54,12 @@ export function WeddingPlanningRegistrySection({
                 <Button size="sm" variant="outline" onClick={onCancelRegistryEdit}>
                   Cancel
                 </Button>
-                <Button size="sm" onClick={onSaveRegistryLinks}>
+                <Button size="sm" onClick={onSaveRegistryLinks} disabled={!canEditRegistry}>
                   Save
                 </Button>
               </>
             ) : (
-              <Button size="sm" variant="outline" onClick={onStartRegistryEdit}>
+              <Button size="sm" variant="outline" onClick={onStartRegistryEdit} disabled={!canEditRegistry}>
                 Edit
               </Button>
             )}
@@ -75,10 +77,10 @@ export function WeddingPlanningRegistrySection({
                   value={registry.url}
                   onChange={(e) => onRegistryUrlChange(registry.id, e.target.value)}
                   className="w-full text-sm"
-                  disabled={!isEditingRegistryLinks}
+                  disabled={!isEditingRegistryLinks || !canEditRegistry}
                 />
               </div>
-              {isEditingRegistryLinks && (
+              {(isEditingRegistryLinks || !canEditRegistry) && (
                 <Button size="sm" variant="ghost" className="flex-shrink-0" onClick={() => onRemoveRegistry(registry.id)} title="Remove">
                   <X className="w-3 h-3 md:w-4 md:h-4" />
                 </Button>
@@ -86,14 +88,14 @@ export function WeddingPlanningRegistrySection({
             </div>
           ))}
 
-          <Button variant="outline" className="w-full text-sm" onClick={onAddRegistry}>
+          <Button variant="outline" className="w-full text-sm" onClick={onAddRegistry} disabled={!canEditRegistry}>
             <Plus className="w-4 h-4 mr-2" />
             Add Another Registry
           </Button>
 
           {!isEditingRegistryLinks && (
             <p className="text-xs text-muted-foreground">
-              Tap <span className="font-medium">Edit</span> to add or change registry links, then <span className="font-medium">Save</span>.
+              {canEditRegistry ? <>Tap <span className="font-medium">Edit</span> to add or change registry links, then <span className="font-medium">Save</span>.</> : "Your existing registries remain visible. Premium is needed to add or edit links; you can still remove any existing link."}
             </p>
           )}
 

@@ -1,3 +1,4 @@
+import { requireWeddingTier } from "../lib/wedding-entitlement";
 // server/routes/wedding-calendar-events.ts
 //
 // Wedding Planning Calendar Events API (Neon/Postgres)
@@ -122,7 +123,7 @@ router.get("/calendar-events", requireAuth, async (req, res) => {
 /**
  * POST /api/wedding/calendar-events
  */
-router.post("/calendar-events", requireAuth, async (req, res) => {
+router.post("/calendar-events", requireAuth, requireWeddingTier("premium"), async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { requestWeddingSubscription, type WeddingSubscription, type WeddingTier } from "./weddingSubscription";
+import { WeddingSubscriptionError, requestWeddingSubscription, type WeddingSubscription, type WeddingTier } from "./weddingSubscription";
 
 export function useWeddingSubscription(userId?: string) {
   const [loaded, setLoaded] = useState<{ userId: string; subscription: WeddingSubscription }>();
@@ -23,7 +23,9 @@ export function useWeddingSubscription(userId?: string) {
     let active = true;
     mounted.current = true;
     const requestGeneration = ++generation.current;
-    setLoaded(undefined);
+    // Keep the last verified subscription for this same account during background refresh.
+    // Account changes still discard the previous account's entitlement immediately.
+    setLoaded((current) => current?.userId === userId ? current : undefined);
     setFailure(undefined);
     readPending.current = Boolean(userId);
     if (userId) {
@@ -67,6 +69,14 @@ export function useWeddingSubscription(userId?: string) {
       } finally {
         if (isCurrent()) readPending.current = false;
       }
+    }).catch(async (error) => {
+      // A conflict may follow a successful request whose response was lost.
+      // Reconcile without replaying activation or reopening onboarding.
+      if (error instanceof WeddingSubscriptionError && error.code === "WEDDING_TRIAL_USED") {
+        const refreshed = await requestWeddingSubscription();
+        if (mounted.current && account.current === userId && generation.current === requestGeneration) setLoaded({ userId, subscription: refreshed });
+      }
+      throw error;
     }).finally(() => {
       if (mutations.current.get(userId) === pending) mutations.current.delete(userId);
     });
@@ -75,6 +85,28 @@ export function useWeddingSubscription(userId?: string) {
   }, [userId]);
 
   const subscription = loaded?.userId === userId ? loaded?.subscription : undefined;
+  // Refresh active trials at expiration and while the page remains open. The
+  // server still independently authorizes every protected action.
+  useEffect(() => {
+    if (!userId || subscription?.trial?.status !== "active" || !subscription.trial.expiresAt) return;
+    // Recalculate the delay after each tick. Near expiration we check promptly,
+    // then fall back to a minute, including after failed reads that preserve the
+    // same subscription reference. Never poll every second indefinitely.
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = (nextDelay: number) => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        if (!readPending.current && !mutations.current.has(userId)) {
+          setAttempt((value) => value + 1);
+        }
+        schedule(60_000);
+      }, nextDelay);
+    };
+    const remaining = new Date(subscription.trial.expiresAt).getTime() - Date.now();
+    schedule(remaining > 0 ? Math.min(60_000, Math.max(1_000, remaining)) : 60_000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [userId, subscription]);
   const subscriptionError = failure?.userId === userId ? failure?.message : undefined;
   return {
     subscription,

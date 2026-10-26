@@ -1,3 +1,4 @@
+import { requireWeddingTier } from "../lib/wedding-entitlement";
 import { Router } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
@@ -57,7 +58,7 @@ function normalizeRegistryLinks(input: unknown): RegistryLink[] {
       icon: typeof item.icon === "string" && item.icon.trim() ? item.icon.trim().slice(0, 8) : "🎁",
     }));
 
-  return normalized.length > 0 ? normalized : DEFAULT_REGISTRY_LINKS;
+  return normalized;
 }
 
 router.get("/registry-links", requireAuth, async (req, res) => {
@@ -86,7 +87,7 @@ router.get("/registry-links", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/registry-links", requireAuth, async (req, res) => {
+router.post("/registry-links", requireAuth, requireWeddingTier("premium"), async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
@@ -107,6 +108,35 @@ router.post("/registry-links", requireAuth, async (req, res) => {
   } catch (error: any) {
     console.error("[wedding-registry-links] POST error:", error);
     return res.status(500).json({ ok: false, error: error?.message || "Failed to save registry links" });
+  }
+});
+
+// An owner may remove published links even when the Wedding trial expires.
+router.delete("/registry-links/:id", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id)) return res.status(400).json({ ok: false, error: "Invalid registry link" });
+    await ensureWeddingRegistryLinksTable();
+    // Atomically remove one element from the database's current JSONB array.
+    // No stale client snapshot is used; Free users cannot add or edit entries.
+    const result: any = await db.execute(sql`
+      UPDATE wedding_registry_links
+      SET registry_links = COALESCE((
+        SELECT jsonb_agg(entry ORDER BY position)
+        FROM jsonb_array_elements(registry_links) WITH ORDINALITY AS items(entry, position)
+        WHERE entry->>'id' <> ${String(id)}
+      ), '[]'::jsonb), updated_at = NOW()
+      WHERE user_id = ${userId}
+      RETURNING registry_links AS "registryLinks"
+    `);
+    const row = result?.rows?.[0] ?? result?.[0];
+    if (!row) return res.status(404).json({ ok: false, error: "Registry not found" });
+    return res.json({ ok: true, registryLinks: normalizeRegistryLinks(parseRegistryLinksPayload(row.registryLinks)) });
+  } catch (error) {
+    console.error("[wedding-registry-links] DELETE error:", error);
+    return res.status(500).json({ ok: false, error: "Failed to remove registry link" });
   }
 });
 

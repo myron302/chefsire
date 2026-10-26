@@ -1,3 +1,4 @@
+import type { WeddingSubscription } from "./services/wedding-planning/weddingSubscription";
 import React, { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -579,6 +580,7 @@ function SubscriptionSettingsPanel() {
         currentTier: "free" | "premium" | "elite";
         status: "active" | "inactive" | "cancelled" | "expired";
         endsAt?: string | null;
+        trial?: WeddingSubscription["trial"];
         tierInfo?: { name?: string; price?: number; trialDays?: number; features?: string[] };
       };
     },
@@ -1250,9 +1252,10 @@ function SubscriptionSettingsPanel() {
             <div className="text-sm text-gray-500">Wedding Planner</div>
             <div className="mt-1 font-semibold">{titleCase(weddingCurrentTier)}</div>
             <div className="text-sm text-gray-600">{titleCase(weddingStatus)}</div>
+            {myWeddingSubscriptionQuery.data?.trial?.status === "active" && <p className="text-xs">14-day trial. No automatic charge at expiration.</p>}
             {weddingEndsAt ? (
               <div className="text-xs text-gray-500 mt-1">
-                {String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
                 {formatDateTime(weddingEndsAt) || "—"}
               </div>
             ) : null}
@@ -1474,7 +1477,7 @@ function SubscriptionSettingsPanel() {
                       {weddingEndsAt ? (
                         <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
                           <CalendarDays size={13} />
-                          {String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                          {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
                           {formatDateTime(weddingEndsAt) || "—"}{" "}
                           <span className="text-gray-500">({relativeTimeFromNow(weddingEndsAt)})</span>
                         </div>
@@ -2009,7 +2012,7 @@ function SubscriptionSettingsPanel() {
                 {weddingEndsAt ? (
                   <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
                     <CalendarDays size={13} />
-                    {String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                    {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
                     {formatDateTime(weddingEndsAt) || "—"}
                   </div>
                 ) : null}

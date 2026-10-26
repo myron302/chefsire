@@ -86,6 +86,15 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
   const isPremium = subscription?.status === "active" && (currentTier === "premium" || currentTier === "elite");
   const isElite = isPremium && currentTier === "elite";
 
+  useEffect(() => {
+    const onInsightsSaveError = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail || "Changes could not be saved.";
+      toast({ title: "Wedding notes not saved", description: message, variant: "destructive" });
+    };
+    window.addEventListener("wedding-insights-save-error", onInsightsSaveError);
+    return () => window.removeEventListener("wedding-insights-save-error", onInsightsSaveError);
+  }, [toast]);
+
   // Simulated dynamic savings data (replace with a real API call if needed)
   const dynamicSavings = 4200;
 
@@ -191,7 +200,8 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
   const vendorLocationAutocompleteRef = useRef<any>(null);
 
   // No automatic promotion: only accounts without a persisted selection see onboarding.
-  const showTrialSelector = subscription?.onboardingCompleted === false;
+  const [trialSelectorRequested, setTrialSelectorRequested] = useState(false);
+  const showTrialSelector = subscription?.onboardingCompleted === false || (trialSelectorRequested && subscription?.trial?.eligible === true);
   useEffect(() => {
     if (isPremium) setShowTrialBanner(false);
   }, [isPremium]);
@@ -405,12 +415,7 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
     }
   }, [isGoogleMapsLoaded, isPremium, useSameLocation]);
 
-  const handleStartTrial = () => {
-    setShowTrialBanner(false);
-    toast({
-      description: "🎉 All wedding planning features are completely free! Enjoy unlimited access.",
-    });
-  };
+  const handleStartTrial = () => setTrialSelectorRequested(true);
 
   const budgetBreakdown = useMemo(
     () =>
@@ -618,6 +623,7 @@ const [newCustomActionLabel, setNewCustomActionLabel] = useState("");
 
 useInsightsPersistence({
   userId: user?.id,
+  canSaveInsights: isElite,
   customTips,
   customActions,
   hasLoadedInsights,
@@ -1172,6 +1178,10 @@ const displaySmartTips = useMemo(() => {
   }, [progressEditorTasks, toast]);
 
   const addGuest = useCallback(async () => {
+    if (!isPremium || (!isElite && guestList.length >= 150)) {
+      toast({ title: "Wedding Plan Limit", description: !isPremium ? "Premium or Elite access is required to add guests. Your saved guests are preserved." : "Premium supports 150 guests. Elite supports unlimited guests. Your saved guests are preserved.", variant: "destructive" });
+      return;
+    }
     if (newGuestName && newGuestEmail) {
       const plusOneAllowed = newGuestPlusOneAllowed || !!newGuestPartner;
 
@@ -1211,7 +1221,7 @@ const displaySmartTips = useMemo(() => {
         description: `${guestDisplayName} has been added to your guest list.`,
       });
     }
-  }, [newGuestName, newGuestEmail, newGuestPartner, newGuestPlusOneAllowed, user?.id, toast]);
+  }, [newGuestName, newGuestEmail, newGuestPartner, newGuestPlusOneAllowed, user?.id, toast, isPremium, isElite, guestList.length]);
 
   const removeGuest = useCallback(
     async (guestId: number | string) => {
@@ -1639,7 +1649,7 @@ const displaySmartTips = useMemo(() => {
   const handleGoPremium = useCallback(() => {
     toast({
       title: "Upgrade to Premium",
-      description: "Redirecting to subscription page...",
+      description: "Paid upgrades will be available once verified billing is ready. Your saved content is preserved.",
     });
     setTimeout(() => {
       toast({
@@ -1664,63 +1674,32 @@ const displaySmartTips = useMemo(() => {
   }, [registryLinks]);
 
   const saveRegistryLinks = useCallback(async () => {
-    const saved = normalizeRegistryLinks(registryDraft);
-
-    // Update UI immediately (optimistic UI).
-    setRegistryLinks(saved);
-    setRegistryDraft(saved);
-    setIsEditingRegistryLinks(false);
-
-    // Guests: no persistence (in-memory only).
-    if (!user?.id) {
-      toast({
-        title: "Saved",
-        description: "Registry links updated for this session. Sign in to save across devices.",
-      });
+    if (!isPremium) {
+      toast({ title: "Premium required", description: "Existing registries can still be removed on Free; editing or adding requires Premium.", variant: "destructive" });
       return;
     }
-
-    // Signed-in users: save to DB so it works across devices.
+    const saved = normalizeRegistryLinks(registryDraft);
+    if (!user?.id) {
+      toast({ title: "Sign in required", description: "Sign in to save registry links.", variant: "destructive" });
+      return;
+    }
     try {
       const response = await fetch("/api/wedding/registry-links", {
-        method: "POST",
-        credentials: "include",
+        method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          registryLinks: saved.map((l) => ({ id: l.id, name: l.name, url: l.url, icon: l.icon })),
-        }),
+        body: JSON.stringify({ registryLinks: saved }),
       });
-
-      let data: any = null;
-      try {
-        data = await response.json();
-      } catch {}
-
-      if (!response.ok || !data?.ok) {
-        const msg = data?.error || response.statusText || "Failed to save registry links";
-        throw new Error(msg);
-      }
-
-      // Server may normalize/overwrite; trust DB copy for cross-device consistency.
-      if (Array.isArray(data.registryLinks)) {
-        const fromServer = normalizeRegistryLinks(data.registryLinks);
-        setRegistryLinks(fromServer);
-        setRegistryDraft(fromServer);
-      }
-
-      toast({
-        title: "Saved",
-        description: "Your registry links were saved to your account (works on all devices).",
-      });
-    } catch (error: any) {
-      console.error("[Wedding Planning] Failed to save registry links to DB:", error);
-      toast({
-        title: "Save Failed",
-        description: "Couldn't save registry links to your account. Please try again.",
-        variant: "destructive",
-      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) throw new Error(data?.error || "Failed to save registry links");
+      const persisted = normalizeRegistryLinks(data.registryLinks);
+      setRegistryLinks(persisted);
+      setRegistryDraft(persisted);
+      setIsEditingRegistryLinks(false);
+      toast({ title: "Saved", description: "Registry links saved to your account." });
+    } catch (error) {
+      toast({ title: "Save Failed", description: error instanceof Error ? error.message : "Registry links could not be saved. Your draft is still available.", variant: "destructive" });
     }
-  }, [registryDraft, user?.id, toast]);
+  }, [registryDraft, user?.id, toast, isPremium]);
 
   // Backwards-compatible handler names (older JSX referenced these)
   const handleStartRegistryEdit = beginEditRegistryLinks;
@@ -1728,24 +1707,76 @@ const displaySmartTips = useMemo(() => {
   const handleSaveRegistryLinks = saveRegistryLinks;
 
   const handleAddRegistry = useCallback(() => {
+    if (!isPremium) {
+      toast({ title: "Premium required", description: "Upgrade to add or edit registry links.", variant: "destructive" });
+      return;
+    }
     const newRegistry = { id: Date.now(), name: "Custom Registry", url: "", icon: "🎁" };
     if (!isEditingRegistryLinks) {
       setRegistryDraft([...registryLinks, newRegistry]);
       setIsEditingRegistryLinks(true);
-    } else {
-      setRegistryDraft((prev) => [...prev, newRegistry]);
-    }
+    } else setRegistryDraft((prev) => [...prev, newRegistry]);
     toast({ title: "Registry Added", description: "Add your registry URL, then press Save." });
-  }, [isEditingRegistryLinks, registryLinks, toast]);
+  }, [isPremium, isEditingRegistryLinks, registryLinks, toast]);
 
-  const handleRemoveRegistry = useCallback(
-    (registryId: number) => {
+  // Each mounted account gets its own cancellable deletion queue. Never send
+  // queued requests using another user's session cookie after an account switch.
+  const registryDeleteQueue = useRef<{
+    ownerId: string | undefined;
+    active: boolean;
+    tail: Promise<void>;
+  }>({ ownerId: user?.id, active: true, tail: Promise.resolve() });
+  if (registryDeleteQueue.current.ownerId !== user?.id) {
+    registryDeleteQueue.current.active = false;
+    registryDeleteQueue.current = { ownerId: user?.id, active: true, tail: Promise.resolve() };
+  }
+  useEffect(() => {
+    // StrictMode replays effect setup after cleanup. Create a new queue each
+    // time rather than reviving an invalidated queue with pending operations.
+    const previous = registryDeleteQueue.current;
+    previous.active = false;
+    const queue = {
+      ownerId: user?.id,
+      active: true,
+      tail: Promise.resolve() as Promise<void>,
+    };
+    registryDeleteQueue.current = queue;
+    return () => { queue.active = false; };
+  }, [user?.id]);
+  const handleRemoveRegistry = useCallback((registryId: number) => {
+    if (isPremium) {
       setRegistryDraft((prev) => prev.filter((r) => r.id !== registryId));
-      toast({ title: "Registry Removed", description: "Registry removed (press Save to keep changes)." });
-    },
-    [toast]
-  );
-
+      toast({ title: "Registry Removed", description: "Press Save to keep changes." });
+      return;
+    }
+    const ownerId = user?.id;
+    if (!ownerId) {
+      toast({ title: "Sign in required", variant: "destructive" });
+      return;
+    }
+    const queue = registryDeleteQueue.current;
+    const remove = async () => {
+      // Cancel pending work when this component unmounts or the account changes.
+      if (!queue.active || queue.ownerId !== ownerId) return;
+      try {
+        const response = await fetch(`/api/wedding/registry-links/${encodeURIComponent(registryId)}`, {
+          method: "DELETE", credentials: "include",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.ok) throw new Error(data?.error || "Could not remove registry link");
+        // Account changes must not apply a previous account's registry response.
+        if (!queue.active || queue.ownerId !== ownerId) return;
+        const saved = normalizeRegistryLinks(data.registryLinks);
+        setRegistryLinks(saved);
+        setRegistryDraft(saved);
+        toast({ title: "Registry Removed", description: "This link was removed from your public registry." });
+      } catch (error) {
+        if (queue.active && queue.ownerId === ownerId)
+          toast({ title: "Remove Failed", description: error instanceof Error ? error.message : "Please retry.", variant: "destructive" });
+      }
+    };
+    queue.tail = queue.tail.then(remove, remove);
+  }, [isPremium, user?.id, toast]);
   const handleShareRegistry = useCallback(
     (platform: string) => {
       const registrySlug = user?.username || user?.id || "my-registry";
@@ -1966,6 +1997,7 @@ const displaySmartTips = useMemo(() => {
 
       try {
         await selectPlan(tier);
+        setTrialSelectorRequested(false);
 
         if (tier === "free") {
           toast({
@@ -1974,8 +2006,8 @@ const displaySmartTips = useMemo(() => {
           });
         } else {
           toast({
-            title: "Wedding Plan Updated",
-            description: "Your Wedding Planner subscription has been updated.",
+            title: "14-Day Wedding Trial Activated",
+            description: "No credit card required. No automatic charge at expiration. Your saved content is preserved.",
           });
         }
       } catch (error) {
@@ -2012,6 +2044,18 @@ const displaySmartTips = useMemo(() => {
   const showVendorCtaSection = mode === "hub" || mode === "vendors";
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
+      {subscription?.trial?.status === "active" && (
+        <div role="status" className="mb-4 rounded-lg border p-4">
+          {subscription.trial.tier === "elite" ? "Elite" : "Premium"} trial: {subscription.trial.remainingDays} day(s) remaining.
+          Ends {new Date(subscription.trial.expiresAt!).toLocaleString()}. No automatic charge at expiration.
+        </div>
+      )}
+      {(subscription?.trial?.status === "expired" || subscription?.trial?.status === "cancelled") && (
+        <div role="status" className="mb-4 rounded-lg border p-4">
+          Your trial has ended. Your saved content is preserved and no charge was made.
+          <Button variant="outline" onClick={handleGoPremium}>Upgrade Wedding Plan</Button>
+        </div>
+      )}
       <WeddingTrialSelector open={showTrialSelector} onSelect={handleTrialSelect} />
       <WeddingSubscriptionStatus
         loading={subscriptionLoading}
@@ -2060,7 +2104,7 @@ const displaySmartTips = useMemo(() => {
         </CardContent>
       </Card>
 
-      {showTrialBanner && (
+      {showTrialBanner && subscription?.trial?.eligible && (
         <Card className="mb-4 md:mb-6 border-2 border-purple-500 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
           <CardContent className="p-3 md:p-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -2186,6 +2230,7 @@ const displaySmartTips = useMemo(() => {
         {showRoadmapSection && (
           <WeddingPlanningInsightsSection
             mode={mode}
+            canEditInsights={isElite}
             daysUntilWedding={daysUntilWedding}
             nextAutomatedStep={nextAutomatedStep}
             openProgressEditor={openProgressEditor}
@@ -2326,6 +2371,7 @@ const displaySmartTips = useMemo(() => {
             }}
             onRemoveRegistry={handleRemoveRegistry}
             onAddRegistry={handleAddRegistry}
+            canEditRegistry={isPremium}
             onShareRegistry={handleShareRegistry}
             registrySlug={user?.username || user?.id || "my-registry"}
           />

@@ -5,7 +5,9 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { subscriptionHistory } from "../../shared/schema";
-import { effectiveSubscriptionPresentation, hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+import { hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+
+import { activateWeddingTrial, revokeWeddingTrial, weddingEntitlement } from "../lib/wedding-entitlement";
 
 const r = Router();
 
@@ -164,8 +166,8 @@ r.get("/subscription", requireAuth, async (req, res) => {
     if (!user) return res.status(404).json({ ok: false, error: "User not found" });
 
     const recordedTier = coerceWeddingTier((user as any).weddingTier);
-    const currentTier = hasAuthoritativePaidEntitlement() ? recordedTier : "free";
-    const effectiveState = effectiveSubscriptionPresentation(currentTier, (user as any).weddingStatus, (user as any).weddingEndsAt);
+    const entitlement = await weddingEntitlement(user.id, recordedTier);
+    const { currentTier } = entitlement;
 
     // A Free default is not a selection. Successful changes already have durable,
     // Wedding-specific history, including legacy Free selections and cancellations.
@@ -177,15 +179,27 @@ r.get("/subscription", requireAuth, async (req, res) => {
 
     res.json({
       ok: true,
-      onboardingCompleted: Boolean(selection) || recordedTier !== "free",
-      currentTier,
-      status: effectiveState.status,
-      endsAt: effectiveState.endsAt,
+      onboardingCompleted: Boolean(selection) || recordedTier !== "free" || !entitlement.trial.eligible,
+      ...entitlement,
       tierInfo: (WEDDING_SUBSCRIPTION_TIERS as any)[currentTier],
     });
   } catch (error) {
     console.error("Error fetching wedding subscription:", error);
     res.status(500).json({ ok: false, error: "Failed to fetch wedding subscription" });
+  }
+});
+
+// No payment information is accepted. Authentication supplies the only account ID.
+r.post("/subscription/trial", requireAuth, async (req, res) => {
+  try {
+    const { tier } = z.object({ tier: z.enum(["premium", "elite"]) }).strict().parse(req.body);
+    const trial = await activateWeddingTrial((req.user as { id: string }).id, tier);
+    if (!trial) return res.status(409).json({ ok: false, code: "WEDDING_TRIAL_USED", error: "Your introductory Wedding trial has already been used. Choose Free or a paid upgrade when available." });
+    return res.json({ ok: true, onboardingCompleted: true, currentTier: tier, status: "active", endsAt: trial.expiresAt, trial, tierInfo: WEDDING_SUBSCRIPTION_TIERS[tier], message: "Your 14-day trial is active. No credit card required and no automatic charge at expiration." });
+  } catch (error: any) {
+    if (error?.issues) return res.status(400).json({ ok: false, error: "Invalid trial request" });
+    console.error("Wedding trial activation failed:", error);
+    return res.status(503).json({ ok: false, error: "Unable to activate your trial. Please try again." });
   }
 });
 
@@ -254,9 +268,12 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
         paymentMethod: null,
       });
 
+      await revokeWeddingTrial(userId);
+
       return res.json({
         ok: true,
-        message: "Wedding subscription downgraded to Free.",
+        ...(await weddingEntitlement(userId)),
+        message: "Wedding subscription downgraded to Free. Your saved content is preserved.",
         onboardingCompleted: true,
         currentTier: "free",
         status: "inactive",
@@ -286,6 +303,11 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
     const user = await storage.getUser(userId);
     if (!user) return res.status(404).json({ ok: false, error: "User not found" });
 
+    const trialState = await weddingEntitlement(userId);
+    if (trialState.trial.status === "active") {
+      await revokeWeddingTrial(userId);
+      return res.json({ ok: true, onboardingCompleted: true, ...(await weddingEntitlement(userId)), message: "Trial cancelled. Your saved content is preserved." });
+    }
     const currentTier = coerceWeddingTier((user as any).weddingTier);
     const endsAtRaw = (user as any).weddingEndsAt;
     const endsAt =

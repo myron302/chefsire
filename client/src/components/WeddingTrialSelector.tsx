@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -9,14 +9,20 @@ import { cn } from '@/lib/utils';
 
 interface WeddingTrialSelectorProps {
   open: boolean;
-  onSelect: (tier: 'free' | 'premium' | 'elite') => void;
+  onSelect: (tier: 'free' | 'premium' | 'elite') => Promise<void>;
 }
 
 export default function WeddingTrialSelector({ open, onSelect }: WeddingTrialSelectorProps) {
   const [selectedTier, setSelectedTier] = useState<'free' | 'premium' | 'elite'>('premium');
 
-  const handleStartTrial = () => {
-    onSelect(selectedTier);
+  const pending = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const handleStartTrial = async () => {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    try { await onSelect(selectedTier); }
+    finally { pending.current = false; setBusy(false); }
   };
 
   const tiers = [
@@ -63,11 +69,11 @@ export default function WeddingTrialSelector({ open, onSelect }: WeddingTrialSel
                 className={cn(
                   'p-6 cursor-pointer transition-all relative',
                   isSelected ? `border-2 ${borderColor} shadow-lg scale-105` : 'border-2 border-transparent hover:border-gray-200',
-                  plan.popular && 'ring-2 ring-purple-500 ring-offset-2'
+                  ("popular" in plan && plan.popular) && 'ring-2 ring-purple-500 ring-offset-2'
                 )}
                 onClick={() => setSelectedTier(key)}
               >
-                {plan.popular && (
+                {("popular" in plan && plan.popular) && (
                   <Badge className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-purple-600 to-pink-600">
                     Most Popular
                   </Badge>
@@ -89,9 +95,9 @@ export default function WeddingTrialSelector({ open, onSelect }: WeddingTrialSel
                       </>
                     )}
                   </div>
-                  {plan.trialDays && (
+                  {"trialDays" in plan && (
                     <Badge variant="secondary" className="mt-2">
-                      {plan.trialDays}-day free trial
+                      {"trialDays" in plan ? plan.trialDays : 0}-day free trial
                     </Badge>
                   )}
                 </div>
@@ -130,14 +136,15 @@ export default function WeddingTrialSelector({ open, onSelect }: WeddingTrialSel
             size="lg"
             className="bg-gradient-to-r from-pink-600 to-purple-600 text-white px-8"
             onClick={handleStartTrial}
+            disabled={busy}
           >
-            {selectedTier === 'free' ? 'Continue with Free Plan' : `Start ${couplePlans[selectedTier].trialDays}-Day Free Trial`}
+            {busy ? 'Saving…' : selectedTier === 'free' ? 'Continue with Free Plan' : `Start ${couplePlans[selectedTier].name} Trial — 14 days, no credit card`}
           </Button>
         </div>
 
         <p className="text-xs text-center text-muted-foreground mt-4">
           {selectedTier !== 'free' && 'No credit card required for trial. '}
-          Cancel anytime during trial with no charges.
+          No automatic charge occurs at trial expiration. Your saved content is preserved.
         </p>
       </DialogContent>
     </Dialog>

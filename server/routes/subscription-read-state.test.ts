@@ -10,12 +10,13 @@ const vendor = read("./vendor-subscription.ts");
 const settings = read("../../client/src/pages/settings.tsx");
 
 test("every subscription read derives status and end date from effective tier", () => {
-  for (const source of [marketplace, nutrition, wedding, vendor]) {
+  for (const source of [marketplace, nutrition, vendor]) {
     assert.match(source, /effectiveSubscriptionPresentation/);
     assert.match(source, /status: effectiveState\.status/);
     assert.match(source, /endsAt: effectiveState\.endsAt/);
   }
-  assert.doesNotMatch(wedding, /recordedTier,/);
+  assert.match(wedding, /await weddingEntitlement\(user.id, recordedTier\)/);
+  assert.match(wedding, /\.\.\.entitlement/);
   assert.doesNotMatch(vendor, /recordedTier,/);
 });
 

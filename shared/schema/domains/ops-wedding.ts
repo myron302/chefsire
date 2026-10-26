@@ -451,3 +451,15 @@ export const storeDrops = pgTable(
     storeIdIdx: index("store_drops_store_id_idx").on(t.storeId),
   })
 );
+
+/** Introductory Wedding entitlement; never copy legacy paid state into this table. */
+export const weddingIntroTrials = pgTable("wedding_intro_trials", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  tier: text("tier").$type<"premium" | "elite">().notNull(),
+  activatedAt: timestamp("activated_at", { withTimezone: true }).notNull().default(sql`statement_timestamp()`),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`statement_timestamp() + interval '336 hours'`),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => [
+  check("wedding_intro_trials_tier_check", sql`${t.tier} IN ('premium', 'elite')`),
+  check("wedding_intro_trials_check", sql`${t.expiresAt} = ${t.activatedAt} + interval '336 hours'`),
+]);

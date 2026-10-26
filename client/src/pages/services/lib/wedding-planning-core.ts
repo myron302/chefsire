@@ -259,7 +259,7 @@ export const normalizeRegistryLinks = (input: any): RegistryLink[] => {
       icon: typeof item.icon === "string" && item.icon.trim().length > 0 ? item.icon : "🎁",
     }));
 
-  return normalized.length > 0 ? normalized : DEFAULT_REGISTRY_LINKS;
+  return normalized;
 };
 
 export const normalizeBudgetAllocations = (input: any): BudgetAllocation[] => {
