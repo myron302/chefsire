@@ -232,3 +232,70 @@ test("reconciliation failures stay recoverable and stale refreshes cannot affect
     globalThis.fetch = originalFetch;
   }
 });
+
+test("active trial refresh survives failures, throttles after expiration and stops when Free is verified", async (t) => {
+  const now = Date.UTC(2026, 9, 26, 12);
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now });
+  let reads = 0;
+  const active = { ok: true, currentTier: "premium", status: "active", onboardingCompleted: true, trial: { status: "active", eligible: false, tier: "premium", expiresAt: new Date(now + 1000).toISOString(), remainingDays: 1 } };
+  t.mock.method(globalThis, "fetch", async () => {
+    reads++;
+    if (reads === 2) return new Response(JSON.stringify({ ok: false, error: "Temporarily unavailable" }), { status: 503 });
+    return new Response(JSON.stringify(reads === 1 ? active : { ...active, currentTier: "free", status: "inactive", trial: { ...active.trial, status: "expired", remainingDays: 0 } }));
+  });
+  let result!: ReturnType<typeof useWeddingSubscription>;
+  function Probe() { result = useWeddingSubscription("owner"); return null; }
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => { view = create(createElement(Probe)); });
+    const verified = result.subscription;
+    assert.equal(reads, 1);
+    await act(async () => t.mock.timers.tick(999)); assert.equal(reads, 1);
+    await act(async () => t.mock.timers.tick(1)); assert.equal(reads, 2);
+    assert.equal(result.subscription, verified, "failed refresh must preserve verified same-account state");
+    assert.match(result.subscriptionError!, /Unable to load/);
+    await act(async () => t.mock.timers.tick(59_000)); assert.equal(reads, 2, "expiration cannot cause a rapid retry loop");
+    await act(async () => t.mock.timers.tick(1000)); assert.equal(reads, 3, "failed reads must not stop the timer");
+    assert.equal(result.subscription?.currentTier, "free");
+    assert.equal(result.subscription?.trial?.status, "expired");
+    assert.equal(result.subscription?.trial?.remainingDays, 0);
+    assert.equal(result.subscription?.onboardingCompleted, true, "expiration never reopens onboarding");
+    assert.equal(result.subscriptionError, undefined);
+    await act(async () => t.mock.timers.tick(120_000)); assert.equal(reads, 3);
+  } finally { await act(async () => view?.unmount()); t.mock.timers.reset(); }
+});
+
+test("trial polling does not overlap writes or leak stale refreshes across account switches/unmount", async (t) => {
+  const now = Date.UTC(2026, 9, 26, 12);
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now });
+  let account = "a";
+  let reads = 0;
+  let resolveWrite!: (response: Response) => void;
+  let resolveRefresh!: (response: Response) => void;
+  const active = { ok: true, currentTier: "elite", status: "active", onboardingCompleted: true, trial: { status: "active", eligible: false, tier: "elite", expiresAt: new Date(now + 600_000).toISOString(), remainingDays: 1 } };
+  t.mock.method(globalThis, "fetch", (_url: any, init: any) => {
+    if (init?.method === "POST") return new Promise<Response>((resolve) => { resolveWrite = resolve; });
+    reads++;
+    if (reads === 2) return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+    return Promise.resolve(new Response(JSON.stringify(account === "a" ? active : { ok: true, currentTier: "free", status: "inactive", onboardingCompleted: true })));
+  });
+  let result!: ReturnType<typeof useWeddingSubscription>;
+  function Probe({ userId }: { userId: string }) { result = useWeddingSubscription(userId); return null; }
+  let view!: ReactTestRenderer;
+  try {
+    await act(async () => { view = create(createElement(Probe, { userId: account })); });
+    let write!: Promise<void>;
+    await act(async () => { write = result.selectPlan("elite"); });
+    await act(async () => t.mock.timers.tick(60_000)); assert.equal(reads, 1, "pending write suppresses polling");
+    await act(async () => { resolveWrite(new Response(JSON.stringify(active))); await write; });
+    await act(async () => t.mock.timers.tick(60_000)); assert.equal(reads, 2);
+    await act(async () => t.mock.timers.tick(60_000)); assert.equal(reads, 2, "pending read suppresses polling");
+    account = "b";
+    await act(async () => view.update(createElement(Probe, { userId: account })));
+    assert.equal(result.subscription?.currentTier, "free");
+    await act(async () => resolveRefresh(new Response(JSON.stringify(active))));
+    assert.equal(result.subscription?.currentTier, "free", "A's late trial cannot overwrite B");
+    await act(async () => view.unmount());
+    await act(async () => t.mock.timers.tick(180_000)); assert.equal(reads, 3, "unmount leaves no polling work");
+  } finally { await act(async () => view?.unmount()); t.mock.timers.reset(); }
+});

@@ -85,41 +85,67 @@ No migration or deployment was run against Neon as part of this change.
 
 ## Validation
 
-27 targeted tests pass across subscription security, paid checkout protections,
-read-state contracts, Nutrition cancellation, Wedding onboarding, trial routes,
-invitation limits, real route middleware and frontend request routing. Coverage
-includes concurrent/duplicate/cross-tier requests, strict client input rejection,
-account scoping, exact expiry boundary, active Premium/Elite authorization,
-expired denial, consumed eligibility after cancellation/downgrade, failed writes,
-Free onboarding, and readable records above Free limits.
+Final validation on 2026-10-26: **49 passed, 0 failed, 0 skipped** across 15 test
+files, with a disposable PostgreSQL 16 container. Both bundle builds and
+`git diff --check` pass. No production database was connected or migrated.
 
-Commands: run each of the following with `node --import tsx <file>`:
+React and React Test Renderer are both locked at 18.3.1. The renderer was already
+a declared development dependency; `npm ci --include=dev --ignore-scripts`
+restores it without changing React or runtime dependencies. The added development
+dependency `jsdom@26.1.0` lets React DOM replay StrictMode effects on the same
+mounted workspace, which React Test Renderer 18 does not simulate.
 
-- `server/lib/subscription-security.test.ts`
-- `server/routes/subscription-authorization.test.ts`
-- `server/routes/subscription-read-state.test.ts`
-- `server/routes/subscription-checkout.test.ts`
-- `server/routes/nutrition-subscription-cancellation.test.ts`
-- `server/routes/wedding-onboarding.test.ts`
-- `server/routes/wedding-trial.test.ts`
-- `server/lib/wedding-invitations.test.ts`
-- `server/routes/wedding-feature-access.test.ts`
-- `client/src/pages/services/wedding-planning/weddingSubscription.test.ts`
+Run each file below with `node --import tsx <file>` after installing development
+dependencies. For the two PostgreSQL files, set `TEST_DATABASE_URL` to an isolated,
+disposable database; never substitute production `DATABASE_URL`. In validation,
+application `DATABASE_URL` was explicitly set to a dummy local connection while
+all real queries were directed to the disposable test database.
 
-`npm run build:client`, `npm run build:server`, and `git diff --check` pass.
-Vite reports existing chunk-size and static/dynamic-import warnings.
+| Tests | Passed |
+| --- | ---: |
+| `server/lib/subscription-security.test.ts` | 5 |
+| `server/routes/subscription-authorization.test.ts` | 7 |
+| `server/routes/subscription-read-state.test.ts` | 2 |
+| `server/routes/subscription-checkout.test.ts` | 4 |
+| `server/routes/subscription-routing.test.ts` | 4 |
+| `server/routes/nutrition-subscription-cancellation.test.ts` | 3 |
+| `server/routes/wedding-onboarding.test.ts` | 1 |
+| `server/routes/wedding-trial.test.ts` | 1 |
+| `server/lib/wedding-invitations.test.ts` | 1 |
+| `server/routes/wedding-feature-access.test.ts` | 1 |
+| `client/src/pages/services/wedding-planning/weddingSubscription.test.ts` | 2 |
+| `client/src/pages/services/wedding-planning/useWeddingSubscription.test.ts` | 5 |
+| `client/src/pages/services/wedding-planning/weddingRegistry.test.ts` | 7 |
+| `server/migrations/wedding-trial.postgres.test.ts` | 1 |
+| `server/routes/wedding-registry-links.postgres.test.ts` | 5 |
 
-The opt-in PostgreSQL migration/concurrency/preservation test is
-`server/migrations/wedding-trial.postgres.test.ts`; run with an isolated
-`TEST_DATABASE_URL`. It explicitly never uses application `DATABASE_URL`. It was
-skipped here because no isolated PostgreSQL service/test URL is available. The
-passing route tests use a database double; they do not replace that integration
-check. The existing `useWeddingSubscription.test.ts` React-renderer suite could
-not run because `react-test-renderer` is absent; dependency installation failed
-with an unreachable shell proxy. The frontend request tests and client build ran.
+The trial migration test now exercises real concurrent cross-tier inserts,
+duplicates, account isolation, Premium/Elite guards, cancellation, future-start
+denial, the exact PostgreSQL expiration boundary, migration reruns, and content/
+history preservation. The registry PostgreSQL tests exercise real route handlers
+and SQL: Free/expired deletion, add/edit denial, concurrent deletion, final empty
+lists through private/public reads, invalid requests, owner isolation, and recovery
+from a real SQL statement failure.
 
-Unrelated TypeScript diagnostics are documented separately in
-`docs/wedding-trial-typescript-baseline.md`.
+The registry React tests render the actual workspace, registry section, and
+persistence/subscription hooks. Only browser integrations, UI primitives and
+unrelated views are stubbed. They cover serialized rapid deletions, sequential
+removal to empty and reload, stale GET/DELETE responses, account changes (including
+A to B to A), unmount/remount, actual React DOM StrictMode effect replay, and
+failed/malformed response recovery. Hook tests also verify failure retry cadence,
+expiration reconciliation, suppression of overlapping polling/writes, and cleanup.
+There are no source-string-only assertions in the new registry suites.
+
+PostgreSQL suites intentionally skip when `TEST_DATABASE_URL` is absent. They did
+not skip in the final run. The disposable container and test schemas were removed
+after validation. Expected SQL-error logs in negative tests are asserted failures
+of the operation, not failures of the test suite.
+
+`npm run build:client` and `npm run build:server` pass. Vite reports existing
+chunk-size and static/dynamic-import warnings; esbuild reports the existing large
+server bundle. Unrelated TypeScript diagnostics remain documented separately in
+`docs/wedding-trial-typescript-baseline.md`; this validation does not claim a clean
+repository-wide TypeScript check.
 
 ## Existing feature limitations / authorization follow-up
 
