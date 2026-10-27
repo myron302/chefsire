@@ -244,6 +244,44 @@ router.patch("/:id", requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/stores/:id/layout - Update store builder layout
+router.patch("/:id/layout", requireAuth, async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ ok: false, error: "Not authenticated" });
+    }
+
+    const { id } = req.params;
+    // Accepts { builder: <craft node map or serialized string> }
+    const { builder } = req.body as { builder: unknown };
+
+    const existing = await db.query.stores.findFirst({
+      where: eq(stores.id, id),
+    });
+
+    if (!existing || existing.userId !== req.user.id) {
+      return res.status(403).json({ ok: false, error: "Not authorized" });
+    }
+
+    const v2 = normalizeStoreLayout(existing.layout);
+    const updatedLayout = { ...v2, builder: builder ?? v2.builder };
+
+    const [updated] = await db
+      .update(stores)
+      .set({
+        layout: updatedLayout as StoreInsert["layout"],
+        updatedAt: new Date(),
+      })
+      .where(eq(stores.id, id))
+      .returning();
+
+    res.json({ ok: true, store: updated });
+  } catch (error) {
+    console.error("Error updating layout:", error);
+    res.status(500).json({ ok: false, error: "Failed to update layout" });
+  }
+});
+
 // PATCH /api/stores/:id/publish - Toggle published status
 router.patch("/:id/publish", requireAuth, async (req, res) => {
   try {
