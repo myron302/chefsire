@@ -69,7 +69,6 @@ const VendorListingPage = React.lazy(() => import("@/pages/services/vendor-listi
 const Marketplace = React.lazy(() => import("@/pages/store/Marketplace"));
 const StoreViewer = React.lazy(() => import("@/pages/store/StoreViewer"));
 const StoreDashboard = React.lazy(() => import("@/pages/store/StoreDashboard"));
-const SellerDashboard = React.lazy(() => import("@/pages/store/SellerDashboard"));
 const StoreCreatePage = React.lazy(() => import("@/pages/store/StoreCreatePage"));
 const ProductFormPage = React.lazy(() => import("@/pages/store/ProductFormPage"));
 const CheckoutPage = React.lazy(() => import("@/pages/checkout/CheckoutPage"));
@@ -371,7 +370,7 @@ export default function App() {
                 <Route path="/store/create" component={StoreCreatePage} />
                 <Route path="/store/dashboard" component={StoreDashboard} />
                 {/* /store/seller redirects to consolidated dashboard via shim */}
-                <Route path="/store/seller" component={SellerDashboard} />
+                <Route path="/store/seller"><Redirect to="/store/dashboard" /></Route>
                 {/* Product form routes — must come before the :handle catch-all */}
                 <Route path="/store/products/new" component={ProductFormPage} />
                 <Route path="/store/products/edit/:id" component={ProductFormPage} />

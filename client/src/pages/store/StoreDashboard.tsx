@@ -11,7 +11,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
-import SubscriptionPlansModal from "@/components/store/SubscriptionPlansModal";
 import { getSellerMarketplaceProducts } from "@/lib/store/marketplaceApi";
 import StoreDashboardStatsGrid from "./components/StoreDashboardStatsGrid";
 import StoreDashboardAnalyticsTab from "./components/StoreDashboardAnalyticsTab";
@@ -52,7 +51,6 @@ export default function StoreDashboard() {
   const [productsLoaded, setProductsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
-  const [showPlansModal, setShowPlansModal] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     // Normalize legacy tab query params at startup
     const params = new URLSearchParams(window.location.search);
@@ -428,14 +426,6 @@ export default function StoreDashboard() {
           }
         />
       </div>
-
-      {/* Subscription Plans Modal */}
-      {showPlansModal && (
-        <SubscriptionPlansModal
-          onClose={() => setShowPlansModal(false)}
-          redirectAfter="/store/dashboard"
-        />
-      )}
     </div>
   );
 }

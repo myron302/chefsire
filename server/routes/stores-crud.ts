@@ -2,7 +2,6 @@ import { Router } from "express";
 import { db } from "../db";
 import { stores, users, orders, follows, clubs, clubMemberships } from "../../shared/schema.js";
 import { eq, count, sum, sql, and } from "drizzle-orm";
-import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { requireAuth, optionalAuth } from "../middleware/auth";
 import { normalizeStoreLayout } from "../../shared/store/storeLayout.js";
 import { competitions, competitionParticipants } from "../db/competitions.js";
@@ -153,21 +152,6 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
 
-    // Get user's subscription tier from their user record
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, req.user.id))
-      .limit(1);
-
-    if (!user) {
-      return res.status(404).json({ ok: false, error: "User not found" });
-    }
-
-    // Determine subscription tier (free, starter, pro, enterprise)
-    // Check both subscriptionTier and subscription fields for backwards compatibility
-    const userTier = (user as any).subscription || user.subscriptionTier || "free";
-
     const { handle, name, bio } = req.body;
     if (!handle || !name) {
       return res.status(400).json({ ok: false, error: "Handle and name required" });
@@ -257,44 +241,6 @@ router.patch("/:id", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Error updating store:", error);
     res.status(500).json({ ok: false, error: "Failed to update store" });
-  }
-});
-
-// PATCH /api/stores/:id/layout - Update store builder layout
-router.patch("/:id/layout", requireAuth, async (req, res) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ ok: false, error: "Not authenticated" });
-    }
-
-    const { id } = req.params;
-    // Accepts { builder: <craft node map or serialized string> }
-    const { builder } = req.body as { builder: unknown };
-
-    const existing = await db.query.stores.findFirst({
-      where: eq(stores.id, id),
-    });
-
-    if (!existing || existing.userId !== req.user.id) {
-      return res.status(403).json({ ok: false, error: "Not authorized" });
-    }
-
-    const v2 = normalizeStoreLayout(existing.layout);
-    const updatedLayout = { ...v2, builder: builder ?? v2.builder };
-
-    const [updated] = await db
-      .update(stores)
-      .set({
-        layout: updatedLayout as StoreInsert["layout"],
-        updatedAt: new Date(),
-      })
-      .where(eq(stores.id, id))
-      .returning();
-
-    res.json({ ok: true, store: updated });
-  } catch (error) {
-    console.error("Error updating layout:", error);
-    res.status(500).json({ ok: false, error: "Failed to update layout" });
   }
 });
 

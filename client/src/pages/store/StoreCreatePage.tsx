@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { Store, Check, AlertCircle, Crown, ArrowRight, Loader2 } from 'lucide-react';
+import { Store, Check, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
-import SubscriptionPlansModal from '@/components/store/SubscriptionPlansModal';
 
 export default function StoreCreatePage() {
   const { user, updateUser } = useUser();
@@ -25,19 +24,9 @@ export default function StoreCreatePage() {
   const [checkingExisting, setCheckingExisting] = useState(true);
   const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null);
   const [error, setError] = useState('');
-  const [hasAccess, setHasAccess] = useState(true);
-  const [showTierModal, setShowTierModal] = useState(false);
 
   useEffect(() => {
     checkExistingStore();
-  }, [user]);
-
-  useEffect(() => {
-    // Check subscription tier access - all users can create stores now (free tier available)
-    const tier = user?.subscription || user?.subscriptionTier;
-    const hasValidTrial = user?.trialEndDate && new Date(user.trialEndDate) > new Date();
-    // Users have access if they have any subscription tier OR a valid trial
-    setHasAccess(!!tier || hasValidTrial || !!user);
   }, [user]);
 
   useEffect(() => {
@@ -129,15 +118,6 @@ export default function StoreCreatePage() {
       return;
     }
 
-    if (!hasAccess) {
-      toast({
-        title: "Upgrade Required",
-        description: "Please upgrade to Starter tier or higher to create a store",
-        variant: "destructive"
-      });
-      return;
-    }
-
     if (formData.handle.length < 3) {
       setError('Handle must be at least 3 characters');
       return;
@@ -185,12 +165,7 @@ export default function StoreCreatePage() {
           description: errMsg,
           variant: 'destructive',
         });
-        if (response.status === 403 && data.requiredFeature === 'storeBuilder') {
-          setError('Store builder requires Starter tier or higher. Please upgrade your subscription.');
-          setHasAccess(false);
-        } else {
-          setError(errMsg);
-        }
+        setError(errMsg);
         return;
       }
 
@@ -265,23 +240,6 @@ export default function StoreCreatePage() {
           </p>
         </div>
 
-        {/* Subscription Warning */}
-        {!hasAccess && (
-          <Alert className="mb-6 border-orange-200 bg-orange-50">
-            <Crown className="h-4 w-4 text-orange-600" />
-            <AlertDescription className="text-orange-900">
-              <strong>Upgrade Required:</strong> Store builder is available on Starter tier and higher.
-              <Button
-                className="ml-4 bg-orange-500 hover:bg-orange-600"
-                size="sm"
-                onClick={() => setShowTierModal(true)}
-              >
-                View Plans
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* Create Form */}
         <Card>
           <CardHeader>
@@ -305,7 +263,6 @@ export default function StoreCreatePage() {
                     required
                     minLength={3}
                     maxLength={50}
-                    disabled={!hasAccess}
                     className="pr-10"
                   />
                   {formData.handle.length >= 3 && (
@@ -353,7 +310,6 @@ export default function StoreCreatePage() {
                   required
                   minLength={3}
                   maxLength={100}
-                  disabled={!hasAccess}
                   className="mt-1"
                 />
                 <p className="text-sm text-gray-500 mt-1">
@@ -372,7 +328,6 @@ export default function StoreCreatePage() {
                   placeholder="Tell customers about your store..."
                   rows={4}
                   maxLength={500}
-                  disabled={!hasAccess}
                   className="mt-1"
                 />
                 <p className="text-sm text-gray-500 mt-1">
@@ -400,7 +355,7 @@ export default function StoreCreatePage() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!hasAccess || loading || !formData.handle || !formData.name || handleAvailable === false}
+                  disabled={loading || !formData.handle || !formData.name || handleAvailable === false}
                   className="flex-1 bg-orange-500 hover:bg-orange-600"
                 >
                   {loading ? (
@@ -454,17 +409,6 @@ export default function StoreCreatePage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Subscription Plans Modal — shared component */}
-        {showTierModal && (
-          <SubscriptionPlansModal
-            onClose={() => {
-              setShowTierModal(false);
-              setHasAccess(true);
-            }}
-            redirectAfter="/store/create"
-          />
-        )}
       </div>
     </div>
   );

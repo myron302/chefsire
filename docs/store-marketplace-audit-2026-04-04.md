@@ -1,3 +1,5 @@
+> Superseded 2026-10-27: StoreBuilder, ThemeSelector, StoreCustomization and StoreWizard were removed.
+
 # Store / Marketplace Audit (2026-04-04)
 
 Scope: focused audit of store/marketplace/product-listing/purchase-adjacent surfaces.
