@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "purpose": "Three high-quality test candidates across workout, coffee and protein categories; no generation authorized",
+  "model": "gpt-image-2",
+  "quality": "high",
+  "size": "1536x1024",
+  "output_format": "png",
+  "images": [
+    {
+      "id": "IMG-034",
+      "subject": "Workout Drinks",
+      "route": "/drinks",
+      "destination": "client/public/images/drinks/hub/workout-drinks.webp",
+      "source_ref": "client/src/pages/drinks/index.tsx:68",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Three drinks from the workout-drink category on pale limestone: a pale orange diluted sports drink in a plain transparent sports bottle, a restrained cocoa-brown recovery shake in a simple shaker cup and deep red beet-citrus pre-workout drink in a tumbler. No supplements with labels. Crisp morning sidelight and a softly blurred training towel. One coherent scene, not panels.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/workout-drinks/pre-workout.ts",
+        "sha256": "cdf8b0c8c11332d9e809bf95bdb9c69bbf33e392cbd18c83fcf745c723a051be",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-035",
+      "subject": "Cold Brew",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/cold-brew.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:47",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Black cold brew coffee over clear ice in a short straight-sided glass, deep translucent mahogany, no milk, cream or foam. Small unbranded carafe nearby; dark stone counter and cool window light. Distinct from milk-swirled iced coffee.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/caffeinated/cold-brew.ts",
+        "sha256": "666ef1c2e1d2095aff45a15466f1ff7309b6c0a89b2b0f52720310eef5fb5a94",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-043",
+      "subject": "Collagen",
+      "route": "/drinks/protein-shakes",
+      "destination": "client/public/images/drinks/protein-shakes/collagen.webp",
+      "source_ref": "client/src/pages/drinks/protein-shakes/index.tsx:175",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, text, labels, logos, watermark or people. A pale berry-pink collagen shake in a clear tumbler, frozen mixed berries blended with unsweetened almond milk, hydrolyzed collagen peptides, vanilla and vitamin C powder. Small plain bowl of powder and a few berries beside; no lemon, pills, labels or health claims. Airy pale-stone setting, soft directional light. Category representative verified against collagen.ts Beauty Boost Berry.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/protein-shakes/collagen.ts",
+        "sha256": "1e340f1a073a2b0c0f564b0c4b543c0059cc586dce79133b1c4751058d908588",
+        "scope": "category representative; not an individual recipe image"
+      }
+    }
+  ]
+}

@@ -1,0 +1,2113 @@
+{
+  "checked_at": "2026-10-27",
+  "scope": "24 inventoried SVGs; source symbols/literals plus generated indexes and shared helper consumers; not proof of runtime reachability for every route",
+  "assets": [
+    {
+      "inventory_row": 141,
+      "asset": "/images/drinks/potent-potables/cocktails.svg",
+      "exists": true,
+      "sha256": "ec5468695b8b6b439d89005674ae61c894e05a877fcf4e5f79ebf9feeeb23fa2",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+      ],
+      "direct_source_reference_count": 14,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 49,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 50,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 270,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 282,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 285,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 310,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 311,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 312,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 545,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 546,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 547,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 549,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 550,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 551,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails"
+          ]
+        }
+      ],
+      "generated_reference_count": 0,
+      "generated_reference_examples": [],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 142,
+      "asset": "/images/drinks/potent-potables/cognac-brandy.svg",
+      "exists": true,
+      "sha256": "2403ad646544f44c2775a3d59f2c014cb5260bfe9d6051b4f96d070b96fa67bc",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognac",
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy"
+      ],
+      "direct_source_reference_count": 6,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 57,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognac",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 625,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognac",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 626,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognac",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 627,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognac",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 629,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognac",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 630,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognac",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy"
+          ]
+        }
+      ],
+      "generated_reference_count": 48,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14017,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14058,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14104,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14150,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14196,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 143,
+      "asset": "/images/drinks/potent-potables/daiquiri.svg",
+      "exists": true,
+      "sha256": "6d21142fb0a547ab96f7933fb95f194412f43271a3426534961b3a2eb78f6d75",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.daiquiri"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 58,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.daiquiri"
+          ]
+        }
+      ],
+      "generated_reference_count": 36,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14583,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14618,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14651,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14684,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14717,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 144,
+      "asset": "/images/drinks/potent-potables/gin.svg",
+      "exists": true,
+      "sha256": "3e8c1f5829609db5799224150727342cf3d5a699a83543ac1f439c84b2bbf788",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin"
+      ],
+      "direct_source_reference_count": 7,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 51,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 555,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 556,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 557,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 559,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 560,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 561,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin"
+          ]
+        }
+      ],
+      "generated_reference_count": 112,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 13752,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14904,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14960,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 15014,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 15068,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 145,
+      "asset": "/images/drinks/potent-potables/hot-drinks.svg",
+      "exists": true,
+      "sha256": "3b0f309cd91db2b12029b7d184fa740845c3f07ea94c4403e16650636e6f23b4",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.hotDrinks"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 65,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.hotDrinks"
+          ]
+        }
+      ],
+      "generated_reference_count": 32,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16325,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16382,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16439,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16496,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16556,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 146,
+      "asset": "/images/drinks/potent-potables/liqueurs.svg",
+      "exists": true,
+      "sha256": "02c79583d86b7c21fb7317c38625324f8f90dc52f9be8b2ae63eafe7adbb1dbe",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.liqueurs"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 61,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.liqueurs"
+          ]
+        }
+      ],
+      "generated_reference_count": 48,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16779,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16832,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16881,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16936,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 16986,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 147,
+      "asset": "/images/drinks/potent-potables/martinis.svg",
+      "exists": true,
+      "sha256": "f85dbb144be43b0ddea3f753e4119ab2ef5c8389fd6d504063333e9027b04e76",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis"
+      ],
+      "direct_source_reference_count": 7,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 59,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 595,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 596,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 597,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 599,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 600,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 601,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis"
+          ]
+        }
+      ],
+      "generated_reference_count": 28,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17624,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17679,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17735,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17793,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17849,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 148,
+      "asset": "/images/drinks/potent-potables/mocktails.svg",
+      "exists": true,
+      "sha256": "5b340e3bd24ec7972207f43397b23313a1eebf24d24e60b0e6fae971b8d63b9e",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails"
+      ],
+      "direct_source_reference_count": 7,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 60,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 605,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 606,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 607,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 609,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 610,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 611,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails"
+          ]
+        }
+      ],
+      "generated_reference_count": 0,
+      "generated_reference_examples": [],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 149,
+      "asset": "/images/drinks/potent-potables/rum.svg",
+      "exists": true,
+      "sha256": "1795fc90cb23026ea1fee61001cb3e6789e31985b061e6d2c82885b215e3c998",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+      ],
+      "direct_source_reference_count": 8,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 52,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 565,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 566,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 567,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 569,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 570,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 571,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+          ]
+        },
+        {
+          "file": "client/src/pages/drinks/potent-potables/index.tsx",
+          "line": 324,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum"
+          ]
+        }
+      ],
+      "generated_reference_count": 0,
+      "generated_reference_examples": [],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 150,
+      "asset": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
+      "exists": true,
+      "sha256": "fb70648f7fcdded2f104a710101c22f6b7d362f15445ffd6a925956a5f58c7e2",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.scotchIrishWhiskey"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 55,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.scotchIrishWhiskey"
+          ]
+        }
+      ],
+      "generated_reference_count": 48,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17202,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 19304,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 19359,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 19415,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 19469,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 151,
+      "asset": "/images/drinks/potent-potables/seasonal.svg",
+      "exists": true,
+      "sha256": "ba30aa9a433657b6844313dfcfa17016e0aa758b530c0b2ed101248cbe9b0d69",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal"
+      ],
+      "direct_source_reference_count": 7,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 64,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 634,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 635,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 636,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 638,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 639,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 640,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal"
+          ]
+        }
+      ],
+      "generated_reference_count": 40,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 19934,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 19996,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 20057,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 20121,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 20183,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 152,
+      "asset": "/images/drinks/potent-potables/spritz.svg",
+      "exists": true,
+      "sha256": "4404c5105e4b1db89e2ad1660874bb742e73f0126bc69a6ee848f5e09e0bec96",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.spritz"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 62,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.spritz"
+          ]
+        }
+      ],
+      "generated_reference_count": 40,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17094,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17361,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 20543,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 20594,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 20647,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 153,
+      "asset": "/images/drinks/potent-potables/tequila-mezcal.svg",
+      "exists": true,
+      "sha256": "24df8c7f9f774e4d614818d5f9bf69f6986bf46ee908db29a83c3038c28249a2",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+      ],
+      "direct_source_reference_count": 8,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 56,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 615,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 616,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 617,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 619,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 620,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 621,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+          ]
+        },
+        {
+          "file": "client/src/pages/drinks/potent-potables/index.tsx",
+          "line": 316,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequila",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal"
+          ]
+        }
+      ],
+      "generated_reference_count": 28,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 21023,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 21080,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 21137,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 21194,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 21251,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 154,
+      "asset": "/images/drinks/potent-potables/virgin-cocktails.svg",
+      "exists": true,
+      "sha256": "8b93851ed164d6c84eca7ec64d3cfc0b9fc9df3b1f4a9eb44423bc0419d9771d",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.virginCocktails"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 63,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.virginCocktails"
+          ]
+        }
+      ],
+      "generated_reference_count": 56,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18010,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18064,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18174,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 21420,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 21473,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 155,
+      "asset": "/images/drinks/potent-potables/vodka.svg",
+      "exists": true,
+      "sha256": "a07a6a55ac68f099f91e4c43decf069e5a243a5ffc27baf83c2fed7962ad1121",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka"
+      ],
+      "direct_source_reference_count": 7,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 53,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 575,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 576,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 577,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 579,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 580,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 581,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka"
+          ]
+        }
+      ],
+      "generated_reference_count": 36,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 22017,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 22077,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 22131,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 22184,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 22237,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 156,
+      "asset": "/images/drinks/potent-potables/whiskey-bourbon.svg",
+      "exists": true,
+      "sha256": "b1242a4efdd9c283c0133ecdb4071259e89a508fcd40f223b24a5b79dcb7400e",
+      "mapping_symbols": [
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+        "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+      ],
+      "direct_source_reference_count": 8,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 54,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 585,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 586,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 587,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 589,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 590,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        },
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 591,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        },
+        {
+          "file": "client/src/pages/drinks/potent-potables/index.tsx",
+          "line": 308,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskey",
+            "POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        }
+      ],
+      "generated_reference_count": 0,
+      "generated_reference_examples": [],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 157,
+      "asset": "/images/drinks/potent-potables/premium/daiquiri.svg",
+      "exists": true,
+      "sha256": "b718eee92dd1e00e7036df6eb6186a7f4eb87ddedfce0cb484619f50905f2c38",
+      "mapping_symbols": [
+        "POTENT_POTABLES_RECIPE_ASSET_PATHS.daiquiri"
+      ],
+      "direct_source_reference_count": 2,
+      "direct_source_references": [
+        {
+          "file": "client/src/data/drinks/potent-potables/daiquiri.ts",
+          "line": 9,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RECIPE_ASSET_PATHS.daiquiri"
+          ]
+        },
+        {
+          "file": "client/src/data/drinks/potent-potables/rum.ts",
+          "line": 50,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RECIPE_ASSET_PATHS.daiquiri"
+          ]
+        }
+      ],
+      "generated_reference_count": 8,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 13818,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 14524,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 36590,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 37296,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "server/generated/drink-index.json",
+          "line": 1848,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 158,
+      "asset": "/images/drinks/potent-potables/premium/margarita.svg",
+      "exists": true,
+      "sha256": "a9a82fdc903ef6c9cca5e51fee8af676dc29ce3450854dd38247b164ee78f230",
+      "mapping_symbols": [
+        "POTENT_POTABLES_RECIPE_ASSET_PATHS.margarita"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/data/drinks/potent-potables/tequila-mezcal.ts",
+          "line": 9,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RECIPE_ASSET_PATHS.margarita"
+          ]
+        }
+      ],
+      "generated_reference_count": 4,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 20921,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 43693,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "server/generated/drink-index.json",
+          "line": 2928,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "server/generated/drink-index.json",
+          "line": 6122,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 159,
+      "asset": "/images/drinks/potent-potables/premium/martini.svg",
+      "exists": true,
+      "sha256": "23c38b6520ecc961e73749326be9dee97b02300f610f44aedbe9166c4df8454a",
+      "mapping_symbols": [
+        "POTENT_POTABLES_RECIPE_ASSET_PATHS.martini"
+      ],
+      "direct_source_reference_count": 2,
+      "direct_source_references": [
+        {
+          "file": "client/src/data/drinks/potent-potables/gin.ts",
+          "line": 84,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RECIPE_ASSET_PATHS.martini"
+          ]
+        },
+        {
+          "file": "client/src/data/drinks/potent-potables/martinis.ts",
+          "line": 9,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RECIPE_ASSET_PATHS.martini"
+          ]
+        }
+      ],
+      "generated_reference_count": 8,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 13607,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 17528,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 36379,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 40300,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "server/generated/drink-index.json",
+          "line": 1816,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 160,
+      "asset": "/images/drinks/potent-potables/premium/mocktails-rich.svg",
+      "exists": true,
+      "sha256": "5664794f2264793bc029b96deaa074ff5f460514738d51d4d41a7be75217e7f6",
+      "mapping_symbols": [
+        "POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.mocktails"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 72,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.mocktails"
+          ]
+        }
+      ],
+      "generated_reference_count": 36,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18123,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18231,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18287,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18342,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18398,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 161,
+      "asset": "/images/drinks/potent-potables/premium/mojito.svg",
+      "exists": true,
+      "sha256": "5b62aac4ff8a95714499ce71b00982a185a2932f16d447aa1faeeba21c67b2ea",
+      "mapping_symbols": [
+        "POTENT_POTABLES_RECIPE_ASSET_PATHS.mojito"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/data/drinks/potent-potables/rum.ts",
+          "line": 9,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RECIPE_ASSET_PATHS.mojito"
+          ]
+        }
+      ],
+      "generated_reference_count": 4,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18630,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 41402,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "server/generated/drink-index.json",
+          "line": 2608,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "server/generated/drink-index.json",
+          "line": 5802,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 162,
+      "asset": "/images/drinks/potent-potables/premium/old-fashioned.svg",
+      "exists": true,
+      "sha256": "42f31afc7d1be87a77cb01ac82ca363a04440f52ef96e8cb5ccb6a0b5fd4f69e",
+      "mapping_symbols": [
+        "POTENT_POTABLES_RECIPE_ASSET_PATHS.oldFashioned"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/data/drinks/potent-potables/whiskey-bourbon.ts",
+          "line": 9,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RECIPE_ASSET_PATHS.oldFashioned"
+          ]
+        }
+      ],
+      "generated_reference_count": 4,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 13553,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 36325,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "server/generated/drink-index.json",
+          "line": 1808,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "server/generated/drink-index.json",
+          "line": 5002,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 163,
+      "asset": "/images/drinks/potent-potables/premium/rum-rich.svg",
+      "exists": true,
+      "sha256": "d703c2c8debb17b92e23e3d9cc376077ac732f4c8fc49a64b7e92ef015472b29",
+      "mapping_symbols": [
+        "POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.rum"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 70,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.rum"
+          ]
+        }
+      ],
+      "generated_reference_count": 40,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18732,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18790,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18846,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18905,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 18961,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    },
+    {
+      "inventory_row": 164,
+      "asset": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg",
+      "exists": true,
+      "sha256": "0ec73b1ec7a275ac0bf9bdbdbad372e29910c6b8d5bb15cdbc9904dc239e83e4",
+      "mapping_symbols": [
+        "POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+      ],
+      "direct_source_reference_count": 1,
+      "direct_source_references": [
+        {
+          "file": "client/src/constants/drink-images.ts",
+          "line": 71,
+          "kind": "symbol",
+          "symbols": [
+            "POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.whiskeyBourbon"
+          ]
+        }
+      ],
+      "generated_reference_count": 40,
+      "generated_reference_examples": [
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 13699,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 13806,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 13915,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 13971,
+          "kind": "literal",
+          "symbols": []
+        },
+        {
+          "file": "client/src/generated/drink-canonical.json",
+          "line": 22502,
+          "kind": "literal",
+          "symbols": []
+        }
+      ],
+      "dynamic_route_helper_consumers": [
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 14
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 253
+        },
+        {
+          "file": "client/src/pages/drinks/recipe/[slug].tsx",
+          "line": 254
+        }
+      ],
+      "decision": "retain; consumers and dynamic route fallbacks must be migrated before retirement",
+      "migration_rule": "Category hero approval does not approve using its photo as a named recipe. Keep exact recipe SVG mappings until recipe-accurate replacement art is approved."
+    }
+  ]
+}

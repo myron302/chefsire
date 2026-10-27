@@ -1,0 +1,26 @@
+{
+  "approved_by_user": false,
+  "approval_reference": null,
+  "approved_usd": null,
+  "proposed_approval_usd": "0.75",
+  "reserved_usd_per_request": "0.25",
+  "max_requests": 3,
+  "max_prompt_utf8_bytes": 4000,
+  "verified_pricing_source": "https://developers.openai.com/api/docs/guides/image-generation#calculating-costs",
+  "pricing_verified_at": "2026-10-27",
+  "pricing_status": "published_estimate_not_account_specific_invoice_or_guaranteed_request_cap",
+  "inventory_sha256": "0b496afbf019c3b7e3c5e8974842f1f6529c5066b83febcc7085203de7edbe09",
+  "plan_sha256": "8ec7916168dc1c4af1257ae9bfab299d4e9d60309da9c627db2cb17f4ee84eab",
+  "model": "gpt-image-2",
+  "quality": "high",
+  "size": "1536x1024",
+  "output_format": "png",
+  "allow_experimental_size": false,
+  "allowed_image_ids": [
+    "IMG-034",
+    "IMG-035",
+    "IMG-043"
+  ],
+  "account_pricing_confirmed": false,
+  "account_pricing_confirmation_reference": null
+}

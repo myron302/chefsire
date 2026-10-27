@@ -1,0 +1,93 @@
+{
+  "checked_at": "2026-10-27",
+  "rows": [
+    {
+      "inventory_row": 165,
+      "subject": "Generic placeholder in drinks",
+      "evidence": [
+        {
+          "file": "client/src/pages/drinks/following.tsx",
+          "sha256": "b28ce074a3cca3a30c117fd288acc09d7cf1a3d4946a20b072e81098df00e0a0",
+          "stock_reference_lines": [
+            268
+          ]
+        }
+      ],
+      "finding": "Following feed has name/slug/image/route, no reliable beverage category in its interface. A coffee or protein photo would misrepresent unknown user drinks.",
+      "recommendation": "Prefer an exact known canonical recipe image only when identity is verified; otherwise use a non-photographic no-photo state. No suitable universal existing photograph was found.",
+      "status": "reviewed; selection not integrated; no misleading recipe photo assigned",
+      "new_generation_required": false
+    },
+    {
+      "inventory_row": 166,
+      "subject": "Generic placeholder in drinks",
+      "evidence": [
+        {
+          "file": "client/src/pages/drinks/creator-public.tsx",
+          "sha256": "1437eb4de86bb54add2e1891b86e052ebf33358812fb8cc08e12be008968f506",
+          "stock_reference_lines": [
+            1051,
+            1258
+          ]
+        }
+      ],
+      "finding": "Creator recentItems and mostRemixedDrinks also use coffee as a universal default; interface does not establish recipe ingredients.",
+      "recommendation": "Same exact-recipe/unknown-image policy as the following feed. Preserve creator-supplied art and routes; do not infer subject from a username or arbitrary route.",
+      "status": "reviewed; selection not integrated; no misleading recipe photo assigned",
+      "new_generation_required": false
+    },
+    {
+      "inventory_row": 167,
+      "subject": "Generic placeholder in casein",
+      "evidence": [
+        {
+          "file": "client/src/pages/drinks/protein-shakes/casein/index.tsx",
+          "sha256": "eaf15cf4a5b832dbbce573a24878cbb2e75f534e0b7948c6febc4a1c55912cc6",
+          "stock_reference_lines": [
+            976
+          ]
+        }
+      ],
+      "finding": "Casein Featured cards use missing /placeholder.svg for no image and an unconditional remote error fallback. Repeated fallback failure can repeat error assignments.",
+      "recommendation": "Wait for the approved IMG-042 casein category asset for a clearly labeled category placeholder, or choose an exact recipe match. The whey pilot is unsuitable as a casein recipe photo. Add a once-only error guard during fallback migration.",
+      "status": "reviewed; selection not integrated; no misleading recipe photo assigned",
+      "new_generation_required": false
+    },
+    {
+      "inventory_row": 168,
+      "subject": "Generic placeholder in collagen",
+      "evidence": [
+        {
+          "file": "client/src/pages/drinks/protein-shakes/collagen/index.tsx",
+          "sha256": "c9b77340821e891eef3d5b88bce66aa914ffdff5922d927c9307a691297d78b3",
+          "stock_reference_lines": [
+            988,
+            992
+          ]
+        }
+      ],
+      "finding": "Collagen Featured cards use the same stock photo for empty source and error fallback, with no once-only guard.",
+      "recommendation": "IMG-043 will be a mixed-berry category candidate, not a universal collagen recipe photo. It cannot represent the vanilla or other recipes automatically. Use an exact approved recipe image; unknown photos need an explicit no-photo fallback.",
+      "status": "reviewed; selection not integrated; no misleading recipe photo assigned",
+      "new_generation_required": false
+    },
+    {
+      "inventory_row": 169,
+      "subject": "Generic placeholder in plant-based",
+      "evidence": [
+        {
+          "file": "client/src/pages/drinks/protein-shakes/plant-based/index.tsx",
+          "sha256": "1d2bbf7c9b008f103210358be73e88a82e42a88334592140b085922383f4b848",
+          "stock_reference_lines": [
+            763,
+            768
+          ]
+        }
+      ],
+      "finding": "Plant-based Featured cards use a repeated stock default/error fallback without a once-only guard.",
+      "recommendation": "Await approved vegan IMG-045 category art for a labeled category placeholder or an exact plant-based recipe match. Do not use the dairy/whey pilot. Add a once-only error guard for any fallback path.",
+      "status": "reviewed; selection not integrated; no misleading recipe photo assigned",
+      "new_generation_required": false
+    }
+  ]
+}
