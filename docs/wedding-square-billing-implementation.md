@@ -16,12 +16,12 @@
 - Existing cardless trial authorization is server-verified by `weddingEntitlement`; keep it independently working through billing development.
 
 ## Initial safe database foundation
-`server/drizzle/20261027_wedding_square_billing_foundation.sql` adds:
+`docs/sql-pending/wedding_square_billing_foundation.sql.txt` adds:
 1. `wedding_square_subscriptions`: owner/merchant/provider binding, explicit consent, tier, price, subscription ID, provider status, payment verification boundary; one live provider subscription per account.
 2. `wedding_square_webhook_events`: replay-safe event identity scoped by environment and merchant; webhooks are triggers, not proof.
 3. `wedding_square_invoice_evidence`: unique provider invoice and payment IDs with amounts and covered periods.
 
-These tables are **not wired to an endpoint**. They do not authorize paid Wedding access. No production migration should run until the implementation and deployment plan are approved.
+The DDL is deliberately held as **.sql.txt outside server/drizzle** so routine `npm run db:migrate` cannot apply it, and schema-table-coverage tests that scan executable migrations do not mistakenly treat these proposed tables as deployed schema. Before activation, move the reviewed DDL into a versioned migration, declare all three tables (including invoice evidence) in Drizzle and add schema parity tests in the **same implementation PR**. These tables are **not wired to an endpoint**, and they do not authorize paid Wedding access.
 
 ## Next implementation work, required before payments can be switched on
 1. Set up **sandbox-only** Square catalog subscription plan variations for Premium and Elite. Confirm location, merchant, amounts, currency, monthly cadence, timezone, tax handling, and API version. Configure dedicated Wedding webhook URL and signature key; do not share unrelated Catering hooks.
