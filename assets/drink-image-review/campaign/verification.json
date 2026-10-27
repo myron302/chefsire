@@ -1,0 +1,15 @@
+{
+  "build_client": "passed",
+  "typescript": {
+    "baseline_diagnostics": 3194,
+    "final_diagnostics": 3194,
+    "new_locations_codes": [],
+    "removed_locations_codes": [],
+    "comparison": "file, line, column and diagnostic code; union-type text ordering is nondeterministic"
+  },
+  "generation_tests": {
+    "passed": 6,
+    "network_calls": 0
+  },
+  "new_generation_calls": 0
+}

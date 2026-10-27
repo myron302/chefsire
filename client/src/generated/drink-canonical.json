@@ -8247,7 +8247,7 @@
         "id": "whey-2",
         "name": "Chocolate Peanut Butter Powerhouse",
         "description": "Rich chocolate whey with natural peanut butter for mass gaining",
-        "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop",
+        "image": "/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
         "nutrition": {
           "calories": 420,
           "protein": 40,
@@ -11384,7 +11384,7 @@
         "featured": true,
         "trending": true,
         "bestTime": "30-60 min before workout",
-        "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop",
+        "image": "/images/drinks/smoothies/pre-workout-power-blend.webp",
         "estimatedCost": 3.2,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
@@ -12259,7 +12259,7 @@
         "id": "post-2",
         "name": "Tart Cherry Turmeric Reset",
         "description": "Tart cherry, turmeric, and pepper support a food-first anti-inflammatory routine.",
-        "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+        "image": "/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp",
         "nutrition": {
           "calories": 135,
           "protein": 2,
@@ -12408,7 +12408,7 @@
         "id": "post-4",
         "name": "Coconut Water Electrolyte Reset",
         "description": "Coconut water, orange, and salt make a light recovery refresher after hot sessions.",
-        "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+        "image": "/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp",
         "nutrition": {
           "calories": 85,
           "protein": 1,
@@ -12622,7 +12622,7 @@
         "id": "hydration-1",
         "name": "DIY Sports Drink",
         "description": "A homemade carbohydrate-electrolyte drink for longer sessions or summer training.",
-        "image": "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=400&h=300&fit=crop",
+        "image": "/images/drinks/workout-drinks/diy-sports-drink.webp",
         "nutrition": {
           "calories": 70,
           "protein": 0,
@@ -13474,7 +13474,7 @@
         "id": "energy-6",
         "name": "Schisandra Berry Energy Elixir",
         "description": "Schisandra and berry tea make a tart antioxidant-rich tonic.",
-        "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+        "image": "/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp",
         "nutrition": {
           "calories": 40,
           "protein": 0,
@@ -31019,7 +31019,7 @@
         "id": "whey-2",
         "name": "Chocolate Peanut Butter Powerhouse",
         "description": "Rich chocolate whey with natural peanut butter for mass gaining",
-        "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop",
+        "image": "/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
         "nutrition": {
           "calories": 420,
           "protein": 40,
@@ -34156,7 +34156,7 @@
         "featured": true,
         "trending": true,
         "bestTime": "30-60 min before workout",
-        "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop",
+        "image": "/images/drinks/smoothies/pre-workout-power-blend.webp",
         "estimatedCost": 3.2,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
@@ -35031,7 +35031,7 @@
         "id": "post-2",
         "name": "Tart Cherry Turmeric Reset",
         "description": "Tart cherry, turmeric, and pepper support a food-first anti-inflammatory routine.",
-        "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+        "image": "/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp",
         "nutrition": {
           "calories": 135,
           "protein": 2,
@@ -35180,7 +35180,7 @@
         "id": "post-4",
         "name": "Coconut Water Electrolyte Reset",
         "description": "Coconut water, orange, and salt make a light recovery refresher after hot sessions.",
-        "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+        "image": "/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp",
         "nutrition": {
           "calories": 85,
           "protein": 1,
@@ -35394,7 +35394,7 @@
         "id": "hydration-1",
         "name": "DIY Sports Drink",
         "description": "A homemade carbohydrate-electrolyte drink for longer sessions or summer training.",
-        "image": "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=400&h=300&fit=crop",
+        "image": "/images/drinks/workout-drinks/diy-sports-drink.webp",
         "nutrition": {
           "calories": 70,
           "protein": 0,
@@ -36246,7 +36246,7 @@
         "id": "energy-6",
         "name": "Schisandra Berry Energy Elixir",
         "description": "Schisandra and berry tea make a tart antioxidant-rich tonic.",
-        "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+        "image": "/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp",
         "nutrition": {
           "calories": 40,
           "protein": 0,
@@ -45543,5 +45543,5 @@
       }
     }
   },
-  "generatedAt": "2026-05-31T22:09:41.683Z"
+  "generatedAt": "2026-10-27T07:52:35.791Z"
 }
