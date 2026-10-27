@@ -29,9 +29,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: empty coupe, mixing glass, bar spoon and citrus on a warm bar; neutral still life, no lettering."
+        "Pass: empty coupe, mixing glass, bar spoon and citrus on a warm bar; neutral still life, no lettering.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/neutral.webp",
@@ -98,9 +99,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: one coherent category scene with Old Fashioned, salted margarita and pink Cosmopolitan; not a contact sheet. Outer drinks require responsive crop review."
+        "Pass: one coherent category scene with Old Fashioned, salted margarita and pink Cosmopolitan; not a contact sheet. Outer drinks require responsive crop review.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/cocktails.webp",
@@ -167,9 +169,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: amber snifter and citrus Sidecar in sugar-rim coupe; full glassware, appropriate category setting."
+        "Pass: amber snifter and citrus Sidecar in sugar-rim coupe; full glassware, appropriate category setting.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/cognac-brandy.webp",
@@ -236,9 +239,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: pale ivory-lime sour served up in a coupe, lime wheel, no ice or salt. Compare existing pilot: both suitable; retain supplied IMG ID and avoid regeneration."
+        "Pass: pale ivory-lime sour served up in a coupe, lime wheel, no ice or salt. Compare existing pilot: both suitable; retain supplied IMG ID and avoid regeneration.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/daiquiri.webp",
@@ -305,9 +309,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass as category botanical gin-and-tonic study matching inventory concept (cucumber, juniper, rosemary); do not assign to the named lime-only Gin & Tonic recipe."
+        "Pass as category botanical gin-and-tonic study matching inventory concept (cucumber, juniper, rosemary); do not assign to the named lime-only Gin & Tonic recipe.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/gin.webp",
@@ -374,9 +379,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: hot amber toddy with lemon, cloves, cinnamon and honey, realistic steam."
+        "Pass: hot amber toddy with lemon, cloves, cinnamon and honey, realistic steam.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/hot-drinks.webp",
@@ -443,9 +449,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: distinct coffee-dark, almond-amber and orange liqueurs in cordial glasses with ingredient context; category scene."
+        "Pass: distinct coffee-dark, almond-amber and orange liqueurs in cordial glasses with ingredient context; category scene.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/liqueurs.webp",
@@ -512,9 +519,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: clear martini in V glass with olive pick, no serving ice. Pilot is also suitable; avoid regeneration."
+        "Pass: clear martini in V glass with olive pick, no serving ice. Pilot is also suitable; avoid regeneration.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/martinis.webp",
@@ -581,9 +589,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: zero-proof mint/lime highball and berry spritz, coherent shared scene, no bottles."
+        "Pass: zero-proof mint/lime highball and berry spritz, coherent shared scene, no bottles.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/mocktails.webp",
@@ -650,9 +659,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass as category Mai Tai study: amber rum, crushed ice, mint and lime shell, tropical setting. Do not use for an unrelated rum recipe."
+        "Pass as category Mai Tai study: amber rum, crushed ice, mint and lime shell, tropical setting. Do not use for an unrelated rum recipe.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/rum.webp",
@@ -775,9 +785,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: requested four seasonal drinks in one composed category scene, not a sheet of separate image panels. Strawberry/basil, watermelon, apple/cinnamon and cranberry mule identities are visible. Narrow crops cannot show every drink."
+        "Pass: requested four seasonal drinks in one composed category scene, not a sheet of separate image panels. Strawberry/basil, watermelon, apple/cinnamon and cranberry mule identities are visible. Narrow crops cannot show every drink.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/seasonal.webp",
@@ -844,9 +855,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: orange spritz, ice, wine glass, orange slice and bubbles; no branded bottle."
+        "Pass: orange spritz, ice, wine glass, orange slice and bubbles; no branded bottle.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/spritz.webp",
@@ -969,10 +981,11 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
         "Pass: red Shirley Temple and pale pineapple-coconut virgin drink with plausible garnish. Use for existing hub card; live route remains a redirect to Mocktails.",
-        "Route remains a Virgin→Mocktails redirect; mapping serves a distinct live hub card, not a separate live page hero."
+        "Route remains a Virgin→Mocktails redirect; mapping serves a distinct live hub card, not a separate live page hero.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/virgin-cocktails.webp",
@@ -1039,9 +1052,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass as category scene: copper mule and chilled clear martini, distinct cool lighting. Do not use for a named recipe that has different garnish."
+        "Pass as category scene: copper mule and chilled clear martini, distinct cool lighting. Do not use for a named recipe that has different garnish.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/vodka.webp",
@@ -1108,9 +1122,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: amber bourbon on one large cube in heavy rocks glass, charred-oak context; distinct from Scotch composition. Existing pilot also suitable; no new generation needed."
+        "Pass: amber bourbon on one large cube in heavy rocks glass, charred-oak context; distinct from Scotch composition. Existing pilot also suitable; no new generation needed.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/potent-potables/heroes/whiskey-bourbon.webp",
@@ -1233,9 +1248,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass as broad category image: three unbranded fruit-based refreshing drinks, no energy-drink can. Not evidence of specific caffeine content and not assigned to a named recipe."
+        "Pass as broad category image: three unbranded fruit-based refreshing drinks, no energy-drink can. Not evidence of specific caffeine content and not assigned to a named recipe.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/caffeinated/energy-drinks.webp",
@@ -1302,9 +1318,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: iced coffee with milk swirls, visible ice and realistic coffee color."
+        "Pass: iced coffee with milk swirls, visible ice and realistic coffee color.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/caffeinated/iced-coffee.webp",
@@ -1427,9 +1444,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: chocolate-brown blended shake, banana, peanut butter, milk and honey context match whey.ts recipe. Visible chocolate is contextual to chocolate whey."
+        "Pass: chocolate-brown blended shake, banana, peanut butter, milk and honey context match whey.ts recipe. Visible chocolate is contextual to chocolate whey.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
@@ -1496,9 +1514,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: pale banana/oat/peanut-butter smoothie with milk and honey context; not a generic cocktail."
+        "Pass: pale banana/oat/peanut-butter smoothie with milk and honey context; not a generic cocktail.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/smoothies/pre-workout-power-blend.webp",
@@ -1621,9 +1640,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: red berry-tea tonic with lemon, powder and honey context is visually plausible; botanical identity of small red berries is not independently certified from a photograph."
+        "Pass: red berry-tea tonic with lemon, powder and honey context is visually plausible; botanical identity of small red berries is not independently certified from a photograph.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp",
@@ -1690,9 +1710,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: orange sports drink in unbranded bottle with water, orange, honey and sea-salt context."
+        "Pass: orange sports drink in unbranded bottle with water, orange, honey and sea-salt context.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/workout-drinks/diy-sports-drink.webp",
@@ -1759,9 +1780,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: diluted pale orange coconut-water drink, coconut, orange and salt context."
+        "Pass: diluted pale orange coconut-water drink, coconut, orange and salt context.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp",
@@ -1828,9 +1850,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: red-orange cherry/citrus drink, turmeric and black pepper context; no medical claims embedded in image."
+        "Pass: red-orange cherry/citrus drink, turmeric and black pepper context; no medical claims embedded in image.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp",
@@ -1897,9 +1920,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: coherent coffee/latte/espresso/tea category scene, no unrelated drink categories."
+        "Pass: coherent coffee/latte/espresso/tea category scene, no unrelated drink categories.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/caffeinated-drinks.webp",
@@ -1966,9 +1990,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: vegetable/fruit juices and cucumber-citrus water, no lettering or health promises."
+        "Pass: vegetable/fruit juices and cucumber-citrus water, no lettering or health promises.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/detoxes-and-cleanses.webp",
@@ -2035,9 +2060,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: coherent tropical cocktail category scene, several drinks appropriate for the same category."
+        "Pass: coherent tropical cocktail category scene, several drinks appropriate for the same category.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/potent-potables.webp",
@@ -2104,10 +2130,11 @@
       "generation_date": null,
       "generation_status": "existing_pilot_reused",
       "quality_review_status": "passed_pilot_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
         "Reject supplied candidate: prominent WHEY PROTEIN lettering on tub violates no unnecessary labels; dessert-style whipped toppings and recognizable cookie packaging cues add avoidable issues. Reuse preserved plain chocolate-whey pilot for this slot instead.",
-        "Pilot PNG preserved unchanged; WebP derivative created locally. Owner approval remains pending PR review."
+        "Pilot PNG preserved unchanged; WebP derivative created locally. Owner approval remains pending PR review.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/protein-shakes.webp",
@@ -2190,9 +2217,10 @@
       "generation_date": null,
       "generation_status": "existing_candidate_received",
       "quality_review_status": "passed_visual_review",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Pass: blended fruit smoothies and fruit/granola bowls in one category scene. Retain existing strawberry-banana pilot for later category/recipe-specific review; no regeneration."
+        "Pass: blended fruit smoothies and fruit/granola bowls in one category scene. Retain existing strawberry-banana pilot for later category/recipe-specific review; no regeneration.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/smoothies-and-bowls.webp",
@@ -5349,9 +5377,10 @@
       "generation_date": null,
       "generation_status": "not_required",
       "quality_review_status": "not_reviewed",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Intentional category hub reuse; no extra image generated."
+        "Intentional category hub reuse; no extra image generated.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/caffeinated-drinks.webp",
@@ -5386,9 +5415,10 @@
       "generation_date": null,
       "generation_status": "not_required",
       "quality_review_status": "not_reviewed",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Intentional category hub reuse; no extra image generated."
+        "Intentional category hub reuse; no extra image generated.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/smoothies-and-bowls.webp",
@@ -5423,9 +5453,10 @@
       "generation_date": null,
       "generation_status": "not_required",
       "quality_review_status": "not_reviewed",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Intentional category hub reuse; no extra image generated."
+        "Intentional category hub reuse; no extra image generated.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/protein-shakes.webp",
@@ -5460,9 +5491,10 @@
       "generation_date": null,
       "generation_status": "not_required",
       "quality_review_status": "not_reviewed",
-      "integration_status": "integrated_feature_branch_pending_verification",
+      "integration_status": "integrated_feature_branch_verified_local_build",
       "notes": [
-        "Intentional category hub reuse; no extra image generated."
+        "Intentional category hub reuse; no extra image generated.",
+        "Local raster path, SHA-256, dimensions and built-client loading verified. Owner publication approval remains pending PR review."
       ],
       "output": {
         "filename": "client/public/images/drinks/hub/detoxes-and-cleanses.webp",

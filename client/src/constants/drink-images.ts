@@ -90,6 +90,7 @@ export type DrinkCategoryHeroVisual = {
   description: string;
   overlayClass: string;
   positionClass?: string;
+  fitClass?: string;
 };
 
 const PREMIUM_DRINK_HERO_BASE_PARAMS = 'w=1600&h=900&fit=crop&crop=entropy&auto=format&q=85';
@@ -260,7 +261,11 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
 };
 
 export function getDrinkCategoryHeroVisual(route: string): DrinkCategoryHeroVisual {
-  return drinkCategoryHeroVisuals[route] ?? {
+  const visual = drinkCategoryHeroVisuals[route];
+  if (visual?.image.startsWith('/images/drinks/potent-potables/heroes/')) {
+    return { ...visual, fitClass: 'object-contain', positionClass: 'object-right' };
+  }
+  return visual ?? {
     image: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
     alt: 'Premium cocktail in a polished bar setting',

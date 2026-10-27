@@ -306,7 +306,7 @@ export default function RumCocktailsPage() {
           <img
             src={heroVisual.image}
             alt={heroVisual.alt}
-            className={`absolute inset-0 h-full w-full object-cover ${heroVisual.positionClass ?? 'object-center'}`}
+            className={`absolute inset-0 h-full w-full ${heroVisual.fitClass ?? 'object-cover'} ${heroVisual.positionClass ?? 'object-center'}`}
             onError={(event) => {
               if (event.currentTarget.dataset.fallbackApplied !== 'true') {
                 event.currentTarget.dataset.fallbackApplied = 'true';
