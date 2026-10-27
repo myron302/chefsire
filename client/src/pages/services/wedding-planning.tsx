@@ -2063,6 +2063,53 @@ const displaySmartTips = useMemo(() => {
         onRetry={retrySubscription}
       />
 
+      {subscription && (
+        <Card className="mb-4 md:mb-6" data-testid="wedding-plan-controls">
+          <CardContent className="p-3 md:p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Wedding Planner Plan</p>
+                <p className="font-semibold">
+                  Current plan: {isElite ? "Elite" : isPremium ? "Premium" : "Free"}
+                </p>
+                {subscription.trial?.status === "active" && (
+                  <p className="text-sm text-muted-foreground">
+                    Your {subscription.trial.tier === "elite" ? "Elite" : "Premium"} trial is active
+                    {subscription.trial.expiresAt ? ` until ${new Date(subscription.trial.expiresAt).toLocaleDateString()}` : ""}.
+                    No automatic charge.
+                  </p>
+                )}
+                {subscription.trial?.eligible && !isPremium && (
+                  <p className="text-sm text-muted-foreground">
+                    One 14-day Premium or Elite trial is available without a credit card.
+                  </p>
+                )}
+                {!subscription.trial?.eligible && !isPremium && (
+                  <p className="text-sm text-muted-foreground">
+                    {subscription.trial?.status === "expired" || subscription.trial?.status === "cancelled"
+                      ? "Your introductory trial has already been used. Your saved wedding content remains available."
+                      : "Paid Premium and Elite upgrades will be available when billing launches."}
+                  </p>
+                )}
+              </div>
+              {subscription.trial?.eligible && !isPremium ? (
+                <Button onClick={handleStartTrial} data-testid="wedding-open-trial-selector">
+                  View Plans / Start Free Trial
+                </Button>
+              ) : !isPremium ? (
+                <Button variant="outline" onClick={handleGoPremium}>
+                  View Upgrade Options
+                </Button>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  {subscription.trial?.status === "active" ? "Trial in progress" : "Plan active"}
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="mb-4 md:mb-6 border-dashed">
         <CardContent className="p-3 md:p-4">
           <div className="flex flex-col gap-3">
