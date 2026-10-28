@@ -17,7 +17,7 @@ const consentRequestSchema = z.object({
   acceptedAutomaticMonthlyRenewal: z.literal(true),
   acceptedAmountCents: z.number().int().positive(),
   acceptedCurrency: z.literal("USD"),
-  acknowledgedFirstChargeStartDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).nullable(),
+  acknowledgedFirstChargeStartDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
 }).strict();
 
 export type WeddingEnrollmentConsentInput = z.input<typeof consentRequestSchema>;
