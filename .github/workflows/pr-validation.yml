@@ -42,5 +42,7 @@ jobs:
           else
             echo "Wedding Square enrollment consent tests not present."
           fi
+      - name: Run Wedding Square sandbox enrollment preflight tests
+        run: node --import tsx --test server/lib/wedding-square-enrollment-preflight.test.ts
       - name: Build client and server
         run: npm run build
