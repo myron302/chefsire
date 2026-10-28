@@ -78,3 +78,44 @@ test("rejects tampered prices before Square invocation", () => {
     ...base, consent: { ...consent, agreedMonthlyAmountCents: 1 },
   }), WeddingSquareRequestError);
 });
+
+test("rejects independently valid consent and preflight results for different tiers", () => {
+  const eliteConfig = weddingSquareSandboxPreflight({
+    SQUARE_ENV: "sandbox",
+    SQUARE_ACCESS_TOKEN: "private-token",
+    SQUARE_LOCATION_ID: "loc-sandbox",
+    WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "var-premium",
+    WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "var-elite",
+    WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
+  }, "elite");
+
+  assert.equal(eliteConfig.tier, "elite");
+  assert.equal(eliteConfig.planVariationId, "var-elite");
+  assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+    ...base,
+    config: eliteConfig,
+  }), WeddingSquareRequestError);
+});
+
+test("matching elite consent and elite preflight can prepare the elite request", () => {
+  const eliteConsent = verifyWeddingEnrollmentConsent({
+    userId: "wedding-user", now, trialExpiresAt,
+    request: {
+      tier: "elite", consentVersion: WEDDING_CONSENT_VERSION,
+      acceptedAutomaticMonthlyRenewal: true,
+      acceptedAmountCents: 4999, acceptedCurrency: "USD",
+      acknowledgedFirstChargeStartDate: "2026-11-11",
+    },
+  });
+  const eliteConfig = weddingSquareSandboxPreflight({
+    SQUARE_ENV: "sandbox",
+    SQUARE_ACCESS_TOKEN: "private-token",
+    SQUARE_LOCATION_ID: "loc-sandbox",
+    WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "var-premium",
+    WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "var-elite",
+    WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
+  }, "elite");
+  assert.equal(prepareWeddingSquareSubscriptionRequest({
+    ...base, consent: eliteConsent, config: eliteConfig,
+  }).planVariationId, "var-elite");
+});
