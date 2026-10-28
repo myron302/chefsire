@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           if [[ -f server/lib/wedding-square-billing-policy.test.ts ]]; then
-            node --import tsx --test server/lib/wedding-square-billing-policy.test.ts
+            node --import tsx --test server/lib/wedding-square-billing-policy.test.ts\n          fi\n          if [[ -f server/lib/wedding-square-enrollment-consent.test.ts ]]; then\n            node --import tsx --test server/lib/wedding-square-enrollment-consent.test.ts
           else
             echo "Wedding Square billing tests not on this branch; skipping optional suite."
           fi
