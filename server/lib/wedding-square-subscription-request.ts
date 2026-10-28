@@ -30,6 +30,7 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
 }) {
   const { consent, config } = input;
   if (config.environment !== "sandbox" ||
+      config.tier !== consent.tier ||
       !consent.userId.trim() ||
       !consent.automaticRenewal ||
       consent.agreedCurrency !== "USD" ||
