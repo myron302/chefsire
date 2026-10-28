@@ -44,5 +44,7 @@ jobs:
           fi
       - name: Run Wedding Square sandbox enrollment preflight tests
         run: node --import tsx --test server/lib/wedding-square-enrollment-preflight.test.ts
+      - name: Run Square subscription request safety tests
+        run: node --import tsx --test server/lib/wedding-square-subscription-request.test.ts
       - name: Build client and server
         run: npm run build
