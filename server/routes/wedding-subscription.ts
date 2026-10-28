@@ -8,6 +8,7 @@ import { subscriptionHistory } from "../../shared/schema";
 import { hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 
 import { activateWeddingTrial, revokeWeddingTrial, weddingEntitlement } from "../lib/wedding-entitlement";
+import { isWeddingPaidTier, quoteWeddingMonthlyBilling } from "../lib/wedding-square-billing-policy";
 
 const r = Router();
 
@@ -151,6 +152,29 @@ async function logWeddingSubscriptionHistory(params: {
     subscriptionType: "wedding",
   } as any);
 }
+
+// Authenticated, read-only quote. Does not tokenize a card, enroll a customer,
+// create a Square subscription, or confer any paid entitlement.
+// This exposes the exact first-charge calendar date before checkout consent.
+r.get("/subscription/billing-quote", requireAuth, async (req, res) => {
+  const tier = req.query.tier;
+  if (!isWeddingPaidTier(tier)) {
+    return res.status(400).json({ ok: false, error: "Choose Premium or Elite." });
+  }
+  try {
+    const entitlement = await weddingEntitlement(req.user!.id);
+    const expiry = entitlement.trial.status === "active" && entitlement.trial.expiresAt
+      ? new Date(entitlement.trial.expiresAt) : null;
+    return res.json({
+      ok: true,
+      billingAvailable: false,
+      ...quoteWeddingMonthlyBilling({ tier, now: new Date(), trialExpiresAt: expiry }),
+      message: "Square recurring checkout is not available yet. No payment method is collected.",
+    });
+  } catch {
+    return res.status(503).json({ ok: false, error: "Unable to verify your trial billing date." });
+  }
+});
 
 // GET /api/wedding/subscription/tiers
 r.get("/subscription/tiers", requireAuth, async (_req, res) => {
