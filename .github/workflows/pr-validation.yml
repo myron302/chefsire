@@ -1,0 +1,41 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-billing-tests:
+    name: Build and Wedding billing policy tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "true"
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies from lockfile
+        run: npm ci
+      - name: Run Wedding Square billing policy tests if present
+        shell: bash
+        run: |
+          if [[ -f server/lib/wedding-square-billing-policy.test.ts ]]; then
+            node --import tsx --test server/lib/wedding-square-billing-policy.test.ts
+          else
+            echo "Wedding Square billing tests not on this branch; skipping optional suite."
+          fi
+      - name: Build client and server
+        run: npm run build
