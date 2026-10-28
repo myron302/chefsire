@@ -29,13 +29,18 @@ jobs:
           cache: npm
       - name: Install dependencies from lockfile
         run: npm ci
-      - name: Run Wedding Square billing policy tests if present
+      - name: Run Wedding Square billing tests if present
         shell: bash
         run: |
           if [[ -f server/lib/wedding-square-billing-policy.test.ts ]]; then
             node --import tsx --test server/lib/wedding-square-billing-policy.test.ts
           else
-            echo "Wedding Square billing tests not on this branch; skipping optional suite."
+            echo "Wedding Square billing policy tests not present."
+          fi
+          if [[ -f server/lib/wedding-square-enrollment-consent.test.ts ]]; then
+            node --import tsx --test server/lib/wedding-square-enrollment-consent.test.ts
+          else
+            echo "Wedding Square enrollment consent tests not present."
           fi
       - name: Build client and server
         run: npm run build
