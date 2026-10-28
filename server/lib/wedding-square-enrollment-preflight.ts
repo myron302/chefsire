@@ -43,6 +43,7 @@ export function weddingSquareSandboxPreflight(
   }
   return Object.freeze({
     environment: "sandbox" as const,
+    tier,
     locationId: cfg.SQUARE_LOCATION_ID,
     planVariationId: tier === "premium"
       ? cfg.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID
