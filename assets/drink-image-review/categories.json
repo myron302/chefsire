@@ -1,0 +1,446 @@
+{
+  "schemaVersion": 1,
+  "masterFilenameRule": "<id>-original.png unless masterFilename says otherwise (five legacy PR #1322 masters keep their historical filenames). Aliases are alternate routes/filenames of a canonical category; they never need their own photograph and are normalised to the canonical category on import.",
+  "reconciliation": {
+    "status": "RECONCILED",
+    "expectedDestinationCount": 51,
+    "listedDestinationCount": 51,
+    "note": "51 canonical destinations: 7 hubs + 44 leaf routes. Virgin Cocktails (and the legacy /virgin route) are redirect aliases of Mocktails (see aliases on the mocktails entry), not separate photography destinations. Verified against client/src/App.tsx and the route registry by `npm run photos:verify`. The owner confirmed the Smoothies and Protein Shakes legacy images belong to the hub destinations."
+  },
+  "categories": [
+    {
+      "id": "drinks-hub",
+      "title": "Main Drinks Hub",
+      "level": "hub",
+      "route": "/drinks",
+      "group": null,
+      "masterFilename": "drinks-hub-original.png"
+    },
+    {
+      "id": "smoothies-hub",
+      "title": "Smoothies",
+      "level": "hub",
+      "route": "/drinks/smoothies",
+      "group": "smoothies",
+      "masterFilename": "strawberry-banana-smoothie-original.png",
+      "legacyBatch": "pilot-2026-10-19",
+      "mappingConfidence": "owner-confirmed"
+    },
+    {
+      "id": "protein-shakes-hub",
+      "title": "Protein Shakes",
+      "level": "hub",
+      "route": "/drinks/protein-shakes",
+      "group": "protein-shakes",
+      "masterFilename": "chocolate-whey-protein-shake-original.png",
+      "legacyBatch": "pilot-2026-10-19",
+      "mappingConfidence": "owner-confirmed"
+    },
+    {
+      "id": "potent-potables-hub",
+      "title": "Potent Potables",
+      "level": "hub",
+      "route": "/drinks/potent-potables",
+      "group": "potent-potables",
+      "masterFilename": "potent-potables-hub-original.png"
+    },
+    {
+      "id": "caffeinated-hub",
+      "title": "Caffeinated",
+      "level": "hub",
+      "route": "/drinks/caffeinated",
+      "group": "caffeinated",
+      "masterFilename": "caffeinated-hub-original.png"
+    },
+    {
+      "id": "detoxes-hub",
+      "title": "Detoxes",
+      "level": "hub",
+      "route": "/drinks/detoxes",
+      "group": "detoxes",
+      "masterFilename": "detoxes-hub-original.png"
+    },
+    {
+      "id": "workout-drinks-hub",
+      "title": "Workout Drinks",
+      "level": "hub",
+      "route": "/drinks/workout-drinks",
+      "group": "workout-drinks",
+      "masterFilename": "workout-drinks-hub-original.png"
+    },
+    {
+      "id": "cold-brew",
+      "title": "Cold Brew",
+      "level": "leaf",
+      "route": "/drinks/caffeinated/cold-brew",
+      "group": "caffeinated",
+      "masterFilename": "cold-brew-original.png"
+    },
+    {
+      "id": "energy-drinks",
+      "title": "Energy Drinks",
+      "level": "leaf",
+      "route": "/drinks/caffeinated/energy",
+      "group": "caffeinated",
+      "masterFilename": "energy-drinks-original.png"
+    },
+    {
+      "id": "espresso-drinks",
+      "title": "Espresso Drinks",
+      "level": "leaf",
+      "route": "/drinks/caffeinated/espresso",
+      "group": "caffeinated",
+      "masterFilename": "espresso-drinks-original.png"
+    },
+    {
+      "id": "iced-coffee",
+      "title": "Iced Coffee",
+      "level": "leaf",
+      "route": "/drinks/caffeinated/iced",
+      "group": "caffeinated",
+      "masterFilename": "iced-coffee-original.png"
+    },
+    {
+      "id": "lattes",
+      "title": "Lattes",
+      "level": "leaf",
+      "route": "/drinks/caffeinated/lattes",
+      "group": "caffeinated",
+      "masterFilename": "lattes-original.png"
+    },
+    {
+      "id": "matcha",
+      "title": "Matcha",
+      "level": "leaf",
+      "route": "/drinks/caffeinated/matcha",
+      "group": "caffeinated",
+      "masterFilename": "matcha-original.png"
+    },
+    {
+      "id": "specialty-coffee",
+      "title": "Specialty Coffee",
+      "level": "leaf",
+      "route": "/drinks/caffeinated/specialty",
+      "group": "caffeinated",
+      "masterFilename": "specialty-coffee-original.png"
+    },
+    {
+      "id": "caffeinated-tea",
+      "title": "Caffeinated Tea",
+      "level": "leaf",
+      "route": "/drinks/caffeinated/tea",
+      "group": "caffeinated",
+      "masterFilename": "caffeinated-tea-original.png"
+    },
+    {
+      "id": "detox-juices",
+      "title": "Detox Juices",
+      "level": "leaf",
+      "route": "/drinks/detoxes/juice",
+      "group": "detoxes",
+      "masterFilename": "detox-juices-original.png"
+    },
+    {
+      "id": "detox-teas",
+      "title": "Detox Teas",
+      "level": "leaf",
+      "route": "/drinks/detoxes/tea",
+      "group": "detoxes",
+      "masterFilename": "detox-teas-original.png"
+    },
+    {
+      "id": "detox-infused-waters",
+      "title": "Detox Infused Waters",
+      "level": "leaf",
+      "route": "/drinks/detoxes/water",
+      "group": "detoxes",
+      "masterFilename": "detox-infused-waters-original.png"
+    },
+    {
+      "id": "beef-protein-shakes",
+      "title": "Beef Protein Shakes",
+      "level": "leaf",
+      "route": "/drinks/protein-shakes/beef",
+      "group": "protein-shakes",
+      "masterFilename": "beef-protein-shakes-original.png"
+    },
+    {
+      "id": "casein-protein-shakes",
+      "title": "Casein Protein Shakes",
+      "level": "leaf",
+      "route": "/drinks/protein-shakes/casein",
+      "group": "protein-shakes",
+      "masterFilename": "casein-protein-shakes-original.png"
+    },
+    {
+      "id": "collagen-protein-shakes",
+      "title": "Collagen Protein Shakes",
+      "level": "leaf",
+      "route": "/drinks/protein-shakes/collagen",
+      "group": "protein-shakes",
+      "masterFilename": "collagen-protein-shakes-original.png"
+    },
+    {
+      "id": "egg-protein-shakes",
+      "title": "Egg Protein Shakes",
+      "level": "leaf",
+      "route": "/drinks/protein-shakes/egg",
+      "group": "protein-shakes",
+      "masterFilename": "egg-protein-shakes-original.png"
+    },
+    {
+      "id": "plant-based-protein-shakes",
+      "title": "Plant-Based Protein Shakes",
+      "level": "leaf",
+      "route": "/drinks/protein-shakes/plant-based",
+      "group": "protein-shakes",
+      "masterFilename": "plant-based-protein-shakes-original.png"
+    },
+    {
+      "id": "whey-protein-shakes",
+      "title": "Whey Protein Shakes",
+      "level": "leaf",
+      "route": "/drinks/protein-shakes/whey",
+      "group": "protein-shakes",
+      "masterFilename": "whey-protein-shakes-original.png"
+    },
+    {
+      "id": "berry-smoothies",
+      "title": "Berry Smoothies",
+      "level": "leaf",
+      "route": "/drinks/smoothies/berry",
+      "group": "smoothies",
+      "masterFilename": "berry-smoothies-original.png"
+    },
+    {
+      "id": "breakfast-smoothies",
+      "title": "Breakfast Smoothies",
+      "level": "leaf",
+      "route": "/drinks/smoothies/breakfast",
+      "group": "smoothies",
+      "masterFilename": "breakfast-smoothies-original.png"
+    },
+    {
+      "id": "dessert-smoothies",
+      "title": "Dessert Smoothies",
+      "level": "leaf",
+      "route": "/drinks/smoothies/dessert",
+      "group": "smoothies",
+      "masterFilename": "dessert-smoothies-original.png"
+    },
+    {
+      "id": "detox-smoothies",
+      "title": "Detox Smoothies",
+      "level": "leaf",
+      "route": "/drinks/smoothies/detox",
+      "group": "smoothies",
+      "masterFilename": "detox-smoothies-original.png"
+    },
+    {
+      "id": "green-smoothies",
+      "title": "Green Smoothies",
+      "level": "leaf",
+      "route": "/drinks/smoothies/green",
+      "group": "smoothies",
+      "masterFilename": "green-smoothies-original.png"
+    },
+    {
+      "id": "protein-smoothies",
+      "title": "Protein Smoothies",
+      "level": "leaf",
+      "route": "/drinks/smoothies/protein",
+      "group": "smoothies",
+      "masterFilename": "protein-smoothies-original.png"
+    },
+    {
+      "id": "tropical-smoothies",
+      "title": "Tropical Smoothies",
+      "level": "leaf",
+      "route": "/drinks/smoothies/tropical",
+      "group": "smoothies",
+      "masterFilename": "tropical-smoothies-original.png"
+    },
+    {
+      "id": "workout-smoothies",
+      "title": "Workout Smoothies",
+      "level": "leaf",
+      "route": "/drinks/smoothies/workout",
+      "group": "smoothies",
+      "masterFilename": "workout-smoothies-original.png"
+    },
+    {
+      "id": "pre-workout-drinks",
+      "title": "Pre-Workout Drinks",
+      "level": "leaf",
+      "route": "/drinks/workout-drinks/pre-workout",
+      "group": "workout-drinks",
+      "masterFilename": "pre-workout-drinks-original.png"
+    },
+    {
+      "id": "post-workout-drinks",
+      "title": "Post-Workout Drinks",
+      "level": "leaf",
+      "route": "/drinks/workout-drinks/post-workout",
+      "group": "workout-drinks",
+      "masterFilename": "post-workout-drinks-original.png"
+    },
+    {
+      "id": "hydration-drinks",
+      "title": "Hydration Drinks",
+      "level": "leaf",
+      "route": "/drinks/workout-drinks/hydration",
+      "group": "workout-drinks",
+      "masterFilename": "hydration-drinks-original.png"
+    },
+    {
+      "id": "energy-booster-drinks",
+      "title": "Energy Booster Drinks",
+      "level": "leaf",
+      "route": "/drinks/workout-drinks/energy-boosters",
+      "group": "workout-drinks",
+      "masterFilename": "energy-booster-drinks-original.png"
+    },
+    {
+      "id": "classic-cocktails",
+      "title": "Classic Cocktails",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/cocktails",
+      "group": "potent-potables",
+      "masterFilename": "classic-cocktails-original.png"
+    },
+    {
+      "id": "cognac-brandy",
+      "title": "Cognac & Brandy",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/cognac-brandy",
+      "group": "potent-potables",
+      "masterFilename": "cognac-brandy-original.png"
+    },
+    {
+      "id": "daiquiri",
+      "title": "Daiquiri",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/daiquiri",
+      "group": "potent-potables",
+      "masterFilename": "daiquiri-original.png",
+      "legacyBatch": "pilot-2026-10-19",
+      "mappingConfidence": "exact"
+    },
+    {
+      "id": "gin",
+      "title": "Gin",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/gin",
+      "group": "potent-potables",
+      "masterFilename": "gin-original.png"
+    },
+    {
+      "id": "hot-drinks",
+      "title": "Hot Drinks",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/hot-drinks",
+      "group": "potent-potables",
+      "masterFilename": "hot-drinks-original.png"
+    },
+    {
+      "id": "liqueurs",
+      "title": "Liqueurs",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/liqueurs",
+      "group": "potent-potables",
+      "masterFilename": "liqueurs-original.png"
+    },
+    {
+      "id": "martinis",
+      "title": "Martinis",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/martinis",
+      "group": "potent-potables",
+      "masterFilename": "classic-dry-gin-martini-original.png",
+      "legacyBatch": "pilot-2026-10-19",
+      "mappingConfidence": "exact"
+    },
+    {
+      "id": "mocktails",
+      "title": "Mocktails",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/mocktails",
+      "group": "potent-potables",
+      "masterFilename": "mocktails-original.png",
+      "aliases": [
+        {
+          "id": "virgin-cocktails",
+          "route": "/drinks/potent-potables/virgin-cocktails",
+          "masterFilename": "virgin-cocktails-original.png",
+          "kind": "redirect",
+          "evidence": "client/src/App.tsx redirects this route to /drinks/potent-potables/mocktails; its page module re-exports the mocktails page"
+        },
+        {
+          "id": "virgin",
+          "route": "/drinks/potent-potables/virgin",
+          "masterFilename": null,
+          "kind": "redirect",
+          "evidence": "client/src/App.tsx redirects this legacy route to /drinks/potent-potables/mocktails"
+        }
+      ]
+    },
+    {
+      "id": "rum",
+      "title": "Rum",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/rum",
+      "group": "potent-potables",
+      "masterFilename": "rum-original.png"
+    },
+    {
+      "id": "scotch-irish-whiskey",
+      "title": "Scotch & Irish Whiskey",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey",
+      "group": "potent-potables",
+      "masterFilename": "scotch-irish-whiskey-original.png"
+    },
+    {
+      "id": "seasonal",
+      "title": "Seasonal",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/seasonal",
+      "group": "potent-potables",
+      "masterFilename": "seasonal-original.png"
+    },
+    {
+      "id": "spritz-mimosas",
+      "title": "Spritz & Mimosas",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/spritz",
+      "group": "potent-potables",
+      "masterFilename": "spritz-mimosas-original.png"
+    },
+    {
+      "id": "tequila-mezcal",
+      "title": "Tequila & Mezcal",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/tequila-mezcal",
+      "group": "potent-potables",
+      "masterFilename": "tequila-mezcal-original.png"
+    },
+    {
+      "id": "vodka",
+      "title": "Vodka",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/vodka",
+      "group": "potent-potables",
+      "masterFilename": "vodka-original.png"
+    },
+    {
+      "id": "whiskey-bourbon",
+      "title": "Whiskey & Bourbon",
+      "level": "leaf",
+      "route": "/drinks/potent-potables/whiskey-bourbon",
+      "group": "potent-potables",
+      "masterFilename": "bourbon-large-ice-rocks-original.png",
+      "legacyBatch": "pilot-2026-10-19",
+      "mappingConfidence": "exact"
+    }
+  ]
+}
