@@ -53,6 +53,7 @@ export function createWeddingEnrollmentReservationService(database: SqlPool) {
       let client: SqlClient | undefined;
       let begun = false;
       let discardConnection = false;
+      let transactionClosed = false;
       try {
         if (!database || typeof database.connect !== "function") throw new WeddingEnrollmentReservationError();
         client = await database.connect();
@@ -84,6 +85,7 @@ export function createWeddingEnrollmentReservationService(database: SqlPool) {
         if (result.rows.length !== 1) throw new WeddingEnrollmentReservationError();
         await client.query("COMMIT");
         begun = false;
+        transactionClosed = true;
         return { attemptId: result.rows[0].id, idempotencyKey, status: "reserved" };
       } catch (error) {
         if (client && begun) {
@@ -91,7 +93,7 @@ export function createWeddingEnrollmentReservationService(database: SqlPool) {
           catch { discardConnection = true; }
         }
         // A failed BEGIN/COMMIT leaves transaction state uncertain too.
-        if (client && !begun) discardConnection = true;
+        if (client && !begun && !transactionClosed) discardConnection = true;
         if (error instanceof WeddingEnrollmentReservationError) throw error;
         // Fail closed and do not leak database or provider identifiers in errors.
         throw new WeddingEnrollmentReservationError();
