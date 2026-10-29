@@ -50,9 +50,12 @@ export function createWeddingEnrollmentReservationService(database: SqlPool) {
         persistedIdempotencyKey: idempotencyKey,
       });
       const fingerprint = createHash("sha256").update(JSON.stringify(request)).digest("hex");
-      const client = await database.connect();
+      let client: SqlClient | undefined;
       let begun = false;
+      let discardConnection = false;
       try {
+        if (!database || typeof database.connect !== "function") throw new WeddingEnrollmentReservationError();
+        client = await database.connect();
         await client.query("BEGIN");
         begun = true;
         // Serialize reservations for a user; the partial unique index also guards
@@ -83,14 +86,20 @@ export function createWeddingEnrollmentReservationService(database: SqlPool) {
         begun = false;
         return { attemptId: result.rows[0].id, idempotencyKey, status: "reserved" };
       } catch (error) {
-        if (begun) {
-          try { await client.query("ROLLBACK"); } catch { /* preserve failure */ }
+        if (client && begun) {
+          try { await client.query("ROLLBACK"); }
+          catch { discardConnection = true; }
         }
+        // A failed BEGIN/COMMIT leaves transaction state uncertain too.
+        if (client && !begun) discardConnection = true;
         if (error instanceof WeddingEnrollmentReservationError) throw error;
         // Fail closed and do not leak database or provider identifiers in errors.
         throw new WeddingEnrollmentReservationError();
       } finally {
-        client.release();
+        if (client) {
+          if (discardConnection) client.release(new Error("Discard unsafe enrollment database connection"));
+          else client.release();
+        }
       }
     },
   };
