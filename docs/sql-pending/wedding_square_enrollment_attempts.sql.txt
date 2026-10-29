@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS wedding_square_enrollment_attempts (
   CHECK (trial_expires_at IS NULL OR
     (requested_start_date IS NOT NULL AND
      (requested_start_date::timestamp AT TIME ZONE 'UTC') >= trial_expires_at)),
-  CHECK (provider_subscription_id IS NULL OR status IN ('needs_reconciliation','confirmed'))
+  CHECK (provider_subscription_id IS NULL OR status IN ('needs_reconciliation','confirmed')),
+  CHECK (status <> 'confirmed' OR (provider_subscription_id IS NOT NULL AND length(trim(provider_subscription_id)) > 0))
 );
 CREATE INDEX IF NOT EXISTS wedding_square_enrollment_attempts_user_idx
   ON wedding_square_enrollment_attempts(user_id, created_at DESC);
