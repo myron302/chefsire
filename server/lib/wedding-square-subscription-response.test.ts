@@ -55,3 +55,30 @@ test("an ACTIVE provider subscription is not proof of payment", () => {
   assert.equal(verified.providerStatus, "ACTIVE");
   assert.equal("verifiedPaidThrough" in verified, false);
 });
+
+test("immediate start accepts Square's same-day UTC start when submission date is known", () => {
+  const { startDate: _omitted, ...immediateRequest } = request;
+  const verified = verifyWeddingSquareCreatedSubscription(
+    immediateRequest, { ...response, startDate: "2026-10-29", status: "ACTIVE" }, "2026-10-29",
+  );
+  assert.equal(verified.providerSubscriptionId, "square-sub-1");
+  assert.equal("verifiedPaidThrough" in verified, false);
+});
+
+test("immediate start rejects unexpected, delayed and missing provider start dates", () => {
+  const { startDate: _omitted, ...immediateRequest } = request;
+  for (const unexpected of ["2026-10-28", "2026-10-30", "2026-11-11", undefined]) {
+    assert.throws(() => verifyWeddingSquareCreatedSubscription(
+      immediateRequest, { ...response, startDate: unexpected }, "2026-10-29",
+    ), WeddingSquareReconciliationRequiredError);
+  }
+});
+
+test("immediate start requires an authenticated submission UTC date", () => {
+  const { startDate: _omitted, ...immediateRequest } = request;
+  for (const submissionDate of [undefined, "", "2026-02-30", "2026-99-99"]) {
+    assert.throws(() => verifyWeddingSquareCreatedSubscription(
+      immediateRequest, { ...response, startDate: "2026-10-29" }, submissionDate,
+    ), WeddingSquareReconciliationRequiredError);
+  }
+});
