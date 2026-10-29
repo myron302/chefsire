@@ -48,5 +48,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-subscription-request.test.ts
       - name: Run Square durable enrollment attempt state tests
         run: node --import tsx --test server/lib/wedding-square-attempt-state.test.ts
+      - name: Run Wedding enrollment persistence reservation tests
+        run: node --import tsx --test server/lib/wedding-square-enrollment-reservation.test.ts
       - name: Build client and server
         run: npm run build
