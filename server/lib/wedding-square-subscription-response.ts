@@ -33,10 +33,24 @@ type PreparedRequest = ReturnType<typeof prepareWeddingSquareSubscriptionRequest
 export function verifyWeddingSquareCreatedSubscription(
   request: PreparedRequest,
   response: unknown,
+  // Mandatory for an immediate-start request: UTC calendar date captured immediately
+  // before the Square create call. A date-boundary race fails closed to readback.
+  submissionUtcDate?: string,
 ) {
   const parsed = subscriptionSchema.safeParse(response);
   if (!parsed.success) throw new WeddingSquareReconciliationRequiredError();
   const result = parsed.data;
+  // Square may assign the actual start date when the request omits startDate.
+  // Accept only the submission-day UTC date; future/backdated dates and missing
+  // submission evidence require reconciliation rather than silent confirmation.
+  const immediate = request.startDate === undefined;
+  if (immediate && (!submissionUtcDate ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(submissionUtcDate) ||
+      !Number.isFinite(Date.parse(submissionUtcDate + "T00:00:00.000Z")) ||
+      new Date(submissionUtcDate + "T00:00:00.000Z").toISOString().slice(0, 10) !== submissionUtcDate ||
+      result.startDate !== submissionUtcDate)) {
+    throw new WeddingSquareReconciliationRequiredError();
+  }
   if (
     result.locationId !== request.locationId ||
     result.customerId !== request.customerId ||
