@@ -98,3 +98,58 @@ test("conflicting attempt rolls back and never reports a reservation", async () 
     else process.env.SQUARE_ENV = original.square;
   }
 });
+
+test("database acquisition failures return the sanitized reservation error", async () => {
+  const original = { enabled: process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED, square: process.env.SQUARE_ENV };
+  process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = "true";
+  process.env.SQUARE_ENV = "sandbox";
+  try {
+    let called = 0;
+    const database = { connect: async () => { called++; throw new Error("sensitive postgres connection detail"); } };
+    await assert.rejects(
+      createWeddingEnrollmentReservationService(database as any).reserve(input),
+      (error: unknown) => error instanceof WeddingEnrollmentReservationError &&
+        !error.message.includes("sensitive postgres"),
+    );
+    assert.equal(called, 1);
+    await assert.rejects(
+      createWeddingEnrollmentReservationService(null as any).reserve(input),
+      WeddingEnrollmentReservationError,
+    );
+  } finally {
+    if (original.enabled === undefined) delete process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED;
+    else process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = original.enabled;
+    if (original.square === undefined) delete process.env.SQUARE_ENV;
+    else process.env.SQUARE_ENV = original.square;
+  }
+});
+
+test("failed rollback discards the unsafe pooled connection", async () => {
+  const original = { enabled: process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED, square: process.env.SQUARE_ENV };
+  process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = "true";
+  process.env.SQUARE_ENV = "sandbox";
+  try {
+    const releases: (Error | undefined)[] = [];
+    const database = {
+      connect: async () => ({
+        query: async (text: string) => {
+          if (text === "ROLLBACK") throw new Error("rollback failed");
+          if (text.includes("INSERT INTO")) return { rows: [] };
+          return { rows: [] };
+        },
+        release: (error?: Error) => { releases.push(error); },
+      }),
+    };
+    await assert.rejects(
+      createWeddingEnrollmentReservationService(database as any).reserve(input),
+      WeddingEnrollmentReservationError,
+    );
+    assert.equal(releases.length, 1);
+    assert.ok(releases[0] instanceof Error, "release must discard the broken connection");
+  } finally {
+    if (original.enabled === undefined) delete process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED;
+    else process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = original.enabled;
+    if (original.square === undefined) delete process.env.SQUARE_ENV;
+    else process.env.SQUARE_ENV = original.square;
+  }
+});
