@@ -23,6 +23,7 @@ test("atomic one-way claim binds authenticated owner, sandbox and reserved statu
   const claimed = await createWeddingSquareSubmissionStateService(db as any).claim(attemptId, "user-1");
   assert.equal(claimed.persistedIdempotencyKey, "saved-key");
   assert.deepEqual(calls[0].params, [attemptId, "user-1"]);
+  assert.match(calls[0].sql, /user_id\s*=\s*\$2/);
   assert.match(calls[0].sql, /status = 'reserved'/);
   assert.match(calls[0].sql, /square_environment = 'sandbox'/);
 }));
@@ -33,12 +34,19 @@ test("duplicate or nonexistent claim is rejected, never issued a new idempotency
 }));
 
 test("ambiguous submission transitions only from submitting to needs_reconciliation", async () => withSandbox(async () => {
-  let sql = "";
-  const db = { query: async (statement: string) => { sql = statement; return { rows: [{ id: attemptId }] }; } };
+  const calls: { sql: string; params: unknown[] }[] = [];
+  const db = { query: async (sql: string, params: unknown[]) => {
+    calls.push({ sql, params });
+    return { rows: [{ id: attemptId }] };
+  } };
   const result = await createWeddingSquareSubmissionStateService(db as any).markUnknown(attemptId, "user-1");
   assert.equal(result.status, "needs_reconciliation");
-  assert.match(sql, /status = 'submitting'/);
-  assert.match(sql, /status = 'needs_reconciliation'/);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].params, [attemptId, "user-1"]);
+  assert.match(calls[0].sql, /user_id\s*=\s*\$2/);
+  assert.match(calls[0].sql, /square_environment\s*=\s*'sandbox'/);
+  assert.match(calls[0].sql, /status = 'submitting'/);
+  assert.match(calls[0].sql, /status = 'needs_reconciliation'/);
 }));
 
 test("database errors are sanitized without leaking connection details", async () => withSandbox(async () => {
