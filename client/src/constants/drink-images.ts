@@ -90,15 +90,16 @@ export type DrinkCategoryHeroVisual = {
   description: string;
   overlayClass: string;
   positionClass?: string;
+  fitClass?: string;
 };
 
 const PREMIUM_DRINK_HERO_BASE_PARAMS = 'w=1600&h=900&fit=crop&crop=entropy&auto=format&q=85';
 
-export const NEUTRAL_PREMIUM_DRINK_HERO_IMAGE = `https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?${PREMIUM_DRINK_HERO_BASE_PARAMS}`;
+export const NEUTRAL_PREMIUM_DRINK_HERO_IMAGE = '/images/drinks/potent-potables/heroes/neutral.webp';
 
 export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> = {
   '/drinks/potent-potables/cocktails': {
-    image: `https://images.unsplash.com/photo-1544145945-f90425340c7e?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/cocktails.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Classic cocktails served in polished glassware inside an elegant cocktail lounge',
     displayName: 'Classic Cocktails',
@@ -108,7 +109,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/daiquiri': {
-    image: `https://images.unsplash.com/photo-1527761939622-933c83d34544?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/daiquiri.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Bright daiquiri cocktail with citrus and rum in refined coupe glass styling',
     displayName: 'Daiquiri',
@@ -118,7 +119,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/hot-drinks': {
-    image: `https://images.unsplash.com/photo-1517578239113-b03992dcdd25?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/hot-drinks.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Steaming hot cocktail in cozy winter bar and cafe lighting',
     displayName: 'Hot Drinks',
@@ -128,7 +129,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/mocktails': {
-    image: `https://images.unsplash.com/photo-1621263764928-df1444c5e859?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/mocktails.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Fresh premium mocktail with vibrant fruit herbs and bright zero-proof styling',
     displayName: 'Mocktails',
@@ -138,7 +139,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/martinis': {
-    image: `https://images.unsplash.com/photo-1575023782549-62ca0d244b39?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/martinis.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Elegant martini glass with olive and lemon twist in a minimalist upscale bar',
     displayName: 'Martinis',
@@ -158,7 +159,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/seasonal': {
-    image: `https://images.unsplash.com/photo-1543253687-c931c8e01820?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/seasonal.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Festive seasonal cocktail with warm and cool holiday styling accents',
     displayName: 'Seasonal Cocktails',
@@ -168,7 +169,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/spritz': {
-    image: `https://images.unsplash.com/photo-1560512823-829485b8bf24?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/spritz.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Bright orange spritz cocktail with bubbles on a sunny aperitivo terrace',
     displayName: 'Spritz & Mimosas',
@@ -178,7 +179,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/virgin-cocktails': {
-    image: `https://images.unsplash.com/photo-1546171753-97d7676e4602?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/virgin-cocktails.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Colorful virgin cocktail with fruit garnish and clean refreshing zero-proof realism',
     displayName: 'Virgin Cocktails',
@@ -188,7 +189,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/gin': {
-    image: `https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/gin.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium gin cocktail with botanical garnish in an upscale bar setting',
     displayName: 'Gin Cocktails',
@@ -198,7 +199,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/rum': {
-    image: `https://images.unsplash.com/photo-1536935338788-846bb9981813?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/rum.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium rum cocktail with tropical warmth and bar lighting',
     displayName: 'Rum Cocktails',
@@ -208,7 +209,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/vodka': {
-    image: `https://images.unsplash.com/photo-1551024709-8f23befc6f87?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/vodka.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium vodka cocktail with crystal-clear ice and modern nightlife lighting',
     displayName: 'Vodka Cocktails',
@@ -218,7 +219,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/whiskey-bourbon': {
-    image: `https://images.unsplash.com/photo-1527281400683-1aae777175f8?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/whiskey-bourbon.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium whiskey glass with cinematic amber lounge lighting',
     displayName: 'Whiskey & Bourbon',
@@ -238,7 +239,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/cognac-brandy': {
-    image: `https://images.unsplash.com/photo-1569529465841-dfecdab7503b?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/cognac-brandy.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium brandy and cognac glass with refined amber lighting',
     displayName: 'Cognac & Brandy',
@@ -248,7 +249,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/liqueurs': {
-    image: `https://images.unsplash.com/photo-1470337458703-46ad1756a187?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: '/images/drinks/potent-potables/heroes/liqueurs.webp',
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium cocktail bar with colorful liqueur bottles and polished glassware',
     displayName: 'Liqueurs',
@@ -260,7 +261,11 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
 };
 
 export function getDrinkCategoryHeroVisual(route: string): DrinkCategoryHeroVisual {
-  return drinkCategoryHeroVisuals[route] ?? {
+  const visual = drinkCategoryHeroVisuals[route];
+  if (visual?.image.startsWith('/images/drinks/potent-potables/heroes/')) {
+    return { ...visual, fitClass: 'object-contain', positionClass: 'object-right' };
+  }
+  return visual ?? {
     image: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
     alt: 'Premium cocktail in a polished bar setting',
@@ -275,11 +280,11 @@ export function getDrinkCategoryHeroVisual(route: string): DrinkCategoryHeroVisu
 // Fallback images for when specific images are not available
 export const DRINK_FALLBACK_IMAGES = {
   default: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
-  smoothie: 'https://images.unsplash.com/photo-1553530979-451d0aa3ad9f?w=600&h=400&fit=crop',
-  coffee: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=600&h=400&fit=crop',
+  smoothie: '/images/drinks/hub/smoothies-and-bowls.webp',
+  coffee: '/images/drinks/hub/caffeinated-drinks.webp',
   cocktail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
-  protein: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&h=400&fit=crop',
-  detox: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=600&h=400&fit=crop',
+  protein: '/images/drinks/hub/protein-shakes.webp',
+  detox: '/images/drinks/hub/detoxes-and-cleanses.webp',
 } as const;
 
 // =============================================================================
@@ -325,7 +330,6 @@ export const SMOOTHIE_IMAGES = {
       tripleBerry: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop',
       strawberryFields: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
       blueberryBliss: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400&h=300&fit=crop',
-      acaiBowl: 'https://images.unsplash.com/photo-1590301157284-4e08f48b611c?w=400&h=300&fit=crop',
     },
   },
   breakfast: {
@@ -334,7 +338,6 @@ export const SMOOTHIE_IMAGES = {
     card: 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=600&h=400&fit=crop',
     recipes: {
       morningFuel: 'https://images.unsplash.com/photo-1570197788417-0e82375c9371?w=400&h=300&fit=crop',
-      oatmealSmoothie: 'https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?w=400&h=300&fit=crop',
       coffeeMocha: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
     },
   },
@@ -355,7 +358,6 @@ export const SMOOTHIE_IMAGES = {
     recipes: {
       greenCleanse: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=400&h=300&fit=crop',
       lemonGinger: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop',
-      beetPower: 'https://images.unsplash.com/photo-1623065422902-30a2d299bbe4?w=400&h=300&fit=crop',
     },
   },
   green: {
@@ -379,13 +381,11 @@ export const SMOOTHIE_IMAGES = {
     },
   },
   tropical: {
-    hero: 'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=1200&h=600&fit=crop',
     thumbnail: 'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=300&h=200&fit=crop',
     card: 'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=600&h=400&fit=crop',
     recipes: {
       mangoParadise: 'https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb?w=400&h=300&fit=crop',
       pinaColada: 'https://images.unsplash.com/photo-1546549032-9571cd6b27df?w=400&h=300&fit=crop',
-      passionFruit: 'https://images.unsplash.com/photo-1525385133512-2f3bdd039054?w=400&h=300&fit=crop',
     },
   },
   workout: {
@@ -410,8 +410,6 @@ export const CAFFEINATED_IMAGES = {
     card: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=600&h=400&fit=crop',
     recipes: {
       classic: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&h=300&fit=crop',
-      nitro: 'https://images.unsplash.com/photo-1592663527359-cf6642f54cff?w=400&h=300&fit=crop',
-      vanilla: 'https://images.unsplash.com/photo-1578314675249-a6910f80cc4e?w=400&h=300&fit=crop',
     },
   },
   espresso: {
@@ -420,12 +418,9 @@ export const CAFFEINATED_IMAGES = {
     card: 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=600&h=400&fit=crop',
     recipes: {
       single: 'https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=400&h=300&fit=crop',
-      double: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=300&fit=crop',
-      ristretto: 'https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=400&h=300&fit=crop',
     },
   },
   icedCoffee: {
-    hero: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=1200&h=600&fit=crop',
     thumbnail: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=300&h=200&fit=crop',
     card: 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?w=600&h=400&fit=crop',
     recipes: {
@@ -445,22 +440,18 @@ export const CAFFEINATED_IMAGES = {
     },
   },
   matcha: {
-    hero: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=1200&h=600&fit=crop',
     thumbnail: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=300&h=200&fit=crop',
     card: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=600&h=400&fit=crop',
     recipes: {
       traditional: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=400&h=300&fit=crop',
       latte: 'https://images.unsplash.com/photo-1515823064-d6e0c04616a7?w=400&h=300&fit=crop',
-      iced: 'https://images.unsplash.com/photo-1521295121783-8a321d551ad2?w=400&h=300&fit=crop',
     },
   },
   energy: {
-    hero: 'https://images.unsplash.com/photo-1527661591475-527312dd65f5?w=1200&h=600&fit=crop',
     thumbnail: 'https://images.unsplash.com/photo-1527661591475-527312dd65f5?w=300&h=200&fit=crop',
     card: 'https://images.unsplash.com/photo-1527661591475-527312dd65f5?w=600&h=400&fit=crop',
     recipes: {
       greenTea: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop',
-      yerba: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400&h=300&fit=crop',
       guarana: 'https://images.unsplash.com/photo-1527661591475-527312dd65f5?w=400&h=300&fit=crop',
     },
   },
@@ -479,9 +470,7 @@ export const CAFFEINATED_IMAGES = {
     thumbnail: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=300&h=200&fit=crop',
     card: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=600&h=400&fit=crop',
     recipes: {
-      chai: 'https://images.unsplash.com/photo-1571934811356-5cc061b6821f?w=400&h=300&fit=crop',
       blackTea: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop',
-      herbal: 'https://images.unsplash.com/photo-1597481499750-3e6b22637e12?w=400&h=300&fit=crop',
     },
   },
 } as const;
@@ -674,7 +663,7 @@ export function getSmoothieImage(
   subcategory: keyof typeof SMOOTHIE_IMAGES,
   size: 'hero' | 'thumbnail' | 'card' = 'card'
 ): string {
-  return SMOOTHIE_IMAGES[subcategory]?.[size] ?? DRINK_FALLBACK_IMAGES.smoothie;
+  return (SMOOTHIE_IMAGES[subcategory] as Partial<Record<typeof size, string>>)?.[size] ?? DRINK_FALLBACK_IMAGES.smoothie;
 }
 
 /**
@@ -684,7 +673,7 @@ export function getCaffeinatedImage(
   type: keyof typeof CAFFEINATED_IMAGES,
   size: 'hero' | 'thumbnail' | 'card' = 'card'
 ): string {
-  return CAFFEINATED_IMAGES[type]?.[size] ?? DRINK_FALLBACK_IMAGES.coffee;
+  return (CAFFEINATED_IMAGES[type] as Partial<Record<typeof size, string>>)?.[size] ?? DRINK_FALLBACK_IMAGES.coffee;
 }
 
 /**

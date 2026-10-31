@@ -1,0 +1,83 @@
+{
+  "checked_at": "2026-10-27",
+  "base_head": "50a1c77170243f0d81e7ee5e3b06f2426867da51",
+  "integrated_assets_preserved": 28,
+  "held_slots_preserved": 5,
+  "rejected_IMG032_candidate_preserved": true,
+  "manifest_byte_identical": true,
+  "protected_file_hashes": {
+    "client/public/images/drinks/potent-potables/heroes/neutral.webp": "3d96273792ac76fe8baeb3acd30276fee3a03426351848fc463c277556d134d9",
+    "client/public/images/drinks/potent-potables/heroes/cocktails.webp": "73c6d80965cc1b3c6373a29d9a7564de73d48ef82d21526eee07c24c15f62f7f",
+    "client/public/images/drinks/potent-potables/heroes/cognac-brandy.webp": "6922bee0545536fccf5f3bcf857f732b2776eb1b3d5a8d92781c024142029219",
+    "client/public/images/drinks/potent-potables/heroes/daiquiri.webp": "d78c7ced46c96b11e7cd41f19b15892128a8524d55f8fe55064172c3c780cb8a",
+    "client/public/images/drinks/potent-potables/heroes/gin.webp": "3e0a0a87fcd0c6499b9c399e36408cbde45183284a3ecc02f69f31c7446e05a0",
+    "client/public/images/drinks/potent-potables/heroes/hot-drinks.webp": "4cfd862dcee5caa52f5ec147562e6b2a7f2b34984e0e03be72c9b836ed404fa3",
+    "client/public/images/drinks/potent-potables/heroes/liqueurs.webp": "1eab8fe76e859713b99e24f685f00ed78a12c59adb57149ea5884087d2009949",
+    "client/public/images/drinks/potent-potables/heroes/martinis.webp": "350723d761bba48ee88f8415cd997c3885137b54b623a109fcf594a37a439a4e",
+    "client/public/images/drinks/potent-potables/heroes/mocktails.webp": "00c3a5f503a3248bac964ea2284b4205c4295efbbc3b4210cfa57c946c35a6c5",
+    "client/public/images/drinks/potent-potables/heroes/rum.webp": "822596e976e9eed93f898028d94ce2d07f661110c0e80104ce7712eace91f64c",
+    "client/public/images/drinks/potent-potables/heroes/seasonal.webp": "8731f18f52abdd53b81b842ebcb59578db260200c1ebf39db88f6bf7ec6e9c40",
+    "client/public/images/drinks/potent-potables/heroes/spritz.webp": "b2407035e684d3a5babf58a86a4e878eecc43edf04af863a977d2717b7fb16e9",
+    "client/public/images/drinks/potent-potables/heroes/virgin-cocktails.webp": "2d2a80726b8dad6ecc60d179cf2b65bf4c61617035311e5cd1fedc4a6d680d14",
+    "client/public/images/drinks/potent-potables/heroes/vodka.webp": "e02e38341d627e23a67ba5c6a374350397829ca5c7c71f4bd9c369789392f23c",
+    "client/public/images/drinks/potent-potables/heroes/whiskey-bourbon.webp": "a13f659c92ccf8a37ca53eddbc79f4db9563817e85b9d06ef660b3e4d4cd8098",
+    "client/public/images/drinks/caffeinated/energy-drinks.webp": "82f1523f995265ca5f8196296f1caaa645f9843d6295f42a96aae801552fa122",
+    "client/public/images/drinks/caffeinated/iced-coffee.webp": "66efb23b4ee42dae51262976e9bd9034bbbf6d6847a9c9a1bce76467996bc14d",
+    "client/public/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp": "b3ab493cabe50a8ce91c4bf3fdf86a85bbb3d5e4d72387e96d5a5b812c12f04d",
+    "client/public/images/drinks/smoothies/pre-workout-power-blend.webp": "b4c3749665903d6bdefa95afe9bbbe4bd35f42c006c5cc466de1556d27018069",
+    "client/public/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp": "cde910706f440b3c903fc4294343168dea64e0277397d6b33c073422885c2cd4",
+    "client/public/images/drinks/workout-drinks/diy-sports-drink.webp": "c029611cdf13518009d8458c9e2a886b96ecea0eba5b1c0047bde24d91434e23",
+    "client/public/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp": "2c2bcc6561d43db134ed027800488b57d61243546e49e8c38ed0e260a4a8a25c",
+    "client/public/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp": "96cc9404ba999a001976af7ba998d2110b4b6b5ccccd511c6fc234dc5ea2f44b",
+    "client/public/images/drinks/hub/caffeinated-drinks.webp": "c4d085c87d63d6bab09e3ce6438faee7ce80fd8889c9ee08592b4e4e9f36e2e1",
+    "client/public/images/drinks/hub/detoxes-and-cleanses.webp": "60cff57a3e49d46b52d15510b7cb38d8bebfcb1a91170aaffbfbbfa8228ee2a0",
+    "client/public/images/drinks/hub/potent-potables.webp": "34e933fed3b3f6b37adfa919338e989e5c52f74b5744e3c66ccede50b07fb9c7",
+    "client/public/images/drinks/hub/protein-shakes.webp": "e01f6fc9970464f24b2eeed1635ae98a86a1db98fd45c4247179d821c8e22595",
+    "client/public/images/drinks/hub/smoothies-and-bowls.webp": "ac5c8ce4fbc8f8f819080e74e82a848aeb718fd953ae33c659a6db2f00ae66c5",
+    "assets/drink-image-review/campaign/held/IMG-024/lions-mane-mushroom-coffee.webp": "ec2cb2d7db2b9106c4ac2d109232e360efb913d4ba1ab47c01bf690d73a3f928",
+    "assets/drink-image-review/campaign/held/IMG-014/tequila-mezcal.webp": "72b64f9b6a4d316683b3f98dd42c38ba4c37dd7abda40da8f46db938b01e3eaf",
+    "assets/drink-image-review/campaign/held/IMG-011/scotch-irish-whiskey.webp": "86f13dee68c654aa01857398e5a0273e2fbf8008eb9bb526355ecf2752e9c65b",
+    "assets/drink-image-review/campaign/held/IMG-032/protein-shakes.webp": "06df01baae173c5cb88b1e6aa237165cc615c5c64fb8a3e0f6b9c3cecf79bca1",
+    "assets/drink-image-review/campaign/held/IMG-018/cosmic-martini.webp": "78936ce98624134cdf27643a89520cf56e0c4dadc1d3d7c906aec5185841b93e",
+    "assets/drink-image-review/campaign/held/IMG-021/old-fashioned.webp": "298a1880c38828231358068c0b313ecab28ba42b6665f52c5fd7f7a941c4aa9c",
+    "assets/drink-image-review/campaign/manifest.json": "6fadbff4fea5a7a4f4fa3faaaad567de7a31ffe29ccd5f5129df16541f4589ee"
+  },
+  "test_plan_source_hashes_verified": true,
+  "model": "gpt-image-2",
+  "three_test_ids": [
+    "IMG-034",
+    "IMG-035",
+    "IMG-043"
+  ],
+  "generation_requests": 0,
+  "budget_authorized": false,
+  "unit_tests": 22,
+  "client_build": "passed; existing chunk-size warnings",
+  "typescript": {
+    "baseline": 3194,
+    "followup": 3194,
+    "new_locations_codes": [],
+    "removed_locations_codes": []
+  },
+  "runtime_readiness": {
+    "observations_current": true,
+    "phase": "running",
+    "OPENAI_API_KEY_bound": false,
+    "network_policy_enforced": true,
+    "api_openai_com_allowed": false,
+    "account_generation_access": "not_verified"
+  },
+  "application_changes": "none in this follow-up; existing browser/layout verification retained, not rerun as a production claim",
+  "campaign_accounting": {
+    "replace": 136,
+    "integrated": 28,
+    "pending_never_generated": 103,
+    "held": 5,
+    "sum": 136
+  },
+  "no_cost_reviews": {
+    "generic_fallback_rows": 5,
+    "svg_assets": 24,
+    "held_correction_specifications": 5
+  }
+}

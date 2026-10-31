@@ -1,0 +1,1086 @@
+{
+  "schema_version": 1,
+  "start": "IMG-034",
+  "images": [
+    {
+      "id": "IMG-034",
+      "subject": "Workout Drinks",
+      "route": "/drinks",
+      "destination": "client/public/images/drinks/hub/workout-drinks.webp",
+      "source_ref": "client/src/pages/drinks/index.tsx:68",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Three drinks from the workout-drink category on pale limestone: a pale orange diluted sports drink in a plain transparent sports bottle, a restrained cocoa-brown recovery shake in a simple shaker cup and deep red beet-citrus pre-workout drink in a tumbler. No supplements with labels. Crisp morning sidelight and a softly blurred training towel. One coherent scene, not panels.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/workout-drinks/pre-workout.ts",
+        "sha256": "cdf8b0c8c11332d9e809bf95bdb9c69bbf33e392cbd18c83fcf745c723a051be",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-035",
+      "subject": "Cold Brew",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/cold-brew.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:47",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Black cold brew coffee over clear ice in a short straight-sided glass, deep translucent mahogany, no milk, cream or foam. Small unbranded carafe nearby; dark stone counter and cool window light. Distinct from milk-swirled iced coffee.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/caffeinated/cold-brew.ts",
+        "sha256": "666ef1c2e1d2095aff45a15466f1ff7309b6c0a89b2b0f52720310eef5fb5a94",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-036",
+      "subject": "Espresso Drinks",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/espresso-drinks.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:31",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. One small espresso in a white ceramic demitasse and saucer, short rich dark coffee with thin hazelnut crema, no milk or latte art. Intimate low three-quarter angle, warm walnut counter, dark cafe backdrop.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/caffeinated/espresso.ts",
+        "sha256": "4d347636b074dbc8f9500ec6c820d459ce46d91cb3c3f5f633861dea0bf50a5b",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-037",
+      "subject": "Lattes & Cappuccinos",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/lattes-and-cappuccinos.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:125",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. One creamy latte in a broad ceramic cup with restrained rosetta latte art, smooth fine microfoam, espresso-brown rim. A smaller cappuccino cup softly blurred behind, pale travertine and warm cafe morning light.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/caffeinated/lattes.ts",
+        "sha256": "da7cb7627275f703120be01e9040c8f5e896e95b8590ec3d4afe78ad5522743b",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-038",
+      "subject": "Matcha",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/matcha.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:78",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. A warm matcha latte in a clear heat-safe mug, muted natural green tea blended with milk and fine microfoam. Small bowl of bright matcha powder and bamboo whisk beside, pale wood and sage backdrop. No neon green liquid, ice or unrelated fruit.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/caffeinated/matcha.ts",
+        "sha256": "aa15b17527dce25c3085c06117dbbb9c7123af3be8b86ba717f9b101abfcf50d",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-039",
+      "subject": "Specialty Coffee",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/specialty-coffee.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:109",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, text, labels, logos, watermark or people. One Affogato: two scoops vanilla ice cream in a small clear dessert glass with freshly poured espresso running over the scoops. A small plain espresso cup beside. Warm walnut and linen, golden afternoon cafe light; no chocolate syrup, sprinkles or fruit. Category representative verified against specialty.ts Affogato.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/caffeinated/specialty.ts",
+        "sha256": "59b1db423f217e8c785ebd387fb6814731d107b944b2843bd19e09b26b5444aa",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-040",
+      "subject": "Tea",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/tea.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:63",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Clear amber brewed tea in a heat-safe handled glass and a small plain teapot, loose black tea leaves in a ceramic dish, gentle steam. Natural afternoon sidelight, warm ivory linen, no milk, ice or invented fruit.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/caffeinated/tea.ts",
+        "sha256": "229670fe3155443d097c47ee756b6381a3b3156294e8042eebe595af4798b25c",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-041",
+      "subject": "Beef Protein",
+      "route": "/drinks/protein-shakes",
+      "destination": "client/public/images/drinks/protein-shakes/beef-protein.webp",
+      "source_ref": "client/src/pages/drinks/protein-shakes/index.tsx:206",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. A cocoa-brown beef-protein shake in a plain clear shaker cup, bowl of pale unbranded protein powder beside. Smooth thin blended texture with a little aeration, cool charcoal stone and soft silver rim light. No raw meat, steaks, dairy bottles, brands or supplement tubs.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/protein-shakes/beef.ts",
+        "sha256": "29e799f5ed9b6d86e24009f142bb0e74339615169eff632309cf242a51b16829",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-042",
+      "subject": "Casein",
+      "route": "/drinks/protein-shakes",
+      "destination": "client/public/images/drinks/protein-shakes/casein.webp",
+      "source_ref": "client/src/pages/drinks/protein-shakes/index.tsx:160",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. A creamy pale vanilla casein shake in a clear straight-sided glass, moderately thick smooth texture, plain scoop of powder and vanilla pod as ingredient context, warm gray linen and quiet evening kitchen light. No fruit, chocolate syrup or whipped cream.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/protein-shakes/casein.ts",
+        "sha256": "e74e2d22495f3d2ae396c6d4381780c51f836cafc292e8e7711f73faef10be65",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-043",
+      "subject": "Collagen",
+      "route": "/drinks/protein-shakes",
+      "destination": "client/public/images/drinks/protein-shakes/collagen.webp",
+      "source_ref": "client/src/pages/drinks/protein-shakes/index.tsx:175",
+      "ingredients": "",
+      "source_verification": "verified_category_concept",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, text, labels, logos, watermark or people. A pale berry-pink collagen shake in a clear tumbler, frozen mixed berries blended with unsweetened almond milk, hydrolyzed collagen peptides, vanilla and vitamin C powder. Small plain bowl of powder and a few berries beside; no lemon, pills, labels or health claims. Airy pale-stone setting, soft directional light. Category representative verified against collagen.ts Beauty Boost Berry.",
+      "source_evidence": {
+        "path": "client/src/data/drinks/protein-shakes/collagen.ts",
+        "sha256": "1e340f1a073a2b0c0f564b0c4b543c0059cc586dce79133b1c4751058d908588",
+        "scope": "category representative; not an individual recipe image"
+      }
+    },
+    {
+      "id": "IMG-044",
+      "subject": "Egg Protein",
+      "route": "/drinks/protein-shakes",
+      "destination": "client/public/images/drinks/protein-shakes/egg-protein.webp",
+      "source_ref": "client/src/pages/drinks/protein-shakes/index.tsx:191",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Egg Protein. Inventory concept: Egg Protein: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-045",
+      "subject": "Plant-Based",
+      "route": "/drinks/protein-shakes",
+      "destination": "client/public/images/drinks/protein-shakes/plant-based.webp",
+      "source_ref": "client/src/pages/drinks/protein-shakes/index.tsx:144",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Plant-Based. Inventory concept: Plant-Based: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-046",
+      "subject": "Whey Protein",
+      "route": "/drinks/protein-shakes",
+      "destination": "client/public/images/drinks/protein-shakes/whey-protein.webp",
+      "source_ref": "client/src/pages/drinks/protein-shakes/index.tsx:128",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Whey Protein. Inventory concept: Whey Protein: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-047",
+      "subject": "Berry Smoothies",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/berry-smoothies.webp",
+      "source_ref": "client/src/pages/drinks/smoothies/index.tsx:109",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Berry Smoothies. Inventory concept: Berry Smoothies: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-048",
+      "subject": "Breakfast Smoothies",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/breakfast-smoothies.webp",
+      "source_ref": "client/src/pages/drinks/smoothies/index.tsx:47 | client/src/pages/drinks/data/smoothies.ts:100",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Breakfast Smoothies. Inventory concept: Breakfast Smoothies: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-049",
+      "subject": "Dessert Smoothies",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/dessert-smoothies.webp",
+      "source_ref": "client/src/pages/drinks/smoothies/index.tsx:140 | client/src/pages/drinks/data/smoothies.ts:85",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Dessert Smoothies. Inventory concept: Dessert Smoothies: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-050",
+      "subject": "Detox Smoothies",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/detox-smoothies.webp",
+      "source_ref": "client/src/pages/drinks/smoothies/index.tsx:125",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Detox Smoothies. Inventory concept: Detox Smoothies: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-051",
+      "subject": "Green Superfood",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/green-superfood.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:69 | client/src/pages/drinks/smoothies/index.tsx:78",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Green Superfood. Inventory concept: Green Superfood: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-052",
+      "subject": "High-Protein Smoothies",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/high-protein-smoothies.webp",
+      "source_ref": "client/src/pages/drinks/smoothies/index.tsx:31 | client/src/pages/drinks/data/smoothies.ts:53",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: High-Protein Smoothies. Inventory concept: High-Protein Smoothies: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-053",
+      "subject": "Tropical Smoothies",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/tropical-smoothies.webp",
+      "source_ref": "client/src/pages/drinks/smoothies/index.tsx:94",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Tropical Smoothies. Inventory concept: Tropical Smoothies: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-054",
+      "subject": "Workout Smoothies",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/workout-smoothies.webp",
+      "source_ref": "client/src/pages/drinks/smoothies/index.tsx:63 | client/src/pages/drinks/data/smoothies.ts:116",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Workout Smoothies. Inventory concept: Workout Smoothies: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-055",
+      "subject": "Energy Boosters",
+      "route": "/drinks/workout-drinks",
+      "destination": "client/public/images/drinks/workout-drinks/energy-boosters.webp",
+      "source_ref": "client/src/pages/drinks/workout-drinks/index.tsx:15",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Energy Boosters. Inventory concept: Energy Boosters: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-056",
+      "subject": "Hydration",
+      "route": "/drinks/workout-drinks",
+      "destination": "client/public/images/drinks/workout-drinks/hydration.webp",
+      "source_ref": "client/src/pages/drinks/workout-drinks/index.tsx:14",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Hydration. Inventory concept: Hydration: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-057",
+      "subject": "Post-Workout",
+      "route": "/drinks/workout-drinks",
+      "destination": "client/public/images/drinks/workout-drinks/post-workout.webp",
+      "source_ref": "client/src/pages/drinks/workout-drinks/index.tsx:13",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Post-Workout. Inventory concept: Post-Workout: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-058",
+      "subject": "Pre-Workout",
+      "route": "/drinks/workout-drinks",
+      "destination": "client/public/images/drinks/workout-drinks/pre-workout.webp",
+      "source_ref": "client/src/pages/drinks/workout-drinks/index.tsx:12",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Pre-Workout. Inventory concept: Pre-Workout: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-059",
+      "subject": "Beast Mode Builder",
+      "route": "/drinks",
+      "destination": "client/public/images/drinks/hub/beast-mode-builder.webp",
+      "source_ref": "client/src/pages/drinks/index.tsx:146",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Beast Mode Builder. Inventory concept: Beast Mode Builder: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-060",
+      "subject": "Green Goddess Bowl",
+      "route": "/drinks",
+      "destination": "client/public/images/drinks/hub/green-goddess-bowl.webp",
+      "source_ref": "client/src/pages/drinks/index.tsx:124",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Green Goddess Bowl. Inventory concept: Green Goddess Bowl: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-061",
+      "subject": "Classic Vanilla Latte",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/classic-vanilla-latte.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:201",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Classic Vanilla Latte. Inventory concept: Classic Vanilla Latte: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-062",
+      "subject": "Cold Brew Protein",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/cold-brew-protein.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:240",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Cold Brew Protein. Inventory concept: Cold Brew Protein: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-063",
+      "subject": "Iced Caramel Macchiato",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/iced-caramel-macchiato.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:214",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Iced Caramel Macchiato. Inventory concept: Iced Caramel Macchiato: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-064",
+      "subject": "Matcha Energy Latte",
+      "route": "/drinks/caffeinated",
+      "destination": "client/public/images/drinks/caffeinated/matcha-energy-latte.webp",
+      "source_ref": "client/src/pages/drinks/caffeinated/index.tsx:227",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Matcha Energy Latte. Inventory concept: Matcha Energy Latte: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-065",
+      "subject": "Classic Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew",
+      "destination": "client/public/images/drinks/caffeinated/classic-cold-brew.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/cold-brew.ts:22",
+      "ingredients": "8 oz cold brew concentrate; 8 oz filtered water; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Classic Cold Brew. Inventory concept: Classic Cold Brew: Smooth, low-acid coffee steeped for 12-24 hours. Exact recipe ingredients when provided: 8 oz cold brew concentrate; 8 oz filtered water; 1 cup ice."
+    },
+    {
+      "id": "IMG-066",
+      "subject": "Coconut Cream Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew",
+      "destination": "client/public/images/drinks/caffeinated/coconut-cream-cold-brew.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/cold-brew.ts:188",
+      "ingredients": "8 oz cold brew concentrate; 4 oz filtered water; 2 oz coconut cream; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Coconut Cream Cold Brew. Inventory concept: Coconut Cream Cold Brew: Cold brew with coconut cream topping. Exact recipe ingredients when provided: 8 oz cold brew concentrate; 4 oz filtered water; 2 oz coconut cream; 1 cup ice."
+    },
+    {
+      "id": "IMG-067",
+      "subject": "Mocha Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew",
+      "destination": "client/public/images/drinks/caffeinated/mocha-cold-brew.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/cold-brew.ts:117",
+      "ingredients": "8 oz cold brew concentrate; 4 oz milk; 2 tbsp chocolate syrup; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Mocha Cold Brew. Inventory concept: Mocha Cold Brew: Cold brew with chocolate and milk. Exact recipe ingredients when provided: 8 oz cold brew concentrate; 4 oz milk; 2 tbsp chocolate syrup; 1 cup ice."
+    },
+    {
+      "id": "IMG-068",
+      "subject": "Nitro Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew",
+      "destination": "client/public/images/drinks/caffeinated/nitro-cold-brew.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/cold-brew.ts:68",
+      "ingredients": "12 oz nitro cold brew; Nitrogen infusion",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Nitro Cold Brew. Inventory concept: Nitro Cold Brew: Cold brew infused with nitrogen for a creamy texture. Exact recipe ingredients when provided: 12 oz nitro cold brew; Nitrogen infusion."
+    },
+    {
+      "id": "IMG-069",
+      "subject": "Oat Milk Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew",
+      "destination": "client/public/images/drinks/caffeinated/oat-milk-cold-brew.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/cold-brew.ts:164",
+      "ingredients": "8 oz cold brew concentrate; 6 oz oat milk; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Oat Milk Cold Brew. Inventory concept: Oat Milk Cold Brew: Cold brew with creamy oat milk. Exact recipe ingredients when provided: 8 oz cold brew concentrate; 6 oz oat milk; 1 cup ice."
+    },
+    {
+      "id": "IMG-070",
+      "subject": "Protein Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew",
+      "destination": "client/public/images/drinks/caffeinated/protein-cold-brew.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/cold-brew.ts:141",
+      "ingredients": "8 oz cold brew concentrate; 4 oz almond milk; 1 scoop vanilla protein powder; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Protein Cold Brew. Inventory concept: Protein Cold Brew: Cold brew with protein powder for post-workout. Exact recipe ingredients when provided: 8 oz cold brew concentrate; 4 oz almond milk; 1 scoop vanilla protein powder; 1 cup ice."
+    },
+    {
+      "id": "IMG-071",
+      "subject": "Salted Caramel Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew",
+      "destination": "client/public/images/drinks/caffeinated/salted-caramel-cold-brew.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/cold-brew.ts:93",
+      "ingredients": "8 oz cold brew concentrate; 4 oz milk; 2 tbsp caramel syrup; 1 pinch sea salt; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Salted Caramel Cold Brew. Inventory concept: Salted Caramel Cold Brew: Cold brew with salted caramel and cream. Exact recipe ingredients when provided: 8 oz cold brew concentrate; 4 oz milk; 2 tbsp caramel syrup; 1 pinch sea salt; 1 cup ice."
+    },
+    {
+      "id": "IMG-072",
+      "subject": "Vanilla Sweet Cream Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew",
+      "destination": "client/public/images/drinks/caffeinated/vanilla-sweet-cream-cold-brew.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/cold-brew.ts:46",
+      "ingredients": "8 oz cold brew concentrate; 4 oz filtered water; 2 oz vanilla sweet cream; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Vanilla Sweet Cream Cold Brew. Inventory concept: Vanilla Sweet Cream Cold Brew: Cold brew with house-made vanilla sweet cream. Exact recipe ingredients when provided: 8 oz cold brew concentrate; 4 oz filtered water; 2 oz vanilla sweet cream; 1 cup ice."
+    },
+    {
+      "id": "IMG-073",
+      "subject": "Classic Espresso Shot",
+      "route": "/drinks/caffeinated/espresso",
+      "destination": "client/public/images/drinks/caffeinated/classic-espresso-shot.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/espresso.ts:21",
+      "ingredients": "1 shot espresso; 7 g coffee grounds",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Classic Espresso Shot. Inventory concept: Classic Espresso Shot: Pure, intense coffee flavor in a small shot. Exact recipe ingredients when provided: 1 shot espresso; 7 g coffee grounds."
+    },
+    {
+      "id": "IMG-074",
+      "subject": "Ceremonial Matcha",
+      "route": "/drinks/caffeinated/matcha",
+      "destination": "client/public/images/drinks/caffeinated/ceremonial-matcha.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/matcha.ts:56",
+      "ingredients": "1 tsp ceremonial matcha; 3 oz hot water",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Ceremonial Matcha. Inventory concept: Ceremonial Matcha: Traditional whisked matcha — pure and vibrant. Exact recipe ingredients when provided: 1 tsp ceremonial matcha; 3 oz hot water."
+    },
+    {
+      "id": "IMG-075",
+      "subject": "Classic Matcha Latte",
+      "route": "/drinks/caffeinated/matcha",
+      "destination": "client/public/images/drinks/caffeinated/classic-matcha-latte.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/matcha.ts:18",
+      "ingredients": "1 tsp matcha powder; 2 tbsp hot water; 8 oz milk; 1 tsp honey (optional)",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Classic Matcha Latte. Inventory concept: Classic Matcha Latte: Creamy matcha with steamed milk and a smooth finish. Exact recipe ingredients when provided: 1 tsp matcha powder; 2 tbsp hot water; 8 oz milk; 1 tsp honey (optional)."
+    },
+    {
+      "id": "IMG-076",
+      "subject": "Iced Matcha Latte",
+      "route": "/drinks/caffeinated/matcha",
+      "destination": "client/public/images/drinks/caffeinated/iced-matcha-latte.webp",
+      "source_ref": "client/src/data/drinks/caffeinated/matcha.ts:37",
+      "ingredients": "1 tsp matcha powder; 2 tbsp hot water; 8 oz milk; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Iced Matcha Latte. Inventory concept: Iced Matcha Latte: Refreshing chilled matcha with milk over ice. Exact recipe ingredients when provided: 1 tsp matcha powder; 2 tbsp hot water; 8 oz milk; 1 cup ice."
+    },
+    {
+      "id": "IMG-077",
+      "subject": "Midnight Muscle Recovery",
+      "route": "/drinks/protein-shakes/casein",
+      "destination": "client/public/images/drinks/protein-shakes/midnight-muscle-recovery.webp",
+      "source_ref": "client/src/data/drinks/protein-shakes/casein.ts:9",
+      "ingredients": "Micellar Casein Protein; Natural Vanilla; Stevia; Sea Salt; Digestive Enzymes",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Midnight Muscle Recovery. Inventory concept: Midnight Muscle Recovery: Slow-digesting micellar casein for 8-hour muscle feeding. Exact recipe ingredients when provided: Micellar Casein Protein; Natural Vanilla; Stevia; Sea Salt; Digestive Enzymes."
+    },
+    {
+      "id": "IMG-078",
+      "subject": "Beauty Boost Berry",
+      "route": "/drinks/protein-shakes/collagen",
+      "destination": "client/public/images/drinks/protein-shakes/beauty-boost-berry.webp",
+      "source_ref": "client/src/data/drinks/protein-shakes/collagen.ts:9",
+      "ingredients": "Hydrolyzed Collagen Peptides; Natural Berry Flavors; Vitamin C; Biotin; Hyaluronic Acid",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Beauty Boost Berry. Inventory concept: Beauty Boost Berry: Type I & III collagen for radiant skin and strong nails. Exact recipe ingredients when provided: Hydrolyzed Collagen Peptides; Natural Berry Flavors; Vitamin C; Biotin; Hyaluronic Acid."
+    },
+    {
+      "id": "IMG-079",
+      "subject": "Pea Power Green Machine",
+      "route": "/drinks/protein-shakes/plant-based",
+      "destination": "client/public/images/drinks/protein-shakes/pea-power-green-machine.webp",
+      "source_ref": "client/src/data/drinks/protein-shakes/plant-based.ts:9",
+      "ingredients": "1 scoop (30g) pea protein isolate; 1 cup unsweetened almond milk; 1 cup spinach, loosely packed; 0.5 frozen banana banana; 0.5 tsp pure vanilla extract; 2 leaves fresh mint (or 1–2 drops mint extract)",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Pea Power Green Machine. Inventory concept: Pea Power Green Machine: Complete amino acid profile with organic pea protein. Exact recipe ingredients when provided: 1 scoop (30g) pea protein isolate; 1 cup unsweetened almond milk; 1 cup spinach, loosely packed; 0.5 frozen banana banana; 0.5 tsp pure vanilla extract; 2 leaves fresh mint (or 1–2 drops mint extract)."
+    },
+    {
+      "id": "IMG-080",
+      "subject": "Classic Vanilla Post-Workout",
+      "route": "/drinks/protein-shakes/whey",
+      "destination": "client/public/images/drinks/protein-shakes/classic-vanilla-post-workout.webp",
+      "source_ref": "client/src/data/drinks/protein-shakes/whey.ts:9",
+      "ingredients": "Whey protein isolate (30g); Water or almond milk; Vanilla extract; Ice cubes",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Classic Vanilla Post-Workout. Inventory concept: Classic Vanilla Post-Workout: Fast-absorbing whey isolate for maximum protein synthesis. Exact recipe ingredients when provided: Whey protein isolate (30g); Water or almond milk; Vanilla extract; Ice cubes."
+    },
+    {
+      "id": "IMG-081",
+      "subject": "Berry Antioxidant Blast",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/berry-antioxidant-blast.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:1346 | client/src/pages/drinks/smoothies/index.tsx:227",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Berry Antioxidant Blast. Inventory concept: Berry Antioxidant Blast: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-082",
+      "subject": "Chocolate Brownie Bliss",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/chocolate-brownie-bliss.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:1029",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Brownie Bliss. Inventory concept: Chocolate Brownie Bliss: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-083",
+      "subject": "Chocolate Protein Beast",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/chocolate-protein-beast.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:1333 | client/src/pages/drinks/smoothies/index.tsx:214",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Protein Beast. Inventory concept: Chocolate Protein Beast: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-084",
+      "subject": "Coffee Kick Mocha",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/coffee-kick-mocha.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:1205",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Coffee Kick Mocha. Inventory concept: Coffee Kick Mocha: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-085",
+      "subject": "Greek Goddess Berry Blast",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/greek-goddess-berry-blast.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:316",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Greek Goddess Berry Blast. Inventory concept: Greek Goddess Berry Blast: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-086",
+      "subject": "Green Goddess Power",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/green-goddess-power.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:1320 | client/src/pages/drinks/smoothies/index.tsx:201",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Green Goddess Power. Inventory concept: Green Goddess Power: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-087",
+      "subject": "Peanut Butter Cup",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/peanut-butter-cup.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:1071",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Peanut Butter Cup. Inventory concept: Peanut Butter Cup: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-088",
+      "subject": "Post-Workout Recovery Shake",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/post-workout-recovery-shake.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:155",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Post-Workout Recovery Shake. Inventory concept: Post-Workout Recovery Shake: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-089",
+      "subject": "Power Morning Fuel",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/power-morning-fuel.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:1185",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Power Morning Fuel. Inventory concept: Power Morning Fuel: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-090",
+      "subject": "Pre-Workout Power Boost",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/pre-workout-power-boost.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:134",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Pre-Workout Power Boost. Inventory concept: Pre-Workout Power Boost: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-091",
+      "subject": "Strawberry Cheesecake Dream",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/strawberry-cheesecake-dream.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:1050",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Strawberry Cheesecake Dream. Inventory concept: Strawberry Cheesecake Dream: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-092",
+      "subject": "Tropical Energy Boost",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/tropical-energy-boost.webp",
+      "source_ref": "client/src/pages/drinks/smoothies/index.tsx:240",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Tropical Energy Boost. Inventory concept: Tropical Energy Boost: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-093",
+      "subject": "Ultimate Green Goddess",
+      "route": "/drinks/smoothies",
+      "destination": "client/public/images/drinks/smoothies/ultimate-green-goddess.webp",
+      "source_ref": "client/src/pages/drinks/data/smoothies.ts:666",
+      "ingredients": "",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Ultimate Green Goddess. Inventory concept: Ultimate Green Goddess: category image. Exact recipe ingredients when provided: Category study; select a representative drink after source verification.."
+    },
+    {
+      "id": "IMG-094",
+      "subject": "Blueberry Bliss",
+      "route": "/drinks/smoothies/berry",
+      "destination": "client/public/images/drinks/smoothies/blueberry-bliss.webp",
+      "source_ref": "client/src/data/drinks/smoothies/berry.ts:70",
+      "ingredients": "1.5 cups blueberries; 1/2 cup coconut milk; 1/4 cup cashews; 1 tbsp chia seeds; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Blueberry Bliss. Inventory concept: Blueberry Bliss: Brain-boosting blueberry blend. Exact recipe ingredients when provided: 1.5 cups blueberries; 1/2 cup coconut milk; 1/4 cup cashews; 1 tbsp chia seeds; 1 cup ice."
+    },
+    {
+      "id": "IMG-095",
+      "subject": "Strawberry Fields",
+      "route": "/drinks/smoothies/berry",
+      "destination": "client/public/images/drinks/smoothies/strawberry-fields.webp",
+      "source_ref": "client/src/data/drinks/smoothies/berry.ts:47",
+      "ingredients": "2 cups strawberries; 1/2 cup Greek yogurt; 1/4 cup oats; 1 tbsp honey; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Strawberry Fields. Inventory concept: Strawberry Fields: Classic strawberry smoothie perfection. Exact recipe ingredients when provided: 2 cups strawberries; 1/2 cup Greek yogurt; 1/4 cup oats; 1 tbsp honey; 1 cup ice."
+    },
+    {
+      "id": "IMG-096",
+      "subject": "Triple Berry Blast",
+      "route": "/drinks/smoothies/berry",
+      "destination": "client/public/images/drinks/smoothies/triple-berry-blast.webp",
+      "source_ref": "client/src/data/drinks/smoothies/berry.ts:24",
+      "ingredients": "1 cup strawberries; 1/2 cup blueberries; 1/2 cup raspberries; 1/2 banana; 1 cup almond milk; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Triple Berry Blast. Inventory concept: Triple Berry Blast: Strawberry, blueberry, and raspberry power. Exact recipe ingredients when provided: 1 cup strawberries; 1/2 cup blueberries; 1/2 cup raspberries; 1/2 banana; 1 cup almond milk; 1 cup ice."
+    },
+    {
+      "id": "IMG-097",
+      "subject": "Overnight Oats Smoothie",
+      "route": "/drinks/smoothies/breakfast",
+      "destination": "client/public/images/drinks/smoothies/overnight-oats-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/breakfast.ts:26",
+      "ingredients": "1 banana; ½ cup oats; 1 cup milk; 1 tbsp chia seeds; 1 tsp honey; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Overnight Oats Smoothie. Inventory concept: Overnight Oats Smoothie: Creamy oats and banana for sustained morning energy. Exact recipe ingredients when provided: 1 banana; ½ cup oats; 1 cup milk; 1 tbsp chia seeds; 1 tsp honey; 1 cup ice."
+    },
+    {
+      "id": "IMG-098",
+      "subject": "Chocolate Avocado Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-avocado-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:81",
+      "ingredients": "½ ripe avocado; 1 cup fresh spinach leaves; 2 tablespoons cocoa powder; 1 cup unsweetened almond milk",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Avocado Smoothie. Inventory concept: Chocolate Avocado Smoothie: Creamy avocado adds richness to this chocolate delight.. Exact recipe ingredients when provided: ½ ripe avocado; 1 cup fresh spinach leaves; 2 tablespoons cocoa powder; 1 cup unsweetened almond milk."
+    },
+    {
+      "id": "IMG-099",
+      "subject": "Chocolate Banana Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-banana-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:27",
+      "ingredients": "1 frozen banana; 2 tablespoons cocoa powder; ½ cup plain Greek yogurt; 1 cup unsweetened almond milk",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Banana Smoothie. Inventory concept: Chocolate Banana Smoothie: A classic chocolate and banana blend that's creamy and satisfying.. Exact recipe ingredients when provided: 1 frozen banana; 2 tablespoons cocoa powder; ½ cup plain Greek yogurt; 1 cup unsweetened almond milk."
+    },
+    {
+      "id": "IMG-100",
+      "subject": "Chocolate Cherry Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-cherry-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:108",
+      "ingredients": "1 cup frozen cherries; 2 tablespoons cocoa powder; ¼ cup almond butter; 1 cup unsweetened almond milk",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Cherry Smoothie. Inventory concept: Chocolate Cherry Smoothie: Tart cherries meet chocolate for a decadent flavor.. Exact recipe ingredients when provided: 1 cup frozen cherries; 2 tablespoons cocoa powder; ¼ cup almond butter; 1 cup unsweetened almond milk."
+    },
+    {
+      "id": "IMG-101",
+      "subject": "Chocolate Espresso Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-espresso-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:136",
+      "ingredients": "1 shot of espresso; 2 tablespoons cocoa powder; 1 frozen banana; 1 cup unsweetened almond milk; 1 tablespoon agave nectar (optional)",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Espresso Smoothie. Inventory concept: Chocolate Espresso Smoothie: A caffeinated chocolate boost with espresso.. Exact recipe ingredients when provided: 1 shot of espresso; 2 tablespoons cocoa powder; 1 frozen banana; 1 cup unsweetened almond milk; 1 tablespoon agave nectar (optional)."
+    },
+    {
+      "id": "IMG-102",
+      "subject": "Chocolate Matcha Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-matcha-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:252",
+      "ingredients": "1 tablespoon cocoa powder; 1 teaspoon matcha powder; 1 frozen banana; ¼ cup coconut milk; ½ cup unsweetened almond milk",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Matcha Smoothie. Inventory concept: Chocolate Matcha Smoothie: Earthy matcha paired with chocolate.. Exact recipe ingredients when provided: 1 tablespoon cocoa powder; 1 teaspoon matcha powder; 1 frozen banana; ¼ cup coconut milk; ½ cup unsweetened almond milk."
+    },
+    {
+      "id": "IMG-103",
+      "subject": "Chocolate Mint Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-mint-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:54",
+      "ingredients": "2 tablespoons cocoa powder; 1 frozen banana; ½ cup fresh mint leaves; 1 cup unsweetened almond milk",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Mint Smoothie. Inventory concept: Chocolate Mint Smoothie: Refreshing mint combined with rich chocolate for a cool treat.. Exact recipe ingredients when provided: 2 tablespoons cocoa powder; 1 frozen banana; ½ cup fresh mint leaves; 1 cup unsweetened almond milk."
+    },
+    {
+      "id": "IMG-104",
+      "subject": "Chocolate Orange Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-orange-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:309",
+      "ingredients": "2 tablespoons cocoa powder; 1 frozen banana; ½ cup fresh orange juice; 1 cup unsweetened almond milk",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Orange Smoothie. Inventory concept: Chocolate Orange Smoothie: Citrusy orange complements chocolate.. Exact recipe ingredients when provided: 2 tablespoons cocoa powder; 1 frozen banana; ½ cup fresh orange juice; 1 cup unsweetened almond milk."
+    },
+    {
+      "id": "IMG-105",
+      "subject": "Chocolate Peanut Butter Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-peanut-butter-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:338",
+      "ingredients": "1 cup unsweetened almond milk; 1 scoop chocolate protein powder; 1 tablespoon cocoa powder; 2 tablespoons peanut butter; ½ cup plain Greek yogurt; ½ cup ice cubes",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Peanut Butter Smoothie. Inventory concept: Chocolate Peanut Butter Smoothie: Nutty peanut butter with chocolate goodness.. Exact recipe ingredients when provided: 1 cup unsweetened almond milk; 1 scoop chocolate protein powder; 1 tablespoon cocoa powder; 2 tablespoons peanut butter; ½ cup plain Greek yogurt; ½ cup ice cubes."
+    },
+    {
+      "id": "IMG-106",
+      "subject": "Chocolate Protein Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-protein-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:224",
+      "ingredients": "1 cup ice; 1 cup coconut milk; 2 tablespoons cocoa powder; 2 tablespoons chia seeds; 2 scoops chocolate flavored protein powder; ½ banana, frozen",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Protein Smoothie. Inventory concept: Chocolate Protein Smoothie: High-protein chocolate smoothie for post-workout.. Exact recipe ingredients when provided: 1 cup ice; 1 cup coconut milk; 2 tablespoons cocoa powder; 2 tablespoons chia seeds; 2 scoops chocolate flavored protein powder; ½ banana, frozen."
+    },
+    {
+      "id": "IMG-107",
+      "subject": "Chocolate Strawberry Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/chocolate-strawberry-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:164",
+      "ingredients": "1 banana; 4 large strawberries; ¼ cup plain Greek yogurt; ½ teaspoon vanilla extract; 2-3 teaspoons cocoa powder",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Strawberry Smoothie. Inventory concept: Chocolate Strawberry Smoothie: Sweet strawberries enhance the chocolate flavor.. Exact recipe ingredients when provided: 1 banana; 4 large strawberries; ¼ cup plain Greek yogurt; ½ teaspoon vanilla extract; 2-3 teaspoons cocoa powder."
+    },
+    {
+      "id": "IMG-108",
+      "subject": "Mexican Hot Chocolate Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/mexican-hot-chocolate-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:194",
+      "ingredients": "2 tablespoons cocoa powder; 1 frozen banana; ¼ teaspoon ground cinnamon; ⅛ teaspoon ground cayenne pepper; ¼ cup almond butter; 1 cup unsweetened almond milk",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Mexican Hot Chocolate Smoothie. Inventory concept: Mexican Hot Chocolate Smoothie: Spicy cinnamon and cayenne in a chocolate base.. Exact recipe ingredients when provided: 2 tablespoons cocoa powder; 1 frozen banana; ¼ teaspoon ground cinnamon; ⅛ teaspoon ground cayenne pepper; ¼ cup almond butter; 1 cup unsweetened almond milk."
+    },
+    {
+      "id": "IMG-109",
+      "subject": "Raspberry Chocolate Smoothie",
+      "route": "/drinks/smoothies/dessert",
+      "destination": "client/public/images/drinks/smoothies/raspberry-chocolate-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/dessert.ts:282",
+      "ingredients": "1 cup frozen raspberries (or berry mixture); 1 cup almond milk; handful spinach or other greens; 1 tablespoon almond butter; 1 tablespoon cocoa powder; 1 scoop protein powder",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Raspberry Chocolate Smoothie. Inventory concept: Raspberry Chocolate Smoothie: Tart raspberries with rich chocolate.. Exact recipe ingredients when provided: 1 cup frozen raspberries (or berry mixture); 1 cup almond milk; handful spinach or other greens; 1 tablespoon almond butter; 1 tablespoon cocoa powder; 1 scoop protein powder."
+    },
+    {
+      "id": "IMG-110",
+      "subject": "Green Detox Smoothie",
+      "route": "/drinks/smoothies/detox",
+      "destination": "client/public/images/drinks/smoothies/green-detox-smoothie.webp",
+      "source_ref": "client/src/data/drinks/smoothies/detox.ts:24",
+      "ingredients": "1 cup spinach; 1/2 avocado; 1 banana; 1 cup almond milk; 1 tbsp chia seeds; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Green Detox Smoothie. Inventory concept: Green Detox Smoothie: Creamy green smoothie with avocado and spinach. Exact recipe ingredients when provided: 1 cup spinach; 1/2 avocado; 1 banana; 1 cup almond milk; 1 tbsp chia seeds; 1 cup ice."
+    },
+    {
+      "id": "IMG-111",
+      "subject": "Classic Green Goddess",
+      "route": "/drinks/smoothies/green",
+      "destination": "client/public/images/drinks/smoothies/classic-green-goddess.webp",
+      "source_ref": "client/src/data/drinks/smoothies/green.ts:24",
+      "ingredients": "2 cups spinach; 1 cup kale; 1 banana; 1 green apple; 1/2 lemon juice; 1 cup coconut water",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Classic Green Goddess. Inventory concept: Classic Green Goddess: Perfect balance of greens and natural sweetness. Exact recipe ingredients when provided: 2 cups spinach; 1 cup kale; 1 banana; 1 green apple; 1/2 lemon juice; 1 cup coconut water."
+    },
+    {
+      "id": "IMG-112",
+      "subject": "Tropical Green Dream",
+      "route": "/drinks/smoothies/green",
+      "destination": "client/public/images/drinks/smoothies/tropical-green-dream.webp",
+      "source_ref": "client/src/data/drinks/smoothies/green.ts:48",
+      "ingredients": "2 cups spinach; 1 cup pineapple; 1/2 mango; 1/2 banana; 1 cup coconut water; 1 tbsp chia seeds",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Tropical Green Dream. Inventory concept: Tropical Green Dream: Tropical fruits meet superfood greens. Exact recipe ingredients when provided: 2 cups spinach; 1 cup pineapple; 1/2 mango; 1/2 banana; 1 cup coconut water; 1 tbsp chia seeds."
+    },
+    {
+      "id": "IMG-113",
+      "subject": "Chocolate Peanut Power",
+      "route": "/drinks/smoothies/protein",
+      "destination": "client/public/images/drinks/smoothies/chocolate-peanut-power.webp",
+      "source_ref": "client/src/data/drinks/smoothies/protein.ts:48",
+      "ingredients": "2 scoops chocolate protein powder; 2 tbsp peanut butter; 1 cup milk; 1/2 banana; 1 tbsp cocoa powder; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Peanut Power. Inventory concept: Chocolate Peanut Power: Rich chocolate and peanut butter protein delight. Exact recipe ingredients when provided: 2 scoops chocolate protein powder; 2 tbsp peanut butter; 1 cup milk; 1/2 banana; 1 tbsp cocoa powder; 1 cup ice."
+    },
+    {
+      "id": "IMG-114",
+      "subject": "Muscle Builder Max",
+      "route": "/drinks/smoothies/protein",
+      "destination": "client/public/images/drinks/smoothies/muscle-builder-max.webp",
+      "source_ref": "client/src/data/drinks/smoothies/protein.ts:24",
+      "ingredients": "2 scoops vanilla protein powder; 1 cup Greek yogurt; 1 banana; 2 tbsp almond butter; 1 cup almond milk; 1 tbsp chia seeds",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Muscle Builder Max. Inventory concept: Muscle Builder Max: High-protein blend for muscle growth and recovery. Exact recipe ingredients when provided: 2 scoops vanilla protein powder; 1 cup Greek yogurt; 1 banana; 2 tbsp almond butter; 1 cup almond milk; 1 tbsp chia seeds."
+    },
+    {
+      "id": "IMG-115",
+      "subject": "Island Paradise",
+      "route": "/drinks/smoothies/tropical",
+      "destination": "client/public/images/drinks/smoothies/island-paradise.webp",
+      "source_ref": "client/src/data/drinks/smoothies/tropical.ts:23",
+      "ingredients": "1 cup mango chunks; 1/2 cup pineapple; 1/4 cup coconut milk; 1/2 banana; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Island Paradise. Inventory concept: Island Paradise: Mango, pineapple, and coconut blend. Exact recipe ingredients when provided: 1 cup mango chunks; 1/2 cup pineapple; 1/4 cup coconut milk; 1/2 banana; 1 cup ice."
+    },
+    {
+      "id": "IMG-116",
+      "subject": "Mango Madness",
+      "route": "/drinks/smoothies/tropical",
+      "destination": "client/public/images/drinks/smoothies/mango-madness.webp",
+      "source_ref": "client/src/data/drinks/smoothies/tropical.ts:68",
+      "ingredients": "1.5 cups mango; 1/2 cup orange juice; 1/4 cup passion fruit; 1 tbsp lime juice; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Mango Madness. Inventory concept: Mango Madness: Pure mango bliss with tropical twist. Exact recipe ingredients when provided: 1.5 cups mango; 1/2 cup orange juice; 1/4 cup passion fruit; 1 tbsp lime juice; 1 cup ice."
+    },
+    {
+      "id": "IMG-117",
+      "subject": "Piña Colada Dream",
+      "route": "/drinks/smoothies/tropical",
+      "destination": "client/public/images/drinks/smoothies/pina-colada-dream.webp",
+      "source_ref": "client/src/data/drinks/smoothies/tropical.ts:46",
+      "ingredients": "1 cup pineapple chunks; 1/2 cup coconut cream; 1/4 cup Greek yogurt; 1 tbsp honey; 1 cup ice",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Piña Colada Dream. Inventory concept: Piña Colada Dream: Classic tropical vacation in a glass. Exact recipe ingredients when provided: 1 cup pineapple chunks; 1/2 cup coconut cream; 1/4 cup Greek yogurt; 1 tbsp honey; 1 cup ice."
+    },
+    {
+      "id": "IMG-118",
+      "subject": "Ashwagandha Golden Latte",
+      "route": "/drinks/workout-drinks/energy-boosters",
+      "destination": "client/public/images/drinks/workout-drinks/ashwagandha-golden-latte.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/energy-boosters.ts:4",
+      "ingredients": "Oat milk; Ashwagandha; Turmeric; Cinnamon; Honey",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Ashwagandha Golden Latte. Inventory concept: Ashwagandha Golden Latte: Turmeric, cinnamon, and ashwagandha create a warming caffeine-light ritual drink.. Exact recipe ingredients when provided: Oat milk; Ashwagandha; Turmeric; Cinnamon; Honey."
+    },
+    {
+      "id": "IMG-119",
+      "subject": "Cordyceps Pre-Performance Tonic",
+      "route": "/drinks/workout-drinks/energy-boosters",
+      "destination": "client/public/images/drinks/workout-drinks/cordyceps-pre-performance-tonic.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/energy-boosters.ts:7",
+      "ingredients": "Orange juice; Water; Cordyceps powder; Ginger",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Cordyceps Pre-Performance Tonic. Inventory concept: Cordyceps Pre-Performance Tonic: Cordyceps, citrus, and ginger create a bright food-first performance sip.. Exact recipe ingredients when provided: Orange juice; Water; Cordyceps powder; Ginger."
+    },
+    {
+      "id": "IMG-120",
+      "subject": "Maca Cacao Energy Bomb",
+      "route": "/drinks/workout-drinks/energy-boosters",
+      "destination": "client/public/images/drinks/workout-drinks/maca-cacao-energy-bomb.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/energy-boosters.ts:6",
+      "ingredients": "Milk; Cacao powder; Maca powder; Date",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Maca Cacao Energy Bomb. Inventory concept: Maca Cacao Energy Bomb: Cacao, maca, and milk deliver a deeper chocolate flavor with gentle stimulation.. Exact recipe ingredients when provided: Milk; Cacao powder; Maca powder; Date."
+    },
+    {
+      "id": "IMG-121",
+      "subject": "Rhodiola Citrus Stress Shield",
+      "route": "/drinks/workout-drinks/energy-boosters",
+      "destination": "client/public/images/drinks/workout-drinks/rhodiola-citrus-stress-shield.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/energy-boosters.ts:8",
+      "ingredients": "Grapefruit juice; Water; Rhodiola tincture; Honey",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Rhodiola Citrus Stress Shield. Inventory concept: Rhodiola Citrus Stress Shield: Rhodiola and grapefruit create a tart, midday resilience drink.. Exact recipe ingredients when provided: Grapefruit juice; Water; Rhodiola tincture; Honey."
+    },
+    {
+      "id": "IMG-122",
+      "subject": "Coconut Mango Electrolyte Slush",
+      "route": "/drinks/workout-drinks/hydration",
+      "destination": "client/public/images/drinks/workout-drinks/coconut-mango-electrolyte-slush.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/hydration.ts:6",
+      "ingredients": "Coconut water; Frozen mango; Lime juice; Pinch of salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Coconut Mango Electrolyte Slush. Inventory concept: Coconut Mango Electrolyte Slush: A frozen tropical slush with potassium-rich coconut water and mango.. Exact recipe ingredients when provided: Coconut water; Frozen mango; Lime juice; Pinch of salt."
+    },
+    {
+      "id": "IMG-123",
+      "subject": "Cucumber Celery Hydration Juice",
+      "route": "/drinks/workout-drinks/hydration",
+      "destination": "client/public/images/drinks/workout-drinks/cucumber-celery-hydration-juice.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/hydration.ts:9",
+      "ingredients": "Cucumber; Celery; Lemon juice; Water; Salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Cucumber Celery Hydration Juice. Inventory concept: Cucumber Celery Hydration Juice: A savory-leaning juice with produce rich in water and potassium.. Exact recipe ingredients when provided: Cucumber; Celery; Lemon juice; Water; Salt."
+    },
+    {
+      "id": "IMG-124",
+      "subject": "Green Tea Electrolyte Cooler",
+      "route": "/drinks/workout-drinks/hydration",
+      "destination": "client/public/images/drinks/workout-drinks/green-tea-electrolyte-cooler.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/hydration.ts:8",
+      "ingredients": "Brewed green tea; Honey; Lemon; Salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Green Tea Electrolyte Cooler. Inventory concept: Green Tea Electrolyte Cooler: Lightly caffeinated green tea with citrus and sodium for a gentle lift.. Exact recipe ingredients when provided: Brewed green tea; Honey; Lemon; Salt."
+    },
+    {
+      "id": "IMG-125",
+      "subject": "Pink Salt Lemon Rehydrator",
+      "route": "/drinks/workout-drinks/hydration",
+      "destination": "client/public/images/drinks/workout-drinks/pink-salt-lemon-rehydrator.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/hydration.ts:7",
+      "ingredients": "Water; Lemon juice; Maple syrup; Pink salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Pink Salt Lemon Rehydrator. Inventory concept: Pink Salt Lemon Rehydrator: A minimalist lemon-salt blend that works well when appetite is low.. Exact recipe ingredients when provided: Water; Lemon juice; Maple syrup; Pink salt."
+    },
+    {
+      "id": "IMG-126",
+      "subject": "Watermelon Mint Hydrator",
+      "route": "/drinks/workout-drinks/hydration",
+      "destination": "client/public/images/drinks/workout-drinks/watermelon-mint-hydrator.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/hydration.ts:5",
+      "ingredients": "Watermelon; Water; Mint; Lime; Salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Watermelon Mint Hydrator. Inventory concept: Watermelon Mint Hydrator: Watermelon and mint deliver refreshing flavor with naturally occurring potassium.. Exact recipe ingredients when provided: Watermelon; Water; Mint; Lime; Salt."
+    },
+    {
+      "id": "IMG-127",
+      "subject": "Banana Peanut Butter Recovery Shake",
+      "route": "/drinks/workout-drinks/post-workout",
+      "destination": "client/public/images/drinks/workout-drinks/banana-peanut-butter-recovery-shake.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/post-workout.ts:8",
+      "ingredients": "Milk; Whey protein; Banana; Peanut butter",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Banana Peanut Butter Recovery Shake. Inventory concept: Banana Peanut Butter Recovery Shake: A richer recovery shake with carbs, protein, and satisfying fats.. Exact recipe ingredients when provided: Milk; Whey protein; Banana; Peanut butter."
+    },
+    {
+      "id": "IMG-128",
+      "subject": "Chocolate Milk Recovery Classic",
+      "route": "/drinks/workout-drinks/post-workout",
+      "destination": "client/public/images/drinks/workout-drinks/chocolate-milk-recovery-classic.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/post-workout.ts:4",
+      "ingredients": "Low-fat chocolate milk; Pinch of salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Chocolate Milk Recovery Classic. Inventory concept: Chocolate Milk Recovery Classic: A practical carb-plus-protein recovery option with a familiar taste.. Exact recipe ingredients when provided: Low-fat chocolate milk; Pinch of salt."
+    },
+    {
+      "id": "IMG-129",
+      "subject": "Collagen Berry Boost",
+      "route": "/drinks/workout-drinks/post-workout",
+      "destination": "client/public/images/drinks/workout-drinks/collagen-berry-boost.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/post-workout.ts:9",
+      "ingredients": "Collagen peptides; Strawberries; Orange juice; Water",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Collagen Berry Boost. Inventory concept: Collagen Berry Boost: Collagen peptides and berries create a lower-fat recovery option with vitamin C support.. Exact recipe ingredients when provided: Collagen peptides; Strawberries; Orange juice; Water."
+    },
+    {
+      "id": "IMG-130",
+      "subject": "Greek Yogurt Berry Rebuild",
+      "route": "/drinks/workout-drinks/post-workout",
+      "destination": "client/public/images/drinks/workout-drinks/greek-yogurt-berry-rebuild.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/post-workout.ts:6",
+      "ingredients": "Greek yogurt; Mixed berries; Milk; Honey",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Greek Yogurt Berry Rebuild. Inventory concept: Greek Yogurt Berry Rebuild: Greek yogurt and berries create a high-protein smoothie with extra carbs from fruit.. Exact recipe ingredients when provided: Greek yogurt; Mixed berries; Milk; Honey."
+    },
+    {
+      "id": "IMG-131",
+      "subject": "Banana Oat Carb Smoothie",
+      "route": "/drinks/workout-drinks/pre-workout",
+      "destination": "client/public/images/drinks/workout-drinks/banana-oat-carb-smoothie.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/pre-workout.ts:6",
+      "ingredients": "Banana; Rolled oats; Low-fat milk; Greek yogurt; Cinnamon",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Banana Oat Carb Smoothie. Inventory concept: Banana Oat Carb Smoothie: Easy-to-digest carbs and a little dairy protein for longer sessions.. Exact recipe ingredients when provided: Banana; Rolled oats; Low-fat milk; Greek yogurt; Cinnamon."
+    },
+    {
+      "id": "IMG-132",
+      "subject": "Beetroot Nitric Oxide Lift",
+      "route": "/drinks/workout-drinks/pre-workout",
+      "destination": "client/public/images/drinks/workout-drinks/beetroot-nitric-oxide-lift.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/pre-workout.ts:4",
+      "ingredients": "Beet juice; Orange juice; Lemon juice; Fresh ginger; Sea salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Beetroot Nitric Oxide Lift. Inventory concept: Beetroot Nitric Oxide Lift: Beet juice, citrus, and ginger support blood flow before lifting or intervals.. Exact recipe ingredients when provided: Beet juice; Orange juice; Lemon juice; Fresh ginger; Sea salt."
+    },
+    {
+      "id": "IMG-133",
+      "subject": "Cold Brew Citrus Surge",
+      "route": "/drinks/workout-drinks/pre-workout",
+      "destination": "client/public/images/drinks/workout-drinks/cold-brew-citrus-surge.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/pre-workout.ts:5",
+      "ingredients": "Cold brew coffee; Orange juice; Honey; Pinch of salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Cold Brew Citrus Surge. Inventory concept: Cold Brew Citrus Surge: Cold brew, orange, and honey create a lighter pre-session pick-me-up.. Exact recipe ingredients when provided: Cold brew coffee; Orange juice; Honey; Pinch of salt."
+    },
+    {
+      "id": "IMG-134",
+      "subject": "Espresso Banana Fuel",
+      "route": "/drinks/workout-drinks/pre-workout",
+      "destination": "client/public/images/drinks/workout-drinks/espresso-banana-fuel.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/pre-workout.ts:9",
+      "ingredients": "Espresso; Banana; Milk; Peanut butter",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Espresso Banana Fuel. Inventory concept: Espresso Banana Fuel: A compact coffee-banana shake for early-morning lifters who need quick energy.. Exact recipe ingredients when provided: Espresso; Banana; Milk; Peanut butter."
+    },
+    {
+      "id": "IMG-135",
+      "subject": "Matcha Maca Focus Blend",
+      "route": "/drinks/workout-drinks/pre-workout",
+      "destination": "client/public/images/drinks/workout-drinks/matcha-maca-focus-blend.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/pre-workout.ts:7",
+      "ingredients": "Matcha; Maca powder; Unsweetened oat milk; Date; Vanilla",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Matcha Maca Focus Blend. Inventory concept: Matcha Maca Focus Blend: Matcha and maca pair gentle caffeine with earthy adaptogenic flavor.. Exact recipe ingredients when provided: Matcha; Maca powder; Unsweetened oat milk; Date; Vanilla."
+    },
+    {
+      "id": "IMG-136",
+      "subject": "Watermelon Citrulline Punch",
+      "route": "/drinks/workout-drinks/pre-workout",
+      "destination": "client/public/images/drinks/workout-drinks/watermelon-citrulline-punch.webp",
+      "source_ref": "client/src/data/drinks/workout-drinks/pre-workout.ts:8",
+      "ingredients": "Watermelon; Lime juice; Mint; Sea salt",
+      "source_verification": "pending_source_verification",
+      "prompt": "Create ONE original standalone premium photorealistic ChefSire beverage photograph. Landscape 3:2, realistic liquids, correct color, texture and glassware, natural directional lighting, detailed plausible ingredients and garnish. Keep important subjects within central safe crop with generous margins. No contact sheet, separate panels, text, labels, logos, watermarks, trademarked packaging, hands or people. Do not add recipe ingredients or dessert toppings that are not specified. Subject: Watermelon Citrulline Punch. Inventory concept: Watermelon Citrulline Punch: Hydrating watermelon and lime mimic the food-first spirit of a pre-workout punch.. Exact recipe ingredients when provided: Watermelon; Lime juice; Mint; Sea salt."
+    }
+  ]
+}

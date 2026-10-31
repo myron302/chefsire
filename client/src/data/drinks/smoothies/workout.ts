@@ -22,7 +22,7 @@ export const workoutSmoothies = [
     featured: true,
     trending: true,
     bestTime: '30-60 min before workout',
-    image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop',
+    image: '/images/drinks/smoothies/pre-workout-power-blend.webp',
     estimatedCost: 3.20
   },
   {

@@ -1,0 +1,2 @@
+# Preserve the authoritative handoff CSV bytes and recognize its CRLF line endings.
+handoff/*.csv -text whitespace=cr-at-eol

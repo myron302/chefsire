@@ -41,7 +41,7 @@ export const wheyProteinShakes = [
     id: 'whey-2',
     name: 'Chocolate Peanut Butter Powerhouse',
     description: 'Rich chocolate whey with natural peanut butter for mass gaining',
-    image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop',
+    image: '/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp',
     nutrition: { calories: 420, protein: 40, carbs: 15, fat: 18 },
     difficulty: 'Easy',
     prepTime: 5,

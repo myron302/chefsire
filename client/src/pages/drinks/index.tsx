@@ -35,7 +35,7 @@ const drinkCategories = [
     recipeCount: 847,
     features: ['Interactive Builder', 'Nutrition Analysis', 'Workout Goals'],
     trending: true,
-    image: 'https://images.unsplash.com/photo-1553530979-451d0aa3ad9f?w=300&h=200&fit=crop'
+    image: '/images/drinks/hub/smoothies-and-bowls.webp'
   },
   {
     id: 'protein-shakes',
@@ -50,7 +50,7 @@ const drinkCategories = [
     recipeCount: 523,
     features: ['Fitness Integration', 'Timing Optimization', 'Macro Tracking'],
     trending: false,
-    image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=300&h=200&fit=crop'
+    image: '/images/drinks/hub/protein-shakes.webp'
   },
   {
     id: 'workout-drinks',
@@ -80,7 +80,7 @@ const drinkCategories = [
     recipeCount: 234,
     features: ['Guided Programs', 'Progress Tracking', 'Community Challenges'],
     trending: false,
-    image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=300&h=200&fit=crop'
+    image: '/images/drinks/hub/detoxes-and-cleanses.webp'
   },
   {
     id: 'caffeinated',
@@ -95,7 +95,7 @@ const drinkCategories = [
     recipeCount: 186,
     features: ['Caffeine Tracker', 'Custom Brews', 'Energy Goals'],
     trending: true,
-    image: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=300&h=200&fit=crop'
+    image: '/images/drinks/hub/caffeinated-drinks.webp'
   },
   {
     id: 'potent-potables',
@@ -112,7 +112,7 @@ const drinkCategories = [
     trending: true,
     premium: true,
     ageRestricted: true,
-    image: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=300&h=200&fit=crop'
+    image: '/images/drinks/hub/potent-potables.webp'
   }
 ];
 

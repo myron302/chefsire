@@ -1,0 +1,37 @@
+[
+  {
+    "name": "daiquiri-original",
+    "sha256_verified": true,
+    "visual_review": "Previously inspected in this thread; preserved file unchanged. Correct category appearance.",
+    "disposition": "suitable_candidate_preserved_no_regeneration",
+    "owner_approval": "pending"
+  },
+  {
+    "name": "strawberry-banana-smoothie-original",
+    "sha256_verified": true,
+    "visual_review": "Previously inspected in this thread; preserved file unchanged. Correct category appearance.",
+    "disposition": "suitable_candidate_preserved_no_regeneration",
+    "owner_approval": "pending"
+  },
+  {
+    "name": "chocolate-whey-protein-shake-original",
+    "sha256_verified": true,
+    "visual_review": "Previously inspected in this thread; preserved file unchanged. Correct category appearance.",
+    "disposition": "reused_for_IMG-032",
+    "owner_approval": "pending_PR_review"
+  },
+  {
+    "name": "classic-dry-gin-martini-original",
+    "sha256_verified": true,
+    "visual_review": "Previously inspected in this thread; preserved file unchanged. Correct category appearance.",
+    "disposition": "suitable_candidate_preserved_no_regeneration",
+    "owner_approval": "pending"
+  },
+  {
+    "name": "bourbon-large-ice-rocks-original",
+    "sha256_verified": true,
+    "visual_review": "Previously inspected in this thread; preserved file unchanged. Correct category appearance.",
+    "disposition": "suitable_candidate_preserved_no_regeneration",
+    "owner_approval": "pending"
+  }
+]

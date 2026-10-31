@@ -1,0 +1,30 @@
+{
+  "checked_at": "2026-10-27",
+  "sources": {
+    "model": "https://developers.openai.com/api/docs/models/gpt-image-2",
+    "request": "https://developers.openai.com/api/reference/resources/images/methods/generate",
+    "output_estimates": "https://developers.openai.com/api/docs/guides/image-generation#calculating-costs",
+    "pricing": "https://developers.openai.com/api/docs/pricing",
+    "standard_rate_announcement": "https://community.openai.com/t/introducing-gpt-image-2-available-today-in-the-api-and-codex/1379479"
+  },
+  "endpoint": "https://api.openai.com/v1/images/generations",
+  "model": "gpt-image-2",
+  "quality": "high",
+  "size": "1536x1024",
+  "images": 3,
+  "image_output_usd_each_published_estimate": "0.165",
+  "image_output_usd_total_published_estimate": "0.495",
+  "text_input_usd_per_million_standard_planning_rate": "5.00",
+  "text_rate_evidence": "Official April 21 GPT Image 2 launch announcement; current pricing page exposes model under Batch, not an unambiguous standard GPT Image 2 row. Reconfirm account pricing before authorization. Do not apply discounted Batch rates to synchronous generation.",
+  "test_prompt_utf8_bytes": 2329,
+  "prompt_input_usd_conservative_byte_count_scenario": 0.011645,
+  "estimated_test_usd_with_byte_count_prompt_scenario": 0.506645,
+  "estimate_is_hard_cap": false,
+  "request_reservation_usd": "0.25",
+  "proposed_test_reservation_usd": "0.75",
+  "user_approval": false,
+  "remaining_103_image_output_only_usd": "16.995",
+  "including_5_corrections_108_image_output_only_usd": "17.820",
+  "remaining_103_proposed_reservations_usd": "25.75",
+  "generation_calls": 0
+}

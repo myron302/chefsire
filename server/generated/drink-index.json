@@ -1029,7 +1029,7 @@
       "slug": "chocolate-peanut-butter-powerhouse",
       "sourceRoute": "/drinks/protein-shakes/whey",
       "sourceTitle": "Whey Protein Shakes",
-      "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop",
+      "image": "/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
       "route": "/drinks/recipe/chocolate-peanut-butter-powerhouse"
     },
     "strawberry lean machine": {
@@ -1549,7 +1549,7 @@
       "slug": "pre-workout-power-blend",
       "sourceRoute": "/drinks/smoothies/workout",
       "sourceTitle": "Workout Smoothies",
-      "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop",
+      "image": "/images/drinks/smoothies/pre-workout-power-blend.webp",
       "route": "/drinks/recipe/pre-workout-power-blend"
     },
     "post-workout recovery": {
@@ -1669,7 +1669,7 @@
       "slug": "tart-cherry-turmeric-reset",
       "sourceRoute": "/drinks/workout-drinks/post-workout",
       "sourceTitle": "Post-Workout Drinks",
-      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "image": "/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp",
       "route": "/drinks/recipe/tart-cherry-turmeric-reset"
     },
     "greek yogurt berry rebuild": {
@@ -1685,7 +1685,7 @@
       "slug": "coconut-water-electrolyte-reset",
       "sourceRoute": "/drinks/workout-drinks/post-workout",
       "sourceTitle": "Post-Workout Drinks",
-      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "image": "/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp",
       "route": "/drinks/recipe/coconut-water-electrolyte-reset"
     },
     "banana peanut butter recovery shake": {
@@ -1709,7 +1709,7 @@
       "slug": "diy-sports-drink",
       "sourceRoute": "/drinks/workout-drinks/hydration",
       "sourceTitle": "Hydration Drinks",
-      "image": "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=400&h=300&fit=crop",
+      "image": "/images/drinks/workout-drinks/diy-sports-drink.webp",
       "route": "/drinks/recipe/diy-sports-drink"
     },
     "watermelon mint hydrator": {
@@ -1797,7 +1797,7 @@
       "slug": "schisandra-berry-energy-elixir",
       "sourceRoute": "/drinks/workout-drinks/energy-boosters",
       "sourceTitle": "Energy Booster Drinks",
-      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "image": "/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp",
       "route": "/drinks/recipe/schisandra-berry-energy-elixir"
     },
     "old fashioned": {
@@ -4223,7 +4223,7 @@
       "slug": "chocolate-peanut-butter-powerhouse",
       "sourceRoute": "/drinks/protein-shakes/whey",
       "sourceTitle": "Whey Protein Shakes",
-      "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop",
+      "image": "/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
       "route": "/drinks/recipe/chocolate-peanut-butter-powerhouse"
     },
     "strawberry-lean-machine": {
@@ -4743,7 +4743,7 @@
       "slug": "pre-workout-power-blend",
       "sourceRoute": "/drinks/smoothies/workout",
       "sourceTitle": "Workout Smoothies",
-      "image": "https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop",
+      "image": "/images/drinks/smoothies/pre-workout-power-blend.webp",
       "route": "/drinks/recipe/pre-workout-power-blend"
     },
     "post-workout-recovery": {
@@ -4863,7 +4863,7 @@
       "slug": "tart-cherry-turmeric-reset",
       "sourceRoute": "/drinks/workout-drinks/post-workout",
       "sourceTitle": "Post-Workout Drinks",
-      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "image": "/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp",
       "route": "/drinks/recipe/tart-cherry-turmeric-reset"
     },
     "greek-yogurt-berry-rebuild": {
@@ -4879,7 +4879,7 @@
       "slug": "coconut-water-electrolyte-reset",
       "sourceRoute": "/drinks/workout-drinks/post-workout",
       "sourceTitle": "Post-Workout Drinks",
-      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "image": "/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp",
       "route": "/drinks/recipe/coconut-water-electrolyte-reset"
     },
     "banana-peanut-butter-recovery-shake": {
@@ -4903,7 +4903,7 @@
       "slug": "diy-sports-drink",
       "sourceRoute": "/drinks/workout-drinks/hydration",
       "sourceTitle": "Hydration Drinks",
-      "image": "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=400&h=300&fit=crop",
+      "image": "/images/drinks/workout-drinks/diy-sports-drink.webp",
       "route": "/drinks/recipe/diy-sports-drink"
     },
     "watermelon-mint-hydrator": {
@@ -4991,7 +4991,7 @@
       "slug": "schisandra-berry-energy-elixir",
       "sourceRoute": "/drinks/workout-drinks/energy-boosters",
       "sourceTitle": "Energy Booster Drinks",
-      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "image": "/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp",
       "route": "/drinks/recipe/schisandra-berry-energy-elixir"
     },
     "old-fashioned": {
@@ -6721,5 +6721,5 @@
       "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
     }
   ],
-  "generatedAt": "2026-05-31T22:09:41.683Z"
+  "generatedAt": "2026-10-27T07:52:35.791Z"
 }

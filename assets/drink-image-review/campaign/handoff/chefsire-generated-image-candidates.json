@@ -1,0 +1,893 @@
+[
+  {
+    "id": "IMG-001",
+    "subject": "Neutral fallback hero",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "(fallback for all)",
+    "destination": "client/public/images/drinks/potent-potables/heroes/neutral.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 177746,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "3d96273792ac76fe8baeb3acd30276fee3a03426351848fc463c277556d134d9",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Neutral ChefSire bar still life: empty coupe, mixing glass, bar spoon, citrus peel on dark wood; reads as any category",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-002",
+    "subject": "Cocktails",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/cocktails",
+    "destination": "client/public/images/drinks/potent-potables/heroes/cocktails.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 174520,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "73c6d80965cc1b3c6373a29d9a7564de73d48ef82d21526eee07c24c15f62f7f",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Three classic cocktails as a set: Old Fashioned (rocks), Margarita (salt-rim coupe), Cosmopolitan (martini glass); polished walnut bar, warm lounge light",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-003",
+    "subject": "Cognac Brandy",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/cognac-brandy",
+    "destination": "client/public/images/drinks/potent-potables/heroes/cognac-brandy.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 154476,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "6922bee0545536fccf5f3bcf857f732b2776eb1b3d5a8d92781c024142029219",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Cognac in a tulip snifter, Sidecar in a sugar-rim coupe, after-dinner walnut and leather",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-004",
+    "subject": "Daiquiri",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/daiquiri",
+    "destination": "client/public/images/drinks/potent-potables/heroes/daiquiri.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 106794,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "d78c7ced46c96b11e7cd41f19b15892128a8524d55f8fe55064172c3c780cb8a",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Classic daiquiri up in a thin coupe, pale lime-ivory, lime wheel, no ice, no salt",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-005",
+    "subject": "Gin",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/gin",
+    "destination": "client/public/images/drinks/potent-potables/heroes/gin.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 196924,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "3e0a0a87fcd0c6499b9c399e36408cbde45183284a3ecc02f69f31c7446e05a0",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Gin & tonic in a copa balloon glass, cucumber ribbon, juniper berries, rosemary sprig, botanical green light",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-006",
+    "subject": "Hot Drinks",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/hot-drinks",
+    "destination": "client/public/images/drinks/potent-potables/heroes/hot-drinks.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 180772,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "4cfd862dcee5caa52f5ec147562e6b2a7f2b34984e0e03be72c9b836ed404fa3",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Steaming Hot Toddy in a glass mug, lemon wheel studded with cloves, cinnamon stick, honey dipper, winter window light",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-007",
+    "subject": "Liqueurs",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/liqueurs",
+    "destination": "client/public/images/drinks/potent-potables/heroes/liqueurs.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 165906,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "1eab8fe76e859713b99e24f685f00ed78a12c59adb57149ea5884087d2009949",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Three small liqueur pours: coffee liqueur, amaretto, orange liqueur in cordial glasses; jewel tones, no labels",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-008",
+    "subject": "Martinis",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/martinis",
+    "destination": "client/public/images/drinks/potent-potables/heroes/martinis.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 108726,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "350723d761bba48ee88f8415cd997c3885137b54b623a109fcf594a37a439a4e",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Dry gin martini in a classic V glass, three olives on a pick, chilled frost, minimalist marble bar",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-009",
+    "subject": "Mocktails",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/mocktails",
+    "destination": "client/public/images/drinks/potent-potables/heroes/mocktails.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 221728,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "00c3a5f503a3248bac964ea2284b4205c4295efbbc3b4210cfa57c946c35a6c5",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Two zero-proof drinks: virgin mojito (mint, lime, soda, highball) and berry shrub spritz; bright daylight, no bottles",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-010",
+    "subject": "Rum",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/rum",
+    "destination": "client/public/images/drinks/potent-potables/heroes/rum.webp",
+    "source_archive": "chefsire-batch1-first10-webp.zip",
+    "format": "webp",
+    "size_bytes": 218440,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "822596e976e9eed93f898028d94ce2d07f661110c0e80104ce7712eace91f64c",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Dark rum Mai Tai on crushed ice, mint sprig and lime shell, tiki-style mug nearby, golden Caribbean light",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-011",
+    "subject": "Scotch Irish Whiskey",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/scotch-irish-whiskey",
+    "destination": "client/public/images/drinks/potent-potables/heroes/scotch-irish-whiskey.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 207150,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "86f13dee68c654aa01857398e5a0273e2fbf8008eb9bb526355ecf2752e9c65b",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Peated Scotch neat in a Glencairn-style nosing glass beside a Penicillin cocktail (rocks, candied ginger); peat smoke wisp, slate and tweed tones — must look different from Whiskey & Bourbon",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-012",
+    "subject": "Seasonal",
+    "batch": "B1",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/seasonal",
+    "destination": "client/public/images/drinks/potent-potables/heroes/seasonal.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 263240,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "8731f18f52abdd53b81b842ebcb59578db260200c1ebf39db88f6bf7ec6e9c40",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Four-season row: Strawberry Basil Smash (spring), Watermelon Margarita (summer), Apple Cider Bourbon Smash (fall), Cranberry Moscow Mule in copper mug (winter)",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-013",
+    "subject": "Spritz",
+    "batch": "B2",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/spritz",
+    "destination": "client/public/images/drinks/potent-potables/heroes/spritz.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 195988,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "b2407035e684d3a5babf58a86a4e878eecc43edf04af863a977d2717b7fb16e9",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Aperol-style orange spritz in a large wine glass, orange half-wheel, bubbles, sunlit Italian terrace (no brand bottles)",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-014",
+    "subject": "Tequila Mezcal",
+    "batch": "B2",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/tequila-mezcal",
+    "destination": "client/public/images/drinks/potent-potables/heroes/tequila-mezcal.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 223268,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "72b64f9b6a4d316683b3f98dd42c38ba4c37dd7abda40da8f46db938b01e3eaf",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Paloma (grapefruit, salt rim, highball) and a smoky mezcal neat in a copita with orange slice and sal de gusano",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-015",
+    "subject": "Virgin Cocktails",
+    "batch": "B2",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/virgin-cocktails",
+    "destination": "client/public/images/drinks/potent-potables/heroes/virgin-cocktails.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 190446,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "2d2a80726b8dad6ecc60d179cf2b65bf4c61617035311e5cd1fedc4a6d680d14",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Shirley Temple and a Virgin Piña Colada, maraschino cherries, pineapple wedge, festive but alcohol-free",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-016",
+    "subject": "Vodka",
+    "batch": "B2",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/vodka",
+    "destination": "client/public/images/drinks/potent-potables/heroes/vodka.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 235996,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "e02e38341d627e23a67ba5c6a374350397829ca5c7c71f4bd9c369789392f23c",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Moscow Mule in a hammered copper mug and a frosted vodka martini; cool blue nightlife light",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-017",
+    "subject": "Whiskey Bourbon",
+    "batch": "B2",
+    "type": "Potent Potables category hero",
+    "route": "/drinks/potent-potables/whiskey-bourbon",
+    "destination": "client/public/images/drinks/potent-potables/heroes/whiskey-bourbon.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 213890,
+    "dimensions": [
+      1672,
+      941
+    ],
+    "sha256": "a13f659c92ccf8a37ca53eddbc79f4db9563817e85b9d06ef660b3e4d4cd8098",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Bourbon on one large clear ice cube in a heavy rocks glass, orange-amber, charred-oak stave; warm American bar wood",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-018",
+    "subject": "Cosmic Martini",
+    "batch": "B2",
+    "type": "Featured recipe card",
+    "route": "/drinks",
+    "destination": "client/public/images/drinks/hub/cosmic-martini.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 144186,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "78936ce98624134cdf27643a89520cf56e0c4dadc1d3d7c906aec5185841b93e",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Cosmic Martini: category image",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-019",
+    "subject": "Energy Drinks",
+    "batch": "B2",
+    "type": "Subcategory card",
+    "route": "/drinks/caffeinated",
+    "destination": "client/public/images/drinks/caffeinated/energy-drinks.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 281298,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "82f1523f995265ca5f8196296f1caaa645f9843d6295f42a96aae801552fa122",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Energy Drinks: category image",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-020",
+    "subject": "Iced Coffee",
+    "batch": "B2",
+    "type": "Subcategory card",
+    "route": "/drinks/caffeinated",
+    "destination": "client/public/images/drinks/caffeinated/iced-coffee.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 173474,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "66efb23b4ee42dae51262976e9bd9034bbbf6d6847a9c9a1bce76467996bc14d",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Iced Coffee: category image",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-021",
+    "subject": "Old Fashioned",
+    "batch": "B2",
+    "type": "Recipe image",
+    "route": "/drinks/potent-potables/whiskey-bourbon",
+    "destination": "client/public/images/drinks/potent-potables/old-fashioned.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 190384,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "298a1880c38828231358068c0b313ecab28ba42b6665f52c5fd7f7a941c4aa9c",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Old Fashioned: The grandfather of cocktails - bourbon, sugar, bitters",
+    "recipe_ingredients_from_inventory": "2 oz Bourbon; 1 Sugar Cube; 2 dashes Angostura Bitters; Orange Peel; Maraschino Cherry; 1 Large Ice Cube",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-022",
+    "subject": "Chocolate Peanut Butter Powerhouse",
+    "batch": "B2",
+    "type": "Recipe image",
+    "route": "/drinks/protein-shakes/whey",
+    "destination": "client/public/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 195632,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "b3ab493cabe50a8ce91c4bf3fdf86a85bbb3d5e4d72387e96d5a5b812c12f04d",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Chocolate Peanut Butter Powerhouse: Rich chocolate whey with natural peanut butter for mass gaining",
+    "recipe_ingredients_from_inventory": "Whey protein concentrate (35g); Natural peanut butter (2 tbsp); Banana; Whole milk; Honey",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-023",
+    "subject": "Pre-Workout Power Blend",
+    "batch": "B2",
+    "type": "Recipe image",
+    "route": "/drinks/smoothies/workout",
+    "destination": "client/public/images/drinks/smoothies/pre-workout-power-blend.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 149730,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "b4c3749665903d6bdefa95afe9bbbe4bd35f42c006c5cc466de1556d27018069",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Pre-Workout Power Blend: Energy-boosting smoothie for intense workouts",
+    "recipe_ingredients_from_inventory": "1 banana; 1/2 cup oats; 1 tbsp peanut butter; 1 cup almond milk; 1 tsp honey; 1 cup ice",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-024",
+    "subject": "Lion’s Mane Mushroom Coffee",
+    "batch": "B2",
+    "type": "Recipe image",
+    "route": "/drinks/workout-drinks/energy-boosters",
+    "destination": "client/public/images/drinks/workout-drinks/lions-mane-mushroom-coffee.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 179992,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "ec2cb2d7db2b9106c4ac2d109232e360efb913d4ba1ab47c01bf690d73a3f928",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Lion’s Mane Mushroom Coffee: Coffee and lion’s mane pair familiar caffeine with a nootropic-forward mushroom add-in.",
+    "recipe_ingredients_from_inventory": "Brewed coffee; Lion’s mane powder; Collagen or milk; Maple syrup",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-025",
+    "subject": "Schisandra Berry Energy Elixir",
+    "batch": "B3",
+    "type": "Recipe image",
+    "route": "/drinks/workout-drinks/energy-boosters",
+    "destination": "client/public/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 197908,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "cde910706f440b3c903fc4294343168dea64e0277397d6b33c073422885c2cd4",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Schisandra Berry Energy Elixir: Schisandra and berry tea make a tart antioxidant-rich tonic.",
+    "recipe_ingredients_from_inventory": "Berry tea; Schisandra powder; Lemon juice; Honey",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-026",
+    "subject": "DIY Sports Drink",
+    "batch": "B3",
+    "type": "Recipe image",
+    "route": "/drinks/workout-drinks/hydration",
+    "destination": "client/public/images/drinks/workout-drinks/diy-sports-drink.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 168716,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "c029611cdf13518009d8458c9e2a886b96ecea0eba5b1c0047bde24d91434e23",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "DIY Sports Drink: A homemade carbohydrate-electrolyte drink for longer sessions or summer training.",
+    "recipe_ingredients_from_inventory": "Water; Orange juice; Honey; Sea salt",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-027",
+    "subject": "Coconut Water Electrolyte Reset",
+    "batch": "B3",
+    "type": "Recipe image",
+    "route": "/drinks/workout-drinks/post-workout",
+    "destination": "client/public/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 151176,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "2c2bcc6561d43db134ed027800488b57d61243546e49e8c38ed0e260a4a8a25c",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Coconut Water Electrolyte Reset: Coconut water, orange, and salt make a light recovery refresher after hot sessions.",
+    "recipe_ingredients_from_inventory": "Coconut water; Orange juice; Sea salt",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-028",
+    "subject": "Tart Cherry Turmeric Reset",
+    "batch": "B3",
+    "type": "Recipe image",
+    "route": "/drinks/workout-drinks/post-workout",
+    "destination": "client/public/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 178192,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "96cc9404ba999a001976af7ba998d2110b4b6b5ccccd511c6fc234dc5ea2f44b",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Tart Cherry Turmeric Reset: Tart cherry, turmeric, and pepper support a food-first anti-inflammatory routine.",
+    "recipe_ingredients_from_inventory": "Tart cherry juice; Orange juice; Turmeric; Black pepper",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-029",
+    "subject": "Caffeinated Drinks",
+    "batch": "B3",
+    "type": "Drinks hub card",
+    "route": "/drinks",
+    "destination": "client/public/images/drinks/hub/caffeinated-drinks.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 203118,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "c4d085c87d63d6bab09e3ce6438faee7ce80fd8889c9ee08592b4e4e9f36e2e1",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Caffeinated Drinks: category image",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-030",
+    "subject": "Detoxes & Cleanses",
+    "batch": "B3",
+    "type": "Drinks hub card",
+    "route": "/drinks",
+    "destination": "client/public/images/drinks/hub/detoxes-and-cleanses.webp",
+    "source_archive": "chefsire-images-011-030-webp.zip",
+    "format": "webp",
+    "size_bytes": 225996,
+    "dimensions": [
+      1448,
+      1086
+    ],
+    "sha256": "60cff57a3e49d46b52d15510b7cb38d8bebfcb1a91170aaffbfbbfa8228ee2a0",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Detoxes & Cleanses: category image",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-031",
+    "subject": "Potent Potables",
+    "batch": "B3",
+    "type": "Drinks hub card",
+    "route": "/drinks",
+    "destination": "client/public/images/drinks/hub/potent-potables.webp",
+    "source_archive": "chefsire-IMG-031-and-032-webp.zip",
+    "format": "webp",
+    "size_bytes": 267320,
+    "dimensions": [
+      1536,
+      1024
+    ],
+    "sha256": "34e933fed3b3f6b37adfa919338e989e5c52f74b5744e3c66ccede50b07fb9c7",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Potent Potables: category image",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-032",
+    "subject": "Protein Shakes",
+    "batch": "B3",
+    "type": "Drinks hub card",
+    "route": "/drinks",
+    "destination": "client/public/images/drinks/hub/protein-shakes.webp",
+    "source_archive": "chefsire-IMG-031-and-032-webp.zip",
+    "format": "webp",
+    "size_bytes": 254848,
+    "dimensions": [
+      1536,
+      1024
+    ],
+    "sha256": "06df01baae173c5cb88b1e6aa237165cc615c5c64fb8a3e0f6b9c3cecf79bca1",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Protein Shakes: category image",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  },
+  {
+    "id": "IMG-033",
+    "subject": "Smoothies & Bowls",
+    "batch": "B3",
+    "type": "Drinks hub card",
+    "route": "/drinks",
+    "destination": "client/public/images/drinks/hub/smoothies-and-bowls.webp",
+    "source_archive": "chefsire-IMG-033-smoothies-and-bowls.zip",
+    "format": "webp",
+    "size_bytes": 329336,
+    "dimensions": [
+      1536,
+      1024
+    ],
+    "sha256": "ac5c8ce4fbc8f8f819080e74e82a848aeb718fd953ae33c659a6db2f00ae66c5",
+    "status": "generated candidate; NOT approved; NOT integrated",
+    "generation": "OpenAI ChatGPT image generation (per original archives)",
+    "concept_from_inventory": "Smoothies & Bowls: category image",
+    "recipe_ingredients_from_inventory": "",
+    "quality_checks_needed": [
+      "visual drink-category accuracy",
+      "no duplicate artwork",
+      "composition/crop responsive",
+      "no protected logos/text",
+      "compare five pilot images if available"
+    ]
+  }
+]

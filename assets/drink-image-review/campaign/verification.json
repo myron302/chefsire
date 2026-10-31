@@ -1,0 +1,240 @@
+{
+  "build_client": "passed_after_crop_fix",
+  "typescript": {
+    "baseline_diagnostics": 3194,
+    "final_diagnostics": 3194,
+    "new_locations_codes": [],
+    "removed_locations_codes": [],
+    "comparison": "file, line, column and diagnostic code; union-type text ordering is nondeterministic"
+  },
+  "generation_tests": {
+    "passed": 6,
+    "network_calls": 0
+  },
+  "new_generation_calls": 0,
+  "browser": {
+    "origin": "built local Vite preview; production not deployed",
+    "viewports": [
+      375,
+      1440
+    ],
+    "general_page_checks": 44,
+    "broken_local_images": 0,
+    "page_errors": [],
+    "fallback": {
+      "src": "/images/drinks/potent-potables/heroes/neutral.webp",
+      "ok": true
+    },
+    "recipe_and_final_fit_checks": [
+      {
+        "width": 375,
+        "slug": "chocolate-peanut-butter-powerhouse",
+        "src": "/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "slug": "pre-workout-power-blend",
+        "src": "/images/drinks/smoothies/pre-workout-power-blend.webp",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "slug": "schisandra-berry-energy-elixir",
+        "src": "/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "slug": "diy-sports-drink",
+        "src": "/images/drinks/workout-drinks/diy-sports-drink.webp",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "slug": "coconut-water-electrolyte-reset",
+        "src": "/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "slug": "tart-cherry-turmeric-reset",
+        "src": "/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "route": "/drinks/protein-shakes/whey",
+        "surface": "Featured tab",
+        "src": "/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "route": "/drinks/smoothies/workout",
+        "surface": "Featured tab",
+        "src": "/images/drinks/smoothies/pre-workout-power-blend.webp",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "slug": "chocolate-peanut-butter-powerhouse",
+        "src": "/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "slug": "pre-workout-power-blend",
+        "src": "/images/drinks/smoothies/pre-workout-power-blend.webp",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "slug": "schisandra-berry-energy-elixir",
+        "src": "/images/drinks/workout-drinks/schisandra-berry-energy-elixir.webp",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "slug": "diy-sports-drink",
+        "src": "/images/drinks/workout-drinks/diy-sports-drink.webp",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "slug": "coconut-water-electrolyte-reset",
+        "src": "/images/drinks/workout-drinks/coconut-water-electrolyte-reset.webp",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "slug": "tart-cherry-turmeric-reset",
+        "src": "/images/drinks/workout-drinks/tart-cherry-turmeric-reset.webp",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "route": "/drinks/protein-shakes/whey",
+        "surface": "Featured tab",
+        "src": "/images/drinks/protein-shakes/chocolate-peanut-butter-powerhouse.webp",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "route": "/drinks/smoothies/workout",
+        "surface": "Featured tab",
+        "src": "/images/drinks/smoothies/pre-workout-power-blend.webp",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "route": "cocktails",
+        "src": "/images/drinks/potent-potables/heroes/cocktails.webp",
+        "fit": "contain",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "route": "martinis",
+        "src": "/images/drinks/potent-potables/heroes/martinis.webp",
+        "fit": "contain",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "route": "seasonal",
+        "src": "/images/drinks/potent-potables/heroes/seasonal.webp",
+        "fit": "contain",
+        "ok": true
+      },
+      {
+        "width": 375,
+        "route": "rum",
+        "src": "/images/drinks/potent-potables/heroes/rum.webp",
+        "fit": "contain",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "route": "cocktails",
+        "src": "/images/drinks/potent-potables/heroes/cocktails.webp",
+        "fit": "contain",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "route": "martinis",
+        "src": "/images/drinks/potent-potables/heroes/martinis.webp",
+        "fit": "contain",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "route": "seasonal",
+        "src": "/images/drinks/potent-potables/heroes/seasonal.webp",
+        "fit": "contain",
+        "ok": true
+      },
+      {
+        "width": 1440,
+        "route": "rum",
+        "src": "/images/drinks/potent-potables/heroes/rum.webp",
+        "fit": "contain",
+        "ok": true
+      }
+    ],
+    "default_surfaces_without_image": "Whey and workout smoothies show photos on Featured tabs; workout subcategory list templates do not render images. Their six canonical recipe detail images were separately verified.",
+    "observed_overflow": "Initial Rum mobile check reported horizontal overflow. Final inspection identified unchanged header navigation items outside viewport; no image overflow correction or unrelated navigation edit was made.",
+    "rum_overflow_elements": [
+      {
+        "tag": "LI",
+        "cls": "flex-none",
+        "text": "Drinks",
+        "right": 421.125
+      },
+      {
+        "tag": "A",
+        "cls": "inline-block text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors text-muted-foreground hover:text-orange-600",
+        "text": "Drinks",
+        "right": 421.125
+      },
+      {
+        "tag": "LI",
+        "cls": "flex-none",
+        "text": "Pet Food",
+        "right": 503.3125
+      },
+      {
+        "tag": "A",
+        "cls": "inline-block text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors text-muted-foreground hover:text-orange-600",
+        "text": "Pet Food",
+        "right": 503.3125
+      },
+      {
+        "tag": "LI",
+        "cls": "flex-none",
+        "text": "Catering",
+        "right": 583.53125
+      },
+      {
+        "tag": "A",
+        "cls": "inline-block text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors text-muted-foreground hover:text-orange-600",
+        "text": "Catering",
+        "right": 583.53125
+      },
+      {
+        "tag": "LI",
+        "cls": "flex-none",
+        "text": "Store",
+        "right": 645.09375
+      },
+      {
+        "tag": "A",
+        "cls": "inline-block text-sm font-medium whitespace-nowrap px-2 py-1 rounded transition-colors text-muted-foreground hover:text-orange-600",
+        "text": "Store",
+        "right": 645.09375
+      }
+    ],
+    "api_mocking": "API responses mocked for layout/image verification; unrelated external stock image requests blocked. Authentication/API functionality not tested or changed."
+  }
+}

@@ -13,7 +13,7 @@ export default function DrinkCategoryHeroImage({ route, className = '' }: DrinkC
       <img
         src={visual.image}
         alt={visual.alt}
-        className={`absolute inset-0 h-full w-full object-cover ${visual.positionClass ?? 'object-center'}`}
+        className={`absolute inset-0 h-full w-full ${visual.fitClass ?? 'object-cover'} ${visual.positionClass ?? 'object-center'}`}
         onError={(event) => {
           if (event.currentTarget.dataset.fallbackApplied !== 'true') {
             event.currentTarget.dataset.fallbackApplied = 'true';
