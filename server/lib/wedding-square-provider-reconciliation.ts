@@ -16,7 +16,7 @@ const providerSchema = z.object({
   cardId: z.string().min(1),
   locationId: z.string().min(1),
   planVariationId: z.string().min(1),
-  status: z.enum(["PENDING", "ACTIVE", "CANCELED", "DEACTIVATED", "PAUSED"]),
+  status: z.enum(["PENDING", "ACTIVE", "CANCELED", "DEACTIVATED", "PAUSED", "COMPLETED"]),
 }).passthrough();
 
 export class WeddingSquareProviderReadbackMismatchError extends Error {
