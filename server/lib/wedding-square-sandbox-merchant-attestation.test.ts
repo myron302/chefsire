@@ -10,6 +10,7 @@ const merchant = { id: "chef-merchant", status: "ACTIVE", currency: "USD", count
 const location = {
   id: "chef-location", merchantId: "chef-merchant",
   status: "ACTIVE", currency: "USD", country: "US",
+  capabilities: ["CREDIT_CARD_PROCESSING"],
 };
 const safeError = WeddingSquareSandboxMerchantAttestationError;
 
@@ -112,11 +113,23 @@ test("location ID, merchant ownership, activity and currency must match exactly"
     { merchantId: "wrong-merchant" }, { merchantId: " chef-merchant " },
     { status: "INACTIVE" }, { currency: "EUR" },
     { country: "CA" }, { status: undefined }, { merchantId: undefined },
+    { capabilities: undefined }, { capabilities: [] },
+    { capabilities: ["OTHER"] }, { capabilities: [" CREDIT_CARD_PROCESSING "] },
+    { capabilities: "CREDIT_CARD_PROCESSING" },
   ]) {
     const { attestation, requests } = service({ merchant }, { location: { ...location, ...bad } });
     await assert.rejects(attestation.inspect(), safeError);
     assert.deepEqual(requests, ["GET merchant:me", "GET location:chef-location"]);
   }
+}));
+
+test("additional Square location capabilities do not replace required card processing", () => sandbox(async () => {
+  const { attestation } = service({ merchant }, {
+    location: { ...location, capabilities: ["OTHER", "CREDIT_CARD_PROCESSING"] },
+  });
+  const evidence = await attestation.inspect();
+  assert.equal(evidence.verifiedSandboxMerchantContext, true);
+  assert.equal(evidence.grantsEntitlement, false);
 }));
 
 test("missing provider fields and malformed envelopes fail closed", () => sandbox(async () => {

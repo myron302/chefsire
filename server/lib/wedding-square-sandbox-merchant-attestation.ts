@@ -33,6 +33,9 @@ const locationEnvelopeSchema = z.object({
     status: z.literal("ACTIVE"),
     currency: z.literal("USD"),
     country: z.literal("US"),
+    // An ACTIVE location without card processing cannot support Wedding billing.
+    // Require the exact Square capability; do not infer it from merchant status.
+    capabilities: z.array(z.string()).refine((values) => values.includes("CREDIT_CARD_PROCESSING")),
   }).passthrough(),
 }).passthrough();
 

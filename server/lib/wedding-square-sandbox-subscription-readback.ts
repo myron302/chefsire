@@ -82,6 +82,7 @@ export function createWeddingSquareSandboxSubscriptionReadback(
         if (attested.verifiedSandboxMerchantContext !== true ||
             attested.merchantId !== expectedMerchantId ||
             attested.locationId !== saved.locationId ||
+            attested.currency !== "USD" ||
             attested.authorizesSubscriptionCreation !== false ||
             attested.grantsEntitlement !== false ||
             attested.safeToResubmit !== false) {
