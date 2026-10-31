@@ -26,6 +26,25 @@ test("matching provider record is only an operator-reconciliation candidate", ()
   assert.equal(result.safeToResubmit, false);
   assert.equal(result.requiresOperatorReconciliation, true);
 }));
+test("COMPLETED readback with matching saved subscription ID only returns operator evidence", () => sandbox(() => {
+  const confirmed = {
+    ...saved, status: "confirmed" as const, providerSubscriptionId: "sub-1",
+  };
+  const result = verifyWeddingSquareProviderReconciliation(confirmed, { ...provider, status: "COMPLETED" });
+  assert.equal(result.providerSubscriptionId, "sub-1");
+  assert.equal(result.providerStatus, "COMPLETED");
+  assert.equal(result.existingIdMatches, true);
+  assert.equal(result.requiresOperatorReconciliation, true);
+  assert.equal(result.grantsEntitlement, false);
+  assert.equal(result.safeToResubmit, false);
+}));
+test("COMPLETED readback without a saved subscription ID still cannot grant or resubmit", () => sandbox(() => {
+  const result = verifyWeddingSquareProviderReconciliation(saved, { ...provider, status: "COMPLETED" });
+  assert.equal(result.existingIdMatches, false);
+  assert.equal(result.requiresOperatorReconciliation, true);
+  assert.equal(result.grantsEntitlement, false);
+  assert.equal(result.safeToResubmit, false);
+}));
 test("rejects cross-customer, card, location and plan records", () => sandbox(() => {
   for (const key of ["customerId", "cardId", "locationId", "planVariationId"] as const) {
     assert.throws(() => verifyWeddingSquareProviderReconciliation(saved, { ...provider, [key]: "other" }), WeddingSquareProviderReadbackMismatchError);
