@@ -52,5 +52,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-enrollment-reservation.test.ts
       - name: Run Wedding Square provider response verification tests
         run: node --import tsx --test server/lib/wedding-square-subscription-response.test.ts
+      - name: Run Wedding Square submission-state safety tests
+        run: node --import tsx --test server/lib/wedding-square-submission-state.test.ts
       - name: Build client and server
         run: npm run build
