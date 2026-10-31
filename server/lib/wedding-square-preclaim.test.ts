@@ -47,6 +47,7 @@ test("read-only check validates owner, sandbox, reservation and exact persisted 
   assert.match(calls[0].sql, /square_environment = 'sandbox'/);
   assert.match(calls[0].sql, /status = 'reserved'/);
   assert.match(calls[0].sql, /^SELECT/);
+  assert.match(calls[0].sql, /requested_start_date::text AS requested_start_date/);
 }));
 test("changed plan, owner-visible card or price fails before claim", async () => sandbox(async () => {
   for (const patch of [{ square_card_id: "other" }, { square_plan_variation_id: "elite-plan" },
@@ -73,3 +74,21 @@ test("disabled sandbox performs no read", async () => {
     if (old !== undefined) process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = old;
   }
 });
+
+
+test("PostgreSQL DATE is selected as text to prevent local timezone day shifts", async () => sandbox(async () => {
+  const queries: string[] = [];
+  const database = { query: async (sql: string) => {
+    queries.push(sql);
+    // PostgreSQL returns the exact calendar date due to DATE::text cast.
+    return { rows: [{ ...row, requested_start_date: "2026-11-11" }] };
+  } };
+  const verified = await createWeddingSquarePreclaimService(database as any).inspect(attemptId, "user-1");
+  assert.equal(verified.request.startDate, "2026-11-11");
+  assert.match(queries[0], /requested_start_date::text AS requested_start_date/);
+}));
+
+test("unexpected Date objects are rejected instead of being converted across timezones", async () => sandbox(async () => {
+  const database = { query: async () => ({ rows: [{ ...row, requested_start_date: new Date("2026-11-11T00:00:00+09:00") }] }) };
+  await assert.rejects(createWeddingSquarePreclaimService(database as any).inspect(attemptId, "user-1"), WeddingSquarePreclaimError);
+}));
