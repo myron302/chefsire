@@ -54,5 +54,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-subscription-response.test.ts
       - name: Run Wedding Square submission-state safety tests
         run: node --import tsx --test server/lib/wedding-square-submission-state.test.ts
+      - name: Verify persisted Wedding Square request fingerprints
+        run: node --import tsx --test server/lib/wedding-square-claim-fingerprint.test.ts
       - name: Build client and server
         run: npm run build
