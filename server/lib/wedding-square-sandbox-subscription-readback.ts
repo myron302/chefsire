@@ -15,15 +15,22 @@ import { verifyWeddingSquareProviderReconciliation } from "./wedding-square-prov
 type SavedReadback = Pick<typeof weddingSquareReconciliationReadback, "inspect">;
 type ProviderReadback = (subscriptionId: string) => Promise<unknown>;
 
+// Check that provider fields are nonblank, but NEVER normalize them. The
+// Phase 18 validator must compare the exact bytes Square returned with Neon.
+const providerFieldSchema = z.string().min(1).refine((value) => value.trim().length > 0);
+
 const providerEnvelopeSchema = z.object({
   subscription: z.object({
-    id: z.string().trim().min(1),
-    customerId: z.string().trim().min(1),
-    cardId: z.string().trim().min(1),
-    locationId: z.string().trim().min(1),
-    planVariationId: z.string().trim().min(1),
-    status: z.string().trim().min(1),
+    id: providerFieldSchema,
+    customerId: providerFieldSchema,
+    cardId: providerFieldSchema,
+    locationId: providerFieldSchema,
+    planVariationId: providerFieldSchema,
+    status: providerFieldSchema,
   }).passthrough(),
+  // A 2xx Square response can contain both a subscription and API errors.
+  // Treat nonempty (or malformed) errors as ambiguous, never as verified data.
+  errors: z.array(z.unknown()).max(0).optional(),
 }).passthrough();
 
 export class WeddingSquareSandboxReadbackUnavailableError extends Error {
