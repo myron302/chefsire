@@ -40,6 +40,7 @@ function service(
   const attestation = createWeddingSquareSandboxMerchantAttestation(
     async (id) => {
       requests.push(`GET merchant:${id}`);
+      assert.equal(id, "me", "must inspect the bearer token's merchant, not a configured ID");
       if (merchantEnvelope instanceof Error) throw merchantEnvelope;
       return merchantEnvelope;
     },
@@ -70,7 +71,7 @@ test("verified active platform merchant and owned location are evidence only", (
   assert.equal(result.authorizesSubscriptionCreation, false);
   assert.equal(result.grantsEntitlement, false);
   assert.equal(result.safeToResubmit, false);
-  assert.deepEqual(requests, ["GET merchant:chef-merchant", "GET location:chef-location"]);
+  assert.deepEqual(requests, ["GET merchant:me", "GET location:chef-location"]);
 }));
 
 test("absent or empty Square errors arrays are accepted only with valid identities", () => sandbox(async () => {
@@ -86,10 +87,10 @@ test("2xx mixed success and errors envelopes fail closed", () => sandbox(async (
   ]) {
     const first = service({ merchant, errors: malformed });
     await assert.rejects(first.attestation.inspect(), safeError);
-    assert.deepEqual(first.requests, ["GET merchant:chef-merchant"]);
+    assert.deepEqual(first.requests, ["GET merchant:me"]);
     const second = service({ merchant }, { location, errors: malformed });
     await assert.rejects(second.attestation.inspect(), safeError);
-    assert.deepEqual(second.requests, ["GET merchant:chef-merchant", "GET location:chef-location"]);
+    assert.deepEqual(second.requests, ["GET merchant:me", "GET location:chef-location"]);
   }
 }));
 
@@ -101,7 +102,7 @@ test("merchant mismatch, inactive account and non-US currency never read locatio
   ]) {
     const { attestation, requests } = service({ merchant: { ...merchant, ...bad } });
     await assert.rejects(attestation.inspect(), safeError);
-    assert.deepEqual(requests, ["GET merchant:chef-merchant"]);
+    assert.deepEqual(requests, ["GET merchant:me"]);
   }
 }));
 
@@ -114,7 +115,7 @@ test("location ID, merchant ownership, activity and currency must match exactly"
   ]) {
     const { attestation, requests } = service({ merchant }, { location: { ...location, ...bad } });
     await assert.rejects(attestation.inspect(), safeError);
-    assert.deepEqual(requests, ["GET merchant:chef-merchant", "GET location:chef-location"]);
+    assert.deepEqual(requests, ["GET merchant:me", "GET location:chef-location"]);
   }
 }));
 
