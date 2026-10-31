@@ -60,5 +60,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-preclaim.test.ts
       - name: Test verified Square claim orchestration
         run: node --import tsx --test server/lib/wedding-square-verified-claim.test.ts
+      - name: Test Square subscription confirmation persistence
+        run: node --import tsx --test server/lib/wedding-square-confirmation-persistence.test.ts
       - name: Build client and server
         run: npm run build
