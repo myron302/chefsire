@@ -50,7 +50,7 @@ async function sandbox<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 function service(
-  persisted: typeof saved | (Omit<typeof saved, "providerSubscriptionId"> & { providerSubscriptionId: null }) = saved,
+  persisted: Omit<typeof saved, "providerSubscriptionId"> & { providerSubscriptionId: string | null } = saved,
   returned: unknown = { subscription },
   attestationResponse: unknown = {
     merchantId: "chef-merchant", locationId: "wedding-location",
