@@ -126,6 +126,36 @@ test("saved and fetched subscription identities must agree exactly", () => sandb
   }
 }));
 
+test("2xx Square envelopes mixing a matching subscription with errors fail closed", () => sandbox(async () => {
+  for (const returned of [
+    { subscription, errors: [{ category: "API_ERROR", code: "INTERNAL_SERVER_ERROR" }] },
+    { subscription, errors: [null] },
+    { subscription, errors: "not-an-array" },
+    { subscription, errors: null },
+  ]) {
+    const { readback, calls } = service(saved, returned);
+    await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+    assert.deepEqual(calls(), { dbReads: 1, providerReads: 1 });
+  }
+  // Square permits an absent or empty errors array on successful responses.
+  const { readback } = service(saved, { subscription, errors: [] });
+  const result = await readback.inspect("enrollment-1", "chef-user");
+  assert.equal(result.requiresOperatorReconciliation, true);
+  assert.equal(result.grantsEntitlement, false);
+  assert.equal(result.safeToResubmit, false);
+}));
+
+test("whitespace-padded provider identifiers and statuses are never normalized", () => sandbox(async () => {
+  for (const field of ["id", "customerId", "cardId", "locationId", "planVariationId", "status"] as const) {
+    for (const invalid of [` ${subscription[field]} `, "   "]) {
+      const { readback } = service(saved, {
+        subscription: { ...subscription, [field]: invalid },
+      });
+      await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+    }
+  }
+}));
+
 test("malformed, incomplete and unknown provider statuses fail closed", () => sandbox(async () => {
   for (const returned of [
     {},
