@@ -237,6 +237,8 @@ test("attestation failure or wrong platform merchant/location prevents subscript
     { ...valid, merchantId: "other-merchant" },
     { ...valid, merchantId: " chef-merchant " },
     { ...valid, locationId: "other-location" },
+    { ...valid, currency: "CAD" },
+    { ...valid, currency: undefined },
     { ...valid, verifiedSandboxMerchantContext: false },
     { ...valid, authorizesSubscriptionCreation: true },
     { ...valid, grantsEntitlement: true },
