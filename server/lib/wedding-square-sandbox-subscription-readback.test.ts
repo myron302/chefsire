@@ -6,8 +6,10 @@ import {
   WeddingSquareSandboxReadbackUnavailableError,
 } from "./wedding-square-sandbox-subscription-readback";
 import type { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
+import type { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
 
 type AttestationEvidence = Awaited<ReturnType<typeof weddingSquareSandboxMerchantAttestation.inspect>>;
+type SavedEnrollment = Awaited<ReturnType<typeof weddingSquareReconciliationReadback.inspect>>;
 
 const saved = {
   attemptId: "enrollment-1",
@@ -50,7 +52,7 @@ async function sandbox<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 function service(
-  persisted: Omit<typeof saved, "providerSubscriptionId"> & { providerSubscriptionId: string | null } = saved,
+  persisted: SavedEnrollment = saved,
   returned: unknown = { subscription },
   attestationResponse: unknown = {
     merchantId: "chef-merchant", locationId: "wedding-location",
