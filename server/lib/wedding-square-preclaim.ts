@@ -22,7 +22,7 @@ type EnrollmentRow = {
   square_plan_variation_id: string;
   square_customer_id: string;
   square_card_id: string;
-  requested_start_date: string | Date | null;
+  requested_start_date: string | null;
   requested_timezone: string;
   idempotency_key: string;
   request_fingerprint: string;
@@ -40,7 +40,7 @@ export function createWeddingSquarePreclaimService(database: Database) {
       try {
         const result = await database.query<EnrollmentRow>(
           `SELECT id, tier, square_location_id, square_plan_variation_id,
-                  square_customer_id, square_card_id, requested_start_date,
+                  square_customer_id, square_card_id, requested_start_date::text AS requested_start_date,
                   requested_timezone, idempotency_key, request_fingerprint,
                   consented_amount_cents, consented_currency
              FROM wedding_square_enrollment_attempts
@@ -57,12 +57,12 @@ export function createWeddingSquarePreclaimService(database: Database) {
             saved.square_plan_variation_id !== configuration.planVariationId ||
             saved.requested_timezone !== "UTC") throw new WeddingSquarePreclaimError();
 
-        // PostgreSQL DATE may arrive as a JS Date, depending on its type parser.
-        const date = saved.requested_start_date;
-        const startDate = date instanceof Date
-          ? date.toISOString().slice(0, 10)
-          : typeof date === "string" ? date : undefined;
-        if (date !== null && !startDate) throw new WeddingSquarePreclaimError();
+        // Cast DATE to canonical YYYY-MM-DD text in PostgreSQL, before a
+        // timezone-dependent JS DATE parser can shift its calendar day.
+        const startDate = saved.requested_start_date ?? undefined;
+        if (startDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+          throw new WeddingSquarePreclaimError();
+        }
         const request = Object.freeze({
           idempotencyKey: saved.idempotency_key,
           locationId: saved.square_location_id,
