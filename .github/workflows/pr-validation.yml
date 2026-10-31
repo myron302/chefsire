@@ -72,5 +72,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-reconciliation-readback.test.ts
       - name: Test Square provider reconciliation guard
         run: node --import tsx --test server/lib/wedding-square-provider-reconciliation.test.ts
+      - name: Test trusted Square sandbox subscription readback
+        run: node --import tsx --test server/lib/wedding-square-sandbox-subscription-readback.test.ts
       - name: Build client and server
         run: npm run build
