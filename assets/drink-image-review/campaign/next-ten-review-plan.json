@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "scope": "Original ChefSire photography, next ten slots only",
+  "approved_for_generation": false,
+  "generated_usable_assets": 0,
+  "collages_rejected": 2,
+  "quality_rules": [
+    "one standalone photograph per file; no grids/collages",
+    "subject must visibly match its named category",
+    "widescreen 16:9 or 1536x1024, crisp commercial food photography",
+    "no logos, brand marks, labels, lettering or watermarks",
+    "review before integration; do not mark manifest complete until validated"
+  ],
+  "slots": [
+    {
+      "id": "IMG-034",
+      "subject": "Workout Drinks",
+      "dest": "client/public/images/drinks/hub/workout-drinks.webp",
+      "prompt": "A chilled electrolyte sports drink in a clear bottle alongside citrus, coconut water and athletic towel; no energy-drink brand.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-035",
+      "subject": "Cold Brew",
+      "dest": "client/public/images/drinks/caffeinated/cold-brew.webp",
+      "prompt": "A clear tumbler of deep brown cold brew coffee over ice; coffee beans and chilled carafe.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-036",
+      "subject": "Espresso Drinks",
+      "dest": "client/public/images/drinks/caffeinated/espresso-drinks.webp",
+      "prompt": "Rich espresso in a small ceramic demitasse with realistic golden crema, dark roasted beans.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-037",
+      "subject": "Lattes & Cappuccinos",
+      "dest": "client/public/images/drinks/caffeinated/lattes-and-cappuccinos.webp",
+      "prompt": "Two ceramic cups displaying professional milk foam and latte art; espresso machine softly blurred.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-038",
+      "subject": "Matcha",
+      "dest": "client/public/images/drinks/caffeinated/matcha.webp",
+      "prompt": "Vivid green matcha in ceramic bowl and glass iced matcha latte beside bamboo whisk.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-039",
+      "subject": "Specialty Coffee",
+      "dest": "client/public/images/drinks/caffeinated/specialty-coffee.webp",
+      "prompt": "Craft pour-over coffee in glass server with filter cone and coffee beans, specialty cafe backdrop.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-040",
+      "subject": "Tea",
+      "dest": "client/public/images/drinks/caffeinated/tea.webp",
+      "prompt": "Amber brewed loose-leaf tea in glass pot and cup; fresh loose tea leaves and steam.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-041",
+      "subject": "Beef Protein",
+      "dest": "client/public/images/drinks/protein-shakes/beef-protein.webp",
+      "prompt": "Plain cocoa-colored beef-protein shake in a clear sports shaker, chocolate and neutral gym styling; no raw meat.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-042",
+      "subject": "Casein",
+      "dest": "client/public/images/drinks/protein-shakes/casein.webp",
+      "prompt": "Creamy vanilla casein protein shake in clear glass with vanilla pods and neutral evening wellness styling.",
+      "accepted": false,
+      "output_sha256": null
+    },
+    {
+      "id": "IMG-043",
+      "subject": "Collagen",
+      "dest": "client/public/images/drinks/protein-shakes/collagen.webp",
+      "prompt": "Soft pale berry collagen smoothie in a simple clear glass, collagen powder scoop and berries nearby.",
+      "accepted": false,
+      "output_sha256": null
+    }
+  ]
+}
