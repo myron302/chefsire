@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createPlatformSquareClient } from "./square-integration";
 import { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
+import { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
 import { verifyWeddingSquareProviderReconciliation } from "./wedding-square-provider-reconciliation";
 
 /**
@@ -14,6 +15,7 @@ import { verifyWeddingSquareProviderReconciliation } from "./wedding-square-prov
  */
 type SavedReadback = Pick<typeof weddingSquareReconciliationReadback, "inspect">;
 type ProviderReadback = (subscriptionId: string) => Promise<unknown>;
+type MerchantAttestation = Pick<typeof weddingSquareSandboxMerchantAttestation, "inspect">;
 
 // Check that provider fields are nonblank, but NEVER normalize them. The
 // Phase 18 validator must compare the exact bytes Square returned with Neon.
@@ -44,12 +46,15 @@ export class WeddingSquareSandboxReadbackUnavailableError extends Error {
 export function createWeddingSquareSandboxSubscriptionReadback(
   savedReadback: SavedReadback,
   readProviderSubscription: ProviderReadback,
+  merchantAttestation: MerchantAttestation,
 ) {
   return {
     async inspect(attemptId: string, authenticatedUserId: string) {
       // Gate BEFORE any DB or provider calls. No production fallback.
+      const expectedMerchantId = process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
       if (process.env.SQUARE_ENV !== "sandbox" ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
+          !expectedMerchantId || expectedMerchantId !== expectedMerchantId.trim() ||
           !attemptId?.trim() || !authenticatedUserId?.trim()) {
         throw new WeddingSquareSandboxReadbackUnavailableError();
       }
@@ -67,6 +72,19 @@ export function createWeddingSquareSandboxSubscriptionReadback(
             !location || !premiumPlan || !elitePlan || premiumPlan === elitePlan ||
             saved.locationId !== location ||
             (saved.planVariationId !== premiumPlan && saved.planVariationId !== elitePlan)) {
+          throw new WeddingSquareSandboxReadbackUnavailableError();
+        }
+
+        // Require token-bound platform merchant and location evidence BEFORE the
+        // subscription GET. An unknown merchant, wrong location, or ambiguous
+        // attestation cannot become verified operator reconciliation evidence.
+        const attested = await merchantAttestation.inspect();
+        if (attested.verifiedSandboxMerchantContext !== true ||
+            attested.merchantId !== expectedMerchantId ||
+            attested.locationId !== saved.locationId ||
+            attested.authorizesSubscriptionCreation !== false ||
+            attested.grantsEntitlement !== false ||
+            attested.safeToResubmit !== false) {
           throw new WeddingSquareSandboxReadbackUnavailableError();
         }
 
@@ -102,4 +120,5 @@ export const weddingSquareSandboxSubscriptionReadback =
       const client = createPlatformSquareClient();
       return client.subscriptions.get({ subscriptionId }, { maxRetries: 0 });
     },
+    weddingSquareSandboxMerchantAttestation,
   );
