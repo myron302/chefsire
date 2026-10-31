@@ -67,7 +67,10 @@ export function createWeddingSquareSandboxMerchantAttestation(
 
       try {
         // Square SDK v43: both endpoints are GET and return object envelopes.
-        const merchant = merchantEnvelopeSchema.safeParse(await readMerchant(merchantId));
+        // The merchant endpoint resolves "me" using the platform bearer token.
+        // "me" binds the bearer credential to its own merchant rather than
+        // merely retrieving a caller-configured merchant ID.
+        const merchant = merchantEnvelopeSchema.safeParse(await readMerchant("me"));
         if (!merchant.success || merchant.data.merchant.id !== merchantId) {
           throw new WeddingSquareSandboxMerchantAttestationError();
         }

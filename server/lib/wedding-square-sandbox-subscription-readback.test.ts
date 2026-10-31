@@ -5,6 +5,11 @@ import {
   createWeddingSquareSandboxSubscriptionReadback,
   WeddingSquareSandboxReadbackUnavailableError,
 } from "./wedding-square-sandbox-subscription-readback";
+import type { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
+import type { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
+
+type AttestationEvidence = Awaited<ReturnType<typeof weddingSquareSandboxMerchantAttestation.inspect>>;
+type SavedEnrollment = Awaited<ReturnType<typeof weddingSquareReconciliationReadback.inspect>>;
 
 const saved = {
   attemptId: "enrollment-1",
@@ -32,6 +37,7 @@ async function sandbox<T>(fn: () => Promise<T>): Promise<T> {
     SQUARE_ENV: "sandbox",
     WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
     SQUARE_LOCATION_ID: "wedding-location",
+    WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "chef-merchant",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "wedding-premium",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "wedding-elite",
   };
@@ -46,11 +52,18 @@ async function sandbox<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 function service(
-  persisted: typeof saved | (Omit<typeof saved, "providerSubscriptionId"> & { providerSubscriptionId: null }) = saved,
+  persisted: SavedEnrollment = saved,
   returned: unknown = { subscription },
+  attestationResponse: unknown = {
+    merchantId: "chef-merchant", locationId: "wedding-location",
+    currency: "USD", verifiedSandboxMerchantContext: true,
+    authorizesSubscriptionCreation: false, grantsEntitlement: false,
+    safeToResubmit: false,
+  },
 ) {
   let dbReads = 0;
   let providerReads = 0;
+  let attestationReads = 0;
   const readback = createWeddingSquareSandboxSubscriptionReadback(
     { async inspect(attemptId: string, userId: string) {
       dbReads++;
@@ -63,8 +76,13 @@ function service(
       if (returned instanceof Error) throw returned;
       return returned;
     },
+    { async inspect() {
+      attestationReads++;
+      if (attestationResponse instanceof Error) throw attestationResponse;
+      return attestationResponse as AttestationEvidence;
+    } },
   );
-  return { readback, calls: () => ({ dbReads, providerReads }) };
+  return { readback, calls: () => ({ dbReads, attestationReads, providerReads }) };
 }
 
 test("Square v43 has the real read-only subscriptions.get SDK method", () => {
@@ -81,7 +99,7 @@ test("verified saved subscription returns only operator evidence", () => sandbox
   assert.equal(result.requiresOperatorReconciliation, true);
   assert.equal(result.grantsEntitlement, false);
   assert.equal(result.safeToResubmit, false);
-  assert.deepEqual(calls(), { dbReads: 1, providerReads: 1 });
+  assert.deepEqual(calls(), { dbReads: 1, attestationReads: 1, providerReads: 1 });
 }));
 
 test("COMPLETED subscription is legitimate terminal readback, not payment evidence", () => sandbox(async () => {
@@ -96,7 +114,7 @@ test("COMPLETED subscription is legitimate terminal readback, not payment eviden
 test("unknown/unlinked subscription never triggers a provider search or GET", () => sandbox(async () => {
   const { readback, calls } = service({ ...saved, status: "needs_reconciliation", providerSubscriptionId: null });
   await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
-  assert.deepEqual(calls(), { dbReads: 1, providerReads: 0 });
+  assert.deepEqual(calls(), { dbReads: 1, attestationReads: 0, providerReads: 0 });
 }));
 
 test("another user and invalid attempts cannot fetch a subscription", () => sandbox(async () => {
@@ -135,7 +153,7 @@ test("2xx Square envelopes mixing a matching subscription with errors fail close
   ]) {
     const { readback, calls } = service(saved, returned);
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
-    assert.deepEqual(calls(), { dbReads: 1, providerReads: 1 });
+    assert.deepEqual(calls(), { dbReads: 1, attestationReads: 1, providerReads: 1 });
   }
   // Square permits an absent or empty errors array on successful responses.
   const { readback } = service(saved, { subscription, errors: [] });
@@ -189,7 +207,7 @@ test("production, disabled enrollment and wrong sandbox configuration make no re
     process.env.SQUARE_ENV = "sandbox";
     process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = "false";
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
-    assert.deepEqual(calls(), { dbReads: 0, providerReads: 0 });
+    assert.deepEqual(calls(), { dbReads: 0, attestationReads: 0, providerReads: 0 });
   } finally {
     process.env.SQUARE_ENV = originalEnv;
     process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = originalEnabled;
@@ -204,4 +222,60 @@ test("missing or duplicate plan mappings fail closed with no provider request", 
   process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID = "wedding-premium";
   await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
   assert.equal(calls().providerReads, 0);
+}));
+
+test("attestation failure or wrong platform merchant/location prevents subscription GET", () => sandbox(async () => {
+  const valid = {
+    merchantId: "chef-merchant", locationId: "wedding-location",
+    currency: "USD", verifiedSandboxMerchantContext: true,
+    authorizesSubscriptionCreation: false, grantsEntitlement: false,
+    safeToResubmit: false,
+  };
+  for (const attestation of [
+    new Error("Square credential=SECRET"),
+    null, {},
+    { ...valid, merchantId: "other-merchant" },
+    { ...valid, merchantId: " chef-merchant " },
+    { ...valid, locationId: "other-location" },
+    { ...valid, verifiedSandboxMerchantContext: false },
+    { ...valid, authorizesSubscriptionCreation: true },
+    { ...valid, grantsEntitlement: true },
+    { ...valid, safeToResubmit: true },
+  ]) {
+    const { readback, calls } = service(saved, { subscription }, attestation);
+    await assert.rejects(readback.inspect("enrollment-1", "chef-user"), (error: unknown) => {
+      assert.ok(error instanceof WeddingSquareSandboxReadbackUnavailableError);
+      assert.doesNotMatch(error.message, /SECRET|sub-confirmed|chef-merchant/);
+      return true;
+    });
+    assert.deepEqual(calls(), { dbReads: 1, attestationReads: 1, providerReads: 0 });
+  }
+}));
+
+test("missing or padded expected merchant ID blocks all DB and provider access", () => sandbox(async () => {
+  for (const value of [undefined, "", " chef-merchant "]) {
+    const before = process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
+    if (value === undefined) delete process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
+    else process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID = value;
+    try {
+      const { readback, calls } = service();
+      await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+      assert.deepEqual(calls(), { dbReads: 0, attestationReads: 0, providerReads: 0 });
+    } finally {
+      if (before === undefined) delete process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
+      else process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID = before;
+    }
+  }
+}));
+
+test("invalid saved enrollment does not trigger merchant or subscription provider calls", () => sandbox(async () => {
+  for (const record of [
+    { ...saved, providerSubscriptionId: null },
+    { ...saved, locationId: "wrong-location" },
+    { ...saved, planVariationId: "wrong-plan" },
+  ]) {
+    const { readback, calls } = service(record);
+    await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+    assert.deepEqual(calls(), { dbReads: 1, attestationReads: 0, providerReads: 0 });
+  }
 }));
