@@ -68,5 +68,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-ownership-claim.test.ts
       - name: Test Square confirmation coordinator
         run: node --import tsx --test server/lib/wedding-square-confirmation-coordinator.test.ts
+      - name: Test Square enrollment reconciliation readback
+        run: node --import tsx --test server/lib/wedding-square-reconciliation-readback.test.ts
       - name: Build client and server
         run: npm run build
