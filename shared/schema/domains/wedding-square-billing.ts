@@ -64,7 +64,7 @@ export const weddingSquareSubscriptions = pgTable("wedding_square_subscriptions"
   billingConsentTermsVersion: text("billing_consent_terms_version").notNull(),
   agreedMonthlyAmountCents: integer("agreed_monthly_amount_cents").notNull(),
   agreedCurrency: text("agreed_currency").notNull(),
-  requestedStartDate: date("requested_start_date").notNull(),
+  requestedStartDate: date("requested_start_date"),
   providerStatus: text("provider_status").notNull().default("PENDING"),
   verifiedPaidThrough: timestamp("verified_paid_through", { withTimezone: true }),
   cancellationRequestedAt: timestamp("cancellation_requested_at", { withTimezone: true }),
@@ -80,6 +80,7 @@ export const weddingSquareSubscriptions = pgTable("wedding_square_subscriptions"
   envCheck: check("wedding_sq_sub_environment_ck", sql`${t.squareEnvironment} IN ('sandbox','production')`),
   amountCheck: check("wedding_sq_sub_amount_ck", sql`${t.agreedMonthlyAmountCents} > 0`),
   currencyCheck: check("wedding_sq_sub_currency_ck", sql`${t.agreedCurrency} = 'USD'`),
+  tierAmountCheck: check("wedding_sq_sub_tier_amount_ck", sql`(${t.tier} = 'premium' AND ${t.agreedMonthlyAmountCents} = 2499) OR (${t.tier} = 'elite' AND ${t.agreedMonthlyAmountCents} = 4999)`),
 }));
 
 export const weddingSquareWebhookEvents = pgTable("wedding_square_webhook_events", {
