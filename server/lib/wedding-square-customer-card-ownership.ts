@@ -10,6 +10,13 @@ export class WeddingSquareOwnershipError extends Error {
     this.name = "WeddingSquareOwnershipError";
   }
 }
+// Treat provider and persisted identities as opaque exact bytes. In particular,
+// trim() alone does not reject embedded ASCII controls or whitespace.
+function exactId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 &&
+    value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value);
+}
+
 type UserBinding = Readonly<{
   userId: string;
   squareEnvironment: "sandbox" | "production";
@@ -34,16 +41,20 @@ export function verifyWeddingSquareCustomerCardOwnership(input: {
   const { authenticatedUserId, expectedSandboxMerchantId, savedBinding, providerCustomer, providerCard } = input;
   if (process.env.SQUARE_ENV !== "sandbox" ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
-      !authenticatedUserId?.trim() || !expectedSandboxMerchantId?.trim() ||
+      !exactId(authenticatedUserId) || !exactId(expectedSandboxMerchantId) ||
       !savedBinding || !providerCustomer || !providerCard ||
       savedBinding.squareEnvironment !== "sandbox" ||
-      savedBinding.userId !== authenticatedUserId ||
+      !exactId(savedBinding.userId) || savedBinding.userId !== authenticatedUserId ||
+      !exactId(savedBinding.squareMerchantId) ||
       savedBinding.squareMerchantId !== expectedSandboxMerchantId ||
+      !exactId(providerCustomer.squareMerchantId) ||
       providerCustomer.squareMerchantId !== expectedSandboxMerchantId ||
-      !savedBinding.squareCustomerId?.trim() ||
+      !exactId(savedBinding.squareCustomerId) ||
+      !exactId(providerCustomer.id) ||
       savedBinding.squareCustomerId !== providerCustomer.id ||
+      !exactId(providerCard.customerId) ||
       providerCard.customerId !== providerCustomer.id ||
-      !providerCard.id?.trim()) {
+      !exactId(providerCard.id)) {
     throw new WeddingSquareOwnershipError();
   }
   return Object.freeze({
