@@ -86,6 +86,8 @@ jobs:
         run: node --import tsx --test server/routes/wedding-square-sandbox-cancel.test.ts
       - name: Verify Wedding Square paid entitlement requires trusted provider evidence
         run: node --import tsx --test server/lib/wedding-square-paid-entitlement.test.ts
+      - name: Preserve cardless Wedding trial when paid evidence is unavailable
+        run: node --import tsx --test server/lib/wedding-entitlement-square-evidence.test.ts
       - name: Test Square enrollment reconciliation readback
         run: node --import tsx --test server/lib/wedding-square-reconciliation-readback.test.ts
       - name: Test Square provider reconciliation guard
