@@ -164,6 +164,32 @@ test("a distinct provider tender ID triggers a fresh GET but mismatched payment 
     assert.deepEqual(calls, ["verified", "saved", "subscription", "invoice", "order", "payment-other"]);
   }));
 
+test("Square may omit optional order/tender owner fields but the fetched payment still proves identity", () =>
+  sandbox(async () => {
+    const { service, calls } = mock({
+      order: { order: {
+        ...order.order,
+        customerId: undefined,
+        tenders: [{
+          ...order.order.tenders[0], customerId: null, locationId: undefined,
+        }],
+      } },
+    });
+    const candidate = await service.inspect("attempt-1", "owner-1");
+    assert.equal(candidate.grantsEntitlement, false);
+    assert.deepEqual(calls, ["verified", "saved", "subscription", "invoice", "order", "payment"]);
+
+    const wrong = mock({
+      order: { order: {
+        ...order.order, customerId: null,
+        tenders: [{ ...order.order.tenders[0], customerId: undefined, locationId: null }],
+      } },
+      payment: { payment: { ...payment.payment, customerId: "another-customer" } },
+    });
+    await assert.rejects(wrong.service.inspect("attempt-1", "owner-1"), err);
+    assert.deepEqual(wrong.calls, ["verified", "saved", "subscription", "invoice", "order", "payment"]);
+  }));
+
 test("only newest invoice from trusted subscription list can be fetched", () =>
   sandbox(async () => {
     for (const bad of [
