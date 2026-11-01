@@ -100,3 +100,47 @@ test("immediate start requires an authenticated submission UTC date", () => {
     ), WeddingSquareReconciliationRequiredError);
   }
 });
+
+test("matching malformed request and provider identities cannot confirm an attempt", () => {
+  for (const field of ["locationId", "customerId", "cardId", "planVariationId"] as const) {
+    for (const invalid of [" padded ", "matching\ncontrol", "matching\u0000nul", "matching\u007fdel"]) {
+      const claimed = { ...request, [field]: invalid };
+      const provider = { ...response, [field]: invalid };
+      assert.throws(
+        () => verifyWeddingSquareCreatedSubscription(claimed, provider),
+        WeddingSquareReconciliationRequiredError,
+      );
+    }
+  }
+});
+
+test("malformed or missing claimed idempotency and request evidence fail closed", () => {
+  for (const invalid of [" key ", "key\nvalue", "key\u0000value", "key\u007fvalue", "", null, 123]) {
+    assert.throws(
+      () => verifyWeddingSquareCreatedSubscription({ ...request, idempotencyKey: invalid } as any, response),
+      WeddingSquareReconciliationRequiredError,
+    );
+  }
+  for (const claimed of [null, {}, { ...request, customerId: undefined }, { ...request, timezone: "EST" }]) {
+    assert.throws(
+      () => verifyWeddingSquareCreatedSubscription(claimed as any, response),
+      WeddingSquareReconciliationRequiredError,
+    );
+  }
+});
+
+test("matching impossible calendar dates are not valid provider confirmation evidence", () => {
+  for (const invalid of ["2026-02-30", "2026-11-31", "2026-13-01", "2026-00-10"]) {
+    assert.throws(
+      () => verifyWeddingSquareCreatedSubscription(
+        { ...request, startDate: invalid }, { ...response, startDate: invalid },
+      ),
+      WeddingSquareReconciliationRequiredError,
+    );
+  }
+  const valid = verifyWeddingSquareCreatedSubscription(
+    { ...request, startDate: "2028-02-29" },
+    { ...response, startDate: "2028-02-29" },
+  );
+  assert.equal(valid.providerSubscriptionId, "square-sub-1");
+});
