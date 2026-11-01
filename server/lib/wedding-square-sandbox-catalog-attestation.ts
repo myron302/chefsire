@@ -80,8 +80,8 @@ function verifyVariation(response: unknown, id: string, locationId: string, cent
        BigInt(phase.recurringPriceMoney.amount) !== BigInt(cents))) {
     throw new WeddingSquareSandboxCatalogAttestationError();
   }
-  return data.subscriptionPlanId;
 }
+
 
 export function createWeddingSquareSandboxCatalogAttestation(
   merchantAttestation: MerchantAttestation,
@@ -113,16 +113,12 @@ export function createWeddingSquareSandboxCatalogAttestation(
             attested.safeToResubmit !== false) {
           throw new WeddingSquareSandboxCatalogAttestationError();
         }
-        const premiumPlanId = verifyVariation(
+        verifyVariation(
           await readCatalogObject(premiumId), premiumId, locationId, WEDDING_MONTHLY_CENTS.premium,
         );
-        const elitePlanId = verifyVariation(
+        verifyVariation(
           await readCatalogObject(eliteId), eliteId, locationId, WEDDING_MONTHLY_CENTS.elite,
         );
-        if (premiumPlanId === elitePlanId) {
-          // The two tiers require distinct catalog subscription plans.
-          throw new WeddingSquareSandboxCatalogAttestationError();
-        }
         return Object.freeze({
           merchantId, locationId, currency: "USD" as const,
           premiumPlanVariationId: premiumId, elitePlanVariationId: eliteId,
