@@ -90,6 +90,8 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-billing-status.test.ts
       - name: Validate private authenticated Wedding billing status HTTP
         run: node --import tsx --test server/routes/wedding-square-billing-status.test.ts
+      - name: Validate no local-only Wedding cancellation with unresolved Square billing
+        run: node --import tsx --test server/lib/wedding-square-legacy-cancel-guard.test.ts
       - name: Preserve cardless Wedding trial when paid evidence is unavailable
         run: node --import tsx --test server/lib/wedding-entitlement-square-evidence.test.ts
       - name: Test Square enrollment reconciliation readback
@@ -176,3 +178,5 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-reconciliation-batch.postgres.test.ts
       - name: Test Wedding Square renewal discovery on PostgreSQL 16
         run: node --import tsx --test server/lib/wedding-square-renewal-scan.postgres.test.ts
+      - name: Verify legacy Wedding cancellation guard against real unresolved provider records
+        run: node --import tsx --test server/lib/wedding-square-legacy-cancel-guard.postgres.test.ts
