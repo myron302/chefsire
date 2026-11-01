@@ -1284,10 +1284,12 @@ function SubscriptionSettingsPanel() {
             <div className="text-sm text-gray-500">Wedding Planner</div>
             <div className="mt-1 font-semibold">{titleCase(weddingCurrentTier)}</div>
             <div className="text-sm text-gray-600">{titleCase(weddingStatus)}</div>
-            {myWeddingSubscriptionQuery.data?.trial?.status === "active" && <p className="text-xs">14-day trial. No automatic charge at expiration.</p>}
+            {myWeddingSubscriptionQuery.data?.trial?.status === "active" &&
+              ["not_enrolled", "unavailable"].includes(weddingBillingStatusQuery.data?.enrollmentStatus || "") &&
+              <p className="text-xs">Cardless trial. No recurring Square enrollment on file.</p>}
             {weddingEndsAt ? (
               <div className="text-xs text-gray-500 mt-1">
-                {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                {myWeddingSubscriptionQuery.data?.trial?.status === "active" ? "Trial ends" : "Verified access through"}: {" "}
                 {formatDateTime(weddingEndsAt) || "—"}
               </div>
             ) : null}
@@ -1509,7 +1511,7 @@ function SubscriptionSettingsPanel() {
                       {weddingEndsAt ? (
                         <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
                           <CalendarDays size={13} />
-                          {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                          {myWeddingSubscriptionQuery.data?.trial?.status === "active" ? "Trial ends" : "Verified access through"}: {" "}
                           {formatDateTime(weddingEndsAt) || "—"}{" "}
                           <span className="text-gray-500">({relativeTimeFromNow(weddingEndsAt)})</span>
                         </div>
@@ -2044,12 +2046,15 @@ function SubscriptionSettingsPanel() {
                 {weddingEndsAt ? (
                   <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
                     <CalendarDays size={13} />
-                    {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                    {myWeddingSubscriptionQuery.data?.trial?.status === "active" ? "Trial ends" : "Verified access through"}: {" "}
                     {formatDateTime(weddingEndsAt) || "—"}
                   </div>
                 ) : null}
 
-                {weddingCurrentTier !== "free" ? (
+                {weddingCurrentTier !== "free" &&
+                  ["not_enrolled", "unavailable"].includes(
+                    weddingBillingStatusQuery.data?.enrollmentStatus || ""
+                  ) ? (
                   <div className="mt-3">
                     <Button
                       variant="destructive"
