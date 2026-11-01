@@ -78,3 +78,24 @@ test("rejects non-USD configured currency and padded credentials before request 
   // Older installations without SQUARE_CURRENCY retain the sandbox-only USD default.
   assert.equal(weddingSquareSandboxPreflight({ ...sandbox, SQUARE_CURRENCY: undefined }, "premium").merchantId, "sandbox-merchant");
 });
+
+
+test("preflight rejects embedded controls in all operator IDs and the platform credential", () => {
+  for (const field of [
+    "SQUARE_ACCESS_TOKEN", "WEDDING_SQUARE_SANDBOX_MERCHANT_ID",
+    "SQUARE_LOCATION_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID",
+    "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID",
+  ] as const) {
+    for (const value of [
+      sandbox[field] + "\u0000suffix",
+      sandbox[field] + "\nnext",
+      sandbox[field] + "\u007fnext",
+    ]) {
+      assert.throws(() => weddingSquareSandboxPreflight({
+        ...sandbox, [field]: value,
+      }, "premium"), WeddingSquareSandboxUnavailableError);
+    }
+  }
+});
