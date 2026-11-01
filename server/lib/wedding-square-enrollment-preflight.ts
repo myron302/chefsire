@@ -12,7 +12,9 @@ import type { WeddingPaidTier } from "./wedding-square-billing-policy";
  * reject currency mismatches and never trim provider identities. This is
  * configuration validation only, NOT token-owned merchant attestation.
  */
-const exactProviderId = z.string().min(1).refine((value) => value === value.trim());
+const exactProviderId = z.string().min(1).refine(
+  (value) => value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value),
+);
 
 const sandboxEnvironmentSchema = z.object({
   SQUARE_ENV: z.literal("sandbox"),

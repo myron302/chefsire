@@ -84,3 +84,12 @@ test("expired trial requires acknowledgment of immediate eligible start, not sta
   });
   assert.equal(receipt.requestedStartDate, null);
 });
+
+
+test("consent rejects authenticated owner IDs containing embedded invisible controls", () => {
+  for (const userId of ["user\u0000123", "user\n123", "user\t123", "user\u007f123"]) {
+    assert.throws(() => verifyWeddingEnrollmentConsent({
+      userId, now, trialExpiresAt: expires, request: approved,
+    }), TypeError);
+  }
+});
