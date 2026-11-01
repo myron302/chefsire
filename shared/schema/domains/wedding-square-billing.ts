@@ -113,6 +113,7 @@ export const weddingSquareInvoiceEvidence = pgTable("wedding_square_invoice_evid
   verifiedAt: timestamp("verified_at", { withTimezone: true }).notNull().defaultNow(),
   lastPaymentReconciledAt: timestamp("last_payment_reconciled_at", { withTimezone: true }),
   paymentRevokedAt: timestamp("payment_revoked_at", { withTimezone: true }),
+  reconciliationRevision: integer("reconciliation_revision").notNull().default(0),
 }, (t) => ({
   invoiceUnique: unique("wedding_sq_invoice_identity_uq").on(t.squareEnvironment, t.squareMerchantId, t.squareInvoiceId),
   paymentUnique: unique("wedding_sq_payment_identity_uq").on(t.squareEnvironment, t.squareMerchantId, t.squarePaymentId),

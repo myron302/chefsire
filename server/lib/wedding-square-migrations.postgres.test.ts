@@ -18,6 +18,7 @@ const FILES = [
   "server/migrations/20261101_01_wedding_square_enrollment_attempts.sql",
   "server/migrations/20261101_02_wedding_square_billing_foundation.sql",
   "server/migrations/20261101_03_wedding_square_payment_reconciliation.sql",
+  "server/migrations/20261101_04_wedding_square_reconciliation_revision.sql",
 ];
 const TABLES = [
   weddingSquareEnrollmentAttempts,
