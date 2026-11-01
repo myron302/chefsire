@@ -5,10 +5,11 @@ import {
   createWeddingSquareSandboxSubscriptionReadback,
   WeddingSquareSandboxReadbackUnavailableError,
 } from "./wedding-square-sandbox-subscription-readback";
-import type { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
+import { createWeddingSquareSandboxCatalogAttestation } from "./wedding-square-sandbox-catalog-attestation";
+import type { weddingSquareSandboxCatalogAttestation } from "./wedding-square-sandbox-catalog-attestation";
 import type { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
 
-type AttestationEvidence = Awaited<ReturnType<typeof weddingSquareSandboxMerchantAttestation.inspect>>;
+type AttestationEvidence = Awaited<ReturnType<typeof weddingSquareSandboxCatalogAttestation.inspect>>;
 type SavedEnrollment = Awaited<ReturnType<typeof weddingSquareReconciliationReadback.inspect>>;
 
 const saved = {
@@ -56,7 +57,8 @@ function service(
   returned: unknown = { subscription },
   attestationResponse: unknown = {
     merchantId: "chef-merchant", locationId: "wedding-location",
-    currency: "USD", verifiedSandboxMerchantContext: true,
+    currency: "USD", verifiedSandboxCatalogTerms: true,
+    premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
     authorizesSubscriptionCreation: false, grantsEntitlement: false,
     safeToResubmit: false,
   },
@@ -224,10 +226,11 @@ test("missing or duplicate plan mappings fail closed with no provider request", 
   assert.equal(calls().providerReads, 0);
 }));
 
-test("attestation failure or wrong platform merchant/location prevents subscription GET", () => sandbox(async () => {
+test("catalog attestation failure, wrong merchant/location/plan or unsafe flags prevent subscription GET", () => sandbox(async () => {
   const valid = {
     merchantId: "chef-merchant", locationId: "wedding-location",
-    currency: "USD", verifiedSandboxMerchantContext: true,
+    currency: "USD", verifiedSandboxCatalogTerms: true,
+    premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
     authorizesSubscriptionCreation: false, grantsEntitlement: false,
     safeToResubmit: false,
   };
@@ -239,7 +242,11 @@ test("attestation failure or wrong platform merchant/location prevents subscript
     { ...valid, locationId: "other-location" },
     { ...valid, currency: "CAD" },
     { ...valid, currency: undefined },
-    { ...valid, verifiedSandboxMerchantContext: false },
+    { ...valid, verifiedSandboxCatalogTerms: false },
+    { ...valid, verifiedSandboxCatalogTerms: undefined },
+    { ...valid, premiumPlanVariationId: "marketplace-plan" },
+    { ...valid, elitePlanVariationId: "marketplace-plan" },
+    { ...valid, premiumPlanVariationId: undefined },
     { ...valid, authorizesSubscriptionCreation: true },
     { ...valid, grantsEntitlement: true },
     { ...valid, safeToResubmit: true },
@@ -337,4 +344,87 @@ test("malformed saved subscription, customer, card and fingerprint block provide
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
     assert.deepEqual(calls(), { dbReads: 1, attestationReads: 0, providerReads: 0 });
   }
+}));
+
+test("composed real catalog guard blocks invalid Premium/Elite price or cadence before subscription GET", () => sandbox(async () => {
+  function composed(invalid?: { id: string; amount?: bigint; cadence?: string }) {
+    const calls: string[] = [];
+    const catalog = createWeddingSquareSandboxCatalogAttestation(
+      { async inspect() {
+        calls.push("merchant");
+        return {
+          merchantId: "chef-merchant", locationId: "wedding-location",
+          currency: "USD", verifiedSandboxMerchantContext: true,
+          authorizesSubscriptionCreation: false, grantsEntitlement: false,
+          safeToResubmit: false,
+        } as const;
+      } },
+      async (id) => {
+        calls.push("catalog:" + id);
+        const expected = id === "wedding-premium" ? 2499n : 4999n;
+        return {
+          object: {
+            type: "SUBSCRIPTION_PLAN_VARIATION", id,
+            // Square defaults omitted presentAtAllLocations to true.
+            subscriptionPlanVariationData: {
+              name: "Wedding", subscriptionPlanId: "wedding-plan",
+              phases: [{
+                cadence: invalid?.id === id && invalid.cadence ? invalid.cadence : "MONTHLY",
+                ordinal: 0n,
+                pricing: {
+                  type: "STATIC",
+                  priceMoney: {
+                    amount: invalid?.id === id && invalid.amount !== undefined
+                      ? invalid.amount : expected,
+                    currency: "USD",
+                  },
+                },
+              }],
+            },
+          },
+        };
+      },
+    );
+    const readback = createWeddingSquareSandboxSubscriptionReadback(
+      { async inspect(attemptId: string, userId: string) {
+        calls.push("db");
+        assert.equal(attemptId, "enrollment-1");
+        assert.equal(userId, "chef-user");
+        return saved;
+      } },
+      async (subscriptionId) => {
+        calls.push("subscription");
+        assert.equal(subscriptionId, "sub-confirmed");
+        return { subscription };
+      },
+      catalog,
+    );
+    return { readback, calls };
+  }
+
+  for (const invalid of [
+    { id: "wedding-premium", amount: 2400n },
+    { id: "wedding-elite", amount: 4900n },
+    { id: "wedding-premium", cadence: "WEEKLY" },
+    { id: "wedding-elite", cadence: "WEEKLY" },
+  ]) {
+    const { readback, calls } = composed(invalid);
+    await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+    assert.equal(calls.filter((call) => call === "merchant").length, 1);
+    assert.equal(calls.filter((call) => call === "subscription").length, 0);
+    assert.equal(calls[0], "db");
+    assert.equal(calls[1], "merchant");
+    assert.equal(calls[2], "catalog:wedding-premium");
+    assert.equal(calls.includes("catalog:wedding-elite"), invalid.id === "wedding-elite");
+  }
+
+  const { readback, calls } = composed();
+  const result = await readback.inspect("enrollment-1", "chef-user");
+  assert.equal(result.requiresOperatorReconciliation, true);
+  assert.equal(result.grantsEntitlement, false);
+  assert.equal(result.safeToResubmit, false);
+  assert.deepEqual(calls, [
+    "db", "merchant", "catalog:wedding-premium",
+    "catalog:wedding-elite", "subscription",
+  ]);
 }));
