@@ -21,7 +21,7 @@ type CatalogAttestation = Pick<typeof weddingSquareSandboxCatalogAttestation, "i
 // Check that provider fields are nonblank, but NEVER normalize them. The
 // Phase 18 validator must compare the exact bytes Square returned with Neon.
 const providerFieldSchema = z.string().min(1).refine(
-  (value) => value === value.trim() && !/[\\s\\x00-\\x1f\\x7f]/.test(value),
+  (value) => value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value),
 );
 
 const providerEnvelopeSchema = z.object({
@@ -51,7 +51,7 @@ function canonicalUtcDate(value: unknown): value is string {
 
 function exactId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 &&
-    value === value.trim() && !/[\\s\\x00-\\x1f\\x7f]/.test(value);
+    value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value);
 }
 
 export class WeddingSquareSandboxReadbackUnavailableError extends Error {
