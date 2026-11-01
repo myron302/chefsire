@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import {
   createWeddingSquareCancelTransport,
   WeddingSquareCancelTransportError,
@@ -78,5 +80,34 @@ test("provider timeouts/HTTP errors and bad payloads never retry or leak identif
       return true;
     });
     assert.equal(calls,1);
+  }
+}));
+
+
+test("native fetch cannot follow a 307 redirect and replay the provider cancellation POST",()=>sandbox(async()=>{
+  let initialPosts=0;
+  let replayedPosts=0;
+  const server=createServer((request,res)=>{
+    if(request.url==="/redirect"){
+      initialPosts++;
+      res.writeHead(307,{Location:"/target"});res.end();return;
+    }
+    replayedPosts++;
+    res.writeHead(200,{"Content-Type":"application/json"});
+    res.end(JSON.stringify(canceled));
+  });
+  server.listen(0,"127.0.0.1");
+  await new Promise<void>(resolve=>server.once("listening",resolve));
+  try {
+    const port=(server.address() as AddressInfo).port;
+    // Preserve the exact production RequestInit, including redirect:error,
+    // while replacing only the remote Square hostname with local test server.
+    const api=createWeddingSquareCancelTransport((_squareUrl,init)=>
+      fetch(`http://127.0.0.1:${port}/redirect`,init));
+    await assert.rejects(api.cancel("sub-1"),WeddingSquareCancelTransportError);
+    assert.equal(initialPosts,1);
+    assert.equal(replayedPosts,0,"a redirect must never trigger another POST");
+  } finally {
+    await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
   }
 }));
