@@ -32,7 +32,7 @@ const order = {
   order: {
     id: "order-1", locationId: "location-1", customerId: "customer-1",
     tenders: [{
-      type: "CARD", paymentId: "payment-1",
+      type: "CARD", id: "payment-1", paymentId: "payment-1",
       customerId: "customer-1", locationId: "location-1",
     }],
   },
@@ -125,6 +125,34 @@ test("trusted owner-bound chain reads only provider-issued IDs and NEVER grants 
     });
     assert.equal(Object.isFrozen(result), true);
     assert.equal("paidThrough" in result, false);
+  }));
+
+test("real Square invoice CARD tender.id works without the optional paymentId alias", () =>
+  sandbox(async () => {
+    const { paymentId: _optionalAlias, ...idOnlyTender } = order.order.tenders[0];
+    const { service, calls } = mock({
+      order: { order: { ...order.order, tenders: [idOnlyTender] } },
+    });
+    const candidate = await service.inspect("attempt-1", "owner-1");
+    assert.equal(candidate.paymentId, "payment-1");
+    assert.equal(candidate.grantsEntitlement, false);
+    assert.deepEqual(calls, ["verified", "saved", "subscription", "invoice", "order", "payment"]);
+  }));
+
+test("Square tender ID must be canonical, and a present paymentId alias must agree", () =>
+  sandbox(async () => {
+    for (const change of [
+      { id: undefined }, { id: " other-payment " },
+      { id: "another-payment" },
+      { paymentId: "another-payment" },
+      { paymentId: null },
+    ]) {
+      const { service, calls } = mock({
+        order: { order: { ...order.order, tenders: [{ ...order.order.tenders[0], ...change }] } },
+      });
+      await assert.rejects(service.inspect("attempt-1", "owner-1"), err);
+      assert.deepEqual(calls, ["verified", "saved", "subscription", "invoice", "order"]);
+    }
   }));
 
 test("only newest invoice from trusted subscription list can be fetched", () =>
