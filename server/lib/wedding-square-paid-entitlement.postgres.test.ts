@@ -69,6 +69,13 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
     assert.ok(Date.parse(paid!.paidThrough)>Date.now());
     assert.equal(await readVerifiedWeddingPaid("other-user",executor),null,"another user cannot inherit payment");
 
+    // A future-dated reconciliation is not recent provider payment proof:
+    // the 24-hour lower bound alone would accept this value for days.
+    await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now()+interval '48 hours' WHERE square_invoice_id='inv-1'");
+    assert.equal(await entitlement(),null,"future-dated PAYMENT reconciliation must not grant access");
+    await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now() WHERE square_invoice_id='inv-1'");
+    assert.equal((await entitlement())?.tier,"premium","a genuinely current provider check restores evidenced coverage");
+
     await client.query("UPDATE wedding_square_subscriptions SET last_reconciled_at=now()-interval '25 hours' WHERE id=$1",[subscription.id]);
     assert.equal((await entitlement())?.tier,"premium","subscription status check cannot refresh or expire independent payment proof");
     await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now()-interval '25 hours' WHERE square_invoice_id='inv-1'");

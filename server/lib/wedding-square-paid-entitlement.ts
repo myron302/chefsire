@@ -75,6 +75,9 @@ export async function readVerifiedWeddingPaid(
          -- prove refunds/disputes have not invalidated its paid coverage.
          -- A cancellation or subscription GET cannot refresh this column.
          AND e.last_payment_reconciled_at >= statement_timestamp() - interval '24 hours'
+         -- A future-dated provider check is not proof of current settlement.
+         -- Without this upper bound, a bad timestamp can remain fresh indefinitely.
+         AND e.last_payment_reconciled_at <= statement_timestamp()
          AND e.payment_revoked_at IS NULL
        GROUP BY s.id, s.tier
        ORDER BY s.id
