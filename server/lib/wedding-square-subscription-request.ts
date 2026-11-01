@@ -22,7 +22,7 @@ export class WeddingSquareRequestError extends Error {
 // Reject calendar overflow (e.g. February 30), malformed and non-UTC dates.
 // Date.parse alone normalizes some impossible calendar dates instead of failing.
 function canonicalUtcDateMs(value: unknown): number | null {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const timestamp = Date.parse(value + "T00:00:00.000Z");
   if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== value) return null;
   return timestamp;
