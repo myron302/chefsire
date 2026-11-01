@@ -110,6 +110,8 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-billing-audit.test.ts
       - name: Verify Square period readback
         run: node --import tsx --test server/lib/wedding-square-period-readback.test.ts
+      - name: Test sandbox invoice evidence transaction controls
+        run: node --import tsx --test server/lib/wedding-square-evidence-ledger.test.ts
       - name: Test signed Wedding Square sandbox webhook intake and replay safety
         run: node --import tsx --test server/routes/wedding-square-webhook.test.ts
       - name: Build client and server
@@ -154,3 +156,5 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-confirmation-persistence.postgres.test.ts
       - name: Verify paid Wedding entitlements from real invoice evidence on PostgreSQL 16
         run: node --import tsx --test server/lib/wedding-square-paid-entitlement.postgres.test.ts
+      - name: Test atomic provider invoice evidence recording on PostgreSQL 16
+        run: node --import tsx --test server/lib/wedding-square-evidence-ledger.postgres.test.ts
