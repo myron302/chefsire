@@ -36,7 +36,8 @@ test("PostgreSQL 16: actual owner/payment row refreshes, provider outage invalid
    await client.query("INSERT INTO users(id) VALUES('owner-1'),('foreign')");
    for(const name of ["20261101_01_wedding_square_enrollment_attempts.sql",
      "20261101_02_wedding_square_billing_foundation.sql",
-     "20261101_03_wedding_square_payment_reconciliation.sql"]){
+     "20261101_03_wedding_square_payment_reconciliation.sql",
+     "20261101_04_wedding_square_reconciliation_revision.sql"]){
      await client.query(readFileSync(path.join(root,"server/migrations",name),"utf8"));
    }
    const subscription=(await client.query<{id:string}>(`INSERT INTO wedding_square_subscriptions
