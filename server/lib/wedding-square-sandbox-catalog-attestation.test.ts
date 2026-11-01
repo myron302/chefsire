@@ -534,3 +534,60 @@ test("real Square v43 catalog HTTP failures stop verification without retries or
     globalThis.fetch = originalFetch;
   }
 }));
+
+
+test("Square v43 mixed 2xx catalog parent and variation responses never verify billing terms", () => sandbox(async () => {
+  // Decode actual SDK responses with intercepted GET transport, not normalized
+  // fixtures; a successful HTTP status cannot override provider errors.
+  const originalFetch = globalThis.fetch;
+  const paths = ["/v2/catalog/object/premium-plan", "/v2/catalog/object/premium-variation"];
+  try {
+    for (const mixedAt of [1, 2]) {
+      const transport: Array<{ method: string; path: string }> = [];
+      let merchantReads = 0;
+      globalThis.fetch = async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const method = input instanceof Request ? input.method : init?.method ?? "GET";
+        const path = new URL(url).pathname;
+        transport.push({ method, path });
+        const object = transport.length === 1
+          ? {
+              id: "premium-plan", type: "SUBSCRIPTION_PLAN",
+              subscription_plan_data: { name: "Wedding Premium" },
+            }
+          : {
+              id: "premium-variation", type: "SUBSCRIPTION_PLAN_VARIATION",
+              subscription_plan_variation_data: {
+                subscription_plan_id: "premium-plan",
+                phases: [{
+                  cadence: "MONTHLY", ordinal: 0,
+                  pricing: { type: "STATIC", price_money: { amount: 2499, currency: "USD" } },
+                }],
+              },
+            };
+        return new Response(JSON.stringify({
+          object,
+          ...(transport.length === mixedAt
+            ? { errors: [{ code: "INTERNAL_SERVER_ERROR", detail: "credential=SECRET" }] }
+            : {}),
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      };
+      const sdk = new SquareClient({
+        token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+      });
+      const attestation = createWeddingSquareSandboxCatalogAttestation(
+        { async inspect() { merchantReads++; return merchantEvidence; } },
+        (objectId) => sdk.catalog.object.get({ objectId }, { maxRetries: 0 }),
+      );
+      await assert.rejects(attestation.inspect(), (error: unknown) => {
+        assert.ok(error instanceof WeddingSquareSandboxCatalogAttestationError);
+        assert.doesNotMatch(error.message, /SECRET|offline-contract-token|premium-plan|premium-variation/);
+        return true;
+      });
+      assert.equal(merchantReads, 1);
+      assert.deepEqual(transport, paths.slice(0, mixedAt).map((path) => ({ method: "GET", path })));
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
