@@ -356,7 +356,7 @@ test("malformed saved subscription, customer, card and fingerprint block provide
 }));
 
 test("composed real catalog guard blocks invalid Premium/Elite price or cadence before subscription GET", () => sandbox(async () => {
-  function composed(invalid?: { id: string; amount?: bigint; cadence?: string }) {
+  function composed(invalid?: { id: string; amount?: bigint; cadence?: string; parentDeleted?: boolean }) {
     const calls: string[] = [];
     const catalog = createWeddingSquareSandboxCatalogAttestation(
       { async inspect() {
@@ -370,6 +370,15 @@ test("composed real catalog guard blocks invalid Premium/Elite price or cadence 
       } },
       async (id) => {
         calls.push("catalog:" + id);
+        if (id === "wedding-premium-plan" || id === "wedding-elite-plan") {
+          return {
+            object: {
+              type: "SUBSCRIPTION_PLAN", id,
+              isDeleted: invalid?.id === id && invalid.parentDeleted === true,
+              subscriptionPlanData: { name: id === "wedding-premium-plan" ? "Wedding Premium" : "Wedding Elite" },
+            },
+          };
+        }
         const expected = id === "wedding-premium" ? 2499n : 4999n;
         return {
           object: {
@@ -416,6 +425,8 @@ test("composed real catalog guard blocks invalid Premium/Elite price or cadence 
     { id: "wedding-elite", amount: 4900n },
     { id: "wedding-premium", cadence: "WEEKLY" },
     { id: "wedding-elite", cadence: "WEEKLY" },
+    { id: "wedding-premium-plan", parentDeleted: true },
+    { id: "wedding-elite-plan", parentDeleted: true },
   ]) {
     const { readback, calls } = composed(invalid);
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
@@ -423,7 +434,10 @@ test("composed real catalog guard blocks invalid Premium/Elite price or cadence 
     assert.equal(calls.filter((call) => call === "subscription").length, 0);
     assert.equal(calls[0], "db");
     assert.equal(calls[1], "merchant");
-    assert.equal(calls[2], "catalog:wedding-premium");
+    assert.equal(calls[2], "catalog:wedding-premium-plan");
+    assert.equal(calls.includes("catalog:wedding-premium"), invalid.id !== "wedding-premium-plan");
+    assert.equal(calls.includes("catalog:wedding-elite-plan"),
+      invalid.id === "wedding-elite" || invalid.id === "wedding-elite-plan");
     assert.equal(calls.includes("catalog:wedding-elite"), invalid.id === "wedding-elite");
   }
 
@@ -433,7 +447,8 @@ test("composed real catalog guard blocks invalid Premium/Elite price or cadence 
   assert.equal(result.grantsEntitlement, false);
   assert.equal(result.safeToResubmit, false);
   assert.deepEqual(calls, [
-    "db", "merchant", "catalog:wedding-premium",
+    "db", "merchant", "catalog:wedding-premium-plan",
+    "catalog:wedding-premium", "catalog:wedding-elite-plan",
     "catalog:wedding-elite", "subscription",
   ]);
 }));
