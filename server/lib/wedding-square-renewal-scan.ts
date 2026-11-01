@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { weddingSquareProviderPaymentReadback } from "./wedding-square-provider-payment-readback";
 import { weddingSquareEvidenceLedger } from "./wedding-square-evidence-ledger";
+import { weddingSquareRenewalActivation } from "./wedding-square-renewal-activation";
 
 /**
  * Discover initial and recurring Square invoices without a browser callback.
@@ -21,7 +22,8 @@ import { weddingSquareEvidenceLedger } from "./wedding-square-evidence-ledger";
 type Db = Pick<PoolClient, "query">;
 type Payment = Pick<typeof weddingSquareProviderPaymentReadback, "inspect">;
 type Ledger = Pick<typeof weddingSquareEvidenceLedger, "record">;
-type Claimed = { attempt_id: string; user_id: string; subscription_id: string; square_subscription_id: string };
+type Activation = Pick<typeof weddingSquareRenewalActivation, "activate">;
+type Claimed = { attempt_id: string; user_id: string; subscription_id: string; square_subscription_id: string; provider_status: string };
 type Existing = { square_payment_id: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const opaque = (value: unknown): value is string =>
@@ -33,7 +35,7 @@ export class WeddingSquareRenewalScanError extends Error {
     this.name = "WeddingSquareRenewalScanError";
   }
 }
-export function createWeddingSquareRenewalScan(db: Db, payment: Payment, ledger: Ledger) {
+export function createWeddingSquareRenewalScan(db: Db, payment: Payment, ledger: Ledger, activation: Activation) {
   let running = false;
   return {
     async run() {
@@ -56,7 +58,7 @@ export function createWeddingSquareRenewalScan(db: Db, payment: Payment, ledger:
         const claimed = await db.query<Claimed>(
           `WITH selected AS (
              SELECT s.id AS subscription_id, a.id AS attempt_id,
-                    s.user_id, s.square_subscription_id
+                    s.user_id, s.square_subscription_id, s.provider_status
                FROM wedding_square_subscriptions s
                JOIN wedding_square_enrollment_attempts a
                  ON a.user_id = s.user_id
@@ -80,7 +82,8 @@ export function createWeddingSquareRenewalScan(db: Db, payment: Payment, ledger:
            RETURNING selected.attempt_id::text AS attempt_id,
                      selected.user_id,
                      selected.subscription_id::text AS subscription_id,
-                     selected.square_subscription_id`,
+                     selected.square_subscription_id,
+                     selected.provider_status`,
           [merchant, location],
         );
         if (!claimed || !Array.isArray(claimed.rows) || claimed.rows.length > 20)
@@ -89,6 +92,7 @@ export function createWeddingSquareRenewalScan(db: Db, payment: Payment, ledger:
         for (const row of claimed.rows) {
           if (!uuid.test(row.attempt_id) || !uuid.test(row.subscription_id) ||
               !opaque(row.user_id) || !opaque(row.square_subscription_id) ||
+              !["PENDING","ACTIVE"].includes(row.provider_status) ||
               seen.has(row.subscription_id)) {
             throw new WeddingSquareRenewalScanError();
           }
@@ -106,6 +110,17 @@ export function createWeddingSquareRenewalScan(db: Db, payment: Payment, ledger:
                 candidate.requiresOperatorReconciliation !== true ||
                 candidate.requiresAmountAndCoverageVerification !== true)
               throw new WeddingSquareRenewalScanError();
+
+            if (row.provider_status === "PENDING") {
+              // A confirmed pending trial may have produced its FIRST paid
+              // invoice. Verify Square ACTIVE and transition the saved owner
+              // row before ledger.record(), which correctly rejects PENDING.
+              const transitioned = await activation.activate(row.attempt_id, row.user_id, row.square_subscription_id);
+              if (!transitioned || transitioned.activated !== true ||
+                  transitioned.subscriptionId !== row.square_subscription_id ||
+                  transitioned.grantsEntitlement !== false)
+                throw new WeddingSquareRenewalScanError();
+            }
 
             // This is an identity comparison ONLY. A stale existing payment is
             // never refreshed by this selector; the independent refund/dispute
@@ -161,4 +176,5 @@ export function createWeddingSquareRenewalScan(db: Db, payment: Payment, ledger:
 }
 export const weddingSquareRenewalScan = createWeddingSquareRenewalScan(
   pool as Db, weddingSquareProviderPaymentReadback, weddingSquareEvidenceLedger,
+  weddingSquareRenewalActivation,
 );
