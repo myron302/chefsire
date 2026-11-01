@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { Client } from "pg";
+import pg from "pg";
+const { Client } = pg;
 import { getTableConfig } from "drizzle-orm/pg-core";
 import {
   weddingSquareEnrollmentAttempts,
