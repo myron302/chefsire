@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createPlatformSquareClient } from "./square-integration";
 import { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
+import { verifyWeddingSquareClaimFingerprint } from "./wedding-square-claim-fingerprint";
 import { weddingSquareSandboxCatalogAttestation } from "./wedding-square-sandbox-catalog-attestation";
 import { verifyWeddingSquareProviderReconciliation } from "./wedding-square-provider-reconciliation";
 
@@ -103,6 +104,26 @@ export function createWeddingSquareSandboxSubscriptionReadback(
             (saved.planVariationId !== premiumPlan && saved.planVariationId !== elitePlan)) {
           throw new WeddingSquareSandboxReadbackUnavailableError();
         }
+
+        // A well-formed 64-character digest alone is not evidence that the
+        // saved customer/card, plan, location, date and idempotency key are the
+        // exact request durably reserved before Square submission. Reconstruct
+        // the reservation serializer in its original field order and compare
+        // the digest before any merchant/catalog/subscription provider GET.
+        const savedRequest = Object.freeze({
+          idempotencyKey: saved.persistedIdempotencyKey,
+          locationId: saved.locationId,
+          planVariationId: saved.planVariationId,
+          customerId: saved.customerId,
+          cardId: saved.cardId,
+          timezone: "UTC" as const,
+          ...(saved.requestedStartDate ? { startDate: saved.requestedStartDate } : {}),
+        });
+        verifyWeddingSquareClaimFingerprint({
+          claimedIdempotencyKey: saved.persistedIdempotencyKey,
+          persistedRequestFingerprint: saved.persistedRequestFingerprint,
+          preparedRequest: savedRequest,
+        });
 
         // Catalog attestation itself verifies the token-owned platform merchant
         // and location, then independently reads BOTH configured Wedding plans.
