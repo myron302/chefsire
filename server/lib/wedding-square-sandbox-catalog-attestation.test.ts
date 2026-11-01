@@ -30,6 +30,16 @@ function variation(id: string, cents: bigint) {
   };
 }
 
+function parentPlan(id: string) {
+  return {
+    object: {
+      id, type: "SUBSCRIPTION_PLAN", isDeleted: false,
+      presentAtAllLocations: true,
+      subscriptionPlanData: { name: id === "premium-plan" ? "Wedding Premium" : "Wedding Elite" },
+    },
+  };
+}
+
 async function sandbox<T>(run: () => Promise<T>): Promise<T> {
   const settings = {
     SQUARE_ENV: "sandbox",
@@ -57,6 +67,8 @@ function service(
   premium: unknown = variation("premium-variation", 2499n),
   elite: unknown = variation("elite-variation", 4999n),
   attestation: unknown = merchantEvidence,
+  premiumParent: unknown = parentPlan("premium-plan"),
+  eliteParent: unknown = parentPlan("elite-plan"),
 ) {
   let merchantReads = 0;
   const catalogReads: string[] = [];
@@ -68,7 +80,9 @@ function service(
     } },
     async (id) => {
       catalogReads.push(id);
-      const response = id === "premium-variation" ? premium : elite;
+      const response = id === "premium-plan" ? premiumParent
+        : id === "elite-plan" ? eliteParent
+        : id === "premium-variation" ? premium : elite;
       if (response instanceof Error) throw response;
       return response;
     },
@@ -94,7 +108,7 @@ test("matching active indefinite monthly USD Premium and Elite catalog terms are
   assert.equal(evidence.grantsEntitlement, false);
   assert.equal(evidence.safeToResubmit, false);
   assert.deepEqual(calls(), {
-    merchantReads: 1, catalogReads: ["premium-variation", "elite-variation"],
+    merchantReads: 1, catalogReads: ["premium-plan", "premium-variation", "elite-plan", "elite-variation"],
   });
 }));
 
@@ -151,6 +165,56 @@ test("Square's omitted presentAtAllLocations defaults to globally available", ()
   assert.equal((await result.inspect()).verifiedSandboxCatalogTerms, true);
 }));
 
+test("parent plans must exist, be active and eligible at the configured location", () => sandbox(async () => {
+  const parent = parentPlan("premium-plan").object;
+  const failures: unknown[] = [
+    null,
+    new Error("SECRET parent lookup failed"),
+    { object: { ...parent, id: "unrelated-plan" } },
+    { object: { ...parent, type: "ITEM" } },
+    { object: { ...parent, isDeleted: true } },
+    { object: { ...parent, presentAtAllLocations: false } },
+    { object: { ...parent, absentAtLocationIds: ["chef-location"] } },
+    { object: { ...parent, subscriptionPlanData: { name: " " } } },
+    { object: { ...parent, subscriptionPlanData: null } },
+    { object: parent, errors: [{ code: "INVALID_REQUEST_ERROR" }] },
+    { object: parent, errors: "malformed" },
+    { object: parent, errors: null },
+  ];
+  for (const response of failures) {
+    const { result, calls } = service(undefined, undefined, undefined, response);
+    await assert.rejects(result.inspect(), (error: unknown) => {
+      assert.ok(error instanceof errorType);
+      assert.doesNotMatch(error.message, /SECRET|premium-plan|chef-merchant/);
+      return true;
+    });
+    assert.deepEqual(calls(), { merchantReads: 1, catalogReads: ["premium-plan"] });
+  }
+}));
+
+test("explicitly location-eligible parent plans pass, while an invalid Elite parent stops Elite variation lookup", () => sandbox(async () => {
+  const premium = parentPlan("premium-plan");
+  const eligible = {
+    object: { ...premium.object, presentAtAllLocations: false, presentAtLocationIds: ["chef-location"] },
+  };
+  const accepted = service(undefined, undefined, undefined, eligible);
+  assert.equal((await accepted.result.inspect()).verifiedSandboxCatalogTerms, true);
+  assert.deepEqual(accepted.calls(), {
+    merchantReads: 1,
+    catalogReads: ["premium-plan", "premium-variation", "elite-plan", "elite-variation"],
+  });
+
+  const elite = parentPlan("elite-plan");
+  const blocked = service(undefined, undefined, undefined, undefined, {
+    object: { ...elite.object, isDeleted: true },
+  });
+  await assert.rejects(blocked.result.inspect(), errorType);
+  assert.deepEqual(blocked.calls(), {
+    merchantReads: 1,
+    catalogReads: ["premium-plan", "premium-variation", "elite-plan"],
+  });
+}));
+
 test("wrong prices, currencies, cadence, finite duration and discounts fail closed", () => sandbox(async () => {
   const baseline = variation("premium-variation", 2499n);
   const phase = baseline.object.subscriptionPlanVariationData.phases[0];
@@ -188,7 +252,7 @@ test("wrong prices, currencies, cadence, finite duration and discounts fail clos
   for (const response of failures) {
     const { result, calls } = service(response);
     await assert.rejects(result.inspect(), errorType);
-    assert.deepEqual(calls(), { merchantReads: 1, catalogReads: ["premium-variation"] });
+    assert.deepEqual(calls(), { merchantReads: 1, catalogReads: ["premium-plan", "premium-variation"] });
   }
 }));
 
@@ -210,7 +274,7 @@ test("missing, deleted, deprecated, proration and location-ineligible variations
   for (const object of failures) {
     const { result, calls } = service({ object });
     await assert.rejects(result.inspect(), errorType);
-    assert.deepEqual(calls(), { merchantReads: 1, catalogReads: ["premium-variation"] });
+    assert.deepEqual(calls(), { merchantReads: 1, catalogReads: ["premium-plan", "premium-variation"] });
   }
 }));
 
@@ -236,7 +300,7 @@ test("Elite failure occurs only after verified Premium, with no extra requests",
   const { result, calls } = service(variation("premium-variation", 2499n), variation("elite-variation", 2499n));
   await assert.rejects(result.inspect(), errorType);
   assert.deepEqual(calls(), {
-    merchantReads: 1, catalogReads: ["premium-variation", "elite-variation"],
+    merchantReads: 1, catalogReads: ["premium-plan", "premium-variation", "elite-plan", "elite-variation"],
   });
 }));
 
@@ -246,7 +310,7 @@ test("correctly priced Elite variation under the Premium parent plan fails close
   const { result, calls } = service(undefined, elite);
   await assert.rejects(result.inspect(), errorType);
   assert.deepEqual(calls(), {
-    merchantReads: 1, catalogReads: ["premium-variation", "elite-variation"],
+    merchantReads: 1, catalogReads: ["premium-plan", "premium-variation", "elite-plan", "elite-variation"],
   });
 }));
 
