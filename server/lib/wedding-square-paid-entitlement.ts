@@ -12,7 +12,7 @@ import { WEDDING_MONTHLY_CENTS, type WeddingPaidTier } from "./wedding-square-bi
  *
  * Every access requires a CURRENT, unique subscription with a matching immutable
  * invoice/payment evidence row for the precise billed period, recent provider
- * reconciliation, and provider-derived paid_through. An untrusted future
+ * payment-specific reconciliation, and provider-derived paid_through. An untrusted future
  * paidThrough timestamp never extends access beyond the evidenced period.
  */
 export type VerifiedWeddingPaid = Readonly<{
@@ -71,7 +71,11 @@ export async function readVerifiedWeddingPaid(
          AND e.period_starts_at <= statement_timestamp()
          AND e.period_ends_at > statement_timestamp()
          AND s.verified_paid_through >= e.period_ends_at
-         AND s.last_reconciled_at >= statement_timestamp() - interval '24 hours'
+         -- Only a fresh reconciliation of THIS invoice/payment can
+         -- prove refunds/disputes have not invalidated its paid coverage.
+         -- A cancellation or subscription GET cannot refresh this column.
+         AND e.last_payment_reconciled_at >= statement_timestamp() - interval '24 hours'
+         AND e.payment_revoked_at IS NULL
        GROUP BY s.id, s.tier
        ORDER BY s.id
        LIMIT 2
