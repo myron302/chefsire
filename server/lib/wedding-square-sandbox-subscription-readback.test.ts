@@ -22,6 +22,7 @@ const saved = {
   cardId: "card-1",
   locationId: "wedding-location",
   planVariationId: "wedding-premium",
+  requestedStartDate: "2026-11-11", requestedTimezone: "UTC",
 };
 const subscription = {
   id: "sub-confirmed",
@@ -30,6 +31,7 @@ const subscription = {
   locationId: "wedding-location",
   planVariationId: "wedding-premium",
   status: "ACTIVE",
+  startDate: "2026-11-11", timezone: "UTC",
 };
 const expectedError = WeddingSquareSandboxReadbackUnavailableError;
 
@@ -147,6 +149,23 @@ test("saved and fetched subscription identities must agree exactly", () => sandb
     });
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
   }
+}));
+
+test("provider start date and timezone must match the saved consented UTC billing terms", () => sandbox(async () => {
+  for (const changed of [
+    { startDate: "2026-11-10" },
+    { startDate: "2026-11-12" },
+    { startDate: "2026-02-30" },
+    { timezone: "America/New_York" },
+    { timezone: undefined },
+  ]) {
+    const { readback, calls } = service(saved, { subscription: { ...subscription, ...changed } });
+    await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+    assert.deepEqual(calls(), { dbReads: 1, attestationReads: 1, providerReads: 1 });
+  }
+  const { readback, calls } = service({ ...saved, requestedStartDate: "2026-11-12" });
+  await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+  assert.deepEqual(calls(), { dbReads: 1, attestationReads: 1, providerReads: 1 });
 }));
 
 test("2xx Square envelopes mixing a matching subscription with errors fail closed", () => sandbox(async () => {
@@ -348,6 +367,9 @@ test("malformed saved subscription, customer, card and fingerprint block provide
     { cardId: "card-1 " },
     { cardId: "" },
     { attemptId: " enrollment-1 " },
+    { requestedTimezone: "America/New_York" },
+    { requestedStartDate: "2026-02-30" },
+    { requestedStartDate: undefined },
   ]) {
     const { readback, calls } = service({ ...saved, ...invalid });
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
