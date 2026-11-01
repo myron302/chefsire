@@ -26,6 +26,8 @@ async function sandbox(run: () => Promise<void>) {
     SQUARE_LOCATION_ID: "sandbox-loc",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "premium-plan",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "elite-plan",
+    WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "premium-parent-plan",
+    WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "elite-parent-plan",
   };
   const original = Object.fromEntries(Object.keys(variables).map(key => [key, process.env[key]]));
   Object.assign(process.env, variables);
