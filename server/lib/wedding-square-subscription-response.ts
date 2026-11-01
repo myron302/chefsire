@@ -9,7 +9,7 @@ import type { prepareWeddingSquareSubscriptionRequest } from "./wedding-square-s
 // The subscription ID is persisted and later used as an exact Square GET key.
 // Reject padded or control-character IDs before ever confirming an attempt.
 const exactSubscriptionId = z.string().min(1).refine(
-  (id) => id === id.trim() && !/[\\s\\x00-\\x1f\\x7f]/.test(id),
+  (id) => id === id.trim() && !/[\s\x00-\x1f\x7f]/.test(id),
 );
 
 const subscriptionSchema = z.object({
