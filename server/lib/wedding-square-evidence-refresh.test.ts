@@ -41,7 +41,7 @@ function mock(options:{row?:unknown,result?:unknown,fail?:"db"|"provider"|"updat
    calls.push("update");
    sqlUpdate=sql;
    if(options.fail==="update")throw Error("private DB outage");
-   if(sql.includes("IS NOT DISTINCT FROM"))assert.deepEqual(params,
+   if(sql.includes("e.reconciliation_revision=$5"))assert.deepEqual(params,
      [id,"owner-1","merchant-1","pay-1",7]);
    else assert.deepEqual(params,[id,"owner-1","merchant-1","pay-1"]);
    return{rows:options.conflict?[]:[{id}]};
@@ -59,7 +59,7 @@ test("refreshes only exact owner/payment with complete fresh provider check",()=
  const x=mock();const result=await x.service.refresh(id,"owner-1");
  assert.deepEqual(x.calls,["select","provider","update"]);
  assert.match(x.getUpdate(),/payment_revoked_at IS NULL/);
- assert.match(x.getUpdate(),/IS NOT DISTINCT FROM \$5::timestamptz/);
+ assert.match(x.getUpdate(),/reconciliation_revision=\\$5/);
  assert.deepEqual(result,{status:"payment_rechecked",grantsEntitlement:false,paidThroughChanged:false});
  assert.equal(Object.isFrozen(result),true);
 }));
