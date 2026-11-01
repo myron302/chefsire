@@ -42,6 +42,8 @@ async function read(sender: Sender, id: string, method: "GET"|"POST") {
       (method === "POST" ? "/cancel" : "");
     const res = await sender(url, {
       method,
+      // A 307/308 redirect must never replay a cancellation POST.
+      redirect: "error",
       headers: {
         Authorization: `Bearer ${token}`,
         "Square-Version": "2025-10-16",
