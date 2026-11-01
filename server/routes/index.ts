@@ -70,6 +70,7 @@ import uploadRouter from "./upload";
 
 // Wedding Planning
 import weddingSubscriptionRouter from "./wedding-subscription";
+import weddingSquareWebhookRouter from "./wedding-square-webhook";
 import vendorSubscriptionRouter from "./vendor-subscription";
 import weddingRsvpRouter from "./wedding-rsvp";
 import weddingEventDetailsRouter from "./wedding-event-details";
@@ -232,6 +233,8 @@ r.use("/catering", cateringBookingAdjustmentsRouter);
 r.use("/catering", cateringRouter);
 
 // Wedding Planning — subscription management (must come before other /wedding mounts so routes resolve)
+// Dedicated signed Wedding Square intake; feature flag OFF by default.
+r.use("/wedding", weddingSquareWebhookRouter);
 r.use("/wedding", weddingSubscriptionRouter);
 r.use("/vendors", vendorSubscriptionRouter);
 r.use("/wedding", weddingRsvpRouter);
