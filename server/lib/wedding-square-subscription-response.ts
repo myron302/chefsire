@@ -6,8 +6,14 @@ import type { prepareWeddingSquareSubscriptionRequest } from "./wedding-square-s
  * This is not payment verification and never grants subscription entitlements.
  * A missing or mismatched provider response requires manual/readback reconciliation.
  */
+// The subscription ID is persisted and later used as an exact Square GET key.
+// Reject padded or control-character IDs before ever confirming an attempt.
+const exactSubscriptionId = z.string().min(1).refine(
+  (id) => id === id.trim() && !/[\s\x00-\x1f\x7f]/.test(id),
+);
+
 const subscriptionSchema = z.object({
-  id: z.string().min(1),
+  id: exactSubscriptionId,
   locationId: z.string().min(1),
   customerId: z.string().min(1),
   planVariationId: z.string().min(1),
