@@ -13,7 +13,9 @@ type MerchantReadback = (merchantId: string) => Promise<unknown>;
 type LocationReadback = (locationId: string) => Promise<unknown>;
 
 const noErrors = z.array(z.unknown()).max(0).optional();
-const exactId = z.string().min(1).refine((id) => id.trim() === id && id.length > 0);
+const exactId = z.string().min(1).refine(
+  (id) => id === id.trim() && !/[\s\x00-\x1f\x7f]/.test(id),
+);
 
 const merchantEnvelopeSchema = z.object({
   errors: noErrors,
@@ -47,7 +49,8 @@ export class WeddingSquareSandboxMerchantAttestationError extends Error {
 }
 
 function configuredId(value: string | undefined): value is string {
-  return typeof value === "string" && value.length > 0 && value === value.trim();
+  return typeof value === "string" && value.length > 0 &&
+    value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value);
 }
 
 export function createWeddingSquareSandboxMerchantAttestation(
