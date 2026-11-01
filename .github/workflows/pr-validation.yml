@@ -116,6 +116,8 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-evidence-refresh.test.ts
       - name: Test bounded Wedding Square reconciliation batch
         run: node --import tsx --test server/lib/wedding-square-reconciliation-batch.test.ts
+      - name: Test owner-verified PENDING to ACTIVE Square first-charge transition
+        run: node --import tsx --test server/lib/wedding-square-renewal-activation.test.ts
       - name: Test Wedding Square renewal invoice discovery
         run: node --import tsx --test server/lib/wedding-square-renewal-scan.test.ts
       - name: Test signed Wedding Square sandbox webhook intake and replay safety
