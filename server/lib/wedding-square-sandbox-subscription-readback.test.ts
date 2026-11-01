@@ -41,6 +41,8 @@ async function sandbox<T>(fn: () => Promise<T>): Promise<T> {
     WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "chef-merchant",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "wedding-premium",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "wedding-elite",
+    WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "wedding-premium-plan",
+    WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "wedding-elite-plan",
   };
   const before = Object.fromEntries(Object.keys(overrides).map((k) => [k, process.env[k]]));
   Object.assign(process.env, overrides);
@@ -59,6 +61,7 @@ function service(
     merchantId: "chef-merchant", locationId: "wedding-location",
     currency: "USD", verifiedSandboxCatalogTerms: true,
     premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
+    premiumPlanId: "wedding-premium-plan", elitePlanId: "wedding-elite-plan",
     authorizesSubscriptionCreation: false, grantsEntitlement: false,
     safeToResubmit: false,
   },
@@ -231,6 +234,7 @@ test("catalog attestation failure, wrong merchant/location/plan or unsafe flags 
     merchantId: "chef-merchant", locationId: "wedding-location",
     currency: "USD", verifiedSandboxCatalogTerms: true,
     premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
+    premiumPlanId: "wedding-premium-plan", elitePlanId: "wedding-elite-plan",
     authorizesSubscriptionCreation: false, grantsEntitlement: false,
     safeToResubmit: false,
   };
@@ -246,6 +250,9 @@ test("catalog attestation failure, wrong merchant/location/plan or unsafe flags 
     { ...valid, verifiedSandboxCatalogTerms: undefined },
     { ...valid, premiumPlanVariationId: "marketplace-plan" },
     { ...valid, elitePlanVariationId: "marketplace-plan" },
+    { ...valid, premiumPlanId: "marketplace-plan" },
+    { ...valid, elitePlanId: "marketplace-plan" },
+    { ...valid, premiumPlanId: undefined },
     { ...valid, premiumPlanVariationId: undefined },
     { ...valid, authorizesSubscriptionCreation: true },
     { ...valid, grantsEntitlement: true },
@@ -295,6 +302,8 @@ test("malformed sandbox location, plan and currency configuration blocks even Ne
     ["SQUARE_LOCATION_ID", ""],
     ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", " wedding-premium "],
     ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "wedding-elite "],
+    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", " wedding-premium-plan "],
+    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID", ""],
     ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", ""],
     ["SQUARE_CURRENCY", "CAD"],
     ["SQUARE_CURRENCY", " USD "],
@@ -367,7 +376,7 @@ test("composed real catalog guard blocks invalid Premium/Elite price or cadence 
             type: "SUBSCRIPTION_PLAN_VARIATION", id,
             // Square defaults omitted presentAtAllLocations to true.
             subscriptionPlanVariationData: {
-              name: "Wedding", subscriptionPlanId: "wedding-plan",
+              name: "Wedding", subscriptionPlanId: id === "wedding-premium" ? "wedding-premium-plan" : "wedding-elite-plan",
               phases: [{
                 cadence: invalid?.id === id && invalid.cadence ? invalid.cadence : "MONTHLY",
                 ordinal: 0n,
