@@ -49,6 +49,24 @@ const envelope = z.object({
   }).passthrough(),
 }).passthrough();
 
+// A correctly priced variation can still point at a missing, deleted or
+// location-ineligible parent plan. Verify both configured parent objects with
+// the same token-owned sandbox catalog client before accepting their variations.
+const parentEnvelope = z.object({
+  errors: z.array(z.unknown()).max(0).optional(),
+  object: z.object({
+    id: exactId,
+    type: z.literal("SUBSCRIPTION_PLAN"),
+    isDeleted: z.boolean().optional(),
+    presentAtAllLocations: z.boolean().optional(),
+    presentAtLocationIds: z.array(exactId).optional(),
+    absentAtLocationIds: z.array(exactId).optional(),
+    subscriptionPlanData: z.object({
+      name: z.string().min(1).refine((value) => value.trim().length > 0),
+    }).passthrough(),
+  }).passthrough(),
+}).passthrough();
+
 function configuredId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.trim() === value;
 }
@@ -57,6 +75,19 @@ export class WeddingSquareSandboxCatalogAttestationError extends Error {
   constructor() {
     super("Wedding Square sandbox catalog plan terms could not be verified.");
     this.name = "WeddingSquareSandboxCatalogAttestationError";
+  }
+}
+
+function verifyParentPlan(response: unknown, id: string, locationId: string) {
+  const parsed = parentEnvelope.safeParse(response);
+  if (!parsed.success) throw new WeddingSquareSandboxCatalogAttestationError();
+  const object = parsed.data.object;
+  if (object.id !== id || object.isDeleted === true ||
+      object.absentAtLocationIds?.includes(locationId) ||
+      // Square defaults an omitted presentAtAllLocations to true.
+      (object.presentAtAllLocations === false &&
+       !object.presentAtLocationIds?.includes(locationId))) {
+    throw new WeddingSquareSandboxCatalogAttestationError();
   }
 }
 
@@ -120,9 +151,13 @@ export function createWeddingSquareSandboxCatalogAttestation(
             attested.safeToResubmit !== false) {
           throw new WeddingSquareSandboxCatalogAttestationError();
         }
+        // Parent plan identity and availability are independent provider facts.
+        // A variation referencing a configured ID is not proof the parent exists.
+        verifyParentPlan(await readCatalogObject(premiumParentId), premiumParentId, locationId);
         verifyVariation(
           await readCatalogObject(premiumId), premiumId, locationId, WEDDING_MONTHLY_CENTS.premium, premiumParentId,
         );
+        verifyParentPlan(await readCatalogObject(eliteParentId), eliteParentId, locationId);
         verifyVariation(
           await readCatalogObject(eliteId), eliteId, locationId, WEDDING_MONTHLY_CENTS.elite, eliteParentId,
         );
