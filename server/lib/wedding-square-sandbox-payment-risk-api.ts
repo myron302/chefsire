@@ -28,7 +28,7 @@ const disputesEnvelope = z.object({
   disputes: z.array(z.object({
     id, location_id: id,
     disputed_payment: z.object({ payment_id: id }).passthrough(),
-  }).passthrough()).max(100).optional(),
+  }).passthrough()).max(100),
   cursor: id.optional(),
 }).passthrough();
 
