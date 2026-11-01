@@ -91,3 +91,46 @@ test("disabled mode and malformed statuses fail closed", () => sandbox(() => {
   try { assert.throws(() => verifyWeddingSquareProviderReconciliation(saved, provider), WeddingSquareProviderReadbackMismatchError); }
   finally { if (old !== undefined) process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = old; }
 }));
+
+test("provider reconciliation rejects malformed identities even when saved and provider IDs match", () => sandbox(() => {
+  const bad = "same" + String.fromCharCode(0) + "id";
+  for (const key of ["customerId", "cardId", "locationId", "planVariationId"] as const) {
+    assert.throws(
+      () => verifyWeddingSquareProviderReconciliation(
+        { ...saved, [key]: bad },
+        { ...provider, [key]: bad },
+      ),
+      WeddingSquareProviderReadbackMismatchError,
+    );
+  }
+  for (const key of ["id", "customerId", "cardId", "locationId", "planVariationId"] as const) {
+    assert.throws(
+      () => verifyWeddingSquareProviderReconciliation(saved, { ...provider, [key]: "bad\tvalue" }),
+      WeddingSquareProviderReadbackMismatchError,
+    );
+  }
+  for (const patch of [
+    { attemptId: "attempt" + String.fromCharCode(127) + "-1" },
+    { persistedIdempotencyKey: "key\nother" },
+  ]) {
+    assert.throws(
+      () => verifyWeddingSquareProviderReconciliation({ ...saved, ...patch }, provider),
+      WeddingSquareProviderReadbackMismatchError,
+    );
+  }
+}));
+
+test("confirmed provider evidence requires a canonical saved subscription ID", () => sandbox(() => {
+  assert.throws(
+    () => verifyWeddingSquareProviderReconciliation({ ...saved, status: "confirmed" }, provider),
+    WeddingSquareProviderReadbackMismatchError,
+  );
+  const bad = "sub" + String.fromCharCode(0) + "-1";
+  assert.throws(
+    () => verifyWeddingSquareProviderReconciliation(
+      { ...saved, status: "confirmed", providerSubscriptionId: bad },
+      { ...provider, id: bad },
+    ),
+    WeddingSquareProviderReadbackMismatchError,
+  );
+}));
