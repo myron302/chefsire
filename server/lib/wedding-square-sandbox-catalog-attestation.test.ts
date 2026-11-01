@@ -22,7 +22,7 @@ function variation(id: string, cents: bigint) {
         subscriptionPlanId: "wedding-plan",
         name: "Wedding plan",
         phases: [{
-          cadence: "MONTHLY", ordinal: 0,
+          cadence: "MONTHLY", ordinal: 0n,
           pricing: { type: "STATIC", priceMoney: { amount: cents, currency: "USD" } },
         }],
       },
@@ -100,6 +100,50 @@ test("explicit location inclusion is accepted when presentAtAllLocations is fals
   const { result } = service({
     object: { ...premium.object, presentAtLocationIds: ["chef-location"] },
   });
+  assert.equal((await result.inspect()).verifiedSandboxCatalogTerms, true);
+}));
+
+test("Square SDK v43 deserializes JSON phase ordinals to bigint and validates the response", () => sandbox(async () => {
+  // Intercept the SDK transport: no sandbox or production HTTP request occurs.
+  const previousFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount++;
+    return new Response(JSON.stringify({
+      object: {
+        type: "SUBSCRIPTION_PLAN_VARIATION",
+        id: "premium-variation",
+        // Deliberately omit present_at_all_locations: Square defaults it to true.
+        subscription_plan_variation_data: {
+          name: "Wedding Premium",
+          subscription_plan_id: "wedding-plan",
+          phases: [{
+            cadence: "MONTHLY", ordinal: 0,
+            pricing: { type: "STATIC", price_money: { amount: 2499, currency: "USD" } },
+          }],
+        },
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const client = new SquareClient({
+      token: "offline-contract", environment: SquareEnvironment.Sandbox,
+    });
+    const sdkResponse = await client.catalog.object.get(
+      { objectId: "premium-variation" }, { maxRetries: 0 },
+    );
+    assert.equal(fetchCount, 1);
+    assert.equal(sdkResponse.object?.subscriptionPlanVariationData?.phases?.[0]?.ordinal, 0n);
+    const { result } = service(sdkResponse);
+    assert.equal((await result.inspect()).verifiedSandboxCatalogTerms, true);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+}));
+
+test("Square's omitted presentAtAllLocations defaults to globally available", () => sandbox(async () => {
+  const { presentAtAllLocations: _omitted, ...object } = variation("premium-variation", 2499n).object;
+  const { result } = service({ object });
   assert.equal((await result.inspect()).verifiedSandboxCatalogTerms, true);
 }));
 
