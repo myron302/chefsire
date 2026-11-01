@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createPlatformSquareClient } from "./square-integration";
+import { weddingSquareRawSubscriptionApi } from "./wedding-square-sandbox-subscription-http";
 import { weddingSquareSandboxCatalogAttestation } from "./wedding-square-sandbox-catalog-attestation";
 import { weddingSquareOwnershipClaim } from "./wedding-square-ownership-claim";
 import { weddingSquareConfirmationCoordinator } from "./wedding-square-confirmation-coordinator";
@@ -118,7 +118,7 @@ export function createWeddingSquareSandboxSubscriptionSubmitter(
         // originally signed. Square assigns today's date for no-trial starts.
         const submissionUtcDate = new Date().toISOString().slice(0, 10);
 
-        // One attempted Square POST, SDK maxRetries:0. A timeout/5xx/invalid
+        // One attempted Square POST, direct transport with zero retries. A timeout/5xx/invalid
         // response may STILL have created a subscription. No automatic retry.
         const squareResult = envelope.safeParse(await createSubscription(claimed.request));
         if (!squareResult.success) throw new WeddingSquareSandboxSubmissionError();
@@ -160,9 +160,7 @@ export const weddingSquareSandboxSubscriptionSubmitter =
   createWeddingSquareSandboxSubscriptionSubmitter(
     weddingSquareSandboxCatalogAttestation,
     weddingSquareOwnershipClaim,
-    async (request) => createPlatformSquareClient().subscriptions.create(
-      request, { maxRetries: 0 },
-    ),
+    async (request) => weddingSquareRawSubscriptionApi.create(request),
     weddingSquareConfirmationCoordinator,
     weddingSquareSubmissionState,
   );
