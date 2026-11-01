@@ -604,3 +604,67 @@ test("provider control characters cannot be accepted as reconciliation evidence"
     assert.deepEqual(calls(), { dbReads: 1, attestationReads: 1, providerReads: 1 });
   }
 }));
+
+
+test("Square SDK v43 subscription GET wire response passes through real readback guard without a write", () => sandbox(async () => {
+  // Exercise the installed SDK's snake_case -> camelCase decoder rather than
+  // injecting an already-normalized object. Intercept transport: no Square
+  // sandbox or live HTTP request, Neon write or subscription mutation occurs.
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async (input, init) => {
+    requests++;
+    const method = input instanceof Request ? input.method : init?.method ?? "GET";
+    assert.equal(method, "GET");
+    return new Response(JSON.stringify({
+      subscription: {
+        id: "sub-confirmed",
+        customer_id: "customer-1",
+        card_id: "card-1",
+        location_id: "wedding-location",
+        plan_variation_id: "wedding-premium",
+        status: "ACTIVE",
+        start_date: "2026-11-11",
+        timezone: "UTC",
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const sdk = new SquareClient({
+      token: "offline-contract-test", environment: SquareEnvironment.Sandbox,
+    });
+    let savedReads = 0;
+    let catalogReads = 0;
+    const readback = createWeddingSquareSandboxSubscriptionReadback(
+      { async inspect(attemptId, userId) {
+        savedReads++;
+        assert.equal(attemptId, "enrollment-1");
+        assert.equal(userId, "chef-user");
+        return saved;
+      } },
+      (subscriptionId) => sdk.subscriptions.get({ subscriptionId }, { maxRetries: 0 }),
+      { async inspect() {
+        catalogReads++;
+        return {
+          merchantId: "chef-merchant", locationId: "wedding-location",
+          currency: "USD" as const, verifiedSandboxCatalogTerms: true as const,
+          premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
+          premiumPlanId: "wedding-premium-plan", elitePlanId: "wedding-elite-plan",
+          authorizesSubscriptionCreation: false as const,
+          grantsEntitlement: false as const, safeToResubmit: false as const,
+        };
+      } },
+    );
+    const evidence = await readback.inspect("enrollment-1", "chef-user");
+    assert.equal(evidence.providerSubscriptionId, "sub-confirmed");
+    assert.equal(evidence.providerStatus, "ACTIVE");
+    assert.equal(evidence.requiresOperatorReconciliation, true);
+    assert.equal(evidence.grantsEntitlement, false);
+    assert.equal(evidence.safeToResubmit, false);
+    assert.deepEqual({ savedReads, catalogReads, requests }, {
+      savedReads: 1, catalogReads: 1, requests: 1,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
