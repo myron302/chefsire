@@ -78,5 +78,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-sandbox-merchant-attestation.test.ts
       - name: Test Square sandbox catalog plan and price attestation
         run: node --import tsx --test server/lib/wedding-square-sandbox-catalog-attestation.test.ts
+      - name: Test offline Square invoice/payment identity linkage
+        run: node --import tsx --test server/lib/wedding-square-invoice-payment-linkage.test.ts
       - name: Build client and server
         run: npm run build
