@@ -3,14 +3,11 @@ import { check, date, index, integer, pgTable, primaryKey, text, timestamp, uniq
 import { users } from "./users-auth";
 
 /**
- * STAGED only: deliberately NOT exported through shared/schema.ts yet.
- * This module mirrors docs/sql-ready/20261101_{01,02}_wedding_square_*.sql.
- * Importing it in tests validates parity, but does not add these tables to
- * drizzle.config.ts tablesFilter and cannot cause a db:push alteration.
- *
- * Actual registration, promoting the migrations to server/drizzle and executing
- * against Neon require a separate explicit approval.
- * No billing/paid entitlement is authorized by these tables.
+ * Reviewed Wedding Square table definitions.
+ * The matching, versioned SQL lives in server/migrations/20261101_0{1,2}_*.sql,
+ * and must be applied through ChefSire's ledger before any Wedding billing
+ * service may depend on the tables. Declarative Drizzle parity is tested.
+ * No table row by itself proves a settled Square payment or paid entitlement.
  */
 export const weddingSquareEnrollmentAttempts = pgTable("wedding_square_enrollment_attempts", {
   id: uuid("id").primaryKey().defaultRandom(),
