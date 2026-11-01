@@ -591,3 +591,65 @@ test("Square v43 mixed 2xx catalog parent and variation responses never verify b
     globalThis.fetch = originalFetch;
   }
 }));
+
+test("Square v43 malformed 2xx catalog JSON cannot verify Premium or Elite billing terms", () => sandbox(async () => {
+  // Exercise the actual SDK GET decoder at all four catalog boundaries.
+  // Transport is intercepted, and no provider or database write is possible.
+  const originalFetch = globalThis.fetch;
+  const ids = ["premium-plan", "premium-variation", "elite-plan", "elite-variation"];
+  try {
+    for (const body of ['{"object":', "null"]) {
+      for (let malformedAt = 1; malformedAt <= ids.length; malformedAt++) {
+        const transport: Array<{ method: string; path: string }> = [];
+        let merchantReads = 0;
+        globalThis.fetch = async (input, init) => {
+          const url = input instanceof Request ? input.url : String(input);
+          const method = input instanceof Request ? input.method : init?.method ?? "GET";
+          const path = new URL(url).pathname;
+          transport.push({ method, path });
+          const id = decodeURIComponent(path.slice(path.lastIndexOf("/") + 1));
+          const object = id.endsWith("-plan")
+            ? {
+                id, type: "SUBSCRIPTION_PLAN", is_deleted: false,
+                subscription_plan_data: { name: id },
+              }
+            : {
+                id, type: "SUBSCRIPTION_PLAN_VARIATION", is_deleted: false,
+                subscription_plan_variation_data: {
+                  subscription_plan_id: id === "premium-variation" ? "premium-plan" : "elite-plan",
+                  phases: [{
+                    cadence: "MONTHLY", ordinal: 0,
+                    pricing: {
+                      type: "STATIC",
+                      price_money: { amount: id === "premium-variation" ? 2499 : 4999, currency: "USD" },
+                    },
+                  }],
+                },
+              };
+          return new Response(transport.length === malformedAt ? body : JSON.stringify({ object }), {
+            status: 200, headers: { "content-type": "application/json" },
+          });
+        };
+        const sdk = new SquareClient({
+          token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+        });
+        const attestation = createWeddingSquareSandboxCatalogAttestation(
+          { async inspect() { merchantReads++; return merchantEvidence; } },
+          (objectId) => sdk.catalog.object.get({ objectId }, { maxRetries: 0 }),
+        );
+        await assert.rejects(attestation.inspect(), (error: unknown) => {
+          assert.ok(error instanceof WeddingSquareSandboxCatalogAttestationError);
+          assert.doesNotMatch(error.message, /offline-contract-token|premium-plan|elite-plan|credential=SECRET/);
+          return true;
+        });
+        // Check transport outside the sanitized failure path.
+        assert.equal(merchantReads, 1);
+        assert.deepEqual(transport, ids.slice(0, malformedAt).map((id) => ({
+          method: "GET", path: `/v2/catalog/object/${id}`,
+        })));
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
