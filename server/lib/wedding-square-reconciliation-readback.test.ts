@@ -7,6 +7,7 @@ const row = {
   request_fingerprint: "a".repeat(64), provider_subscription_id: null,
   square_customer_id: "customer", square_card_id: "card",
   square_location_id: "location", square_plan_variation_id: "plan",
+  requested_start_date: "2026-11-11", requested_timezone: "UTC",
 };
 async function sandbox(run: () => Promise<void>) {
   const old = [process.env.SQUARE_ENV, process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED];
@@ -27,6 +28,9 @@ test("readback is strictly read-only, bound to user and sandbox and returns orig
   assert.match(calls[0].sql, /'needs_reconciliation'/);
   assert.equal(result.persistedIdempotencyKey, "durable-key");
   assert.equal(result.status, "needs_reconciliation");
+  assert.equal(result.requestedStartDate, "2026-11-11");
+  assert.equal(result.requestedTimezone, "UTC");
+  assert.match(calls[0].sql, /requested_start_date::text AS requested_start_date/);
 }));
 test("unknown, malformed, or unconfirmed records fail closed", async () => sandbox(async () => {
   for (const bad of [null, { ...row, status: "reserved" }, { ...row, request_fingerprint: "" }, { ...row, status: "confirmed" }]) {
@@ -34,6 +38,21 @@ test("unknown, malformed, or unconfirmed records fail closed", async () => sandb
     await assert.rejects(createWeddingSquareReconciliationReadback(db as any).inspect(attemptId, "user-1"), WeddingSquareReconciliationReadbackError);
   }
 }));
+test("malformed or non-UTC saved start dates never become reconciliation evidence", async () => sandbox(async () => {
+  for (const bad of [
+    { requested_timezone: "America/New_York" },
+    { requested_timezone: null },
+    { requested_start_date: "2026-02-30" },
+    { requested_start_date: "2026-11-11T00:00:00Z" },
+    { requested_start_date: undefined },
+  ]) {
+    const db = { query: async () => ({ rows: [{ ...row, ...bad }] }) };
+    await assert.rejects(createWeddingSquareReconciliationReadback(db as any).inspect(attemptId, "user-1"), WeddingSquareReconciliationReadbackError);
+  }
+  const db = { query: async () => ({ rows: [{ ...row, requested_start_date: null }] }) };
+  assert.equal((await createWeddingSquareReconciliationReadback(db as any).inspect(attemptId, "user-1")).requestedStartDate, null);
+}));
+
 test("a confirmed subscription ID can be inspected but never grants entitlement", async () => sandbox(async () => {
   const db = { query: async () => ({ rows: [{ ...row, status: "confirmed", provider_subscription_id: "sub-1" }] }) };
   const result = await createWeddingSquareReconciliationReadback(db as any).inspect(attemptId, "user-1");
