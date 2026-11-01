@@ -25,6 +25,7 @@ function mock(options:{rows?:unknown[],fail?:boolean,providerFail?:boolean}={}){
   assert.match(sql,/e\.period_ends_at>statement_timestamp\(\)/);
   assert.match(sql,/s\.verified_paid_through>=e\.period_ends_at/);
   assert.match(sql,/ORDER BY e\.reconciliation_revision ASC/);
+  assert.match(sql,/interval '5 hours'/);
   assert.match(sql,/LIMIT 10/);
   assert.deepEqual(args,["merchant-1","loc-1"]);
   if(options.fail)throw Error("Private Neon credentials");
