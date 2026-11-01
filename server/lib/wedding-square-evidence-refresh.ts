@@ -24,6 +24,7 @@ type Row={
   agreed_monthly_amount_cents:number;agreed_currency:string;
   billing_consent_terms_version:string;verified_amount_cents:number;
   last_payment_reconciled_at:Date|string|null;payment_revoked_at:Date|string|null;
+  reconciliation_revision:number;
   provider_status:string;
 };
 const uuid=z.string().uuid();
@@ -49,7 +50,7 @@ export function createWeddingSquareEvidenceRefresh(db:Db,risk:Risk){
                 e.square_merchant_id,s.square_customer_id,s.square_location_id,
                 s.agreed_monthly_amount_cents,s.agreed_currency,
                 s.billing_consent_terms_version,
-                e.verified_amount_cents,
+                e.verified_amount_cents,e.reconciliation_revision,
                 e.last_payment_reconciled_at::text AS last_payment_reconciled_at,
                 e.payment_revoked_at,s.provider_status
            FROM wedding_square_invoice_evidence e
