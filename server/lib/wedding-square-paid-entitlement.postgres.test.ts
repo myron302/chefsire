@@ -52,7 +52,7 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
        agreed_monthly_amount_cents,agreed_currency,provider_status,
        verified_paid_through,last_reconciled_at)
       VALUES ('owner-1','premium','sandbox','merchant-1','loc-1','cust-1',
-        'premium-var','sub-1',now(),'wedding-monthly-autorenew-v1',
+        'premium-var','sub-1',now()-interval '2 minutes','wedding-monthly-autorenew-v1',
         2499,'USD','ACTIVE',now()+interval '30 days',now())
       RETURNING id`)).rows[0];
     assert.equal(await entitlement(),null,"provider ACTIVE is NOT a payment");
@@ -75,7 +75,9 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
     assert.equal(await entitlement(),null,"unrecognized auto-renewal consent must not grant paid access");
     await client.query("UPDATE wedding_square_subscriptions SET billing_consent_terms_version='wedding-monthly-autorenew-v1',billing_consent_at=now()+interval '1 day' WHERE id=$1",[subscription.id]);
     assert.equal(await entitlement(),null,"future-dated billing consent cannot grant paid access");
-    await client.query("UPDATE wedding_square_subscriptions SET billing_consent_at=now() WHERE id=$1",[subscription.id]);
+    await client.query("UPDATE wedding_square_subscriptions SET billing_consent_at=now()-interval '30 seconds' WHERE id=$1",[subscription.id]);
+    assert.equal(await entitlement(),null,"consent recorded after payment settlement cannot retroactively authorize billing");
+    await client.query("UPDATE wedding_square_subscriptions SET billing_consent_at=now()-interval '2 minutes' WHERE id=$1",[subscription.id]);
     assert.equal((await entitlement())?.tier,"premium","original approved and prior consent restores valid paid evidence");
 
     // A second concurrently covering invoice on the SAME subscription must
