@@ -92,11 +92,11 @@ export function createWeddingSquareConfirmationPersistence(database: SqlPool) {
               AND square_environment = 'sandbox' AND status = 'submitting'
               AND idempotency_key = $3 AND request_fingerprint = $4
               AND provider_subscription_id IS NULL
-              AND square_location_id = $6 AND square_plan_variation_id = $7
+              AND square_location_id = $5 AND square_plan_variation_id = $6
             FOR UPDATE`,
           [attemptId, authenticatedUserId, persistedIdempotencyKey,
-            persistedRequestFingerprint, verifiedResponse.providerSubscriptionId,
-            verifiedResponse.verifiedLocationId, verifiedResponse.verifiedPlanVariationId],
+            persistedRequestFingerprint, verifiedResponse.verifiedLocationId,
+            verifiedResponse.verifiedPlanVariationId],
         );
         if (locked.rows.length !== 1) throw new WeddingSquareConfirmationPersistenceError();
         const row = locked.rows[0];
