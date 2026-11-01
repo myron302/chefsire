@@ -19,6 +19,15 @@ export class WeddingSquareRequestError extends Error {
   }
 }
 
+// Reject calendar overflow (e.g. February 30), malformed and non-UTC dates.
+// Date.parse alone normalizes some impossible calendar dates instead of failing.
+function canonicalUtcDateMs(value: unknown): number | null {
+  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return null;
+  const timestamp = Date.parse(value + "T00:00:00.000Z");
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== value) return null;
+  return timestamp;
+}
+
 export function prepareWeddingSquareSubscriptionRequest(input: {
   consent: ConsentReceipt;
   config: SandboxPreflight;
@@ -49,11 +58,21 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
       (consent.tier === "elite" && consent.agreedMonthlyAmountCents !== 4999)) {
     throw new WeddingSquareRequestError();
   }
-  if (consent.trialExpiresAt && !consent.requestedStartDate) {
-    throw new WeddingSquareRequestError();
-  }
-  if (consent.trialExpiresAt && consent.requestedStartDate &&
-      Date.parse(consent.requestedStartDate + "T00:00:00.000Z") < Date.parse(consent.trialExpiresAt)) {
+  // A verified future trial requires a canonical UTC start on/after its exact
+  // expiry. An expired/no-trial enrollment must not silently acquire a delayed
+  // charge date. Reject mutated receipts even though the consent guard freezes
+  // its own output; do not allow NaN comparisons to bypass the safety check.
+  const start = consent.requestedStartDate === null ? null : canonicalUtcDateMs(consent.requestedStartDate);
+  if (consent.requestedStartDate !== null && start === null) throw new WeddingSquareRequestError();
+  if (consent.trialExpiresAt !== null) {
+    const expiry = Date.parse(consent.trialExpiresAt);
+    if (typeof consent.trialExpiresAt !== "string" ||
+        !Number.isFinite(expiry) ||
+        new Date(expiry).toISOString() !== consent.trialExpiresAt ||
+        start === null || start < expiry) {
+      throw new WeddingSquareRequestError();
+    }
+  } else if (consent.requestedStartDate !== null) {
     throw new WeddingSquareRequestError();
   }
 
