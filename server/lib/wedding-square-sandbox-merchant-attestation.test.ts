@@ -181,3 +181,40 @@ test("production, disabled flag, missing/malformed operator config make zero API
     }
   }
 }));
+
+test("control characters in configured merchant/location identities block all provider GETs", () => sandbox(async () => {
+  for (const [key, value] of [
+    ["WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "chef\nmerchant"],
+    ["SQUARE_LOCATION_ID", "chef\u0001location"],
+  ] as const) {
+    const before = process.env[key];
+    process.env[key] = value;
+    try {
+      const { attestation, requests } = service();
+      await assert.rejects(attestation.inspect(), safeError);
+      assert.deepEqual(requests, []);
+    } finally {
+      if (before === undefined) delete process.env[key];
+      else process.env[key] = before;
+    }
+  }
+}));
+
+test("control-character provider identity fields are rejected without normalization", () => sandbox(async () => {
+  for (const bad of [
+    { merchant: { ...merchant, id: "chef\u0000merchant" } },
+    { merchant: { ...merchant, id: "chef\u007fmerchant" } },
+  ]) {
+    const { attestation, requests } = service(bad);
+    await assert.rejects(attestation.inspect(), safeError);
+    assert.deepEqual(requests, ["GET merchant:me"]);
+  }
+  for (const changed of [
+    { id: "chef\u0000location" },
+    { merchantId: "chef\nmerchant" },
+  ]) {
+    const { attestation, requests } = service({ merchant }, { location: { ...location, ...changed } });
+    await assert.rejects(attestation.inspect(), safeError);
+    assert.deepEqual(requests, ["GET merchant:me", "GET location:chef-location"]);
+  }
+}));
