@@ -529,7 +529,7 @@ test("composed real catalog guard blocks invalid Premium/Elite price or cadence 
 test("embedded control characters in configured Square IDs fail before Neon access", () => sandbox(async () => {
   const invalid: ReadonlyArray<readonly [string, string]> = [
     ["WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "chef\nmerchant"],
-    ["SQUARE_LOCATION_ID", "wedding\u0000location"],
+    ["SQUARE_LOCATION_ID", "wedding\u0002location"],
     ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "wedding\t premium"],
     ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "wedding\u007felite"],
     ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", "wedding\rplan"],
