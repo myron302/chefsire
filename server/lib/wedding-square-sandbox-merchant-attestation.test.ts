@@ -218,3 +218,53 @@ test("control-character provider identity fields are rejected without normalizat
     assert.deepEqual(requests, ["GET merchant:me", "GET location:chef-location"]);
   }
 }));
+
+
+test("Square v43 merchant/me and location GET wire responses verify token-owned platform context", () => sandbox(async () => {
+  // Unlike normalized fixtures, this exercises the installed SDK's real
+  // snake_case decoder. All transport is intercepted; no provider network
+  // request, database write, or commercial operation can occur.
+  const originalFetch = globalThis.fetch;
+  const paths: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const method = input instanceof Request ? input.method : init?.method ?? "GET";
+    assert.equal(method, "GET");
+    paths.push(new URL(url).pathname);
+    if (paths.length === 1) {
+      assert.match(paths[0], /\/v2\/merchants\/me$/);
+      return new Response(JSON.stringify({
+        merchant: { id: "chef-merchant", status: "ACTIVE", currency: "USD", country: "US" },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    assert.equal(paths.length, 2, "no unexpected extra Square requests");
+    assert.match(paths[1], /\/v2\/locations\/chef-location$/);
+    return new Response(JSON.stringify({
+      location: {
+        id: "chef-location", merchant_id: "chef-merchant",
+        status: "ACTIVE", currency: "USD", country: "US",
+        capabilities: ["CREDIT_CARD_PROCESSING"],
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const sdk = new SquareClient({
+      token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+    });
+    const attestation = createWeddingSquareSandboxMerchantAttestation(
+      (merchantId) => sdk.merchants.get({ merchantId }, { maxRetries: 0 }),
+      (locationId) => sdk.locations.get({ locationId }, { maxRetries: 0 }),
+    );
+    const evidence = await attestation.inspect();
+    assert.equal(evidence.verifiedSandboxMerchantContext, true);
+    assert.equal(evidence.merchantId, "chef-merchant");
+    assert.equal(evidence.locationId, "chef-location");
+    assert.equal(evidence.currency, "USD");
+    assert.equal(evidence.authorizesSubscriptionCreation, false);
+    assert.equal(evidence.grantsEntitlement, false);
+    assert.equal(evidence.safeToResubmit, false);
+    assert.deepEqual(paths, ["/v2/merchants/me", "/v2/locations/chef-location"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
