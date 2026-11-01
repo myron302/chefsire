@@ -128,9 +128,9 @@ export function createWeddingSquareEvidenceRefresh(db:Db,risk:Risk){
             AND e.square_merchant_id=$3 AND s.square_merchant_id=$3
             AND e.square_payment_id=$4
             AND e.payment_revoked_at IS NULL
-            AND e.last_payment_reconciled_at IS NOT DISTINCT FROM $5::timestamptz
+            AND e.reconciliation_revision=$5
         RETURNING e.id`,
-        [evidenceId,userId,merchant,row.square_payment_id,row.last_payment_reconciled_at],
+        [evidenceId,userId,merchant,row.square_payment_id,row.reconciliation_revision],
       );
       if(refreshed.rows.length!==1)throw new WeddingSquareEvidenceRefreshError();
       return Object.freeze({
