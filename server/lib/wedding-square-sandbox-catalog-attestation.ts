@@ -14,7 +14,9 @@ import { WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
 type ReadCatalogObject = (objectId: string) => Promise<unknown>;
 type MerchantAttestation = Pick<typeof weddingSquareSandboxMerchantAttestation, "inspect">;
 
-const exactId = z.string().min(1).refine((value) => value === value.trim());
+const exactId = z.string().min(1).refine(
+  (value) => value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value),
+);
 const money = z.object({
   amount: z.union([z.bigint(), z.number().int().safe()]),
   currency: z.literal("USD"),
@@ -68,7 +70,8 @@ const parentEnvelope = z.object({
 }).passthrough();
 
 function configuredId(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.trim() === value;
+  return typeof value === "string" && value.length > 0 &&
+    value.trim() === value && !/[\s\x00-\x1f\x7f]/.test(value);
 }
 
 export class WeddingSquareSandboxCatalogAttestationError extends Error {
