@@ -50,8 +50,17 @@ export async function weddingEntitlement(userId: string, recordedTier?: string |
   // Legacy users.wedding_tier / wedding_status values are NOT payment proof.
   // The independent 336-hour cardless trial is still honored unchanged.
   void recordedTier;
-  const paid = await readVerifiedWeddingPaid(userId, executor);
   const trialTier = trial.status === "active" ? trial.tier : null;
+  // A cardless trial is independently authoritative for its original 336
+  // hours. Outages or ambiguous subscription/payment proof must fail closed
+  // for paid access without revoking an already verified active trial.
+  let paid: Awaited<ReturnType<typeof readVerifiedWeddingPaid>> = null;
+  try {
+    paid = await readVerifiedWeddingPaid(userId, executor);
+  } catch (error) {
+    if (!trialTier) throw error;
+    paid = null;
+  }
   const currentTier: WeddingTier =
     paid?.tier === "elite" || trialTier === "elite" ? "elite"
     : paid?.tier === "premium" || trialTier === "premium" ? "premium" : "free";
