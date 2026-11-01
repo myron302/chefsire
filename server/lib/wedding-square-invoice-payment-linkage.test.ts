@@ -199,4 +199,4 @@ test("invoice must be listed on independently retrieved subscription and plan mu
   assert.equal(inspect(expected, invoice, payment, {
     subscription: { ...subscription.subscription, invoiceIds: ["older-invoice", "invoice-1"] },
   }).grantsEntitlement, false);
-});
+}));
