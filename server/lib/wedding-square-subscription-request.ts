@@ -1,3 +1,4 @@
+import { squareStartDateNotBefore } from "./wedding-square-billing-policy";
 import type { verifyWeddingEnrollmentConsent } from "./wedding-square-enrollment-consent";
 import type { weddingSquareSandboxPreflight } from "./wedding-square-enrollment-preflight";
 
@@ -69,7 +70,10 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
     if (typeof consent.trialExpiresAt !== "string" ||
         !Number.isFinite(expiry) ||
         new Date(expiry).toISOString() !== consent.trialExpiresAt ||
-        start === null || start < expiry) {
+        start === null || start < expiry ||
+        // The consent receipt acknowledged the earliest non-early UTC date.
+        // A later date is also a changed billing term, not a safe fallback.
+        consent.requestedStartDate !== squareStartDateNotBefore(new Date(expiry))) {
       throw new WeddingSquareRequestError();
     }
   } else if (consent.requestedStartDate !== null) {
