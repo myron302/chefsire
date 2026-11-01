@@ -61,7 +61,7 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
      consented_amount_cents,consented_currency,square_location_id,
      square_plan_variation_id,square_customer_id,square_card_id,
      idempotency_key,request_fingerprint,status,provider_subscription_id)
-    VALUES($1,'premium',$2,now(),2499,'USD','loc-1',
+    VALUES($1,'premium',$2,now()-interval '2 hours',2499,'USD','loc-1',
      'premium-var',$3,$4,$5,repeat('a',64),$6,$7)`,
     [`owner-${n}`,WEDDING_CONSENT_VERSION,`cust-${n}`,`card-${n}`,
      `key-${n}`,attempt,attempt==="confirmed"?`sub-${n}`:null]);
@@ -71,7 +71,7 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
      billing_consent_at,billing_consent_terms_version,agreed_monthly_amount_cents,
      agreed_currency,provider_status)
     VALUES($1,'premium','sandbox','merchant-1','loc-1',$2,'premium-var',
-     $3,$6,now(),$4,2499,'USD',$5)`,
+     $3,$6,now()-interval '2 hours',$4,2499,'USD',$5)`,
     [`owner-${n}`,`cust-${n}`,`sub-${n}`,WEDDING_CONSENT_VERSION,status,`card-${n}`]);
   }
   const calls:string[]=[];
