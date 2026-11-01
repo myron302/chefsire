@@ -82,5 +82,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-invoice-payment-linkage.test.ts
       - name: Test real Square SDK invoice/payment readback contract offline
         run: node --import tsx --test server/lib/wedding-square-invoice-payment-sdk-contract.test.ts
+      - name: Test attested read-only Square subscription invoice order and payment chain
+        run: node --import tsx --test server/lib/wedding-square-provider-payment-readback.test.ts
       - name: Build client and server
         run: npm run build
