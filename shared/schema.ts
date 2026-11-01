@@ -55,6 +55,12 @@ import {
 export { users } from "./schema/domains/users-auth";
 export { cateringAttemptSquarePayments, cateringBookingPaymentAttempts, cateringSquareWebhookEvents } from "./schema/domains/catering-square-payments";
 export {
+  weddingSquareEnrollmentAttempts,
+  weddingSquareSubscriptions,
+  weddingSquareWebhookEvents,
+  weddingSquareInvoiceEvidence,
+} from "./schema/domains/wedding-square-billing";
+export {
   posts,
   recipes,
   recipeReviews,
