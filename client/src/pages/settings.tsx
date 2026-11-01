@@ -711,6 +711,12 @@ function SubscriptionSettingsPanel() {
   const weddingCurrentTier =
     myWeddingSubscriptionQuery.data?.currentTier || "free";
 
+  const canUseLegacyWeddingTrialCancel =
+    myWeddingSubscriptionQuery.data?.trial?.status === "active" &&
+    ["not_enrolled", "unavailable"].includes(
+      weddingBillingStatusQuery.data?.enrollmentStatus || ""
+    );
+
   const weddingStatus = weddingCurrentTier === "free"
     ? "inactive"
     : myWeddingSubscriptionQuery.data?.status || "active";
@@ -1077,6 +1083,14 @@ function SubscriptionSettingsPanel() {
   const onSelectWeddingTier = (tierKey: "free" | "premium" | "elite") => {
     if (tierKey === weddingCurrentTier) return;
     if (tierKey === "free") {
+      if (!canUseLegacyWeddingTrialCancel) {
+        toast({
+          title: "Recurring billing requires separate cancellation",
+          description: "Verify your Square billing status before changing your cardless trial.",
+          variant: "destructive",
+        });
+        return;
+      }
       cancelWeddingSubscriptionMutation.mutate();
       return;
     }
@@ -2052,10 +2066,7 @@ function SubscriptionSettingsPanel() {
                   </div>
                 ) : null}
 
-                {weddingCurrentTier !== "free" &&
-                  ["not_enrolled", "unavailable"].includes(
-                    weddingBillingStatusQuery.data?.enrollmentStatus || ""
-                  ) ? (
+                {weddingCurrentTier !== "free" && canUseLegacyWeddingTrialCancel ? (
                   <div className="mt-3">
                     <Button
                       variant="destructive"
@@ -2185,7 +2196,8 @@ function SubscriptionSettingsPanel() {
                           <Button
                             className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
                             variant={isCurrent ? "outline" : "default"}
-                            disabled={isWeddingBusy || isCurrent}
+                            disabled={isWeddingBusy || isCurrent ||
+                              (tierKey === "free" && !canUseLegacyWeddingTrialCancel)}
                             onClick={() => onSelectWeddingTier(tierKey as any)}
                           >
                             {renderWeddingActionLabel(tierKey as any)}
