@@ -20,17 +20,19 @@ async function sandbox(fn:()=>Promise<void>){
   if(previous[i]===undefined)delete process.env[k];else process.env[k]=previous[i];
  });}
 }
-function fixture(options:{rows?:unknown[],paid?:unknown,failDb?:boolean,failPaid?:boolean}={}){
+function fixture(options:{rows?:unknown[],attempts?:unknown[],paid?:unknown,failDb?:boolean,failPaid?:boolean}={}){
  const calls:string[]=[];
  const db={query:async(sql:string,args:unknown[])=>{
-  calls.push("SELECT");
+  const isAttempt=sql.includes("FROM wedding_square_enrollment_attempts a");
+  calls.push(isAttempt?"ATTEMPTS":"SELECT");
   assert.match(sql,/user_id=\$1/);
   assert.match(sql,/square_environment='sandbox'/);
   assert.match(sql,/square_merchant_id=\$2/);
   assert.match(sql,/LIMIT 2/);
   assert.deepEqual(args,["owner-1","merchant-1","loc-1"]);
+  if(isAttempt)assert.match(sql,/a.status IN \(\x27reserved\x27,\x27submitting\x27,\x27needs_reconciliation\x27\)/);
   if(options.failDb)throw Error("database token leaked");
-  return{rows:options.rows??[valid]};
+  return{rows:isAttempt?(options.attempts??[]):(options.rows??[valid])};
  }};
  const paid=async(userId:string)=>{
   calls.push("PAID");
@@ -48,7 +50,7 @@ test("active row is account-bound, price-checked and never leaks Square identifi
  assert.equal(status.tier,"premium");
  assert.equal(status.requestedFirstChargeDate,"2026-11-18");
  assert.equal(status.verifiedPaidAccessThrough,null);
- assert.deepEqual(x.calls,["SELECT","PAID"]);
+ assert.deepEqual(x.calls,["ATTEMPTS","SELECT","PAID"]);
  assert.doesNotMatch(JSON.stringify(status),/SECRET_CUSTOMER|PRIVATE_PROVIDER_ID|DO_NOT_EXPOSE|merchant-1/);
 }));
 test("actual verified paid date only comes from independent paid reader",()=>sandbox(async()=>{
@@ -59,7 +61,7 @@ test("actual verified paid date only comes from independent paid reader",()=>san
 test("not enrolled and disabled environments never invent a canceled or paid status",()=>sandbox(async()=>{
  const x=fixture({rows:[]});const no=await x.svc.inspect("owner-1");
  assert.equal(no.enrollmentStatus,"not_enrolled");
- assert.deepEqual(x.calls,["SELECT"]);
+ assert.deepEqual(x.calls,["ATTEMPTS","SELECT"]);
  const previous=process.env.SQUARE_ENV;process.env.SQUARE_ENV="production";
  try{const disabled=fixture();const v=await disabled.svc.inspect("owner-1");
   assert.equal(v.enrollmentStatus,"unavailable");
@@ -88,4 +90,18 @@ test("wrong tier/price/consent, invalid dates, overlapping live rows and DB fail
  await assert.rejects(fixture({failDb:true}).svc.inspect("owner-1"),
    e=>e instanceof WeddingSquareBillingStatusError&&!/token|database/i.test(e.message));
  await assert.rejects(fixture({failPaid:true}).svc.inspect("owner-1"),WeddingSquareBillingStatusError);
+}));
+
+test("unresolved Square enrollment is never labeled not enrolled or already canceled",()=>sandbox(async()=>{
+ for(const attemptStatus of ["reserved","submitting","needs_reconciliation","confirmed"]){
+  const x=fixture({rows:[],attempts:[{status:attemptStatus}]});
+  const outcome=await x.svc.inspect("owner-1");
+  assert.equal(outcome.enrollmentStatus,"needs_reconciliation");
+  assert.equal(outcome.tier,null);
+  assert.equal(outcome.verifiedPaidAccessThrough,null);
+  assert.deepEqual(x.calls,["ATTEMPTS"],"ambiguous provider outcome must never read unrelated subscription rows");
+ }
+ await assert.rejects(
+  fixture({attempts:[{status:"submitting"},{status:"confirmed"}]}).svc.inspect("owner-1"),
+  WeddingSquareBillingStatusError);
 }));
