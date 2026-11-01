@@ -78,6 +78,12 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-owner-card-readback.test.ts
       - name: Test authenticated sandbox-only Wedding subscription submission HTTP
         run: node --import tsx --test server/routes/wedding-square-sandbox-submit.test.ts
+      - name: Test sandbox Square cancellation raw HTTP verification
+        run: node --import tsx --test server/lib/wedding-square-sandbox-cancel-transport.test.ts
+      - name: Test owner-bound one-shot sandbox Square cancellation state
+        run: node --import tsx --test server/lib/wedding-square-sandbox-cancellation.test.ts
+      - name: Test authenticated sandbox cancellation HTTP gate
+        run: node --import tsx --test server/routes/wedding-square-sandbox-cancel.test.ts
       - name: Test Square enrollment reconciliation readback
         run: node --import tsx --test server/lib/wedding-square-reconciliation-readback.test.ts
       - name: Test Square provider reconciliation guard
