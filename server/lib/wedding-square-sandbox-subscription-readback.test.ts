@@ -5,10 +5,10 @@ import {
   createWeddingSquareSandboxSubscriptionReadback,
   WeddingSquareSandboxReadbackUnavailableError,
 } from "./wedding-square-sandbox-subscription-readback";
-import type { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
+import type { weddingSquareSandboxCatalogAttestation } from "./wedding-square-sandbox-catalog-attestation";
 import type { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
 
-type AttestationEvidence = Awaited<ReturnType<typeof weddingSquareSandboxMerchantAttestation.inspect>>;
+type AttestationEvidence = Awaited<ReturnType<typeof weddingSquareSandboxCatalogAttestation.inspect>>;
 type SavedEnrollment = Awaited<ReturnType<typeof weddingSquareReconciliationReadback.inspect>>;
 
 const saved = {
@@ -56,7 +56,8 @@ function service(
   returned: unknown = { subscription },
   attestationResponse: unknown = {
     merchantId: "chef-merchant", locationId: "wedding-location",
-    currency: "USD", verifiedSandboxMerchantContext: true,
+    currency: "USD", verifiedSandboxCatalogTerms: true,
+    premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
     authorizesSubscriptionCreation: false, grantsEntitlement: false,
     safeToResubmit: false,
   },
@@ -224,10 +225,11 @@ test("missing or duplicate plan mappings fail closed with no provider request", 
   assert.equal(calls().providerReads, 0);
 }));
 
-test("attestation failure or wrong platform merchant/location prevents subscription GET", () => sandbox(async () => {
+test("catalog attestation failure, wrong merchant/location/plan or unsafe flags prevent subscription GET", () => sandbox(async () => {
   const valid = {
     merchantId: "chef-merchant", locationId: "wedding-location",
-    currency: "USD", verifiedSandboxMerchantContext: true,
+    currency: "USD", verifiedSandboxCatalogTerms: true,
+    premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
     authorizesSubscriptionCreation: false, grantsEntitlement: false,
     safeToResubmit: false,
   };
@@ -239,7 +241,11 @@ test("attestation failure or wrong platform merchant/location prevents subscript
     { ...valid, locationId: "other-location" },
     { ...valid, currency: "CAD" },
     { ...valid, currency: undefined },
-    { ...valid, verifiedSandboxMerchantContext: false },
+    { ...valid, verifiedSandboxCatalogTerms: false },
+    { ...valid, verifiedSandboxCatalogTerms: undefined },
+    { ...valid, premiumPlanVariationId: "marketplace-plan" },
+    { ...valid, elitePlanVariationId: "marketplace-plan" },
+    { ...valid, premiumPlanVariationId: undefined },
     { ...valid, authorizesSubscriptionCreation: true },
     { ...valid, grantsEntitlement: true },
     { ...valid, safeToResubmit: true },
