@@ -727,3 +727,59 @@ test("real Square v43 GET HTTP failures never retry or become enrollment evidenc
     globalThis.fetch = originalFetch;
   }
 }));
+
+test("Square v43 mixed 2xx subscription and errors cannot become reconciliation evidence", () => sandbox(async () => {
+  // Exercise the real SDK JSON decoder; all transport stays intercepted.
+  const originalFetch = globalThis.fetch;
+  const transport: Array<{ method: string; path: string }> = [];
+  let savedReads = 0;
+  let catalogReads = 0;
+  globalThis.fetch = async (input, init) => {
+    const method = input instanceof Request ? input.method : init?.method ?? "GET";
+    const url = input instanceof Request ? input.url : String(input);
+    transport.push({ method, path: new URL(url).pathname });
+    return new Response(JSON.stringify({
+      subscription: {
+        id: "sub-confirmed",
+        customer_id: "customer-1",
+        card_id: "card-1",
+        location_id: "wedding-location",
+        plan_variation_id: "wedding-premium",
+        status: "ACTIVE",
+        start_date: "2026-11-11",
+        timezone: "UTC",
+      },
+      errors: [{ code: "INTERNAL_SERVER_ERROR", detail: "credential=SECRET" }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const sdk = new SquareClient({
+      token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+    });
+    const readback = createWeddingSquareSandboxSubscriptionReadback(
+      { async inspect() { savedReads++; return saved; } },
+      (subscriptionId) => sdk.subscriptions.get({ subscriptionId }, { maxRetries: 0 }),
+      { async inspect() {
+        catalogReads++;
+        return {
+          merchantId: "chef-merchant", locationId: "wedding-location",
+          currency: "USD" as const, verifiedSandboxCatalogTerms: true as const,
+          premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
+          premiumPlanId: "wedding-premium-plan", elitePlanId: "wedding-elite-plan",
+          authorizesSubscriptionCreation: false as const,
+          grantsEntitlement: false as const, safeToResubmit: false as const,
+        };
+      } },
+    );
+    await assert.rejects(readback.inspect("enrollment-1", "chef-user"), (error: unknown) => {
+      assert.ok(error instanceof WeddingSquareSandboxReadbackUnavailableError);
+      assert.doesNotMatch(error.message, /SECRET|offline-contract-token|sub-confirmed/);
+      return true;
+    });
+    // Transport assertions must be OUTSIDE the sanitized error path.
+    assert.deepEqual(transport, [{ method: "GET", path: "/v2/subscriptions/sub-confirmed" }]);
+    assert.deepEqual({ savedReads, catalogReads }, { savedReads: 1, catalogReads: 1 });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
