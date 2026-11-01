@@ -70,6 +70,7 @@ export const weddingSquareSubscriptions = pgTable("wedding_square_subscriptions"
   cancellationRequestedAt: timestamp("cancellation_requested_at", { withTimezone: true }),
   providerCancelledAt: timestamp("provider_cancelled_at", { withTimezone: true }),
   lastReconciledAt: timestamp("last_reconciled_at", { withTimezone: true }),
+  lastRenewalScanAt: timestamp("last_renewal_scan_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
