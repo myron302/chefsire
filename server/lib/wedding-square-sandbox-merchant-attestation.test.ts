@@ -268,3 +268,55 @@ test("Square v43 merchant/me and location GET wire responses verify token-owned 
     globalThis.fetch = originalFetch;
   }
 }));
+
+
+test("real Square v43 merchant and location HTTP failures stop verification without retries", () => sandbox(async () => {
+  // Intercept transport at fetch; all SDK requests remain offline and GET-only.
+  const originalFetch = globalThis.fetch;
+  const expectedPaths = ["/v2/merchants/me", "/v2/locations/chef-location"];
+  try {
+    for (const status of [429, 503]) {
+      for (const failureAt of [1, 2]) {
+        const requests: Array<{ method: string; path: string }> = [];
+        globalThis.fetch = async (input, init) => {
+          const url = input instanceof Request ? input.url : String(input);
+          const method = input instanceof Request ? input.method : init?.method ?? "GET";
+          const path = new URL(url).pathname;
+          requests.push({ method, path });
+          if (requests.length === failureAt) {
+            return new Response(JSON.stringify({
+              errors: [{ code: "SERVICE_UNAVAILABLE", detail: "credential=SECRET" }],
+            }), {
+              status,
+              headers: { "content-type": "application/json", "retry-after": "0" },
+            });
+          }
+          return new Response(JSON.stringify({
+            merchant: {
+              id: "chef-merchant", status: "ACTIVE", currency: "USD", country: "US",
+            },
+          }), { status: 200, headers: { "content-type": "application/json" } });
+        };
+        const sdk = new SquareClient({
+          token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+        });
+        const attestation = createWeddingSquareSandboxMerchantAttestation(
+          (merchantId) => sdk.merchants.get({ merchantId }, { maxRetries: 0 }),
+          (locationId) => sdk.locations.get({ locationId }, { maxRetries: 0 }),
+        );
+        await assert.rejects(attestation.inspect(), (error: unknown) => {
+          assert.ok(error instanceof WeddingSquareSandboxMerchantAttestationError);
+          assert.doesNotMatch(error.message, /SECRET|offline-contract-token|chef-merchant|chef-location/);
+          return true;
+        });
+        // The guard intentionally sanitizes SDK exceptions; check transport
+        // after rejection so a swallowed fetch assertion cannot pass the test.
+        assert.deepEqual(requests, expectedPaths.slice(0, failureAt).map((path) => ({
+          method: "GET", path,
+        })));
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
