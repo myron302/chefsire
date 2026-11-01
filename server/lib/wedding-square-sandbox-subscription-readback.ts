@@ -63,12 +63,15 @@ export function createWeddingSquareSandboxSubscriptionReadback(
       const location = process.env.SQUARE_LOCATION_ID;
       const premiumPlan = process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID;
       const elitePlan = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID;
+      const premiumParentId = process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID;
+      const eliteParentId = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID;
       if (process.env.SQUARE_ENV !== "sandbox" ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           (process.env.SQUARE_CURRENCY !== undefined && process.env.SQUARE_CURRENCY !== "USD") ||
           !exactId(expectedMerchantId) || !exactId(location) ||
           !exactId(premiumPlan) || !exactId(elitePlan) ||
-          premiumPlan === elitePlan ||
+          !exactId(premiumParentId) || !exactId(eliteParentId) ||
+          premiumPlan === elitePlan || premiumParentId === eliteParentId ||
           !exactId(attemptId) || !exactId(authenticatedUserId)) {
         throw new WeddingSquareSandboxReadbackUnavailableError();
       }
@@ -101,6 +104,8 @@ export function createWeddingSquareSandboxSubscriptionReadback(
             attested.currency !== "USD" ||
             attested.premiumPlanVariationId !== premiumPlan ||
             attested.elitePlanVariationId !== elitePlan ||
+            attested.premiumPlanId !== premiumParentId ||
+            attested.elitePlanId !== eliteParentId ||
             attested.authorizesSubscriptionCreation !== false ||
             attested.grantsEntitlement !== false ||
             attested.safeToResubmit !== false) {
