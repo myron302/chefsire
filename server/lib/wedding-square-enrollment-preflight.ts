@@ -8,13 +8,19 @@ import type { WeddingPaidTier } from "./wedding-square-billing-policy";
  *
  * Wedding requires separate, explicitly reviewed subscription plan mappings.
  * Never silently reuse Marketplace, catering, or other Square product plans.
+ * Require exact, distinct parent plan IDs as well as variation IDs; never
+ * normalize provider identities by trimming whitespace.
  */
+const exactProviderId = z.string().min(1).refine((value) => value === value.trim());
+
 const sandboxEnvironmentSchema = z.object({
   SQUARE_ENV: z.literal("sandbox"),
   SQUARE_ACCESS_TOKEN: z.string().trim().min(1),
-  SQUARE_LOCATION_ID: z.string().trim().min(1),
-  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: z.string().trim().min(1),
-  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: z.string().trim().min(1),
+  SQUARE_LOCATION_ID: exactProviderId,
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: exactProviderId,
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: exactProviderId,
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: exactProviderId,
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: exactProviderId,
 }).passthrough();
 
 export class WeddingSquareSandboxUnavailableError extends Error {
@@ -38,13 +44,17 @@ export function weddingSquareSandboxPreflight(
     throw new WeddingSquareSandboxUnavailableError();
   }
   const cfg = safe.data;
-  if (cfg.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID === cfg.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID) {
+  if (cfg.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID === cfg.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID ||
+      cfg.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID === cfg.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID) {
     throw new WeddingSquareSandboxUnavailableError();
   }
   return Object.freeze({
     environment: "sandbox" as const,
     tier,
     locationId: cfg.SQUARE_LOCATION_ID,
+    planId: tier === "premium"
+      ? cfg.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID
+      : cfg.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID,
     planVariationId: tier === "premium"
       ? cfg.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID
       : cfg.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID,
