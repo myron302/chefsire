@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { WEDDING_MONTHLY_CENTS, type WeddingPaidTier } from "./wedding-square-billing-policy";
+import { WEDDING_CONSENT_VERSION, WEDDING_MONTHLY_CENTS, type WeddingPaidTier } from "./wedding-square-billing-policy";
 
 /**
  * Wedding-only paid access read model: no legacy tier field, webhook payload,
@@ -63,6 +63,10 @@ export async function readVerifiedWeddingPaid(
          AND s.provider_status IN ('ACTIVE','CANCELED')
          AND s.tier IN ('premium','elite')
          AND s.agreed_currency = 'USD'
+         -- A settled payment must not promote a subscription without the
+         -- exact approved monthly auto-renewal consent recorded beforehand.
+         AND s.billing_consent_terms_version = ${WEDDING_CONSENT_VERSION}
+         AND s.billing_consent_at <= e.provider_paid_at
          AND ((s.tier = 'premium' AND s.agreed_monthly_amount_cents = 2499)
            OR (s.tier = 'elite' AND s.agreed_monthly_amount_cents = 4999))
          AND e.verified_currency = 'USD'
