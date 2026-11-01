@@ -141,6 +141,48 @@ test("rejects mutated or malformed verified-consent receipt metadata", () => {
   }
 });
 
+test("rejects forged receipt tier even when config and price appear consistent", () => {
+  // A type assertion or a reconstructed object cannot make an unsupported
+  // tier eligible for subscription creation.
+  for (const tier of ["business", "", "PREMIUM"]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base,
+      consent: { ...consent, tier } as typeof consent,
+      config: { ...config, tier } as typeof config,
+    }), WeddingSquareRequestError);
+  }
+});
+
+test("requires literal true for automatic monthly renewal consent", () => {
+  // Truthy strings and numbers are not explicit billing authorization.
+  for (const automaticRenewal of ["false", "true", 1, {}]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base,
+      consent: { ...consent, automaticRenewal } as typeof consent,
+    }), WeddingSquareRequestError);
+  }
+});
+
+test("rejects non-null malformed trial expiry on an otherwise immediate receipt", () => {
+  const immediate = verifyWeddingEnrollmentConsent({
+    userId: "wedding-user", now, trialExpiresAt: null,
+    request: {
+      tier: "premium", consentVersion: WEDDING_CONSENT_VERSION,
+      acceptedAutomaticMonthlyRenewal: true, acceptedAmountCents: 2499,
+      acceptedCurrency: "USD", acknowledgedFirstChargeStartDate: null,
+    },
+  });
+  assert.equal("startDate" in prepareWeddingSquareSubscriptionRequest({
+    ...base, consent: immediate,
+  }), false);
+  for (const trialExpiresAt of [undefined, 0, false, {}]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base,
+      consent: { ...immediate, trialExpiresAt } as typeof consent,
+    }), WeddingSquareRequestError);
+  }
+});
+
 test("cannot revive an already expired trial by mutating the consent receipt", () => {
   // A fabricated past trial expiry with a future start previously satisfied
   // only the non-early-date comparison; it contradicts the verified quote.

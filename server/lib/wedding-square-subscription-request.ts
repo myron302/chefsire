@@ -45,6 +45,9 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
   const consentTime = typeof consent.billingConsentAt === "string"
     ? Date.parse(consent.billingConsentAt) : NaN;
   if (config.environment !== "sandbox" ||
+      // Typed receipts may be reconstructed or mutated after verification.
+      // Never allow an unknown tier to bypass both canonical price checks.
+      (consent.tier !== "premium" && consent.tier !== "elite") ||
       config.tier !== consent.tier ||
       typeof consent.userId !== "string" || !consent.userId.trim() ||
       consent.userId !== consent.userId.trim() ||
@@ -52,9 +55,12 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
       typeof consent.billingConsentAt !== "string" ||
       !Number.isFinite(consentTime) ||
       new Date(consentTime).toISOString() !== consent.billingConsentAt ||
-      !consent.automaticRenewal ||
+      consent.automaticRenewal !== true ||
       consent.agreedCurrency !== "USD" ||
-      consent.subscriptionTimezone !== "UTC") {
+      consent.subscriptionTimezone !== "UTC" ||
+      // The only valid no-trial sentinel is null. Undefined/malformed values
+      // must not be silently treated as an expired or absent trial.
+      (consent.trialExpiresAt !== null && typeof consent.trialExpiresAt !== "string")) {
     throw new WeddingSquareRequestError();
   }
   const strings = [
