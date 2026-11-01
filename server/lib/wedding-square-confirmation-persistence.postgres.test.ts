@@ -42,6 +42,7 @@ test("real PostgreSQL: provider confirmation + subscription ledger commit togeth
     for (const name of [
       "20261101_01_wedding_square_enrollment_attempts.sql",
       "20261101_02_wedding_square_billing_foundation.sql",
+      "20261101_03_wedding_square_payment_reconciliation.sql",
     ]) {
       await client.query(readFileSync(path.join(root, "server/migrations", name), "utf8"));
     }
