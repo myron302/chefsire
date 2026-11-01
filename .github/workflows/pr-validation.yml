@@ -70,6 +70,8 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-confirmation-coordinator.test.ts
       - name: Test one-shot sandbox Square subscription submitter and reconciliation gates
         run: node --import tsx --test server/lib/wedding-square-sandbox-subscription-submitter.test.ts
+      - name: Test raw Square sandbox CreateSubscription HTTP and SDK normalization regression
+        run: node --import tsx --test server/lib/wedding-square-sandbox-subscription-http.test.ts
       - name: Test Square enrollment reconciliation readback
         run: node --import tsx --test server/lib/wedding-square-reconciliation-readback.test.ts
       - name: Test Square provider reconciliation guard
