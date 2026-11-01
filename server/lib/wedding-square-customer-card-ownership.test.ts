@@ -53,7 +53,7 @@ test("disabled sandbox rejects even a matching binding", () => {
 test("rejects noncanonical matching identities even when every equality check would pass", () => sandbox(() => {
   // A forged/poisoned saved binding and provider evidence can agree byte-for-byte.
   // Equality alone is insufficient if those bytes are not valid opaque IDs.
-  for (const bad of [" padded ", "embedded\\nnewline", "embedded\\ttab", "embedded\\u0000nul", "embedded\\u007fdel"]) {
+  for (const bad of [" padded ", "embedded\nnewline", "embedded\ttab", "embedded\u0000nul", "embedded\u007fdel"]) {
     const cases = [
       {
         authenticatedUserId: bad,
