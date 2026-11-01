@@ -22,11 +22,15 @@ test("real PostgreSQL: provider confirmation + subscription ledger commit togeth
       !/test/i.test(dbUrl.pathname)) throw Error("Remote or non-disposable databases forbidden");
   const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 5000 });
   const schema = "wedding_test_" + randomUUID().replaceAll("-", "");
-  const keys = ["SQUARE_ENV","WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED","WEDDING_SQUARE_SANDBOX_MERCHANT_ID","SQUARE_LOCATION_ID"] as const;
+  const keys = ["SQUARE_ENV","WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED","WEDDING_SQUARE_SANDBOX_MERCHANT_ID","SQUARE_LOCATION_ID",
+    "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID"] as const;
   const previous = keys.map(key => process.env[key]);
   Object.assign(process.env, {
     SQUARE_ENV: "sandbox", WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
     WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant-1", SQUARE_LOCATION_ID: "loc-1",
+    WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "premium-var",
+    WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "elite-var",
   });
   let connected = false;
   try {
