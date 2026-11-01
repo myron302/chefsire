@@ -69,9 +69,9 @@ function verifyVariation(response: unknown, id: string, locationId: string, cent
   // proration or alternate anchor date that could contradict consent.
   if (object.id !== id || object.isDeleted === true ||
       object.absentAtLocationIds?.includes(locationId) ||
-      !(// Square defaults an omitted presentAtAllLocations to true.
-      (object.presentAtAllLocations !== false ||
-        object.presentAtLocationIds?.includes(locationId))) ||
+      // Square defaults an omitted presentAtAllLocations to true.
+      (object.presentAtAllLocations === false &&
+       !object.presentAtLocationIds?.includes(locationId)) ||
       data.successorPlanVariationId !== undefined ||
       data.canProrate === true || data.monthlyBillingAnchorDate !== undefined ||
       BigInt(phase.ordinal) !== 0n || phase.periods !== undefined ||
