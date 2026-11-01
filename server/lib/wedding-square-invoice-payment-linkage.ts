@@ -5,6 +5,7 @@ import { z } from "zod";
  * authenticated Square sandbox invoice/payment readback.
  *
  * Inputs must eventually come from separate platform-account Square GETs,
+ * including a fresh subscription with its invoiceIds membership,
  * never a browser, webhook payload or a connected Catering seller.
  * This does not establish a paid period, authorize a charge, grant access,
  * verify the expected amount/tax, or persist any provider record.
@@ -15,6 +16,18 @@ const canonicalId = z.string().min(1).refine(
 const usdMoney = z.object({
   amount: z.bigint().nonnegative(),
   currency: z.literal("USD"),
+}).passthrough();
+const subscriptionEnvelope = z.object({
+  subscription: z.object({
+    id: canonicalId,
+    customerId: canonicalId,
+    locationId: canonicalId,
+    planVariationId: canonicalId,
+    invoiceIds: z.array(canonicalId).min(1).refine(
+      (ids) => new Set(ids).size === ids.length,
+    ),
+  }).passthrough(),
+  errors: z.array(z.unknown()).max(0).optional(),
 }).passthrough();
 const invoiceEnvelope = z.object({
   invoice: z.object({
@@ -47,6 +60,7 @@ const expectedSchema = z.object({
   subscriptionId: canonicalId,
   customerId: canonicalId,
   locationId: canonicalId,
+  planVariationId: canonicalId,
 });
 
 export class WeddingSquareInvoicePaymentLinkageError extends Error {
@@ -64,6 +78,7 @@ export class WeddingSquareInvoicePaymentLinkageError extends Error {
  */
 export function inspectWeddingSquareInvoicePaymentLinkage(
   expected: unknown,
+  subscriptionResponse: unknown,
   invoiceResponse: unknown,
   paymentResponse: unknown,
 ) {
@@ -73,14 +88,21 @@ export function inspectWeddingSquareInvoicePaymentLinkage(
     throw new WeddingSquareInvoicePaymentLinkageError();
   }
   const saved = expectedSchema.safeParse(expected);
+  const subscription = subscriptionEnvelope.safeParse(subscriptionResponse);
   const invoice = invoiceEnvelope.safeParse(invoiceResponse);
   const payment = paymentEnvelope.safeParse(paymentResponse);
-  if (!saved.success || !invoice.success || !payment.success) {
+  if (!saved.success || !subscription.success || !invoice.success || !payment.success) {
     throw new WeddingSquareInvoicePaymentLinkageError();
   }
+  const s = subscription.data.subscription;
   const i = invoice.data.invoice;
   const p = payment.data.payment;
-  if (i.subscriptionId !== saved.data.subscriptionId ||
+  if (s.id !== saved.data.subscriptionId ||
+      s.customerId !== saved.data.customerId ||
+      s.locationId !== saved.data.locationId ||
+      s.planVariationId !== saved.data.planVariationId ||
+      !s.invoiceIds.includes(i.id) ||
+      i.subscriptionId !== saved.data.subscriptionId ||
       i.primaryRecipient.customerId !== saved.data.customerId ||
       p.customerId !== saved.data.customerId ||
       i.locationId !== saved.data.locationId ||

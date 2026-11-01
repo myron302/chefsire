@@ -9,6 +9,17 @@ const expected = {
   subscriptionId: "sub-wedding-1",
   customerId: "customer-wedding-1",
   locationId: "location-wedding-1",
+  planVariationId: "wedding-premium-variation",
+};
+const subscription = {
+  subscription: {
+    id: expected.subscriptionId,
+    customerId: expected.customerId,
+    locationId: expected.locationId,
+    planVariationId: expected.planVariationId,
+    invoiceIds: ["invoice-1"],
+    status: "ACTIVE",
+  },
 };
 const invoice = {
   invoice: {
@@ -48,8 +59,13 @@ function sandbox(fn: () => void) {
   }
 }
 
-function inspect(saved: unknown = expected, i: unknown = invoice, p: unknown = payment) {
-  return inspectWeddingSquareInvoicePaymentLinkage(saved, i, p);
+function inspect(
+  saved: unknown = expected,
+  i: unknown = invoice,
+  p: unknown = payment,
+  sub: unknown = subscription,
+) {
+  return inspectWeddingSquareInvoicePaymentLinkage(saved, sub, i, p);
 }
 
 test("matching invoice and payment return a non-entitling reconciliation candidate only", () => sandbox(() => {
@@ -85,7 +101,7 @@ test("cross-subscription, cross-customer, cross-location and cross-order evidenc
   for (const changed of badPayments) {
     assert.throws(() => inspect(expected, invoice, { payment: changed }), errorType);
   }
-  for (const key of ["subscriptionId", "customerId", "locationId"] as const) {
+  for (const key of ["subscriptionId", "customerId", "locationId", "planVariationId"] as const) {
     assert.throws(() => inspect({ ...expected, [key]: "other" }), errorType);
   }
 }));
@@ -133,7 +149,7 @@ test("refunds, tips, currency, nonpositive amounts and mismatched totals cannot 
 
 test("malformed provider and persisted identifiers cannot match even byte-for-byte", () => sandbox(() => {
   const bad = "same" + String.fromCharCode(0) + "id";
-  for (const key of ["subscriptionId", "customerId", "locationId"] as const) {
+  for (const key of ["subscriptionId", "customerId", "locationId", "planVariationId"] as const) {
     assert.throws(() => inspect({ ...expected, [key]: bad }), errorType);
   }
   for (const key of ["id", "subscriptionId", "orderId", "locationId"] as const) {
@@ -161,4 +177,26 @@ test("sandbox-only guard never accepts live, disabled or unsupported currency mo
   const candidate = inspect();
   assert.equal(candidate.requiresAmountAndCoverageVerification, true);
   assert.equal(candidate.grantsEntitlement, false);
+}));
+
+test("invoice must be listed on independently retrieved subscription and plan must match", () => sandbox(() => {
+  for (const changed of [
+    { ...subscription.subscription, id: "sub-unrelated" },
+    { ...subscription.subscription, customerId: "another-customer" },
+    { ...subscription.subscription, locationId: "another-location" },
+    { ...subscription.subscription, planVariationId: "wedding-elite-variation" },
+    { ...subscription.subscription, invoiceIds: ["other-invoice"] },
+    { ...subscription.subscription, invoiceIds: [] },
+    { ...subscription.subscription, invoiceIds: ["invoice-1", "invoice-1"] },
+    { ...subscription.subscription, invoiceIds: null },
+    { ...subscription.subscription, invoiceIds: ["invoice-1", " bad-invoice "] },
+  ]) {
+    assert.throws(() => inspect(expected, invoice, payment, { subscription: changed }), errorType);
+  }
+  for (const errors of [[{ code: "ERROR" }], "malformed", null]) {
+    assert.throws(() => inspect(expected, invoice, payment, { ...subscription, errors }), errorType);
+  }
+  assert.equal(inspect(expected, invoice, payment, {
+    subscription: { ...subscription.subscription, invoiceIds: ["older-invoice", "invoice-1"] },
+  }).grantsEntitlement, false);
 }));
