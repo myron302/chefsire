@@ -80,5 +80,7 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-sandbox-catalog-attestation.test.ts
       - name: Test offline Square invoice/payment identity linkage
         run: node --import tsx --test server/lib/wedding-square-invoice-payment-linkage.test.ts
+      - name: Test real Square SDK invoice/payment readback contract offline
+        run: node --import tsx --test server/lib/wedding-square-invoice-payment-sdk-contract.test.ts
       - name: Build client and server
         run: npm run build
