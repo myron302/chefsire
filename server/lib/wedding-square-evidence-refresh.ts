@@ -49,7 +49,8 @@ export function createWeddingSquareEvidenceRefresh(db:Db,risk:Risk){
                 e.square_merchant_id,s.square_customer_id,s.square_location_id,
                 s.agreed_monthly_amount_cents,s.agreed_currency,
                 s.billing_consent_terms_version,
-                e.verified_amount_cents,e.last_payment_reconciled_at,
+                e.verified_amount_cents,
+                e.last_payment_reconciled_at::text AS last_payment_reconciled_at,
                 e.payment_revoked_at,s.provider_status
            FROM wedding_square_invoice_evidence e
            JOIN wedding_square_subscriptions s ON s.id=e.wedding_subscription_id
