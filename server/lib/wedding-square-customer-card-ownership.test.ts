@@ -49,3 +49,56 @@ test("disabled sandbox rejects even a matching binding", () => {
     if (previous !== undefined) process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = previous;
   }
 });
+
+test("rejects noncanonical matching identities even when every equality check would pass", () => sandbox(() => {
+  // A forged/poisoned saved binding and provider evidence can agree byte-for-byte.
+  // Equality alone is insufficient if those bytes are not valid opaque IDs.
+  for (const bad of [" padded ", "embedded\\nnewline", "embedded\\ttab", "embedded\\u0000nul", "embedded\\u007fdel"]) {
+    const cases = [
+      {
+        authenticatedUserId: bad,
+        savedBinding: { ...input.savedBinding, userId: bad },
+      },
+      {
+        expectedSandboxMerchantId: bad,
+        savedBinding: { ...input.savedBinding, squareMerchantId: bad },
+        providerCustomer: { ...input.providerCustomer, squareMerchantId: bad },
+      },
+      {
+        savedBinding: { ...input.savedBinding, squareCustomerId: bad },
+        providerCustomer: { ...input.providerCustomer, id: bad },
+        providerCard: { ...input.providerCard, customerId: bad },
+      },
+      { providerCard: { ...input.providerCard, id: bad } },
+    ];
+    for (const changed of cases) {
+      assert.throws(
+        () => verifyWeddingSquareCustomerCardOwnership({ ...input, ...changed }),
+        WeddingSquareOwnershipError,
+      );
+    }
+  }
+}));
+
+test("rejects malformed identity types without exposing provider values", () => sandbox(() => {
+  for (const changed of [
+    { authenticatedUserId: null },
+    { expectedSandboxMerchantId: 42 },
+    { savedBinding: { ...input.savedBinding, userId: null } },
+    { savedBinding: { ...input.savedBinding, squareMerchantId: 42 } },
+    { savedBinding: { ...input.savedBinding, squareCustomerId: null } },
+    { providerCustomer: { ...input.providerCustomer, id: 42 } },
+    { providerCustomer: { ...input.providerCustomer, squareMerchantId: null } },
+    { providerCard: { ...input.providerCard, customerId: 42 } },
+    { providerCard: { ...input.providerCard, id: null } },
+  ]) {
+    assert.throws(
+      () => verifyWeddingSquareCustomerCardOwnership({ ...input, ...changed } as typeof input),
+      (error: unknown) => {
+        assert.ok(error instanceof WeddingSquareOwnershipError);
+        assert.equal(error.message, "Square customer and card ownership could not be verified.");
+        return true;
+      },
+    );
+  }
+}));
