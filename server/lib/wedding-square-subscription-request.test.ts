@@ -58,6 +58,40 @@ test("fails closed if trial-safe start date is absent or earlier than expiry", (
   }
 });
 
+test("rejects a later but otherwise valid billing date not acknowledged in consent", () => {
+  // Being after trial expiry is necessary, but not sufficient: the user
+  // consented to the exact start date from the authoritative server quote.
+  for (const requestedStartDate of ["2026-11-12", "2026-12-01"]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, consent: { ...consent, requestedStartDate },
+    }), WeddingSquareRequestError);
+  }
+});
+
+test("enforces exact UTC midnight and subsecond trial boundaries", () => {
+  const scenarios = [
+    { expiry: "2026-11-10T00:00:00.000Z", expected: "2026-11-10", later: "2026-11-11" },
+    { expiry: "2026-11-10T00:00:00.001Z", expected: "2026-11-11", later: "2026-11-12" },
+    { expiry: "2028-02-29T12:00:00.000Z", expected: "2028-03-01", later: "2028-03-02" },
+  ];
+  for (const { expiry, expected, later } of scenarios) {
+    const receipt = verifyWeddingEnrollmentConsent({
+      userId: "wedding-user", now, trialExpiresAt: new Date(expiry),
+      request: {
+        tier: "premium", consentVersion: WEDDING_CONSENT_VERSION,
+        acceptedAutomaticMonthlyRenewal: true, acceptedAmountCents: 2499,
+        acceptedCurrency: "USD", acknowledgedFirstChargeStartDate: expected,
+      },
+    });
+    assert.equal(prepareWeddingSquareSubscriptionRequest({
+      ...base, consent: receipt,
+    }).startDate, expected);
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, consent: { ...receipt, requestedStartDate: later },
+    }), WeddingSquareRequestError);
+  }
+});
+
 test("rejects impossible, malformed or non-UTC start dates even on mutated consent receipts", () => {
   for (const requestedStartDate of [
     "", "not-a-date", "2026-02-30", "2026-13-01", "2026-11-1",
