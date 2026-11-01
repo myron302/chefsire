@@ -7,6 +7,7 @@ const now=Date.now();
 const DAY=86_400_000;
 const start=day(now-2*DAY);
 const through=day(now+18*DAY);
+const created=iso(now-25*60*60*1000);
 const paid=iso(now-2*60*60*1000);
 const issued=iso(now-10*60*60*1000);
 const owner={attemptId:"attempt-1",status:"confirmed",
@@ -23,7 +24,9 @@ const invoice={invoice:{id:"inv-1",subscription_id:"sub-1",order_id:"order-1",
   location_id:"loc-1",status:"PAID",created_at:issued,
   primary_recipient:{customer_id:"customer-1"}}};
 const payment={payment:{id:"pay-1",order_id:"order-1",location_id:"loc-1",
-  customer_id:"customer-1",status:"COMPLETED",created_at:paid,
+  customer_id:"customer-1",status:"COMPLETED",created_at:created,
+  source_type:"CARD",
+  card_details:{status:"CAPTURED",card_payment_timeline:{captured_at:paid}},
   amount_money:{amount:2499,currency:"USD"},
   total_money:{amount:2499,currency:"USD"},
   refunded_money:{amount:0,currency:"USD"},refund_ids:[]}};
@@ -86,8 +89,11 @@ test("unpaid/foreign invoice, wrong newest invoice or customer, malformed 2xx fa
 }));
 test("invoiced period is NOT paid proof when settlement date is future, before invoice or coverage ends",()=>sandbox(async()=>{
  for(const changed of [
+  {payment:{payment:{...payment.payment,card_details:{status:"CAPTURED",card_payment_timeline:{captured_at:iso(now+DAY)}}}}},
+  {payment:{payment:{...payment.payment,card_details:{status:"CAPTURED",card_payment_timeline:{captured_at:iso(now-3*DAY)}}}}},
   {payment:{payment:{...payment.payment,created_at:iso(now+DAY)}}},
-  {payment:{payment:{...payment.payment,created_at:iso(now-3*DAY)}}},
+  {payment:{payment:{...payment.payment,card_details:undefined}}},
+  {payment:{payment:{...payment.payment,card_details:{status:"AUTHORIZED",card_payment_timeline:{captured_at:paid}}}}},
   {sub:{subscription:{...sub.subscription,charged_through_date:day(now-DAY)}}},
   {sub:{subscription:{...sub.subscription,charged_through_date:day(now+60*DAY)}}},
   {sub:{subscription:{...sub.subscription,charged_through_date:"2026-99-99"}}},
