@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { SquareClient, SquareEnvironment } from "square";
 import {
@@ -16,7 +17,15 @@ const saved = {
   attemptId: "enrollment-1",
   status: "confirmed" as const,
   persistedIdempotencyKey: "saved-idempotency",
-  persistedRequestFingerprint: "a".repeat(64),
+  persistedRequestFingerprint: createHash("sha256").update(JSON.stringify({
+    idempotencyKey: "saved-idempotency",
+    locationId: "wedding-location",
+    planVariationId: "wedding-premium",
+    customerId: "customer-1",
+    cardId: "card-1",
+    timezone: "UTC",
+    startDate: "2026-11-11",
+  })).digest("hex"),
   providerSubscriptionId: "sub-confirmed",
   customerId: "customer-1",
   cardId: "card-1",
@@ -163,8 +172,50 @@ test("provider start date and timezone must match the saved consented UTC billin
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
     assert.deepEqual(calls(), { dbReads: 1, attestationReads: 1, providerReads: 1 });
   }
+  // Changing the saved date without updating its reserved request digest now
+  // fails before even looking up the merchant or catalog.
   const { readback, calls } = service({ ...saved, requestedStartDate: "2026-11-12" });
   await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+  assert.deepEqual(calls(), { dbReads: 1, attestationReads: 0, providerReads: 0 });
+}));
+
+test("saved request fingerprint must match exact persisted request before any provider GET", () => sandbox(async () => {
+  const changed = [
+    { persistedRequestFingerprint: "a".repeat(64) },
+    { persistedRequestFingerprint: "b".repeat(64) },
+    { persistedIdempotencyKey: "other-idempotency" },
+    { customerId: "another-customer" },
+    { cardId: "another-card" },
+    { planVariationId: "wedding-elite" },
+    { requestedStartDate: null },
+  ];
+  for (const mutation of changed) {
+    const { readback, calls } = service({ ...saved, ...mutation });
+    await assert.rejects(readback.inspect("enrollment-1", "chef-user"), (error: unknown) => {
+      assert.ok(error instanceof WeddingSquareSandboxReadbackUnavailableError);
+      assert.doesNotMatch(error.message, /customer-1|saved-idempotency|wedding-premium/);
+      return true;
+    });
+    assert.deepEqual(calls(), { dbReads: 1, attestationReads: 0, providerReads: 0 });
+  }
+}));
+
+test("valid immediate-start reservation omits startDate from fingerprint without granting entitlement", () => sandbox(async () => {
+  const immediate = { ...saved, requestedStartDate: null };
+  const { persistedRequestFingerprint: _old, ...fields } = immediate;
+  const digest = createHash("sha256").update(JSON.stringify({
+    idempotencyKey: fields.persistedIdempotencyKey,
+    locationId: fields.locationId,
+    planVariationId: fields.planVariationId,
+    customerId: fields.customerId,
+    cardId: fields.cardId,
+    timezone: "UTC",
+  })).digest("hex");
+  const { readback, calls } = service({ ...immediate, persistedRequestFingerprint: digest });
+  const result = await readback.inspect("enrollment-1", "chef-user");
+  assert.equal(result.requiresOperatorReconciliation, true);
+  assert.equal(result.grantsEntitlement, false);
+  assert.equal(result.safeToResubmit, false);
   assert.deepEqual(calls(), { dbReads: 1, attestationReads: 1, providerReads: 1 });
 }));
 
