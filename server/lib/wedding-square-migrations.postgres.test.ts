@@ -78,10 +78,12 @@ test("the prepared Wedding Square migrations match Drizzle schema on a disposabl
         const dbColumn = actual.find((item) => item.column_name === column.name);
         assert.ok(dbColumn, column.name + " missing from " + config.name);
         assert.equal(dbColumn.is_nullable, column.notNull ? "NO" : "YES", config.name + "." + column.name);
-        const expectedType = column.dataType === "date" ? "date"
+        // Drizzle's JS dataType "date" also describes timestamptz Date
+        // objects, so use its PostgreSQL columnType instead.
+        const expectedType = column.columnType.startsWith("PgTimestamp") ? "timestamp with time zone"
+          : column.columnType.startsWith("PgDate") ? "date"
           : column.columnType.startsWith("PgUUID") ? "uuid"
           : column.columnType.startsWith("PgVarchar") ? "character varying"
-          : column.columnType.startsWith("PgTimestamp") ? "timestamp with time zone"
           : column.columnType.startsWith("PgInteger") ? "integer"
           : "text";
         assert.equal(dbColumn.data_type, expectedType, config.name + "." + column.name);
