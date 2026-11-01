@@ -8,14 +8,18 @@ import type { WeddingPaidTier } from "./wedding-square-billing-policy";
  *
  * Wedding requires separate, explicitly reviewed subscription plan mappings.
  * Never silently reuse Marketplace, catering, or other Square product plans.
- * Require exact, distinct parent plan IDs as well as variation IDs; never
- * normalize provider identities by trimming whitespace.
+ * Require exact merchant, location, distinct parent plan and variation IDs;
+ * reject currency mismatches and never trim provider identities. This is
+ * configuration validation only, NOT token-owned merchant attestation.
  */
 const exactProviderId = z.string().min(1).refine((value) => value === value.trim());
 
 const sandboxEnvironmentSchema = z.object({
   SQUARE_ENV: z.literal("sandbox"),
-  SQUARE_ACCESS_TOKEN: z.string().trim().min(1),
+  // A padded token is not the exact credential the operator configured.
+  SQUARE_ACCESS_TOKEN: exactProviderId,
+  SQUARE_CURRENCY: z.literal("USD").optional(),
+  WEDDING_SQUARE_SANDBOX_MERCHANT_ID: exactProviderId,
   SQUARE_LOCATION_ID: exactProviderId,
   WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: exactProviderId,
   WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: exactProviderId,
@@ -51,6 +55,7 @@ export function weddingSquareSandboxPreflight(
   return Object.freeze({
     environment: "sandbox" as const,
     tier,
+    merchantId: cfg.WEDDING_SQUARE_SANDBOX_MERCHANT_ID,
     locationId: cfg.SQUARE_LOCATION_ID,
     planId: tier === "premium"
       ? cfg.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID
