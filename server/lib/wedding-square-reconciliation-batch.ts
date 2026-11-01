@@ -61,7 +61,10 @@ export function createWeddingSquareReconciliationBatch(db:Db,refresh:Refresh){
               AND s.verified_paid_through>=e.period_ends_at
               AND (
                 e.last_payment_reconciled_at IS NULL
-                OR e.last_payment_reconciled_at<statement_timestamp()-interval '6 hours'
+                OR -- Cron ticks every 6h; a 5h age threshold accounts for
+                -- provider processing after the previous tick so that a
+                -- completed check is eligible again at the NEXT tick.
+                e.last_payment_reconciled_at<statement_timestamp()-interval '5 hours'
               )
             ORDER BY e.reconciliation_revision ASC,e.id ASC
             LIMIT 10`,
