@@ -66,7 +66,7 @@ export async function readVerifiedWeddingPaid(
          -- A settled payment must not promote a subscription without the
          -- exact approved monthly auto-renewal consent recorded beforehand.
          AND s.billing_consent_terms_version = ${WEDDING_CONSENT_VERSION}
-         AND s.billing_consent_at <= statement_timestamp()
+         AND s.billing_consent_at <= e.provider_paid_at
          AND ((s.tier = 'premium' AND s.agreed_monthly_amount_cents = 2499)
            OR (s.tier = 'elite' AND s.agreed_monthly_amount_cents = 4999))
          AND e.verified_currency = 'USD'
