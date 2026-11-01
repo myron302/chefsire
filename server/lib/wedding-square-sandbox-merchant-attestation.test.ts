@@ -364,3 +364,45 @@ test("Square v43 mixed 2xx merchant and location responses never become trusted 
     globalThis.fetch = originalFetch;
   }
 }));
+
+test("Square v43 malformed 2xx merchant and location JSON never attests platform ownership", () => sandbox(async () => {
+  // Intercept both real SDK GETs. A truncated JSON body or JSON null at
+  // either step must fail closed without retrying or reading the next step.
+  const originalFetch = globalThis.fetch;
+  const paths = ["/v2/merchants/me", "/v2/locations/chef-location"];
+  try {
+    for (const body of ['{"merchant":', "null"]) {
+      for (const malformedAt of [1, 2]) {
+        const transport: Array<{ method: string; path: string }> = [];
+        globalThis.fetch = async (input, init) => {
+          const url = input instanceof Request ? input.url : String(input);
+          const method = input instanceof Request ? input.method : init?.method ?? "GET";
+          transport.push({ method, path: new URL(url).pathname });
+          const response = transport.length === malformedAt ? body : JSON.stringify({
+            merchant: { id: "chef-merchant", status: "ACTIVE", currency: "USD", country: "US" },
+          });
+          return new Response(response, {
+            status: 200, headers: { "content-type": "application/json" },
+          });
+        };
+        const sdk = new SquareClient({
+          token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+        });
+        const attestation = createWeddingSquareSandboxMerchantAttestation(
+          (merchantId) => sdk.merchants.get({ merchantId }, { maxRetries: 0 }),
+          (locationId) => sdk.locations.get({ locationId }, { maxRetries: 0 }),
+        );
+        await assert.rejects(attestation.inspect(), (error: unknown) => {
+          assert.ok(error instanceof WeddingSquareSandboxMerchantAttestationError);
+          assert.doesNotMatch(error.message, /offline-contract-token|chef-merchant|chef-location|credential=SECRET/);
+          return true;
+        });
+        // Check after the guard's sanitized rejection: a fetch assertion
+        // thrown inside the SDK would otherwise be swallowed.
+        assert.deepEqual(transport, paths.slice(0, malformedAt).map((path) => ({ method: "GET", path })));
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
