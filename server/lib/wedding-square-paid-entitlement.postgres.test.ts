@@ -37,7 +37,8 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
     await client.query("CREATE TABLE users(id varchar PRIMARY KEY)");
     await client.query("INSERT INTO users(id) VALUES ('owner-1'),('other-user')");
     for(const name of ["20261101_01_wedding_square_enrollment_attempts.sql",
-      "20261101_02_wedding_square_billing_foundation.sql"]){
+      "20261101_02_wedding_square_billing_foundation.sql",
+      "20261101_03_wedding_square_payment_reconciliation.sql"]){
       await client.query(readFileSync(path.join(root,"server/migrations",name),"utf8"));
     }
     const executor=drizzle(client) as any;
@@ -59,9 +60,9 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
       (wedding_subscription_id,square_environment,square_merchant_id,
        square_invoice_id,square_payment_id,square_subscription_id,
        verified_amount_cents,verified_currency,provider_paid_at,
-       period_starts_at,period_ends_at)
+       period_starts_at,period_ends_at,last_payment_reconciled_at)
       VALUES($1,'sandbox','merchant-1','inv-1','pay-1','sub-1',
-        2499,'USD',now()-interval '1 minute',now()-interval '1 day',now()+interval '28 days')`,
+        2499,'USD',now()-interval '1 minute',now()-interval '1 day',now()+interval '28 days',now())`,
       [subscription.id]);
     let paid=await entitlement();
     assert.equal(paid?.tier,"premium");
@@ -69,14 +70,21 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
     assert.equal(await readVerifiedWeddingPaid("other-user",executor),null,"another user cannot inherit payment");
 
     await client.query("UPDATE wedding_square_subscriptions SET last_reconciled_at=now()-interval '25 hours' WHERE id=$1",[subscription.id]);
-    assert.equal(await entitlement(),null,"stale reconciliation cannot grant continued access");
+    assert.equal((await entitlement())?.tier,"premium","subscription status check cannot refresh or expire independent payment proof");
+    await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now()-interval '25 hours' WHERE square_invoice_id='inv-1'");
+    assert.equal(await entitlement(),null,"stale PAYMENT reconciliation cannot grant access");
     await client.query("UPDATE wedding_square_subscriptions SET last_reconciled_at=now(),verified_paid_through=NULL WHERE id=$1",[subscription.id]);
+    assert.equal(await entitlement(),null,"subscription status update cannot refresh stale payment evidence");
+    await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now() WHERE square_invoice_id='inv-1'");
     assert.equal(await entitlement(),null,"missing verified paid-through is Free");
     await client.query("UPDATE wedding_square_subscriptions SET verified_paid_through=now()+interval '30 days',provider_status='PENDING' WHERE id=$1",[subscription.id]);
     assert.equal(await entitlement(),null,"pending provider state is not paid");
     await client.query("UPDATE wedding_square_subscriptions SET provider_status='CANCELED' WHERE id=$1",[subscription.id]);
     paid=await entitlement();
     assert.equal(paid?.tier,"premium","canceled still grants paid period until it expires");
+    await client.query("UPDATE wedding_square_invoice_evidence SET payment_revoked_at=now() WHERE square_invoice_id='inv-1'");
+    assert.equal(await entitlement(),null,"refund or disputed payment must revoke paid access");
+    await client.query("UPDATE wedding_square_invoice_evidence SET payment_revoked_at=NULL WHERE square_invoice_id='inv-1'");
     await client.query("UPDATE wedding_square_invoice_evidence SET verified_amount_cents=4999 WHERE square_invoice_id='inv-1'");
     assert.equal(await entitlement(),null,"incorrect price must not grant Premium or Elite");
     await client.query("UPDATE wedding_square_invoice_evidence SET verified_amount_cents=2499,period_ends_at=now()-interval '1 minute' WHERE square_invoice_id='inv-1'");
