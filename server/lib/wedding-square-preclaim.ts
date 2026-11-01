@@ -15,6 +15,11 @@ export class WeddingSquarePreclaimError extends Error {
     this.name = "WeddingSquarePreclaimError";
   }
 }
+// Reject malformed persisted/request identities before returning a reusable
+// Square subscription request. Never normalize opaque provider identifiers.
+const canonicalId = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && !/[\s\x00-\x1f\x7f]/.test(value);
+
 type EnrollmentRow = {
   id: string;
   tier: "premium" | "elite";
@@ -33,7 +38,7 @@ type EnrollmentRow = {
 export function createWeddingSquarePreclaimService(database: Database) {
   return {
     async inspect(attemptId: string, authenticatedUserId: string) {
-      if (!attemptId?.trim() || !authenticatedUserId?.trim() ||
+      if (!canonicalId(attemptId) || !canonicalId(authenticatedUserId) ||
           process.env.SQUARE_ENV !== "sandbox" ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !database || typeof database.query !== "function") throw new WeddingSquarePreclaimError();
@@ -50,6 +55,10 @@ export function createWeddingSquarePreclaimService(database: Database) {
         );
         if (result.rows.length !== 1) throw new WeddingSquarePreclaimError();
         const saved = result.rows[0];
+        if (saved.id !== attemptId ||
+            !canonicalId(saved.idempotency_key) ||
+            !canonicalId(saved.square_customer_id) ||
+            !canonicalId(saved.square_card_id)) throw new WeddingSquarePreclaimError();
         const configuration = weddingSquareSandboxPreflight(process.env, saved.tier);
         if (saved.consented_currency !== "USD" ||
             saved.consented_amount_cents !== (saved.tier === "premium" ? 2499 : 4999) ||

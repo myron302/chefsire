@@ -96,3 +96,46 @@ test("unexpected Date objects are rejected instead of being converted across tim
   const database = { query: async () => ({ rows: [{ ...row, requested_start_date: new Date("2026-11-11T00:00:00+09:00") }] }) };
   await assert.rejects(createWeddingSquarePreclaimService(database as any).inspect(attemptId, "user-1"), WeddingSquarePreclaimError);
 }));
+
+test("preclaim rejects noncanonical attempt and owner identities before any database read", async () => sandbox(async () => {
+  let reads = 0;
+  const database = { query: async () => { reads++; return { rows: [row] }; } };
+  const service = createWeddingSquarePreclaimService(database as any);
+  for (const [id, userId] of [
+    [" " + attemptId, "user-1"],
+    [attemptId + "\n", "user-1"],
+    [attemptId, "user\t1"],
+    [attemptId, "user\u0000-1"],
+    [attemptId, "user\u007f-1"],
+    [attemptId, 123],
+    [null, "user-1"],
+  ] as const) {
+    await assert.rejects(service.inspect(id as string, userId as string), WeddingSquarePreclaimError);
+  }
+  assert.equal(reads, 0);
+}));
+
+test("preclaim rejects malformed saved request identities even with a matching fingerprint", async () => sandbox(async () => {
+  for (const patch of [
+    { square_customer_id: "customer\u0000x" },
+    { square_card_id: "card\tother" },
+    { idempotency_key: "saved\nkey" },
+    { id: "different-attempt-id" },
+  ]) {
+    const changed = { ...row, ...patch };
+    const changedRequest = {
+      ...request,
+      idempotencyKey: changed.idempotency_key,
+      customerId: changed.square_customer_id,
+      cardId: changed.square_card_id,
+    };
+    changed.request_fingerprint = createHash("sha256").update(JSON.stringify(changedRequest)).digest("hex");
+    let reads = 0;
+    const database = { query: async () => { reads++; return { rows: [changed] }; } };
+    await assert.rejects(
+      createWeddingSquarePreclaimService(database as any).inspect(attemptId, "user-1"),
+      WeddingSquarePreclaimError,
+    );
+    assert.equal(reads, 1);
+  }
+}));
