@@ -58,6 +58,38 @@ test("fails closed if trial-safe start date is absent or earlier than expiry", (
   }
 });
 
+test("rejects impossible, malformed or non-UTC start dates even on mutated consent receipts", () => {
+  for (const requestedStartDate of [
+    "", "not-a-date", "2026-02-30", "2026-13-01", "2026-11-1",
+    "2026-11-11T00:00:00Z", "2026-11-10",
+  ]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, consent: { ...consent, requestedStartDate },
+    }), WeddingSquareRequestError);
+  }
+  for (const trialExpiresAt of ["invalid", "2026-11-10T14:00:00Z", "2026-02-30T14:00:00.000Z"]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, consent: { ...consent, trialExpiresAt },
+    }), WeddingSquareRequestError);
+  }
+});
+
+test("no-trial consent permits immediate authorization but rejects fabricated delayed starts", () => {
+  const immediate = verifyWeddingEnrollmentConsent({
+    userId: "wedding-user", now, trialExpiresAt: null,
+    request: {
+      tier: "premium", consentVersion: WEDDING_CONSENT_VERSION,
+      acceptedAutomaticMonthlyRenewal: true,
+      acceptedAmountCents: 2499, acceptedCurrency: "USD",
+      acknowledgedFirstChargeStartDate: null,
+    },
+  });
+  assert.equal("startDate" in prepareWeddingSquareSubscriptionRequest({ ...base, consent: immediate }), false);
+  assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+    ...base, consent: { ...immediate, requestedStartDate: "2026-11-11" },
+  }), WeddingSquareRequestError);
+});
+
 test("rejects missing saved enrollment key and provider identifiers", () => {
   for (const patch of [
     { persistedIdempotencyKey: "" }, { persistedIdempotencyKey: " ".repeat(3) },
