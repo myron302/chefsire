@@ -59,7 +59,7 @@ test("refreshes only exact owner/payment with complete fresh provider check",()=
  const x=mock();const result=await x.service.refresh(id,"owner-1");
  assert.deepEqual(x.calls,["select","provider","update"]);
  assert.match(x.getUpdate(),/payment_revoked_at IS NULL/);
- assert.match(x.getUpdate(),/reconciliation_revision=\\$5/);
+ assert.match(x.getUpdate(),/reconciliation_revision=\$5/);
  assert.deepEqual(result,{status:"payment_rechecked",grantsEntitlement:false,paidThroughChanged:false});
  assert.equal(Object.isFrozen(result),true);
 }));
