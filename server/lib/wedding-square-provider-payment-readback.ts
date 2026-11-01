@@ -42,7 +42,10 @@ const orderSchema = z.object({
     customerId: canonicalId,
     tenders: z.array(z.object({
       type: z.literal("CARD"),
-      paymentId: canonicalId,
+      // Square Tender.id is the canonical associated payment ID. Older
+      // tender records often omit the optional paymentId alias.
+      id: canonicalId,
+      paymentId: canonicalId.optional(),
       customerId: canonicalId,
       locationId: canonicalId,
     }).passthrough()).length(1),
@@ -133,11 +136,12 @@ export function createWeddingSquareProviderPaymentReadback(
         // Reject split, offline, cash, missing or ambiguous tenders.
         const tender = order.data.order.tenders[0];
         if (tender.customerId !== saved.customerId ||
-            tender.locationId !== saved.locationId) {
+            tender.locationId !== saved.locationId ||
+            (tender.paymentId !== undefined && tender.paymentId !== tender.id)) {
           throw new WeddingSquareProviderPaymentReadbackError();
         }
 
-        const payment = await readPayment(tender.paymentId);
+        const payment = await readPayment(tender.id);
         const candidate = inspectWeddingSquareInvoicePaymentLinkage(
           {
             subscriptionId: saved.providerSubscriptionId,
@@ -148,7 +152,7 @@ export function createWeddingSquareProviderPaymentReadback(
           sub.data, inv.data, payment,
         );
         if (candidate.invoiceId !== invoiceId ||
-            candidate.paymentId !== tender.paymentId ||
+            candidate.paymentId !== tender.id ||
             candidate.requiresOperatorReconciliation !== true ||
             candidate.requiresAmountAndCoverageVerification !== true ||
             candidate.grantsEntitlement !== false ||
