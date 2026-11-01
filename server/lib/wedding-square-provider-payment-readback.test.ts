@@ -96,10 +96,8 @@ function mock(options: {
       assert.equal(id, "order-1");
       return step("order", options.order === undefined ? order : options.order);
     },
-    (id) => {
-      assert.equal(id, "payment-1");
-      return step("payment", options.payment === undefined ? payment : options.payment);
-    },
+    (id) => step(id === "payment-1" ? "payment" : "payment-other",
+      options.payment === undefined ? payment : options.payment),
   );
   return { service, calls };
 }
@@ -143,7 +141,6 @@ test("Square tender ID must be canonical, and a present paymentId alias must agr
   sandbox(async () => {
     for (const change of [
       { id: undefined }, { id: " other-payment " },
-      { id: "another-payment" },
       { paymentId: "another-payment" },
       { paymentId: null },
     ]) {
@@ -153,6 +150,18 @@ test("Square tender ID must be canonical, and a present paymentId alias must agr
       await assert.rejects(service.inspect("attempt-1", "owner-1"), err);
       assert.deepEqual(calls, ["verified", "saved", "subscription", "invoice", "order"]);
     }
+  }));
+
+test("a distinct provider tender ID triggers a fresh GET but mismatched payment identity fails closed", () =>
+  sandbox(async () => {
+    const { paymentId: _alias, ...otherTender } = order.order.tenders[0];
+    const { service, calls } = mock({
+      order: { order: { ...order.order, tenders: [{ ...otherTender, id: "payment-other" }] } },
+    });
+    await assert.rejects(service.inspect("attempt-1", "owner-1"), err);
+    // The Square order itself supplies the payment ID; a valid ID not known
+    // beforehand is safe to fetch but cannot be treated as matching evidence.
+    assert.deepEqual(calls, ["verified", "saved", "subscription", "invoice", "order", "payment-other"]);
   }));
 
 test("only newest invoice from trusted subscription list can be fetched", () =>
