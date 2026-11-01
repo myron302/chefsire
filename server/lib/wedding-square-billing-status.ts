@@ -64,6 +64,43 @@ export function createWeddingSquareBillingStatus(db:Db, paidReader:PaidReader) {
         });
       }
       try {
+        // An unacknowledged Square CREATE may have succeeded even when Neon
+        // never saved its subscription row. Do NOT report "not enrolled" or
+        // allow legacy trial cancellation while any owner-scoped attempt could
+        // already exist at Square. A confirmed attempt without a matching
+        // subscription row also demands reconciliation.
+        const ambiguous=await db.query<{status:string}>(
+          `SELECT a.status
+             FROM wedding_square_enrollment_attempts a
+            WHERE a.user_id=$1 AND a.square_environment='sandbox'
+              AND (
+                a.status IN ('reserved','submitting','needs_reconciliation')
+                OR (a.status='confirmed' AND NOT EXISTS (
+                  SELECT 1 FROM wedding_square_subscriptions s
+                   WHERE s.user_id=a.user_id
+                     AND s.square_subscription_id=a.provider_subscription_id
+                     AND s.square_environment='sandbox'
+                     AND s.square_merchant_id=$2 AND s.square_location_id=$3
+                ))
+              )
+            LIMIT 2`,
+          [userId,merchant,location],
+        );
+        if(!ambiguous||!Array.isArray(ambiguous.rows)||ambiguous.rows.length>1)
+          throw new WeddingSquareBillingStatusError();
+        if(ambiguous.rows.length===1) {
+          if(!["reserved","submitting","needs_reconciliation","confirmed"].includes(ambiguous.rows[0].status))
+            throw new WeddingSquareBillingStatusError();
+          return Object.freeze({
+            ok:true as const,billingMode:"sandbox" as const,
+            enrollmentStatus:"needs_reconciliation" as const,
+            billingLive:false as const,requiresProviderVerification:true as const,
+            tier:null,monthlyAmountCents:null,currency:null,
+            requestedFirstChargeDate:null,cancellationRequestedAt:null,
+            providerCancellationRecordedAt:null,lastProviderCheckAt:null,
+            verifiedPaidAccessThrough:null,
+          });
+        }
         const selected=await db.query<Row>(
           `SELECT tier,agreed_monthly_amount_cents,agreed_currency,
                   billing_consent_terms_version,provider_status,
