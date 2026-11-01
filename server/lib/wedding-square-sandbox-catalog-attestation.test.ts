@@ -19,7 +19,7 @@ function variation(id: string, cents: bigint) {
       type: "SUBSCRIPTION_PLAN_VARIATION", id, isDeleted: false,
       presentAtAllLocations: true,
       subscriptionPlanVariationData: {
-        subscriptionPlanId: "wedding-plan",
+        subscriptionPlanId: id === "premium-variation" ? "premium-plan" : "elite-plan",
         name: "Wedding plan",
         phases: [{
           cadence: "MONTHLY", ordinal: 0n,
@@ -38,6 +38,8 @@ async function sandbox<T>(run: () => Promise<T>): Promise<T> {
     SQUARE_LOCATION_ID: "chef-location",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "premium-variation",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "elite-variation",
+    WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "premium-plan",
+    WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "elite-plan",
     SQUARE_CURRENCY: "USD",
   };
   const before = Object.fromEntries(Object.keys(settings).map((key) => [key, process.env[key]]));
@@ -85,6 +87,8 @@ test("matching active indefinite monthly USD Premium and Elite catalog terms are
   assert.equal(evidence.verifiedSandboxCatalogTerms, true);
   assert.equal(evidence.premiumPlanVariationId, "premium-variation");
   assert.equal(evidence.elitePlanVariationId, "elite-variation");
+  assert.equal(evidence.premiumPlanId, "premium-plan");
+  assert.equal(evidence.elitePlanId, "elite-plan");
   assert.equal(evidence.currency, "USD");
   assert.equal(evidence.authorizesSubscriptionCreation, false);
   assert.equal(evidence.grantsEntitlement, false);
@@ -116,7 +120,7 @@ test("Square SDK v43 deserializes JSON phase ordinals to bigint and validates th
         // Deliberately omit present_at_all_locations: Square defaults it to true.
         subscription_plan_variation_data: {
           name: "Wedding Premium",
-          subscription_plan_id: "wedding-plan",
+          subscription_plan_id: "premium-plan",
           phases: [{
             cadence: "MONTHLY", ordinal: 0,
             pricing: { type: "STATIC", price_money: { amount: 2499, currency: "USD" } },
@@ -197,6 +201,8 @@ test("missing, deleted, deprecated, proration and location-ineligible variations
     { ...base, presentAtAllLocations: false },
     { ...base, absentAtLocationIds: ["chef-location"] },
     { ...base, subscriptionPlanVariationData: { ...base.subscriptionPlanVariationData, subscriptionPlanId: "" } },
+    { ...base, subscriptionPlanVariationData: { ...base.subscriptionPlanVariationData, subscriptionPlanId: "marketplace-plan" } },
+    { ...base, subscriptionPlanVariationData: { ...base.subscriptionPlanVariationData, subscriptionPlanId: "elite-plan" } },
     { ...base, subscriptionPlanVariationData: { ...base.subscriptionPlanVariationData, successorPlanVariationId: "replacement" } },
     { ...base, subscriptionPlanVariationData: { ...base.subscriptionPlanVariationData, canProrate: true } },
     { ...base, subscriptionPlanVariationData: { ...base.subscriptionPlanVariationData, monthlyBillingAnchorDate: 15 } },
@@ -234,6 +240,16 @@ test("Elite failure occurs only after verified Premium, with no extra requests",
   });
 }));
 
+test("correctly priced Elite variation under the Premium parent plan fails closed", () => sandbox(async () => {
+  const elite = variation("elite-variation", 4999n);
+  elite.object.subscriptionPlanVariationData.subscriptionPlanId = "premium-plan";
+  const { result, calls } = service(undefined, elite);
+  await assert.rejects(result.inspect(), errorType);
+  assert.deepEqual(calls(), {
+    merchantReads: 1, catalogReads: ["premium-variation", "elite-variation"],
+  });
+}));
+
 test("wrong token-owned merchant, location or positive entitlement flags block catalog GET", () => sandbox(async () => {
   for (const attestation of [
     null, new Error("provider SECRET"),
@@ -260,6 +276,9 @@ test("production, disabled feature and invalid operator mappings cause zero prov
     ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", " premium-variation "],
     ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", ""],
     ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "premium-variation"],
+    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", ""],
+    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID", " elite-plan "],
+    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID", "premium-plan"],
     ["SQUARE_CURRENCY", "CAD"],
   ] as const;
   for (const [key, value] of badConfigs) {
