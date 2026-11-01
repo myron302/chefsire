@@ -142,6 +142,21 @@ test("the prepared Wedding Square migrations match Drizzle schema on a disposabl
               'plan-1','sub-1',now(),'consent-v1',2499,'USD',current_date)
       RETURNING id`)).rows[0];
     assert.ok(sub.id);
+    // Payment terms must match the exact Premium/Elite price. Subscription
+    // requests without a future trial have no startDate and must persist NULL.
+    const immediateSubscription = `INSERT INTO wedding_square_subscriptions
+      (user_id, tier, square_environment, square_merchant_id, square_location_id,
+       square_customer_id, square_plan_variation_id, square_subscription_id,
+       billing_consent_at, billing_consent_terms_version, agreed_monthly_amount_cents,
+       agreed_currency)
+      VALUES ('test-user-2','elite','sandbox','merchant-1','loc-1','customer-2',
+              'plan-elite','sub-2',now(),'consent-v1',$1,'USD')`;
+    await expectRefused(immediateSubscription, [2499]);
+    await db.query(immediateSubscription, [4999]);
+    assert.equal((await db.query<{ requested_start_date: string | null }>(
+      "SELECT requested_start_date FROM wedding_square_subscriptions WHERE square_subscription_id = 'sub-2'",
+    )).rows[0].requested_start_date, null);
+
     const evidence = `INSERT INTO wedding_square_invoice_evidence
       (wedding_subscription_id, square_environment, square_merchant_id, square_invoice_id,
        square_payment_id, square_subscription_id, verified_amount_cents, verified_currency,
