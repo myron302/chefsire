@@ -668,3 +668,57 @@ test("Square SDK v43 subscription GET wire response passes through real readback
     globalThis.fetch = originalFetch;
   }
 }));
+
+test("real Square v43 GET HTTP failures never retry or become enrollment evidence", () => sandbox(async () => {
+  // The transport is intercepted before any request leaves the process.
+  // The actual SDK decoder/error path is exercised with maxRetries: 0.
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const status of [429, 503]) {
+      let requests = 0;
+      let savedReads = 0;
+      let catalogReads = 0;
+      globalThis.fetch = async (input, init) => {
+        requests++;
+        const method = input instanceof Request ? input.method : init?.method ?? "GET";
+        const url = input instanceof Request ? input.url : String(input);
+        assert.equal(method, "GET");
+        assert.equal(new URL(url).pathname, "/v2/subscriptions/sub-confirmed");
+        return new Response(JSON.stringify({
+          errors: [{ code: "SERVICE_UNAVAILABLE", detail: "credential=SECRET" }],
+        }), {
+          status,
+          headers: { "content-type": "application/json", "retry-after": "0" },
+        });
+      };
+      const sdk = new SquareClient({
+        token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+      });
+      const readback = createWeddingSquareSandboxSubscriptionReadback(
+        { async inspect() { savedReads++; return saved; } },
+        (subscriptionId) => sdk.subscriptions.get({ subscriptionId }, { maxRetries: 0 }),
+        { async inspect() {
+          catalogReads++;
+          return {
+            merchantId: "chef-merchant", locationId: "wedding-location",
+            currency: "USD" as const, verifiedSandboxCatalogTerms: true as const,
+            premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
+            premiumPlanId: "wedding-premium-plan", elitePlanId: "wedding-elite-plan",
+            authorizesSubscriptionCreation: false as const,
+            grantsEntitlement: false as const, safeToResubmit: false as const,
+          };
+        } },
+      );
+      await assert.rejects(readback.inspect("enrollment-1", "chef-user"), (error: unknown) => {
+        assert.ok(error instanceof WeddingSquareSandboxReadbackUnavailableError);
+        assert.doesNotMatch(error.message, /SECRET|offline-contract-token|sub-confirmed/);
+        return true;
+      });
+      assert.deepEqual({ savedReads, catalogReads, requests }, {
+        savedReads: 1, catalogReads: 1, requests: 1,
+      });
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
