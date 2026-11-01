@@ -103,10 +103,10 @@ test("preclaim rejects noncanonical attempt and owner identities before any data
   const service = createWeddingSquarePreclaimService(database as any);
   for (const [id, userId] of [
     [" " + attemptId, "user-1"],
-    [attemptId + "\\n", "user-1"],
-    [attemptId, "user\\t1"],
-    [attemptId, "user\\u0000-1"],
-    [attemptId, "user\\u007f-1"],
+    [attemptId + "\n", "user-1"],
+    [attemptId, "user\t1"],
+    [attemptId, "user\u0000-1"],
+    [attemptId, "user\u007f-1"],
     [attemptId, 123],
     [null, "user-1"],
   ] as const) {
@@ -117,9 +117,9 @@ test("preclaim rejects noncanonical attempt and owner identities before any data
 
 test("preclaim rejects malformed saved request identities even with a matching fingerprint", async () => sandbox(async () => {
   for (const patch of [
-    { square_customer_id: "customer\\u0000x" },
-    { square_card_id: "card\\tother" },
-    { idempotency_key: "saved\\nkey" },
+    { square_customer_id: "customer\u0000x" },
+    { square_card_id: "card\tother" },
+    { idempotency_key: "saved\nkey" },
     { id: "different-attempt-id" },
   ]) {
     const changed = { ...row, ...patch };
