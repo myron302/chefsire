@@ -528,12 +528,12 @@ test("composed real catalog guard blocks invalid Premium/Elite price or cadence 
 
 test("embedded control characters in configured Square IDs fail before Neon access", () => sandbox(async () => {
   const invalid: ReadonlyArray<readonly [string, string]> = [
-    ["WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "chef\\nmerchant"],
-    ["SQUARE_LOCATION_ID", "wedding\\u0000location"],
-    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "wedding\\t premium"],
-    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "wedding\\u007felite"],
-    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", "wedding\\rplan"],
-    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID", "wedding\\u0001plan"],
+    ["WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "chef\nmerchant"],
+    ["SQUARE_LOCATION_ID", "wedding\u0000location"],
+    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "wedding\t premium"],
+    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "wedding\u007felite"],
+    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", "wedding\rplan"],
+    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID", "wedding\u0001plan"],
   ];
   for (const [key, value] of invalid) {
     const original = process.env[key];
@@ -551,9 +551,9 @@ test("embedded control characters in configured Square IDs fail before Neon acce
 
 test("control characters in owner or attempt IDs fail before Neon access", () => sandbox(async () => {
   for (const [attemptId, userId] of [
-    ["enrollment\\u0000-1", "chef-user"],
-    ["enrollment-1", "chef\\nuser"],
-    ["enrollment-1", "chef\\u007fuser"],
+    ["enrollment\u0000-1", "chef-user"],
+    ["enrollment-1", "chef\nuser"],
+    ["enrollment-1", "chef\u007fuser"],
   ]) {
     const { readback, calls } = service();
     await assert.rejects(readback.inspect(attemptId, userId), expectedError);
@@ -562,7 +562,7 @@ test("control characters in owner or attempt IDs fail before Neon access", () =>
 }));
 
 test("malformed saved subscription ID blocks Square GET even with valid enrollment fingerprint", () => sandbox(async () => {
-  for (const providerSubscriptionId of ["sub\\nconfirmed", "sub\\u0000confirmed", "sub\\u007fconfirmed"]) {
+  for (const providerSubscriptionId of ["sub\nconfirmed", "sub\u0000confirmed", "sub\u007fconfirmed"]) {
     const { readback, calls } = service({ ...saved, providerSubscriptionId });
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
     assert.deepEqual(calls(), { dbReads: 1, attestationReads: 0, providerReads: 0 });
@@ -571,9 +571,9 @@ test("malformed saved subscription ID blocks Square GET even with valid enrollme
 
 test("control characters in saved request identities fail before attestation even with matching digest", () => sandbox(async () => {
   for (const changed of [
-    { customerId: "customer\\n1" },
-    { cardId: "card\\u00001" },
-    { persistedIdempotencyKey: "saved\\u007fidempotency" },
+    { customerId: "customer\n1" },
+    { cardId: "card\u00001" },
+    { persistedIdempotencyKey: "saved\u007fidempotency" },
   ]) {
     const record = { ...saved, ...changed };
     const persistedRequestFingerprint = createHash("sha256").update(JSON.stringify({
@@ -593,11 +593,11 @@ test("control characters in saved request identities fail before attestation eve
 
 test("provider control characters cannot be accepted as reconciliation evidence", () => sandbox(async () => {
   for (const changed of [
-    { id: "sub\\u0000confirmed" },
-    { customerId: "customer\\n1" },
-    { cardId: "card\\u007f1" },
-    { locationId: "wedding\\tlocation" },
-    { planVariationId: "wedding\\r premium" },
+    { id: "sub\u0000confirmed" },
+    { customerId: "customer\n1" },
+    { cardId: "card\u007f1" },
+    { locationId: "wedding\tlocation" },
+    { planVariationId: "wedding\r premium" },
   ]) {
     const { readback, calls } = service(saved, { subscription: { ...subscription, ...changed } });
     await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
