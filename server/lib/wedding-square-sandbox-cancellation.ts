@@ -66,7 +66,7 @@ export function createWeddingSquareSandboxCancellation(db: Db, merchant: Merchan
             WHERE user_id=$1 AND square_environment='sandbox'
               AND square_merchant_id=$2 AND square_location_id=$3
               AND cancellation_requested_at IS NULL AND provider_cancelled_at IS NULL
-              AND provider_status IN ('PENDING','ACTIVE','PAUSED')
+              AND provider_status = 'ACTIVE'
             LIMIT 2`,
           [userId, merchantId, locationId],
         );
@@ -88,7 +88,7 @@ export function createWeddingSquareSandboxCancellation(db: Db, merchant: Merchan
             row.agreed_monthly_amount_cents !== WEDDING_MONTHLY_CENTS[row.tier] ||
             row.agreed_currency !== "USD" ||
             row.billing_consent_terms_version !== WEDDING_CONSENT_VERSION ||
-            !["PENDING", "ACTIVE", "PAUSED"].includes(row.provider_status)) {
+            row.provider_status !== "ACTIVE") {
           throw new WeddingSquareSandboxCancellationError();
         }
 
@@ -100,7 +100,7 @@ export function createWeddingSquareSandboxCancellation(db: Db, merchant: Merchan
             before.locationId !== row.square_location_id ||
             before.planVariationId !== row.square_plan_variation_id ||
             (before.cardId != null && before.cardId !== row.square_card_id) ||
-            !["PENDING", "ACTIVE", "PAUSED"].includes(before.providerStatus) ||
+            before.providerStatus !== "ACTIVE" ||
             before.canceledDate !== null) {
           throw new WeddingSquareSandboxCancellationError();
         }
@@ -113,7 +113,7 @@ export function createWeddingSquareSandboxCancellation(db: Db, merchant: Merchan
             WHERE id=$1::uuid AND user_id=$2
               AND square_environment='sandbox' AND square_merchant_id=$3
               AND square_subscription_id=$4
-              AND provider_status IN ('PENDING','ACTIVE','PAUSED')
+              AND provider_status = 'ACTIVE'
               AND cancellation_requested_at IS NULL AND provider_cancelled_at IS NULL
            RETURNING id::text AS id`,
           [row.id, userId, merchantId, row.square_subscription_id],
