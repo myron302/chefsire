@@ -46,9 +46,9 @@ test("mismatched provider ownership, plan, timezone or date requires reconciliat
 
 test("noncanonical provider subscription IDs require reconciliation, not persistence", () => {
   for (const id of [
-    " square-sub-1", "square-sub-1 ", "\\tsquare-sub-1",
-    "square\\nsub-1", "square\\u0000sub-1", "square\\u007fsub-1",
-    " ", "\\n", 12, null,
+    " square-sub-1", "square-sub-1 ", "\tsquare-sub-1",
+    "square\nsub-1", "square\u0000sub-1", "square\u007fsub-1",
+    " ", "\n", 12, null,
   ]) {
     assert.throws(
       () => verifyWeddingSquareCreatedSubscription(request, { ...response, id }),
