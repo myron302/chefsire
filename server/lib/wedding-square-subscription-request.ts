@@ -42,7 +42,8 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
   // Revalidate receipt metadata at the final pure request boundary. A typed
   // server-side consent receipt is not sufficient if it was reconstructed or
   // mutated between verification and durable enrollment preparation.
-  const consentTime = Date.parse(consent.billingConsentAt);
+  const consentTime = typeof consent.billingConsentAt === "string"
+    ? Date.parse(consent.billingConsentAt) : NaN;
   if (config.environment !== "sandbox" ||
       config.tier !== consent.tier ||
       typeof consent.userId !== "string" || !consent.userId.trim() ||
