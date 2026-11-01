@@ -24,6 +24,8 @@ type Row = {
   square_card_id: string;
   square_location_id: string;
   square_plan_variation_id: string;
+  requested_start_date: string | null;
+  requested_timezone: string;
 };
 
 export function createWeddingSquareReconciliationReadback(database: Database) {
@@ -39,7 +41,8 @@ export function createWeddingSquareReconciliationReadback(database: Database) {
         const result = await database.query<Row>(
           `SELECT id, status, idempotency_key, request_fingerprint,
                   provider_subscription_id, square_customer_id, square_card_id,
-                  square_location_id, square_plan_variation_id
+                  square_location_id, square_plan_variation_id,
+                  requested_start_date::text AS requested_start_date, requested_timezone
              FROM wedding_square_enrollment_attempts
             WHERE id = $1::uuid AND user_id = $2
               AND square_environment = 'sandbox'
@@ -53,6 +56,12 @@ export function createWeddingSquareReconciliationReadback(database: Database) {
             !/^[a-f0-9]{64}$/.test(row.request_fingerprint ?? "") ||
             !row.square_customer_id?.trim() || !row.square_card_id?.trim() ||
             !row.square_location_id?.trim() || !row.square_plan_variation_id?.trim() ||
+            row.requested_timezone !== "UTC" ||
+            (row.requested_start_date !== null &&
+             (typeof row.requested_start_date !== "string" ||
+              !/^\d{4}-\d{2}-\d{2}$/.test(row.requested_start_date) ||
+              !Number.isFinite(Date.parse(row.requested_start_date + "T00:00:00.000Z")) ||
+              new Date(row.requested_start_date + "T00:00:00.000Z").toISOString().slice(0, 10) !== row.requested_start_date)) ||
             (row.status === "confirmed" && !row.provider_subscription_id?.trim())) {
           throw new WeddingSquareReconciliationReadbackError();
         }
@@ -68,6 +77,8 @@ export function createWeddingSquareReconciliationReadback(database: Database) {
           cardId: row.square_card_id,
           locationId: row.square_location_id,
           planVariationId: row.square_plan_variation_id,
+          requestedStartDate: row.requested_start_date,
+          requestedTimezone: row.requested_timezone,
         });
       } catch {
         throw new WeddingSquareReconciliationReadbackError();
