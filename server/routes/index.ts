@@ -72,6 +72,7 @@ import uploadRouter from "./upload";
 import weddingSubscriptionRouter from "./wedding-subscription";
 import weddingSquareWebhookRouter from "./wedding-square-webhook";
 import weddingSquareSandboxSubmitRouter from "./wedding-square-sandbox-submit";
+import weddingSquareSandboxCancelRouter from "./wedding-square-sandbox-cancel";
 import vendorSubscriptionRouter from "./vendor-subscription";
 import weddingRsvpRouter from "./wedding-rsvp";
 import weddingEventDetailsRouter from "./wedding-event-details";
@@ -238,6 +239,8 @@ r.use("/catering", cateringRouter);
 r.use("/wedding", weddingSquareWebhookRouter);
 // Authenticated sandbox-only enrollment submission; separate operator gate OFF.
 r.use("/wedding", weddingSquareSandboxSubmitRouter);
+// Owner-initiated end-of-period sandbox cancellation; operator flag OFF.
+r.use("/wedding", weddingSquareSandboxCancelRouter);
 r.use("/wedding", weddingSubscriptionRouter);
 r.use("/vendors", vendorSubscriptionRouter);
 r.use("/wedding", weddingRsvpRouter);
