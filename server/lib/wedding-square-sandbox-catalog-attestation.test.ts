@@ -462,3 +462,75 @@ test("Square v43 catalog GET decodes both parent plans and variations before ver
     globalThis.fetch = originalFetch;
   }
 }));
+
+
+test("real Square v43 catalog HTTP failures stop verification without retries or leaked evidence", () => sandbox(async () => {
+  // Intercept the installed SDK's transport: no external network access,
+  // provider writes, database operations or customer-facing effects.
+  const originalFetch = globalThis.fetch;
+  const expectedIds = ["premium-plan", "premium-variation", "elite-plan", "elite-variation"];
+  try {
+    for (const status of [429, 503]) {
+      for (let failureAt = 1; failureAt <= expectedIds.length; failureAt++) {
+        const requests: Array<{ method: string; path: string }> = [];
+        let merchantReads = 0;
+        globalThis.fetch = async (input, init) => {
+          const url = input instanceof Request ? input.url : String(input);
+          const method = input instanceof Request ? input.method : init?.method ?? "GET";
+          const path = new URL(url).pathname;
+          requests.push({ method, path });
+          if (requests.length === failureAt) {
+            return new Response(JSON.stringify({
+              errors: [{ code: "SERVICE_UNAVAILABLE", detail: "credential=SECRET" }],
+            }), {
+              status,
+              headers: { "content-type": "application/json", "retry-after": "0" },
+            });
+          }
+          const id = decodeURIComponent(path.slice(path.lastIndexOf("/") + 1));
+          const object = id.endsWith("-plan")
+            ? {
+                id, type: "SUBSCRIPTION_PLAN", is_deleted: false,
+                subscription_plan_data: { name: id },
+              }
+            : {
+                id, type: "SUBSCRIPTION_PLAN_VARIATION", is_deleted: false,
+                subscription_plan_variation_data: {
+                  subscription_plan_id: id === "premium-variation" ? "premium-plan" : "elite-plan",
+                  phases: [{
+                    cadence: "MONTHLY", ordinal: 0,
+                    pricing: {
+                      type: "STATIC",
+                      price_money: { amount: id === "premium-variation" ? 2499 : 4999, currency: "USD" },
+                    },
+                  }],
+                },
+              };
+          return new Response(JSON.stringify({ object }), {
+            status: 200, headers: { "content-type": "application/json" },
+          });
+        };
+        const sdk = new SquareClient({
+          token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+        });
+        const attestation = createWeddingSquareSandboxCatalogAttestation(
+          { async inspect() { merchantReads++; return merchantEvidence; } },
+          (objectId) => sdk.catalog.object.get({ objectId }, { maxRetries: 0 }),
+        );
+        await assert.rejects(attestation.inspect(), (error: unknown) => {
+          assert.ok(error instanceof WeddingSquareSandboxCatalogAttestationError);
+          assert.doesNotMatch(error.message, /SECRET|offline-contract-token|premium-plan|elite-plan/);
+          return true;
+        });
+        // Verify transport after the sanitized rejection. An assertion thrown
+        // inside fetch could otherwise be swallowed by the fail-closed guard.
+        assert.equal(merchantReads, 1);
+        assert.deepEqual(requests, expectedIds.slice(0, failureAt).map((id) => ({
+          method: "GET", path: `/v2/catalog/object/${id}`,
+        })));
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
