@@ -396,3 +396,69 @@ test("provider catalog location eligibility lists reject embedded control-charac
   await assert.rejects(variationService.result.inspect(), errorType);
   assert.deepEqual(variationService.calls(), { merchantReads: 1, catalogReads: ["premium-plan", "premium-variation"] });
 }));
+
+
+test("Square v43 catalog GET decodes both parent plans and variations before verifying terms", () => sandbox(async () => {
+  // Four actual SDK GET decoders with intercepted transport, including
+  // parent subscription_plan_data and variation phase bigint ordinals.
+  // No external HTTP, Square mutation, database write or entitlement.
+  const originalFetch = globalThis.fetch;
+  const requests: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const method = input instanceof Request ? input.method : init?.method ?? "GET";
+    assert.equal(method, "GET");
+    const path = new URL(url).pathname;
+    assert.match(path, /\/v2\/catalog\/object\//);
+    const id = decodeURIComponent(path.slice(path.lastIndexOf("/") + 1));
+    requests.push(id);
+    assert.ok(["premium-plan", "premium-variation", "elite-plan", "elite-variation"].includes(id));
+    if (id.endsWith("-plan")) {
+      return new Response(JSON.stringify({
+        object: {
+          id, type: "SUBSCRIPTION_PLAN", is_deleted: false,
+          subscription_plan_data: { name: id === "premium-plan" ? "Wedding Premium" : "Wedding Elite" },
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({
+      object: {
+        id, type: "SUBSCRIPTION_PLAN_VARIATION", is_deleted: false,
+        subscription_plan_variation_data: {
+          subscription_plan_id: id === "premium-variation" ? "premium-plan" : "elite-plan",
+          phases: [{
+            cadence: "MONTHLY", ordinal: 0,
+            pricing: {
+              type: "STATIC",
+              price_money: { amount: id === "premium-variation" ? 2499 : 4999, currency: "USD" },
+            },
+          }],
+        },
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const sdk = new SquareClient({
+      token: "offline-contract", environment: SquareEnvironment.Sandbox,
+    });
+    let merchantReads = 0;
+    const attestation = createWeddingSquareSandboxCatalogAttestation(
+      { async inspect() {
+        merchantReads++;
+        return merchantEvidence;
+      } },
+      (objectId) => sdk.catalog.object.get({ objectId }, { maxRetries: 0 }),
+    );
+    const evidence = await attestation.inspect();
+    assert.equal(evidence.verifiedSandboxCatalogTerms, true);
+    assert.equal(evidence.authorizesSubscriptionCreation, false);
+    assert.equal(evidence.grantsEntitlement, false);
+    assert.equal(evidence.safeToResubmit, false);
+    assert.equal(merchantReads, 1);
+    assert.deepEqual(requests, [
+      "premium-plan", "premium-variation", "elite-plan", "elite-variation",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
