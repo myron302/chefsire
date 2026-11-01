@@ -10,6 +10,7 @@ const row={
   square_customer_id:"customer-1",square_location_id:"loc-1",agreed_monthly_amount_cents:2499,
   agreed_currency:"USD",billing_consent_terms_version:WEDDING_CONSENT_VERSION,
   verified_amount_cents:2499,last_payment_reconciled_at:last,
+  reconciliation_revision:7,
   payment_revoked_at:null,provider_status:"ACTIVE",
 };
 const clean={paymentId:"pay-1",noRefundsOrDisputes:true,
@@ -41,7 +42,7 @@ function mock(options:{row?:unknown,result?:unknown,fail?:"db"|"provider"|"updat
    sqlUpdate=sql;
    if(options.fail==="update")throw Error("private DB outage");
    if(sql.includes("IS NOT DISTINCT FROM"))assert.deepEqual(params,
-     [id,"owner-1","merchant-1","pay-1",last]);
+     [id,"owner-1","merchant-1","pay-1",7]);
    else assert.deepEqual(params,[id,"owner-1","merchant-1","pay-1"]);
    return{rows:options.conflict?[]:[{id}]};
  }};
