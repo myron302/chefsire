@@ -713,7 +713,7 @@ function SubscriptionSettingsPanel() {
 
   const canUseLegacyWeddingTrialCancel =
     myWeddingSubscriptionQuery.data?.trial?.status === "active" &&
-    ["not_enrolled", "unavailable"].includes(
+    ["not_enrolled"].includes(
       weddingBillingStatusQuery.data?.enrollmentStatus || ""
     );
 
@@ -1300,7 +1300,7 @@ function SubscriptionSettingsPanel() {
             <div className="mt-1 font-semibold">{titleCase(weddingCurrentTier)}</div>
             <div className="text-sm text-gray-600">{titleCase(weddingStatus)}</div>
             {myWeddingSubscriptionQuery.data?.trial?.status === "active" &&
-              ["not_enrolled", "unavailable"].includes(weddingBillingStatusQuery.data?.enrollmentStatus || "") &&
+              ["not_enrolled"].includes(weddingBillingStatusQuery.data?.enrollmentStatus || "") &&
               <p className="text-xs">Cardless trial. No recurring Square enrollment on file.</p>}
             {weddingEndsAt ? (
               <div className="text-xs text-gray-500 mt-1">
