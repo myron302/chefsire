@@ -72,7 +72,7 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-test("real Square SDK v43 GET deserializes invoice and payment into the offline guard", async () => {
+test("real Square SDK v43 GET deserializes subscription, invoice and payment into the offline guard", async () => {
   const paths: string[] = [];
   await offline(async (input) => {
     const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
@@ -103,7 +103,7 @@ test("real Square SDK v43 GET deserializes invoice and payment into the offline 
   assert.deepEqual(paths, ["/v2/subscriptions/sub-wedding-1", "/v2/invoices/invoice-1", "/v2/payments/payment-1"]);
 });
 
-test("real SDK 2xx mixed-success invoice and payment bodies cannot become evidence", async () => {
+test("real SDK 2xx mixed-success subscription, invoice and payment bodies cannot become evidence", async () => {
   for (const failedEndpoint of ["subscription", "invoice", "payment"] as const) {
     let requests = 0;
     await offline(async (input) => {
@@ -119,7 +119,7 @@ test("real SDK 2xx mixed-success invoice and payment bodies cannot become eviden
       });
     }, async (client) => {
       const s = await client.subscriptions.get({ subscriptionId: "sub-wedding-1" }, { maxRetries: 0 });
-    const i = await client.invoices.get({ invoiceId: "invoice-1" }, { maxRetries: 0 });
+      const i = await client.invoices.get({ invoiceId: "invoice-1" }, { maxRetries: 0 });
       const p = await client.payments.get({ paymentId: "payment-1" }, { maxRetries: 0 });
       assert.throws(
         () => inspectWeddingSquareInvoicePaymentLinkage(expected, s, i, p),
@@ -134,7 +134,7 @@ test("real SDK 2xx mixed-success invoice and payment bodies cannot become eviden
   }
 });
 
-test("SDK invoice/payment HTTP failures do not retry and cannot be treated as evidence", async () => {
+test("SDK subscription/invoice/payment HTTP failures do not retry and cannot be treated as evidence", async () => {
   for (const status of [429, 503]) {
     for (const endpoint of ["subscription", "invoice", "payment"] as const) {
       let requests = 0;
