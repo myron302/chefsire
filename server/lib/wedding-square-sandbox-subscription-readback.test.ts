@@ -783,3 +783,52 @@ test("Square v43 mixed 2xx subscription and errors cannot become reconciliation 
     globalThis.fetch = originalFetch;
   }
 }));
+
+test("Square v43 malformed 2xx subscription JSON cannot become reconciliation evidence", () => sandbox(async () => {
+  // Exercise actual SDK decoding with an intercepted GET. Neither malformed
+  // JSON nor a valid JSON primitive may become subscription confirmation.
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const body of ['{"subscription":', "null"]) {
+      const transport: Array<{ method: string; path: string }> = [];
+      let savedReads = 0;
+      let catalogReads = 0;
+      globalThis.fetch = async (input, init) => {
+        const method = input instanceof Request ? input.method : init?.method ?? "GET";
+        const url = input instanceof Request ? input.url : String(input);
+        transport.push({ method, path: new URL(url).pathname });
+        return new Response(body, {
+          status: 200, headers: { "content-type": "application/json" },
+        });
+      };
+      const sdk = new SquareClient({
+        token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+      });
+      const readback = createWeddingSquareSandboxSubscriptionReadback(
+        { async inspect() { savedReads++; return saved; } },
+        (subscriptionId) => sdk.subscriptions.get({ subscriptionId }, { maxRetries: 0 }),
+        { async inspect() {
+          catalogReads++;
+          return {
+            merchantId: "chef-merchant", locationId: "wedding-location",
+            currency: "USD" as const, verifiedSandboxCatalogTerms: true as const,
+            premiumPlanVariationId: "wedding-premium", elitePlanVariationId: "wedding-elite",
+            premiumPlanId: "wedding-premium-plan", elitePlanId: "wedding-elite-plan",
+            authorizesSubscriptionCreation: false as const,
+            grantsEntitlement: false as const, safeToResubmit: false as const,
+          };
+        } },
+      );
+      await assert.rejects(readback.inspect("enrollment-1", "chef-user"), (error: unknown) => {
+        assert.ok(error instanceof WeddingSquareSandboxReadbackUnavailableError);
+        assert.doesNotMatch(error.message, /offline-contract-token|sub-confirmed|credential=SECRET/);
+        return true;
+      });
+      // Assertions must be outside the swallowed SDK error path.
+      assert.deepEqual(transport, [{ method: "GET", path: "/v2/subscriptions/sub-confirmed" }]);
+      assert.deepEqual({ savedReads, catalogReads }, { savedReads: 1, catalogReads: 1 });
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
