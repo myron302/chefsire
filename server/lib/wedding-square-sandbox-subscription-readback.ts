@@ -35,6 +35,12 @@ const providerEnvelopeSchema = z.object({
   errors: z.array(z.unknown()).max(0).optional(),
 }).passthrough();
 
+// Never normalize operator or persisted provider identifiers. A padded or
+// malformed ID is not the identity that was configured or saved.
+function exactId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value === value.trim();
+}
+
 export class WeddingSquareSandboxReadbackUnavailableError extends Error {
   constructor() {
     super("Wedding Square sandbox subscription readback is unavailable; operator reconciliation required.");
@@ -50,26 +56,35 @@ export function createWeddingSquareSandboxSubscriptionReadback(
 ) {
   return {
     async inspect(attemptId: string, authenticatedUserId: string) {
-      // Gate BEFORE any DB or provider calls. No production fallback.
+      // Validate the complete sandbox configuration BEFORE reading Neon.
+      // An invalid location/plan mapping must not be silently trimmed into a
+      // different identity or cause unnecessary database/provider traffic.
       const expectedMerchantId = process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
+      const location = process.env.SQUARE_LOCATION_ID;
+      const premiumPlan = process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID;
+      const elitePlan = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID;
       if (process.env.SQUARE_ENV !== "sandbox" ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
-          !expectedMerchantId || expectedMerchantId !== expectedMerchantId.trim() ||
-          !attemptId?.trim() || !authenticatedUserId?.trim()) {
+          (process.env.SQUARE_CURRENCY !== undefined && process.env.SQUARE_CURRENCY !== "USD") ||
+          !exactId(expectedMerchantId) || !exactId(location) ||
+          !exactId(premiumPlan) || !exactId(elitePlan) ||
+          premiumPlan === elitePlan ||
+          !exactId(attemptId) || !exactId(authenticatedUserId)) {
         throw new WeddingSquareSandboxReadbackUnavailableError();
       }
 
       try {
         const saved = await savedReadback.inspect(attemptId, authenticatedUserId);
-        const location = process.env.SQUARE_LOCATION_ID?.trim();
-        const premiumPlan = process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID?.trim();
-        const elitePlan = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID?.trim();
 
-        // Enforce the same platform location and Wedding-only plan mapping as
-        // enrollment preflight. Unknown or unlinked subscriptions remain blocked.
+        // Reject malformed persisted identity/evidence BEFORE making any
+        // merchant or subscription GET. Provider reconciliation also validates
+        // these fields, but waiting until after a GET is unnecessary exposure.
         if (!saved || saved.attemptId !== attemptId ||
-            !saved.providerSubscriptionId?.trim() ||
-            !location || !premiumPlan || !elitePlan || premiumPlan === elitePlan ||
+            !["submitting", "needs_reconciliation", "confirmed"].includes(saved.status) ||
+            !exactId(saved.providerSubscriptionId) ||
+            !exactId(saved.persistedIdempotencyKey) ||
+            !/^[a-f0-9]{64}$/.test(saved.persistedRequestFingerprint ?? "") ||
+            !exactId(saved.customerId) || !exactId(saved.cardId) ||
             saved.locationId !== location ||
             (saved.planVariationId !== premiumPlan && saved.planVariationId !== elitePlan)) {
           throw new WeddingSquareSandboxReadbackUnavailableError();
