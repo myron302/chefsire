@@ -8,6 +8,8 @@ const sandbox = {
   SQUARE_LOCATION_ID: "sandbox-location",
   WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "premium-plan",
   WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "elite-plan",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "premium-parent-plan",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "elite-parent-plan",
   WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
 };
 
@@ -16,6 +18,8 @@ test("sandbox preflight selects a distinct server-configured variation for each 
   const elite = weddingSquareSandboxPreflight(sandbox, "elite");
   assert.equal(premium.planVariationId, "premium-plan");
   assert.equal(elite.planVariationId, "elite-plan");
+  assert.equal(premium.planId, "premium-parent-plan");
+  assert.equal(elite.planId, "elite-parent-plan");
   assert.equal(premium.environment, "sandbox");
   assert.equal("accessToken" in premium, false);
   assert.equal(JSON.stringify(premium).includes("sandbox-secret"), false);
@@ -32,8 +36,19 @@ test("fails closed against production or missing environment", () => {
 });
 
 test("rejects unconfigured locations, tokens and plan variations", () => {
-  for (const field of ["SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID"] as const) {
+  for (const field of ["SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID"] as const) {
     assert.throws(() => weddingSquareSandboxPreflight({ ...sandbox, [field]: "" }, "premium"), WeddingSquareSandboxUnavailableError);
+  }
+});
+
+test("rejects padded or missing provider identities instead of trimming them", () => {
+  for (const field of [
+    "SQUARE_LOCATION_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID",
+  ] as const) {
+    assert.throws(() => weddingSquareSandboxPreflight({ ...sandbox, [field]: ` ${sandbox[field]} ` }, "premium"), WeddingSquareSandboxUnavailableError);
+    assert.throws(() => weddingSquareSandboxPreflight({ ...sandbox, [field]: undefined }, "premium"), WeddingSquareSandboxUnavailableError);
   }
 });
 
@@ -42,6 +57,11 @@ test("rejects identical plan mappings and invalid tiers", () => {
     ...sandbox,
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "same",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "same",
+  }, "elite"), WeddingSquareSandboxUnavailableError);
+  assert.throws(() => weddingSquareSandboxPreflight({
+    ...sandbox,
+    WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "same-parent",
+    WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "same-parent",
   }, "elite"), WeddingSquareSandboxUnavailableError);
   assert.throws(() => weddingSquareSandboxPreflight(sandbox, "free" as any), WeddingSquareSandboxUnavailableError);
 });

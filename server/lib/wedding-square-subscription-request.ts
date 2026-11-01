@@ -38,7 +38,7 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
     throw new WeddingSquareRequestError();
   }
   const strings = [
-    config.locationId, config.planVariationId,
+    config.locationId, config.planId, config.planVariationId,
     input.providerCustomerId, input.providerCardId, input.persistedIdempotencyKey,
   ];
   if (strings.some(s => typeof s !== "string" || !s.trim() || s.trim() !== s)) {

@@ -11,6 +11,8 @@ const sandboxEnv = {
   SQUARE_LOCATION_ID: "location",
   WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "premium-plan",
   WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "elite-plan",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "premium-parent-plan",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "elite-parent-plan",
   WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
 };
 const consent = verifyWeddingEnrollmentConsent({
