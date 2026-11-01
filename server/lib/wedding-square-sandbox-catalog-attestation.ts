@@ -33,7 +33,8 @@ const envelope = z.object({
       monthlyBillingAnchorDate: z.number().int().optional(),
       phases: z.array(z.object({
         cadence: z.literal("MONTHLY"),
-        ordinal: z.number().int(),
+        // Square SDK v43 deserializes int64 phase ordinals as bigint.
+        ordinal: z.union([z.bigint(), z.number().int().safe()]),
         periods: z.number().int().optional(),
         pricing: z.object({
           type: z.literal("STATIC"),
@@ -68,11 +69,12 @@ function verifyVariation(response: unknown, id: string, locationId: string, cent
   // proration or alternate anchor date that could contradict consent.
   if (object.id !== id || object.isDeleted === true ||
       object.absentAtLocationIds?.includes(locationId) ||
-      !(object.presentAtAllLocations === true ||
-        object.presentAtLocationIds?.includes(locationId)) ||
+      !(// Square defaults an omitted presentAtAllLocations to true.
+      (object.presentAtAllLocations !== false ||
+        object.presentAtLocationIds?.includes(locationId))) ||
       data.successorPlanVariationId !== undefined ||
       data.canProrate === true || data.monthlyBillingAnchorDate !== undefined ||
-      phase.ordinal !== 0 || phase.periods !== undefined ||
+      BigInt(phase.ordinal) !== 0n || phase.periods !== undefined ||
       BigInt(price.amount) !== BigInt(cents) ||
       (phase.pricing.price &&
        BigInt(phase.pricing.price.amount) !== BigInt(cents)) ||
