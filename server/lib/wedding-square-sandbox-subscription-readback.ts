@@ -29,6 +29,8 @@ const providerEnvelopeSchema = z.object({
     locationId: providerFieldSchema,
     planVariationId: providerFieldSchema,
     status: providerFieldSchema,
+    timezone: z.literal("UTC"),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   }).passthrough(),
   // A 2xx Square response can contain both a subscription and API errors.
   // Treat nonempty (or malformed) errors as ambiguous, never as verified data.
@@ -37,6 +39,13 @@ const providerEnvelopeSchema = z.object({
 
 // Never normalize operator or persisted provider identifiers. A padded or
 // malformed ID is not the identity that was configured or saved.
+function canonicalUtcDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(value + "T00:00:00.000Z");
+  return Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+
 function exactId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value === value.trim();
 }
@@ -88,6 +97,8 @@ export function createWeddingSquareSandboxSubscriptionReadback(
             !exactId(saved.persistedIdempotencyKey) ||
             !/^[a-f0-9]{64}$/.test(saved.persistedRequestFingerprint ?? "") ||
             !exactId(saved.customerId) || !exactId(saved.cardId) ||
+            saved.requestedTimezone !== "UTC" ||
+            (saved.requestedStartDate !== null && !canonicalUtcDate(saved.requestedStartDate)) ||
             saved.locationId !== location ||
             (saved.planVariationId !== premiumPlan && saved.planVariationId !== elitePlan)) {
           throw new WeddingSquareSandboxReadbackUnavailableError();

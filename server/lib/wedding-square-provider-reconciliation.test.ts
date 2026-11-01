@@ -6,10 +6,12 @@ const saved = {
   persistedIdempotencyKey: "key", persistedRequestFingerprint: "a".repeat(64),
   providerSubscriptionId: null, customerId: "customer", cardId: "card",
   locationId: "location", planVariationId: "plan",
+  requestedStartDate: "2026-11-11", requestedTimezone: "UTC",
 };
 const provider = {
   id: "sub-1", customerId: "customer", cardId: "card",
   locationId: "location", planVariationId: "plan", status: "ACTIVE",
+  startDate: "2026-11-11", timezone: "UTC",
 };
 function sandbox(fn: () => void) {
   const env = process.env.SQUARE_ENV, enabled = process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED;
@@ -50,6 +52,33 @@ test("rejects cross-customer, card, location and plan records", () => sandbox(()
     assert.throws(() => verifyWeddingSquareProviderReconciliation(saved, { ...provider, [key]: "other" }), WeddingSquareProviderReadbackMismatchError);
   }
 }));
+test("rejects provider start dates or timezones that differ from saved consented billing terms", () => sandbox(() => {
+  for (const patch of [
+    { startDate: "2026-11-10" },
+    { startDate: "2026-11-12" },
+    { startDate: "2026-02-30" },
+    { startDate: "2026-11-11T00:00:00Z" },
+    { timezone: "America/New_York" },
+    { timezone: undefined },
+    { startDate: undefined },
+  ]) {
+    assert.throws(() => verifyWeddingSquareProviderReconciliation(saved, { ...provider, ...patch }), WeddingSquareProviderReadbackMismatchError);
+  }
+  for (const patch of [
+    { requestedStartDate: "2026-11-10" },
+    { requestedTimezone: "America/New_York" },
+    { requestedStartDate: undefined },
+  ]) {
+    assert.throws(() => verifyWeddingSquareProviderReconciliation({ ...saved, ...patch } as typeof saved, provider), WeddingSquareProviderReadbackMismatchError);
+  }
+}));
+
+test("immediate-start attempts still require a canonical UTC provider date", () => sandbox(() => {
+  const immediate = { ...saved, requestedStartDate: null };
+  assert.equal(verifyWeddingSquareProviderReconciliation(immediate, provider).grantsEntitlement, false);
+  assert.throws(() => verifyWeddingSquareProviderReconciliation(immediate, { ...provider, startDate: "2026-02-30" }), WeddingSquareProviderReadbackMismatchError);
+}));
+
 test("never swaps a previously confirmed subscription ID", () => sandbox(() => {
   assert.throws(() => verifyWeddingSquareProviderReconciliation({
     ...saved, status: "confirmed", providerSubscriptionId: "sub-original",

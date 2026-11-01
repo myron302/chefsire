@@ -17,6 +17,8 @@ const providerSchema = z.object({
   locationId: z.string().min(1),
   planVariationId: z.string().min(1),
   status: z.enum(["PENDING", "ACTIVE", "CANCELED", "DEACTIVATED", "PAUSED", "COMPLETED"]),
+  timezone: z.literal("UTC"),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 }).passthrough();
 
 export class WeddingSquareProviderReadbackMismatchError extends Error {
@@ -24,6 +26,12 @@ export class WeddingSquareProviderReadbackMismatchError extends Error {
     super("Square provider readback does not verify the saved enrollment.");
     this.name = "WeddingSquareProviderReadbackMismatchError";
   }
+}
+
+function canonicalUtcDate(value: string): boolean {
+  const timestamp = Date.parse(value + "T00:00:00.000Z");
+  return Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value;
 }
 
 export function verifyWeddingSquareProviderReconciliation(saved: Saved, provider: unknown) {
@@ -41,6 +49,11 @@ export function verifyWeddingSquareProviderReconciliation(saved: Saved, provider
       result.data.cardId !== saved.cardId ||
       result.data.locationId !== saved.locationId ||
       result.data.planVariationId !== saved.planVariationId ||
+      saved.requestedTimezone !== "UTC" ||
+      (saved.requestedStartDate !== null &&
+       (typeof saved.requestedStartDate !== "string" ||
+        result.data.startDate !== saved.requestedStartDate)) ||
+      !canonicalUtcDate(result.data.startDate) ||
       (saved.providerSubscriptionId !== null &&
        result.data.id !== saved.providerSubscriptionId)) {
     throw new WeddingSquareProviderReadbackMismatchError();
