@@ -9,6 +9,7 @@ import {
 import { reconcileCateringStorageCleanup } from "./services/catering-booking-storage-cleanup";
 import { reconcileAbandonedCheckoutReservations } from "./services/marketplace-checkout-reconciliation";
 import { weddingSquareReconciliationBatch } from "./lib/wedding-square-reconciliation-batch";
+import { weddingSquareRenewalScan } from "./lib/wedding-square-renewal-scan";
 
 /**
  * Initialize all cron jobs
@@ -82,12 +83,29 @@ export function initializeCronJobs() {
     }
   });
 
+  // Discover first-charge and renewal invoices without a browser return.
+  // Claimed, owner-bound scans are capped at 20/hour and OFF by default.
+  cron.schedule("5 * * * *", async () => {
+    try {
+      const result = await weddingSquareRenewalScan.run();
+      if (result.scanned > 0) {
+        console.log(
+          `Wedding Square renewal scan: scanned ${result.scanned}, ` +
+          `recorded ${result.recorded}, existing ${result.existing}, pending ${result.pending}`
+        );
+      }
+    } catch {
+      console.warn("Wedding Square renewal scan unavailable");
+    }
+  });
+
   console.log("✅ Cron jobs initialized:");
   console.log("   - Pantry expiring items: Daily at 9 AM & 6 PM");
   console.log("   - Low stock items: Daily at 10 AM");
   console.log("   - Catering storage cleanup: Hourly at :30");
   console.log("   - Marketplace checkout reconciliation: Every 5 minutes");
   console.log("   - Wedding Square sandbox evidence refresh: Every 6 hours (OFF by default)");
+  console.log("   - Wedding Square sandbox renewal discovery: Hourly (OFF by default)");
 }
 
 /**
