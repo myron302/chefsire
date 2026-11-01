@@ -54,6 +54,7 @@ function mock(config:{
       return config.submission===undefined?result:config.submission;
     }} as any,
     auth,
+    (_req,_res,next)=>next(), // deterministic HTTP tests; production uses the real limiter
   );
   return {route,calls};
 }
