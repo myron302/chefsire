@@ -22,6 +22,8 @@ const config = weddingSquareSandboxPreflight({
   SQUARE_LOCATION_ID: "loc-sandbox",
   WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "var-premium",
   WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "var-elite",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "parent-premium",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "parent-elite",
   WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
 }, "premium");
 const base = {
@@ -64,6 +66,14 @@ test("rejects missing saved enrollment key and provider identifiers", () => {
   }
 });
 
+test("rejects tampered parent plan identity in prepared requests", () => {
+  for (const planId of ["", " parent-premium "]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, config: { ...config, planId },
+    }), WeddingSquareRequestError);
+  }
+});
+
 test("cannot create production or non-UTC requests", () => {
   assert.throws(() => prepareWeddingSquareSubscriptionRequest({
     ...base, config: { ...config, environment: "production" } as any,
@@ -86,6 +96,8 @@ test("rejects independently valid consent and preflight results for different ti
     SQUARE_LOCATION_ID: "loc-sandbox",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "var-premium",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "var-elite",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "parent-premium",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "parent-elite",
     WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
   }, "elite");
 
@@ -113,6 +125,8 @@ test("matching elite consent and elite preflight can prepare the elite request",
     SQUARE_LOCATION_ID: "loc-sandbox",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "var-premium",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "var-elite",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "parent-premium",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "parent-elite",
     WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
   }, "elite");
   assert.equal(prepareWeddingSquareSubscriptionRequest({
