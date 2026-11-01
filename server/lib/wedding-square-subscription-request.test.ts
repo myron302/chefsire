@@ -293,3 +293,34 @@ test("matching elite consent and elite preflight can prepare the elite request",
     ...base, consent: eliteConsent, config: eliteConfig,
   }).planVariationId, "var-elite");
 });
+
+
+test("embedded control characters in saved provider identities cannot reach request preparation", () => {
+  for (const [field, value] of [
+    ["providerCustomerId", "cust\u0000verified"],
+    ["providerCardId", "card\nverified"],
+    ["persistedIdempotencyKey", "enrollment\tattempt-000001"],
+  ] as const) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, [field]: value,
+    }), WeddingSquareRequestError);
+  }
+});
+
+test("mutated preflight identities and authenticated consent owner reject invisible controls", () => {
+  for (const [field, value] of [
+    ["merchantId", "merchant\u0001sandbox"],
+    ["locationId", "loc\tsandbox"],
+    ["planId", "parent\npremium"],
+    ["planVariationId", "var\u007fpremium"],
+  ] as const) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, config: { ...config, [field]: value },
+    }), WeddingSquareRequestError);
+  }
+  for (const userId of ["wedding\u0000user", "wedding\nuser", "wedding\u007fuser"]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, consent: { ...consent, userId },
+    }), WeddingSquareRequestError);
+  }
+});

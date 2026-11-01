@@ -20,6 +20,14 @@ export class WeddingSquareRequestError extends Error {
   }
 }
 
+// Reconstructed or mutated server-side IDs must not contain invisible control
+// characters even when their ends are nonblank. The later Square readback
+// guard already rejects these; stop them at the pure request boundary too.
+function exactId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 &&
+    value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value);
+}
+
 // Reject calendar overflow (e.g. February 30), malformed and non-UTC dates.
 // Date.parse alone normalizes some impossible calendar dates instead of failing.
 function canonicalUtcDateMs(value: unknown): number | null {
@@ -49,8 +57,7 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
       // Never allow an unknown tier to bypass both canonical price checks.
       (consent.tier !== "premium" && consent.tier !== "elite") ||
       config.tier !== consent.tier ||
-      typeof consent.userId !== "string" || !consent.userId.trim() ||
-      consent.userId !== consent.userId.trim() ||
+      !exactId(consent.userId) ||
       consent.consentTermsVersion !== WEDDING_CONSENT_VERSION ||
       typeof consent.billingConsentAt !== "string" ||
       !Number.isFinite(consentTime) ||
@@ -67,7 +74,7 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
     config.merchantId, config.locationId, config.planId, config.planVariationId,
     input.providerCustomerId, input.providerCardId, input.persistedIdempotencyKey,
   ];
-  if (strings.some(s => typeof s !== "string" || !s.trim() || s.trim() !== s)) {
+  if (strings.some(s => !exactId(s))) {
     throw new WeddingSquareRequestError();
   }
   if (input.persistedIdempotencyKey.length > 45) throw new WeddingSquareRequestError();
