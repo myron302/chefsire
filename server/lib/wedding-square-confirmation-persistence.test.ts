@@ -26,11 +26,14 @@ const saved = {
 };
 async function sandbox(fn: () => Promise<void>) {
   const names = ["SQUARE_ENV", "WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
-    "WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "SQUARE_LOCATION_ID"] as const;
+    "WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "SQUARE_LOCATION_ID",
+    "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID"] as const;
   const previous = names.map(n => process.env[n]);
   Object.assign(process.env, {
     SQUARE_ENV: "sandbox", WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
     WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant-1", SQUARE_LOCATION_ID: "sandbox-loc",
+    WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "premium-plan",
+    WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "elite-plan",
   });
   try { await fn(); } finally {
     names.forEach((n, i) => {
@@ -111,6 +114,7 @@ test("wrong consent, owner, price, merchant location or plan never inserts a sub
       { requested_timezone: "America/New_York" },
       { square_location_id: "other-location" },
       { square_plan_variation_id: "other-plan" },
+      { tier: "elite", square_plan_variation_id: "premium-plan", consented_amount_cents: 4999 },
       { consented_at: "invalid" }, { requested_start_date: "tomorrow" },
     ]) {
       const x = fixture({ saved: { ...saved, ...change } });
