@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { RequestHandler } from "express";
 import { db } from "../db";
-import { hasAuthoritativePaidEntitlement } from "./subscription-security";
+import { readVerifiedWeddingPaid } from "./wedding-square-paid-entitlement";
 
 export type WeddingTier = "free" | "premium" | "elite";
 type TrialRow = { tier: "premium" | "elite"; activatedAt: string | Date; expiresAt: string | Date; revokedAt: string | Date | null; active: boolean; remainingDays: number };
@@ -47,12 +47,26 @@ export async function revokeWeddingTrial(userId: string) {
 
 export async function weddingEntitlement(userId: string, recordedTier?: string | null, executor = db) {
   const trial = await readWeddingTrial(userId, executor);
-  const paidTier = hasAuthoritativePaidEntitlement() && (recordedTier === "premium" || recordedTier === "elite") ? recordedTier : "free";
-  const currentTier: WeddingTier = paidTier === "elite" ? "elite" : trial.status === "active" ? trial.tier! : paidTier;
+  // Legacy users.wedding_tier / wedding_status values are NOT payment proof.
+  // The independent 336-hour cardless trial is still honored unchanged.
+  void recordedTier;
+  const paid = await readVerifiedWeddingPaid(userId, executor);
+  const trialTier = trial.status === "active" ? trial.tier : null;
+  const currentTier: WeddingTier =
+    paid?.tier === "elite" || trialTier === "elite" ? "elite"
+    : paid?.tier === "premium" || trialTier === "premium" ? "premium" : "free";
+  // End time is the later of the authorized cardless trial and provider-paid
+  // coverage; neither source may overwrite or extend the other.
+  const authorizedEnds = [
+    ...(trialTier && trial.expiresAt ? [new Date(trial.expiresAt).getTime()] : []),
+    ...(paid ? [new Date(paid.paidThrough).getTime()] : []),
+  ].filter(Number.isFinite);
+  const endsAt = authorizedEnds.length
+    ? new Date(Math.max(...authorizedEnds)).toISOString() : null;
   return {
     currentTier,
     status: currentTier === "free" ? "inactive" : "active",
-    endsAt: trial.status === "active" ? trial.expiresAt : null,
+    endsAt,
     trial,
   };
 }
