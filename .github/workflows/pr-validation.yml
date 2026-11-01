@@ -84,6 +84,10 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-sandbox-cancellation.test.ts
       - name: Test authenticated sandbox cancellation HTTP gate
         run: node --import tsx --test server/routes/wedding-square-sandbox-cancel.test.ts
+      - name: Verify Wedding Square paid entitlement requires trusted provider evidence
+        run: node --import tsx --test server/lib/wedding-square-paid-entitlement.test.ts
+      - name: Preserve cardless Wedding trial when paid evidence is unavailable
+        run: node --import tsx --test server/lib/wedding-entitlement-square-evidence.test.ts
       - name: Test Square enrollment reconciliation readback
         run: node --import tsx --test server/lib/wedding-square-reconciliation-readback.test.ts
       - name: Test Square provider reconciliation guard
@@ -142,3 +146,5 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-migrations.postgres.test.ts
       - name: Verify atomic Wedding provider confirmation and subscription ledger on PostgreSQL 16
         run: node --import tsx --test server/lib/wedding-square-confirmation-persistence.postgres.test.ts
+      - name: Verify paid Wedding entitlements from real invoice evidence on PostgreSQL 16
+        run: node --import tsx --test server/lib/wedding-square-paid-entitlement.postgres.test.ts

@@ -17,6 +17,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const FILES = [
   "server/migrations/20261101_01_wedding_square_enrollment_attempts.sql",
   "server/migrations/20261101_02_wedding_square_billing_foundation.sql",
+  "server/migrations/20261101_03_wedding_square_payment_reconciliation.sql",
 ];
 const TABLES = [
   weddingSquareEnrollmentAttempts,
