@@ -35,7 +35,13 @@ export function verifyWeddingEnrollmentConsent(params: {
   now: Date;
   trialExpiresAt: Date | null;
 }) {
-  if (!params.userId || !params.userId.trim()) throw new TypeError("Authenticated user required");
+  // Owner identity is authenticated server-side and must be canonical at the
+  // consent boundary, not only when the later subscription builder runs.
+  // Never trim a different user identity into an apparently valid receipt.
+  if (typeof params.userId !== "string" || !params.userId ||
+      params.userId !== params.userId.trim()) {
+    throw new TypeError("Authenticated user required");
+  }
   const request = consentRequestSchema.parse(params.request);
   const quote = quoteWeddingMonthlyBilling({
     tier: request.tier as WeddingPaidTier,
