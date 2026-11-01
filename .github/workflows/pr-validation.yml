@@ -104,6 +104,10 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-invoice-payment-sdk-contract.test.ts
       - name: Test attested read-only Square subscription invoice order and payment chain
         run: node --import tsx --test server/lib/wedding-square-provider-payment-readback.test.ts
+      - name: Test raw Square payment refund and complete dispute page readback
+        run: node --import tsx --test server/lib/wedding-square-sandbox-payment-risk-api.test.ts
+      - name: Test owner-bound subscription price and provider risk audit
+        run: node --import tsx --test server/lib/wedding-square-billing-audit.test.ts
       - name: Test signed Wedding Square sandbox webhook intake and replay safety
         run: node --import tsx --test server/routes/wedding-square-webhook.test.ts
       - name: Build client and server
