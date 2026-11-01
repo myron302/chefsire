@@ -25,6 +25,7 @@ type Risk = Pick<typeof weddingSquareBillingAudit,"inspect">;
 type SavedRow = {
   id:string;user_id:string;tier:"premium"|"elite";
   square_merchant_id:string;square_location_id:string;
+  square_plan_variation_id:string;
   square_subscription_id:string;agreed_monthly_amount_cents:number;
   agreed_currency:string;billing_consent_terms_version:string;
   provider_status:string;
@@ -100,7 +101,7 @@ export function createWeddingSquareEvidenceLedger(database:Database,period:Perio
         started=true;
         const selected=await client.query<SavedRow>(
           `SELECT s.id::text AS id,s.user_id,s.tier,s.square_merchant_id,
-                  s.square_location_id,s.square_subscription_id,
+                  s.square_location_id,s.square_plan_variation_id,s.square_subscription_id,
                   s.agreed_monthly_amount_cents,s.agreed_currency,
                   s.billing_consent_terms_version,s.provider_status
              FROM wedding_square_subscriptions s
@@ -131,6 +132,7 @@ export function createWeddingSquareEvidenceLedger(database:Database,period:Perio
            row.agreed_monthly_amount_cents!==WEDDING_MONTHLY_CENTS[row.tier]||
            row.agreed_monthly_amount_cents!==verified.verifiedAmountCents||
            !id.safeParse(expectedPlan).success||
+           row.square_plan_variation_id!==expectedPlan||
            !["ACTIVE","CANCELED"].includes(row.provider_status))
           throw new WeddingSquareEvidenceLedgerError();
 
