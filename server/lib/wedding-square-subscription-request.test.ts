@@ -124,6 +124,44 @@ test("no-trial consent permits immediate authorization but rejects fabricated de
   }), WeddingSquareRequestError);
 });
 
+test("rejects mutated or malformed verified-consent receipt metadata", () => {
+  for (const patch of [
+    { consentTermsVersion: "old-monthly-terms" },
+    { consentTermsVersion: "" },
+    { billingConsentAt: "invalid" },
+    { billingConsentAt: "2026-10-28T12:00:00Z" },
+    { billingConsentAt: "2026-10-28T12:00:00.000+00:00" },
+    { billingConsentAt: undefined },
+    { userId: " wedding-user " },
+    { userId: "" },
+  ]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, consent: { ...consent, ...patch } as typeof consent,
+    }), WeddingSquareRequestError);
+  }
+});
+
+test("cannot revive an already expired trial by mutating the consent receipt", () => {
+  // A fabricated past trial expiry with a future start previously satisfied
+  // only the non-early-date comparison; it contradicts the verified quote.
+  assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+    ...base,
+    consent: {
+      ...consent,
+      trialExpiresAt: "2026-10-27T12:00:00.000Z",
+      requestedStartDate: "2026-10-28",
+    },
+  }), WeddingSquareRequestError);
+  assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+    ...base,
+    consent: {
+      ...consent,
+      trialExpiresAt: consent.billingConsentAt,
+      requestedStartDate: "2026-10-29",
+    },
+  }), WeddingSquareRequestError);
+});
+
 test("rejects missing saved enrollment key and provider identifiers", () => {
   for (const patch of [
     { persistedIdempotencyKey: "" }, { persistedIdempotencyKey: " ".repeat(3) },
