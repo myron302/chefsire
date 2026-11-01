@@ -51,3 +51,38 @@ test("ambiguous claim error is not retried", async () => sandbox(async () => {
   await assert.rejects(createWeddingSquareOwnershipClaimService(preclaim, claim, submission).prepare(ownership), WeddingSquareOwnershipClaimError);
   assert.equal(claims, 1);
 }));
+
+test("billing-term drift after ownership preclaim blocks submission and requires reconciliation", async () => sandbox(async () => {
+  // The owner, card and idempotency key can remain identical while a second
+  // read/claim observes different plan, location, timezone or charge date.
+  for (const altered of [
+    { locationId: "other-location" },
+    { planVariationId: "elite-plan" },
+    { timezone: "America/New_York" },
+    { startDate: "2026-11-12" },
+    { startDate: undefined },
+  ]) {
+    const calls: string[] = [];
+    const preclaim = { inspect: async () => {
+      calls.push("preclaim");
+      return { attemptId, request };
+    } };
+    const claim = { prepareClaim: async () => {
+      calls.push("claim");
+      return {
+        attemptId,
+        request: { ...request, ...altered } as typeof request,
+        status: "submitting" as const,
+      };
+    } };
+    const submission = { markUnknown: async () => {
+      calls.push("reconcile");
+      return { attemptId, status: "needs_reconciliation" as const };
+    } };
+    await assert.rejects(
+      createWeddingSquareOwnershipClaimService(preclaim, claim, submission).prepare(ownership),
+      WeddingSquareOwnershipClaimError,
+    );
+    assert.deepEqual(calls, ["preclaim", "claim", "reconcile"]);
+  }
+}));

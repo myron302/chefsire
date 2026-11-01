@@ -53,7 +53,14 @@ export function createWeddingSquareOwnershipClaimService(
       if (claimed.attemptId !== saved.attemptId ||
           claimed.request.customerId !== verified.verifiedSquareCustomerId ||
           claimed.request.cardId !== verified.verifiedSquareCardId ||
-          claimed.request.idempotencyKey !== saved.request.idempotencyKey) {
+          // The claim can observe a newer reserved snapshot than the first
+          // owner-bound preclaim. Even when customer/card/key still match,
+          // changes to billing terms must never silently advance submission.
+          claimed.request.idempotencyKey !== saved.request.idempotencyKey ||
+          claimed.request.locationId !== saved.request.locationId ||
+          claimed.request.planVariationId !== saved.request.planVariationId ||
+          claimed.request.timezone !== saved.request.timezone ||
+          claimed.request.startDate !== saved.request.startDate) {
         try { await submission.markUnknown(input.attemptId, input.authenticatedUserId); }
         catch { /* remain blocked in submitting; operator reconciliation required */ }
         throw new WeddingSquareOwnershipClaimError();
