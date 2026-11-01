@@ -19,6 +19,8 @@ const consent = verifyWeddingEnrollmentConsent({
 const config = weddingSquareSandboxPreflight({
   SQUARE_ENV: "sandbox",
   SQUARE_ACCESS_TOKEN: "private-token",
+  SQUARE_CURRENCY: "USD",
+  WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant-sandbox",
   SQUARE_LOCATION_ID: "loc-sandbox",
   WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "var-premium",
   WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "var-elite",
@@ -66,6 +68,14 @@ test("rejects missing saved enrollment key and provider identifiers", () => {
   }
 });
 
+test("rejects missing or padded merchant identity in prepared requests", () => {
+  for (const merchantId of ["", " merchant-sandbox "]) {
+    assert.throws(() => prepareWeddingSquareSubscriptionRequest({
+      ...base, config: { ...config, merchantId },
+    }), WeddingSquareRequestError);
+  }
+});
+
 test("rejects tampered parent plan identity in prepared requests", () => {
   for (const planId of ["", " parent-premium "]) {
     assert.throws(() => prepareWeddingSquareSubscriptionRequest({
@@ -93,6 +103,8 @@ test("rejects independently valid consent and preflight results for different ti
   const eliteConfig = weddingSquareSandboxPreflight({
     SQUARE_ENV: "sandbox",
     SQUARE_ACCESS_TOKEN: "private-token",
+  SQUARE_CURRENCY: "USD",
+  WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant-sandbox",
     SQUARE_LOCATION_ID: "loc-sandbox",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "var-premium",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "var-elite",
@@ -122,6 +134,8 @@ test("matching elite consent and elite preflight can prepare the elite request",
   const eliteConfig = weddingSquareSandboxPreflight({
     SQUARE_ENV: "sandbox",
     SQUARE_ACCESS_TOKEN: "private-token",
+  SQUARE_CURRENCY: "USD",
+  WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant-sandbox",
     SQUARE_LOCATION_ID: "loc-sandbox",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "var-premium",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "var-elite",
