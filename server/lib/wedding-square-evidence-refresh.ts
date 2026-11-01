@@ -77,6 +77,8 @@ export function createWeddingSquareEvidenceRefresh(db:Db,risk:Risk){
          row.agreed_currency!=="USD"||
          row.agreed_monthly_amount_cents!==WEDDING_MONTHLY_CENTS[row.tier]||
          row.verified_amount_cents!==row.agreed_monthly_amount_cents||
+         !Number.isSafeInteger(row.reconciliation_revision)||
+         row.reconciliation_revision<0||
          row.billing_consent_terms_version!==WEDDING_CONSENT_VERSION||
          !["ACTIVE","CANCELED"].includes(row.provider_status))
         throw new WeddingSquareEvidenceRefreshError();
@@ -99,7 +101,8 @@ export function createWeddingSquareEvidenceRefresh(db:Db,risk:Risk){
         // leave this evidence marked recently checked.
         const stale=await db.query(
           `UPDATE wedding_square_invoice_evidence e
-              SET last_payment_reconciled_at=NULL
+              SET last_payment_reconciled_at=NULL,
+                  reconciliation_revision=e.reconciliation_revision+1
              FROM wedding_square_subscriptions s
             WHERE e.id=$1::uuid AND e.wedding_subscription_id=s.id
               AND s.user_id=$2 AND e.square_environment='sandbox'
@@ -116,7 +119,8 @@ export function createWeddingSquareEvidenceRefresh(db:Db,risk:Risk){
       // worker revoked/invalidated during the provider network calls.
       const refreshed=await db.query(
         `UPDATE wedding_square_invoice_evidence e
-            SET last_payment_reconciled_at=now()
+            SET last_payment_reconciled_at=now(),
+                reconciliation_revision=e.reconciliation_revision+1
            FROM wedding_square_subscriptions s
           WHERE e.id=$1::uuid AND e.wedding_subscription_id=s.id
             AND s.user_id=$2 AND e.square_environment='sandbox'
