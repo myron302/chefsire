@@ -100,6 +100,7 @@ test("wrong owner, billing terms or plan block provider readback and POST",()=>s
     {agreed_currency:"EUR"},{billing_consent_terms_version:"outdated"},
     {square_plan_variation_id:"foreign-plan"},{square_merchant_id:"other"},
     {square_customer_id:"wrong customer"},{square_subscription_id:""},
+    {provider_status:"PENDING"},{provider_status:"PAUSED"},
   ]){
     const x=mock({row:{...saved,...change}});
     await assert.rejects(x.service.cancel("owner-1"),WeddingSquareSandboxCancellationError);
@@ -109,7 +110,8 @@ test("wrong owner, billing terms or plan block provider readback and POST",()=>s
 test("provider mismatch or missing cancellation date blocks provider ACK",()=>sandbox(async()=>{
   for(const change of [
     {customerId:"wrong"},{locationId:"wrong"},{planVariationId:"wrong"},
-    {cardId:"wrong"},{providerStatus:"CANCELED"},{canceledDate:"2026-12-01"},
+    {cardId:"wrong"},{providerStatus:"CANCELED"},{providerStatus:"PENDING"},
+    {providerStatus:"PAUSED"},{canceledDate:"2026-12-01"},
   ]){
     const x=mock({before:{...before,...change}});
     await assert.rejects(x.service.cancel("owner-1"),WeddingSquareSandboxCancellationError);
