@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS wedding_square_subscriptions (
   billing_consent_terms_version text NOT NULL,
   agreed_monthly_amount_cents integer NOT NULL CONSTRAINT wedding_sq_sub_amount_ck CHECK (agreed_monthly_amount_cents > 0),
   agreed_currency text NOT NULL CONSTRAINT wedding_sq_sub_currency_ck CHECK (agreed_currency = 'USD'),
-  requested_start_date date NOT NULL,
+  requested_start_date date,
   provider_status text NOT NULL DEFAULT 'PENDING',
   verified_paid_through timestamptz,
   cancellation_requested_at timestamptz,
@@ -27,7 +27,11 @@ CREATE TABLE IF NOT EXISTS wedding_square_subscriptions (
   last_reconciled_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT wedding_sq_sub_provider_uq UNIQUE(square_environment, square_merchant_id, square_subscription_id)
+  CONSTRAINT wedding_sq_sub_provider_uq UNIQUE(square_environment, square_merchant_id, square_subscription_id),
+  CONSTRAINT wedding_sq_sub_tier_amount_ck CHECK (
+    (tier = 'premium' AND agreed_monthly_amount_cents = 2499)
+    OR (tier = 'elite' AND agreed_monthly_amount_cents = 4999)
+  )
 );
 
 CREATE INDEX IF NOT EXISTS wedding_square_subscriptions_user_idx
