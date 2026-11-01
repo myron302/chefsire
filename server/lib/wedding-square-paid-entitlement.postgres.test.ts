@@ -69,6 +69,15 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
     assert.ok(Date.parse(paid!.paidThrough)>Date.now());
     assert.equal(await readVerifiedWeddingPaid("other-user",executor),null,"another user cannot inherit payment");
 
+    // Provider settlement alone cannot authorize a tier if the original
+    // recurring-billing consent is not the exact approved terms or predates now.
+    await client.query("UPDATE wedding_square_subscriptions SET billing_consent_terms_version='other-terms' WHERE id=$1",[subscription.id]);
+    assert.equal(await entitlement(),null,"unrecognized auto-renewal consent must not grant paid access");
+    await client.query("UPDATE wedding_square_subscriptions SET billing_consent_terms_version='wedding-monthly-autorenew-v1',billing_consent_at=now()+interval '1 day' WHERE id=$1",[subscription.id]);
+    assert.equal(await entitlement(),null,"future-dated billing consent cannot grant paid access");
+    await client.query("UPDATE wedding_square_subscriptions SET billing_consent_at=now() WHERE id=$1",[subscription.id]);
+    assert.equal((await entitlement())?.tier,"premium","original approved and prior consent restores valid paid evidence");
+
     // A second concurrently covering invoice on the SAME subscription must
     // not be silently merged via MAX(paidThrough), even when both appear paid.
     await client.query(`INSERT INTO wedding_square_invoice_evidence
