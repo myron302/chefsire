@@ -2063,6 +2063,64 @@ function SubscriptionSettingsPanel() {
                 ) : null}
               </div>
 
+              <div className="rounded-lg border bg-white p-4 space-y-2" aria-label="Wedding Square billing status">
+                <div className="font-semibold text-sm">Recurring Billing Status</div>
+                {weddingBillingStatusQuery.isLoading ? (
+                  <p className="text-sm text-gray-600">Checking your saved billing record…</p>
+                ) : weddingBillingStatusQuery.error ? (
+                  <p className="text-sm text-red-700" role="alert">
+                    Billing verification is temporarily unavailable. We cannot confirm a payment or cancellation.
+                  </p>
+                ) : weddingBillingStatusQuery.data?.enrollmentStatus === "unavailable" ? (
+                  <p className="text-sm text-gray-600">
+                    Square recurring billing is not enabled. Your existing cardless trial remains separate.
+                  </p>
+                ) : weddingBillingStatusQuery.data?.enrollmentStatus === "not_enrolled" ? (
+                  <p className="text-sm text-gray-600">
+                    No recurring Square subscription is enrolled. Your cardless trial will not automatically charge you.
+                  </p>
+                ) : weddingBillingStatusQuery.data ? (
+                  <>
+                    <p className="text-sm">
+                      <span className="font-medium">{titleCase(weddingBillingStatusQuery.data.tier || "free")}</span>
+                      {" · "}
+                      {titleCase(weddingBillingStatusQuery.data.enrollmentStatus.replaceAll("_", " "))}
+                      {typeof weddingBillingStatusQuery.data.monthlyAmountCents === "number"
+                        ? " · $" + (weddingBillingStatusQuery.data.monthlyAmountCents / 100).toFixed(2) + "/month"
+                        : ""}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Sandbox billing record. This is not confirmation of a live charge.
+                    </p>
+                    {weddingBillingStatusQuery.data.requestedFirstChargeDate ? (
+                      <p className="text-xs text-gray-600">
+                        Requested first billing date: {weddingBillingStatusQuery.data.requestedFirstChargeDate}
+                        {" "}(not a confirmed charge).
+                      </p>
+                    ) : null}
+                    {weddingBillingStatusQuery.data.verifiedPaidAccessThrough ? (
+                      <p className="text-xs text-gray-600">
+                        Independently verified paid access through: {" "}
+                        {formatDateTime(weddingBillingStatusQuery.data.verifiedPaidAccessThrough)}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-600">
+                        No independently verified paid coverage is currently available.
+                      </p>
+                    )}
+                    {weddingBillingStatusQuery.data.cancellationRequestedAt ? (
+                      <p className="text-xs text-gray-600">
+                        Cancellation request saved: {" "}
+                        {formatDateTime(weddingBillingStatusQuery.data.cancellationRequestedAt)}
+                        {weddingBillingStatusQuery.data.providerCancellationRecordedAt
+                          ? " · Provider cancellation recorded"
+                          : " · Awaiting provider reconciliation"}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+
               {weddingTiersQuery.isLoading ? (
                 <div className="text-sm text-gray-600">Loading plans…</div>
               ) : weddingTiersQuery.error ? (
