@@ -281,3 +281,60 @@ test("invalid saved enrollment does not trigger merchant or subscription provide
     assert.deepEqual(calls(), { dbReads: 1, attestationReads: 0, providerReads: 0 });
   }
 }));
+
+test("malformed sandbox location, plan and currency configuration blocks even Neon reads", () => sandbox(async () => {
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ["SQUARE_LOCATION_ID", " wedding-location "],
+    ["SQUARE_LOCATION_ID", ""],
+    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", " wedding-premium "],
+    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "wedding-elite "],
+    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", ""],
+    ["SQUARE_CURRENCY", "CAD"],
+    ["SQUARE_CURRENCY", " USD "],
+  ];
+  for (const [key, value] of cases) {
+    const before = process.env[key];
+    process.env[key] = value;
+    try {
+      const { readback, calls } = service();
+      await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+      assert.deepEqual(calls(), { dbReads: 0, attestationReads: 0, providerReads: 0 });
+    } finally {
+      if (before === undefined) delete process.env[key];
+      else process.env[key] = before;
+    }
+  }
+}));
+
+test("padded attempt and authenticated user identifiers block all reads", () => sandbox(async () => {
+  for (const [attemptId, userId] of [
+    [" enrollment-1 ", "chef-user"],
+    ["enrollment-1", " chef-user "],
+    ["", "chef-user"],
+    ["enrollment-1", ""],
+  ]) {
+    const { readback, calls } = service();
+    await assert.rejects(readback.inspect(attemptId, userId), expectedError);
+    assert.deepEqual(calls(), { dbReads: 0, attestationReads: 0, providerReads: 0 });
+  }
+}));
+
+test("malformed saved subscription, customer, card and fingerprint block provider requests", () => sandbox(async () => {
+  for (const invalid of [
+    { providerSubscriptionId: " sub-confirmed " },
+    { providerSubscriptionId: "   " },
+    { persistedIdempotencyKey: " saved-idempotency " },
+    { persistedIdempotencyKey: "" },
+    { persistedRequestFingerprint: "B".repeat(64) },
+    { persistedRequestFingerprint: "" },
+    { customerId: " customer-1 " },
+    { customerId: "" },
+    { cardId: "card-1 " },
+    { cardId: "" },
+    { attemptId: " enrollment-1 " },
+  ]) {
+    const { readback, calls } = service({ ...saved, ...invalid });
+    await assert.rejects(readback.inspect("enrollment-1", "chef-user"), expectedError);
+    assert.deepEqual(calls(), { dbReads: 1, attestationReads: 0, providerReads: 0 });
+  }
+}));
