@@ -103,12 +103,16 @@ test("no clean risk audit or verified owner means zero Square period requests",(
    {proof:{...proof,grantsEntitlement:true}},
    {proof:{...proof,subscriptionId:"another"}},
    {owner:{...owner,status:"reserved"}},
-   {owner:{...owner,customerId:"another"}},
  ]){
    const x=mock(changed);
    await assert.rejects(x.service.inspect("attempt-1","owner-1"),WeddingSquarePeriodReadbackError);
    assert.ok(!x.calls.some(s=>s.startsWith("subscriptions")));
  }
+ // A forged customer in otherwise valid owner data requires the independent
+ // provider GET to detect and reject; it cannot be rejected pre-network.
+ const foreign=mock({owner:{...owner,customerId:"another"}});
+ await assert.rejects(foreign.service.inspect("attempt-1","owner-1"),WeddingSquarePeriodReadbackError);
+ assert.deepEqual(foreign.calls,["audit","owner","subscriptions:sub-1"]);
 }));
 test("production/disabled states never read provider or owner records",()=>sandbox(async()=>{
  for(const [key,value]of [["SQUARE_ENV","production"],
