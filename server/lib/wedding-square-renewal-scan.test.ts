@@ -4,7 +4,7 @@ import { createWeddingSquareRenewalScan, WeddingSquareRenewalScanError } from ".
 const A="11111111-1111-4111-8111-111111111111";
 const B="22222222-2222-4222-8222-222222222222";
 const S="33333333-3333-4333-8333-333333333333";
-const row={attempt_id:A,user_id:"owner-1",subscription_id:S,square_subscription_id:"sub-1"};
+const row={attempt_id:A,user_id:"owner-1",subscription_id:S,square_subscription_id:"sub-1",provider_status:"ACTIVE"};
 const candidate={subscriptionId:"sub-1",invoiceId:"inv-new",paymentId:"pay-new",
   grantsEntitlement:false,safeToResubmit:false,requiresOperatorReconciliation:true,
   requiresAmountAndCoverageVerification:true};
@@ -25,7 +25,7 @@ async function enabled(fn:()=>Promise<void>){
  });}
 }
 function fixture(opts:{rows?:unknown[],prior?:unknown[],providerFail?:boolean,
- wrong?:boolean,ledgerFail?:boolean}={}){
+ wrong?:boolean,ledgerFail?:boolean,activationFail?:boolean}={}){
  const calls:string[]=[];
  const db={query:async(sql:string,args:unknown[])=>{
   if(sql.includes("WITH selected")){
@@ -48,13 +48,19 @@ function fixture(opts:{rows?:unknown[],prior?:unknown[],providerFail?:boolean,
   if(opts.providerFail)throw Error("private Square token");
   return opts.wrong?{...candidate,subscriptionId:"foreign"}:candidate;
  }};
+ const activation={activate:async(attemptId:string,userId:string,sub:string)=>{
+  calls.push("activate");
+  assert.deepEqual([attemptId,userId,sub],[A,"owner-1","sub-1"]);
+  if(opts.activationFail)throw Error("Square not ACTIVE");
+  return{activated:true,subscriptionId:sub,grantsEntitlement:false};
+ }};
  const ledger={record:async(attemptId:string,userId:string)=>{
   calls.push("ledger");
   assert.deepEqual([attemptId,userId],[A,"owner-1"]);
   if(opts.ledgerFail)throw Error("private Neon rollback");
   return outcome;
  }};
- return{service:createWeddingSquareRenewalScan(db as any,payment as any,ledger as any),calls};
+ return{service:createWeddingSquareRenewalScan(db as any,payment as any,ledger as any,activation as any),calls};
 }
 test("newest verified renewal invoice creates one ledger record; no Square charge",()=>enabled(async()=>{
  const x=fixture();
@@ -95,6 +101,7 @@ test("invalid, duplicated or unbounded persisted rows are rejected before networ
   [{...row,attempt_id:"invalid"}],
   [{...row,subscription_id:"invalid"}],
   [row,row],
+  [{...row,provider_status:"DEACTIVATED"}],
   Array.from({length:21},(_,i)=>({...row,subscription_id:
    `00000000-0000-4000-8000-${String(i).padStart(12,"0")}`})),
  ]){
@@ -112,9 +119,20 @@ test("same-worker overlap returns already_running without a second provider scan
   calls.push("claim");ready();await released;
   return{rows:[]};
  }};
- const svc=createWeddingSquareRenewalScan(db as any,{}as any,{}as any);
+ const svc=createWeddingSquareRenewalScan(db as any,{}as any,{}as any,{}as any);
  const first=svc.run();await started;
  assert.equal((await svc.run()).status,"already_running");
  unblock();assert.equal((await first).status,"completed");
  assert.deepEqual(calls,["claim"]);
+}));
+
+test("PENDING first-charge must receive verified ACTIVE owner transition BEFORE real ledger",()=>enabled(async()=>{
+ const x=fixture({rows:[{...row,provider_status:"PENDING"}]});
+ const res=await x.service.run();
+ assert.deepEqual(res,{status:"completed",scanned:1,recorded:1,existing:0,pending:0});
+ assert.deepEqual(x.calls,["claim","provider","activate","existing","ledger"]);
+ const failed=fixture({rows:[{...row,provider_status:"PENDING"}],activationFail:true});
+ const blocked=await failed.service.run();
+ assert.equal(blocked.pending,1);
+ assert.deepEqual(failed.calls,["claim","provider","activate"]);
 }));
