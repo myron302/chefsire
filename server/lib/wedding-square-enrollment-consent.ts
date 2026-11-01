@@ -39,7 +39,8 @@ export function verifyWeddingEnrollmentConsent(params: {
   // consent boundary, not only when the later subscription builder runs.
   // Never trim a different user identity into an apparently valid receipt.
   if (typeof params.userId !== "string" || !params.userId ||
-      params.userId !== params.userId.trim()) {
+      params.userId !== params.userId.trim() ||
+      /[\s\x00-\x1f\x7f]/.test(params.userId)) {
     throw new TypeError("Authenticated user required");
   }
   const request = consentRequestSchema.parse(params.request);
