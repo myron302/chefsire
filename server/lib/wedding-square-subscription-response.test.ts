@@ -44,6 +44,24 @@ test("mismatched provider ownership, plan, timezone or date requires reconciliat
   }
 });
 
+test("noncanonical provider subscription IDs require reconciliation, not persistence", () => {
+  for (const id of [
+    " square-sub-1", "square-sub-1 ", "\\tsquare-sub-1",
+    "square\\nsub-1", "square\\u0000sub-1", "square\\u007fsub-1",
+    " ", "\\n", 12, null,
+  ]) {
+    assert.throws(
+      () => verifyWeddingSquareCreatedSubscription(request, { ...response, id }),
+      WeddingSquareReconciliationRequiredError,
+    );
+  }
+  // Valid opaque provider identifiers remain untouched, never normalized.
+  assert.equal(
+    verifyWeddingSquareCreatedSubscription(request, { ...response, id: "SUB_123-abc" }).providerSubscriptionId,
+    "SUB_123-abc",
+  );
+});
+
 test("missing, malformed or unexpected subscription statuses fail closed", () => {
   for (const result of [undefined, null, {}, { ...response, status: "CANCELED" }, { ...response, status: "FAILED" }]) {
     assert.throws(() => verifyWeddingSquareCreatedSubscription(request, result), WeddingSquareReconciliationRequiredError);
