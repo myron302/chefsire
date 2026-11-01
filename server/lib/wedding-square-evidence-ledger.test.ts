@@ -107,7 +107,7 @@ test("stale/ambiguous Square evidence never starts a Neon transaction",()=>enabl
   {period:{...proof,grantsEntitlement:true}},
   {period:{...proof,providerPaidAt:new Date(Date.now()+86_400_000).toISOString()}},
   {period:{...proof,periodEndsAt:new Date(Date.now()-86_400_000).toISOString()}},
-  {period:{...proof,periodStartsAt:new Date(Date.now()-3600_000).toISOString().replace("Z","+00:00")}},
+  {period:{...proof,periodStartsAt:new Date(Date.now()-7200_000).toISOString()}},
   {fresh:{...fresh,invoiceId:"other"}},
   {fresh:{...fresh,noRefundsOrDisputes:false}},
   {fail:"period"as const},{fail:"risk"as const},
