@@ -145,3 +145,16 @@ export const oauthCallbackLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many sign-in attempts. Please try again later." },
 });
+
+/**
+ * Wedding sandbox subscription submission can run token-owned Square GETs
+ * and one provider POST after an atomic claim. Even though the attempt is
+ * one-shot, bound repeated authenticated requests per source IP.
+ */
+export const weddingSquareEnrollmentSubmitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { ok: false, code: "WEDDING_SQUARE_RATE_LIMITED" },
+});

@@ -76,6 +76,8 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-sandbox-customer-card-api.test.ts
       - name: Verify owner-bound Neon and provider customer/card readback
         run: node --import tsx --test server/lib/wedding-square-owner-card-readback.test.ts
+      - name: Test authenticated sandbox-only Wedding subscription submission HTTP
+        run: node --import tsx --test server/routes/wedding-square-sandbox-submit.test.ts
       - name: Test Square enrollment reconciliation readback
         run: node --import tsx --test server/lib/wedding-square-reconciliation-readback.test.ts
       - name: Test Square provider reconciliation guard

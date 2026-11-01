@@ -15,9 +15,10 @@ import { verifyWeddingSquareCustomerCardOwnership } from "./wedding-square-custo
  * independently verified 'me' merchant attestation, and card.merchantId must
  * also match. No fake customer/card object is accepted from HTTP request data.
  *
- * This is read-only; no routes currently invoke it, and no Square subscription
- * is created or paid entitlement granted. A subsequent route must use this
- * service to construct the only input accepted by the one-shot submitter.
+ * This read-only service is invoked exclusively by the gated, authenticated
+ * sandbox attempt-submit route. It creates no Square subscriptions itself,
+ * never grants paid entitlement, and supplies the only trusted input for the
+ * one-shot submitter.
  */
 type Database = Pick<PoolClient, "query">;
 type Merchant = Pick<typeof weddingSquareSandboxMerchantAttestation, "inspect">;

@@ -9,10 +9,10 @@ import type { prepareWeddingSquareSubscriptionRequest } from "./wedding-square-s
 /**
  * Internal ONLY: the first actual Square CreateSubscription integration.
  *
- * NO HTTP route calls this service. A future authenticated route must load
- * the saved customer binding from Neon and read Square customer/card objects
- * independently before constructing the ownership input. The browser is NEVER
- * permitted to pass provider customer/card IDs or a pretend ownership record.
+ * Only the separately gated, authenticated sandbox submission route calls this
+ * service. It first loads a saved, owner-bound Neon attempt and independently
+ * reads its Square customer/card objects. The browser NEVER passes provider
+ * customer/card IDs or a pretend ownership record.
  *
  * This service first attests the token-owned sandbox merchant and Wedding plans,
  * then uses the existing owner-bound reservation/atomic claim. The claim is
