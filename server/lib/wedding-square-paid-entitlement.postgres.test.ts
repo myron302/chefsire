@@ -70,7 +70,7 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
     assert.equal(await readVerifiedWeddingPaid("other-user",executor),null,"another user cannot inherit payment");
 
     // Provider settlement alone cannot authorize a tier if the original
-    // recurring-billing consent is not the exact approved terms or predates now.
+    // recurring-billing consent is not the approved version or precedes no payment.
     await client.query("UPDATE wedding_square_subscriptions SET billing_consent_terms_version='other-terms' WHERE id=$1",[subscription.id]);
     assert.equal(await entitlement(),null,"unrecognized auto-renewal consent must not grant paid access");
     await client.query("UPDATE wedding_square_subscriptions SET billing_consent_terms_version='wedding-monthly-autorenew-v1',billing_consent_at=now()+interval '1 day' WHERE id=$1",[subscription.id]);
