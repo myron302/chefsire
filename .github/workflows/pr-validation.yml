@@ -88,3 +88,39 @@ jobs:
         run: node --import tsx --test server/routes/wedding-square-webhook.test.ts
       - name: Build client and server
         run: npm run build
+
+  wedding-square-postgres-migration-tests:
+    name: Wedding Square PostgreSQL migration and Drizzle parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: chefsire_wedding_test
+          POSTGRES_USER: chefsire_test
+          POSTGRES_PASSWORD: disposable_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chefsire_test -d chefsire_wedding_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+      WEDDING_SQUARE_TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+    steps:
+      - name: Checkout reviewed PR code
+        uses: actions/checkout@v4
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies from lockfile
+        run: npm ci
+      - name: Verify schema declaration coverage
+        run: node --import tsx --test server/lib/schema-table-coverage.test.ts
+      - name: Apply both Wedding Square migration files to a rollback-only PostgreSQL transaction and check constraints
+        run: node --import tsx --test server/lib/wedding-square-migrations.postgres.test.ts
