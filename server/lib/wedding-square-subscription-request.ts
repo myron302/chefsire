@@ -1,4 +1,4 @@
-import { squareStartDateNotBefore } from "./wedding-square-billing-policy";
+import { squareStartDateNotBefore, WEDDING_CONSENT_VERSION } from "./wedding-square-billing-policy";
 import type { verifyWeddingEnrollmentConsent } from "./wedding-square-enrollment-consent";
 import type { weddingSquareSandboxPreflight } from "./wedding-square-enrollment-preflight";
 
@@ -39,9 +39,18 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
   persistedIdempotencyKey: string;
 }) {
   const { consent, config } = input;
+  // Revalidate receipt metadata at the final pure request boundary. A typed
+  // server-side consent receipt is not sufficient if it was reconstructed or
+  // mutated between verification and durable enrollment preparation.
+  const consentTime = Date.parse(consent.billingConsentAt);
   if (config.environment !== "sandbox" ||
       config.tier !== consent.tier ||
-      !consent.userId.trim() ||
+      typeof consent.userId !== "string" || !consent.userId.trim() ||
+      consent.userId !== consent.userId.trim() ||
+      consent.consentTermsVersion !== WEDDING_CONSENT_VERSION ||
+      typeof consent.billingConsentAt !== "string" ||
+      !Number.isFinite(consentTime) ||
+      new Date(consentTime).toISOString() !== consent.billingConsentAt ||
       !consent.automaticRenewal ||
       consent.agreedCurrency !== "USD" ||
       consent.subscriptionTimezone !== "UTC") {
@@ -70,6 +79,8 @@ export function prepareWeddingSquareSubscriptionRequest(input: {
     if (typeof consent.trialExpiresAt !== "string" ||
         !Number.isFinite(expiry) ||
         new Date(expiry).toISOString() !== consent.trialExpiresAt ||
+        // A verified future trial cannot have already expired at consent.
+        expiry <= consentTime ||
         start === null || start < expiry ||
         // The consent receipt acknowledged the earliest non-early UTC date.
         // A later date is also a changed billing term, not a safe fallback.
