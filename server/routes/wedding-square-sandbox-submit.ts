@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware";
+import { weddingSquareEnrollmentSubmitLimiter } from "../middleware/rate-limit";
 import { weddingSquareOwnerCardReadback } from "../lib/wedding-square-owner-card-readback";
 import { weddingSquareSandboxSubscriptionSubmitter } from "../lib/wedding-square-sandbox-subscription-submitter";
 
@@ -39,9 +40,10 @@ export function createWeddingSquareSandboxSubmitRouter(
   ownerReadback: Source,
   submitter: Submitter,
   authenticate: RequestHandler = requireAuth,
+  limit: RequestHandler = weddingSquareEnrollmentSubmitLimiter,
 ) {
   const router = Router();
-  router.post("/subscription/sandbox/submit", authenticate, async (req, res) => {
+  router.post("/subscription/sandbox/submit", authenticate, limit, async (req, res) => {
     res.set("Cache-Control", "no-store");
     if (!sandboxSubmissionEnabled()) return res.status(503).json({
       ok: false, code: "WEDDING_SQUARE_SANDBOX_DISABLED",
