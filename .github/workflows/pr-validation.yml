@@ -134,3 +134,5 @@ jobs:
         run: node --import tsx --test server/lib/schema-table-coverage.test.ts
       - name: Apply both Wedding Square migration files to a rollback-only PostgreSQL transaction and check constraints
         run: node --import tsx --test server/lib/wedding-square-migrations.postgres.test.ts
+      - name: Verify atomic Wedding provider confirmation and subscription ledger on PostgreSQL 16
+        run: node --import tsx --test server/lib/wedding-square-confirmation-persistence.postgres.test.ts
