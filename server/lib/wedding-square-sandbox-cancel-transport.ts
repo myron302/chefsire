@@ -13,7 +13,7 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v =>
   new Date(v + "T00:00:00Z").toISOString().slice(0,10) === v);
 const subscription = z.object({
   id: exact, customer_id: exact, location_id: exact, plan_variation_id: exact,
-  card_id: exact,
+  card_id: exact.nullish(),
   status: z.enum(["PENDING", "ACTIVE", "PAUSED", "CANCELED"]),
   canceled_date: date.nullish(),
 }).passthrough();
@@ -48,7 +48,6 @@ async function read(sender: Sender, id: string, method: "GET"|"POST") {
         Accept: "application/json",
         ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
       },
-      ...(method === "POST" ? { body: "{}" } : {}),
       signal: AbortSignal.timeout(15000),
     });
     if (!res || res.status !== 200) throw new WeddingSquareCancelTransportError();
@@ -63,7 +62,7 @@ async function read(sender: Sender, id: string, method: "GET"|"POST") {
     const sub = parsed.data.subscription;
     return Object.freeze({
       id: sub.id, customerId: sub.customer_id, locationId: sub.location_id,
-      planVariationId: sub.plan_variation_id, cardId: sub.card_id,
+      planVariationId: sub.plan_variation_id, cardId: sub.card_id ?? null,
       providerStatus: sub.status, canceledDate: sub.canceled_date ?? null,
     });
   } catch {
