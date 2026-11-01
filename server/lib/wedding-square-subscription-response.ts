@@ -14,14 +14,32 @@ const exactSubscriptionId = z.string().min(1).refine(
 
 const subscriptionSchema = z.object({
   id: exactSubscriptionId,
-  locationId: z.string().min(1),
-  customerId: z.string().min(1),
-  planVariationId: z.string().min(1),
-  cardId: z.string().min(1),
+  locationId: exactSubscriptionId,
+  customerId: exactSubscriptionId,
+  planVariationId: exactSubscriptionId,
+  cardId: exactSubscriptionId,
   timezone: z.literal("UTC"),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   status: z.enum(["PENDING", "ACTIVE"]),
 }).passthrough();
+
+// An independently supplied claimed request must also be canonical; matching
+// malformed provider fields are not valid enrollment confirmation evidence.
+const claimedRequestSchema = z.object({
+  idempotencyKey: exactSubscriptionId,
+  locationId: exactSubscriptionId,
+  customerId: exactSubscriptionId,
+  planVariationId: exactSubscriptionId,
+  cardId: exactSubscriptionId,
+  timezone: z.literal("UTC"),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).passthrough();
+
+function canonicalUtcDate(value: string): boolean {
+  const timestamp = Date.parse(value + "T00:00:00.000Z");
+  return Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value;
+}
 
 export class WeddingSquareReconciliationRequiredError extends Error {
   constructor() {
@@ -44,12 +62,18 @@ export function verifyWeddingSquareCreatedSubscription(
   submissionUtcDate?: string,
 ) {
   const parsed = subscriptionSchema.safeParse(response);
-  if (!parsed.success) throw new WeddingSquareReconciliationRequiredError();
+  const claimed = claimedRequestSchema.safeParse(request);
+  if (!parsed.success || !claimed.success ||
+      !canonicalUtcDate(parsed.data.startDate) ||
+      (claimed.data.startDate !== undefined && !canonicalUtcDate(claimed.data.startDate))) {
+    throw new WeddingSquareReconciliationRequiredError();
+  }
   const result = parsed.data;
+  const original = claimed.data;
   // Square may assign the actual start date when the request omits startDate.
   // Accept only the submission-day UTC date; future/backdated dates and missing
   // submission evidence require reconciliation rather than silent confirmation.
-  const immediate = request.startDate === undefined;
+  const immediate = original.startDate === undefined;
   if (immediate && (!submissionUtcDate ||
       !/^\d{4}-\d{2}-\d{2}$/.test(submissionUtcDate) ||
       !Number.isFinite(Date.parse(submissionUtcDate + "T00:00:00.000Z")) ||
@@ -58,12 +82,12 @@ export function verifyWeddingSquareCreatedSubscription(
     throw new WeddingSquareReconciliationRequiredError();
   }
   if (
-    result.locationId !== request.locationId ||
-    result.customerId !== request.customerId ||
-    result.cardId !== request.cardId ||
-    result.planVariationId !== request.planVariationId ||
-    result.timezone !== request.timezone ||
-    (request.startDate !== undefined && result.startDate !== request.startDate)
+    result.locationId !== original.locationId ||
+    result.customerId !== original.customerId ||
+    result.cardId !== original.cardId ||
+    result.planVariationId !== original.planVariationId ||
+    result.timezone !== original.timezone ||
+    (original.startDate !== undefined && result.startDate !== original.startDate)
   ) throw new WeddingSquareReconciliationRequiredError();
 
   // Requests without startDate begin immediately. Never infer paid entitlement
