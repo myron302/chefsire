@@ -39,15 +39,20 @@ const orderSchema = z.object({
   errors: noErrors,
   order: z.object({
     id: canonicalId, locationId: canonicalId,
-    customerId: canonicalId,
+    // Square Order.customerId is optional on provider invoice orders.
+    // When absent, invoice recipient and final Payment.customerId still
+    // independently establish the paid customer's identity.
+    customerId: canonicalId.nullish(),
     tenders: z.array(z.object({
       type: z.literal("CARD"),
       // Square Tender.id is the canonical associated payment ID. Older
       // tender records often omit the optional paymentId alias.
       id: canonicalId,
       paymentId: canonicalId.optional(),
-      customerId: canonicalId,
-      locationId: canonicalId,
+      // Tender customer/location fields may be omitted by Square; verify
+      // exact values when present, and always verify the retrieved Payment.
+      customerId: canonicalId.nullish(),
+      locationId: canonicalId.nullish(),
     }).passthrough()).length(1),
   }).passthrough(),
 }).passthrough();
@@ -130,13 +135,14 @@ export function createWeddingSquareProviderPaymentReadback(
         if (!order.success ||
             order.data.order.id !== inv.data.invoice.orderId ||
             order.data.order.locationId !== saved.locationId ||
-            order.data.order.customerId !== saved.customerId) {
+            (order.data.order.customerId != null &&
+             order.data.order.customerId !== saved.customerId)) {
           throw new WeddingSquareProviderPaymentReadbackError();
         }
         // Reject split, offline, cash, missing or ambiguous tenders.
         const tender = order.data.order.tenders[0];
-        if (tender.customerId !== saved.customerId ||
-            tender.locationId !== saved.locationId ||
+        if ((tender.customerId != null && tender.customerId !== saved.customerId) ||
+            (tender.locationId != null && tender.locationId !== saved.locationId) ||
             (tender.paymentId !== undefined && tender.paymentId !== tender.id)) {
           throw new WeddingSquareProviderPaymentReadbackError();
         }
