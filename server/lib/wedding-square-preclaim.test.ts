@@ -23,6 +23,8 @@ async function sandbox(run: () => Promise<void>) {
     SQUARE_ENV: "sandbox",
     WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
     SQUARE_ACCESS_TOKEN: "test",
+    SQUARE_CURRENCY: "USD",
+    WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant",
     SQUARE_LOCATION_ID: "sandbox-loc",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "premium-plan",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "elite-plan",
