@@ -75,6 +75,7 @@ export const weddingSquareSubscriptions = pgTable("wedding_square_subscriptions"
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   userIdx: index("wedding_square_subscriptions_user_idx").on(t.userId),
+  renewalScanIdx: index("wedding_square_subscriptions_renewal_scan_idx").on(t.lastRenewalScanAt.asc().nullsFirst(), t.id),
   liveUnique: uniqueIndex("wedding_square_subscriptions_one_live_user_idx").on(t.userId).where(sql`${t.providerStatus} IN ('PENDING','ACTIVE','PAUSED')`),
   providerUnique: unique("wedding_sq_sub_provider_uq").on(t.squareEnvironment, t.squareMerchantId, t.squareSubscriptionId),
   tierCheck: check("wedding_sq_sub_tier_ck", sql`${t.tier} IN ('premium','elite')`),
