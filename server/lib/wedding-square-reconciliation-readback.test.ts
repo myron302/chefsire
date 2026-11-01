@@ -74,3 +74,44 @@ test("disabled configuration and raw database faults cannot expose connection de
     if (previous !== undefined) process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = previous;
   }
 }));
+
+test("malformed reconciliation owner and attempt IDs fail before any SELECT", async () => sandbox(async () => {
+  let reads = 0;
+  const db = { query: async () => { reads++; return { rows: [row] }; } };
+  const service = createWeddingSquareReconciliationReadback(db as any);
+  const nul = String.fromCharCode(0);
+  const del = String.fromCharCode(127);
+  for (const [id, userId] of [
+    [attemptId + nul, "user-1"],
+    [attemptId, "user" + del + "-1"],
+    [" " + attemptId, "user-1"],
+    [attemptId, "user-1" + String.fromCharCode(9)],
+    [attemptId, null],
+  ] as const) {
+    await assert.rejects(service.inspect(id as string, userId as string), WeddingSquareReconciliationReadbackError);
+  }
+  assert.equal(reads, 0);
+}));
+
+test("malformed persisted reconciliation identities never become readback evidence", async () => sandbox(async () => {
+  const nul = String.fromCharCode(0);
+  const tab = String.fromCharCode(9);
+  for (const patch of [
+    { id: "other-attempt" },
+    { idempotency_key: "key" + nul },
+    { square_customer_id: "customer" + tab + "other" },
+    { square_card_id: "card" + nul },
+    { square_location_id: "location" + nul },
+    { square_plan_variation_id: "plan" + nul },
+    { provider_subscription_id: "sub" + nul + "1" },
+    { status: "confirmed", provider_subscription_id: "sub" + tab + "1" },
+  ]) {
+    let reads = 0;
+    const db = { query: async () => { reads++; return { rows: [{ ...row, ...patch }] }; } };
+    await assert.rejects(
+      createWeddingSquareReconciliationReadback(db as any).inspect(attemptId, "user-1"),
+      WeddingSquareReconciliationReadbackError,
+    );
+    assert.equal(reads, 1);
+  }
+}));
