@@ -29,6 +29,7 @@ test("verified raw GET followed by exactly one bodyless sandbox cancellation POS
     const u=new URL(url);calls.push(init.method+" "+u.pathname);
     assert.equal(u.origin,"https://connect.squareupsandbox.com");
     assert.equal(init.body,undefined);
+    assert.equal(init.redirect,"error");
     assert.equal((init.headers as Record<string,string>)["Square-Version"],"2025-10-16");
     return response(init.method==="POST"?canceled:provider);
   });
