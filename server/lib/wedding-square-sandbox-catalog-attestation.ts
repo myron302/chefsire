@@ -7,7 +7,9 @@ import { WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
  * Internal-only, sandbox-only read-only catalog verification for the configured
  * Wedding subscription plan variations. This checks current provider catalog
  * terms; it is NOT a customer consent, enrollment, charge or entitlement gate.
- * The two catalog IDs come only from server operator configuration.
+ * Variation IDs and their distinct parent subscription plan IDs come only
+ * from server operator configuration. A correct price on a variation from an
+ * unrelated Square product must not be accepted as a Wedding plan.
  */
 type ReadCatalogObject = (objectId: string) => Promise<unknown>;
 type MerchantAttestation = Pick<typeof weddingSquareSandboxMerchantAttestation, "inspect">;
@@ -58,7 +60,7 @@ export class WeddingSquareSandboxCatalogAttestationError extends Error {
   }
 }
 
-function verifyVariation(response: unknown, id: string, locationId: string, cents: number) {
+function verifyVariation(response: unknown, id: string, locationId: string, cents: number, expectedParentId: string) {
   const parsed = envelope.safeParse(response);
   if (!parsed.success) throw new WeddingSquareSandboxCatalogAttestationError();
   const object = parsed.data.object;
@@ -67,7 +69,7 @@ function verifyVariation(response: unknown, id: string, locationId: string, cent
   const price = phase.pricing.priceMoney;
   // Exactly one indefinite monthly STATIC USD phase, no trial, discount,
   // proration or alternate anchor date that could contradict consent.
-  if (object.id !== id || object.isDeleted === true ||
+  if (object.id !== id || data.subscriptionPlanId !== expectedParentId || object.isDeleted === true ||
       object.absentAtLocationIds?.includes(locationId) ||
       // Square defaults an omitted presentAtAllLocations to true.
       (object.presentAtAllLocations === false &&
@@ -95,12 +97,15 @@ export function createWeddingSquareSandboxCatalogAttestation(
       const locationId = process.env.SQUARE_LOCATION_ID;
       const premiumId = process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID;
       const eliteId = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID;
+      const premiumParentId = process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID;
+      const eliteParentId = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID;
       if (process.env.SQUARE_ENV !== "sandbox" ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           (process.env.SQUARE_CURRENCY !== undefined && process.env.SQUARE_CURRENCY !== "USD") ||
           !configuredId(merchantId) || !configuredId(locationId) ||
           !configuredId(premiumId) || !configuredId(eliteId) ||
-          premiumId === eliteId) {
+          !configuredId(premiumParentId) || !configuredId(eliteParentId) ||
+          premiumId === eliteId || premiumParentId === eliteParentId) {
         throw new WeddingSquareSandboxCatalogAttestationError();
       }
 
@@ -116,14 +121,15 @@ export function createWeddingSquareSandboxCatalogAttestation(
           throw new WeddingSquareSandboxCatalogAttestationError();
         }
         verifyVariation(
-          await readCatalogObject(premiumId), premiumId, locationId, WEDDING_MONTHLY_CENTS.premium,
+          await readCatalogObject(premiumId), premiumId, locationId, WEDDING_MONTHLY_CENTS.premium, premiumParentId,
         );
         verifyVariation(
-          await readCatalogObject(eliteId), eliteId, locationId, WEDDING_MONTHLY_CENTS.elite,
+          await readCatalogObject(eliteId), eliteId, locationId, WEDDING_MONTHLY_CENTS.elite, eliteParentId,
         );
         return Object.freeze({
           merchantId, locationId, currency: "USD" as const,
           premiumPlanVariationId: premiumId, elitePlanVariationId: eliteId,
+          premiumPlanId: premiumParentId, elitePlanId: eliteParentId,
           verifiedSandboxCatalogTerms: true as const,
           authorizesSubscriptionCreation: false as const,
           grantsEntitlement: false as const,
