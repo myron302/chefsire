@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import pg from "pg";
 import { createWeddingSquareRenewalScan } from "./wedding-square-renewal-scan";
+import { createWeddingSquareEvidenceLedger } from "./wedding-square-evidence-ledger";
+import { createWeddingSquareRenewalActivation } from "./wedding-square-renewal-activation";
 import { WEDDING_CONSENT_VERSION } from "./wedding-square-billing-policy";
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
@@ -22,13 +24,17 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
  const env=["SQUARE_ENV","WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
   "WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED",
   "WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED",
-  "WEDDING_SQUARE_SANDBOX_MERCHANT_ID","SQUARE_LOCATION_ID"]as const;
+  "WEDDING_SQUARE_SANDBOX_MERCHANT_ID","SQUARE_LOCATION_ID",
+  "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
+  "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID"]as const;
  const old=env.map(k=>process.env[k]);
  Object.assign(process.env,{SQUARE_ENV:"sandbox",
   WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED:"true",
   WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED:"true",
   WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED:"true",
-  WEDDING_SQUARE_SANDBOX_MERCHANT_ID:"merchant-1",SQUARE_LOCATION_ID:"loc-1"});
+  WEDDING_SQUARE_SANDBOX_MERCHANT_ID:"merchant-1",SQUARE_LOCATION_ID:"loc-1",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID:"premium-var",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID:"elite-var"});
  let connected=false;
  try{
   await client.connect();connected=true;
@@ -57,37 +63,86 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
      `key-${n}`,attempt,attempt==="confirmed"?`sub-${n}`:null]);
    await client.query(`INSERT INTO wedding_square_subscriptions
     (user_id,tier,square_environment,square_merchant_id,square_location_id,
-     square_customer_id,square_plan_variation_id,square_subscription_id,
+     square_customer_id,square_plan_variation_id,square_subscription_id,square_card_id,
      billing_consent_at,billing_consent_terms_version,agreed_monthly_amount_cents,
      agreed_currency,provider_status)
     VALUES($1,'premium','sandbox','merchant-1','loc-1',$2,'premium-var',
-     $3,now(),$4,2499,'USD',$5)`,
-    [`owner-${n}`,`cust-${n}`,`sub-${n}`,WEDDING_CONSENT_VERSION,status]);
+     $3,$6,now(),$4,2499,'USD',$5)`,
+    [`owner-${n}`,`cust-${n}`,`sub-${n}`,WEDDING_CONSENT_VERSION,status,`card-${n}`]);
   }
   const calls:string[]=[];
+  const captured=new Date(Date.now()-3_600_000).toISOString();
+  const expires=new Date(Date.now()+10*86_400_000).toISOString();
+  const proof=(user:string)=>({
+    subscriptionId:user==="owner-2"?"sub-2":"sub-1",
+    invoiceId:user==="owner-2"?"inv-2":"inv-1",
+    paymentId:user==="owner-2"?"pay-2":"pay-1",
+    verifiedAmountCents:2499,providerPaidAt:captured,
+    periodStartsAt:captured,periodEndsAt:expires,
+    grantsEntitlement:false,requiresOperatorReconciliation:true,
+    requiresIndependentRefundDisputeRecheck:true,
+  });
+  // REAL ledger code, REAL PostgreSQL owner/consent/amount checks and INSERT.
+  // Only the external Square provider GETs are injected as offline evidence.
+  let currentUser="owner-1";
+  const ledger=createWeddingSquareEvidenceLedger(
+    {connect:async()=>({
+      query:(sql:string,args?:unknown[])=>client.query(sql,args),
+      release:()=>undefined,
+    })}as any,
+    {inspect:async(_attempt:string,user:string)=>{currentUser=user;return proof(user);}}as any,
+    {inspect:async(_attempt:string,user:string)=>({
+      subscriptionId:proof(user).subscriptionId,
+      invoiceId:proof(user).invoiceId,paymentId:proof(user).paymentId,
+      verifiedAmountCents:2499,noRefundsOrDisputes:true,
+      grantsEntitlement:false,requiresIndependentPeriodVerification:true,
+    })}as any,
+  );
+  const activation=createWeddingSquareRenewalActivation(
+    {query:(sql:string,args?:unknown[])=>client.query(sql,args)}as any,
+    {inspect:async(_attempt:string,user:string)=>({
+      attemptId:_attempt,
+      providerSubscriptionId:user==="owner-2"?"sub-2":"sub-1",
+      providerStatus:"ACTIVE",existingIdMatches:true,
+      requiresOperatorReconciliation:true,
+      grantsEntitlement:false,safeToResubmit:false,
+    })}as any,
+  );
   const worker=createWeddingSquareRenewalScan(
    {query:(sql:string,args?:unknown[])=>client.query(sql,args)} as any,
    {inspect:async(_attempt:string,user:string)=>{
     calls.push("provider:"+user);
-    return{subscriptionId:user==="owner-2"?"sub-2":"sub-1",
-     invoiceId:user==="owner-2"?"inv-2":"inv-1",
-     paymentId:user==="owner-2"?"pay-2":"pay-1",
+    return{subscriptionId:proof(user).subscriptionId,
+     invoiceId:proof(user).invoiceId,paymentId:proof(user).paymentId,
      grantsEntitlement:false,safeToResubmit:false,
      requiresOperatorReconciliation:true,requiresAmountAndCoverageVerification:true};
-   }} as any,
-   {record:async(_attempt:string,user:string)=>{
-    calls.push("ledger:"+user);
-    return{status:"recorded",subscriptionId:user==="owner-2"?"sub-2":"sub-1",
-      invoiceId:user==="owner-2"?"inv-2":"inv-1",
-      paidEntitlementGranted:false,safeToResubmit:false};
-   }} as any,
+   }}as any,
+   {record:async(attemptId:string,user:string)=>{
+     calls.push("ledger:"+user);
+     return ledger.record(attemptId,user);
+   }}as any,
+   {activate:async(attemptId:string,user:string,subscriptionId:string)=>{
+     calls.push("activate:"+user);
+     return activation.activate(attemptId,user,subscriptionId);
+   }}as any,
   );
   assert.deepEqual(await worker.run(),{
    status:"completed",scanned:2,recorded:2,existing:0,pending:0,
   });
   assert.deepEqual([...calls].sort(),[
-   "provider:owner-1","ledger:owner-1","provider:owner-2","ledger:owner-2",
+   "provider:owner-1","ledger:owner-1","provider:owner-2","activate:owner-2","ledger:owner-2",
   ].sort(),"UUID sort order must not affect owner selection");
+  const savedEvidence=(await client.query(`SELECT e.square_invoice_id, e.square_payment_id,
+     e.period_ends_at, s.user_id FROM wedding_square_invoice_evidence e
+     JOIN wedding_square_subscriptions s ON s.id=e.wedding_subscription_id
+     ORDER BY s.user_id`)).rows;
+  assert.equal(savedEvidence.length,2,"both real invoice evidence inserts must commit");
+  assert.deepEqual(savedEvidence.map(r=>r.square_invoice_id),["inv-1","inv-2"]);
+  assert.deepEqual(savedEvidence.map(r=>r.square_payment_id),["pay-1","pay-2"]);
+  assert.ok(savedEvidence.every(r=>r.period_ends_at.toISOString()===expires));
+  assert.equal((await client.query(`SELECT provider_status FROM wedding_square_subscriptions
+    WHERE user_id='owner-2'`)).rows[0].provider_status,"ACTIVE",
+    "first charge must atomically advance verified PENDING before ledger");
   assert.equal((await worker.run()).scanned,0,"claimed records should not immediately repeat");
   const marks=(await client.query(`SELECT user_id,last_renewal_scan_at
      FROM wedding_square_subscriptions ORDER BY user_id`)).rows;
@@ -95,18 +150,8 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
   assert.ok(marks[1].last_renewal_scan_at instanceof Date);
   assert.equal(marks[2].last_renewal_scan_at,null,"unconfirmed attempt never selected");
 
-  // Force due scan, store one existing invoice. The second poll must skip
-  // the already-verified invoice rather than duplicate a payment record.
-  const id1=(await client.query<{id:string}>(`SELECT id FROM wedding_square_subscriptions
-     WHERE user_id='owner-1'`)).rows[0].id;
-  await client.query(`INSERT INTO wedding_square_invoice_evidence
-   (wedding_subscription_id,square_environment,square_merchant_id,
-    square_invoice_id,square_payment_id,square_subscription_id,
-    verified_amount_cents,verified_currency,provider_paid_at,
-    period_starts_at,period_ends_at)
-   VALUES($1,'sandbox','merchant-1','inv-1','pay-1','sub-1',
-    2499,'USD',now()-interval '1 day',now()-interval '1 day',
-    now()+interval '12 days')`,[id1]);
+  // Force due scan. Both real provider invoices are already recorded;
+  // the prior invoice must never be recorded or charged a second time.
   await client.query(`UPDATE wedding_square_subscriptions
     SET last_renewal_scan_at=now()-interval '2 hours' WHERE user_id='owner-1'`);
   calls.length=0;
