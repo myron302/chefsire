@@ -358,3 +358,41 @@ test("production, disabled feature and invalid operator mappings cause zero prov
     }
   }
 }));
+
+test("embedded control characters in configured Wedding catalog IDs block merchant and catalog reads", () => sandbox(async () => {
+  for (const [key, value] of [
+    ["WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "chef\nmerchant"],
+    ["SQUARE_LOCATION_ID", "chef\u0001location"],
+    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "premium\tvariation"],
+    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID", "elite\u007fvariation"],
+    ["WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", "premium\rplan"],
+    ["WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID", "elite\u0002plan"],
+  ] as const) {
+    const before = process.env[key];
+    process.env[key] = value;
+    try {
+      const { result, calls } = service();
+      await assert.rejects(result.inspect(), errorType);
+      assert.deepEqual(calls(), { merchantReads: 0, catalogReads: [] });
+    } finally {
+      if (before === undefined) delete process.env[key];
+      else process.env[key] = before;
+    }
+  }
+}));
+
+test("provider catalog location eligibility lists reject embedded control-character IDs", () => sandbox(async () => {
+  const badParent = parentPlan("premium-plan");
+  const badVariation = variation("premium-variation", 2499n);
+  const parent = service(undefined, undefined, undefined, {
+    object: { ...badParent.object, presentAtLocationIds: ["chef-location", "other\u0000location"] },
+  });
+  await assert.rejects(parent.result.inspect(), errorType);
+  assert.deepEqual(parent.calls(), { merchantReads: 1, catalogReads: ["premium-plan"] });
+
+  const variationService = service({
+    object: { ...badVariation.object, absentAtLocationIds: ["other\u007flocation"] },
+  });
+  await assert.rejects(variationService.result.inspect(), errorType);
+  assert.deepEqual(variationService.calls(), { merchantReads: 1, catalogReads: ["premium-plan", "premium-variation"] });
+}));
