@@ -100,8 +100,15 @@ export function createWeddingSquareConfirmationPersistence(database: SqlPool) {
         );
         if (locked.rows.length !== 1) throw new WeddingSquareConfirmationPersistenceError();
         const row = locked.rows[0];
+        const expectedTierPlan = row.tier === "premium"
+          ? process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID
+          : row.tier === "elite"
+            ? process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID
+            : undefined;
         if (row.id !== attemptId || row.user_id !== authenticatedUserId ||
             row.square_location_id !== locationId ||
+            !exactId(expectedTierPlan) ||
+            row.square_plan_variation_id !== expectedTierPlan ||
             row.square_plan_variation_id !== verifiedResponse.verifiedPlanVariationId ||
             !exactId(row.square_customer_id) || !exactId(row.square_card_id) ||
             (row.tier !== "premium" && row.tier !== "elite") ||
