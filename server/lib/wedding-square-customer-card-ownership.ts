@@ -14,7 +14,7 @@ export class WeddingSquareOwnershipError extends Error {
 // trim() alone does not reject embedded ASCII controls or whitespace.
 function exactId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 &&
-    value === value.trim() && !/[\\s\\x00-\\x1f\\x7f]/.test(value);
+    value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value);
 }
 
 type UserBinding = Readonly<{
