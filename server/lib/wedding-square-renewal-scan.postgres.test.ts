@@ -5,6 +5,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import pg from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { readVerifiedWeddingPaid } from "./wedding-square-paid-entitlement";
 import { createWeddingSquareRenewalScan } from "./wedding-square-renewal-scan";
 import { createWeddingSquareEvidenceLedger } from "./wedding-square-evidence-ledger";
 import { createWeddingSquareRenewalActivation } from "./wedding-square-renewal-activation";
@@ -23,6 +25,7 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
  const schema="wedding_renewal_test_"+randomUUID().replaceAll("-","");
  const env=["SQUARE_ENV","WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
   "WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED",
+  "WEDDING_SQUARE_VERIFIED_PAID_ENTITLEMENTS_ENABLED",
   "WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED",
   "WEDDING_SQUARE_SANDBOX_MERCHANT_ID","SQUARE_LOCATION_ID",
   "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
@@ -31,6 +34,7 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
  Object.assign(process.env,{SQUARE_ENV:"sandbox",
   WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED:"true",
   WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED:"true",
+  WEDDING_SQUARE_VERIFIED_PAID_ENTITLEMENTS_ENABLED:"true",
   WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED:"true",
   WEDDING_SQUARE_SANDBOX_MERCHANT_ID:"merchant-1",SQUARE_LOCATION_ID:"loc-1",
   WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID:"premium-var",
@@ -57,7 +61,7 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
      consented_amount_cents,consented_currency,square_location_id,
      square_plan_variation_id,square_customer_id,square_card_id,
      idempotency_key,request_fingerprint,status,provider_subscription_id)
-    VALUES($1,'premium',$2,now(),2499,'USD','loc-1',
+    VALUES($1,'premium',$2,now()-interval '2 hours',2499,'USD','loc-1',
      'premium-var',$3,$4,$5,repeat('a',64),$6,$7)`,
     [`owner-${n}`,WEDDING_CONSENT_VERSION,`cust-${n}`,`card-${n}`,
      `key-${n}`,attempt,attempt==="confirmed"?`sub-${n}`:null]);
@@ -67,7 +71,7 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
      billing_consent_at,billing_consent_terms_version,agreed_monthly_amount_cents,
      agreed_currency,provider_status)
     VALUES($1,'premium','sandbox','merchant-1','loc-1',$2,'premium-var',
-     $3,$6,now(),$4,2499,'USD',$5)`,
+     $3,$6,now()-interval '2 hours',$4,2499,'USD',$5)`,
     [`owner-${n}`,`cust-${n}`,`sub-${n}`,WEDDING_CONSENT_VERSION,status,`card-${n}`]);
   }
   const calls:string[]=[];
@@ -139,6 +143,21 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
   assert.equal(savedEvidence.length,2,"both real invoice evidence inserts must commit");
   assert.deepEqual(savedEvidence.map(r=>r.square_invoice_id),["inv-1","inv-2"]);
   assert.deepEqual(savedEvidence.map(r=>r.square_payment_id),["pay-1","pay-2"]);
+  // This must exercise the actual paid-tier reader against evidence written
+  // by the actual renewal worker/ledger, not manually seeded invoice rows.
+  const reader = drizzle(client) as any;
+  assert.equal((await readVerifiedWeddingPaid("owner-1", reader))?.tier, "premium",
+    "confirmed ACTIVE subscription with newly recorded paid evidence unlocks Premium");
+  assert.equal((await readVerifiedWeddingPaid("owner-2", reader))?.tier, "premium",
+    "PENDING first charge must become ACTIVE and unlock paid access");
+  assert.equal(await readVerifiedWeddingPaid("owner-3", reader), null,
+    "unconfirmed attempts cannot acquire paid access");
+  await client.query(`UPDATE wedding_square_invoice_evidence
+    SET payment_revoked_at=now() WHERE square_invoice_id='inv-2'`);
+  assert.equal(await readVerifiedWeddingPaid("owner-2", reader), null,
+    "revoked first-charge evidence cannot continue granting Premium");
+  assert.equal((await readVerifiedWeddingPaid("owner-1", reader))?.tier, "premium",
+    "revoking one owner's payment must not revoke another owner's access");
   assert.ok(savedEvidence.every(r=>r.period_ends_at.toISOString()===expires));
   assert.equal((await client.query(`SELECT provider_status FROM wedding_square_subscriptions
     WHERE user_id='owner-2'`)).rows[0].provider_status,"ACTIVE",
