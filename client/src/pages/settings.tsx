@@ -603,7 +603,7 @@ function SubscriptionSettingsPanel() {
       return data as {
         ok: true;
         billingMode: "disabled" | "sandbox";
-        enrollmentStatus: "unavailable" | "not_enrolled" | "pending" |
+        enrollmentStatus: "unavailable" | "not_enrolled" | "needs_reconciliation" | "pending" |
           "active" | "paused" | "cancellation_requested" | "canceled" | "ended";
         billingLive: false;
         tier: "premium" | "elite" | null;
@@ -1048,6 +1048,7 @@ function SubscriptionSettingsPanel() {
     mySubscriptionQuery.refetch();
     weddingTiersQuery.refetch();
     myWeddingSubscriptionQuery.refetch();
+    weddingBillingStatusQuery.refetch();
     vendorTiersQuery.refetch();
     myVendorSubscriptionQuery.refetch();
     nutritionTiersQuery.refetch();
@@ -2087,7 +2088,9 @@ function SubscriptionSettingsPanel() {
                 ) : weddingBillingStatusQuery.data ? (
                   <>
                     <p className="text-sm">
-                      <span className="font-medium">{titleCase(weddingBillingStatusQuery.data.tier || "free")}</span>
+                      <span className="font-medium">{weddingBillingStatusQuery.data.tier
+                        ? titleCase(weddingBillingStatusQuery.data.tier)
+                        : "Enrollment verification pending"}</span>
                       {" · "}
                       {titleCase(weddingBillingStatusQuery.data.enrollmentStatus.replaceAll("_", " "))}
                       {typeof weddingBillingStatusQuery.data.monthlyAmountCents === "number"
