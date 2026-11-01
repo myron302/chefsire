@@ -74,6 +74,33 @@ test("PostgreSQL 16: actual owner/payment row refreshes, provider outage invalid
      FROM wedding_square_invoice_evidence WHERE id=$1`,[evidenceId])).rows[0];
    assert.equal(row.last_payment_reconciled_at,null);
    assert.equal(row.payment_revoked_at,null);
+   // Concurrency regression: both workers saw NULL freshness. A slow clean
+   // read MUST NOT supersede a later provider failure (NULL -> NULL update).
+   deny=false;
+   let notifyStarted:()=>void=()=>undefined;
+   let allowReturn:()=>void=()=>undefined;
+   const started=new Promise<void>(resolve=>{notifyStarted=resolve;});
+   const allowed=new Promise<void>(resolve=>{allowReturn=resolve;});
+   const slow=createWeddingSquareEvidenceRefresh(
+     {query:(sql:string,args?:unknown[])=>client.query(sql,args)}as any,
+     {inspect:async()=>{
+       notifyStarted();
+       await allowed;
+       return{paymentId:"pay-1",noRefundsOrDisputes:true,grantsEntitlement:false,
+         requiresIndependentPeriodVerification:true};
+     }}as any);
+   const inFlight=slow.refresh(evidenceId,"owner-1");
+   await started;
+   deny=true;
+   assert.equal((await service.refresh(evidenceId,"owner-1")).status,"reconciliation_required");
+   allowReturn();
+   await assert.rejects(inFlight,WeddingSquareEvidenceRefreshError);
+   const afterRace=(await client.query(`SELECT last_payment_reconciled_at,
+     reconciliation_revision FROM wedding_square_invoice_evidence WHERE id=$1`,[evidenceId])).rows[0];
+   assert.equal(afterRace.last_payment_reconciled_at,null,
+     "older clean provider result must not overwrite later NULL invalidation");
+   assert.equal(afterRace.reconciliation_revision,3,
+     "each SQL update must advance revision, including NULL-to-NULL");
    await assert.rejects(service.refresh(evidenceId,"foreign"),WeddingSquareEvidenceRefreshError);
    await client.query("UPDATE wedding_square_invoice_evidence SET payment_revoked_at=now() WHERE id=$1",[evidenceId]);
    deny=false;
