@@ -14,6 +14,11 @@ export class WeddingSquareReconciliationReadbackError extends Error {
     this.name = "WeddingSquareReconciliationReadbackError";
   }
 }
+// Fail closed on malformed persisted identities before returning reconciliation
+// evidence; opaque Square identifiers are never trimmed or normalized.
+const canonicalId = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && !/[\s\x00-\x1f\x7f]/.test(value);
+
 type Row = {
   id: string;
   status: string;
@@ -33,7 +38,7 @@ export function createWeddingSquareReconciliationReadback(database: Database) {
     async inspect(attemptId: string, authenticatedUserId: string) {
       if (process.env.SQUARE_ENV !== "sandbox" ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
-          !attemptId?.trim() || !authenticatedUserId?.trim() ||
+          !canonicalId(attemptId) || !canonicalId(authenticatedUserId) ||
           !database || typeof database.query !== "function") {
         throw new WeddingSquareReconciliationReadbackError();
       }
@@ -51,18 +56,20 @@ export function createWeddingSquareReconciliationReadback(database: Database) {
         );
         if (result.rows.length !== 1) throw new WeddingSquareReconciliationReadbackError();
         const row = result.rows[0];
-        if (!["submitting", "needs_reconciliation", "confirmed"].includes(row.status) ||
-            !row.idempotency_key?.trim() ||
+        if (row.id !== attemptId ||
+            !["submitting", "needs_reconciliation", "confirmed"].includes(row.status) ||
+            !canonicalId(row.idempotency_key) ||
             !/^[a-f0-9]{64}$/.test(row.request_fingerprint ?? "") ||
-            !row.square_customer_id?.trim() || !row.square_card_id?.trim() ||
-            !row.square_location_id?.trim() || !row.square_plan_variation_id?.trim() ||
+            !canonicalId(row.square_customer_id) || !canonicalId(row.square_card_id) ||
+            !canonicalId(row.square_location_id) || !canonicalId(row.square_plan_variation_id) ||
+            (row.provider_subscription_id !== null && !canonicalId(row.provider_subscription_id)) ||
             row.requested_timezone !== "UTC" ||
             (row.requested_start_date !== null &&
              (typeof row.requested_start_date !== "string" ||
               !/^\d{4}-\d{2}-\d{2}$/.test(row.requested_start_date) ||
               !Number.isFinite(Date.parse(row.requested_start_date + "T00:00:00.000Z")) ||
               new Date(row.requested_start_date + "T00:00:00.000Z").toISOString().slice(0, 10) !== row.requested_start_date)) ||
-            (row.status === "confirmed" && !row.provider_subscription_id?.trim())) {
+            (row.status === "confirmed" && row.provider_subscription_id === null)) {
           throw new WeddingSquareReconciliationReadbackError();
         }
         // Internal-only identity and stable evidence for independently authorized
