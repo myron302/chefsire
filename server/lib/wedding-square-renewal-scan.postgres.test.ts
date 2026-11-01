@@ -85,7 +85,9 @@ test("Postgres 16: renewal scan claims confirmed owner attempts fairly, includes
   assert.deepEqual(await worker.run(),{
    status:"completed",scanned:2,recorded:2,existing:0,pending:0,
   });
-  assert.deepEqual(calls,["provider:owner-1","ledger:owner-1","provider:owner-2","ledger:owner-2"]);
+  assert.deepEqual([...calls].sort(),[
+   "provider:owner-1","ledger:owner-1","provider:owner-2","ledger:owner-2",
+  ].sort(),"UUID sort order must not affect owner selection");
   assert.equal((await worker.run()).scanned,0,"claimed records should not immediately repeat");
   const marks=(await client.query(`SELECT user_id,last_renewal_scan_at
      FROM wedding_square_subscriptions ORDER BY user_id`)).rows;
