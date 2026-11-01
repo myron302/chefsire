@@ -105,13 +105,13 @@ test("provider reconciliation rejects malformed identities even when saved and p
   }
   for (const key of ["id", "customerId", "cardId", "locationId", "planVariationId"] as const) {
     assert.throws(
-      () => verifyWeddingSquareProviderReconciliation(saved, { ...provider, [key]: "bad\\tvalue" }),
+      () => verifyWeddingSquareProviderReconciliation(saved, { ...provider, [key]: "bad\tvalue" }),
       WeddingSquareProviderReadbackMismatchError,
     );
   }
   for (const patch of [
     { attemptId: "attempt" + String.fromCharCode(127) + "-1" },
-    { persistedIdempotencyKey: "key\\nother" },
+    { persistedIdempotencyKey: "key\nother" },
   ]) {
     assert.throws(
       () => verifyWeddingSquareProviderReconciliation({ ...saved, ...patch }, provider),
