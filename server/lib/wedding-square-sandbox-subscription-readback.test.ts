@@ -676,14 +676,14 @@ test("real Square v43 GET HTTP failures never retry or become enrollment evidenc
   try {
     for (const status of [429, 503]) {
       let requests = 0;
+      const transport: Array<{ method: string; path: string }> = [];
       let savedReads = 0;
       let catalogReads = 0;
       globalThis.fetch = async (input, init) => {
         requests++;
         const method = input instanceof Request ? input.method : init?.method ?? "GET";
         const url = input instanceof Request ? input.url : String(input);
-        assert.equal(method, "GET");
-        assert.equal(new URL(url).pathname, "/v2/subscriptions/sub-confirmed");
+        transport.push({ method, path: new URL(url).pathname });
         return new Response(JSON.stringify({
           errors: [{ code: "SERVICE_UNAVAILABLE", detail: "credential=SECRET" }],
         }), {
@@ -714,6 +714,11 @@ test("real Square v43 GET HTTP failures never retry or become enrollment evidenc
         assert.doesNotMatch(error.message, /SECRET|offline-contract-token|sub-confirmed/);
         return true;
       });
+      // Assert transport AFTER the sanitized rejection: assertions thrown
+      // inside fetch would otherwise be swallowed by the fail-closed guard.
+      assert.deepEqual(transport, [{
+        method: "GET", path: "/v2/subscriptions/sub-confirmed",
+      }]);
       assert.deepEqual({ savedReads, catalogReads, requests }, {
         savedReads: 1, catalogReads: 1, requests: 1,
       });
