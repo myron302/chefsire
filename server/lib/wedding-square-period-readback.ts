@@ -34,7 +34,11 @@ const inv=z.object({errors,invoice:z.object({
 const money=z.object({amount:z.number().int().safe().nonnegative(),currency:z.literal("USD")}).passthrough();
 const pay=z.object({errors,payment:z.object({
   id,order_id:id,customer_id:id,location_id:id,created_at:rfc,
-  status:z.literal("COMPLETED"),
+  status:z.literal("COMPLETED"),source_type:z.literal("CARD"),
+  card_details:z.object({
+    status:z.literal("CAPTURED"),
+    card_payment_timeline:z.object({captured_at:rfc}).passthrough(),
+  }).passthrough(),
   amount_money:money,total_money:money,
   refund_ids:z.array(id).max(0).optional(),
   refunded_money:money.optional(),
@@ -83,14 +87,18 @@ export function createWeddingSquarePeriodReadback(billing:Billing,saved:Saved,re
 
       const startMs=Date.parse(subscription.start_date+"T00:00:00.000Z");
       const invoiceMs=Date.parse(invoice.created_at);
-      const settledMs=Date.parse(payment.created_at);
+      const createdMs=Date.parse(payment.created_at);
+      // Square may authorize a card now but capture hours or days later.
+      // Never use Payment.createdAt as proof of settled funds.
+      const settledMs=Date.parse(payment.card_details.card_payment_timeline.captured_at);
       const lastDayMs=Date.parse(subscription.charged_through_date+"T00:00:00.000Z");
       const endMs=lastDayMs+86_400_000;
       const now=Date.now();
       // A future/late invoice, an unpaid month, or a charged-through date
       // spanning more than one monthly cycle never becomes paid access.
-      if(![startMs,invoiceMs,settledMs,lastDayMs,endMs].every(Number.isFinite)||
-         invoiceMs<startMs||settledMs<invoiceMs||settledMs>now||
+      if(![startMs,invoiceMs,createdMs,settledMs,lastDayMs,endMs].every(Number.isFinite)||
+         invoiceMs<startMs||createdMs>settledMs||
+         settledMs<invoiceMs||settledMs>now||
          endMs<=now||endMs<=settledMs||
          endMs-invoiceMs>35*86_400_000)
         throw Error("Unproven paid interval");
