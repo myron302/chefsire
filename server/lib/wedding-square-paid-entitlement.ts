@@ -92,7 +92,9 @@ export async function readVerifiedWeddingPaid(
     const row = rows[0] as Record<string, unknown>;
     if (!canonical(row.subscriptionId) ||
         (row.tier !== "premium" && row.tier !== "elite") ||
-        (typeof row.evidenceCount !== "number" || !Number.isSafeInteger(row.evidenceCount) || row.evidenceCount < 1) ||
+        // Two concurrently covering paid invoices for one subscription are
+        // ambiguous; never select MAX paidThrough and silently accept either.
+        (typeof row.evidenceCount !== "number" || row.evidenceCount !== 1) ||
         !row.paidThrough) {
       throw new WeddingSquarePaidEvidenceUnavailableError();
     }

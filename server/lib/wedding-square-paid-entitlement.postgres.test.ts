@@ -69,6 +69,22 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
     assert.ok(Date.parse(paid!.paidThrough)>Date.now());
     assert.equal(await readVerifiedWeddingPaid("other-user",executor),null,"another user cannot inherit payment");
 
+    // A second concurrently covering invoice on the SAME subscription must
+    // not be silently merged via MAX(paidThrough), even when both appear paid.
+    await client.query(`INSERT INTO wedding_square_invoice_evidence
+      (wedding_subscription_id,square_environment,square_merchant_id,
+       square_invoice_id,square_payment_id,square_subscription_id,
+       verified_amount_cents,verified_currency,provider_paid_at,
+       period_starts_at,period_ends_at,last_payment_reconciled_at)
+      VALUES($1,'sandbox','merchant-1','inv-overlap','pay-overlap','sub-1',
+        2499,'USD',now()-interval '1 minute',now()-interval '1 day',
+        now()+interval '27 days',now())`,[subscription.id]);
+    await assert.rejects(entitlement(),WeddingSquarePaidEvidenceUnavailableError,
+      "overlapping current invoice evidence is ambiguous and cannot grant paid access");
+    await client.query("DELETE FROM wedding_square_invoice_evidence WHERE square_invoice_id='inv-overlap'");
+    assert.equal((await entitlement())?.tier,"premium",
+      "removing ambiguous evidence restores the one verified current period");
+
     // A future-dated reconciliation is not recent provider payment proof:
     // the 24-hour lower bound alone would accept this value for days.
     await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now()+interval '48 hours' WHERE square_invoice_id='inv-1'");
