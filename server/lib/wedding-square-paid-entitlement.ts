@@ -78,6 +78,9 @@ export async function readVerifiedWeddingPaid(
          -- A future-dated provider check is not proof of current settlement.
          -- Without this upper bound, a bad timestamp can remain fresh indefinitely.
          AND e.last_payment_reconciled_at <= statement_timestamp()
+         -- A payment check performed before settlement cannot attest that
+         -- this specific invoice was actually paid or remained unrevoked.
+         AND e.last_payment_reconciled_at >= e.provider_paid_at
          AND e.payment_revoked_at IS NULL
        GROUP BY s.id, s.tier
        ORDER BY s.id

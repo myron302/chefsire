@@ -85,6 +85,13 @@ test("disposable PostgreSQL 16: only matched settled invoices with fresh coverag
     assert.equal((await entitlement())?.tier,"premium",
       "removing ambiguous evidence restores the one verified current period");
 
+    // A recent payment check is still invalid if it predates the actual
+    // provider settlement for this invoice. Subscription status cannot fix it.
+    await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now()-interval '2 minutes' WHERE square_invoice_id='inv-1'");
+    assert.equal(await entitlement(),null,"pre-settlement payment reconciliation must not grant access");
+    await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now() WHERE square_invoice_id='inv-1'");
+    assert.equal((await entitlement())?.tier,"premium","post-settlement payment reconciliation restores valid evidence");
+
     // A future-dated reconciliation is not recent provider payment proof:
     // the 24-hour lower bound alone would accept this value for days.
     await client.query("UPDATE wedding_square_invoice_evidence SET last_payment_reconciled_at=now()+interval '48 hours' WHERE square_invoice_id='inv-1'");
