@@ -320,3 +320,47 @@ test("real Square v43 merchant and location HTTP failures stop verification with
     globalThis.fetch = originalFetch;
   }
 }));
+
+
+test("Square v43 mixed 2xx merchant and location responses never become trusted context", () => sandbox(async () => {
+  const originalFetch = globalThis.fetch;
+  const paths = ["/v2/merchants/me", "/v2/locations/chef-location"];
+  try {
+    for (const mixedAt of [1, 2]) {
+      const transport: Array<{ method: string; path: string }> = [];
+      globalThis.fetch = async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const method = input instanceof Request ? input.method : init?.method ?? "GET";
+        const path = new URL(url).pathname;
+        transport.push({ method, path });
+        const body = transport.length === 1
+          ? { merchant: { id: "chef-merchant", status: "ACTIVE", currency: "USD", country: "US" } }
+          : { location: {
+              id: "chef-location", merchant_id: "chef-merchant", status: "ACTIVE",
+              currency: "USD", country: "US", capabilities: ["CREDIT_CARD_PROCESSING"],
+            } };
+        return new Response(JSON.stringify({
+          ...body,
+          ...(transport.length === mixedAt
+            ? { errors: [{ code: "INTERNAL_SERVER_ERROR", detail: "credential=SECRET" }] }
+            : {}),
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      };
+      const sdk = new SquareClient({
+        token: "offline-contract-token", environment: SquareEnvironment.Sandbox,
+      });
+      const attestation = createWeddingSquareSandboxMerchantAttestation(
+        (merchantId) => sdk.merchants.get({ merchantId }, { maxRetries: 0 }),
+        (locationId) => sdk.locations.get({ locationId }, { maxRetries: 0 }),
+      );
+      await assert.rejects(attestation.inspect(), (error: unknown) => {
+        assert.ok(error instanceof WeddingSquareSandboxMerchantAttestationError);
+        assert.doesNotMatch(error.message, /SECRET|offline-contract-token|chef-merchant|chef-location/);
+        return true;
+      });
+      assert.deepEqual(transport, paths.slice(0, mixedAt).map((path) => ({ method: "GET", path })));
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}));
