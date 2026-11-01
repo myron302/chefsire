@@ -59,6 +59,20 @@ test("rejects nonauthenticated requests and outdated disclosure versions", () =>
   }));
 });
 
+test("rejects padded, whitespace-only and non-string owner IDs before issuing consent", () => {
+  for (const userId of [
+    "", " ", " user-123", "user-123 ", "\nuser-123", "\t",
+    null, undefined, 123,
+  ]) {
+    assert.throws(() => verifyWeddingEnrollmentConsent({
+      userId: userId as string, now, trialExpiresAt: expires, request: approved,
+    }), TypeError);
+  }
+  assert.equal(verifyWeddingEnrollmentConsent({
+    userId: "user-123", now, trialExpiresAt: expires, request: approved,
+  }).userId, "user-123");
+});
+
 test("expired trial requires acknowledgment of immediate eligible start, not stale date", () => {
   const expired = new Date("2026-10-27T12:00:00Z");
   assert.throws(() => verifyWeddingEnrollmentConsent({
