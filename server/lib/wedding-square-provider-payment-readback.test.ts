@@ -156,7 +156,11 @@ test("untrusted or incomplete attested/saved identity blocks all Square GETs", (
     ]) {
       const { service, calls } = mock({ verified: { ...verified, ...change } });
       await assert.rejects(service.inspect("attempt-1", "owner-1"), err);
-      assert.deepEqual(calls, ["verified"]);
+      // A changed provider ID is canonical until the owner-scoped Neon row
+      // independently shows the mismatch. That extra DB SELECT is expected;
+      // NO Square provider GET may occur.
+      assert.deepEqual(calls,
+        "providerSubscriptionId" in change ? ["verified", "saved"] : ["verified"]);
     }
     for (const change of [
       { providerSubscriptionId: "wrong-sub" },
