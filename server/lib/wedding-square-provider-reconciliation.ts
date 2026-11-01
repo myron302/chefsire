@@ -10,12 +10,17 @@ import type { weddingSquareReconciliationReadback } from "./wedding-square-recon
  * for the expected merchant. Never accept browser-supplied provider records.
  */
 type Saved = Awaited<ReturnType<typeof weddingSquareReconciliationReadback.inspect>>;
+// Independently callable evidence validation must reject noncanonical IDs even
+// if the saved and provider values happen to match byte-for-byte.
+const canonicalId = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && !/[\s\x00-\x1f\x7f]/.test(value);
+const providerIdSchema = z.string().min(1).refine(canonicalId);
 const providerSchema = z.object({
-  id: z.string().min(1),
-  customerId: z.string().min(1),
-  cardId: z.string().min(1),
-  locationId: z.string().min(1),
-  planVariationId: z.string().min(1),
+  id: providerIdSchema,
+  customerId: providerIdSchema,
+  cardId: providerIdSchema,
+  locationId: providerIdSchema,
+  planVariationId: providerIdSchema,
   status: z.enum(["PENDING", "ACTIVE", "CANCELED", "DEACTIVATED", "PAUSED", "COMPLETED"]),
   timezone: z.literal("UTC"),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -42,9 +47,13 @@ export function verifyWeddingSquareProviderReconciliation(saved: Saved, provider
   const result = providerSchema.safeParse(provider);
   if (!saved || !result.success ||
       !["submitting", "needs_reconciliation", "confirmed"].includes(saved.status) ||
-      !saved.persistedIdempotencyKey?.trim() ||
+      !canonicalId(saved.persistedIdempotencyKey) ||
       !/^[a-f0-9]{64}$/.test(saved.persistedRequestFingerprint ?? "") ||
-      !saved.attemptId?.trim() ||
+      !canonicalId(saved.attemptId) ||
+      !canonicalId(saved.customerId) || !canonicalId(saved.cardId) ||
+      !canonicalId(saved.locationId) || !canonicalId(saved.planVariationId) ||
+      (saved.providerSubscriptionId !== null && !canonicalId(saved.providerSubscriptionId)) ||
+      (saved.status === "confirmed" && saved.providerSubscriptionId === null) ||
       result.data.customerId !== saved.customerId ||
       result.data.cardId !== saved.cardId ||
       result.data.locationId !== saved.locationId ||
