@@ -25,7 +25,7 @@ export class WeddingSquareRequestError extends Error {
 // guard already rejects these; stop them at the pure request boundary too.
 function exactId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 &&
-    value === value.trim() && !/[\\s\\x00-\\x1f\\x7f]/.test(value);
+    value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value);
 }
 
 // Reject calendar overflow (e.g. February 30), malformed and non-UTC dates.
