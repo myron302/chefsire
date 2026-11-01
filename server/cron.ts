@@ -8,6 +8,7 @@ import {
 } from "./services/pantry-cron.service";
 import { reconcileCateringStorageCleanup } from "./services/catering-booking-storage-cleanup";
 import { reconcileAbandonedCheckoutReservations } from "./services/marketplace-checkout-reconciliation";
+import { weddingSquareReconciliationBatch } from "./lib/wedding-square-reconciliation-batch";
 
 /**
  * Initialize all cron jobs
@@ -63,11 +64,30 @@ export function initializeCronJobs() {
     }
   });
 
+  // Sandbox-only Wedding payment freshness checks every six hours.
+  // The worker refuses all DB/provider operations unless EVERY operator
+  // feature switch is explicitly enabled. No live payments or charges.
+  cron.schedule("15 */6 * * *", async () => {
+    try {
+      const result = await weddingSquareReconciliationBatch.run();
+      if (result.scanned > 0) {
+        console.log(
+          `Wedding Square payment reconciliation: scanned ${result.scanned}, ` +
+          `checked ${result.checked}, failed ${result.failed}`
+        );
+      }
+    } catch {
+      // Never log payment IDs, owner IDs, tokens or provider response bodies.
+      console.warn("Wedding Square payment reconciliation unavailable");
+    }
+  });
+
   console.log("✅ Cron jobs initialized:");
   console.log("   - Pantry expiring items: Daily at 9 AM & 6 PM");
   console.log("   - Low stock items: Daily at 10 AM");
   console.log("   - Catering storage cleanup: Hourly at :30");
   console.log("   - Marketplace checkout reconciliation: Every 5 minutes");
+  console.log("   - Wedding Square sandbox evidence refresh: Every 6 hours (OFF by default)");
 }
 
 /**
