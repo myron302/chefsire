@@ -586,6 +586,38 @@ function SubscriptionSettingsPanel() {
     },
   });
 
+  // Separate, owner-scoped Square billing record. This never derives a next
+  // charge date from trial or paid-through entitlement and does not reveal
+  // Square card/customer IDs. Key by owner to avoid cross-login cache reuse.
+  const weddingBillingStatusQuery = useQuery({
+    queryKey: ["/api/wedding/subscription/billing-status", user?.id],
+    enabled: !!user?.id,
+    retry: false,
+    staleTime: 0,
+    queryFn: async () => {
+      const res = await fetch("/api/wedding/subscription/billing-status", {
+        credentials: "include", cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok !== true) throw new Error("Unable to verify Wedding billing status.");
+      return data as {
+        ok: true;
+        billingMode: "disabled" | "sandbox";
+        enrollmentStatus: "unavailable" | "not_enrolled" | "pending" |
+          "active" | "paused" | "cancellation_requested" | "canceled" | "ended";
+        billingLive: false;
+        tier: "premium" | "elite" | null;
+        monthlyAmountCents: number | null;
+        currency: "USD" | null;
+        requestedFirstChargeDate: string | null;
+        cancellationRequestedAt: string | null;
+        providerCancellationRecordedAt: string | null;
+        lastProviderCheckAt: string | null;
+        verifiedPaidAccessThrough: string | null;
+      };
+    },
+  });
+
   const updateWeddingSubscriptionMutation = useMutation({
     mutationFn: async (tier: "free" | "premium" | "elite") => {
       const res = await fetch("/api/wedding/subscription/change", {
