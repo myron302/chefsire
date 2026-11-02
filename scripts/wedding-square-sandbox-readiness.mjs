@@ -32,7 +32,9 @@ export function assessWeddingSquareSandboxReadiness({ env, tables, columns, coun
   // Deliberately report names and booleans only, not environment values.
   if (env.SQUARE_ENV !== "sandbox") blockers.push("SQUARE_ENV must be sandbox");
   if (env.SQUARE_LIVE_PAYMENTS_ENABLED === "true") blockers.push("Live payment enable switch must be off");
-  for (const name of ["WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "SQUARE_LOCATION_ID",
+  for (const name of ["SQUARE_ACCESS_TOKEN", "SQUARE_APPLICATION_ID",
+    "WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL", "WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY",
+    "WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "SQUARE_LOCATION_ID",
     "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
     "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID",
     "WEDDING_SQUARE_ALLOWED_ORIGIN"]) {
