@@ -88,3 +88,27 @@ test("raw card details and non-Square tokens never make a network request", asyn
   await assert.rejects(svc.createCard({ ...card, sourceId: "cnon:card source with spaces" }), WeddingSquareCardSetupTransportError);
   assert.equal(calls, 0);
 }));
+
+test("oversized streamed response is rejected before decoding or parsing", async () => sandbox(async () => {
+  let calls = 0;
+  const svc = createWeddingSquareSandboxCardSetupTransport(async () => {
+    calls++;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(60000));
+        controller.enqueue(new Uint8Array(6000));
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200 });
+  });
+  await assert.rejects(svc.createCustomer(customer), WeddingSquareCardSetupTransportError);
+  assert.equal(calls, 1);
+}));
+test("UTF-8 multibyte payload is counted in bytes, not JS characters", async () => sandbox(async () => {
+  const svc = createWeddingSquareSandboxCardSetupTransport(async () =>
+    new Response(JSON.stringify({ customer: {
+      id: "cust-1", reference_id: "owner-1", note: "é".repeat(40000),
+    } }), { status: 200 }));
+  await assert.rejects(svc.createCustomer(customer), WeddingSquareCardSetupTransportError);
+}));
