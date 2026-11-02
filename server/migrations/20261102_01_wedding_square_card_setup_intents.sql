@@ -62,5 +62,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS wedding_square_card_setup_one_unresolved_user_
 CREATE UNIQUE INDEX IF NOT EXISTS wedding_square_card_setup_provider_card_idx
  ON wedding_square_card_setup_attempts(square_environment,square_merchant_id,square_card_id)
  WHERE square_card_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS wedding_square_card_setup_source_digest_idx
+ ON wedding_square_card_setup_attempts(square_environment,source_digest);
 CREATE INDEX IF NOT EXISTS wedding_square_card_setup_user_history_idx
  ON wedding_square_card_setup_attempts(user_id,created_at DESC);
