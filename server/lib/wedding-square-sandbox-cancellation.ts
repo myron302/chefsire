@@ -1,9 +1,9 @@
 import { z } from "zod";
-import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
 import { weddingSquareCancelTransport } from "./wedding-square-sandbox-cancel-transport";
 import { WEDDING_CONSENT_VERSION, WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
+import {withWeddingOwnerOperationLock,type WeddingBillingDatabase as Db} from "./wedding-square-owner-operation-lock";
 
 /**
  * Authenticated, sandbox-only cancel-at-period-end for the exact user-owned
@@ -14,7 +14,6 @@ import { WEDDING_CONSENT_VERSION, WEDDING_MONTHLY_CENTS } from "./wedding-square
  * This does not revoke a cardless trial, change paidThrough, or grant/revoke
  * paid entitlements. Square cancel schedules end of current billing period.
  */
-type Db = Pick<PoolClient, "query">;
 type Merchant = Pick<typeof weddingSquareSandboxMerchantAttestation, "inspect">;
 type Provider = Pick<typeof weddingSquareCancelTransport, "get" | "cancel">;
 type Row = {
@@ -107,17 +106,25 @@ export function createWeddingSquareSandboxCancellation(db: Db, merchant: Merchan
 
         // A single atomic claim prevents double-cancel requests across nodes.
         // If POST or ACK becomes unknown, this claim remains for reconciliation.
-        const claimed = await db.query<{ id: string }>(
+        const claim = (executor: Pick<Db,"query">) => executor.query<{ id: string }>(
           `UPDATE wedding_square_subscriptions
               SET cancellation_requested_at=now(), updated_at=now()
             WHERE id=$1::uuid AND user_id=$2
               AND square_environment='sandbox' AND square_merchant_id=$3
               AND square_subscription_id=$4
+              AND square_card_id IS NOT DISTINCT FROM $5
               AND provider_status = 'ACTIVE'
               AND cancellation_requested_at IS NULL AND provider_cancelled_at IS NULL
+              ${process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED === "true" ? `AND NOT EXISTS (
+                SELECT 1 FROM wedding_square_card_updates u WHERE u.user_id=$2 AND u.status<>'confirmed')` : ""}
            RETURNING id::text AS id`,
-          [row.id, userId, merchantId, row.square_subscription_id],
+          [row.id, userId, merchantId, row.square_subscription_id, row.square_card_id],
         );
+        // Replacement and cancellation take the SAME owner lock, then read
+        // durable intents in a fresh statement snapshot. No lock spans I/O.
+        const claimed = process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED === "true"
+          ? await withWeddingOwnerOperationLock(db,userId,claim)
+          : await claim(db);
         if (claimed.rows.length !== 1 || claimed.rows[0].id !== row.id)
           throw new WeddingSquareSandboxCancellationError();
 

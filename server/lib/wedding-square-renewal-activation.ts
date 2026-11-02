@@ -58,7 +58,12 @@ export function createWeddingSquareRenewalActivation(db:Db,readProvider:Provider
               AND s.square_location_id=$5
               AND s.square_subscription_id=a.provider_subscription_id
               AND s.square_customer_id=a.square_customer_id
-              AND s.square_card_id=a.square_card_id
+              AND (s.square_card_id=a.square_card_id ${process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED === "true" ? `OR (
+                EXISTS(SELECT 1 FROM wedding_square_card_updates u
+                  WHERE u.wedding_subscription_id=s.id AND u.user_id=s.user_id
+                    AND u.square_environment='sandbox' AND u.square_merchant_id=s.square_merchant_id
+                    AND u.square_subscription_id=s.square_subscription_id AND u.status='confirmed'
+                    AND u.replacement_card_id=s.square_card_id))` : ""})
               AND s.square_plan_variation_id=a.square_plan_variation_id
               AND s.tier=a.tier
               AND s.billing_consent_terms_version=a.consent_terms_version

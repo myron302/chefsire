@@ -74,6 +74,28 @@ export function createWeddingSquareReconciliationReadback(database: Database) {
         }
         // Internal-only identity and stable evidence for independently authorized
         // Square provider readback. Do not expose these to the browser.
+        let currentCardId: string | null = null;
+        if (row.status === "confirmed" && process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED === "true") {
+          // Preserve the immutable enrollment fingerprint's original card.
+          // A replacement is trusted only through the independently confirmed
+          // update ledger AND the current owner/customer/subscription binding.
+          const replacement = await database.query<{replacement_card_id:string}>(
+            `SELECT u.replacement_card_id FROM wedding_square_card_updates u
+               JOIN wedding_square_subscriptions s ON s.id=u.wedding_subscription_id
+              WHERE u.user_id=$1 AND s.user_id=$1 AND u.status='confirmed'
+                AND u.square_environment='sandbox' AND s.square_environment='sandbox'
+                AND u.square_merchant_id=$2 AND s.square_merchant_id=$2
+                AND s.square_location_id=$3 AND s.square_customer_id=$4
+                AND s.square_subscription_id=$5 AND u.square_subscription_id=$5
+                AND s.square_card_id=u.replacement_card_id
+              ORDER BY u.created_at DESC,u.id DESC LIMIT 1`,
+            [authenticatedUserId,process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID,row.square_location_id,
+              row.square_customer_id,row.provider_subscription_id]);
+          if (!Array.isArray(replacement.rows) || replacement.rows.length>1 ||
+              (replacement.rows[0] && !canonicalId(replacement.rows[0].replacement_card_id)))
+            throw new WeddingSquareReconciliationReadbackError();
+          currentCardId=replacement.rows[0]?.replacement_card_id??null;
+        }
         return Object.freeze({
           attemptId: row.id,
           status: row.status as "submitting" | "needs_reconciliation" | "confirmed",
@@ -82,6 +104,7 @@ export function createWeddingSquareReconciliationReadback(database: Database) {
           providerSubscriptionId: row.provider_subscription_id,
           customerId: row.square_customer_id,
           cardId: row.square_card_id,
+          ...(currentCardId ? {currentCardId} : {}),
           locationId: row.square_location_id,
           planVariationId: row.square_plan_variation_id,
           requestedStartDate: row.requested_start_date,

@@ -1,6 +1,32 @@
 import { sql } from "drizzle-orm";
-import { check, date, index, integer, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { bigint, check, date, index, integer, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
+
+export const weddingSquareCardUpdates = pgTable("wedding_square_card_updates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  weddingSubscriptionId: uuid("wedding_subscription_id").notNull().references(() => weddingSquareSubscriptions.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  squareEnvironment: text("square_environment").notNull(),
+  squareMerchantId: text("square_merchant_id").notNull(),
+  squareSubscriptionId: text("square_subscription_id").notNull(),
+  previousCardId: text("previous_card_id").notNull(),
+  replacementCardId: text("replacement_card_id"),
+  sourceDigest: text("source_digest").notNull(),
+  cardIdempotencyKey: text("card_idempotency_key").notNull(),
+  expectedProviderVersion: bigint("expected_provider_version", {mode:"number"}).notNull(),
+  status: text("status").notNull().default("reserved"),
+  createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
+},t=>({
+  pendingOwner:uniqueIndex("wedding_square_card_updates_pending_owner_idx").on(t.userId).where(sql`${t.status}<>'confirmed'`),
+  sourceUnique:unique("wedding_sq_card_update_source_uq").on(t.squareEnvironment,t.sourceDigest),
+  keyUnique:unique("wedding_sq_card_update_key_uq").on(t.cardIdempotencyKey),
+  confirmedCheck:check("wedding_sq_card_update_confirmed_ck",sql`${t.status}<>'confirmed' OR ${t.replacementCardId} IS NOT NULL`),
+  environmentCheck:check("wedding_square_card_updates_square_environment_check",sql`${t.squareEnvironment}='sandbox'`),
+  digestCheck:check("wedding_square_card_updates_source_digest_check",sql`${t.sourceDigest} ~ '^[a-f0-9]{64}$'`),
+  versionCheck:check("wedding_square_card_updates_expected_provider_version_check",sql`${t.expectedProviderVersion} BETWEEN 0 AND 9007199254740991`),
+  statusCheck:check("wedding_square_card_updates_status_check",sql`${t.status} IN ('reserved','card_submitting','card_confirmed','subscription_submitting','confirmed','needs_reconciliation')`),
+}));
 
 /**
  * Reviewed Wedding Square table definitions.

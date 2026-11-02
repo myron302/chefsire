@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
  * enables flags or represents a sandbox dry-run as a paid transaction.
  */
 const requiredTables = [
+  "wedding_square_card_updates",
   "wedding_square_enrollment_attempts",
   "wedding_square_subscriptions",
   "wedding_square_invoice_evidence",
@@ -29,6 +30,7 @@ const requiredColumns = [
 export function assessWeddingSquareSandboxReadiness({ env, tables, columns, counts }) {
   const blockers = [];
   const settings = [
+    "WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED",
     "WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED",
     "WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
     "WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED",

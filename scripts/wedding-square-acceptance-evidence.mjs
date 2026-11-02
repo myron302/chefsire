@@ -6,7 +6,7 @@ export function assessWeddingSquareEvidence(rows) {
   const counts = Object.fromEntries(
     ["cardSetups","enrollmentAttempts","subscriptions","invoicePayments",
      "freshPayments","revokedPayments","cancellations","failedWebhooks","pendingWebhooks",
-     "unresolvedCardSetups","unresolvedEnrollments","unresolvedCancellations"]
+     "unresolvedCardSetups","unresolvedEnrollments","unresolvedCancellations","cardUpdates","unresolvedCardUpdates"]
       .map(key => [key, Number(rows[key])]),
   );
   if (Object.values(counts).some(n => !Number.isSafeInteger(n) || n < 0))
@@ -18,9 +18,10 @@ export function assessWeddingSquareEvidence(rows) {
     blocked.push("No independently reconciled paid invoice evidence recorded");
   if (!counts.cancellations)
     blocked.push("No provider-confirmed cancellation recorded");
+  if (!counts.cardUpdates) blocked.push("No independently confirmed payment-method replacement recorded");
   if (counts.revokedPayments === 0)
     blocked.push("Refund/dispute revocation has not been demonstrated by this database snapshot");
-  if (counts.unresolvedCardSetups || counts.unresolvedEnrollments || counts.failedWebhooks || counts.pendingWebhooks || counts.unresolvedCancellations)
+  if (counts.unresolvedCardSetups || counts.unresolvedEnrollments || counts.failedWebhooks || counts.pendingWebhooks || counts.unresolvedCancellations || counts.unresolvedCardUpdates)
     blocked.push("Unresolved owner or webhook reconciliation exists");
   return Object.freeze({
     environment: "sandbox",
@@ -67,7 +68,9 @@ export async function collectWeddingSquareEvidence(env = process.env, makeClient
         (SELECT count(*)::int FROM wedding_square_enrollment_attempts
           WHERE square_environment='sandbox' AND status IN
             ('reserved','submitting','needs_reconciliation')) AS "unresolvedEnrollments",
-        (SELECT count(*)::int FROM wedding_square_subscriptions WHERE square_environment='sandbox' AND cancellation_requested_at IS NOT NULL AND provider_cancelled_at IS NULL) AS "unresolvedCancellations"
+        (SELECT count(*)::int FROM wedding_square_subscriptions WHERE square_environment='sandbox' AND cancellation_requested_at IS NOT NULL AND provider_cancelled_at IS NULL) AS "unresolvedCancellations",
+        (SELECT count(*)::int FROM wedding_square_card_updates WHERE square_environment='sandbox' AND status='confirmed') AS "cardUpdates",
+        (SELECT count(*)::int FROM wedding_square_card_updates WHERE square_environment='sandbox' AND status<>'confirmed') AS "unresolvedCardUpdates"
     `);
     if (result.rows.length !== 1) throw new Error("Missing aggregate evidence");
     return assessWeddingSquareEvidence(result.rows[0]);

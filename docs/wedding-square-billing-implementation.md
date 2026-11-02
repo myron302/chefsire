@@ -5,7 +5,7 @@
 `WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED` defaults off. When explicitly
 enabled with the existing sandbox enrollment, webhook and reconciliation
 gates, the hourly worker independently attests the merchant/location, claims
-at most ten payment/refund hints with a 15-minute lease, and maps each provider
+one payment/refund hint immediately before its 15-minute lease, and maps each provider
 payment to its saved invoice and owner. Failed or unrelated events rotate
 fairly and remain pending. No provider write is sent.
 
@@ -21,6 +21,40 @@ continue to trigger independent renewal discovery without false acknowledgement.
 Apply `20261102_04_wedding_square_webhook_reconciliation_lease.sql` after the
 correlation migration before enabling the worker. Both have Drizzle parity
 and PostgreSQL CI coverage.
+
+## Existing-subscription card recovery
+
+`WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED` defaults off. Its additive
+`20261102_05_wedding_square_card_updates.sql` migration records one-shot
+owner-bound update attempts, source digests and provider versions. The
+Settings subscription panel uses Square-hosted card fields and buyer
+verification. The server reuses the verified owner customer and subscription;
+it never creates another Customer or Subscription to recover a failed card.
+
+A durable intent precedes one Card POST and one card-only, versioned
+Subscription PUT. No cancellation, plan, price, trial, consent or paid-through
+field is changed. Mixed-error or unknown results block another attempt.
+Replacement reservation and cancellation claim use the same short owner
+advisory-lock transaction. Cancellation excludes unresolved replacements and
+compares the saved current card; a claimed cancellation excludes replacement.
+Neither transaction holds a lock while waiting for Square. Two-connection
+PostgreSQL tests exercise both provider-call orderings.
+`POST /api/wedding/subscription/sandbox/payment-method/reconcile` accepts an
+empty body and performs GET-only recovery of the saved replacement; it never
+replays either write. Unknown Card POSTs without a returned ID remain an
+operator reconciliation case.
+
+The original enrollment card and fingerprint stay immutable. Confirmed
+replacement provenance is read separately for ongoing provider verification
+and first-charge activation. Keep the card-update switch enabled after
+verified replacements so renewal readback can use this ledger. Initial
+checkout requires payment-event handling and card recovery to be enabled.
+
+Tests cover transport envelopes and version conflicts, owner/origin/body
+authorization, lost PUT responses, nonce digest uniqueness, PostgreSQL
+recovery and original enrollment evidence preservation. Real provider lifecycle
+acceptance is still a separate gate; passing these tests does not establish a
+Square charge.
 
 ## Webhook correlation metadata (November 2, 2026)
 

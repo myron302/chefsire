@@ -9,6 +9,15 @@ const row = {
   square_location_id: "location", square_plan_variation_id: "plan",
   requested_start_date: "2026-11-11", requested_timezone: "UTC",
 };
+test("current card comes only from confirmed owner-bound update ledger; original fingerprint stays immutable", async () => sandbox(async()=>{
+ const old=process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED;process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED="true";
+ try{
+  const db={query:async(sql:string)=>sql.includes("FROM wedding_square_enrollment_attempts")
+   ?{rows:[{...row,status:"confirmed",provider_subscription_id:"sub-1"}]}:{rows:[{replacement_card_id:"replacement"}]}};
+  const result=await createWeddingSquareReconciliationReadback(db as any).inspect(attemptId,"user-1");
+  assert.equal(result.cardId,"card");assert.equal(result.currentCardId,"replacement");assert.equal(result.persistedRequestFingerprint,row.request_fingerprint);
+ }finally{if(old===undefined)delete process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED;else process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED=old;}
+}));
 async function sandbox(run: () => Promise<void>) {
   const old = [process.env.SQUARE_ENV, process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED];
   process.env.SQUARE_ENV = "sandbox"; process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = "true";
