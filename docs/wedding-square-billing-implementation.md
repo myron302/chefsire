@@ -15,8 +15,12 @@ GETs of both refund and original payment, customer/location/amount agreement,
 and proof that the payment lists that refund and returned funds. Revocation
 of only that invoice and acknowledgement of its queue lease are atomic.
 Pending, malformed or unverified refunds remain pending; no refund request is
-created, and no paid-through date is extended. Subscription/invoice-only hints
-continue to trigger independent renewal discovery without false acknowledgement.
+created, and no paid-through date is extended. Subscription/invoice hints
+require exact provider identity and original enrollment verification before
+locked queue acknowledgement. Raw provider errors are checked before SDK
+normalization. Lifecycle checks can reconcile current non-payment status but
+never extend paid-through, refresh payment evidence, or promote PENDING based
+on an ACTIVE subscription hint; renewal discovery verifies settled invoices.
 
 Apply `20261102_04_wedding_square_webhook_reconciliation_lease.sql` after the
 correlation migration before enabling the worker. Both have Drizzle parity

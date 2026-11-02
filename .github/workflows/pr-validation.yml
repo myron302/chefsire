@@ -43,6 +43,8 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-webhook-drain.test.ts
       - name: Test event-specific payment and refund reconciliation
         run: node --import tsx --test server/lib/wedding-square-payment-events.test.ts server/lib/wedding-square-refund-readback.test.ts
+      - name: Test exact subscription and invoice lifecycle notification handling
+        run: node --import tsx --test server/lib/wedding-square-lifecycle-events.test.ts
       - name: Test existing subscription payment-method recovery
         run: node --import tsx --test server/lib/wedding-square-card-update.test.ts server/lib/wedding-square-card-update-transport.test.ts server/routes/wedding-square-card-update.test.ts
       - name: Test Wedding Square lifecycle evidence report
@@ -196,6 +198,8 @@ jobs:
         run: node --import tsx --test server/lib/wedding-square-evidence-refresh.postgres.test.ts
       - name: Verify exact payment/refund event transactions on PostgreSQL
         run: node --import tsx --test server/lib/wedding-square-payment-events.postgres.test.ts
+      - name: Verify exact lifecycle acknowledgement without paid grant on PostgreSQL
+        run: node --import tsx --test server/lib/wedding-square-lifecycle-events.postgres.test.ts
       - name: Verify durable card replacement and GET-only recovery on PostgreSQL
         run: node --import tsx --test server/lib/wedding-square-card-update.postgres.test.ts
       - name: Test Wedding Square reconciliation batch PostgreSQL
