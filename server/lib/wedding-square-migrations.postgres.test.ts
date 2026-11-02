@@ -11,6 +11,7 @@ import {
   weddingSquareSubscriptions,
   weddingSquareWebhookEvents,
   weddingSquareInvoiceEvidence,
+  weddingSquareCardSetupAttempts,
 } from "../../shared/schema/domains/wedding-square-billing";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -20,12 +21,14 @@ const FILES = [
   "server/migrations/20261101_03_wedding_square_payment_reconciliation.sql",
   "server/migrations/20261101_04_wedding_square_reconciliation_revision.sql",
   "server/migrations/20261101_05_wedding_square_renewal_scan.sql",
+  "server/migrations/20261102_01_wedding_square_card_setup_intents.sql",
 ];
 const TABLES = [
   weddingSquareEnrollmentAttempts,
   weddingSquareSubscriptions,
   weddingSquareWebhookEvents,
   weddingSquareInvoiceEvidence,
+  weddingSquareCardSetupAttempts,
 ];
 
 const pgUrl = process.env.WEDDING_SQUARE_TEST_DATABASE_URL;
@@ -119,6 +122,20 @@ test("the prepared Wedding Square migrations match Drizzle schema on a disposabl
       await db.query("ROLLBACK TO SAVEPOINT reject_probe");
       await db.query("RELEASE SAVEPOINT reject_probe");
     };
+    // Customer/card POSTs require their own durable one-shot owner intent;
+    // no raw Square SDK nonce is stored in this schema.
+    const insertSetup = `INSERT INTO wedding_square_card_setup_attempts
+      (user_id,square_merchant_id,square_location_id,tier,consent_terms_version,
+       consented_at,consented_amount_cents,consented_currency,source_digest,
+       customer_idempotency_key,card_idempotency_key)
+       VALUES ($1,'merchant-1','location-1','premium','wedding-monthly-autorenew-v1',
+        now(),2499,'USD',repeat('a',64),$2,$3)`;
+    await db.query(insertSetup, ['test-user-1','customer-once-1','card-once-1']);
+    await expectRefused(insertSetup, ['test-user-1','customer-once-2','card-once-2']);
+    await expectRefused(insertSetup, ['test-user-2','customer-once-1','card-once-3']);
+    await expectRefused(`UPDATE wedding_square_card_setup_attempts SET status='confirmed' WHERE user_id='test-user-1'`);
+    await expectRefused(`UPDATE wedding_square_card_setup_attempts SET source_digest='raw-token' WHERE user_id='test-user-1'`);
+
     // Atomic one-live-attempt constraint protects uncertain Square calls.
     await expectRefused(insertAttempt, ["test-user-1", 2499, "another-key"]);
     // Idempotency keys cannot be reissued to another account.

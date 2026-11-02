@@ -124,3 +124,51 @@ export const weddingSquareInvoiceEvidence = pgTable("wedding_square_invoice_evid
   currencyCheck: check("wedding_sq_evidence_currency_ck", sql`${t.verifiedCurrency} = 'USD'`),
   coverageCheck: check("wedding_sq_evidence_period_ck", sql`${t.periodEndsAt} > ${t.periodStartsAt}`),
 }));
+
+
+/**
+ * Owner-scoped card setup intent, committed BEFORE any Square customer/card
+ * POST. Never store a Web Payments SDK nonce or verification token.
+ * A timeout means needs_reconciliation, never automatic replay.
+ */
+export const weddingSquareCardSetupAttempts = pgTable("wedding_square_card_setup_attempts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  squareEnvironment: text("square_environment").notNull().default("sandbox"),
+  squareMerchantId: text("square_merchant_id").notNull(),
+  squareLocationId: text("square_location_id").notNull(),
+  tier: text("tier").notNull(),
+  consentTermsVersion: text("consent_terms_version").notNull(),
+  consentedAt: timestamp("consented_at", { withTimezone: true }).notNull(),
+  consentedAmountCents: integer("consented_amount_cents").notNull(),
+  consentedCurrency: text("consented_currency").notNull(),
+  trialExpiresAt: timestamp("trial_expires_at", { withTimezone: true }),
+  requestedStartDate: date("requested_start_date"),
+  requestedTimezone: text("requested_timezone").notNull().default("UTC"),
+  sourceDigest: text("source_digest").notNull(),
+  customerIdempotencyKey: text("customer_idempotency_key").notNull().unique("wedding_sq_setup_customer_key_uq"),
+  cardIdempotencyKey: text("card_idempotency_key").notNull().unique("wedding_sq_setup_card_key_uq"),
+  squareCustomerId: text("square_customer_id"),
+  squareCardId: text("square_card_id"),
+  status: text("status").notNull().default("reserved"),
+  customerPostAttemptedAt: timestamp("customer_post_attempted_at", { withTimezone: true }),
+  cardPostAttemptedAt: timestamp("card_post_attempted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  unresolvedUser: uniqueIndex("wedding_square_card_setup_one_unresolved_user_idx").on(t.userId).where(sql`${t.status} IN ('reserved','customer_submitting','customer_confirmed','card_submitting','needs_reconciliation')`),
+  providerCard: uniqueIndex("wedding_square_card_setup_provider_card_idx").on(t.squareEnvironment, t.squareMerchantId, t.squareCardId).where(sql`${t.squareCardId} IS NOT NULL`),
+  userHistory: index("wedding_square_card_setup_user_history_idx").on(t.userId, t.createdAt.desc()),
+  sandboxCheck: check("wedding_sq_setup_sandbox_ck", sql`${t.squareEnvironment} = 'sandbox'`),
+  tierCheck: check("wedding_sq_setup_tier_ck", sql`${t.tier} IN ('premium','elite')`),
+  currencyCheck: check("wedding_sq_setup_currency_ck", sql`${t.consentedCurrency} = 'USD'`),
+  timezoneCheck: check("wedding_sq_setup_timezone_ck", sql`${t.requestedTimezone} = 'UTC'`),
+  sourceCheck: check("wedding_sq_setup_source_ck", sql`${t.sourceDigest} ~ '^[0-9a-f]{64}$'`),
+  customerKeyCheck: check("wedding_sq_setup_customer_key_ck", sql`length(${t.customerIdempotencyKey}) BETWEEN 1 AND 45`),
+  cardKeyCheck: check("wedding_sq_setup_card_key_ck", sql`length(${t.cardIdempotencyKey}) BETWEEN 1 AND 45`),
+  statusCheck: check("wedding_sq_setup_status_ck", sql`${t.status} IN ('reserved','customer_submitting','customer_confirmed','card_submitting','needs_reconciliation','confirmed','aborted')`),
+  amountCheck: check("wedding_sq_setup_amount_ck", sql`(${t.tier}='premium' AND ${t.consentedAmountCents}=2499) OR (${t.tier}='elite' AND ${t.consentedAmountCents}=4999)`),
+  trialDateCheck: check("wedding_sq_setup_trial_date_ck", sql`${t.trialExpiresAt} IS NULL OR (${t.requestedStartDate} IS NOT NULL AND (${t.requestedStartDate}::timestamp AT TIME ZONE 'UTC') >= ${t.trialExpiresAt})`),
+  customerProgressCheck: check("wedding_sq_setup_customer_progress_ck", sql`${t.status} NOT IN ('customer_confirmed','card_submitting','confirmed') OR ${t.squareCustomerId} IS NOT NULL`),
+  cardConfirmedCheck: check("wedding_sq_setup_card_confirmed_ck", sql`${t.status} <> 'confirmed' OR ${t.squareCardId} IS NOT NULL`),
+}));

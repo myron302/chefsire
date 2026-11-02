@@ -59,6 +59,7 @@ export {
   weddingSquareSubscriptions,
   weddingSquareWebhookEvents,
   weddingSquareInvoiceEvidence,
+  weddingSquareCardSetupAttempts,
 } from "./schema/domains/wedding-square-billing";
 export {
   posts,
