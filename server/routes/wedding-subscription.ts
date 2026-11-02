@@ -11,6 +11,7 @@ import { activateWeddingTrial, revokeWeddingTrial, weddingEntitlement } from "..
 import { isWeddingPaidTier, quoteWeddingMonthlyBilling } from "../lib/wedding-square-billing-policy";
 import { weddingSquareLegacyCancelGuard, WeddingSquareLegacyCancellationBlocked } from "../lib/wedding-square-legacy-cancel-guard";
 import { weddingSquareSandboxCardSetupEnabled } from "./wedding-square-sandbox-card-setup";
+import { weddingSquareBillingStatus } from "../lib/wedding-square-billing-status";
 
 const r = Router();
 
@@ -168,11 +169,20 @@ r.get("/subscription/billing-quote", requireAuth, async (req, res) => {
     const expiry = entitlement.trial.status === "active" && entitlement.trial.expiresAt
       ? new Date(entitlement.trial.expiresAt) : null;
     const sandboxConfigured = weddingSquareSandboxCardSetupEnabled();
+    // Do not invite card entry when a subscription already exists or an
+    // unresolved Customer/Card POST may still require reconciliation.
+    // Unknown account billing status fails closed, never by assuming Free.
+    const billingState = sandboxConfigured
+      ? await weddingSquareBillingStatus.inspect(req.user!.id)
+      : null;
+    const checkoutEligible = sandboxConfigured &&
+      billingState?.billingMode === "sandbox" &&
+      billingState.enrollmentStatus === "not_enrolled";
     return res.json({
       ok: true,
-      billingAvailable: sandboxConfigured,
+      billingAvailable: checkoutEligible,
       ...quoteWeddingMonthlyBilling({ tier, now: new Date(), trialExpiresAt: expiry }),
-      message: sandboxConfigured
+      message: checkoutEligible
         ? "Square sandbox checkout is configured for testing. Provider and payment verification remain required."
         : "Square recurring checkout is not available yet. No payment method is collected.",
     });
