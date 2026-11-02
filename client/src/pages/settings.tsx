@@ -2166,7 +2166,7 @@ function SubscriptionSettingsPanel() {
                       </p>
                     )}
                     {weddingBillingStatusQuery.data.billingMode === "sandbox" &&
-                      ["active", "pending", "paused"].includes(weddingBillingStatusQuery.data.enrollmentStatus) &&
+                      weddingBillingStatusQuery.data.enrollmentStatus === "active" &&
                       !weddingBillingStatusQuery.data.cancellationRequestedAt ? (
                       <Button
                         type="button"
