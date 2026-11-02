@@ -9,7 +9,7 @@ import { weddingSquareReconciliationBatch } from "./wedding-square-reconciliatio
  * cron. A processed notification never grants access or confirms its content.
  */
 type Db=Pick<PoolClient,"query">;
-type Scan={run():Promise<{status:string;scanned:number}>};
+type Scan={run():Promise<{status:string;scanned:number;recorded?:number;existing?:number;pending?:number;checked?:number;failed?:number}>};
 const valid=(s:unknown):s is string=>typeof s==="string"&&s.length>0&&s.length<=200&&!/[\s\x00-\x1f\x7f]/.test(s);
 type EventRow={event_id:string;event_type:string};
 export class WeddingSquareWebhookDrainUnavailable extends Error{
@@ -37,6 +37,7 @@ export function createWeddingSquareWebhookDrain(db:Db,renewal:Scan,reconcile:Sca
       `SELECT event_id,event_type FROM wedding_square_webhook_events
          WHERE square_environment='sandbox' AND square_merchant_id=$1
            AND processing_status='pending'
+           AND (event_type LIKE 'subscription.%' OR event_type LIKE 'invoice.%')
          ORDER BY received_at ASC,event_id ASC LIMIT 10`,[merchant]);
     if(!Array.isArray(rows.rows)||rows.rows.length>10||
        rows.rows.some(e=>!valid(e.event_id)||typeof e.event_type!=="string"||
@@ -47,7 +48,13 @@ export function createWeddingSquareWebhookDrain(db:Db,renewal:Scan,reconcile:Sca
     // This is a signal-handling acknowledgement ONLY. Never write paid coverage.
     const a=await renewal.run();
     const b=await reconcile.run();
-    if(a.status!=="completed"||b.status!=="completed")
+    if(a.status!=="completed"||b.status!=="completed"||
+       a.pending!==0 || b.failed!==0 ||
+       !Number.isSafeInteger(a.scanned) || !Number.isSafeInteger(b.scanned) ||
+       !Number.isSafeInteger(a.recorded) || !Number.isSafeInteger(a.existing) ||
+       !Number.isSafeInteger(b.checked) ||
+       a.scanned===0 || b.scanned===0 ||
+       (a.recorded??0)+(a.existing??0)===0 || (b.checked??0)===0)
       return {status:"reconciliation_required" as const,scanned:rows.rows.length,processed:0,pending:rows.rows.length};
     let processed=0;
     for(const event of rows.rows){
