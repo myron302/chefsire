@@ -23,8 +23,8 @@ test("bounded notifications trigger independent scans, not payment entitlements"
  }}as any,
  {run:async()=>{calls.push("renew");return {status:"completed",scanned:1,recorded:1,existing:0,pending:0};}},
  {run:async()=>{calls.push("reconcile");return {status:"completed",scanned:1,checked:1,failed:0};}});
- assert.deepEqual(await svc.run(),{status:"completed",scanned:2,processed:1,pending:1});
- assert.deepEqual(calls,["select","renew","reconcile","ack"]);
+ assert.deepEqual(await svc.run(),{status:"reconciliation_required",scanned:2,processed:0,pending:2});
+ assert.deepEqual(calls,["select","renew","reconcile"]);
 }));
 test("disabled and failed scans cannot consume any notification",()=>enabled(async()=>{
  let calls=0;
