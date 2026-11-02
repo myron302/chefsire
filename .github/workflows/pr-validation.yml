@@ -29,6 +29,8 @@ jobs:
           cache: npm
       - name: Install dependencies from lockfile
         run: npm ci
+      - name: Test owner-scoped sandbox checkout eligibility
+        run: node --import tsx --test server/lib/wedding-square-checkout-eligibility.test.ts
       - name: Test authenticated Square sandbox card setup HTTP
         run: node --import tsx --test server/routes/wedding-square-sandbox-card-setup.test.ts
       - name: Test Neon owner-bound Square card setup coordinator
