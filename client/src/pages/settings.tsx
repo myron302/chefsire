@@ -2181,6 +2181,11 @@ function SubscriptionSettingsPanel() {
                         {cancelWeddingSquareMutation.isPending ? "Contacting Square…" : "Cancel Square Recurring Billing"}
                       </Button>
                     ) : null}
+                    {["pending", "paused"].includes(weddingBillingStatusQuery.data.enrollmentStatus) ? (
+                      <p className="text-xs text-amber-700" role="status">
+                        Square cancellation is not available in this subscription state. Contact support to resolve billing; do not assume future charges have stopped.
+                      </p>
+                    ) : null}
                     {weddingBillingStatusQuery.data.cancellationRequestedAt ? (
                       <p className="text-xs text-gray-600">
                         Cancellation request saved: {" "}
