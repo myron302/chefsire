@@ -56,21 +56,9 @@ export function createWeddingSquareWebhookDrain(db:Db,renewal:Scan,reconcile:Sca
        a.scanned===0 || b.scanned===0 ||
        (a.recorded??0)+(a.existing??0)===0 || (b.checked??0)===0)
       return {status:"reconciliation_required" as const,scanned:rows.rows.length,processed:0,pending:rows.rows.length};
-    let processed=0;
-    for(const event of rows.rows){
-      // Refund/payment notifications require payment-specific evidence checks,
-      // not mere discovery. Keep them pending for provider reconciliation.
-      if(!/^(subscription|invoice)\./.test(event.event_type))continue;
-      const updated=await db.query(
-        `UPDATE wedding_square_webhook_events
-            SET processing_status='processed',processed_at=now()
-          WHERE square_environment='sandbox' AND square_merchant_id=$1
-            AND event_id=$2 AND processing_status='pending'`,
-        [merchant,event.event_id]);
-      if(updated.rowCount===1)processed++;
-      else if(updated.rowCount!==0)throw new WeddingSquareWebhookDrainUnavailable();
-    }
-    return {status:"completed" as const,scanned:rows.rows.length,processed,pending:rows.rows.length-processed};
+    // An unrelated global scan cannot prove a particular event was handled.
+    // Retain events until identity-bound provider verification exists.
+    return {status:"reconciliation_required" as const,scanned:rows.rows.length,processed:0,pending:rows.rows.length};
    }catch{
     throw new WeddingSquareWebhookDrainUnavailable();
    }finally{running=false;}
