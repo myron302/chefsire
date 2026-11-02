@@ -108,3 +108,13 @@ test("invalid currency, duplicate plans and padded provider credentials fail clo
   assert.match(out.blockers.join(" "), /SQUARE_ACCESS_TOKEN/);
   assert.doesNotMatch(JSON.stringify(out), /padded-token/);
 });
+
+test("oversized runtime provider identities are not readiness", () => {
+  const x = input();
+  x.env.SQUARE_ACCESS_TOKEN = "a".repeat(201);
+  x.env.SQUARE_LOCATION_ID = "b".repeat(201);
+  const out = assessWeddingSquareSandboxReadiness(x);
+  assert.equal(out.safeToAttemptSandboxAcceptance, false);
+  assert.match(out.blockers.join(" "), /SQUARE_ACCESS_TOKEN/);
+  assert.match(out.blockers.join(" "), /SQUARE_LOCATION_ID/);
+});
