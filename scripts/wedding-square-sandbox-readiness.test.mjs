@@ -12,6 +12,10 @@ const columns = [
 ];
 const env = {
   SQUARE_ENV: "sandbox",
+  SQUARE_ACCESS_TOKEN: "sandbox-test-token",
+  SQUARE_APPLICATION_ID: "sandbox-test-app",
+  WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL: "https://chefsire.example/api/wedding/square/webhook",
+  WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY: "sandbox-test-signature",
   SQUARE_LIVE_PAYMENTS_ENABLED: "false",
   WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant-test",
   SQUARE_LOCATION_ID: "location-test",
