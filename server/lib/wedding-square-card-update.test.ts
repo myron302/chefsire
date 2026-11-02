@@ -19,6 +19,8 @@ function fixture({losePut=false,foreignCard=false}={}){
   if(sql.includes("SET status='needs_reconciliation'"))pending=true;
   return {rows:[{id:attemptId}]};
  }};
+ (db as any).connect=async()=>({query:async(sql:string,args:unknown[]=[])=>
+   /^(BEGIN|COMMIT|ROLLBACK|SET LOCAL|SELECT pg_advisory)/.test(sql)?{rows:[]}:db.query(sql,args),release:()=>undefined});
  const provider={get:async()=>({id:"sub",customerId:"cust",locationId:"loc",planVariationId:"plan",cardId:current,version:current==="old-card"?3:4,status:"ACTIVE"}),
   update:async()=>{puts++;current="new-card";if(losePut)throw Error("timeout after commit");return provider.get();}};
  const svc=createWeddingSquareCardUpdate(db as any,{inspect:async()=>({verifiedSandboxMerchantContext:true,merchantId:"merchant",locationId:"loc",grantsEntitlement:false})} as any,

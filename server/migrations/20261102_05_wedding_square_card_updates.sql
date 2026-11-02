@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS wedding_square_card_updates (
   replacement_card_id text,
   source_digest text NOT NULL CHECK(source_digest ~ '^[a-f0-9]{64}$'),
   card_idempotency_key text NOT NULL,
-  expected_provider_version integer NOT NULL CHECK(expected_provider_version>=0),
+  expected_provider_version bigint NOT NULL CHECK(expected_provider_version BETWEEN 0 AND 9007199254740991),
   status text NOT NULL DEFAULT 'reserved' CHECK(status IN
     ('reserved','card_submitting','card_confirmed','subscription_submitting','confirmed','needs_reconciliation')),
   created_at timestamptz NOT NULL DEFAULT now(),

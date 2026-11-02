@@ -1,12 +1,11 @@
 import {createHash,randomUUID} from "node:crypto";
-import type {PoolClient} from "pg";
 import {pool} from "../db";
 import {weddingSquareSandboxMerchantAttestation} from "./wedding-square-sandbox-merchant-attestation";
 import {weddingSquareSandboxCustomerCardApi} from "./wedding-square-sandbox-customer-card-api";
 import {weddingSquareSandboxCardSetupTransport} from "./wedding-square-sandbox-card-setup-transport";
 import {weddingSquareCardUpdateTransport} from "./wedding-square-card-update-transport";
 import {WEDDING_CONSENT_VERSION,WEDDING_MONTHLY_CENTS} from "./wedding-square-billing-policy";
-type Db=Pick<PoolClient,"query">;
+import {withWeddingOwnerOperationLock,type WeddingBillingDatabase as Db} from "./wedding-square-owner-operation-lock";
 type Merchant=Pick<typeof weddingSquareSandboxMerchantAttestation,"inspect">;
 type Cards=Pick<typeof weddingSquareSandboxCustomerCardApi,"getCustomer"|"getCard">;
 type Create=Pick<typeof weddingSquareSandboxCardSetupTransport,"createCard">;
@@ -95,7 +94,7 @@ export function createWeddingSquareCardUpdate(db:Db,merchant:Merchant,cards:Card
     const before=await provider.get(row.square_subscription_id);
     if(!matches(row,before,row.square_card_id))throw new WeddingSquareCardUpdateError();
     const key=randomUUID();
-    const reserved=await db.query<{id:string}>(`INSERT INTO wedding_square_card_updates
+    const reserved=await withWeddingOwnerOperationLock(db,userId,client=>client.query<{id:string}>(`INSERT INTO wedding_square_card_updates
       (wedding_subscription_id,user_id,square_environment,square_merchant_id,square_subscription_id,
        previous_card_id,source_digest,card_idempotency_key,expected_provider_version,status)
       SELECT id,user_id,'sandbox',square_merchant_id,square_subscription_id,square_card_id,$3,$4,$5,'reserved'
@@ -103,7 +102,7 @@ export function createWeddingSquareCardUpdate(db:Db,merchant:Merchant,cards:Card
         AND square_merchant_id=$6 AND square_location_id=$7 AND square_card_id=$8
         AND provider_status IN ('ACTIVE','PENDING') AND cancellation_requested_at IS NULL AND provider_cancelled_at IS NULL
       RETURNING id::text AS id`,[row.id,userId,createHash("sha256").update(sourceId).digest("hex"),key,before.version,
-       process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID,process.env.SQUARE_LOCATION_ID,row.square_card_id]);
+       process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID,process.env.SQUARE_LOCATION_ID,row.square_card_id]));
     if(reserved.rows.length!==1||!uuid.test(reserved.rows[0].id))throw new WeddingSquareCardUpdateError();
     attemptId=reserved.rows[0].id;
     const claimed=await db.query(`UPDATE wedding_square_card_updates SET status='card_submitting',updated_at=now()
@@ -132,12 +131,12 @@ export function createWeddingSquareCardUpdate(db:Db,merchant:Merchant,cards:Card
   },
   async reconcile(userId:string){try{
    const row=await owner(userId);
-   const pending=await db.query<Attempt>(`SELECT id::text AS id,replacement_card_id,expected_provider_version,previous_card_id,status
+   const pending=await db.query<Attempt>(`SELECT id::text AS id,replacement_card_id,expected_provider_version::float8 AS expected_provider_version,previous_card_id,status
      FROM wedding_square_card_updates WHERE wedding_subscription_id=$1::uuid AND user_id=$2 AND square_environment='sandbox'
       AND square_merchant_id=$3 AND square_subscription_id=$4 AND status IN ('subscription_submitting','needs_reconciliation') LIMIT 2`,
      [row.id,userId,process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID,row.square_subscription_id]);
    if(pending.rows.length===0){
-    const done=await db.query<Attempt>(`SELECT id::text AS id,replacement_card_id,expected_provider_version,previous_card_id,status
+    const done=await db.query<Attempt>(`SELECT id::text AS id,replacement_card_id,expected_provider_version::float8 AS expected_provider_version,previous_card_id,status
       FROM wedding_square_card_updates WHERE wedding_subscription_id=$1::uuid AND user_id=$2 AND status='confirmed'
        AND square_environment='sandbox' AND square_merchant_id=$3 AND replacement_card_id=$4
       ORDER BY created_at DESC,id DESC LIMIT 1`,[row.id,userId,process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID,row.square_card_id]);

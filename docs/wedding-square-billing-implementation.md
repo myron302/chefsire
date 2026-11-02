@@ -34,6 +34,11 @@ it never creates another Customer or Subscription to recover a failed card.
 A durable intent precedes one Card POST and one card-only, versioned
 Subscription PUT. No cancellation, plan, price, trial, consent or paid-through
 field is changed. Mixed-error or unknown results block another attempt.
+Replacement reservation and cancellation claim use the same short owner
+advisory-lock transaction. Cancellation excludes unresolved replacements and
+compares the saved current card; a claimed cancellation excludes replacement.
+Neither transaction holds a lock while waiting for Square. Two-connection
+PostgreSQL tests exercise both provider-call orderings.
 `POST /api/wedding/subscription/sandbox/payment-method/reconcile` accepts an
 empty body and performs GET-only recovery of the saved replacement; it never
 replays either write. Unknown Card POSTs without a returned ID remain an

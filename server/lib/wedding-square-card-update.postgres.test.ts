@@ -7,11 +7,13 @@ import { test } from "node:test";
 import pg from "pg";
 import { createWeddingSquareCardUpdate } from "./wedding-square-card-update";
 import {createWeddingSquareReconciliationReadback} from "./wedding-square-reconciliation-readback";
+import {createWeddingSquareSandboxCancellation} from "./wedding-square-sandbox-cancellation";
 import { WEDDING_CONSENT_VERSION } from "./wedding-square-billing-policy";
 const url=process.env.WEDDING_SQUARE_TEST_DATABASE_URL;
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"../..");
 const evidenceId="11111111-1111-4111-8111-111111111111";
 test("PostgreSQL 16: existing card update survives lost PUT response without another provider write",{
+ timeout:30000,
  skip:!url?"Requires disposable PostgreSQL 16":undefined,
 },async()=>{
  if(!url)throw Error("Missing disposable DB URL");
@@ -65,7 +67,8 @@ test("PostgreSQL 16: existing card update survives lost PUT response without ano
       status,provider_subscription_id)
      VALUES('owner-1','premium',$1,now(),2499,'USD','loc-1','premium-var','cust-1','old-card','original-key',repeat('a',64),
        'confirmed','sub-1') RETURNING id`,[WEDDING_CONSENT_VERSION])).rows[0];
-   const db={query:(sql:string,args?:unknown[])=>client.query(sql,args)} as any;
+   const db={query:(sql:string,args?:unknown[])=>client.query(sql,args),
+    connect:async()=>({query:(sql:string,args?:unknown[])=>client.query(sql,args),release:()=>undefined})} as any;
    let current='old-card',puts=0,cards=0;
    const get=async()=>({id:'sub-1',customerId:'cust-1',locationId:'loc-1',planVariationId:'premium-var',
      cardId:current,version:current==='old-card'?3:4,status:'ACTIVE'});
@@ -86,6 +89,53 @@ test("PostgreSQL 16: existing card update survives lost PUT response without ano
    await assert.rejects(service.update('owner-1','cnon:single-use','buyer-verification'));
    assert.equal(cards,1,'nonce digest uniqueness blocks another provider card creation');assert.equal(puts,1);
    assert.equal((await client.query("SELECT count(*)::int AS n FROM wedding_square_subscriptions")).rows[0].n,1);
+   // Two real connections: a durable replacement intent excludes a racing
+   // cancellation before either can leave conflicting provider identities.
+   const second=new pg.Client({connectionString:url,connectionTimeoutMillis:5000});
+   const cancelFlag=process.env.WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED;
+   const planFlag=process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID;
+   Object.assign(process.env,{WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED:'true',WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID:'premium-var'});
+   await second.connect();
+   try{
+    await second.query(`SET search_path TO "${schema}"`);
+    const cancelDb={query:(sql:string,args?:unknown[])=>second.query(sql,args),
+      connect:async()=>({query:(sql:string,args?:unknown[])=>second.query(sql,args),release:()=>undefined})} as any;
+    const merchant={inspect:async()=>({verifiedSandboxMerchantContext:true,merchantId:'merchant-1',locationId:'loc-1',
+      currency:'USD',grantsEntitlement:false,authorizesSubscriptionCreation:false,safeToResubmit:false})} as any;
+    let cardStarted!:()=>void,releaseCard!:()=>void;
+    const atCard=new Promise<void>(resolve=>{cardStarted=resolve;});
+    const allowCard=new Promise<void>(resolve=>{releaseCard=resolve;});
+    let version=4;
+    const currentSubscription=async()=>({id:'sub-1',customerId:'cust-1',locationId:'loc-1',planVariationId:'premium-var',
+      cardId:current,version,status:'ACTIVE'});
+    const replacement=createWeddingSquareCardUpdate(db,merchant,
+      {getCustomer:async()=>({id:'cust-1',referenceId:'owner-1'}),getCard:async()=>({id:'replacement-2',customerId:'cust-1',merchantId:'merchant-1',enabled:true})},
+      {createCard:async()=>{cardStarted();await allowCard;return {id:'replacement-2',customerId:'cust-1',merchantId:'merchant-1',enabled:true};}},
+      {get:currentSubscription,update:async(_s:string,card:string)=>{current=card;version++;return currentSubscription();}} as any);
+    let cancelPosts=0;
+    const cancellation=createWeddingSquareSandboxCancellation(cancelDb,merchant,{get:async()=>({...await currentSubscription(),
+      providerStatus:'ACTIVE',canceledDate:null}),cancel:async()=>{cancelPosts++;return {...await currentSubscription(),providerStatus:'ACTIVE',canceledDate:'2026-12-01'};}} as any);
+    const updating=replacement.update('owner-1','cnon:racing-replacement','buyer-verification');
+    await atCard;
+    await assert.rejects(cancellation.cancel('owner-1'));
+    assert.equal(cancelPosts,0,'pending card intent blocks cancellation POST');
+    assert.equal((await second.query('SELECT cancellation_requested_at FROM wedding_square_subscriptions')).rows[0].cancellation_requested_at,null);
+    releaseCard();assert.equal((await updating).status,'payment_method_updated');
+    // Reverse ordering: cancellation's committed claim prevents replacement
+    // from creating a card while cancellation waits on Square.
+    let atCancel!:()=>void,releaseCancel!:()=>void;
+    const cancelStarted=new Promise<void>(resolve=>{atCancel=resolve;});
+    const allowCancel=new Promise<void>(resolve=>{releaseCancel=resolve;});
+    const cancelFirst=createWeddingSquareSandboxCancellation(cancelDb,merchant,{get:async()=>({...await currentSubscription(),providerStatus:'ACTIVE',canceledDate:null}),
+      cancel:async()=>{atCancel();await allowCancel;return {...await currentSubscription(),providerStatus:'ACTIVE',canceledDate:'2026-12-01'};}} as any);
+    const canceling=cancelFirst.cancel('owner-1');await cancelStarted;
+    await assert.rejects(replacement.update('owner-1','cnon:must-not-post','buyer-verification'));
+    releaseCancel();assert.equal((await canceling).cancellationScheduled,true);
+   }finally{
+    await second.end();
+    if(cancelFlag===undefined)delete process.env.WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED;else process.env.WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED=cancelFlag;
+    if(planFlag===undefined)delete process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID;else process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID=planFlag;
+   }
  }finally{
    if(connected){
      await client.query("SET search_path TO public").catch(()=>undefined);

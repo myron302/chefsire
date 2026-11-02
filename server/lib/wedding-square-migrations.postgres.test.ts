@@ -97,6 +97,7 @@ test("the prepared Wedding Square migrations match Drizzle schema on a disposabl
           : column.columnType.startsWith("PgUUID") ? "uuid"
           : column.columnType.startsWith("PgVarchar") ? "character varying"
           : column.columnType.startsWith("PgInteger") ? "integer"
+          : column.columnType.startsWith("PgBigInt") ? "bigint"
           : "text";
         assert.equal(dbColumn.data_type, expectedType, config.name + "." + column.name);
       }
