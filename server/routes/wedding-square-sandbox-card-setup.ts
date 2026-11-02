@@ -32,14 +32,42 @@ const bodySchema = z.object({
   }).strict(),
 }).strict();
 
-function enabled() {
+export function weddingSquareSandboxCardSetupEnabled() {
   const env = process.env;
   if (env.SQUARE_ENV !== "sandbox" ||
+      env.SQUARE_LIVE_PAYMENTS_ENABLED === "true" ||
       env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_RECONCILIATION_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_RECONCILIATION_BATCH_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_VERIFIED_PAID_ENTITLEMENTS_ENABLED !== "true" ||
       env.WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED !== "true" ||
       env.WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED !== "true" ||
       !id.safeParse(env.SQUARE_APPLICATION_ID).success ||
       !id.safeParse(env.SQUARE_LOCATION_ID).success) return false;
+  const required = [
+    "SQUARE_ACCESS_TOKEN", "WEDDING_SQUARE_SANDBOX_MERCHANT_ID",
+    "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID",
+    "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID",
+  ];
+  if (required.some(name => !id.safeParse(env[name]).success) ||
+      typeof env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY !== "string" ||
+      env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY.length < 20 ||
+      env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID === env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID ||
+      env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID === env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID)
+    return false;
+  try {
+    const hook = new URL(env.WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL ?? "");
+    if (hook.protocol !== "https:" ||
+        hook.pathname !== "/api/wedding/subscription/webhooks/square" ||
+        hook.search || hook.hash || hook.username || hook.password) return false;
+  } catch { return false; }
   const origin = env.WEDDING_SQUARE_ALLOWED_ORIGIN;
   if (!origin) return false;
   try {
@@ -60,7 +88,7 @@ export function createWeddingSquareCardSetupRouter(
   const router = Router();
   router.get("/subscription/sandbox/card-config", auth, (req,res) => {
     res.set("Cache-Control","private, no-store");
-    if (!enabled()) return res.status(503).json({ ok:false, code:"WEDDING_SQUARE_CARD_SETUP_DISABLED" });
+    if (!weddingSquareSandboxCardSetupEnabled()) return res.status(503).json({ ok:false, code:"WEDDING_SQUARE_CARD_SETUP_DISABLED" });
     if (!id.safeParse(req.user?.id).success)
       return res.status(401).json({ ok:false, code:"AUTH_REQUIRED" });
     return res.json({
@@ -73,7 +101,7 @@ export function createWeddingSquareCardSetupRouter(
   });
   router.post("/subscription/sandbox/card-setup", auth, limit, async (req,res) => {
     res.set("Cache-Control","private, no-store");
-    if (!enabled()) return res.status(503).json({ ok:false, code:"WEDDING_SQUARE_CARD_SETUP_DISABLED" });
+    if (!weddingSquareSandboxCardSetupEnabled()) return res.status(503).json({ ok:false, code:"WEDDING_SQUARE_CARD_SETUP_DISABLED" });
     if (req.get("origin") !== process.env.WEDDING_SQUARE_ALLOWED_ORIGIN)
       return res.status(403).json({ok:false,code:"WEDDING_SQUARE_ORIGIN_REQUIRED"});
     if (!id.safeParse(req.user?.id).success || !bodySchema.safeParse(req.body).success)
