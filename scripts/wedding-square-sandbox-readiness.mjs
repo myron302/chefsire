@@ -16,6 +16,7 @@ const requiredColumns = [
   ["wedding_square_subscriptions", "provider_status"],
   ["wedding_square_invoice_evidence", "last_payment_reconciled_at"],
   ["wedding_square_invoice_evidence", "payment_revoked_at"],
+  ["wedding_square_invoice_evidence", "reconciliation_revision"],
 ];
 
 export function assessWeddingSquareSandboxReadiness({ env, tables, columns, counts }) {
@@ -23,6 +24,7 @@ export function assessWeddingSquareSandboxReadiness({ env, tables, columns, coun
   const settings = [
     "WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
     "WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED",
+    "WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED",
     "WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED",
     "WEDDING_SQUARE_SANDBOX_RECONCILIATION_ENABLED",
     "WEDDING_SQUARE_SANDBOX_RECONCILIATION_BATCH_ENABLED",
@@ -57,6 +59,12 @@ export function assessWeddingSquareSandboxReadiness({ env, tables, columns, coun
     const hook = new URL(env.WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL);
     if (hook.protocol !== "https:" || hook.pathname !== "/api/wedding/subscription/webhooks/square" || hook.search || hook.hash || hook.username || hook.password) blockers.push("Invalid Wedding Square webhook URL");
   } catch { blockers.push("Invalid Wedding Square webhook URL"); }
+  if (env.SQUARE_CURRENCY !== undefined && env.SQUARE_CURRENCY !== "USD") blockers.push("SQUARE_CURRENCY must be USD");
+  if (env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID === env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID || env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID === env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID) blockers.push("Premium and Elite Square plans must be distinct");
+  for (const name of ["SQUARE_ACCESS_TOKEN", "SQUARE_APPLICATION_ID", "WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "SQUARE_LOCATION_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID"]) {
+    const value = env[name];
+    if (typeof value !== "string" || value.trim() !== value || /[\\s\\x00-\\x1f\\x7f]/.test(value)) blockers.push(name + " has invalid formatting");
+  }
   for (const name of settings) if (env[name] !== "true") blockers.push(name + " is disabled");
   const existingTables = new Set(tables);
   const existingColumns = new Set(columns.map(({ table_name, column_name }) => table_name + "." + column_name));
