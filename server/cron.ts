@@ -10,6 +10,7 @@ import { reconcileCateringStorageCleanup } from "./services/catering-booking-sto
 import { reconcileAbandonedCheckoutReservations } from "./services/marketplace-checkout-reconciliation";
 import { weddingSquareReconciliationBatch } from "./lib/wedding-square-reconciliation-batch";
 import { weddingSquareRenewalScan } from "./lib/wedding-square-renewal-scan";
+import { weddingSquareWebhookDrain } from "./lib/wedding-square-webhook-drain";
 
 /**
  * Initialize all cron jobs
@@ -99,6 +100,19 @@ export function initializeCronJobs() {
     }
   });
 
+  // Notifications are only scheduling hints. Independent provider scans
+  // run before acknowledging a subset of sandbox webhook metadata.
+  // Separate default-off gate; no direct entitlement writes or retries.
+  cron.schedule("35 * * * *", async () => {
+    try {
+      const result = await weddingSquareWebhookDrain.run();
+      if (result.scanned > 0) console.log(
+        `Wedding Square webhook signals: scanned ${result.scanned}, acknowledged ${result.processed}, pending ${result.pending}`);
+    } catch {
+      console.warn("Wedding Square webhook signal handling unavailable");
+    }
+  });
+
   console.log("✅ Cron jobs initialized:");
   console.log("   - Pantry expiring items: Daily at 9 AM & 6 PM");
   console.log("   - Low stock items: Daily at 10 AM");
@@ -106,6 +120,7 @@ export function initializeCronJobs() {
   console.log("   - Marketplace checkout reconciliation: Every 5 minutes");
   console.log("   - Wedding Square sandbox evidence refresh: Every 6 hours (OFF by default)");
   console.log("   - Wedding Square sandbox renewal discovery: Hourly (OFF by default)");
+  console.log("   - Wedding Square webhook signal handling: Hourly (OFF by default)");
 }
 
 /**
