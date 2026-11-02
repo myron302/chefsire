@@ -15,7 +15,8 @@ const id = z.string().min(1).max(200).refine(value =>
 const key = z.string().min(1).max(45).regex(/^[A-Za-z0-9_-]+$/);
 const reference = z.string().min(1).max(100).refine(value =>
   value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value));
-const source = z.string().min(6).max(16384).startsWith("cnon:");
+const source = z.string().min(6).max(16384).startsWith("cnon:").refine(value =>
+  value === value.trim() && !/[\\s\\x00-\\x1f\\x7f]/.test(value));
 const verification = z.string().min(1).max(16384);
 const email = z.string().email().max(254);
 const emptyErrors = z.array(z.unknown()).length(0).optional();
