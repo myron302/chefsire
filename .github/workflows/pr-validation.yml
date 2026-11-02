@@ -29,6 +29,8 @@ jobs:
           cache: npm
       - name: Install dependencies from lockfile
         run: npm ci
+      - name: Test real-provider smoke gate without making provider calls
+        run: node --import tsx --test server/scripts/wedding-square-sandbox-provider-smoke.test.ts
       - name: Test Wedding Square readiness audit
         run: node --test scripts/wedding-square-sandbox-readiness.test.mjs
       - name: Run Wedding Square billing tests if present
