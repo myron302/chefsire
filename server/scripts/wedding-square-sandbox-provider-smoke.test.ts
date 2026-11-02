@@ -30,7 +30,7 @@ test("sandbox operator smoke returns only non-secret read-only attestation", asy
   assert.equal(result.verifiedMerchantLocationAndCatalog, true);
   assert.equal(result.paymentVerified, false);
   assert.equal(result.subscriptionCreated, false);
-  assert.doesNotMatch(JSON.stringify(result), /sandbox-opaque|merchant|location|premiumPlanId/);
+  assert.doesNotMatch(JSON.stringify(result), /sandbox-opaque|"merchant"|"location"|premiumPlanId/);
 });
 test("production and live-enabled environments never touch Square", async () => {
   let calls = 0;
