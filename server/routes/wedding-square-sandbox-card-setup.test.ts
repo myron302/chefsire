@@ -99,7 +99,7 @@ test("owner-only card setup returns attempt ID but no card/customer/payment IDs"
   const x=fixture();
   await serve(x.router,async base=>{
     const res=await post(base);
-    assert.equal(res.status,202,"Stages: "+x.steps.join(","));
+    assert.equal(res.status,202,"Stages: "+x.steps.join(",")+" response: "+(await res.clone().text()));
     const data=await res.json();
     assert.equal(data.status,"subscription_reserved");
     assert.equal(data.paidEntitlementGranted,false);
