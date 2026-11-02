@@ -49,6 +49,25 @@ export function weddingSquareSandboxCardSetupEnabled() {
       env.WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED !== "true" ||
       !id.safeParse(env.SQUARE_APPLICATION_ID).success ||
       !id.safeParse(env.SQUARE_LOCATION_ID).success) return false;
+  const required = [
+    "SQUARE_ACCESS_TOKEN", "WEDDING_SQUARE_SANDBOX_MERCHANT_ID",
+    "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID",
+    "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
+    "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID",
+  ];
+  if (required.some(name => !id.safeParse(env[name]).success) ||
+      typeof env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY !== "string" ||
+      env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY.length < 20 ||
+      env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID === env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID ||
+      env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID === env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID)
+    return false;
+  try {
+    const hook = new URL(env.WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL ?? "");
+    if (hook.protocol !== "https:" ||
+        hook.pathname !== "/api/wedding/subscription/webhooks/square" ||
+        hook.search || hook.hash || hook.username || hook.password) return false;
+  } catch { return false; }
   const origin = env.WEDDING_SQUARE_ALLOWED_ORIGIN;
   if (!origin) return false;
   try {
