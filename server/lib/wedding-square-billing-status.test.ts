@@ -29,7 +29,7 @@ function fixture(options:{rows?:unknown[],attempts?:unknown[],cardSetups?:unknow
   calls.push(isDrift?"DRIFT":isCardSetup?"CARD_SETUP":isAttempt?"ATTEMPTS":"SELECT");
   assert.match(sql,/user_id=\$1/);
   assert.match(sql,/square_environment='sandbox'/);
-  assert.match(sql,/square_merchant_id=\$2/);
+  assert.match(sql,isDrift?/square_merchant_id<>\$2/:/square_merchant_id=\$2/);
   assert.match(sql,/LIMIT 2/);
   assert.deepEqual(args,["owner-1","merchant-1","loc-1"]);
   if(isAttempt)assert.match(sql,/a.status IN \(\x27reserved\x27,\x27submitting\x27,\x27needs_reconciliation\x27\)/);
