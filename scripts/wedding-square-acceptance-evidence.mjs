@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 export function assessWeddingSquareEvidence(rows) {
   const counts = Object.fromEntries(
     ["cardSetups","enrollmentAttempts","subscriptions","invoicePayments",
-     "freshPayments","revokedPayments","cancellations","failedWebhooks",
+     "freshPayments","revokedPayments","cancellations","failedWebhooks","pendingWebhooks",
      "unresolvedCardSetups","unresolvedEnrollments"]
       .map(key => [key, Number(rows[key])]),
   );
@@ -20,7 +20,7 @@ export function assessWeddingSquareEvidence(rows) {
     blocked.push("No provider-confirmed cancellation recorded");
   if (counts.revokedPayments === 0)
     blocked.push("Refund/dispute revocation has not been demonstrated by this database snapshot");
-  if (counts.unresolvedCardSetups || counts.unresolvedEnrollments || counts.failedWebhooks)
+  if (counts.unresolvedCardSetups || counts.unresolvedEnrollments || counts.failedWebhooks || counts.pendingWebhooks)
     blocked.push("Unresolved owner or webhook reconciliation exists");
   return Object.freeze({
     environment: "sandbox",
@@ -59,6 +59,8 @@ export async function collectWeddingSquareEvidence(env = process.env, makeClient
           WHERE square_environment='sandbox' AND provider_cancelled_at IS NOT NULL) AS "cancellations",
         (SELECT count(*)::int FROM wedding_square_webhook_events
           WHERE square_environment='sandbox' AND processing_status='failed') AS "failedWebhooks",
+        (SELECT count(*)::int FROM wedding_square_webhook_events
+          WHERE square_environment='sandbox' AND processing_status IN ('pending','processing')) AS "pendingWebhooks",
         (SELECT count(*)::int FROM wedding_square_card_setup_attempts
           WHERE square_environment='sandbox' AND status IN
             ('reserved','customer_submitting','customer_confirmed','card_submitting','needs_reconciliation')) AS "unresolvedCardSetups",
