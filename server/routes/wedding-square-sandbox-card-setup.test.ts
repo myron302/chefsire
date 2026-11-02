@@ -10,6 +10,16 @@ const keys = [
   "WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
   "WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED",
   "WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED",
+  "WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL",
+  "WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY",
+  "WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED",
+  "WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED",
+  "WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED",
+  "WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED",
+  "WEDDING_SQUARE_SANDBOX_RECONCILIATION_ENABLED",
+  "WEDDING_SQUARE_SANDBOX_RECONCILIATION_BATCH_ENABLED",
+  "WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED",
+  "WEDDING_SQUARE_VERIFIED_PAID_ENTITLEMENTS_ENABLED",
   "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID",
   "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID",
   "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
@@ -24,6 +34,16 @@ async function configured(work: () => Promise<void>) {
     WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED:"true",
     WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED:"true",
     WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED:"true",
+    WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL:"https://chefsire.example/api/wedding/subscription/webhooks/square",
+    WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY:"sandbox-test-signature-long",
+    WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED:"true",
+    WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED:"true",
+    WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED:"true",
+    WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED:"true",
+    WEDDING_SQUARE_SANDBOX_RECONCILIATION_ENABLED:"true",
+    WEDDING_SQUARE_SANDBOX_RECONCILIATION_BATCH_ENABLED:"true",
+    WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED:"true",
+    WEDDING_SQUARE_VERIFIED_PAID_ENTITLEMENTS_ENABLED:"true",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID:"premium-parent",
     WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID:"elite-parent",
     WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID:"premium-variation",
@@ -47,11 +67,9 @@ async function serve(router: ReturnType<typeof createWeddingSquareCardSetupRoute
 }
 function fixture(opts: { error?: boolean; verified?: boolean } = {}) {
   let submitted=0;
-  const steps:string[]=[];
   const svc = {
     setup:async(input: any) => {
       submitted++;
-      steps.push("setup");
       assert.equal(input.consent.userId,"owner-1");
       assert.equal(input.consent.agreedMonthlyAmountCents,2499);
       assert.equal(input.config.planVariationId,"premium-variation");
@@ -61,16 +79,16 @@ function fixture(opts: { error?: boolean; verified?: boolean } = {}) {
         attemptId:"123e4567-e89b-42d3-a456-426614174001" };
     },
   };
-  const owner = { getUser:async()=>{steps.push("owner");return ({
+  const owner = { getUser:async()=>({
     id:"owner-1",email:"tester@example.com",
     emailVerifiedAt:opts.verified === false ? null : new Date(),
     emailVerifiedVia:opts.verified === false ? null : "google",
-  });} };
-  const trial = async()=>{steps.push("trial");return ({trial:{status:"expired",expiresAt:null}});};
+  }) };
+  const trial = async()=>({trial:{status:"expired",expiresAt:null}});
   const auth:RequestHandler=(req,_res,next)=>{req.user={id:"owner-1"};next();};
   const noRateLimit:RequestHandler=(_req,_res,next)=>next();
   return { router:createWeddingSquareCardSetupRouter(svc as any,owner as any,
-    trial as any,auth,noRateLimit), submitted:()=>submitted, steps };
+    trial as any,auth,noRateLimit), submitted:()=>submitted };
 }
 const body={ sourceId:"cnon:sample-token",consent:{
   tier:"premium",consentVersion:"wedding-monthly-autorenew-v1",
@@ -99,7 +117,7 @@ test("owner-only card setup returns attempt ID but no card/customer/payment IDs"
   const x=fixture();
   await serve(x.router,async base=>{
     const res=await post(base);
-    assert.equal(res.status,202,"Stages: "+x.steps.join(",")+" response: "+(await res.clone().text()));
+    assert.equal(res.status,202);
     const data=await res.json();
     assert.equal(data.status,"subscription_reserved");
     assert.equal(data.paidEntitlementGranted,false);
@@ -129,6 +147,16 @@ test("HTTP setup disabled by default without provider or DB access",async()=>con
   const x=fixture();
   process.env.WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED="false";
   await serve(x.router,async base=>{
+    assert.equal((await post(base)).status,503);
+  });
+  assert.equal(x.submitted(),0);
+}));
+
+test("missing Square webhook signature or mismatched plans cannot expose tokenization",async()=>configured(async()=>{
+  const x=fixture();
+  process.env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY="short";
+  await serve(x.router,async base=>{
+    assert.equal((await fetch(base+"/api/wedding/subscription/sandbox/card-config")).status,503);
     assert.equal((await post(base)).status,503);
   });
   assert.equal(x.submitted(),0);
