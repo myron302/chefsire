@@ -9,6 +9,7 @@ import { hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, p
 
 import { activateWeddingTrial, revokeWeddingTrial, weddingEntitlement } from "../lib/wedding-entitlement";
 import { isWeddingPaidTier, quoteWeddingMonthlyBilling } from "../lib/wedding-square-billing-policy";
+import { weddingSquareLegacyCancelGuard, WeddingSquareLegacyCancellationBlocked } from "../lib/wedding-square-legacy-cancel-guard";
 
 const r = Router();
 
@@ -274,6 +275,9 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
 
     // Free means cancel / downgrade.
     if (tier === "free") {
+      // Legacy downgrade only cancels a cardless trial. It can NEVER silently
+      // leave a live or ambiguously created Square subscription billing.
+      await weddingSquareLegacyCancelGuard.assertCardlessOnly(userId);
       const endsAt = previousEndsAt && previousEndsAt.getTime() > Date.now() ? previousEndsAt : now;
 
       const updated = await storage.updateUser(userId, {
@@ -309,6 +313,9 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
     // Paid changes require verified provider state; a requested tier/payment field is never evidence.
     return res.status(503).json(paidUpgradeUnavailableResponse);
   } catch (error: any) {
+    if (error instanceof WeddingSquareLegacyCancellationBlocked) {
+      return res.status(409).json({ok:false,code:"WEDDING_SQUARE_CANCEL_REQUIRES_PROVIDER",safeToAssumeCanceled:false});
+    }
     if (error?.issues) {
       return res.status(400).json({ ok: false, error: "Invalid request", errors: error.issues });
     }
@@ -328,6 +335,9 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
     if (!user) return res.status(404).json({ ok: false, error: "User not found" });
 
     const trialState = await weddingEntitlement(userId);
+    // No successful local-only cancellation when Square recurring billing may
+    // exist, even if a cardless trial is still concurrently active.
+    await weddingSquareLegacyCancelGuard.assertCardlessOnly(userId);
     if (trialState.trial.status === "active") {
       await revokeWeddingTrial(userId);
       return res.json({ ok: true, onboardingCompleted: true, ...(await weddingEntitlement(userId)), message: "Trial cancelled. Your saved content is preserved." });
@@ -351,6 +361,9 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
     // No provider cancellation/reconciliation exists, so do not fabricate success or mutate legacy access.
     return res.status(503).json(paidCancellationUnavailableResponse);
   } catch (error) {
+    if (error instanceof WeddingSquareLegacyCancellationBlocked) {
+      return res.status(409).json({ok:false,code:"WEDDING_SQUARE_CANCEL_REQUIRES_PROVIDER",safeToAssumeCanceled:false});
+    }
     console.error("Error cancelling wedding subscription:", error);
     res.status(500).json({ ok: false, error: "Failed to cancel wedding subscription" });
   }

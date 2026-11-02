@@ -586,6 +586,38 @@ function SubscriptionSettingsPanel() {
     },
   });
 
+  // Separate, owner-scoped Square billing record. This never derives a next
+  // charge date from trial or paid-through entitlement and does not reveal
+  // Square card/customer IDs. Key by owner to avoid cross-login cache reuse.
+  const weddingBillingStatusQuery = useQuery({
+    queryKey: ["/api/wedding/subscription/billing-status", user?.id],
+    enabled: !!user?.id,
+    retry: false,
+    staleTime: 0,
+    queryFn: async () => {
+      const res = await fetch("/api/wedding/subscription/billing-status", {
+        credentials: "include", cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok !== true) throw new Error("Unable to verify Wedding billing status.");
+      return data as {
+        ok: true;
+        billingMode: "disabled" | "sandbox";
+        enrollmentStatus: "unavailable" | "not_enrolled" | "needs_reconciliation" | "pending" |
+          "active" | "paused" | "cancellation_requested" | "canceled" | "ended";
+        billingLive: false;
+        tier: "premium" | "elite" | null;
+        monthlyAmountCents: number | null;
+        currency: "USD" | null;
+        requestedFirstChargeDate: string | null;
+        cancellationRequestedAt: string | null;
+        providerCancellationRecordedAt: string | null;
+        lastProviderCheckAt: string | null;
+        verifiedPaidAccessThrough: string | null;
+      };
+    },
+  });
+
   const updateWeddingSubscriptionMutation = useMutation({
     mutationFn: async (tier: "free" | "premium" | "elite") => {
       const res = await fetch("/api/wedding/subscription/change", {
@@ -679,6 +711,12 @@ function SubscriptionSettingsPanel() {
   const weddingCurrentTier =
     myWeddingSubscriptionQuery.data?.currentTier || "free";
 
+  const canUseLegacyWeddingTrialCancel =
+    myWeddingSubscriptionQuery.data?.trial?.status === "active" &&
+    ["not_enrolled"].includes(
+      weddingBillingStatusQuery.data?.enrollmentStatus || ""
+    );
+
   const weddingStatus = weddingCurrentTier === "free"
     ? "inactive"
     : myWeddingSubscriptionQuery.data?.status || "active";
@@ -686,6 +724,12 @@ function SubscriptionSettingsPanel() {
   const weddingEndsAt = weddingCurrentTier === "free"
     ? null
     : myWeddingSubscriptionQuery.data?.endsAt || null;
+  // Effective access can extend beyond the separate 336-hour cardless trial.
+  // Never label that later paid-through date as the trial expiration.
+  const weddingTrialEndsAt = myWeddingSubscriptionQuery.data?.trial?.status === "active"
+    ? myWeddingSubscriptionQuery.data.trial.expiresAt || null
+    : null;
+  const weddingDisplayEndsAt = weddingTrialEndsAt || weddingEndsAt;
 
   // ---------- Vendors (Wedding Vendors plans) ----------
   const vendorTiersQuery = useQuery({
@@ -1016,6 +1060,7 @@ function SubscriptionSettingsPanel() {
     mySubscriptionQuery.refetch();
     weddingTiersQuery.refetch();
     myWeddingSubscriptionQuery.refetch();
+    weddingBillingStatusQuery.refetch();
     vendorTiersQuery.refetch();
     myVendorSubscriptionQuery.refetch();
     nutritionTiersQuery.refetch();
@@ -1044,6 +1089,14 @@ function SubscriptionSettingsPanel() {
   const onSelectWeddingTier = (tierKey: "free" | "premium" | "elite") => {
     if (tierKey === weddingCurrentTier) return;
     if (tierKey === "free") {
+      if (!canUseLegacyWeddingTrialCancel) {
+        toast({
+          title: "Recurring billing requires separate cancellation",
+          description: "Verify your Square billing status before changing your cardless trial.",
+          variant: "destructive",
+        });
+        return;
+      }
       cancelWeddingSubscriptionMutation.mutate();
       return;
     }
@@ -1252,11 +1305,13 @@ function SubscriptionSettingsPanel() {
             <div className="text-sm text-gray-500">Wedding Planner</div>
             <div className="mt-1 font-semibold">{titleCase(weddingCurrentTier)}</div>
             <div className="text-sm text-gray-600">{titleCase(weddingStatus)}</div>
-            {myWeddingSubscriptionQuery.data?.trial?.status === "active" && <p className="text-xs">14-day trial. No automatic charge at expiration.</p>}
+            {myWeddingSubscriptionQuery.data?.trial?.status === "active" &&
+              ["not_enrolled"].includes(weddingBillingStatusQuery.data?.enrollmentStatus || "") &&
+              <p className="text-xs">Cardless trial. No recurring Square enrollment on file.</p>}
             {weddingEndsAt ? (
               <div className="text-xs text-gray-500 mt-1">
-                {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
-                {formatDateTime(weddingEndsAt) || "—"}
+                {weddingTrialEndsAt ? "Trial ends" : "Verified access through"}: {" "}
+                {formatDateTime(weddingDisplayEndsAt) || "—"}
               </div>
             ) : null}
           </div>
@@ -1477,9 +1532,9 @@ function SubscriptionSettingsPanel() {
                       {weddingEndsAt ? (
                         <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
                           <CalendarDays size={13} />
-                          {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
-                          {formatDateTime(weddingEndsAt) || "—"}{" "}
-                          <span className="text-gray-500">({relativeTimeFromNow(weddingEndsAt)})</span>
+                          {weddingTrialEndsAt ? "Trial ends" : "Verified access through"}: {" "}
+                          {formatDateTime(weddingDisplayEndsAt) || "—"}{" "}
+                          <span className="text-gray-500">({relativeTimeFromNow(weddingDisplayEndsAt)})</span>
                         </div>
                       ) : null}
                     </div>
@@ -2012,12 +2067,12 @@ function SubscriptionSettingsPanel() {
                 {weddingEndsAt ? (
                   <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
                     <CalendarDays size={13} />
-                    {myWeddingSubscriptionQuery.data?.trial?.status === "active" || String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
-                    {formatDateTime(weddingEndsAt) || "—"}
+                    {weddingTrialEndsAt ? "Trial ends" : "Verified access through"}: {" "}
+                    {formatDateTime(weddingDisplayEndsAt) || "—"}
                   </div>
                 ) : null}
 
-                {weddingCurrentTier !== "free" ? (
+                {weddingCurrentTier !== "free" && canUseLegacyWeddingTrialCancel ? (
                   <div className="mt-3">
                     <Button
                       variant="destructive"
@@ -2028,6 +2083,66 @@ function SubscriptionSettingsPanel() {
                       Cancel Wedding Subscription
                     </Button>
                   </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-lg border bg-white p-4 space-y-2" aria-label="Wedding Square billing status">
+                <div className="font-semibold text-sm">Recurring Billing Status</div>
+                {weddingBillingStatusQuery.isLoading ? (
+                  <p className="text-sm text-gray-600">Checking your saved billing record…</p>
+                ) : weddingBillingStatusQuery.error ? (
+                  <p className="text-sm text-red-700" role="alert">
+                    Billing verification is temporarily unavailable. We cannot confirm a payment or cancellation.
+                  </p>
+                ) : weddingBillingStatusQuery.data?.enrollmentStatus === "unavailable" ? (
+                  <p className="text-sm text-gray-600">
+                    Square recurring billing is not enabled. Your existing cardless trial remains separate.
+                  </p>
+                ) : weddingBillingStatusQuery.data?.enrollmentStatus === "not_enrolled" ? (
+                  <p className="text-sm text-gray-600">
+                    No recurring Square subscription is enrolled. Your cardless trial will not automatically charge you.
+                  </p>
+                ) : weddingBillingStatusQuery.data ? (
+                  <>
+                    <p className="text-sm">
+                      <span className="font-medium">{weddingBillingStatusQuery.data.tier
+                        ? titleCase(weddingBillingStatusQuery.data.tier)
+                        : "Enrollment verification pending"}</span>
+                      {" · "}
+                      {titleCase(weddingBillingStatusQuery.data.enrollmentStatus.replaceAll("_", " "))}
+                      {typeof weddingBillingStatusQuery.data.monthlyAmountCents === "number"
+                        ? " · $" + (weddingBillingStatusQuery.data.monthlyAmountCents / 100).toFixed(2) + "/month"
+                        : ""}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Sandbox billing record. This is not confirmation of a live charge.
+                    </p>
+                    {weddingBillingStatusQuery.data.requestedFirstChargeDate ? (
+                      <p className="text-xs text-gray-600">
+                        Requested first billing date: {weddingBillingStatusQuery.data.requestedFirstChargeDate}
+                        {" "}(not a confirmed charge).
+                      </p>
+                    ) : null}
+                    {weddingBillingStatusQuery.data.verifiedPaidAccessThrough ? (
+                      <p className="text-xs text-gray-600">
+                        Independently verified paid access through: {" "}
+                        {formatDateTime(weddingBillingStatusQuery.data.verifiedPaidAccessThrough)}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-600">
+                        No independently verified paid coverage is currently available.
+                      </p>
+                    )}
+                    {weddingBillingStatusQuery.data.cancellationRequestedAt ? (
+                      <p className="text-xs text-gray-600">
+                        Cancellation request saved: {" "}
+                        {formatDateTime(weddingBillingStatusQuery.data.cancellationRequestedAt)}
+                        {weddingBillingStatusQuery.data.providerCancellationRecordedAt
+                          ? " · Provider cancellation recorded"
+                          : " · Awaiting provider reconciliation"}
+                      </p>
+                    ) : null}
+                  </>
                 ) : null}
               </div>
 
@@ -2087,7 +2202,8 @@ function SubscriptionSettingsPanel() {
                           <Button
                             className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
                             variant={isCurrent ? "outline" : "default"}
-                            disabled={isWeddingBusy || isCurrent}
+                            disabled={isWeddingBusy || isCurrent ||
+                              (tierKey === "free" && !canUseLegacyWeddingTrialCancel)}
                             onClick={() => onSelectWeddingTier(tierKey as any)}
                           >
                             {renderWeddingActionLabel(tierKey as any)}
