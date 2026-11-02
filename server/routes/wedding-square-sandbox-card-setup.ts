@@ -47,6 +47,8 @@ export function weddingSquareSandboxCardSetupEnabled() {
       env.WEDDING_SQUARE_VERIFIED_PAID_ENTITLEMENTS_ENABLED !== "true" ||
       env.WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED !== "true" ||
       env.WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED !== "true" ||
+      env.WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED !== "true" ||
       !id.safeParse(env.SQUARE_APPLICATION_ID).success ||
       !id.safeParse(env.SQUARE_LOCATION_ID).success) return false;
   const required = [

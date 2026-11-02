@@ -2,6 +2,28 @@ import { sql } from "drizzle-orm";
 import { check, date, index, integer, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 
+export const weddingSquareCardUpdates = pgTable("wedding_square_card_updates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  weddingSubscriptionId: uuid("wedding_subscription_id").notNull().references(() => weddingSquareSubscriptions.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  squareEnvironment: text("square_environment").notNull(),
+  squareMerchantId: text("square_merchant_id").notNull(),
+  squareSubscriptionId: text("square_subscription_id").notNull(),
+  previousCardId: text("previous_card_id").notNull(),
+  replacementCardId: text("replacement_card_id"),
+  sourceDigest: text("source_digest").notNull(),
+  cardIdempotencyKey: text("card_idempotency_key").notNull(),
+  expectedProviderVersion: integer("expected_provider_version").notNull(),
+  status: text("status").notNull().default("reserved"),
+  createdAt: timestamp("created_at", {withTimezone:true}).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", {withTimezone:true}).notNull().defaultNow(),
+},t=>({
+  pendingOwner:uniqueIndex("wedding_square_card_updates_pending_owner_idx").on(t.userId).where(sql`${t.status}<>'confirmed'`),
+  sourceUnique:unique("wedding_sq_card_update_source_uq").on(t.squareEnvironment,t.sourceDigest),
+  keyUnique:unique("wedding_sq_card_update_key_uq").on(t.cardIdempotencyKey),
+  confirmedCheck:check("wedding_sq_card_update_confirmed_ck",sql`${t.status}<>'confirmed' OR ${t.replacementCardId} IS NOT NULL`),
+}));
+
 /**
  * Reviewed Wedding Square table definitions.
  * The matching, versioned SQL lives in server/migrations/20261101_0{1,2}_*.sql,

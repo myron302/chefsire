@@ -12,6 +12,7 @@ import {
   weddingSquareWebhookEvents,
   weddingSquareInvoiceEvidence,
   weddingSquareCardSetupAttempts,
+  weddingSquareCardUpdates,
 } from "../../shared/schema/domains/wedding-square-billing";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -25,6 +26,7 @@ const FILES = [
   "server/migrations/20261102_02_wedding_square_card_nonce_uniqueness.sql",
   "server/migrations/20261102_03_wedding_square_webhook_object_correlation.sql",
   "server/migrations/20261102_04_wedding_square_webhook_reconciliation_lease.sql",
+  "server/migrations/20261102_05_wedding_square_card_updates.sql",
 ];
 const TABLES = [
   weddingSquareEnrollmentAttempts,
@@ -32,6 +34,7 @@ const TABLES = [
   weddingSquareWebhookEvents,
   weddingSquareInvoiceEvidence,
   weddingSquareCardSetupAttempts,
+  weddingSquareCardUpdates,
 ];
 
 const pgUrl = process.env.WEDDING_SQUARE_TEST_DATABASE_URL;

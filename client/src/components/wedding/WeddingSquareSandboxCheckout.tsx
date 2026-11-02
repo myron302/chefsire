@@ -16,12 +16,12 @@ export type WeddingSquareQuote = {
   firstChargeStartDate: string | null;
   requiresExplicitConsent: true;
 };
-type SquareCard = {
+export type SquareCard = {
   attach(selector: string): Promise<void>;
   tokenize(): Promise<{ status: string; token?: string }>;
   destroy?(): Promise<void>;
 };
-type SquarePayments = {
+export type SquarePayments = {
   card(): Promise<SquareCard>;
   verifyBuyer(token: string, details: {
     intent: "STORE";
@@ -31,7 +31,7 @@ type SquarePayments = {
 type SquareGlobal = { payments(applicationId: string, locationId: string): Promise<SquarePayments> | SquarePayments };
 const sdkUrl = "https://sandbox.web.squarecdn.com/v1/square.js";
 
-function loadSquareSandboxSdk(): Promise<SquareGlobal> {
+export function loadSquareSandboxSdk(): Promise<SquareGlobal> {
   const current = (window as unknown as { Square?: SquareGlobal }).Square;
   if (current) return Promise.resolve(current);
   return new Promise((resolve, reject) => {

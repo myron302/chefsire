@@ -74,6 +74,7 @@ import weddingSquareWebhookRouter from "./wedding-square-webhook";
 import weddingSquareSandboxSubmitRouter from "./wedding-square-sandbox-submit";
 import weddingSquareSandboxCardSetupRouter from "./wedding-square-sandbox-card-setup";
 import weddingSquareSandboxCancelRouter from "./wedding-square-sandbox-cancel";
+import weddingSquareCardUpdateRouter from "./wedding-square-card-update";
 import weddingSquareBillingStatusRouter from "./wedding-square-billing-status";
 import vendorSubscriptionRouter from "./vendor-subscription";
 import weddingRsvpRouter from "./wedding-rsvp";
@@ -245,6 +246,7 @@ r.use("/wedding", weddingSquareSandboxSubmitRouter);
 r.use("/wedding", weddingSquareSandboxCardSetupRouter);
 // Owner-initiated end-of-period sandbox cancellation; operator flag OFF.
 r.use("/wedding", weddingSquareSandboxCancelRouter);
+r.use("/wedding", weddingSquareCardUpdateRouter);
 // Read-only owner billing status; no Square identifiers or payment mutations.
 r.use("/wedding", weddingSquareBillingStatusRouter);
 r.use("/wedding", weddingSubscriptionRouter);

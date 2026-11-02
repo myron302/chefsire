@@ -1,5 +1,6 @@
 import type { WeddingSubscription } from "./services/wedding-planning/weddingSubscription";
 import { WeddingSquareSandboxCheckout } from "@/components/wedding/WeddingSquareSandboxCheckout";
+import { WeddingSquarePaymentMethod } from "@/components/wedding/WeddingSquarePaymentMethod";
 import React, { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -2239,6 +2240,11 @@ function SubscriptionSettingsPanel() {
                         No independently verified paid coverage is currently available.
                       </p>
                     )}
+                    {weddingBillingStatusQuery.data.billingMode === "sandbox" &&
+                      ["active","pending"].includes(weddingBillingStatusQuery.data.enrollmentStatus) &&
+                      !weddingBillingStatusQuery.data.cancellationRequestedAt ? (
+                      <WeddingSquarePaymentMethod onRefresh={() => {void weddingBillingStatusQuery.refetch();}} />
+                    ) : null}
                     {weddingBillingStatusQuery.data.billingMode === "sandbox" &&
                       weddingBillingStatusQuery.data.enrollmentStatus === "active" &&
                       !weddingBillingStatusQuery.data.cancellationRequestedAt ? (

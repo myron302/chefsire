@@ -51,11 +51,12 @@ export function verifyWeddingSquareProviderReconciliation(saved: Saved, provider
       !/^[a-f0-9]{64}$/.test(saved.persistedRequestFingerprint ?? "") ||
       !canonicalId(saved.attemptId) ||
       !canonicalId(saved.customerId) || !canonicalId(saved.cardId) ||
+      (saved.currentCardId !== undefined && (saved.status !== "confirmed" || !canonicalId(saved.currentCardId))) ||
       !canonicalId(saved.locationId) || !canonicalId(saved.planVariationId) ||
       (saved.providerSubscriptionId !== null && !canonicalId(saved.providerSubscriptionId)) ||
       (saved.status === "confirmed" && saved.providerSubscriptionId === null) ||
       result.data.customerId !== saved.customerId ||
-      result.data.cardId !== saved.cardId ||
+      result.data.cardId !== (saved.currentCardId ?? saved.cardId) ||
       result.data.locationId !== saved.locationId ||
       result.data.planVariationId !== saved.planVariationId ||
       saved.requestedTimezone !== "UTC" ||

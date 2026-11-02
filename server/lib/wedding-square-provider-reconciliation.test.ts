@@ -13,6 +13,13 @@ const provider = {
   locationId: "location", planVariationId: "plan", status: "ACTIVE",
   startDate: "2026-11-11", timezone: "UTC",
 };
+test("a confirmed replacement changes current card comparison without rewriting original enrollment evidence", () => sandbox(() => {
+ const confirmed={...saved,status:"confirmed" as const,providerSubscriptionId:"sub-1",currentCardId:"replacement"};
+ const result=verifyWeddingSquareProviderReconciliation(confirmed,{...provider,cardId:"replacement"});
+ assert.equal(result.existingIdMatches,true);assert.equal(confirmed.cardId,"card");assert.equal(confirmed.persistedRequestFingerprint,"a".repeat(64));
+ assert.throws(()=>verifyWeddingSquareProviderReconciliation({...confirmed,currentCardId:" padded"},{...provider,cardId:" padded"}));
+ assert.throws(()=>verifyWeddingSquareProviderReconciliation({...saved,currentCardId:"replacement"},{...provider,cardId:"replacement"}));
+}));
 function sandbox(fn: () => void) {
   const env = process.env.SQUARE_ENV, enabled = process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED;
   process.env.SQUARE_ENV = "sandbox"; process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED = "true";

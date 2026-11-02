@@ -50,7 +50,7 @@ async function post(sender: Sender, endpoint: "customers"|"cards", body: object)
   const access = token();
   try {
     const response = await sender("https://connect.squareupsandbox.com/v2/" + endpoint, {
-      method: "POST", headers: {
+      method: "POST", redirect: "error", headers: {
         Authorization: "Bearer " + access,
         "Square-Version": "2025-10-16",
         "Content-Type": "application/json",
