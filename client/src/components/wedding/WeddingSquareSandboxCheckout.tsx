@@ -49,7 +49,7 @@ function loadSquareSandboxSdk(): Promise<SquareGlobal> {
       else reject(new Error("Square sandbox card form could not initialize."));
     };
     script.addEventListener("load", ready, { once:true });
-    script.addEventListener("error", () => reject(new Error("Square sandbox card form unavailable.")), { once:true });
+    script.addEventListener("error", () => { script?.remove(); reject(new Error("Square sandbox card form unavailable.")); }, { once:true });
     if ((window as unknown as { Square?: SquareGlobal }).Square) ready();
   });
 }
