@@ -20,20 +20,21 @@ async function sandbox(fn:()=>Promise<void>){
   if(previous[i]===undefined)delete process.env[k];else process.env[k]=previous[i];
  });}
 }
-function fixture(options:{rows?:unknown[],attempts?:unknown[],cardSetups?:unknown[],paid?:unknown,failDb?:boolean,failPaid?:boolean}={}){
+function fixture(options:{rows?:unknown[],attempts?:unknown[],cardSetups?:unknown[],drift?:unknown[],paid?:unknown,failDb?:boolean,failPaid?:boolean}={}){
  const calls:string[]=[];
  const db={query:async(sql:string,args:unknown[])=>{
   const isAttempt=sql.includes("FROM wedding_square_enrollment_attempts a");
-  const isCardSetup=sql.includes("FROM wedding_square_card_setup_attempts");
-  calls.push(isCardSetup?"CARD_SETUP":isAttempt?"ATTEMPTS":"SELECT");
+  const isDrift=sql.includes("UNION ALL");
+  const isCardSetup=!isDrift&&sql.includes("FROM wedding_square_card_setup_attempts");
+  calls.push(isDrift?"DRIFT":isCardSetup?"CARD_SETUP":isAttempt?"ATTEMPTS":"SELECT");
   assert.match(sql,/user_id=\$1/);
   assert.match(sql,/square_environment='sandbox'/);
-  assert.match(sql,/square_merchant_id=\$2/);
+  assert.match(sql,isDrift?/square_merchant_id<>\$2/:/square_merchant_id=\$2/);
   assert.match(sql,/LIMIT 2/);
   assert.deepEqual(args,["owner-1","merchant-1","loc-1"]);
   if(isAttempt)assert.match(sql,/a.status IN \(\x27reserved\x27,\x27submitting\x27,\x27needs_reconciliation\x27\)/);
   if(options.failDb)throw Error("database token leaked");
-  return{rows:isCardSetup?(options.cardSetups??[]):isAttempt?(options.attempts??[]):(options.rows??[valid])};
+  return{rows:isDrift?(options.drift??[]):isCardSetup?(options.cardSetups??[]):isAttempt?(options.attempts??[]):(options.rows??[valid])};
  }};
  const paid=async(userId:string)=>{
   calls.push("PAID");
@@ -51,7 +52,7 @@ test("active row is account-bound, price-checked and never leaks Square identifi
  assert.equal(status.tier,"premium");
  assert.equal(status.requestedFirstChargeDate,"2026-11-18");
  assert.equal(status.verifiedPaidAccessThrough,null);
- assert.deepEqual(x.calls,["CARD_SETUP","ATTEMPTS","SELECT","PAID"]);
+ assert.deepEqual(x.calls,["DRIFT","CARD_SETUP","ATTEMPTS","SELECT","PAID"]);
  assert.doesNotMatch(JSON.stringify(status),/SECRET_CUSTOMER|PRIVATE_PROVIDER_ID|DO_NOT_EXPOSE|merchant-1/);
 }));
 test("actual verified paid date only comes from independent paid reader",()=>sandbox(async()=>{
@@ -62,7 +63,7 @@ test("actual verified paid date only comes from independent paid reader",()=>san
 test("not enrolled and disabled environments never invent a canceled or paid status",()=>sandbox(async()=>{
  const x=fixture({rows:[]});const no=await x.svc.inspect("owner-1");
  assert.equal(no.enrollmentStatus,"not_enrolled");
- assert.deepEqual(x.calls,["CARD_SETUP","ATTEMPTS","SELECT"]);
+ assert.deepEqual(x.calls,["DRIFT","CARD_SETUP","ATTEMPTS","SELECT"]);
  const previous=process.env.SQUARE_ENV;process.env.SQUARE_ENV="production";
  try{const disabled=fixture();const v=await disabled.svc.inspect("owner-1");
   assert.equal(v.enrollmentStatus,"unavailable");
@@ -100,7 +101,7 @@ test("unresolved Square enrollment is never labeled not enrolled or already canc
   assert.equal(outcome.enrollmentStatus,"needs_reconciliation");
   assert.equal(outcome.tier,null);
   assert.equal(outcome.verifiedPaidAccessThrough,null);
-  assert.deepEqual(x.calls,["CARD_SETUP","ATTEMPTS"],"ambiguous provider outcome must never read unrelated subscription rows");
+  assert.deepEqual(x.calls,["DRIFT","CARD_SETUP","ATTEMPTS"],"ambiguous provider outcome must never read unrelated subscription rows");
  }
  await assert.rejects(
   fixture({attempts:[{status:"submitting"},{status:"confirmed"}]}).svc.inspect("owner-1"),
@@ -113,7 +114,19 @@ test("uncertain card setup blocks false no-billing statement before reservation"
   const result=await x.svc.inspect("owner-1");
   assert.equal(result.enrollmentStatus,"needs_reconciliation");
   assert.equal(result.verifiedPaidAccessThrough,null);
-  assert.deepEqual(x.calls,["CARD_SETUP"]);
+  assert.deepEqual(x.calls,["DRIFT","CARD_SETUP"]);
  }
  await assert.rejects(fixture({cardSetups:[{status:"reserved"},{status:"card_submitting"}]}).svc.inspect("owner-1"),WeddingSquareBillingStatusError);
+}));
+
+test("merchant/location drift blocks falsely claiming no recurring enrollment",()=>sandbox(async()=>{
+ for(const kind of ["subscription","card_setup"]){
+  const x=fixture({rows:[],drift:[{kind}]});
+  const result=await x.svc.inspect("owner-1");
+  assert.equal(result.enrollmentStatus,"needs_reconciliation");
+  assert.equal(result.billingLive,false);
+  assert.deepEqual(x.calls,["DRIFT"]);
+  assert.doesNotMatch(JSON.stringify(result),/merchant-1|loc-1/);
+ }
+ await assert.rejects(fixture({drift:[{kind:"subscription"},{kind:"card_setup"}]}).svc.inspect("owner-1"),WeddingSquareBillingStatusError);
 }));
