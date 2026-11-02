@@ -10,6 +10,7 @@ import { hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, p
 import { activateWeddingTrial, revokeWeddingTrial, weddingEntitlement } from "../lib/wedding-entitlement";
 import { isWeddingPaidTier, quoteWeddingMonthlyBilling } from "../lib/wedding-square-billing-policy";
 import { weddingSquareLegacyCancelGuard, WeddingSquareLegacyCancellationBlocked } from "../lib/wedding-square-legacy-cancel-guard";
+import { weddingSquareSandboxCardSetupEnabled } from "./wedding-square-sandbox-card-setup";
 
 const r = Router();
 
@@ -166,11 +167,14 @@ r.get("/subscription/billing-quote", requireAuth, async (req, res) => {
     const entitlement = await weddingEntitlement(req.user!.id);
     const expiry = entitlement.trial.status === "active" && entitlement.trial.expiresAt
       ? new Date(entitlement.trial.expiresAt) : null;
+    const sandboxConfigured = weddingSquareSandboxCardSetupEnabled();
     return res.json({
       ok: true,
-      billingAvailable: false,
+      billingAvailable: sandboxConfigured,
       ...quoteWeddingMonthlyBilling({ tier, now: new Date(), trialExpiresAt: expiry }),
-      message: "Square recurring checkout is not available yet. No payment method is collected.",
+      message: sandboxConfigured
+        ? "Square sandbox checkout is configured for testing. Provider and payment verification remain required."
+        : "Square recurring checkout is not available yet. No payment method is collected.",
     });
   } catch {
     return res.status(503).json({ ok: false, error: "Unable to verify your trial billing date." });
