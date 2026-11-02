@@ -63,7 +63,7 @@ export function assessWeddingSquareSandboxReadiness({ env, tables, columns, coun
   if (env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID === env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID || env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID === env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID) blockers.push("Premium and Elite Square plans must be distinct");
   for (const name of ["SQUARE_ACCESS_TOKEN", "SQUARE_APPLICATION_ID", "WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "SQUARE_LOCATION_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID", "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID"]) {
     const value = env[name];
-    if (typeof value !== "string" || value.trim() !== value || /[\\s\\x00-\\x1f\\x7f]/.test(value)) blockers.push(name + " has invalid formatting");
+    if (typeof value !== "string" || value.trim() !== value || /[\s\x00-\x1f\x7f]/.test(value)) blockers.push(name + " has invalid formatting");
   }
   for (const name of settings) if (env[name] !== "true") blockers.push(name + " is disabled");
   const existingTables = new Set(tables);
