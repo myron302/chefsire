@@ -1,5 +1,27 @@
 # Wedding Planner Square automatic billing — implementation gate
 
+## Exact payment and refund notification reconciliation
+
+`WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED` defaults off. When explicitly
+enabled with the existing sandbox enrollment, webhook and reconciliation
+gates, the hourly worker independently attests the merchant/location, claims
+at most ten payment/refund hints with a 15-minute lease, and maps each provider
+payment to its saved invoice and owner. Failed or unrelated events rotate
+fairly and remain pending. No provider write is sent.
+
+Payment acknowledgements require the existing owner-bound payment/dispute
+refresh and its exact evidence revision. Completed refunds require independent
+GETs of both refund and original payment, customer/location/amount agreement,
+and proof that the payment lists that refund and returned funds. Revocation
+of only that invoice and acknowledgement of its queue lease are atomic.
+Pending, malformed or unverified refunds remain pending; no refund request is
+created, and no paid-through date is extended. Subscription/invoice-only hints
+continue to trigger independent renewal discovery without false acknowledgement.
+
+Apply `20261102_04_wedding_square_webhook_reconciliation_lease.sql` after the
+correlation migration before enabling the worker. Both have Drizzle parity
+and PostgreSQL CI coverage.
+
 ## Webhook correlation metadata (November 2, 2026)
 
 `20261102_03_wedding_square_webhook_object_correlation.sql` adds nullable

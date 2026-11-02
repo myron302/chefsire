@@ -24,6 +24,7 @@ const FILES = [
   "server/migrations/20261102_01_wedding_square_card_setup_intents.sql",
   "server/migrations/20261102_02_wedding_square_card_nonce_uniqueness.sql",
   "server/migrations/20261102_03_wedding_square_webhook_object_correlation.sql",
+  "server/migrations/20261102_04_wedding_square_webhook_reconciliation_lease.sql",
 ];
 const TABLES = [
   weddingSquareEnrollmentAttempts,

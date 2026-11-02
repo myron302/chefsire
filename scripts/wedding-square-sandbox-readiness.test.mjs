@@ -7,6 +7,7 @@ const tables = ["wedding_square_enrollment_attempts", "wedding_square_subscripti
   "wedding_square_card_setup_attempts"];
 const columns = [
   { table_name: "wedding_square_webhook_events", column_name: "square_object_id" },
+  { table_name: "wedding_square_webhook_events", column_name: "last_reconciliation_attempt_at" },
   { table_name: "wedding_square_subscriptions", column_name: "last_renewal_scan_at" },
   { table_name: "wedding_square_subscriptions", column_name: "provider_status" },
   { table_name: "wedding_square_invoice_evidence", column_name: "last_payment_reconciled_at" },
@@ -15,6 +16,7 @@ const columns = [
   ...["status","source_digest","customer_idempotency_key","card_idempotency_key"].map(column_name => ({ table_name: "wedding_square_card_setup_attempts", column_name })),
 ];
 const env = {
+  WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED: "true",
   SQUARE_ENV: "sandbox",
   SQUARE_ACCESS_TOKEN: "sandbox-test-token",
   SQUARE_APPLICATION_ID: "sandbox-test-app",
