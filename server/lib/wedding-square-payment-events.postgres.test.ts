@@ -79,6 +79,41 @@ test("PostgreSQL 16: event-bound payment acknowledgement and refund revocation a
    assert.ok(after.payment_revoked_at instanceof Date);
    assert.equal(after.last_payment_reconciled_at,null);
    assert.equal((await worker.run()).scanned,0,"processed notifications are never replayed");
+   // A different app node reclaims a lease while this worker is ready to
+   // revoke. Hold that queue row uncommitted on connection two. The worker
+   // must wait on the queue lock BEFORE changing any invoice evidence.
+   await client.query("UPDATE wedding_square_invoice_evidence SET payment_revoked_at=NULL,last_payment_reconciled_at=now()");
+   await client.query(`INSERT INTO wedding_square_webhook_events
+     (event_id,square_environment,square_merchant_id,event_type,square_object_id)
+     VALUES('race-event','sandbox','merchant-1','refund.updated','refund-1')`);
+   const other=new pg.Client({connectionString:url,connectionTimeoutMillis:5000});
+   await other.connect();
+   try{
+    await other.query(`SET search_path TO "${schema}"`);
+    const pid=(await client.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    const racingDb={query:async(sql:string,args?:unknown[])=>{
+     if(!sql.startsWith("WITH locked_queue"))return client.query(sql,args);
+     await other.query("BEGIN");
+     await other.query("UPDATE wedding_square_webhook_events SET last_reconciliation_attempt_at=now()+interval '1 minute' WHERE event_id='race-event'");
+     const pending=client.query(sql,args);
+     let blocked=false;
+     for(let i=0;i<100;i++){
+      const state=(await other.query("SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",[pid])).rows[0];
+      if(state?.wait_event_type==='Lock'){blocked=true;break;}
+      await new Promise(resolve=>setTimeout(resolve,10));
+     }
+     await other.query("COMMIT");
+     assert.equal(blocked,true,"revocation must lock the lease before modifying evidence");
+     return pending;
+    }};
+    const racing=createWeddingSquarePaymentEvents(racingDb as any,{inspect:async()=>({verifiedSandboxMerchantContext:true,
+     merchantId:"merchant-1",locationId:"loc-1",grantsEntitlement:false,authorizesSubscriptionCreation:false})} as any,
+     refresh,{inspect:async()=>({refundId:"refund-1",paymentId:"pay-1",customerId:"cust-1",locationId:"loc-1",
+       amountCents:2499,completedRefund:true,grantsEntitlement:false})} as any);
+    assert.equal((await racing.run()).processed,0);
+    assert.equal((await client.query("SELECT payment_revoked_at FROM wedding_square_invoice_evidence")).rows[0].payment_revoked_at,null);
+    assert.equal((await client.query("SELECT processing_status FROM wedding_square_webhook_events WHERE event_id='race-event'")).rows[0].processing_status,'pending');
+   }finally{await other.query("ROLLBACK").catch(()=>undefined);await other.end();}
  }finally{
    if(connected){
      await client.query("SET search_path TO public").catch(()=>undefined);

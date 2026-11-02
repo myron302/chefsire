@@ -34,8 +34,9 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
       const m=await merchant.inspect();
       if(m.verifiedSandboxMerchantContext!==true||m.merchantId!==merchantId||m.locationId!==location||
          m.grantsEntitlement!==false||m.authorizesSubscriptionCreation!==false)throw new WeddingSquarePaymentEventsError();
-      // Claim time advances even on failure. Older unrelated/unresolved events
-      // cannot starve another owner. A 15-minute lease exceeds bounded GETs.
+      // Claim only the event about to be checked. A payment risk audit permits
+      // at most 51 GETs x 15 seconds, below this event's 15-minute lease.
+      // There is no sequential batch waiting with already-aging leases.
       const queue=await db.query<Event>(`WITH selected AS (
         SELECT event_id FROM wedding_square_webhook_events
          WHERE square_environment='sandbox' AND square_merchant_id=$1
@@ -43,11 +44,11 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
            AND event_type IN ('payment.created','payment.updated','refund.created','refund.updated')
            AND (last_reconciliation_attempt_at IS NULL OR last_reconciliation_attempt_at<now()-interval '15 minutes')
          ORDER BY last_reconciliation_attempt_at ASC NULLS FIRST,received_at,event_id
-         LIMIT 10 FOR UPDATE SKIP LOCKED
+         LIMIT 1 FOR UPDATE SKIP LOCKED
       ) UPDATE wedding_square_webhook_events w SET last_reconciliation_attempt_at=statement_timestamp()
          FROM selected WHERE w.event_id=selected.event_id AND w.square_environment='sandbox' AND w.square_merchant_id=$1
        RETURNING w.event_id,w.event_type,w.square_object_id,w.last_reconciliation_attempt_at::text AS attempted_at`,[merchantId]);
-      if(!Array.isArray(queue.rows)||queue.rows.length>10)throw new WeddingSquarePaymentEventsError();
+      if(!Array.isArray(queue.rows)||queue.rows.length>1)throw new WeddingSquarePaymentEventsError();
       const seen=new Set<string>();
       for(const e of queue.rows){
         if(!valid(e.event_id)||!valid(e.square_object_id)||
@@ -86,14 +87,16 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
           // Exact queue lease + evidence revision CAS. Completed refunds revoke
           // only this payment, atomically with event acknowledgement. Unknown
           // provider outcomes keep the event pending; they cannot restore access.
-          const result=refundProof?await db.query(`WITH revoked AS (
+          const result=refundProof?await db.query(`WITH locked_queue AS MATERIALIZED (
+            SELECT event_id FROM wedding_square_webhook_events WHERE event_id=$5
+              AND square_environment='sandbox' AND square_merchant_id=$2 AND processing_status='pending'
+              AND square_object_id=$6 AND last_reconciliation_attempt_at=$7::timestamptz FOR UPDATE
+          ), revoked AS (
             UPDATE wedding_square_invoice_evidence SET payment_revoked_at=COALESCE(payment_revoked_at,now()),
               last_payment_reconciled_at=NULL,reconciliation_revision=reconciliation_revision+1
              WHERE id=$1::uuid AND square_environment='sandbox' AND square_merchant_id=$2
                AND square_payment_id=$3 AND reconciliation_revision=$4
-               AND EXISTS (SELECT 1 FROM wedding_square_webhook_events WHERE event_id=$5
-                 AND square_environment='sandbox' AND square_merchant_id=$2 AND processing_status='pending'
-                 AND square_object_id=$6 AND last_reconciliation_attempt_at=$7::timestamptz)
+               AND EXISTS (SELECT 1 FROM locked_queue)
              RETURNING id
           ) UPDATE wedding_square_webhook_events SET processing_status='processed',processed_at=now()
              WHERE event_id=$5 AND square_environment='sandbox' AND square_merchant_id=$2

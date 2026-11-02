@@ -33,7 +33,8 @@ test("payment event requires an exact owner-bound fresh check before acknowledge
 test("completed refund revokes only independently matched payment and acknowledges atomically",()=>enabled(async()=>{
  const f=fixture([{...event,event_type:"refund.updated",square_object_id:"refund-1"}]);
  assert.equal((await f.svc.run()).processed,1);assert.equal(f.checked.length,0);
- assert.match(f.calls[2].sql,/WITH revoked AS/);assert.match(f.calls[2].sql,/payment_revoked_at=COALESCE/);
+ assert.match(f.calls[2].sql,/WITH locked_queue AS MATERIALIZED/);assert.match(f.calls[2].sql,/FOR UPDATE/);
+ assert.match(f.calls[2].sql,/payment_revoked_at=COALESCE/);
  assert.match(f.calls[2].sql,/EXISTS\(SELECT 1 FROM revoked\)/);assert.equal(f.calls[2].args[3],0);
  assert.doesNotMatch(f.calls[2].sql,/verified_paid_through/);
 }));
