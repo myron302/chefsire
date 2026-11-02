@@ -29,6 +29,10 @@ jobs:
           cache: npm
       - name: Install dependencies from lockfile
         run: npm ci
+      - name: Test authenticated Square sandbox card setup HTTP
+        run: node --import tsx --test server/routes/wedding-square-sandbox-card-setup.test.ts
+      - name: Test Neon owner-bound Square card setup coordinator
+        run: node --import tsx --test server/lib/wedding-square-card-setup-coordinator.test.ts
       - name: Test one-shot Square sandbox Customer/Card transport
         run: node --import tsx --test server/lib/wedding-square-sandbox-card-setup-transport.test.ts
       - name: Test real-provider smoke gate without making provider calls
