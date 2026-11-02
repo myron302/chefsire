@@ -158,6 +158,7 @@ export const weddingSquareCardSetupAttempts = pgTable("wedding_square_card_setup
 }, (t) => ({
   unresolvedUser: uniqueIndex("wedding_square_card_setup_one_unresolved_user_idx").on(t.userId).where(sql`${t.status} IN ('reserved','customer_submitting','customer_confirmed','card_submitting','needs_reconciliation')`),
   providerCard: uniqueIndex("wedding_square_card_setup_provider_card_idx").on(t.squareEnvironment, t.squareMerchantId, t.squareCardId).where(sql`${t.squareCardId} IS NOT NULL`),
+  nonceDigest: uniqueIndex("wedding_square_card_setup_source_digest_idx").on(t.squareEnvironment,t.sourceDigest),
   userHistory: index("wedding_square_card_setup_user_history_idx").on(t.userId, t.createdAt.desc()),
   sandboxCheck: check("wedding_sq_setup_sandbox_ck", sql`${t.squareEnvironment} = 'sandbox'`),
   tierCheck: check("wedding_sq_setup_tier_ck", sql`${t.tier} IN ('premium','elite')`),
