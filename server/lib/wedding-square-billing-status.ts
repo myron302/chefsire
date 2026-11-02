@@ -69,6 +69,35 @@ export function createWeddingSquareBillingStatus(db:Db, paidReader:PaidReader) {
         // allow legacy trial cancellation while any owner-scoped attempt could
         // already exist at Square. A confirmed attempt without a matching
         // subscription row also demands reconciliation.
+        // A configuration change must never make an existing sandbox
+        // subscription or unresolved card write disappear from owner billing.
+        // Merchant/location drift requires operator reconciliation, not a
+        // misleading "not enrolled" response or another card collection.
+        const drift=await db.query<{kind:string}>(
+          `SELECT 'subscription' AS kind FROM wedding_square_subscriptions
+             WHERE user_id=$1 AND square_environment='sandbox'
+               AND (square_merchant_id<>$2 OR square_location_id<>$3)
+           UNION ALL
+           SELECT 'card_setup' AS kind FROM wedding_square_card_setup_attempts
+             WHERE user_id=$1 AND square_environment='sandbox'
+               AND (square_merchant_id<>$2 OR square_location_id<>$3)
+               AND status <> 'aborted'
+           LIMIT 2`,
+          [userId,merchant,location],
+        );
+        if(!drift||!Array.isArray(drift.rows)||drift.rows.length>1)
+          throw new WeddingSquareBillingStatusError();
+        if(drift.rows.length===1){
+          return Object.freeze({
+            ok:true as const,billingMode:"sandbox" as const,
+            enrollmentStatus:"needs_reconciliation" as const,
+            billingLive:false as const,requiresProviderVerification:true as const,
+            tier:null,monthlyAmountCents:null,currency:null,
+            requestedFirstChargeDate:null,cancellationRequestedAt:null,
+            providerCancellationRecordedAt:null,lastProviderCheckAt:null,
+            verifiedPaidAccessThrough:null,
+          });
+        }
         // A Customer/Card POST may have happened before a subscription
         // reservation existed. In that case enrollment_attempts is empty,
         // but "not_enrolled" would falsely reassure an owner who may have
