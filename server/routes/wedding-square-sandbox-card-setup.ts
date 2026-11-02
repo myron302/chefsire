@@ -81,7 +81,7 @@ export function createWeddingSquareCardSetupRouter(
     const parsed = bodySchema.parse(req.body);
     const userId = req.user!.id;
     try {
-      const owner = await readOwner(userId);
+      const owner = await readOwner.getUser(userId);
       // Square Customer requires a real, previously verified ChefSire email.
       if (!owner || owner.id !== userId ||
           !z.string().email().max(254).safeParse(owner.email).success ||
