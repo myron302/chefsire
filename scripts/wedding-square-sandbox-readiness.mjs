@@ -13,6 +13,7 @@ const requiredTables = [
   "wedding_square_card_setup_attempts",
 ];
 const requiredColumns = [
+  ["wedding_square_webhook_events", "square_object_id"],
   ["wedding_square_subscriptions", "last_renewal_scan_at"],
   ["wedding_square_subscriptions", "provider_status"],
   ["wedding_square_invoice_evidence", "last_payment_reconciled_at"],

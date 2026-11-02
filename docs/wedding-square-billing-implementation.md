@@ -1,5 +1,21 @@
 # Wedding Planner Square automatic billing — implementation gate
 
+## Webhook correlation metadata (November 2, 2026)
+
+`20261102_03_wedding_square_webhook_object_correlation.sql` adds nullable
+`square_object_id` with matching Drizzle declaration. Apply this reviewed
+additive migration before enabling webhook intake with this version; the
+readiness audit reports a blocker when the column is absent. Missing schema
+continues to return retryable HTTP 503 rather than acknowledge lost events.
+
+Signed notifications now retain only canonical `data.id` after validating
+`data.type` against the event family. The ID is an untrusted provider lookup
+hint. The raw provider object, card details, customer fields and payment status
+are not stored. Existing notifications remain pending with NULL object IDs;
+duplicate deliveries never replace the original metadata. This prepares
+identity-bound provider GET reconciliation; it does not implement that worker,
+acknowledge events as processed, enable billing, or grant entitlement.
+
 ## Product contract
 - Existing cardless introductory trial lasts exactly 336 hours from Neon `wedding_intro_trials.activated_at`. Do not reset or extend it when a customer adds a payment method.
 - The customer must explicitly consent to **monthly automatic recurring charges** at the displayed Premium ($24.99/month) or Elite ($49.99/month) price and tax disclosures; merely entering a card is not consent.

@@ -6,6 +6,7 @@ const tables = ["wedding_square_enrollment_attempts", "wedding_square_subscripti
   "wedding_square_invoice_evidence", "wedding_square_webhook_events",
   "wedding_square_card_setup_attempts"];
 const columns = [
+  { table_name: "wedding_square_webhook_events", column_name: "square_object_id" },
   { table_name: "wedding_square_subscriptions", column_name: "last_renewal_scan_at" },
   { table_name: "wedding_square_subscriptions", column_name: "provider_status" },
   { table_name: "wedding_square_invoice_evidence", column_name: "last_payment_reconciled_at" },
@@ -49,12 +50,19 @@ test("ready only means eligible to start acceptance, never payment verified", ()
 });
 test("absent migration or a disabled reconciliation gate fails closed", () => {
   const x = input();
-  x.columns = x.columns.slice(1);
+  x.columns = x.columns.filter(c => c.column_name !== "last_renewal_scan_at");
   x.env.WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED = "false";
   const out = assessWeddingSquareSandboxReadiness(x);
   assert.equal(out.safeToAttemptSandboxAcceptance, false);
   assert.match(out.blockers.join(" "), /last_renewal_scan_at/);
   assert.match(out.blockers.join(" "), /RENEWAL_SCAN_ENABLED/);
+});
+test("missing webhook correlation migration blocks intake readiness", () => {
+  const x = input();
+  x.columns = x.columns.filter(c => c.column_name !== "square_object_id");
+  const out = assessWeddingSquareSandboxReadiness(x);
+  assert.equal(out.safeToAttemptSandboxAcceptance, false);
+  assert.match(out.blockers.join(" "), /wedding_square_webhook_events.square_object_id/);
 });
 test("production and live flag are always blocked", () => {
   const x = input();
