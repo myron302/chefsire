@@ -698,6 +698,37 @@ function SubscriptionSettingsPanel() {
     },
   });
 
+  // Sandbox-only provider cancellation. Do not reuse the legacy trial endpoint:
+  // it cannot stop an existing recurring provider subscription.
+  const cancelWeddingSquareMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/wedding/subscription/sandbox/cancel", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (res.status !== 202 || payload?.ok !== true ||
+          payload?.status !== "cancellation_scheduled" ||
+          payload?.paidEntitlementChanged !== false) {
+        throw new Error("Square cancellation could not be confirmed. Check billing status before taking further action.");
+      }
+      return payload;
+    },
+    onSuccess: () => {
+      weddingBillingStatusQuery.refetch();
+      myWeddingSubscriptionQuery.refetch();
+      subscriptionHistoryQuery.refetch();
+      toast({ title: "Square cancellation scheduled",
+        description: "Square confirmed the cancellation request. Verified paid coverage remains unchanged until its paid-through date." });
+    },
+    onError: () => {
+      weddingBillingStatusQuery.refetch();
+      toast({ title: "Cancellation requires verification",
+        description: "We cannot confirm that Square stopped future charges. Check the refreshed billing status or contact support. Do not assume cancellation succeeded.",
+        variant: "destructive" });
+    },
+  });
+
   const weddingTiersMap = (weddingTiersQuery.data?.tiers || {}) as Record<
     string,
     { name?: string; price?: number; trialDays?: number; features?: string[] }
@@ -1040,6 +1071,7 @@ function SubscriptionSettingsPanel() {
   const isWeddingBusy =
     updateWeddingSubscriptionMutation.isPending ||
     cancelWeddingSubscriptionMutation.isPending ||
+    cancelWeddingSquareMutation.isPending ||
     weddingTiersQuery.isLoading ||
     myWeddingSubscriptionQuery.isLoading;
 
@@ -2133,6 +2165,27 @@ function SubscriptionSettingsPanel() {
                         No independently verified paid coverage is currently available.
                       </p>
                     )}
+                    {weddingBillingStatusQuery.data.billingMode === "sandbox" &&
+                      weddingBillingStatusQuery.data.enrollmentStatus === "active" &&
+                      !weddingBillingStatusQuery.data.cancellationRequestedAt ? (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={cancelWeddingSquareMutation.isPending || weddingBillingStatusQuery.isFetching}
+                        onClick={() => {
+                          if (window.confirm("Request cancellation of your Square sandbox Wedding subscription? Square must confirm before future billing is considered stopped.")) {
+                            cancelWeddingSquareMutation.mutate();
+                          }
+                        }}
+                      >
+                        {cancelWeddingSquareMutation.isPending ? "Contacting Square…" : "Cancel Square Recurring Billing"}
+                      </Button>
+                    ) : null}
+                    {["pending", "paused"].includes(weddingBillingStatusQuery.data.enrollmentStatus) ? (
+                      <p className="text-xs text-amber-700" role="status">
+                        Square cancellation is not available in this subscription state. Contact support to resolve billing; do not assume future charges have stopped.
+                      </p>
+                    ) : null}
                     {weddingBillingStatusQuery.data.cancellationRequestedAt ? (
                       <p className="text-xs text-gray-600">
                         Cancellation request saved: {" "}
