@@ -15,14 +15,14 @@ async function enabled(fn:()=>Promise<void>){
 test("bounded notifications trigger independent scans, not payment entitlements",()=>enabled(async()=>{
  const calls:string[]=[];const svc=createWeddingSquareWebhookDrain(
  {query:async(sql:string,args:unknown[])=>{
-  if(sql.startsWith("SELECT")){calls.push("select");assert.match(sql,/LIMIT 10/);
+  if(sql.startsWith("SELECT")){calls.push("select");assert.match(sql,/LIMIT 10/);assert.match(sql,/event_type LIKE/);
    return {rows:[{event_id:"evt-1",event_type:"subscription.updated"},{event_id:"evt-2",event_type:"payment.updated"}]};}
   calls.push("ack");assert.match(sql,/processing_status='pending'/);assert.deepEqual(args,["merchant-test","evt-1"]);
   assert.doesNotMatch(sql,/verified_paid_through|subscription_history|invoice_evidence/);
   return {rowCount:1};
  }}as any,
- {run:async()=>{calls.push("renew");return {status:"completed",scanned:1};}},
- {run:async()=>{calls.push("reconcile");return {status:"completed",scanned:1};}});
+ {run:async()=>{calls.push("renew");return {status:"completed",scanned:1,recorded:1,existing:0,pending:0};}},
+ {run:async()=>{calls.push("reconcile");return {status:"completed",scanned:1,checked:1,failed:0};}});
  assert.deepEqual(await svc.run(),{status:"completed",scanned:2,processed:1,pending:1});
  assert.deepEqual(calls,["select","renew","reconcile","ack"]);
 }));
@@ -44,4 +44,21 @@ test("untrusted malformed metadata cannot cause reconciliation calls",()=>enable
  {run:async()=>{called++;return {status:"completed",scanned:0};}});
  await assert.rejects(svc.run(),WeddingSquareWebhookDrainUnavailable);
  assert.equal(called,0);
+}));
+
+test("zero or failed provider work preserves unacknowledged notifications",()=>enabled(async()=>{
+ for(const scans of [
+  [{status:"completed",scanned:0,recorded:0,existing:0,pending:0},{status:"completed",scanned:0,checked:0,failed:0}],
+  [{status:"completed",scanned:1,recorded:0,existing:0,pending:1},{status:"completed",scanned:1,checked:0,failed:1}],
+ ]){
+  let mutations=0;
+  const worker=createWeddingSquareWebhookDrain({query:async(sql:string)=>{
+   if(sql.startsWith("UPDATE"))mutations++;
+   return {rows:[{event_id:"evt-1",event_type:"invoice.updated"}]};
+  }}as any,{run:async()=>scans[0]},{run:async()=>scans[1]});
+  const result=await worker.run();
+  assert.equal(result.processed,0);
+  assert.equal(result.pending,1);
+  assert.equal(mutations,0);
+ }
 }));
