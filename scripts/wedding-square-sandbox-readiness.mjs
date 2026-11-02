@@ -34,6 +34,7 @@ export function assessWeddingSquareSandboxReadiness({ env, tables, columns, coun
   if (env.SQUARE_LIVE_PAYMENTS_ENABLED === "true") blockers.push("Live payment enable switch must be off");
   for (const name of ["SQUARE_ACCESS_TOKEN", "SQUARE_APPLICATION_ID",
     "WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL", "WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY",
+    "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID", "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID",
     "WEDDING_SQUARE_SANDBOX_MERCHANT_ID", "SQUARE_LOCATION_ID",
     "WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID",
     "WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID",
@@ -50,6 +51,12 @@ export function assessWeddingSquareSandboxReadiness({ env, tables, columns, coun
   } catch {
     blockers.push("WEDDING_SQUARE_ALLOWED_ORIGIN must be a bare HTTPS origin");
   }
+  if (env.WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED !== "true") blockers.push("WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED is disabled");
+  if (typeof env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY !== "string" || env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY.length < 20) blockers.push("Invalid Wedding Square webhook signature key");
+  try {
+    const hook = new URL(env.WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL);
+    if (hook.protocol !== "https:" || hook.pathname !== "/api/wedding/subscription/webhooks/square" || hook.search || hook.hash || hook.username || hook.password) blockers.push("Invalid Wedding Square webhook URL");
+  } catch { blockers.push("Invalid Wedding Square webhook URL"); }
   for (const name of settings) if (env[name] !== "true") blockers.push(name + " is disabled");
   const existingTables = new Set(tables);
   const existingColumns = new Set(columns.map(({ table_name, column_name }) => table_name + "." + column_name));
