@@ -3,13 +3,15 @@ import { test } from "node:test";
 import { assessWeddingSquareSandboxReadiness } from "./wedding-square-sandbox-readiness.mjs";
 
 const tables = ["wedding_square_enrollment_attempts", "wedding_square_subscriptions",
-  "wedding_square_invoice_evidence", "wedding_square_webhook_events"];
+  "wedding_square_invoice_evidence", "wedding_square_webhook_events",
+  "wedding_square_card_setup_attempts"];
 const columns = [
   { table_name: "wedding_square_subscriptions", column_name: "last_renewal_scan_at" },
   { table_name: "wedding_square_subscriptions", column_name: "provider_status" },
   { table_name: "wedding_square_invoice_evidence", column_name: "last_payment_reconciled_at" },
   { table_name: "wedding_square_invoice_evidence", column_name: "payment_revoked_at" },
   { table_name: "wedding_square_invoice_evidence", column_name: "reconciliation_revision" },
+  ...["status","source_digest","customer_idempotency_key","card_idempotency_key"].map(column_name => ({ table_name: "wedding_square_card_setup_attempts", column_name })),
 ];
 const env = {
   SQUARE_ENV: "sandbox",
@@ -119,4 +121,14 @@ test("oversized runtime provider identities are not readiness", () => {
   assert.equal(out.safeToAttemptSandboxAcceptance, false);
   assert.match(out.blockers.join(" "), /SQUARE_ACCESS_TOKEN/);
   assert.match(out.blockers.join(" "), /SQUARE_LOCATION_ID/);
+});
+
+test("missing durable card setup intent migration fails closed before checkout", () => {
+  const x = input();
+  x.tables = x.tables.filter(t => t !== "wedding_square_card_setup_attempts");
+  x.columns = x.columns.filter(c => c.table_name !== "wedding_square_card_setup_attempts");
+  const out = assessWeddingSquareSandboxReadiness(x);
+  assert.equal(out.safeToAttemptSandboxAcceptance,false);
+  assert.match(out.blockers.join(" "),/Missing table wedding_square_card_setup_attempts/);
+  assert.match(out.blockers.join(" "),/source_digest/);
 });
