@@ -14,6 +14,7 @@ const requiredTables = [
 ];
 const requiredColumns = [
   ["wedding_square_webhook_events", "square_object_id"],
+  ["wedding_square_webhook_events", "last_reconciliation_attempt_at"],
   ["wedding_square_subscriptions", "last_renewal_scan_at"],
   ["wedding_square_subscriptions", "provider_status"],
   ["wedding_square_invoice_evidence", "last_payment_reconciled_at"],
@@ -28,6 +29,7 @@ const requiredColumns = [
 export function assessWeddingSquareSandboxReadiness({ env, tables, columns, counts }) {
   const blockers = [];
   const settings = [
+    "WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED",
     "WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
     "WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED",
     "WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED",

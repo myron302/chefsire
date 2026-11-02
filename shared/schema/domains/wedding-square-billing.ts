@@ -91,6 +91,7 @@ export const weddingSquareWebhookEvents = pgTable("wedding_square_webhook_events
   squareMerchantId: text("square_merchant_id").notNull(),
   eventType: text("event_type").notNull(),
   squareObjectId: text("square_object_id"),
+  lastReconciliationAttemptAt: timestamp("last_reconciliation_attempt_at", { withTimezone: true }),
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   processingStatus: text("processing_status").notNull().default("pending"),
   processedAt: timestamp("processed_at", { withTimezone: true }),

@@ -11,6 +11,7 @@ import { reconcileAbandonedCheckoutReservations } from "./services/marketplace-c
 import { weddingSquareReconciliationBatch } from "./lib/wedding-square-reconciliation-batch";
 import { weddingSquareRenewalScan } from "./lib/wedding-square-renewal-scan";
 import { weddingSquareWebhookDrain } from "./lib/wedding-square-webhook-drain";
+import { weddingSquarePaymentEvents } from "./lib/wedding-square-payment-events";
 
 /**
  * Initialize all cron jobs
@@ -104,6 +105,12 @@ export function initializeCronJobs() {
   // run before acknowledging a subset of sandbox webhook metadata.
   // Separate default-off gate; no direct entitlement writes or retries.
   cron.schedule("55 * * * *", async () => {
+    try {
+      const result = await weddingSquarePaymentEvents.run();
+      if (result.scanned > 0) console.log(`Wedding Square payment events: checked ${result.scanned}, reconciled ${result.processed}, pending ${result.pending}`);
+    } catch {
+      console.warn("Wedding Square payment event reconciliation unavailable");
+    }
     try {
       const result = await weddingSquareWebhookDrain.run();
       if (result.scanned > 0) console.log(
