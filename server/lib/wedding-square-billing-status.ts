@@ -69,6 +69,33 @@ export function createWeddingSquareBillingStatus(db:Db, paidReader:PaidReader) {
         // allow legacy trial cancellation while any owner-scoped attempt could
         // already exist at Square. A confirmed attempt without a matching
         // subscription row also demands reconciliation.
+        // A Customer/Card POST may have happened before a subscription
+        // reservation existed. In that case enrollment_attempts is empty,
+        // but "not_enrolled" would falsely reassure an owner who may have
+        // provider-side card state requiring reconciliation.
+        const cardSetup=await db.query<{status:string}>(
+          `SELECT status FROM wedding_square_card_setup_attempts
+             WHERE user_id=$1 AND square_environment='sandbox'
+               AND square_merchant_id=$2 AND square_location_id=$3
+               AND status IN ('reserved','customer_submitting',
+                              'customer_confirmed','card_submitting',
+                              'needs_reconciliation')
+             LIMIT 2`,
+          [userId,merchant,location],
+        );
+        if(!cardSetup||!Array.isArray(cardSetup.rows)||cardSetup.rows.length>1)
+          throw new WeddingSquareBillingStatusError();
+        if(cardSetup.rows.length===1){
+          return Object.freeze({
+            ok:true as const,billingMode:"sandbox" as const,
+            enrollmentStatus:"needs_reconciliation" as const,
+            billingLive:false as const,requiresProviderVerification:true as const,
+            tier:null,monthlyAmountCents:null,currency:null,
+            requestedFirstChargeDate:null,cancellationRequestedAt:null,
+            providerCancellationRecordedAt:null,lastProviderCheckAt:null,
+            verifiedPaidAccessThrough:null,
+          });
+        }
         const ambiguous=await db.query<{status:string}>(
           `SELECT a.status
              FROM wedding_square_enrollment_attempts a
