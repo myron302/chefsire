@@ -1,4 +1,5 @@
 import type { WeddingSubscription } from "./services/wedding-planning/weddingSubscription";
+import { WeddingSquareSandboxCheckout } from "@/components/wedding/WeddingSquareSandboxCheckout";
 import React, { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -604,7 +605,7 @@ function SubscriptionSettingsPanel() {
       }
       return payload as {
         ok: true; billingAvailable: boolean; tier: "premium" | "elite";
-        amountCents: number; currency: "USD"; cadence: "MONTHLY";
+        amountCents: number; currency: "USD"; cadence: "MONTHLY"; consentVersion: string;
         automaticRenewal: true; trialExpiresAt: string | null;
         firstChargeStartDate: string | null; firstChargePolicy: string;
         requiresExplicitConsent: true; message: string;
@@ -1346,7 +1347,7 @@ function SubscriptionSettingsPanel() {
               <DialogHeader>
                 <DialogTitle>Wedding recurring billing quote</DialogTitle>
                 <DialogDescription>
-                  Review the verified price and first-charge policy. This quote does not enroll you or authorize a charge.
+                  Review the verified price and first-charge policy. A quote alone does not enroll you; sandbox card authorization requires your explicit consent below.
                 </DialogDescription>
               </DialogHeader>
               {weddingBillingQuoteQuery.isLoading ? (
@@ -1369,6 +1370,16 @@ function SubscriptionSettingsPanel() {
                       : "Recurring checkout is not yet available. No card or payment is collected."}
                   </p>
                 </div>
+              ) : null}
+              {weddingBillingQuoteQuery.data?.billingAvailable === true ? (
+                <WeddingSquareSandboxCheckout
+                  quote={weddingBillingQuoteQuery.data}
+                  onRefresh={() => {
+                    weddingBillingStatusQuery.refetch();
+                    myWeddingSubscriptionQuery.refetch();
+                    subscriptionHistoryQuery.refetch();
+                  }}
+                />
               ) : null}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setWeddingQuoteTier(null)}>Close</Button>
