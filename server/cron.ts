@@ -103,7 +103,7 @@ export function initializeCronJobs() {
   // Notifications are only scheduling hints. Independent provider scans
   // run before acknowledging a subset of sandbox webhook metadata.
   // Separate default-off gate; no direct entitlement writes or retries.
-  cron.schedule("35 * * * *", async () => {
+  cron.schedule("55 * * * *", async () => {
     try {
       const result = await weddingSquareWebhookDrain.run();
       if (result.scanned > 0) console.log(
