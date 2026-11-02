@@ -23,6 +23,7 @@ const FILES = [
   "server/migrations/20261101_05_wedding_square_renewal_scan.sql",
   "server/migrations/20261102_01_wedding_square_card_setup_intents.sql",
   "server/migrations/20261102_02_wedding_square_card_nonce_uniqueness.sql",
+  "server/migrations/20261102_03_wedding_square_webhook_object_correlation.sql",
 ];
 const TABLES = [
   weddingSquareEnrollmentAttempts,
@@ -150,6 +151,9 @@ test("the prepared Wedding Square migrations match Drizzle schema on a disposabl
       ON CONFLICT (square_environment, square_merchant_id, event_id) DO NOTHING`;
     assert.equal((await db.query(webhook)).rowCount, 1);
     assert.equal((await db.query(webhook)).rowCount, 0);
+    assert.deepEqual((await db.query(`SELECT square_object_id,processing_status
+      FROM wedding_square_webhook_events WHERE event_id='evt-1'`)).rows,
+      [{square_object_id:null,processing_status:'pending'}]);
     await expectRefused(`INSERT INTO wedding_square_webhook_events
       (event_id, square_environment, square_merchant_id, event_type, processing_status)
       VALUES ('evt-2','sandbox','merchant-1','invoice.payment_made','verified_paid')`);

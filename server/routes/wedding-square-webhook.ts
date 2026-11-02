@@ -27,6 +27,8 @@ type EventEvidence = Readonly<{
   eventId: string;
   eventType: string;
   merchantId: string;
+  // Untrusted lookup hint only; never customer ownership or payment evidence.
+  objectId?: string | null;
 }>;
 
 export type WeddingSquareWebhookSink = {
@@ -34,7 +36,7 @@ export type WeddingSquareWebhookSink = {
 };
 
 type SqlPool = {
-  query(sql: string, parameters: string[]): Promise<{ rowCount: number | null }>;
+  query(sql: string, parameters: (string | null)[]): Promise<{ rowCount: number | null }>;
 };
 
 export class WeddingSquareWebhookIntakeError extends Error {
@@ -78,6 +80,7 @@ export function createWeddingSquareWebhookIntake(database: SqlPool): WeddingSqua
       if (!config ||
           event.merchantId !== config.merchantId ||
           !canonicalId.safeParse(event.eventId).success ||
+          (event.objectId != null && !canonicalId.safeParse(event.objectId).success) ||
           !eventSchema.shape.type.safeParse(event.eventType).success) {
         throw new WeddingSquareWebhookIntakeError();
       }
@@ -88,10 +91,10 @@ export function createWeddingSquareWebhookIntake(database: SqlPool): WeddingSqua
         // user/card data or any unverified paid timestamps/amounts.
         const result = await database.query(
           `INSERT INTO wedding_square_webhook_events
-            (event_id, square_environment, square_merchant_id, event_type, processing_status)
-           VALUES ($1, 'sandbox', $2, $3, 'pending')
+            (event_id, square_environment, square_merchant_id, event_type, processing_status, square_object_id)
+           VALUES ($1, 'sandbox', $2, $3, 'pending', $4)
            ON CONFLICT (square_environment, square_merchant_id, event_id) DO NOTHING`,
-          [event.eventId, event.merchantId, event.eventType],
+          [event.eventId, event.merchantId, event.eventType, event.objectId ?? null],
         );
         if (result.rowCount === 1) return "recorded";
         if (result.rowCount === 0) return "duplicate";
@@ -146,11 +149,26 @@ export function createWeddingSquareWebhookRouter(sink: WeddingSquareWebhookSink)
       return res.status(204).end();
     }
 
+    // Keep legacy/missing-object notifications pending and uncorrelated.
+    // Only persist the bounded canonical data.id, never the raw object (which
+    // can contain card/customer information). A supplied malformed hint is
+    // refused rather than silently changing the identity to another value.
+    let objectId: string | null = null;
+    const data = event.data.data;
+    if (data !== undefined) {
+      const parsed = z.object({ type: z.string(), id: canonicalId }).passthrough().safeParse(data);
+      if (!parsed.success || parsed.data.type !== event.data.type.split(".")[0]) {
+        return res.status(400).json({ ok: false });
+      }
+      objectId = parsed.data.id;
+    }
+
     try {
       const result = await sink.record({
         eventId: event.data.event_id,
         eventType: event.data.type,
         merchantId: event.data.merchant_id,
+        objectId,
       });
       if (result !== "recorded" && result !== "duplicate") throw new WeddingSquareWebhookIntakeError();
       // Durable pending event only; not processed and not paid. Future worker

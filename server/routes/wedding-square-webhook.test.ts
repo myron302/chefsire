@@ -16,7 +16,7 @@ const validEvent = {
   event_id: "event-1",
   type: "subscription.updated",
   merchant_id: "wedding-merchant",
-  data: { object: { subscription: { status: "ACTIVE", customer_id: "UNTRUSTED" } } },
+  data: { type: "subscription", id: "subscription-1", object: { subscription: { status: "ACTIVE", customer_id: "UNTRUSTED" } } },
 };
 function sign(body: string, destination = url, secret = key) {
   return createHmac("sha256", secret).update(destination + body).digest("base64");
@@ -80,6 +80,7 @@ test("real Square HMAC over raw body and configured HTTPS URL queues event, not 
     });
     assert.deepEqual(recorded, [{
       eventId: "event-1", eventType: "subscription.updated", merchantId: "wedding-merchant",
+      objectId: "subscription-1",
     }]);
     assert.equal("data" in (recorded[0] as object), false);
   }));
@@ -120,7 +121,7 @@ test("signed unrelated event types are ignored, not enqueued as paid evidence", 
 
 test("durable insert and unique duplicate acknowledgment use only event metadata", () =>
   env(async () => {
-    const statements: { sql: string; params: string[] }[] = [];
+    const statements: { sql: string; params: (string | null)[] }[] = [];
     let seen = false;
     const service = createWeddingSquareWebhookIntake({
       query: async (sql, params) => {
@@ -136,9 +137,55 @@ test("durable insert and unique duplicate acknowledgment use only event metadata
     assert.equal(statements.length, 2);
     for (const entry of statements) {
       assert.match(entry.sql, /ON CONFLICT \(square_environment, square_merchant_id, event_id\) DO NOTHING/);
-      assert.deepEqual(entry.params, ["event-1", "wedding-merchant", "invoice.payment_made"]);
+      assert.deepEqual(entry.params, ["event-1", "wedding-merchant", "invoice.payment_made", null]);
       assert.doesNotMatch(entry.sql, /verified_paid_through|subscription_history/);
     }
+  }));
+
+test("payment and refund deliveries retain only canonical object lookup hints", () =>
+  env(async () => {
+    const recorded: unknown[] = [];
+    await appTest({ record: async (entry) => { recorded.push(entry); return "recorded"; } }, async (send) => {
+      for (const family of ["payment", "refund"]) {
+        const body = { ...validEvent, type: `${family}.updated`, data: {
+          type: family, id: `${family}-1`, object: { [family]: {
+            status: "COMPLETED", customer_id: "private-customer", card: { last_4: "1234" },
+          } },
+        } };
+        assert.equal((await send(JSON.stringify(body))).status, 202);
+      }
+    });
+    assert.deepEqual(recorded, ["payment", "refund"].map((family) => ({
+      eventId: "event-1", eventType: `${family}.updated`, merchantId: "wedding-merchant", objectId: `${family}-1`,
+    })));
+  }));
+
+test("malformed or cross-family correlation metadata cannot reach the sink", () =>
+  env(async () => {
+    let calls = 0;
+    await appTest({ record: async () => { calls++; return "recorded"; } }, async (send) => {
+      for (const data of [null, {}, {type:"payment", id:"different-family"},
+        {type:"subscription", id:" padded"}, {type:"subscription", id:"a".repeat(201)},
+        {type:"subscription", id:123}, {type:"subscription", id:"bad\nvalue"}]) {
+        assert.equal((await send(JSON.stringify({...validEvent, data}))).status, 400);
+      }
+    });
+    assert.equal(calls, 0);
+    const sink = createWeddingSquareWebhookIntake({query: async () => { calls++; return {rowCount:1}; }});
+    await assert.rejects(sink.record({eventId:"event-1",eventType:"payment.updated",
+      merchantId:"wedding-merchant",objectId:" padded"}), WeddingSquareWebhookIntakeError);
+    assert.equal(calls, 0);
+  }));
+
+test("legacy notification without data remains durably pending with no inferred object ID", () =>
+  env(async () => {
+    const recorded: unknown[] = [];
+    await appTest({ record: async (entry) => { recorded.push(entry); return "recorded"; } }, async (send) => {
+      assert.equal((await send(JSON.stringify({event_id:"legacy-event",type:"payment.updated",
+        merchant_id:"wedding-merchant"}))).status, 202);
+    });
+    assert.deepEqual(recorded,[{eventId:"legacy-event",eventType:"payment.updated",
+      merchantId:"wedding-merchant",objectId:null}]);
   }));
 
 test("failed or ambiguous Neon persistence causes 503, never 2xx acknowledgment", () =>
