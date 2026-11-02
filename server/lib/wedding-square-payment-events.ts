@@ -3,11 +3,13 @@ import { pool } from "../db";
 import { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
 import { weddingSquareEvidenceRefresh } from "./wedding-square-evidence-refresh";
 import { weddingSquareRefundReadback } from "./wedding-square-refund-readback";
+import { weddingSquareLifecycleEvents } from "./wedding-square-lifecycle-events";
 
 type Db=Pick<PoolClient,"query">;
 type Merchant=Pick<typeof weddingSquareSandboxMerchantAttestation,"inspect">;
 type Refresh=Pick<typeof weddingSquareEvidenceRefresh,"refresh">;
 type Refund=Pick<typeof weddingSquareRefundReadback,"inspect">;
+type Lifecycle=Pick<typeof weddingSquareLifecycleEvents,"handle">;
 type Event={event_id:string;event_type:string;square_object_id:string;attempted_at:string};
 type Evidence={id:string;user_id:string;square_customer_id:string;square_payment_id:string;
   agreed_monthly_amount_cents:number;reconciliation_revision:number};
@@ -17,7 +19,7 @@ export class WeddingSquarePaymentEventsError extends Error{
   constructor(){super("Wedding payment event reconciliation unavailable.");}
 }
 /** Only exact, owner-bound provider reads can consume payment/refund hints. */
-export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh:Refresh,refund:Refund){
+export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh:Refresh,refund:Refund,lifecycle?:Lifecycle){
   let running=false;
   return {async run(){
     const merchantId=process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
@@ -41,7 +43,8 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
         SELECT event_id FROM wedding_square_webhook_events
          WHERE square_environment='sandbox' AND square_merchant_id=$1
            AND processing_status='pending' AND square_object_id IS NOT NULL
-           AND event_type IN ('payment.created','payment.updated','refund.created','refund.updated')
+           AND (event_type IN ('payment.created','payment.updated','refund.created','refund.updated')
+             OR event_type LIKE 'subscription.%' OR event_type LIKE 'invoice.%')
            AND (last_reconciliation_attempt_at IS NULL OR last_reconciliation_attempt_at<now()-interval '15 minutes')
          ORDER BY last_reconciliation_attempt_at ASC NULLS FIRST,received_at,event_id
          LIMIT 1 FOR UPDATE SKIP LOCKED
@@ -52,7 +55,8 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
       const seen=new Set<string>();
       for(const e of queue.rows){
         if(!valid(e.event_id)||!valid(e.square_object_id)||
-           !["payment.created","payment.updated","refund.created","refund.updated"].includes(e.event_type)||
+           !(/^(subscription|invoice)\.[a-z_]+$/.test(e.event_type)||
+             ["payment.created","payment.updated","refund.created","refund.updated"].includes(e.event_type))||
            typeof e.attempted_at!=="string"||!Number.isFinite(Date.parse(e.attempted_at))||seen.has(e.event_id))
           throw new WeddingSquarePaymentEventsError();
         seen.add(e.event_id);
@@ -60,6 +64,11 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
       let processed=0;
       for(const event of queue.rows){
         try{
+          if(/^(subscription|invoice)\./.test(event.event_type)){
+            const result=await lifecycle?.handle(event);
+            if(result?.processed===true&&result.grantsEntitlement===false)processed++;
+            continue;
+          }
           const refundProof=event.event_type.startsWith("refund.")?await refund.inspect(event.square_object_id):null;
           if(refundProof&&(refundProof.refundId!==event.square_object_id||refundProof.completedRefund!==true||
              refundProof.grantsEntitlement!==false||refundProof.locationId!==location))continue;
@@ -119,4 +128,4 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
   }};
 }
 export const weddingSquarePaymentEvents=createWeddingSquarePaymentEvents(pool as Db,
-  weddingSquareSandboxMerchantAttestation,weddingSquareEvidenceRefresh,weddingSquareRefundReadback);
+  weddingSquareSandboxMerchantAttestation,weddingSquareEvidenceRefresh,weddingSquareRefundReadback,weddingSquareLifecycleEvents);

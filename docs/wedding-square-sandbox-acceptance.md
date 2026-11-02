@@ -66,8 +66,10 @@ operator record. A 2xx response alone is never a pass.
 
 Payment events currently process one independently bounded event per hourly
 tick. Run the gated worker again only after its prior invocation finishes when
-performing operator acceptance. Subscription/invoice hints remain unacknowledged
-unless event-specific proof exists; unrelated global scans cannot consume them.
+performing operator acceptance. Subscription/invoice hints require exact
+owner-bound provider readback under the queue lease. An invoice's PAID status
+does not establish payment or coverage, and an ACTIVE subscription hint cannot
+promote a saved PENDING row. Unrelated global scans cannot consume them.
 
 ## Final evidence and sign-off
 
@@ -84,6 +86,10 @@ Do not turn an empty database or passing CI into a claimed completed lifecycle.
 
 On November 2, 2026, the connected database contained zero Wedding Square
 enrollments, subscriptions, invoice evidence, card setups and webhook events.
+The reviewed November 2 correlation, lease and card-update migrations were
+tested on an isolated Neon branch, applied to the existing database under
+owner authorization, and read back successfully. No billing data was created
+and no feature switches were enabled.
 The Work Mode executor had no configured Square sandbox access token, and
 plugin discovery exposed no usable Square connection. Real transaction
 acceptance therefore remains unexecuted, independently of code/test completion.
