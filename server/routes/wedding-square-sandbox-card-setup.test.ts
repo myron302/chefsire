@@ -47,9 +47,11 @@ async function serve(router: ReturnType<typeof createWeddingSquareCardSetupRoute
 }
 function fixture(opts: { error?: boolean; verified?: boolean } = {}) {
   let submitted=0;
+  const steps:string[]=[];
   const svc = {
     setup:async(input: any) => {
       submitted++;
+      steps.push("setup");
       assert.equal(input.consent.userId,"owner-1");
       assert.equal(input.consent.agreedMonthlyAmountCents,2499);
       assert.equal(input.config.planVariationId,"premium-variation");
@@ -59,16 +61,16 @@ function fixture(opts: { error?: boolean; verified?: boolean } = {}) {
         attemptId:"123e4567-e89b-42d3-a456-426614174001" };
     },
   };
-  const owner = { getUser:async()=>({
+  const owner = { getUser:async()=>{steps.push("owner");return ({
     id:"owner-1",email:"tester@example.com",
     emailVerifiedAt:opts.verified === false ? null : new Date(),
     emailVerifiedVia:opts.verified === false ? null : "google",
-  }) };
-  const trial = async()=>({trial:{status:"expired",expiresAt:null}});
+  });} };
+  const trial = async()=>{steps.push("trial");return ({trial:{status:"expired",expiresAt:null}});};
   const auth:RequestHandler=(req,_res,next)=>{req.user={id:"owner-1"};next();};
   const noRateLimit:RequestHandler=(_req,_res,next)=>next();
   return { router:createWeddingSquareCardSetupRouter(svc as any,owner as any,
-    trial as any,auth,noRateLimit), submitted:()=>submitted };
+    trial as any,auth,noRateLimit), submitted:()=>submitted, steps };
 }
 const body={ sourceId:"cnon:sample-token",consent:{
   tier:"premium",consentVersion:"wedding-monthly-autorenew-v1",
@@ -97,7 +99,7 @@ test("owner-only card setup returns attempt ID but no card/customer/payment IDs"
   const x=fixture();
   await serve(x.router,async base=>{
     const res=await post(base);
-    assert.equal(res.status,202);
+    assert.equal(res.status,202,"Stages: "+x.steps.join(","));
     const data=await res.json();
     assert.equal(data.status,"subscription_reserved");
     assert.equal(data.paidEntitlementGranted,false);
