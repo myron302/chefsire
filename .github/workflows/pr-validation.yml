@@ -29,6 +29,8 @@ jobs:
           cache: npm
       - name: Install dependencies from lockfile
         run: npm ci
+      - name: Test Wedding Square readiness audit
+        run: node --test scripts/wedding-square-sandbox-readiness.test.mjs
       - name: Run Wedding Square billing tests if present
         shell: bash
         run: |
