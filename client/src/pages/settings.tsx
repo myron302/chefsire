@@ -586,6 +586,32 @@ function SubscriptionSettingsPanel() {
     },
   });
 
+  // The server—not the tier card—determines the approved monthly quote and
+  // the earliest first-charge date after any remaining cardless trial.
+  const [weddingQuoteTier, setWeddingQuoteTier] = useState<"premium" | "elite" | null>(null);
+  const weddingBillingQuoteQuery = useQuery({
+    queryKey: ["/api/wedding/subscription/billing-quote", user?.id, weddingQuoteTier],
+    enabled: !!user?.id && weddingQuoteTier !== null,
+    retry: false,
+    staleTime: 0,
+    queryFn: async () => {
+      const res = await fetch("/api/wedding/subscription/billing-quote?tier=" + encodeURIComponent(weddingQuoteTier!), {
+        credentials: "include", cache: "no-store",
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.ok !== true || payload.tier !== weddingQuoteTier) {
+        throw new Error("We could not verify the Wedding billing quote.");
+      }
+      return payload as {
+        ok: true; billingAvailable: boolean; tier: "premium" | "elite";
+        amountCents: number; currency: "USD"; cadence: "MONTHLY";
+        automaticRenewal: true; trialExpiresAt: string | null;
+        firstChargeStartDate: string | null; firstChargePolicy: string;
+        requiresExplicitConsent: true; message: string;
+      };
+    },
+  });
+
   // Separate, owner-scoped Square billing record. This never derives a next
   // charge date from trial or paid-through entitlement and does not reveal
   // Square card/customer IDs. Key by owner to avoid cross-login cache reuse.
@@ -1132,7 +1158,9 @@ function SubscriptionSettingsPanel() {
       cancelWeddingSubscriptionMutation.mutate();
       return;
     }
-    updateWeddingSubscriptionMutation.mutate(tierKey);
+    // Never POST an upgrade to the disabled legacy endpoint. Show a fresh
+    // authoritative quote without treating the quote as recurring consent.
+    setWeddingQuoteTier(tierKey);
   };
 
   const renderWeddingActionLabel = (tierKey: "free" | "premium" | "elite") => {
@@ -1297,7 +1325,7 @@ function SubscriptionSettingsPanel() {
       if (action === "change" && targetTier) updateSubscriptionMutation.mutate(targetTier as any);
     } else if (module === "wedding") {
       if (action === "cancel") cancelWeddingSubscriptionMutation.mutate();
-      if (action === "change" && targetTier) updateWeddingSubscriptionMutation.mutate(targetTier as any);
+      if (action === "change" && targetTier) onSelectWeddingTier(targetTier as "free" | "premium" | "elite");
     } else if (module === "vendors") {
       if (action === "cancel") cancelVendorSubscriptionMutation.mutate();
       if (action === "change" && targetTier) updateVendorSubscriptionMutation.mutate(targetTier as any);
@@ -1313,6 +1341,40 @@ function SubscriptionSettingsPanel() {
 
   return (
     <div className="space-y-6">
+          <Dialog open={weddingQuoteTier !== null} onOpenChange={(open) => { if (!open) setWeddingQuoteTier(null); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Wedding recurring billing quote</DialogTitle>
+                <DialogDescription>
+                  Review the verified price and first-charge policy. This quote does not enroll you or authorize a charge.
+                </DialogDescription>
+              </DialogHeader>
+              {weddingBillingQuoteQuery.isLoading ? (
+                <p className="text-sm">Verifying the monthly billing terms…</p>
+              ) : weddingBillingQuoteQuery.isError ? (
+                <p role="alert" className="text-sm text-red-700">Unable to load a verified billing quote. No payment has been started.</p>
+              ) : weddingBillingQuoteQuery.data ? (
+                <div className="space-y-3 text-sm">
+                  <p><strong>{titleCase(weddingBillingQuoteQuery.data.tier)}</strong> —
+                    {" "}${(weddingBillingQuoteQuery.data.amountCents / 100).toFixed(2)} USD per month, with automatic renewal subject to explicit billing consent.</p>
+                  {weddingBillingQuoteQuery.data.trialExpiresAt ? (
+                    <p>Cardless trial expires: {new Date(weddingBillingQuoteQuery.data.trialExpiresAt).toUTCString()}</p>
+                  ) : null}
+                  <p>{weddingBillingQuoteQuery.data.firstChargeStartDate
+                    ? "Earliest requested Square first-charge date: " + weddingBillingQuoteQuery.data.firstChargeStartDate + " (UTC). This does not confirm a charge."
+                    : "First charge would require separate checkout authorization."}</p>
+                  <p className="text-amber-800" role="status">
+                    {weddingBillingQuoteQuery.data.billingAvailable
+                      ? "Checkout availability must still be confirmed before payment."
+                      : "Recurring checkout is not yet available. No card or payment is collected."}
+                  </p>
+                </div>
+              ) : null}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setWeddingQuoteTier(null)}>Close</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
       <Card>
         <CardHeader>
           <CardTitle>My Active Subscriptions</CardTitle>
@@ -2076,6 +2138,7 @@ function SubscriptionSettingsPanel() {
 
         {/* Wedding Planner */}
         <TabsContent value="wedding" className="space-y-6">
+
           <Card>
             <CardHeader>
               <CardTitle>Wedding Planner Subscription</CardTitle>
