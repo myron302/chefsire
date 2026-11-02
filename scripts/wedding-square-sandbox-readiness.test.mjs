@@ -9,6 +9,7 @@ const columns = [
   { table_name: "wedding_square_subscriptions", column_name: "provider_status" },
   { table_name: "wedding_square_invoice_evidence", column_name: "last_payment_reconciled_at" },
   { table_name: "wedding_square_invoice_evidence", column_name: "payment_revoked_at" },
+  { table_name: "wedding_square_invoice_evidence", column_name: "reconciliation_revision" },
 ];
 const env = {
   SQUARE_ENV: "sandbox",
@@ -27,6 +28,7 @@ const env = {
   WEDDING_SQUARE_ALLOWED_ORIGIN: "https://chefsire.example",
   WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
   WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED: "true",
+  WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED: "true",
   WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED: "true",
   WEDDING_SQUARE_SANDBOX_RECONCILIATION_ENABLED: "true",
   WEDDING_SQUARE_SANDBOX_RECONCILIATION_BATCH_ENABLED: "true",
@@ -83,4 +85,26 @@ test("missing parent plans and invalid webhook configuration block acceptance", 
   assert.match(out.blockers.join(" "), /WEBHOOK_ENABLED/);
   assert.match(out.blockers.join(" "), /webhook URL/);
   assert.match(out.blockers.join(" "), /signature key/);
+});
+
+test("cancellation and reconciliation revision are mandatory", () => {
+  const x = input();
+  x.env.WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED = "false";
+  x.columns = x.columns.filter(column => column.column_name !== "reconciliation_revision");
+  const out = assessWeddingSquareSandboxReadiness(x);
+  assert.equal(out.safeToAttemptSandboxAcceptance, false);
+  assert.match(out.blockers.join(" "), /CANCEL_ENABLED/);
+  assert.match(out.blockers.join(" "), /reconciliation_revision/);
+});
+test("invalid currency, duplicate plans and padded provider credentials fail closed", () => {
+  const x = input();
+  x.env.SQUARE_CURRENCY = "CAD";
+  x.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID = x.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID;
+  x.env.SQUARE_ACCESS_TOKEN = " padded-token ";
+  const out = assessWeddingSquareSandboxReadiness(x);
+  assert.equal(out.safeToAttemptSandboxAcceptance, false);
+  assert.match(out.blockers.join(" "), /SQUARE_CURRENCY/);
+  assert.match(out.blockers.join(" "), /distinct/);
+  assert.match(out.blockers.join(" "), /SQUARE_ACCESS_TOKEN/);
+  assert.doesNotMatch(JSON.stringify(out), /padded-token/);
 });
