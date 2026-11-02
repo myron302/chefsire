@@ -10,7 +10,7 @@ test("checkout only for verified sandbox not-enrolled owner",()=>{
  }
 });
 test("unknown or spoofed billing readback never opens card entry",()=>{
- for(const bad of [null,{}, {ok:false,...eligible},
+ for(const bad of [null,{}, {...eligible,ok:false},
   {...eligible,billingLive:true},{...eligible,billingMode:"disabled"},
   {...eligible,ok:"true"},{...eligible,enrollmentStatus:null}]){
   assert.equal(mayBeginWeddingSquareSandboxCheckout(true,bad),false);
