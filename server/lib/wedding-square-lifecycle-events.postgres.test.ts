@@ -94,6 +94,17 @@ test("PostgreSQL 16: lifecycle acknowledgements do not promote PENDING or refres
    await client.query("UPDATE wedding_square_webhook_events SET last_reconciliation_attempt_at=now()+interval '1 minute' WHERE event_id='lost-event'");
    status='CANCELED';assert.equal((await service.handle(lost)).processed,false);
    assert.equal((await client.query('SELECT provider_status FROM wedding_square_subscriptions')).rows[0].provider_status,'PENDING');
+   const raced=await enqueue('status-race','subscription.updated','sub-1');
+   const stale=createWeddingSquareLifecycleEvents({query:(sql:string,args?:unknown[])=>client.query(sql,args)} as any,
+    {inspect:async()=>{
+     // Simulate a newer independently verified lifecycle result while this
+     // older GET is in flight. The stale ACTIVE read must not overwrite it.
+     await client.query("UPDATE wedding_square_subscriptions SET provider_status='PAUSED',last_reconciled_at=now()");
+     return {attemptId:attempt.id,providerSubscriptionId:'sub-1',providerStatus:'ACTIVE',existingIdMatches:true,
+      grantsEntitlement:false,safeToResubmit:false,requiresOperatorReconciliation:true};
+    }} as any);
+   assert.equal((await stale.handle(raced)).processed,false);
+   assert.equal((await client.query('SELECT provider_status FROM wedding_square_subscriptions')).rows[0].provider_status,'PAUSED');
  }finally{
    if(connected){
      await client.query("SET search_path TO public").catch(()=>undefined);

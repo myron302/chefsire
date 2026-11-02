@@ -8,7 +8,8 @@ type Db=Pick<PoolClient,"query">;
 type Provider=Pick<typeof weddingSquareSandboxSubscriptionReadback,"inspect">;
 type Sender=(url:string,init:RequestInit)=>Promise<Response>;
 export type WeddingLifecycleEvent={event_id:string;event_type:string;square_object_id:string;attempted_at:string};
-type Row={id:string;user_id:string;attempt_id:string;square_subscription_id:string;square_customer_id:string};
+type Row={id:string;user_id:string;attempt_id:string;square_subscription_id:string;square_customer_id:string;
+ previous_status:string;previous_check_at:string|null};
 const id=z.string().min(1).max(200).refine(s=>!/[\s\x00-\x1f\x7f]/.test(s));
 const invoiceEnvelope=z.object({errors:z.array(z.unknown()).length(0).optional(),invoice:z.object({
  id,subscription_id:id,location_id:id,primary_recipient:z.object({customer_id:id}),
@@ -65,7 +66,8 @@ export function createWeddingSquareLifecycleEvents(db:Db,provider:Provider,sende
     subscriptionId=invoice.subscription_id;invoiceCustomer=invoice.primary_recipient.customer_id;
    }
    const records=await db.query<Row>(`SELECT s.id::text AS id,s.user_id,a.id::text AS attempt_id,
-     s.square_subscription_id,s.square_customer_id FROM wedding_square_subscriptions s
+     s.square_subscription_id,s.square_customer_id,s.provider_status AS previous_status,
+     s.last_reconciled_at::text AS previous_check_at FROM wedding_square_subscriptions s
      JOIN wedding_square_enrollment_attempts a ON a.user_id=s.user_id AND a.square_environment=s.square_environment
       AND a.provider_subscription_id=s.square_subscription_id AND a.status='confirmed'
     WHERE s.square_environment='sandbox' AND s.square_merchant_id=$1 AND s.square_location_id=$2
@@ -74,6 +76,8 @@ export function createWeddingSquareLifecycleEvents(db:Db,provider:Provider,sende
    const row=records.rows[0];
    if(!uuid.safeParse(row.id).success||!uuid.safeParse(row.attempt_id).success||!id.safeParse(row.user_id).success||
       !id.safeParse(row.square_customer_id).success||row.square_subscription_id!==subscriptionId||
+      !["PENDING","ACTIVE","PAUSED","CANCELED","DEACTIVATED","COMPLETED"].includes(row.previous_status)||
+      (row.previous_check_at!==null&&(typeof row.previous_check_at!=="string"||!Number.isFinite(Date.parse(row.previous_check_at))))||
       (invoiceCustomer!==null&&invoiceCustomer!==row.square_customer_id))return pending;
    const proof=await provider.inspect(row.attempt_id,row.user_id);
    if(proof.attemptId!==row.attempt_id||proof.providerSubscriptionId!==subscriptionId||proof.existingIdMatches!==true||
@@ -90,13 +94,14 @@ export function createWeddingSquareLifecycleEvents(db:Db,provider:Provider,sende
        last_reconciled_at=now(),updated_at=now()
       WHERE id=$7::uuid AND user_id=$8 AND square_environment='sandbox' AND square_merchant_id=$1
        AND square_location_id=$9 AND square_subscription_id=$10 AND square_customer_id=$11
+       AND last_reconciled_at IS NOT DISTINCT FROM $12::timestamptz AND provider_status=$13
        AND EXISTS(SELECT 1 FROM locked_queue) RETURNING id
     ) UPDATE wedding_square_webhook_events SET processing_status='processed',processed_at=now()
       WHERE square_environment='sandbox' AND square_merchant_id=$1 AND event_id=$2
        AND processing_status='pending' AND event_type=$3 AND square_object_id=$4
        AND last_reconciliation_attempt_at=$5::timestamptz AND EXISTS(SELECT 1 FROM checked)`,
     [merchant,event.event_id,event.event_type,event.square_object_id,event.attempted_at,proof.providerStatus,
-     row.id,row.user_id,location,subscriptionId,row.square_customer_id]);
+     row.id,row.user_id,location,subscriptionId,row.square_customer_id,row.previous_check_at,row.previous_status]);
    return {processed:result.rowCount===1,grantsEntitlement:false as const};
   }catch{return pending;}
  }};

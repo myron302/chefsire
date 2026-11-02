@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {createWeddingSquareLifecycleEvents,readWeddingSquareLifecycleSubscription} from "./wedding-square-lifecycle-events";
 const event={event_id:"event-1",event_type:"subscription.updated",square_object_id:"sub-1",attempted_at:"2026-11-02T19:00:00Z"};
 const row={id:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",attempt_id:"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
- user_id:"owner",square_subscription_id:"sub-1",square_customer_id:"cust-1"};
+ user_id:"owner",square_subscription_id:"sub-1",square_customer_id:"cust-1",previous_status:"ACTIVE",previous_check_at:null};
 const proof={attemptId:row.attempt_id,providerSubscriptionId:"sub-1",providerStatus:"CANCELED",existingIdMatches:true,
  grantsEntitlement:false,safeToResubmit:false,requiresOperatorReconciliation:true};
 const invoice={id:"inv-1",subscription_id:"sub-1",location_id:"loc",primary_recipient:{customer_id:"cust-1"},status:"PAID"};
@@ -24,6 +24,7 @@ test("subscription event acknowledges only exact owner/provider identity under a
  const f=fixture();assert.deepEqual(await f.svc.handle(event),{processed:true,grantsEntitlement:false});
  assert.deepEqual(f.providerCalls,[[row.attempt_id,"owner"]]);assert.equal(f.gets(),0);
  assert.match(f.sql[1],/FOR UPDATE/);assert.match(f.sql[1],/provider_cancelled_at/);
+ assert.match(f.sql[1],/last_reconciled_at IS NOT DISTINCT FROM \$12/);
  assert.doesNotMatch(f.sql[1],/verified_paid_through|last_payment_reconciled_at|period_ends_at/);
  assert.match(f.sql[1],/provider_status='PENDING' AND \$6='ACTIVE' THEN 'PENDING'/);
 }));
