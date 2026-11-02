@@ -10,6 +10,8 @@ const keys = [
   "WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
   "WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED",
   "WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED",
+  "WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL",
+  "WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY",
   "WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED",
   "WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED",
   "WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED",
@@ -32,6 +34,8 @@ async function configured(work: () => Promise<void>) {
     WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED:"true",
     WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED:"true",
     WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED:"true",
+    WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL:"https://chefsire.example/api/wedding/subscription/webhooks/square",
+    WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY:"sandbox-test-signature-long",
     WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED:"true",
     WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED:"true",
     WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED:"true",
@@ -143,6 +147,16 @@ test("HTTP setup disabled by default without provider or DB access",async()=>con
   const x=fixture();
   process.env.WEDDING_SQUARE_SANDBOX_CARD_SETUP_HTTP_ENABLED="false";
   await serve(x.router,async base=>{
+    assert.equal((await post(base)).status,503);
+  });
+  assert.equal(x.submitted(),0);
+}));
+
+test("missing Square webhook signature or mismatched plans cannot expose tokenization",async()=>configured(async()=>{
+  const x=fixture();
+  process.env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY="short";
+  await serve(x.router,async base=>{
+    assert.equal((await fetch(base+"/api/wedding/subscription/sandbox/card-config")).status,503);
     assert.equal((await post(base)).status,503);
   });
   assert.equal(x.submitted(),0);
