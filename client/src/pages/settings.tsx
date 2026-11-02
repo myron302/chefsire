@@ -724,6 +724,12 @@ function SubscriptionSettingsPanel() {
   const weddingEndsAt = weddingCurrentTier === "free"
     ? null
     : myWeddingSubscriptionQuery.data?.endsAt || null;
+  // Effective access can extend beyond the separate 336-hour cardless trial.
+  // Never label that later paid-through date as the trial expiration.
+  const weddingTrialEndsAt = myWeddingSubscriptionQuery.data?.trial?.status === "active"
+    ? myWeddingSubscriptionQuery.data.trial.expiresAt || null
+    : null;
+  const weddingDisplayEndsAt = weddingTrialEndsAt || weddingEndsAt;
 
   // ---------- Vendors (Wedding Vendors plans) ----------
   const vendorTiersQuery = useQuery({
@@ -1304,8 +1310,8 @@ function SubscriptionSettingsPanel() {
               <p className="text-xs">Cardless trial. No recurring Square enrollment on file.</p>}
             {weddingEndsAt ? (
               <div className="text-xs text-gray-500 mt-1">
-                {myWeddingSubscriptionQuery.data?.trial?.status === "active" ? "Trial ends" : "Verified access through"}: {" "}
-                {formatDateTime(weddingEndsAt) || "—"}
+                {weddingTrialEndsAt ? "Trial ends" : "Verified access through"}: {" "}
+                {formatDateTime(weddingDisplayEndsAt) || "—"}
               </div>
             ) : null}
           </div>
@@ -1526,9 +1532,9 @@ function SubscriptionSettingsPanel() {
                       {weddingEndsAt ? (
                         <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
                           <CalendarDays size={13} />
-                          {myWeddingSubscriptionQuery.data?.trial?.status === "active" ? "Trial ends" : "Verified access through"}: {" "}
-                          {formatDateTime(weddingEndsAt) || "—"}{" "}
-                          <span className="text-gray-500">({relativeTimeFromNow(weddingEndsAt)})</span>
+                          {weddingTrialEndsAt ? "Trial ends" : "Verified access through"}: {" "}
+                          {formatDateTime(weddingDisplayEndsAt) || "—"}{" "}
+                          <span className="text-gray-500">({relativeTimeFromNow(weddingDisplayEndsAt)})</span>
                         </div>
                       ) : null}
                     </div>
@@ -2061,8 +2067,8 @@ function SubscriptionSettingsPanel() {
                 {weddingEndsAt ? (
                   <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
                     <CalendarDays size={13} />
-                    {myWeddingSubscriptionQuery.data?.trial?.status === "active" ? "Trial ends" : "Verified access through"}: {" "}
-                    {formatDateTime(weddingEndsAt) || "—"}
+                    {weddingTrialEndsAt ? "Trial ends" : "Verified access through"}: {" "}
+                    {formatDateTime(weddingDisplayEndsAt) || "—"}
                   </div>
                 ) : null}
 
