@@ -14,9 +14,12 @@ const env = {
   SQUARE_ENV: "sandbox",
   SQUARE_ACCESS_TOKEN: "sandbox-test-token",
   SQUARE_APPLICATION_ID: "sandbox-test-app",
-  WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL: "https://chefsire.example/api/wedding/square/webhook",
-  WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY: "sandbox-test-signature",
+  WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL: "https://chefsire.example/api/wedding/subscription/webhooks/square",
+  WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED: "true",
+  WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY: "sandbox-test-signature-key-long",
   SQUARE_LIVE_PAYMENTS_ENABLED: "false",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "premium-parent",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "elite-parent",
   WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant-test",
   SQUARE_LOCATION_ID: "location-test",
   WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "premium-test",
@@ -66,4 +69,18 @@ test("the audit reports counts without exposing individual owner rows", () => {
   const out = assessWeddingSquareSandboxReadiness(x);
   assert.equal(out.rowCounts.wedding_square_subscriptions, 3);
   assert.equal(out.rowCounts.wedding_square_webhook_events, 0);
+});
+
+test("missing parent plans and invalid webhook configuration block acceptance", () => {
+  const x = input();
+  delete x.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID;
+  x.env.WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED = "false";
+  x.env.WEDDING_SQUARE_WEBHOOK_NOTIFICATION_URL = "https://chefsire.example/wrong";
+  x.env.WEDDING_SQUARE_WEBHOOK_SIGNATURE_KEY = "short";
+  const out = assessWeddingSquareSandboxReadiness(x);
+  assert.equal(out.safeToAttemptSandboxAcceptance, false);
+  assert.match(out.blockers.join(" "), /PREMIUM_PLAN_ID/);
+  assert.match(out.blockers.join(" "), /WEBHOOK_ENABLED/);
+  assert.match(out.blockers.join(" "), /webhook URL/);
+  assert.match(out.blockers.join(" "), /signature key/);
 });
