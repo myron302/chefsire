@@ -175,7 +175,10 @@ export function createWeddingSquareCardSetupCoordinator(
         if (!valid(card.id) || card.customerId !== customer.id ||
             card.merchantId !== config.merchantId || card.enabled !== true)
           throw new WeddingSquareCardSetupReconciliationError();
-        await move(saved.id,consent.userId,"card_submitting","confirmed",
+        // Keep the setup in the owner-blocking card_submitting state until
+        // the separate subscription reservation has committed. Releasing the
+        // partial unique lock here would permit concurrent card POSTs.
+        await move(saved.id,consent.userId,"card_submitting","card_submitting",
           ",square_card_id=$5",[card.id]);
 
         // A valid POST response is not trusted in place of a fresh Square GET.
@@ -196,6 +199,10 @@ export function createWeddingSquareCardSetupCoordinator(
         });
         if (!uuid.test(attempt.attemptId) || attempt.status !== "reserved")
           throw new WeddingSquareCardSetupReconciliationError();
+        // A committed owner-bound enrollment now guards against another
+        // setup; only at this point may the card setup leave the partial
+        // unique unresolved-user index.
+        await move(saved.id,consent.userId,"card_submitting","confirmed");
         return Object.freeze({ attemptId:attempt.attemptId,
           status:"reserved" as const, paidEntitlementGranted:false as const,
           safeToResubmit:false as const });
