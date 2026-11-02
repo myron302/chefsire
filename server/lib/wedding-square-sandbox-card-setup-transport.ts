@@ -16,7 +16,7 @@ const key = z.string().min(1).max(45).regex(/^[A-Za-z0-9_-]+$/);
 const reference = z.string().min(1).max(100).refine(value =>
   value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value));
 const source = z.string().min(6).max(16384).startsWith("cnon:").refine(value =>
-  value === value.trim() && !/[\\s\\x00-\\x1f\\x7f]/.test(value));
+  value === value.trim() && !/[\s\x00-\x1f\x7f]/.test(value));
 const verification = z.string().min(1).max(16384);
 const email = z.string().email().max(254);
 const emptyErrors = z.array(z.unknown()).length(0).optional();
@@ -64,9 +64,26 @@ async function post(sender: Sender, endpoint: "customers"|"cards", body: object)
     if (size !== null && (!/^\d+$/.test(size) || Number(size) > 65536)) {
       throw new WeddingSquareCardSetupTransportError();
     }
-    const text = await response.text();
-    if (text.length > 65536) throw new WeddingSquareCardSetupTransportError();
-    return JSON.parse(text) as unknown;
+    // Enforce a hard byte cap DURING streaming, not after unbounded text().
+    const reader = response.body?.getReader();
+    if (!reader) throw new WeddingSquareCardSetupTransportError();
+    let total = 0;
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > 65536) {
+        await reader.cancel().catch(() => undefined);
+        throw new WeddingSquareCardSetupTransportError();
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let cursor = 0;
+    for (const chunk of chunks) { bytes.set(chunk, cursor); cursor += chunk.byteLength; }
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
   } catch {
     // Even a timeout may have committed the provider operation. NO retry.
     throw new WeddingSquareCardSetupTransportError();
