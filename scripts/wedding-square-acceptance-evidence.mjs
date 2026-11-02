@@ -6,7 +6,7 @@ export function assessWeddingSquareEvidence(rows) {
   const counts = Object.fromEntries(
     ["cardSetups","enrollmentAttempts","subscriptions","invoicePayments",
      "freshPayments","revokedPayments","cancellations","failedWebhooks","pendingWebhooks",
-     "unresolvedCardSetups","unresolvedEnrollments"]
+     "unresolvedCardSetups","unresolvedEnrollments","unresolvedCancellations"]
       .map(key => [key, Number(rows[key])]),
   );
   if (Object.values(counts).some(n => !Number.isSafeInteger(n) || n < 0))
@@ -20,7 +20,7 @@ export function assessWeddingSquareEvidence(rows) {
     blocked.push("No provider-confirmed cancellation recorded");
   if (counts.revokedPayments === 0)
     blocked.push("Refund/dispute revocation has not been demonstrated by this database snapshot");
-  if (counts.unresolvedCardSetups || counts.unresolvedEnrollments || counts.failedWebhooks || counts.pendingWebhooks)
+  if (counts.unresolvedCardSetups || counts.unresolvedEnrollments || counts.failedWebhooks || counts.pendingWebhooks || counts.unresolvedCancellations)
     blocked.push("Unresolved owner or webhook reconciliation exists");
   return Object.freeze({
     environment: "sandbox",
@@ -66,7 +66,8 @@ export async function collectWeddingSquareEvidence(env = process.env, makeClient
             ('reserved','customer_submitting','customer_confirmed','card_submitting','needs_reconciliation')) AS "unresolvedCardSetups",
         (SELECT count(*)::int FROM wedding_square_enrollment_attempts
           WHERE square_environment='sandbox' AND status IN
-            ('reserved','submitting','needs_reconciliation')) AS "unresolvedEnrollments"
+            ('reserved','submitting','needs_reconciliation')) AS "unresolvedEnrollments",
+        (SELECT count(*)::int FROM wedding_square_subscriptions WHERE square_environment='sandbox' AND cancellation_requested_at IS NOT NULL AND provider_cancelled_at IS NULL) AS "unresolvedCancellations"
     `);
     if (result.rows.length !== 1) throw new Error("Missing aggregate evidence");
     return assessWeddingSquareEvidence(result.rows[0]);
