@@ -50,6 +50,30 @@ test("foreign refund customer never revokes evidence",()=>enabled(async()=>{
  }} as any,merchant as any,{} as any,{inspect:async()=>({...await refund.inspect(),customerId:"foreign"})} as any);
  assert.equal((await svc.run()).processed,0);assert.equal(f.checked.length,0);
 }));
+test("dispute notifications revoke only independently resolved owner payment under the queue lease",()=>enabled(async()=>{
+ for(const eventType of ["dispute.created","dispute.state.updated"]){
+  const calls:{sql:string,args:unknown[]}[]=[];
+  const db={query:async(sql:string,args:unknown[]=[])=>{calls.push({sql,args});
+   if(sql.startsWith("WITH selected"))return {rows:[{...event,event_type:eventType,square_object_id:"dispute-1"}]};
+   if(sql.startsWith("SELECT"))return {rows:[evidence]};return {rowCount:1};}};
+  const dispute={inspect:async(id:string)=>{assert.equal(id,"dispute-1");return {disputeId:id,
+   paymentId:"payment-1",customerId:"customer-1",locationId:"loc-1",amountCents:2499,grantsEntitlement:false as const};}};
+  const worker=createWeddingSquarePaymentEvents(db as any,merchant as any,{} as any,refund as any,undefined,dispute);
+  assert.equal((await worker.run()).processed,1);
+  assert.match(calls[2].sql,/WITH locked_queue AS MATERIALIZED/);
+  assert.match(calls[2].sql,/payment_revoked_at=COALESCE/);
+  assert.deepEqual(calls[2].args,[evidence.id,"merchant-1","payment-1",0,"event-1","dispute-1",event.attempted_at]);
+  assert.doesNotMatch(calls[2].sql,/verified_paid_through/);
+  for(const bad of [{disputeId:"foreign"},{customerId:"foreign"},{paymentId:"foreign"},{locationId:"foreign"},
+   {amountCents:4999},{grantsEntitlement:true}]){
+   const before=calls.length;
+   const rejected=createWeddingSquarePaymentEvents(db as any,merchant as any,{} as any,refund as any,undefined,
+    {inspect:async()=>({...await dispute.inspect("dispute-1"),...bad})} as any);
+   assert.equal((await rejected.run()).processed,0);
+   assert.ok(calls.slice(before).every(c=>!c.sql.startsWith("WITH locked_queue")));
+  }
+ }
+}));
 test("default-off, live and production gates do no provider or DB work",()=>enabled(async()=>{
  for(const [key,value] of [["SQUARE_ENV","production"],["SQUARE_LIVE_PAYMENTS_ENABLED","true"],
  ["WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED","false"]]){

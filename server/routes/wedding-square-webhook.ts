@@ -50,6 +50,7 @@ const WEBHOOK_PATH = "/api/wedding/subscription/webhooks/square";
 
 function sandboxWebhookConfig() {
   if (process.env.SQUARE_ENV !== "sandbox" ||
+      process.env.SQUARE_LIVE_PAYMENTS_ENABLED === "true" ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       process.env.WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED !== "true") {
     return null;
@@ -145,7 +146,8 @@ export function createWeddingSquareWebhookRouter(sink: WeddingSquareWebhookSink)
 
     // Dedicated Wedding webhook may receive unrelated subscribed event types.
     // Acknowledge and ignore them, never insert into Wedding's evidence queue.
-    if (!/^(subscription|invoice|payment|refund)\./.test(event.data.type)) {
+    if (!/^(subscription|invoice|payment|refund)\./.test(event.data.type) &&
+        !["dispute.created", "dispute.state.updated"].includes(event.data.type)) {
       return res.status(204).end();
     }
 

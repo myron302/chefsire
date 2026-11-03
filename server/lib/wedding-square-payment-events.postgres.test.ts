@@ -65,7 +65,9 @@ test("PostgreSQL 16: event-bound payment acknowledgement and refund revocation a
    const worker=createWeddingSquarePaymentEvents(db,{inspect:async()=>({verifiedSandboxMerchantContext:true,
      merchantId:"merchant-1",locationId:"loc-1",grantsEntitlement:false,authorizesSubscriptionCreation:false})} as any,
      refresh,{inspect:async()=>({refundId:"refund-1",paymentId:"pay-1",customerId:"cust-1",locationId:"loc-1",
-       amountCents:2499,completedRefund:true,grantsEntitlement:false})} as any);
+       amountCents:2499,completedRefund:true,grantsEntitlement:false})} as any,undefined,
+     {inspect:async()=>({disputeId:"dispute-1",paymentId:"pay-1",customerId:"cust-1",locationId:"loc-1",
+       amountCents:2499,grantsEntitlement:false})});
    await client.query(`INSERT INTO wedding_square_webhook_events
      (event_id,square_environment,square_merchant_id,event_type,square_object_id)
      VALUES('payment-event','sandbox','merchant-1','payment.updated','pay-1')`);
@@ -79,6 +81,16 @@ test("PostgreSQL 16: event-bound payment acknowledgement and refund revocation a
    assert.ok(after.payment_revoked_at instanceof Date);
    assert.equal(after.last_payment_reconciled_at,null);
    assert.equal((await worker.run()).scanned,0,"processed notifications are never replayed");
+   await client.query("UPDATE wedding_square_invoice_evidence SET payment_revoked_at=NULL,last_payment_reconciled_at=now()");
+   await client.query(`INSERT INTO wedding_square_webhook_events
+     (event_id,square_environment,square_merchant_id,event_type,square_object_id)
+     VALUES('dispute-event','sandbox','merchant-1','dispute.state.updated','dispute-1')`);
+   assert.equal((await worker.run()).processed,1);
+   const disputed=(await client.query("SELECT payment_revoked_at,last_payment_reconciled_at FROM wedding_square_invoice_evidence")).rows[0];
+   assert.ok(disputed.payment_revoked_at instanceof Date);
+   assert.equal(disputed.last_payment_reconciled_at,null);
+   assert.equal((await client.query("SELECT processing_status FROM wedding_square_webhook_events WHERE event_id='dispute-event'")).rows[0].processing_status,"processed");
+   assert.equal((await worker.run()).scanned,0,"a duplicate dispute notification cannot revoke twice");
    // A different app node reclaims a lease while this worker is ready to
    // revoke. Hold that queue row uncommitted on connection two. The worker
    // must wait on the queue lock BEFORE changing any invoice evidence.

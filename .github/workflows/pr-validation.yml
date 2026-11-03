@@ -42,7 +42,7 @@ jobs:
       - name: Test Square sandbox webhook signal drain
         run: node --import tsx --test server/lib/wedding-square-webhook-drain.test.ts
       - name: Test event-specific payment and refund reconciliation
-        run: node --import tsx --test server/lib/wedding-square-payment-events.test.ts server/lib/wedding-square-refund-readback.test.ts
+        run: node --import tsx --test server/lib/wedding-square-payment-events.test.ts server/lib/wedding-square-refund-readback.test.ts server/lib/wedding-square-dispute-readback.test.ts
       - name: Test exact subscription and invoice lifecycle notification handling
         run: node --import tsx --test server/lib/wedding-square-lifecycle-events.test.ts
       - name: Test existing subscription payment-method recovery
@@ -188,6 +188,8 @@ jobs:
         run: node --import tsx --test server/lib/schema-table-coverage.test.ts
       - name: Apply both Wedding Square migration files to a rollback-only PostgreSQL transaction and check constraints
         run: node --import tsx --test server/lib/wedding-square-migrations.postgres.test.ts
+      - name: Verify signed webhook persistence, duplicates and retryable failures on PostgreSQL
+        run: node --import tsx --test server/routes/wedding-square-webhook.postgres.test.ts
       - name: Verify atomic Wedding provider confirmation and subscription ledger on PostgreSQL 16
         run: node --import tsx --test server/lib/wedding-square-confirmation-persistence.postgres.test.ts
       - name: Verify paid Wedding entitlements from real invoice evidence on PostgreSQL 16
