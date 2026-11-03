@@ -43,6 +43,7 @@ export async function linkVerifiedProviderIdentity(
   userId: string,
   link: LinkableProvider,
   avatar: string,
+  verifiedEmailAddress: string,
 ) {
   const now = new Date();
   // "Unverified" means not *authoritatively* verified: a legacy timestamp with no provenance counts.
@@ -68,6 +69,9 @@ export async function linkVerifiedProviderIdentity(
     .where(
       and(
         eq(users.id, userId),
+        // Bind the proof to the address at UPDATE time as well as lookup time.
+        // A concurrent email change must never verify a different mailbox.
+        sql`lower(${users.email}) = ${verifiedEmailAddress.toLowerCase().trim()}`,
         // Never silently re-point an account already bound to a different Google identity.
         or(isNull(users.googleId), eq(users.googleId, link.providerId)),
       ),
