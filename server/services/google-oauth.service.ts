@@ -68,6 +68,21 @@ export async function verifyGoogleProfile(
     });
 
     if (existingUser) {
+      // A historical Google binding authenticates this identity, but a legacy
+      // timestamp alone does not prove the stored email for billing. Reclaim
+      // only when Google freshly verifies the exact current account address.
+      if (existingUser.emailVerifiedVia === null &&
+          googleProfileEmailIsVerified(profile) &&
+          existingUser.email.toLowerCase().trim() === email.toLowerCase().trim()) {
+        const updated = await linkVerifiedProviderIdentity(
+          existingUser.id,
+          { idColumn: "googleId", provider: "google", providerId: googleId },
+          avatar,
+          email,
+        );
+        if (!updated) return done(new Error("Google account verification changed; sign in again"), undefined);
+        return done(null, updated);
+      }
       return done(null, existingUser);
     }
 
@@ -87,6 +102,7 @@ export async function verifyGoogleProfile(
         emailUser.id,
         { idColumn: "googleId", provider: "google", providerId: googleId },
         avatar,
+        email,
       );
       if (!updated) {
         return done(new Error("Account is linked to a different Google identity"), undefined);

@@ -261,6 +261,45 @@ if (!PG_URL) {
     assert.equal(again.user.id, created.user.id);
   });
 
+  test("G-legacy: fresh verified Google login reclaims its existing matching email once", async () => {
+    const id = await seedRow({ email: "legacy-google@example.com", password: "old-unproven-pw", verifiedAt: true, google: "legacy-g", facebook: "unproven-fb", provider: "google" });
+    const before = await row("legacy-google@example.com");
+    const proof = await runVerify(verifyGoogleProfile, googleProfile("legacy-g", "legacy-google@example.com", true));
+    assert.ok(!proof.err);
+    assert.equal(proof.user.id, id);
+    const verified = await row("legacy-google@example.com");
+    assert.equal(verified.email_verified_via, "google");
+    assert.equal(verified.google_id, "legacy-g");
+    assert.equal(verified.password, null, "existing reclamation policy must discard unproven credentials");
+    assert.equal(verified.facebook_id, null);
+    assert.equal(verified.auth_version, before.auth_version + 1);
+    const again = await runVerify(verifyGoogleProfile, googleProfile("legacy-g", "legacy-google@example.com", true));
+    assert.ok(!again.err);
+    assert.equal((await row("legacy-google@example.com")).auth_version, verified.auth_version, "repeated login must not repeatedly reclaim the account");
+  });
+
+  test("G-legacy: unverified or mismatched Google mailbox cannot establish billing email proof", async () => {
+    for (const [suffix, email, verified] of [["unverified", "legacy-unverified@example.com", false], ["mismatch", "different@example.com", true]] as const) {
+      const stored = `legacy-${suffix}@example.com`;
+      await seedRow({ email: stored, password: "old-unproven-pw", verifiedAt: true, google: `g-${suffix}`, provider: "google" });
+      const before = await row(stored);
+      const login = await runVerify(verifyGoogleProfile, googleProfile(`g-${suffix}`, email, verified));
+      assert.ok(!login.err, "existing Google identity can still authenticate without claiming email ownership");
+      const after = await row(stored);
+      assert.equal(after.email_verified_via, null);
+      assert.equal(after.password, before.password);
+      assert.equal(after.auth_version, before.auth_version);
+    }
+  });
+
+  test("G-legacy: an email change between lookup and atomic reclamation cannot verify another address", async () => {
+    const id = await seedRow({ email: "current@example.com", password: "old-unproven-pw", verifiedAt: true, google: "race-g", provider: "google" });
+    const { linkVerifiedProviderIdentity } = await import("../services/oauth-account-link");
+    const result = await linkVerifiedProviderIdentity(id, { idColumn: "googleId", provider: "google", providerId: "race-g" }, "", "previous@example.com");
+    assert.equal(result, undefined);
+    assert.equal((await row("current@example.com")).email_verified_via, null);
+  });
+
   // ---------- H: admin email ----------
   test("H: pre-registering an INTERNAL_ADMIN_EMAILS address yields no credential or authority", async () => {
     const ADMIN = "boss@chefsire.test";
