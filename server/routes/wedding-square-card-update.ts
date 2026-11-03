@@ -1,3 +1,4 @@
+import { isWeddingSquareSandboxTester } from "../lib/wedding-square-sandbox-tester";
 import {Router,type RequestHandler,type Request} from "express";
 import {z} from "zod";
 import {requireAuth} from "../middleware";
@@ -18,6 +19,7 @@ export function createWeddingSquareCardUpdateRouter(service:Service,auth:Request
   res.set("Cache-Control","private, no-store");
   if(!weddingSquareCardUpdateEnabled())return res.status(503).json({ok:false,code:"WEDDING_CARD_UPDATE_DISABLED"});
   if(!ownerId(req))return res.status(401).json({ok:false});
+  if(!isWeddingSquareSandboxTester(ownerId(req)))return res.status(403).json({ok:false,code:"WEDDING_SQUARE_TESTER_REQUIRED"});
   try{const origin=process.env.WEDDING_SQUARE_ALLOWED_ORIGIN!;const url=new URL(origin);
    if(url.protocol!=="https:"||url.origin!==origin||url.pathname!=="/"||url.username||url.password||url.search||url.hash)
     throw Error();

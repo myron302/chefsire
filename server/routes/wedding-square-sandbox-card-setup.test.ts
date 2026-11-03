@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { createWeddingSquareCardSetupRouter } from "./wedding-square-sandbox-card-setup";
 
 const keys = [
+  "WEDDING_SQUARE_SANDBOX_TEST_USER_ID","SQUARE_LIVE_PAYMENTS_ENABLED",
   "SQUARE_ENV","SQUARE_APPLICATION_ID","SQUARE_ACCESS_TOKEN","SQUARE_LOCATION_ID",
   "WEDDING_SQUARE_SANDBOX_MERCHANT_ID","WEDDING_SQUARE_ALLOWED_ORIGIN",
   "WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
@@ -30,6 +31,7 @@ const keys = [
 async function configured(work: () => Promise<void>) {
   const old = keys.map(name => process.env[name]);
   Object.assign(process.env, {
+    WEDDING_SQUARE_SANDBOX_TEST_USER_ID:"owner-1",SQUARE_LIVE_PAYMENTS_ENABLED:"false",
     SQUARE_ENV:"sandbox", SQUARE_APPLICATION_ID:"sandbox-app",SQUARE_ACCESS_TOKEN:"sandbox-test-token",
     SQUARE_LOCATION_ID:"location-1",WEDDING_SQUARE_SANDBOX_MERCHANT_ID:"merchant-1",
     WEDDING_SQUARE_ALLOWED_ORIGIN:"https://chefsire.example",
@@ -164,4 +166,15 @@ test("missing Square webhook signature or mismatched plans cannot expose tokeniz
     assert.equal((await post(base)).status,503);
   });
   assert.equal(x.submitted(),0);
+}));
+
+test("sandbox card config and setup refuse non-tester or missing scope before provider writes",()=>configured(async()=>{
+  for(const selected of [undefined,"different-owner"]){
+    if(selected===undefined)delete process.env.WEDDING_SQUARE_SANDBOX_TEST_USER_ID;
+    else process.env.WEDDING_SQUARE_SANDBOX_TEST_USER_ID=selected;
+    const x=fixture();await serve(x.router,async base=>{
+      assert.equal((await fetch(base+"/api/wedding/subscription/sandbox/card-config")).status,403);
+      assert.equal((await post(base)).status,403);
+    });assert.equal(x.submitted(),0);
+  }
 }));

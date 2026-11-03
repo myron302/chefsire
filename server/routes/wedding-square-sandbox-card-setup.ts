@@ -1,3 +1,4 @@
+import { isWeddingSquareSandboxTester } from "../lib/wedding-square-sandbox-tester";
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware";
@@ -91,6 +92,7 @@ export function createWeddingSquareCardSetupRouter(
   router.get("/subscription/sandbox/card-config", auth, (req,res) => {
     res.set("Cache-Control","private, no-store");
     if (!weddingSquareSandboxCardSetupEnabled()) return res.status(503).json({ ok:false, code:"WEDDING_SQUARE_CARD_SETUP_DISABLED" });
+    if (!isWeddingSquareSandboxTester(req.user?.id)) return res.status(403).json({ok:false,code:"WEDDING_SQUARE_TESTER_REQUIRED"});
     if (!id.safeParse(req.user?.id).success)
       return res.status(401).json({ ok:false, code:"AUTH_REQUIRED" });
     return res.json({
@@ -104,6 +106,7 @@ export function createWeddingSquareCardSetupRouter(
   router.post("/subscription/sandbox/card-setup", auth, limit, async (req,res) => {
     res.set("Cache-Control","private, no-store");
     if (!weddingSquareSandboxCardSetupEnabled()) return res.status(503).json({ ok:false, code:"WEDDING_SQUARE_CARD_SETUP_DISABLED" });
+    if (!isWeddingSquareSandboxTester(req.user?.id)) return res.status(403).json({ok:false,code:"WEDDING_SQUARE_TESTER_REQUIRED"});
     if (req.get("origin") !== process.env.WEDDING_SQUARE_ALLOWED_ORIGIN)
       return res.status(403).json({ok:false,code:"WEDDING_SQUARE_ORIGIN_REQUIRED"});
     if (!id.safeParse(req.user?.id).success || !bodySchema.safeParse(req.body).success)

@@ -5,10 +5,10 @@ import type { AddressInfo } from "node:net";
 import { createWeddingSquareSandboxCancellationRouter } from "./wedding-square-sandbox-cancel";
 const origin="https://chefsire.com";
 async function sandbox(fn:()=>Promise<void>){
- const names=["SQUARE_ENV","WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
+ const names=["WEDDING_SQUARE_SANDBOX_TEST_USER_ID","SQUARE_LIVE_PAYMENTS_ENABLED","SQUARE_ENV","WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED",
    "WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED","WEDDING_SQUARE_ALLOWED_ORIGIN"] as const;
  const old=names.map(k=>process.env[k]);
- Object.assign(process.env,{SQUARE_ENV:"sandbox",WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED:"true",
+ Object.assign(process.env,{WEDDING_SQUARE_SANDBOX_TEST_USER_ID:"owner-1",SQUARE_LIVE_PAYMENTS_ENABLED:"false",SQUARE_ENV:"sandbox",WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED:"true",
    WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED:"true",WEDDING_SQUARE_ALLOWED_ORIGIN:origin});
  try{await fn();}finally{names.forEach((k,i)=>{if(old[i]===undefined)delete process.env[k];else process.env[k]=old[i];});}
 }
@@ -82,4 +82,10 @@ test("uncertain provider cancellation returns fail-closed no-retry response",()=
      safeToRetryCancellation:false,
    });
  });assert.deepEqual(x.calls,["auth","cancel"]);
+}));
+
+test("non-tester cancellation is refused before provider cancellation",()=>sandbox(async()=>{
+ process.env.WEDDING_SQUARE_SANDBOX_TEST_USER_ID="another-owner";
+ const x=mock();await serve(x.router,async send=>assert.equal((await send({})).status,403));
+ assert.deepEqual(x.calls,["auth"]);
 }));

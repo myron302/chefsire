@@ -4,7 +4,7 @@ import express from "express";
 import type {AddressInfo} from "node:net";
 import {createWeddingSquareCardUpdateRouter} from "./wedding-square-card-update";
 const origin="https://chefsire.com";
-async function enabled(fn:()=>Promise<void>){const vars={SQUARE_ENV:"sandbox",SQUARE_LIVE_PAYMENTS_ENABLED:"false",
+async function enabled(fn:()=>Promise<void>){const vars={WEDDING_SQUARE_SANDBOX_TEST_USER_ID:"owner",SQUARE_ENV:"sandbox",SQUARE_LIVE_PAYMENTS_ENABLED:"false",
  WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED:"true",WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED:"true",
  WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED:"true",WEDDING_SQUARE_SANDBOX_MERCHANT_ID:"merchant",SQUARE_LOCATION_ID:"loc",
  SQUARE_APPLICATION_ID:"sandbox-app",WEDDING_SQUARE_ALLOWED_ORIGIN:origin};
@@ -36,5 +36,15 @@ test("foreign IDs, cross-origin requests, absent auth and production gate make n
   assert.equal((await send("/reconcile",{userId:"foreign"})).status,400);
   assert.equal((await send("/reconcile",{},"https://foreign.test")).status,403);
   process.env.SQUARE_ENV="production";assert.equal((await send("/config")).status,503);assert.equal(calls.length,0);
+ });
+}));
+
+test("non-tester cannot view card fields, replace a card or invoke recovery",()=>enabled(async()=>{
+ process.env.WEDDING_SQUARE_SANDBOX_TEST_USER_ID="another-owner";
+ await serve(true,async(send,calls)=>{
+   assert.equal((await send("/config")).status,403);
+   assert.equal((await send("",{sourceId:"cnon:one",verificationToken:"verified",acceptedExistingRecurringBilling:true})).status,403);
+   assert.equal((await send("/reconcile",{})).status,403);
+   assert.deepEqual(calls,[]);
  });
 }));
