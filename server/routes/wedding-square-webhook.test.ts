@@ -119,6 +119,31 @@ test("signed unrelated event types are ignored, not enqueued as paid evidence", 
     assert.equal(calls, 0);
   }));
 
+test("signed dispute creation and state changes persist only the dispute ID hint", () => env(async () => {
+  const recorded: unknown[] = [];
+  await appTest({ record: async event => { recorded.push(event); return "recorded"; } }, async send => {
+    for (const type of ["dispute.created", "dispute.state.updated"]) {
+      assert.equal((await send(JSON.stringify({ ...validEvent, type,
+        data: { type: "dispute", id: "dispute-1", object: { dispute: { disputed_payment: { payment_id: "UNTRUSTED" } } } },
+      }))).status, 202);
+    }
+    assert.equal((await send(JSON.stringify({ ...validEvent, type: "dispute.evidence.created" }))).status, 204);
+  });
+  assert.equal(recorded.length, 2);
+  assert.ok(recorded.every(event => (event as any).objectId === "dispute-1" && !("data" in (event as any))));
+}));
+
+test("live billing switch disables webhook intake before any persistence", () => env(async () => {
+  const before = process.env.SQUARE_LIVE_PAYMENTS_ENABLED;
+  process.env.SQUARE_LIVE_PAYMENTS_ENABLED = "true";
+  try { await appTest({ record: async () => { throw Error("must not persist"); } }, async send => {
+    assert.equal((await send(JSON.stringify(validEvent))).status, 503);
+  }); } finally {
+    if (before === undefined) delete process.env.SQUARE_LIVE_PAYMENTS_ENABLED;
+    else process.env.SQUARE_LIVE_PAYMENTS_ENABLED = before;
+  }
+}));
+
 test("durable insert and unique duplicate acknowledgment use only event metadata", () =>
   env(async () => {
     const statements: { sql: string; params: (string | null)[] }[] = [];
