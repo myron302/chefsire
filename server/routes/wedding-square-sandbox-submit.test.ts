@@ -18,6 +18,7 @@ const result = {
 };
 async function enabled(run: () => Promise<void>) {
   const values = {
+    WEDDING_SQUARE_SANDBOX_TEST_USER_ID:"user-1",SQUARE_LIVE_PAYMENTS_ENABLED:"false",
     SQUARE_ENV: "sandbox", WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
     WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED: "true",
     WEDDING_SQUARE_ALLOWED_ORIGIN: origin,
@@ -153,4 +154,13 @@ test("source mismatch, uncertain writes, invalid return never grant paid access 
     });
     if("source" in options) assert.ok(!calls.includes("submit"));
   }
+}));
+
+test("non-tester cannot submit even a valid reserved attempt",()=>enabled(async()=>{
+  const x=mock({authUser:"another-owner"});
+  await serve(x.route,async send=>assert.equal((await send({attemptId})).status,403));
+  assert.deepEqual(x.calls,["auth"]);
+  delete process.env.WEDDING_SQUARE_SANDBOX_TEST_USER_ID;
+  const missing=mock();await serve(missing.route,async send=>assert.equal((await send({attemptId})).status,403));
+  assert.deepEqual(missing.calls,["auth"]);
 }));

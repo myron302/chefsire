@@ -12,7 +12,7 @@ import { isWeddingPaidTier, quoteWeddingMonthlyBilling } from "../lib/wedding-sq
 import { weddingSquareLegacyCancelGuard, WeddingSquareLegacyCancellationBlocked } from "../lib/wedding-square-legacy-cancel-guard";
 import { weddingSquareSandboxCardSetupEnabled } from "./wedding-square-sandbox-card-setup";
 import { weddingSquareBillingStatus } from "../lib/wedding-square-billing-status";
-import { mayBeginWeddingSquareSandboxCheckout } from "../lib/wedding-square-checkout-eligibility";
+import { mayBeginWeddingSquareSandboxCheckoutForTester } from "../lib/wedding-square-checkout-eligibility";
 
 const r = Router();
 
@@ -176,7 +176,7 @@ r.get("/subscription/billing-quote", requireAuth, async (req, res) => {
     const billingState = sandboxConfigured
       ? await weddingSquareBillingStatus.inspect(req.user!.id)
       : null;
-    const checkoutEligible = mayBeginWeddingSquareSandboxCheckout(sandboxConfigured,billingState);
+    const checkoutEligible = mayBeginWeddingSquareSandboxCheckoutForTester(req.user!.id,sandboxConfigured,billingState);
     return res.json({
       ok: true,
       billingAvailable: checkoutEligible,

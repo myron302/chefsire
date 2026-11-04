@@ -1,3 +1,4 @@
+import { isWeddingSquareSandboxTester } from "../lib/wedding-square-sandbox-tester";
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware";
@@ -38,6 +39,7 @@ export function createWeddingSquareSandboxCancellationRouter(
       return res.status(403).json({ok:false,code:"WEDDING_SQUARE_ORIGIN_REQUIRED"});
     if (!noBody.safeParse(req.body ?? {}).success || !req.user?.id)
       return res.status(400).json({ok:false,code:"WEDDING_SQUARE_CANCEL_INVALID"});
+    if (!isWeddingSquareSandboxTester(req.user.id)) return res.status(403).json({ok:false,code:"WEDDING_SQUARE_TESTER_REQUIRED"});
     try {
       const result=await service.cancel(req.user.id);
       if (!result.cancellationScheduled || result.paidEntitlementChanged !== false ||

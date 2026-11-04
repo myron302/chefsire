@@ -1,3 +1,4 @@
+import { isWeddingSquareSandboxTester } from "../lib/wedding-square-sandbox-tester";
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware";
@@ -59,6 +60,8 @@ export function createWeddingSquareSandboxSubmitRouter(
         !req.user.id || /[\s\x00-\x1f\x7f]/.test(req.user.id)) {
       return res.status(400).json({ ok: false, code: "WEDDING_SQUARE_INVALID_REQUEST" });
     }
+
+    if (!isWeddingSquareSandboxTester(req.user.id)) return res.status(403).json({ok:false,code:"WEDDING_SQUARE_TESTER_REQUIRED"});
 
     try {
       // Neither the browser nor a webhook supplies customer/card/merchant IDs.
