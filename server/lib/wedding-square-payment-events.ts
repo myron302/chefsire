@@ -9,12 +9,12 @@ import { weddingSquareDisputeReadback } from "./wedding-square-dispute-readback"
 type Db=Pick<PoolClient,"query">;
 type Merchant=Pick<typeof weddingSquareSandboxMerchantAttestation,"inspect">;
 type Refresh=Pick<typeof weddingSquareEvidenceRefresh,"refresh">;
-type Refund=Pick<typeof weddingSquareRefundReadback,"inspect">;
+type Refund=Pick<typeof weddingSquareRefundReadback,"inspect"|"inspectPayment">;
 type Lifecycle=Pick<typeof weddingSquareLifecycleEvents,"handle">;
 type Dispute=Pick<typeof weddingSquareDisputeReadback,"inspect">;
 type Event={event_id:string;event_type:string;square_object_id:string;attempted_at:string};
 type Evidence={id:string;user_id:string;square_customer_id:string;square_payment_id:string;
-  agreed_monthly_amount_cents:number;reconciliation_revision:number};
+  agreed_monthly_amount_cents:number;reconciliation_revision:number;payment_revoked:boolean};
 const valid=(v:unknown):v is string=>typeof v==="string"&&v.length>0&&v.length<=200&&!/[\s\x00-\x1f\x7f]/.test(v);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export class WeddingSquarePaymentEventsError extends Error{
@@ -77,11 +77,12 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
           const disputeProof=event.event_type.startsWith("dispute.")?await dispute.inspect(event.square_object_id):null;
           if(disputeProof&&(disputeProof.disputeId!==event.square_object_id||
              disputeProof.grantsEntitlement!==false||disputeProof.locationId!==location))continue;
-          const adverseProof=refundProof??disputeProof;
+          let adverseProof=refundProof??disputeProof;
           const paymentId=adverseProof?.paymentId??event.square_object_id;
           if(!valid(paymentId))continue;
           const selected=await db.query<Evidence>(`SELECT e.id::text AS id,s.user_id,s.square_customer_id,
-              e.square_payment_id,s.agreed_monthly_amount_cents,e.reconciliation_revision
+              e.square_payment_id,s.agreed_monthly_amount_cents,e.reconciliation_revision,
+              (e.payment_revoked_at IS NOT NULL) AS payment_revoked
             FROM wedding_square_invoice_evidence e JOIN wedding_square_subscriptions s
               ON s.id=e.wedding_subscription_id AND s.square_subscription_id=e.square_subscription_id
              AND s.square_environment=e.square_environment AND s.square_merchant_id=e.square_merchant_id
@@ -92,7 +93,18 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
           const row=selected.rows[0];
           if(!uuid.test(row.id)||!valid(row.user_id)||!valid(row.square_customer_id)||row.square_payment_id!==paymentId||
              ![2499,4999].includes(row.agreed_monthly_amount_cents)||
-             !Number.isSafeInteger(row.reconciliation_revision)||row.reconciliation_revision<0)continue;
+             !Number.isSafeInteger(row.reconciliation_revision)||row.reconciliation_revision<0||
+             typeof row.payment_revoked!=="boolean")continue;
+          if(!adverseProof&&row.payment_revoked){
+            // Payment.updated can arrive after the refund notification. The
+            // evidence must stay revoked; a fresh completed refund readback
+            // permits acknowledgement under the same lease/revision CAS.
+            const proof=await refund.inspectPayment(paymentId);
+            if(!valid(proof.refundId)||proof.paymentId!==paymentId||
+               proof.completedRefund!==true||proof.grantsEntitlement!==false||
+               proof.locationId!==location)continue;
+            adverseProof=proof;
+          }
           if(adverseProof&&(adverseProof.customerId!==row.square_customer_id||
              adverseProof.amountCents!==row.agreed_monthly_amount_cents))continue;
           if(!adverseProof){

@@ -34,7 +34,7 @@ export function createWeddingSquareRefundReadback(sender:Sender=fetch){
     if(raw.length>65536)throw new WeddingSquareRefundReadbackError();
     return JSON.parse(raw);
   }
-  return {async inspect(refundId:string){
+  async function inspect(refundId:string){
     try{
       if(!id.safeParse(refundId).success)throw new WeddingSquareRefundReadbackError();
       const refund=refundEnvelope.parse(await get("refunds/"+encodeURIComponent(refundId))).refund;
@@ -53,6 +53,34 @@ export function createWeddingSquareRefundReadback(sender:Sender=fetch){
         locationId:payment.location_id,amountCents:payment.amount_money.amount,
         completedRefund:true as const,grantsEntitlement:false as const});
     }catch{throw new WeddingSquareRefundReadbackError();}
-  }};
+  }
+  return {
+    inspect,
+    /** Resolve a late payment hint without treating a refunded payment as clean. */
+    async inspectPayment(paymentId:string){
+      try{
+        if(!id.safeParse(paymentId).success)throw new WeddingSquareRefundReadbackError();
+        const payment=paymentEnvelope.parse(await get("payments/"+encodeURIComponent(paymentId))).payment;
+        if(payment.id!==paymentId||payment.location_id!==process.env.SQUARE_LOCATION_ID||
+           payment.refunded_money.amount<=0||payment.refunded_money.amount>payment.total_money.amount||
+           payment.total_money.amount!==payment.amount_money.amount||
+           new Set(payment.refund_ids).size!==payment.refund_ids.length)
+          throw new WeddingSquareRefundReadbackError();
+        // ANY independently completed refund invalidates full-price coverage.
+        // At most 21 GETs (one payment plus ten refund/payment pairs), within
+        // the queue lease. Missing/pending/unavailable candidates never prove
+        // clean payment or restore entitlement.
+        for(const refundId of payment.refund_ids.slice(0,10)){
+          try{
+            const proof=await inspect(refundId);
+            if(proof.paymentId===paymentId&&proof.customerId===payment.customer_id&&
+               proof.locationId===payment.location_id&&proof.amountCents===payment.amount_money.amount)
+              return proof;
+          }catch{/* Another completed refund can still independently prove revocation. */}
+        }
+        throw new WeddingSquareRefundReadbackError();
+      }catch{throw new WeddingSquareRefundReadbackError();}
+    },
+  };
 }
 export const weddingSquareRefundReadback=createWeddingSquareRefundReadback();

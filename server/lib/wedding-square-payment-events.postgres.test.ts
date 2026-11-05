@@ -65,7 +65,10 @@ test("PostgreSQL 16: event-bound payment acknowledgement and refund revocation a
    const worker=createWeddingSquarePaymentEvents(db,{inspect:async()=>({verifiedSandboxMerchantContext:true,
      merchantId:"merchant-1",locationId:"loc-1",grantsEntitlement:false,authorizesSubscriptionCreation:false})} as any,
      refresh,{inspect:async()=>({refundId:"refund-1",paymentId:"pay-1",customerId:"cust-1",locationId:"loc-1",
-       amountCents:2499,completedRefund:true,grantsEntitlement:false})} as any,undefined,
+       amountCents:2499,completedRefund:true,grantsEntitlement:false}),
+       inspectPayment:async(paymentId:string)=>{assert.equal(paymentId,"pay-1");return {
+        refundId:"refund-1",paymentId:"pay-1",customerId:"cust-1",locationId:"loc-1",
+        amountCents:2499,completedRefund:true,grantsEntitlement:false};}} as any,undefined,
      {inspect:async()=>({disputeId:"dispute-1",paymentId:"pay-1",customerId:"cust-1",locationId:"loc-1",
        amountCents:2499,grantsEntitlement:false})});
    await client.query(`INSERT INTO wedding_square_webhook_events
@@ -81,6 +84,17 @@ test("PostgreSQL 16: event-bound payment acknowledgement and refund revocation a
    assert.ok(after.payment_revoked_at instanceof Date);
    assert.equal(after.last_payment_reconciled_at,null);
    assert.equal((await worker.run()).scanned,0,"processed notifications are never replayed");
+   const paidThroughBefore=(await client.query("SELECT verified_paid_through FROM wedding_square_subscriptions")).rows[0].verified_paid_through;
+   await client.query(`INSERT INTO wedding_square_webhook_events
+     (event_id,square_environment,square_merchant_id,event_type,square_object_id)
+     VALUES('late-payment-event','sandbox','merchant-1','payment.updated','pay-1')`);
+   assert.equal((await worker.run()).processed,1,"a post-refund payment update must not remain permanently pending");
+   const afterLate=(await client.query("SELECT payment_revoked_at,last_payment_reconciled_at FROM wedding_square_invoice_evidence")).rows[0];
+   assert.equal(afterLate.payment_revoked_at.getTime(),after.payment_revoked_at.getTime(),"preserve original revocation time");
+   assert.equal(afterLate.last_payment_reconciled_at,null,"never turn refunded evidence into clean coverage");
+   assert.equal((await client.query("SELECT count(*)::int AS n FROM wedding_square_invoice_evidence")).rows[0].n,1);
+   assert.equal((await client.query("SELECT verified_paid_through FROM wedding_square_subscriptions")).rows[0].verified_paid_through.getTime(),paidThroughBefore.getTime());
+   assert.equal((await worker.run()).scanned,0,"the late event is idempotently acknowledged");
    await client.query("UPDATE wedding_square_invoice_evidence SET payment_revoked_at=NULL,last_payment_reconciled_at=now()");
    await client.query(`INSERT INTO wedding_square_webhook_events
      (event_id,square_environment,square_merchant_id,event_type,square_object_id)
