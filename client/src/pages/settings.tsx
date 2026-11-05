@@ -956,8 +956,17 @@ function SubscriptionSettingsPanel() {
     return "Upgrade";
   };
 
+  // Current cardless access is not an existing recurring subscription. Let
+  // that owner review the same paid tier without changing the trial clock.
+  // The quote and checkout still enforce server-side tester/consent gates.
+  const canReviewCurrentWeddingTrial = (tierKey: string) =>
+    (tierKey === "premium" || tierKey === "elite") &&
+    tierKey === weddingCurrentTier &&
+    myWeddingSubscriptionQuery.data?.trial?.status === "active" &&
+    weddingBillingStatusQuery.data?.enrollmentStatus === "not_enrolled";
+
   const onSelectWeddingTier = (tierKey: "free" | "premium" | "elite") => {
-    if (tierKey === weddingCurrentTier) return;
+    if (tierKey === weddingCurrentTier && !canReviewCurrentWeddingTrial(tierKey)) return;
     if (tierKey === "free") {
       if (!canUseLegacyWeddingTrialCancel) {
         toast({
@@ -976,6 +985,7 @@ function SubscriptionSettingsPanel() {
   };
 
   const renderWeddingActionLabel = (tierKey: "free" | "premium" | "elite") => {
+    if (canReviewCurrentWeddingTrial(tierKey)) return "Review recurring billing";
     if (tierKey === weddingCurrentTier) return "Current Plan";
     if (tierKey === "free") return weddingCurrentTier === "free" ? "Current Plan" : "Cancel / Free";
     const order = ["free", "premium", "elite"];
@@ -2145,7 +2155,7 @@ function SubscriptionSettingsPanel() {
                           <Button
                             className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
                             variant={isCurrent ? "outline" : "default"}
-                            disabled={isWeddingBusy || isCurrent ||
+                            disabled={isWeddingBusy || (isCurrent && !canReviewCurrentWeddingTrial(tierKey)) ||
                               (tierKey === "free" && !canUseLegacyWeddingTrialCancel)}
                             onClick={() => onSelectWeddingTier(tierKey as any)}
                           >

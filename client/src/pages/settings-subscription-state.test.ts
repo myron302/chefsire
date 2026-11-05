@@ -9,7 +9,14 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-test("Settings re-render preserves Wedding tab, checkout, and hosted card instance", async () => {
+for (const scenario of [
+  { name: "new Premium checkout", currentTier: "free", targetTier: "premium", trial: false, enrollment: "not_enrolled", action: "Upgrade", blocked: false },
+  { name: "same-tier Premium cardless trial", currentTier: "premium", targetTier: "premium", trial: true, enrollment: "not_enrolled", action: "Review recurring billing", blocked: false },
+  { name: "same-tier Elite cardless trial", currentTier: "elite", targetTier: "elite", trial: true, enrollment: "not_enrolled", action: "Review recurring billing", blocked: false },
+  { name: "existing Elite enrollment", currentTier: "elite", targetTier: "elite", trial: true, enrollment: "active", action: "Review recurring billing", blocked: true },
+  { name: "unavailable Elite billing status", currentTier: "elite", targetTier: "elite", trial: true, enrollment: "unavailable", action: "Review recurring billing", blocked: true },
+  { name: "non-trial current Elite", currentTier: "elite", targetTier: "elite", trial: false, enrollment: "not_enrolled", action: "Review recurring billing", blocked: true },
+]) test(`Settings ${scenario.name}: quote eligibility and checkout state`, async () => {
   const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
   const cache = join(repo, "node_modules/.cache");
   mkdirSync(cache, { recursive: true });
@@ -56,17 +63,19 @@ test("Settings re-render preserves Wedding tab, checkout, and hosted card instan
     assert.equal(init?.method || "GET", "GET", "this regression must never write payment data");
     requests.push(url);
     const data = url.includes("billing-quote") ? {
-      ok: true, billingAvailable: true, tier: "premium", amountCents: 2499,
+      ok: true, billingAvailable: true, tier: scenario.targetTier, amountCents: scenario.targetTier === "elite" ? 4999 : 2499,
       currency: "USD", cadence: "MONTHLY", consentVersion: "test", automaticRenewal: true,
-      trialExpiresAt: null, firstChargeStartDate: null, requiresExplicitConsent: true,
+      trialExpiresAt: scenario.trial ? "2026-11-10T14:13:16Z" : null,
+      firstChargeStartDate: scenario.trial ? "2026-11-11" : null, requiresExplicitConsent: true,
     } : url.endsWith("card-config") ? {
       ok: true, squareEnvironment: "sandbox", billingLive: false, cardSetupAvailable: true,
       applicationId: "sandbox-test", locationId: "sandbox-location",
     } : url.includes("billing-status") ? {
-      ok: true, billingMode: "sandbox", billingLive: false, enrollmentStatus: "not_enrolled",
+      ok: true, billingMode: "sandbox", billingLive: false, enrollmentStatus: scenario.enrollment,
     } : url.endsWith("tiers") ? {
-      ok: true, tiers: { free: { name: "Free", price: 0 }, premium: { name: "Premium", price: 24.99 } },
-    } : { ok: true, currentTier: "free", status: "inactive", history: [], requests: [] };
+      ok: true, tiers: { free: { name: "Free", price: 0 }, premium: { name: "Premium", price: 24.99 }, elite: { name: "Elite", price: 49.99 } },
+    } : { ok: true, currentTier: scenario.currentTier, status: scenario.trial ? "active" : "inactive",
+      trial: { status: scenario.trial ? "active" : "inactive", expiresAt: scenario.trial ? "2026-11-10T14:13:16Z" : null }, history: [], requests: [] };
     return new Response(JSON.stringify(data));
   };
   const saved = new Map(Object.keys(replacements).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -96,12 +105,24 @@ test("Settings re-render preserves Wedding tab, checkout, and hosted card instan
     const selectTab = async (label: string) => { await act(async () => tab(label).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, button: 0 }))); await settle(); };
     await selectTab("Subscription");
     await selectTab("Wedding Planner");
-    const upgrade = [...dom.window.document.querySelectorAll<HTMLButtonElement>('button')].find(el => el.textContent?.trim() === "Upgrade")!;
-    assert.ok(upgrade, "Premium upgrade should be offered");
+    const upgrade = [...dom.window.document.querySelectorAll<HTMLButtonElement>('button')].find(el => el.textContent?.trim() === scenario.action);
+    if (scenario.blocked) {
+      assert.equal(upgrade, undefined, "an existing or uncertain enrollment must not offer same-tier checkout");
+      const current = [...dom.window.document.querySelectorAll<HTMLButtonElement>('button')].find(el => el.textContent?.trim() === "Current Plan");
+      assert.ok(current?.disabled);
+      assert.equal(cardCreates, 0); assert.equal(tokenizations, 0);
+      assert.equal(requests.some(url => url.includes("billing-quote")), false);
+      return;
+    }
+    assert.ok(upgrade && !upgrade.disabled, "the un-enrolled tester must be able to review recurring terms");
     await act(async () => upgrade.click());
     await settle(); await settle();
     const dialog = dom.window.document.querySelector('[role="dialog"]');
     assert.ok(dialog, "verified billing quote should open");
+    if (scenario.trial) {
+      assert.match(dialog.textContent || "", /2026-11-11/);
+      assert.ok((dialog.textContent || "").includes(scenario.targetTier === "elite" ? "49.99" : "24.99"));
+    }
     const card = dom.window.document.querySelector<HTMLInputElement>('[aria-label="SDK fixture field"]');
     assert.ok(card, "actual checkout component should attach the SDK fixture");
     card.value = "in-progress test entry";
