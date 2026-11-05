@@ -135,60 +135,12 @@ function AccountPrivacySection({
   );
 }
 
-export default function SettingsPage() {
+// Keep component identity stable across Settings/session updates so checkout
+// and Square-hosted card fields remain mounted until the user closes them.
+function SubscriptionSettingsPanel() {
   const { user, updateUser } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  const [profile, setProfile] = useState({
-    username: user?.username || "",
-    displayName: user?.displayName || "",
-    bio: user?.bio || "",
-    avatar: user?.avatar || "",
-    isPrivate: user?.isPrivate || false,
-  });
-
-  const [isSaving, setIsSaving] = useState(false);
-  const avatarSelectToken = useRef(0);
-  const [avatarPreview, setAvatarPreview] = useState(user?.avatar || "");
-  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
-
-  const [accountType, setAccountType] = useState<"personal" | "business">(user?.isChef ? "business" : "personal");
-
-  const [businessInfo, setBusinessInfo] = useState({
-    businessName: "",
-    businessCategory: "",
-  });
-
-  const [password, setPassword] = useState({
-    current: "",
-    new: "",
-    confirm: "",
-  });
-
-  const [showPasswords, setShowPasswords] = useState({
-    current: false,
-    new: false,
-    confirm: false,
-  });
-
-  const [privacy, setPrivacy] = useState({
-    profilePublic: true,
-    showEmail: false,
-    allowMessages: true,
-  });
-
-  const [notifications, setNotifications] = useState({
-    emailLikes: true,
-    emailComments: true,
-    emailFollows: true,
-    emailMessages: true,
-    emailNewsletter: false,
-    pushEnabled: true,
-  });
-
-  const [interests, setInterests] = useState<string[]>([]);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const subscriptionTierOrder = ["free", "starter", "professional", "enterprise", "premium_plus"] as const;
 
@@ -381,149 +333,7 @@ export default function SettingsPage() {
     },
   });
 
-  const getPasswordStrength = (value: string): { strength: number; label: string; color: string } => {
-    let strength = 0;
-    if (value.length >= 8) strength++;
-    if (value.length >= 12) strength++;
-    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) strength++;
-    if (/\d/.test(value)) strength++;
-    if (/[^a-zA-Z0-9]/.test(value)) strength++;
 
-    if (strength <= 1) return { strength: 20, label: "Weak", color: "bg-red-500" };
-    if (strength <= 3) return { strength: 50, label: "Fair", color: "bg-yellow-500" };
-    if (strength <= 4) return { strength: 75, label: "Good", color: "bg-blue-500" };
-    return { strength: 100, label: "Strong", color: "bg-green-500" };
-  };
-
-  function FollowRequestsPanel() {
-    const { data, isLoading, error } = useQuery({
-      queryKey: ["/api/follows/requests/incoming"],
-      enabled: !!user,
-      queryFn: async () => {
-        const res = await fetch("/api/follows/requests/incoming?limit=50", {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Failed to load follow requests");
-        return res.json() as Promise<{
-          requests: { id: string; createdAt: string; requester: any }[];
-        }>;
-      },
-      retry: false,
-    });
-
-    const accept = useMutation({
-      mutationFn: async (requestId: string) => {
-        const res = await fetch(`/api/follows/requests/${requestId}/accept`, {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Failed to accept request");
-        return res.json();
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
-        toast({ title: "Accepted", description: "They can now follow you." });
-      },
-      onError: () =>
-        toast({
-          title: "Error",
-          description: "Could not accept request",
-          variant: "destructive",
-        }),
-    });
-
-    const decline = useMutation({
-      mutationFn: async (requestId: string) => {
-        const res = await fetch(`/api/follows/requests/${requestId}/decline`, {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Failed to decline request");
-        return res.json();
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
-        toast({ title: "Declined", description: "Request declined." });
-      },
-      onError: () =>
-        toast({
-          title: "Error",
-          description: "Could not decline request",
-          variant: "destructive",
-        }),
-    });
-
-    const requests = data?.requests || [];
-
-    return (
-      <div>
-        <h4 className="font-semibold mb-2">Follow Requests</h4>
-        <div className="border rounded-lg p-4 bg-white">
-          {isLoading ? (
-            <div className="text-sm text-gray-600">Loading…</div>
-          ) : error ? (
-            <div className="text-sm text-red-600">Could not load requests.</div>
-          ) : requests.length === 0 ? (
-            <div className="text-sm text-gray-600">No pending requests.</div>
-          ) : (
-            <div className="space-y-3">
-              {requests.map((r) => (
-                <div key={r.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={r.requester?.avatar || "/images/placeholder-avatar.svg"}
-                      alt=""
-                      className="w-9 h-9 rounded-full object-cover border"
-                    />
-                    <div>
-                      <div className="font-medium">
-                        {r.requester?.displayName || r.requester?.username || "User"}
-                      </div>
-                      <div className="text-sm text-gray-600">@{r.requester?.username}</div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => accept.mutate(r.id)} disabled={accept.isPending}>
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => decline.mutate(r.id)}
-                      disabled={decline.isPending}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  function SharedSocialControls({
-    includeRecipeImports = false,
-  }: {
-    includeRecipeImports?: boolean;
-  }) {
-    return (
-      <>
-        <AccountPrivacySection
-          isPrivate={profile.isPrivate}
-          onToggle={() => setProfile((prev) => ({ ...prev, isPrivate: !prev.isPrivate }))}
-          onSave={handleSaveProfile}
-          isSaving={isSaving}
-        />
-        <FollowRequestsPanel />
-        {includeRecipeImports ? <RecipeImportsSection /> : null}
-      </>
-    );
-  }
-
-function SubscriptionSettingsPanel() {
   // ---------- Marketplace (Seller) ----------
   const marketplaceTiersMap = (subscriptionTiersQuery.data?.tiers || {}) as Record<
     string,
@@ -2728,6 +2538,205 @@ function SubscriptionSettingsPanel() {
   );
 }
 
+export default function SettingsPage() {
+  const { user, updateUser } = useUser();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const [profile, setProfile] = useState({
+    username: user?.username || "",
+    displayName: user?.displayName || "",
+    bio: user?.bio || "",
+    avatar: user?.avatar || "",
+    isPrivate: user?.isPrivate || false,
+  });
+
+  const [isSaving, setIsSaving] = useState(false);
+  const avatarSelectToken = useRef(0);
+  const [avatarPreview, setAvatarPreview] = useState(user?.avatar || "");
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
+
+  const [accountType, setAccountType] = useState<"personal" | "business">(user?.isChef ? "business" : "personal");
+
+  const [businessInfo, setBusinessInfo] = useState({
+    businessName: "",
+    businessCategory: "",
+  });
+
+  const [password, setPassword] = useState({
+    current: "",
+    new: "",
+    confirm: "",
+  });
+
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  });
+
+  const [privacy, setPrivacy] = useState({
+    profilePublic: true,
+    showEmail: false,
+    allowMessages: true,
+  });
+
+  const [notifications, setNotifications] = useState({
+    emailLikes: true,
+    emailComments: true,
+    emailFollows: true,
+    emailMessages: true,
+    emailNewsletter: false,
+    pushEnabled: true,
+  });
+
+  const [interests, setInterests] = useState<string[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const getPasswordStrength = (value: string): { strength: number; label: string; color: string } => {
+    let strength = 0;
+    if (value.length >= 8) strength++;
+    if (value.length >= 12) strength++;
+    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) strength++;
+    if (/\d/.test(value)) strength++;
+    if (/[^a-zA-Z0-9]/.test(value)) strength++;
+
+    if (strength <= 1) return { strength: 20, label: "Weak", color: "bg-red-500" };
+    if (strength <= 3) return { strength: 50, label: "Fair", color: "bg-yellow-500" };
+    if (strength <= 4) return { strength: 75, label: "Good", color: "bg-blue-500" };
+    return { strength: 100, label: "Strong", color: "bg-green-500" };
+  };
+
+  function FollowRequestsPanel() {
+    const { data, isLoading, error } = useQuery({
+      queryKey: ["/api/follows/requests/incoming"],
+      enabled: !!user,
+      queryFn: async () => {
+        const res = await fetch("/api/follows/requests/incoming?limit=50", {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to load follow requests");
+        return res.json() as Promise<{
+          requests: { id: string; createdAt: string; requester: any }[];
+        }>;
+      },
+      retry: false,
+    });
+
+    const accept = useMutation({
+      mutationFn: async (requestId: string) => {
+        const res = await fetch(`/api/follows/requests/${requestId}/accept`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to accept request");
+        return res.json();
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
+        toast({ title: "Accepted", description: "They can now follow you." });
+      },
+      onError: () =>
+        toast({
+          title: "Error",
+          description: "Could not accept request",
+          variant: "destructive",
+        }),
+    });
+
+    const decline = useMutation({
+      mutationFn: async (requestId: string) => {
+        const res = await fetch(`/api/follows/requests/${requestId}/decline`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to decline request");
+        return res.json();
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
+        toast({ title: "Declined", description: "Request declined." });
+      },
+      onError: () =>
+        toast({
+          title: "Error",
+          description: "Could not decline request",
+          variant: "destructive",
+        }),
+    });
+
+    const requests = data?.requests || [];
+
+    return (
+      <div>
+        <h4 className="font-semibold mb-2">Follow Requests</h4>
+        <div className="border rounded-lg p-4 bg-white">
+          {isLoading ? (
+            <div className="text-sm text-gray-600">Loading…</div>
+          ) : error ? (
+            <div className="text-sm text-red-600">Could not load requests.</div>
+          ) : requests.length === 0 ? (
+            <div className="text-sm text-gray-600">No pending requests.</div>
+          ) : (
+            <div className="space-y-3">
+              {requests.map((r) => (
+                <div key={r.id} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={r.requester?.avatar || "/images/placeholder-avatar.svg"}
+                      alt=""
+                      className="w-9 h-9 rounded-full object-cover border"
+                    />
+                    <div>
+                      <div className="font-medium">
+                        {r.requester?.displayName || r.requester?.username || "User"}
+                      </div>
+                      <div className="text-sm text-gray-600">@{r.requester?.username}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => accept.mutate(r.id)} disabled={accept.isPending}>
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => decline.mutate(r.id)}
+                      disabled={decline.isPending}
+                    >
+                      Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function SharedSocialControls({
+    includeRecipeImports = false,
+  }: {
+    includeRecipeImports?: boolean;
+  }) {
+    return (
+      <>
+        <AccountPrivacySection
+          isPrivate={profile.isPrivate}
+          onToggle={() => setProfile((prev) => ({ ...prev, isPrivate: !prev.isPrivate }))}
+          onSave={handleSaveProfile}
+          isSaving={isSaving}
+        />
+        <FollowRequestsPanel />
+        {includeRecipeImports ? <RecipeImportsSection /> : null}
+      </>
+    );
+  }
+
+
+
 
   const passwordStrength = getPasswordStrength(password.new);
 
@@ -3136,7 +3145,7 @@ function SubscriptionSettingsPanel() {
 
           {/* Subscription Tab */}
           <TabsContent value="subscription">
-            <SubscriptionSettingsPanel />
+            <SubscriptionSettingsPanel key={user?.id || "signed-out"} />
           </TabsContent>
 
           {/* Password Tab */}
