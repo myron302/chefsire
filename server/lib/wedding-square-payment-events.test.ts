@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {createWeddingSquarePaymentEvents} from "./wedding-square-payment-events";
 const event={event_id:"event-1",event_type:"payment.updated",square_object_id:"payment-1",attempted_at:"2026-11-02 18:00:00+00"};
 const evidence={id:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",user_id:"owner",square_customer_id:"customer-1",
- square_payment_id:"payment-1",agreed_monthly_amount_cents:2499,reconciliation_revision:0};
+ square_payment_id:"payment-1",agreed_monthly_amount_cents:2499,reconciliation_revision:0,payment_revoked:false};
 const merchant={inspect:async()=>({verifiedSandboxMerchantContext:true,merchantId:"merchant-1",locationId:"loc-1",
  grantsEntitlement:false,authorizesSubscriptionCreation:false})};
 const refund={inspect:async()=>({refundId:"refund-1",paymentId:"payment-1",customerId:"customer-1",locationId:"loc-1",
@@ -39,7 +39,8 @@ test("completed refund revokes only independently matched payment and acknowledg
  assert.doesNotMatch(f.calls[2].sql,/verified_paid_through/);
 }));
 test("unmatched/ambiguous owners and failed payment verification remain pending",()=>enabled(async()=>{
- for(const rows of [[],[evidence,evidence],[{...evidence,square_payment_id:"foreign"}]] ){
+ for(const rows of [[],[evidence,evidence],[{...evidence,square_payment_id:"foreign"}],
+  [{...evidence,payment_revoked:"true"}]] ){
   const f=fixture([event],rows);assert.equal((await f.svc.run()).processed,0);assert.equal(f.calls.length,2);}
  const f=fixture([event],[evidence],"reconciliation_required");assert.equal((await f.svc.run()).processed,0);assert.equal(f.calls.length,2);
 }));
@@ -49,6 +50,37 @@ test("foreign refund customer never revokes evidence",()=>enabled(async()=>{
   if(sql.startsWith("SELECT"))return {rows:[evidence]};throw Error("Must not mutate");
  }} as any,merchant as any,{} as any,{inspect:async()=>({...await refund.inspect(),customerId:"foreign"})} as any);
  assert.equal((await svc.run()).processed,0);assert.equal(f.checked.length,0);
+}));
+test("post-refund payment updates acknowledge only a fresh matching completed refund",()=>enabled(async()=>{
+ const calls:{sql:string,args:unknown[]}[]=[];let refreshes=0,refundReads=0;
+ const db={query:async(sql:string,args:unknown[]=[])=>{calls.push({sql,args});
+  if(sql.startsWith("WITH selected"))return {rows:[event]};
+  if(sql.startsWith("SELECT"))return {rows:[{...evidence,payment_revoked:true}]};
+  return {rowCount:1};}};
+ const worker=createWeddingSquarePaymentEvents(db as any,merchant as any,
+  {refresh:async()=>{refreshes++;return {status:"operator_review",grantsEntitlement:false};}} as any,
+  {...refund,inspectPayment:async(id:string)=>{refundReads++;assert.equal(id,"payment-1");return refund.inspect();}} as any);
+ assert.deepEqual(await worker.run(),{status:"completed",scanned:1,processed:1,pending:0});
+ assert.equal(refundReads,1);assert.equal(refreshes,0,"revoked evidence must never be refreshed into clean coverage");
+ assert.match(calls[2].sql,/WITH locked_queue AS MATERIALIZED/);
+ assert.match(calls[2].sql,/payment_revoked_at=COALESCE/);
+ assert.match(calls[2].sql,/reconciliation_revision=\$4/);
+ assert.doesNotMatch(calls[2].sql,/verified_paid_through/);
+ assert.deepEqual(calls[2].args,[evidence.id,"merchant-1","payment-1",0,"event-1","payment-1",event.attempted_at]);
+}));
+test("revoked payment updates stay pending on missing, foreign or unverified refund proof",()=>enabled(async()=>{
+ for(const bad of [{refundId:" padded"},{paymentId:"foreign"},{customerId:"foreign"},
+  {locationId:"foreign"},{amountCents:4999},{completedRefund:false},{grantsEntitlement:true},null]){
+  let writes=0,refreshes=0;
+  const db={query:async(sql:string)=>{
+   if(sql.startsWith("WITH selected"))return {rows:[event]};
+   if(sql.startsWith("SELECT"))return {rows:[{...evidence,payment_revoked:true}]};
+   writes++;return {rowCount:1};}};
+  const worker=createWeddingSquarePaymentEvents(db as any,merchant as any,
+   {refresh:async()=>{refreshes++;throw Error("Cannot restore refunded evidence");}} as any,
+   {...refund,inspectPayment:async()=>{if(bad===null)throw Error("Provider unavailable");return {...await refund.inspect(),...bad};}} as any);
+  assert.equal((await worker.run()).processed,0);assert.equal(writes,0);assert.equal(refreshes,0);
+ }
 }));
 test("dispute notifications revoke only independently resolved owner payment under the queue lease",()=>enabled(async()=>{
  for(const eventType of ["dispute.created","dispute.state.updated"]){
