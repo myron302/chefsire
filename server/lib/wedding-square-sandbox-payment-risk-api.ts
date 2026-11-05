@@ -25,10 +25,12 @@ const paymentEnvelope = z.object({
 }).passthrough();
 const disputesEnvelope = z.object({
   errors: z.array(z.unknown()).length(0).optional(),
+  // Square's ListDisputesResponse omits this optional field for an empty
+  // result (the sandbox returns {}). Default absence only; null still fails.
   disputes: z.array(z.object({
     id, location_id: id,
     disputed_payment: z.object({ payment_id: id }).passthrough(),
-  }).passthrough()).max(100),
+  }).passthrough()).max(100).default([]),
   cursor: id.optional(),
 }).passthrough();
 

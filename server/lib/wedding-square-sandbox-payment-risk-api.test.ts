@@ -84,6 +84,46 @@ test("ANY matching dispute on any page or state rejects payment",()=>sandbox(asy
       WeddingSquarePaymentRiskUnavailableError);
   }
 }));
+test("Square omits disputes on an empty final page, including an empty account",()=>sandbox(async()=>{
+  for(const pages of [[{}],[{disputes:[otherDispute],cursor:"page-2"},{}]]){
+    let page=0;
+    const api=createWeddingSquareSandboxPaymentRiskApi(async(url)=>{
+      if(url.includes("/payments/"))return response(payment);
+      const u=new URL(url);
+      assert.equal(u.searchParams.get("location_id"),"location-1");
+      assert.equal(u.searchParams.get("cursor"),page===0?null:"page-2");
+      return response(pages[page++]);
+    });
+    const proof=await api.inspect("pay-1","customer-1","location-1",2499);
+    assert.equal(proof.noRefundsOrDisputes,true);
+    assert.equal(proof.grantsEntitlement,false);
+    assert.equal(page,pages.length,"must read through the empty final page");
+  }
+}));
+test("an omitted dispute list with a cursor still requires the next page",()=>sandbox(async()=>{
+  let page=0;
+  const api=createWeddingSquareSandboxPaymentRiskApi(async(url)=>{
+    if(url.includes("/payments/"))return response(payment);
+    page++;
+    return response(page===1?{cursor:"page-2"}:{disputes:[forPayment]});
+  });
+  await assert.rejects(api.inspect("pay-1","customer-1","location-1",2499),
+    WeddingSquarePaymentRiskUnavailableError);
+  assert.equal(page,2,"an empty intermediate page is not complete risk proof");
+}));
+test("empty dispute bodies cannot hide HTTP failures, malformed values or errors",()=>sandbox(async()=>{
+  for(const [body,status]of [
+    [{},401],[{},403],[{},500],
+    [{disputes:null},200],[null,200],[[],200],
+    [{errors:null},200],[{errors:[{code:"ERROR"}]},200],
+    [{cursor:null},200],
+  ] as const){
+    const api=createWeddingSquareSandboxPaymentRiskApi(async(url)=>
+      url.includes("/payments/")?response(payment):response(body,status));
+    await assert.rejects(api.inspect("pay-1","customer-1","location-1",2499),
+      WeddingSquarePaymentRiskUnavailableError);
+  }
+}));
 test("dispute pagination loops, malformed envelope, outage, and errors:null fail closed",()=>sandbox(async()=>{
   for(const disputed of [
     {disputes:[],cursor:"again"},
