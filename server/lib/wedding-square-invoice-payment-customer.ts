@@ -12,7 +12,7 @@ const listingSchema = z.object({ errors, invoices: z.array(z.object({ id, order_
 const invoiceEnvelope = z.object({ errors, invoice: invoiceSchema });
 const orderEnvelope = z.object({ errors, order: z.object({
   id, location_id: id, state: z.literal("COMPLETED"), customer_id: id.optional(),
-  tenders: z.array(z.object({ id, type: z.literal("CARD"), customer_id: id.optional(), payment_id: id.optional() })).length(1),
+  tenders: z.array(z.object({ id, type: z.literal("CARD"), location_id: id.optional(), customer_id: id.optional(), payment_id: id.optional() })).length(1),
 }) });
 const subscriptionEnvelope = z.object({ errors, subscription: z.object({
   id, location_id: id, customer_id: id, invoice_ids: z.array(id).min(1).max(1000),
@@ -71,6 +71,7 @@ export async function readWeddingSquareInvoicePaymentCustomer(input: unknown, se
     if (order.id !== p.order_id || order.location_id !== p.location_id || tender.id !== p.id ||
         (order.customer_id !== undefined && order.customer_id !== owner) ||
         (tender.customer_id !== undefined && tender.customer_id !== owner) ||
+        (tender.location_id !== undefined && tender.location_id !== p.location_id) ||
         (tender.payment_id !== undefined && tender.payment_id !== p.id)) throw fail();
     const sub = subscriptionEnvelope.parse(await get("subscriptions/" + encodeURIComponent(invoice.subscription_id))).subscription;
     if (sub.id !== invoice.subscription_id || sub.location_id !== p.location_id || sub.customer_id !== owner ||

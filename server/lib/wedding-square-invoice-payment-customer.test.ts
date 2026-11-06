@@ -44,6 +44,7 @@ test("no ambiguous, foreign, split, malformed or incomplete provider ownership c
   {"/v2/invoices/inv":{invoice:{...invoice,order_id:"foreign"}}},
   {"/v2/orders/order":{order:{...order,state:"OPEN"}}},
   {"/v2/orders/order":{order:{...order,customer_id:"foreign"}}},
+  ...["foreign",null,"",7].map(location_id=>({"/v2/orders/order":{order:{...order,tenders:[{id:"pay",type:"CARD",location_id}]}}})),
   {"/v2/orders/order":{order:{...order,tenders:[{id:"pay",type:"CARD",customer_id:"foreign"}]}}},
   {"/v2/orders/order":{order:{...order,tenders:[{id:"pay",type:"CARD",payment_id:"foreign"}]}}},
   {"/v2/orders/order":{order:{...order,tenders:[{id:"foreign",type:"CARD"}]}}},
