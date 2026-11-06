@@ -53,6 +53,8 @@ jobs:
         run: node --test scripts/wedding-square-acceptance-evidence.test.mjs
       - name: Test Wedding Square readiness audit
         run: node --test scripts/wedding-square-sandbox-readiness.test.mjs
+      - name: Test private sandbox fixture safety guards without provider requests
+        run: node --test operator/square-sandbox-fixtures.guard.test.cjs
       - name: Run Wedding Square billing tests if present
         shell: bash
         run: |
