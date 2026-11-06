@@ -200,3 +200,9 @@ test("invoice must be listed on independently retrieved subscription and plan mu
     subscription: { ...subscription.subscription, invoiceIds: ["older-invoice", "invoice-1"] },
   }).grantsEntitlement, false);
 }));
+
+test("hosted payment without customer is only a non-entitling candidate with invoice owner binding", () => sandbox(() => {
+  const {customerId,...hosted}=payment.payment;
+  assert.equal(inspect(expected,invoice,{payment:hosted}).grantsEntitlement,false);
+  assert.throws(()=>inspect(expected,invoice,{payment:{...hosted,customerId:null}}));
+}));

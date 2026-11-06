@@ -131,3 +131,10 @@ test("production/disabled states never read provider or owner records",()=>sandb
    }finally{if(old===undefined)delete process.env[key];else process.env[key]=old;}
  }
 }));
+
+test("hosted payment without customer still requires prior clean owner-bound billing audit",()=>sandbox(async()=>{
+ const {customer_id,...hosted}=payment.payment;
+ assert.equal((await mock({payment:{payment:hosted}}).service.inspect("attempt-1","owner-1")).grantsEntitlement,false);
+ await assert.rejects(mock({payment:{payment:{...hosted,customer_id:null}}}).service.inspect("attempt-1","owner-1"));
+ await assert.rejects(mock({payment:{payment:hosted},proof:{...proof,noRefundsOrDisputes:false}}).service.inspect("attempt-1","owner-1"));
+}));

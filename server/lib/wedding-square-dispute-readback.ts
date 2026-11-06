@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readWeddingSquareInvoicePaymentCustomer } from "./wedding-square-invoice-payment-customer";
 
 type Sender = (url: string, init: RequestInit) => Promise<Response>;
 const id = z.string().min(1).max(200).refine(v => !/[\s\x00-\x1f\x7f]/.test(v));
@@ -10,7 +11,7 @@ const disputeEnvelope = z.object({
 });
 const paymentEnvelope = z.object({
   errors: z.array(z.unknown()).length(0).optional(),
-  payment: z.object({ id, customer_id: id, location_id: id, amount_money: money }),
+  payment: z.object({ id, customer_id: id.optional(), order_id: id.optional(), location_id: id, amount_money: money }),
 });
 export class WeddingSquareDisputeReadbackError extends Error {
   constructor() { super("Wedding Square dispute requires operator reconciliation."); }
@@ -50,7 +51,7 @@ export function createWeddingSquareDisputeReadback(sender: Sender = fetch) {
       if (p.id !== d.disputed_payment.payment_id || p.location_id !== location ||
           ![2499, 4999].includes(p.amount_money.amount) || d.amount_money.amount > p.amount_money.amount)
         throw new WeddingSquareDisputeReadbackError();
-      return Object.freeze({ disputeId: d.id, paymentId: p.id, customerId: p.customer_id,
+      return Object.freeze({ disputeId: d.id, paymentId: p.id, customerId: await readWeddingSquareInvoicePaymentCustomer(p,sender),
         locationId: p.location_id, amountCents: p.amount_money.amount,
         grantsEntitlement: false as const });
     } catch { throw new WeddingSquareDisputeReadbackError(); }

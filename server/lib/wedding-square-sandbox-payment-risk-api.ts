@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readWeddingSquareInvoicePaymentCustomer } from "./wedding-square-invoice-payment-customer";
 
 /**
  * Read-only, sandbox-only risk audit for ONE already owner-bound Square
@@ -15,7 +16,7 @@ const money = z.object({ amount: z.number().int().safe().nonnegative(), currency
 const paymentEnvelope = z.object({
   errors: z.array(z.unknown()).length(0).optional(),
   payment: z.object({
-    id, customer_id: id, location_id: id, order_id: id,
+    id, customer_id: id.optional(), location_id: id, order_id: id,
     status: z.literal("COMPLETED"),
     amount_money: money, total_money: money,
     refunded_money: money.optional(),
@@ -88,7 +89,7 @@ export function createWeddingSquareSandboxPaymentRiskApi(sender: Sender = fetch)
         );
         if (!parsed.success) throw new WeddingSquarePaymentRiskUnavailableError();
         const p = parsed.data.payment;
-        if (p.id !== paymentId || p.customer_id !== customerId ||
+        if (p.id !== paymentId || (p.customer_id !== undefined && p.customer_id !== customerId) ||
             p.location_id !== locationId || p.amount_money.amount !== amountCents ||
             p.total_money.amount !== amountCents ||
             (p.refunded_money && p.refunded_money.amount !== 0) ||
@@ -96,6 +97,9 @@ export function createWeddingSquareSandboxPaymentRiskApi(sender: Sender = fetch)
             (p.tip_money && p.tip_money.amount !== 0)) {
           throw new WeddingSquarePaymentRiskUnavailableError();
         }
+
+        if (await readWeddingSquareInvoicePaymentCustomer(p, sender) !== customerId)
+          throw new WeddingSquarePaymentRiskUnavailableError();
 
         // Square ListDisputes cannot filter by paymentId. Walk ALL pages for
         // this location without state filtering; a single page proves nothing.
