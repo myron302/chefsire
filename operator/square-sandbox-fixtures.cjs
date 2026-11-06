@@ -37,8 +37,22 @@ function reserveIntent(dir,kind,details) {
   if(fs.existsSync(file))throw Error('UNCERTAIN_PREVIOUS_WRITE_DO_NOT_RETRY');
   const intent={idempotencyKey:randomUUID(),customerId:details.customerId,userId:details.userId,
     paymentId:details.paymentId,amountCents:details.amountCents,currency:'USD',referenceId:details.referenceId};
-  fs.writeFileSync(file,JSON.stringify(intent,null,2),{mode:0o600,flag:'wx'});
+  const fd=fs.openSync(file,'wx',0o600);
+  try {fs.writeFileSync(fd,JSON.stringify(intent,null,2));fs.fsyncSync(fd);}
+  finally {fs.closeSync(fd);}
+  const parent=fs.openSync(dir,'r');
+  try {fs.fsyncSync(parent);}finally {fs.closeSync(parent);}
   return Object.freeze(intent);
+}
+function refundProof(f,paymentId,expectedId,locationId) {
+  if(!f||typeof expectedId!=='string'||!expectedId||/\s/.test(expectedId)||f.id!==expectedId||
+    f.payment_id!==paymentId||f.location_id!==locationId||f.amount_money?.amount!==4999||
+    f.amount_money?.currency!=='USD'||!['PENDING','COMPLETED'].includes(f.status))throw Error('REFUND_REQUIRES_REVIEW');
+  return {id:f.id,paymentId:f.payment_id,status:f.status,amountCents:4999,currency:'USD'};
+}
+async function verifyCachedRefund(get,cached,paymentId,locationId) {
+  if(!cached||typeof cached.id!=='string'||!cached.id||/\s/.test(cached.id)||cached.paymentId!==paymentId)throw Error('REFUND_REQUIRES_REVIEW');
+  return refundProof((await get('refunds/'+encodeURIComponent(cached.id))).refund,paymentId,cached.id,locationId);
 }
 function runtime() {
   for(const pid of fs.readdirSync('/proc').filter(x=>/^[0-9]+$/.test(x)).sort((a,b)=>Number(b)-Number(a))) {
@@ -107,15 +121,16 @@ async function main() {
     const recovery=out.results.find(r=>r.kind==='recovery').payment;
     paymentProof((await get('payments/'+encodeURIComponent(recovery.id))).payment,owner,env,SPECS[1]);
     const refundPrior=read('recovery-refund-result.json');
-    if(refundPrior)out.recoveryRefund={...refundPrior,reused:true};
+    if(refundPrior)out.recoveryRefund={...await verifyCachedRefund(get,refundPrior,recovery.id,env.SQUARE_LOCATION_ID),reused:true};
     else {
       const intent=reserveIntent(DIR,'recovery-refund',{paymentId:recovery.id,amountCents:4999});
       const r=await request('refunds',{idempotency_key:intent.idempotencyKey,payment_id:recovery.id,amount_money:{amount:4999,currency:'USD'},reason:'Return standalone sandbox recovery test payment'});
       const f=r.data.refund;
-      if(r.status!==200||!clean(r.data)||!f?.id||f.payment_id!==recovery.id||f.amount_money?.amount!==4999||f.amount_money?.currency!=='USD'||!['PENDING','COMPLETED'].includes(f.status))throw Error('REFUND_RESPONSE_UNCERTAIN');
-      out.recoveryRefund={id:f.id,paymentId:f.payment_id,status:f.status,amountCents:4999,currency:'USD'};save('recovery-refund-result.json',out.recoveryRefund,true);
+      if(r.status!==200||!clean(r.data))throw Error('REFUND_RESPONSE_UNCERTAIN');
+      out.recoveryRefund=refundProof(f,recovery.id,f?.id,env.SQUARE_LOCATION_ID);save('recovery-refund-result.json',out.recoveryRefund,true);
     }
-    out.completed=true;out.disabledLifecycleCount=11;
+    out.fixtureGenerationCompleted=true;out.completed=out.recoveryRefund.status==='COMPLETED';
+    out.requiresRefundReadback=out.recoveryRefund.status==='PENDING';out.disabledLifecycleCount=11;
   } catch(error) {
     out.failed=true;out.code=/^[A-Z_]+$/.test(error?.message||'')?error.message:'FIXTURE_RUN_REQUIRES_REVIEW';
   } finally {
@@ -124,5 +139,5 @@ async function main() {
     console.log(JSON.stringify(out));
   }
 }
-module.exports={validate,paymentProof,reserveIntent,SPECS,GATES};
+module.exports={validate,paymentProof,reserveIntent,verifyCachedRefund,SPECS,GATES};
 if(require.main===module)void main();

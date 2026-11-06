@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {validate,paymentProof,reserveIntent,SPECS,GATES}=require('./square-sandbox-fixtures.cjs');
+const {validate,paymentProof,reserveIntent,verifyCachedRefund,SPECS,GATES}=require('./square-sandbox-fixtures.cjs');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const env={SQUARE_ENV:'sandbox',SQUARE_LIVE_PAYMENTS_ENABLED:'false',WEDDING_SQUARE_ALLOWED_ORIGIN:'https://chefsire.com',SQUARE_ACCESS_TOKEN:'official-test-placeholder',SQUARE_LOCATION_ID:'location',WEDDING_SQUARE_SANDBOX_MERCHANT_ID:'merchant',...Object.fromEntries(GATES.map(k=>[k,'false']))};
 const owner={user_id:'e361538e-10b2-4629-bcfa-1c95e4c2132b',username:'myron-ware',verified:true,square_customer_id:'owned-customer',square_merchant_id:'merchant',square_location_id:'location',square_environment:'sandbox'};
@@ -9,6 +9,30 @@ test('operator guard requires Sandbox, live off, every lifecycle switch off and 
  for(const change of [{SQUARE_ENV:'production'},{SQUARE_LIVE_PAYMENTS_ENABLED:'true'},{SQUARE_LIVE_PAYMENTS_ENABLED:undefined},{SQUARE_ACCESS_TOKEN:''},{WEDDING_SQUARE_ALLOWED_ORIGIN:'https://elsewhere.test'}])assert.throws(()=>validate({...env,...change},owner),/SAFETY_GUARD/);
  for(const gate of GATES)assert.throws(()=>validate({...env,[gate]:'true'},owner),/SAFETY_GUARD/);
  for(const change of [{user_id:'another-user'},{verified:false},{username:'other'},{square_customer_id:null},{square_merchant_id:'foreign'},{square_location_id:'foreign'},{square_environment:'production'}])assert.throws(()=>validate(env,{...owner,...change}),/SAFETY_GUARD/);
+});
+test('both file and directory synchronization must finish before intent reservation succeeds',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'square-intent-sync-')),original=fs.fsyncSync;
+ const details={amountCents:4999,paymentId:'payment'};const synced=[];
+ try{
+  fs.fsyncSync=fd=>{synced.push(fs.fstatSync(fd).isDirectory()?'directory':'file');return original(fd);};
+  reserveIntent(dir,'recovery-refund',details);assert.deepEqual(synced,['file','directory']);
+  for(const failAt of ['file','directory']){
+   const child=fs.mkdtempSync(path.join(dir,'failed-'));
+   fs.fsyncSync=fd=>{if((fs.fstatSync(fd).isDirectory()?'directory':'file')===failAt)throw Error('sync failed');return original(fd);};
+   assert.throws(()=>reserveIntent(child,'recovery-refund',details),/sync failed/);
+   assert.throws(()=>reserveIntent(child,'recovery-refund',details),/DO_NOT_RETRY/);
+  }
+ }finally{fs.fsyncSync=original;fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('cached refund is GET-verified with exact binding and current status; failed receipts cannot replay POST',async()=>{
+ const cached={id:'refund',paymentId:'payment',status:'PENDING'};
+ const refund={id:'refund',payment_id:'payment',location_id:'location',amount_money:{amount:4999,currency:'USD'},status:'COMPLETED'};
+ const calls=[];const get=async route=>{calls.push(route);return {refund};};
+ assert.equal((await verifyCachedRefund(get,cached,'payment','location')).status,'COMPLETED');
+ assert.deepEqual(calls,['refunds/refund']);
+ for(const change of [{status:'FAILED'},{status:'REJECTED'},{payment_id:'foreign'},{id:'foreign'},{location_id:'foreign'},{amount_money:{amount:100,currency:'USD'}},{amount_money:{amount:4999,currency:'EUR'}}])await assert.rejects(verifyCachedRefund(async()=>({refund:{...refund,...change}}),cached,'payment','location'),/REQUIRES_REVIEW/);
+ await assert.rejects(verifyCachedRefund(async()=>{throw Error('provider unavailable');},cached,'payment','location'),/provider unavailable/);
+ let reads=0;await assert.rejects(verifyCachedRefund(async()=>{reads++;return {refund};},{...cached,paymentId:'other'},'payment','location'),/REQUIRES_REVIEW/);assert.equal(reads,0);
 });
 test('standalone fixture proof rejects foreign owners, amounts, status, reference and currency',()=>{
  const spec=SPECS[1],p={id:'payment',status:'COMPLETED',customer_id:'owned-customer',location_id:'location',reference_id:spec.reference,amount_money:{amount:4999,currency:'USD'},total_money:{amount:4999,currency:'USD'}};
