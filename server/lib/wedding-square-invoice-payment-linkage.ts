@@ -45,7 +45,7 @@ const paymentEnvelope = z.object({
     id: canonicalId,
     orderId: canonicalId,
     locationId: canonicalId,
-    customerId: canonicalId,
+    customerId: canonicalId.optional(),
     status: z.literal("COMPLETED"),
     amountMoney: usdMoney.refine((money) => money.amount > 0n),
     totalMoney: usdMoney,
@@ -104,7 +104,7 @@ export function inspectWeddingSquareInvoicePaymentLinkage(
       !s.invoiceIds.includes(i.id) ||
       i.subscriptionId !== saved.data.subscriptionId ||
       i.primaryRecipient.customerId !== saved.data.customerId ||
-      p.customerId !== saved.data.customerId ||
+      (p.customerId !== undefined && p.customerId !== saved.data.customerId) ||
       i.locationId !== saved.data.locationId ||
       p.locationId !== saved.data.locationId ||
       i.orderId !== p.orderId ||

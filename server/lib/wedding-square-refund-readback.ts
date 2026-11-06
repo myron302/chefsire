@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readWeddingSquareInvoicePaymentCustomer } from "./wedding-square-invoice-payment-customer";
 
 type Sender = (url: string, init: RequestInit) => Promise<Response>;
 const id = z.string().min(1).max(200).refine(v => !/[\s\x00-\x1f\x7f]/.test(v));
@@ -9,7 +10,7 @@ const refundEnvelope = z.object({errors,refund:z.object({
   amount_money:money,unlinked:z.literal(false).optional(),
 })});
 const paymentEnvelope = z.object({errors,payment:z.object({
-  id,customer_id:id,location_id:id,status:z.literal("COMPLETED"),
+  id,customer_id:id.optional(),order_id:id.optional(),location_id:id,status:z.literal("COMPLETED"),
   amount_money:money,total_money:money,refunded_money:money,
   refund_ids:z.array(id).min(1).max(1000),
 })});
@@ -49,7 +50,7 @@ export function createWeddingSquareRefundReadback(sender:Sender=fetch){
          payment.refunded_money.amount>payment.total_money.amount||
          payment.total_money.amount!==payment.amount_money.amount)
         throw new WeddingSquareRefundReadbackError();
-      return Object.freeze({refundId:refund.id,paymentId:payment.id,customerId:payment.customer_id,
+      return Object.freeze({refundId:refund.id,paymentId:payment.id,customerId:await readWeddingSquareInvoicePaymentCustomer(payment,sender),
         locationId:payment.location_id,amountCents:payment.amount_money.amount,
         completedRefund:true as const,grantsEntitlement:false as const});
     }catch{throw new WeddingSquareRefundReadbackError();}
@@ -67,13 +68,14 @@ export function createWeddingSquareRefundReadback(sender:Sender=fetch){
            new Set(payment.refund_ids).size!==payment.refund_ids.length)
           throw new WeddingSquareRefundReadbackError();
         // ANY independently completed refund invalidates full-price coverage.
-        // At most 21 GETs (one payment plus ten refund/payment pairs), within
-        // the queue lease. Missing/pending/unavailable candidates never prove
+        // At most 87 GETs including bounded invoice ownership fallback
+        // (under eleven minutes of configured timeouts), within the queue lease. Missing/pending/unavailable candidates never prove
         // clean payment or restore entitlement.
+        const customerId=await readWeddingSquareInvoicePaymentCustomer(payment,sender);
         for(const refundId of payment.refund_ids.slice(0,10)){
           try{
             const proof=await inspect(refundId);
-            if(proof.paymentId===paymentId&&proof.customerId===payment.customer_id&&
+            if(proof.paymentId===paymentId&&proof.customerId===customerId&&
                proof.locationId===payment.location_id&&proof.amountCents===payment.amount_money.amount)
               return proof;
           }catch{/* Another completed refund can still independently prove revocation. */}

@@ -33,7 +33,7 @@ const inv=z.object({errors,invoice:z.object({
 }).passthrough()}).passthrough();
 const money=z.object({amount:z.number().int().safe().nonnegative(),currency:z.literal("USD")}).passthrough();
 const pay=z.object({errors,payment:z.object({
-  id,order_id:id,customer_id:id,location_id:id,created_at:rfc,
+  id,order_id:id,customer_id:id.optional(),location_id:id,created_at:rfc,
   status:z.literal("COMPLETED"),source_type:z.literal("CARD"),
   card_details:z.object({
     status:z.literal("CAPTURED"),
@@ -78,7 +78,7 @@ export function createWeddingSquarePeriodReadback(billing:Billing,saved:Saved,re
         throw Error("Invoice recipient mismatch");
       const payment=pay.parse(await reader("payments",proof.paymentId)).payment;
       if(payment.id!==proof.paymentId||payment.order_id!==invoice.order_id||
-         payment.customer_id!==bound.customerId||payment.location_id!==bound.locationId||
+         (payment.customer_id!==undefined&&payment.customer_id!==bound.customerId)||payment.location_id!==bound.locationId||
          payment.amount_money.amount!==proof.verifiedAmountCents||
          payment.total_money.amount!==proof.verifiedAmountCents||
          (payment.refund_ids?.length??0)!==0||

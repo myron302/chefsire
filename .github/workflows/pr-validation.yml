@@ -29,6 +29,8 @@ jobs:
           cache: npm
       - name: Install dependencies from lockfile
         run: npm ci
+      - name: Test hosted invoice payment ownership
+        run: node --import tsx --test server/lib/wedding-square-invoice-payment-customer.test.ts
       - name: Test owner-scoped sandbox checkout eligibility
         run: node --import tsx --test server/lib/wedding-square-checkout-eligibility.test.ts server/lib/wedding-square-sandbox-tester.test.ts
       - name: Preserve Wedding checkout across Settings renders
