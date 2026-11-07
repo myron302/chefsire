@@ -65,6 +65,15 @@ export default function CheckoutPage() {
       if (response.ok) {
         const data = await response.json();
         setProduct(data);
+        // Default to a fulfillment option this product actually supports.
+        // Digital purchases require no physical shipping address.
+        setFulfillmentMethod(
+          isDigitalMarketplaceProduct(data) || data.shippingEnabled
+            ? "shipping"
+            : data.localPickupEnabled
+              ? "local_pickup"
+              : "shipping"
+        );
       } else {
         toast({
           title: "Product not found",
@@ -86,6 +95,7 @@ export default function CheckoutPage() {
   };
 
   const isDigital = product ? isDigitalMarketplaceProduct(product) : false;
+  const hasPhysicalFulfillment = isDigital || Boolean(product?.shippingEnabled || product?.localPickupEnabled);
 
   // A pre-order preview only; once an order exists, orderTotal (the amount
   // the server persisted and will submit to Square) is authoritative instead.
@@ -97,6 +107,14 @@ export default function CheckoutPage() {
   };
 
   const handleCreateOrder = async () => {
+    if (!hasPhysicalFulfillment) {
+      toast({
+        title: "Checkout unavailable",
+        description: "This product has no delivery or pickup method available.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!user) {
       toast({
         title: "Please log in",
@@ -330,7 +348,7 @@ export default function CheckoutPage() {
             </Card>
 
             {/* Fulfillment Method */}
-            <Card>
+            {!isDigital && <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Truck className="h-5 w-5" />
@@ -366,10 +384,15 @@ export default function CheckoutPage() {
                   )}
                 </RadioGroup>
               </CardContent>
-            </Card>
+            </Card>}
+            {!isDigital && !hasPhysicalFulfillment && (
+              <p role="alert" className="text-sm text-red-600">
+                This product cannot be purchased online until the seller enables shipping or local pickup.
+              </p>
+            )}
 
             {/* Shipping Address */}
-            {fulfillmentMethod === "shipping" && (
+            {!isDigital && fulfillmentMethod === "shipping" && product.shippingEnabled && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -465,6 +488,7 @@ export default function CheckoutPage() {
 
                 <Button
                   onClick={handleCreateOrder}
+                  disabled={!hasPhysicalFulfillment}
                   className="w-full bg-orange-500 hover:bg-orange-600"
                 >
                   Continue to Payment
