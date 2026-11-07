@@ -17,6 +17,8 @@ export interface ProductCardProps {
   };
   onView?: (id: string) => void;
   onAddToCart?: (id: string) => void;
+  /** Label for the action button; defaults to "Add". */
+  actionLabel?: string;
   onToggleFavorite?: (id: string) => void;
   showActions?: boolean;
 }
@@ -25,6 +27,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   product,
   onView,
   onAddToCart,
+  actionLabel = "Add",
   onToggleFavorite,
   showActions = true,
 }) => {
@@ -119,7 +122,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               className="bg-orange-500 hover:bg-orange-600"
             >
               <ShoppingCart size={16} className="mr-1" />
-              Add
+              {actionLabel}
             </Button>
           )}
         </div>

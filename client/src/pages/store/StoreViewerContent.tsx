@@ -206,7 +206,13 @@ export default function StoreViewerContent({
                 style={{ borderRadius: "var(--store-radius)", overflow: "hidden" }}
                 onClick={previewMode ? undefined : () => navigate(`/product/${product.id}`)}
               >
-                <ProductCard product={product as any} onAddToCart={() => {}} />
+                <ProductCard
+                  product={product as any}
+                  actionLabel="Buy"
+                  onAddToCart={(productId) =>
+                    navigate(`/checkout?productId=${encodeURIComponent(String(productId))}&quantity=1`)
+                  }
+                />
                 <div className="absolute top-3 right-3 flex gap-2">
                   {typeof product.viewCount === "number" && (
                     <Badge variant="secondary" className="flex items-center gap-1">
