@@ -1,3 +1,4 @@
+import { marketplaceCheckoutMethods } from "@shared/marketplace-fulfillment";
 import React, { useState, useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,10 +43,11 @@ interface ProductData {
   viewCount?: number;
   favoriteCount?: number;
   tags?: string[];
-  digitalDownloadUrl?: string;
   digitalFileName?: string;
   digitalFileSize?: number;
-  inventory?: number;
+  inventory?: number | null;
+  isActive?: boolean;
+  isExternal?: boolean;
   createdAt: string;
 }
 
@@ -58,6 +60,7 @@ export default function ProductPage() {
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [isFavorited, setIsFavorited] = useState(false);
+  const [quantity, setQuantity] = useState(1);
 
   const id = params?.id;
 
@@ -97,15 +100,25 @@ export default function ProductPage() {
   };
 
   useEffect(() => {
+    setQuantity(1);
     fetchProduct();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  const handleAddToCart = () => {
-    toast({
-      title: "Added to cart",
-      description: `${product?.name} has been added to your cart.`
-    });
+  // Server checkout accepts 1-100 units and rejects more than available inventory.
+  const maxQuantity = Math.max(
+    1,
+    Math.min(100, product?.inventory !== undefined && product?.inventory !== null ? product.inventory : 100)
+  );
+  const isOutOfStock = product?.inventory !== undefined && product?.inventory !== null && product.inventory <= 0;
+  const canCheckout = !!product && !isOutOfStock && marketplaceCheckoutMethods(product).length > 0;
+
+  // Single-product checkout: the existing /checkout page creates the order
+  // server-side and collects payment through Square.
+  const handleBuyNow = () => {
+    if (!product || !canCheckout) return;
+    const qty = Math.min(Math.max(1, quantity), maxQuantity);
+    setLocation(`/checkout?productId=${encodeURIComponent(String(product.id))}&quantity=${qty}`);
   };
 
   const handleFavorite = () => {
@@ -226,7 +239,7 @@ export default function ProductPage() {
                   <span className="text-3xl font-bold text-green-600">
                     ${product.price}
                   </span>
-                  {product.inventory !== undefined && (
+                  {product.inventory != null && (
                     <Badge variant={product.inventory > 0 ? "default" : "destructive"}>
                       {product.inventory > 0 ? `${product.inventory} in stock` : "Out of stock"}
                     </Badge>
@@ -329,22 +342,45 @@ export default function ProductPage() {
 
             {/* Actions */}
             <div className="space-y-3">
+              {canCheckout && maxQuantity > 1 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Quantity</span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label="Decrease quantity"
+                      disabled={quantity <= 1}
+                      onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    >
+                      −
+                    </Button>
+                    <span className="w-8 text-center font-semibold" aria-live="polite">{quantity}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label="Increase quantity"
+                      disabled={quantity >= maxQuantity}
+                      onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))}
+                    >
+                      +
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <Button
                 className="w-full"
                 size="lg"
-                onClick={handleAddToCart}
-                disabled={product.inventory !== undefined && product.inventory <= 0}
+                onClick={handleBuyNow}
+                disabled={!canCheckout}
               >
                 <ShoppingCart className="w-5 h-5 mr-2" />
-                Add to Cart
+                {isOutOfStock ? "Out of Stock" : product.inStoreOnly ? "Available In Store Only" : canCheckout ? "Buy Now" : "Online Checkout Unavailable"}
               </Button>
 
-              {product.isDigital && product.digitalDownloadUrl && (
-                <Button className="w-full" size="lg" variant="outline">
-                  <Download className="w-5 h-5 mr-2" />
-                  Download Now
-                </Button>
-              )}
             </div>
           </div>
         </div>

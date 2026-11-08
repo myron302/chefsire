@@ -1,13 +1,17 @@
 import { Badge } from "@/components/ui/badge";
 import { Package, ShoppingCart } from "lucide-react";
 
-type RecentSale = {
+export type RecentSale = {
+  verifiedPaid: boolean;
   order: {
     id: string;
     quantity: number;
     createdAt: string;
     sellerAmount: string;
     status: string;
+    deliveryMethod: string;
+    shippingAddress?: { street: string; city: string; state: string; zipCode: string; country: string } | null;
+    trackingNumber?: string | null;
   };
   product: {
     name: string;
@@ -20,9 +24,10 @@ type RecentSale = {
 
 interface StoreRecentSalesListProps {
   recentSales: RecentSale[];
+  renderFulfillment?: (sale: RecentSale) => React.ReactNode;
 }
 
-export default function StoreRecentSalesList({ recentSales }: StoreRecentSalesListProps) {
+export default function StoreRecentSalesList({ recentSales, renderFulfillment }: StoreRecentSalesListProps) {
   if (recentSales.length === 0) {
     return (
       <div className="text-center py-16 text-gray-400">
@@ -50,12 +55,13 @@ export default function StoreRecentSalesList({ recentSales }: StoreRecentSalesLi
             </div>
           </div>
           <div className="text-right">
-            <p className="font-bold text-green-600 text-sm">
-              +${parseFloat(sale.order.sellerAmount).toFixed(2)}
-            </p>
+            {sale.verifiedPaid ? (
+              <p className="font-bold text-green-600 text-sm">+${Number(sale.order.sellerAmount).toFixed(2)}</p>
+            ) : <p className="text-sm text-gray-500">No verified earnings</p>}
             <Badge variant={sale.order.status === "delivered" ? "default" : "secondary"} className="text-xs mt-0.5">
               {sale.order.status}
             </Badge>
+            {renderFulfillment?.(sale)}
           </div>
         </div>
       ))}

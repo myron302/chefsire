@@ -72,6 +72,7 @@ const StoreDashboard = React.lazy(() => import("@/pages/store/StoreDashboard"));
 const SellerDashboard = React.lazy(() => import("@/pages/store/SellerDashboard"));
 const StoreCreatePage = React.lazy(() => import("@/pages/store/StoreCreatePage"));
 const ProductFormPage = React.lazy(() => import("@/pages/store/ProductFormPage"));
+const MarketplaceOrdersPage = React.lazy(() => import("@/pages/checkout/MarketplaceOrdersPage"));
 const CheckoutPage = React.lazy(() => import("@/pages/checkout/CheckoutPage"));
 const ProductPage = React.lazy(() => import("@/pages/marketplace/ProductPage"));
 const CreateCompetitionPage = React.lazy(() => import("@/pages/competitions/CreateCompetitionPage"));
@@ -380,6 +381,8 @@ export default function App() {
 
                 {/* Checkout */}
                 <Route path="/checkout" component={CheckoutPage} />
+                <Route path="/orders/my-purchases" component={MarketplaceOrdersPage} />
+                <Route path="/orders/:id" component={MarketplaceOrdersPage} />
                 <Route path="/product/:id" component={ProductPage} />
 
                 {/* Clubs */}

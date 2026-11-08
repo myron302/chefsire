@@ -223,7 +223,7 @@ export default function ProductFormPage() {
       const uploadFormData = new FormData();
       uploadFormData.append('file', file);
 
-      const response = await fetch('/api/upload', {
+      const response = await fetch('/api/upload/marketplace-digital', {
         method: 'POST',
         credentials: 'include',
         body: uploadFormData

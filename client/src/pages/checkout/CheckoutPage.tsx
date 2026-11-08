@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
 import SquarePaymentForm from "@/components/SquarePaymentForm";
 import { Package, MapPin, Truck, ShoppingBag, CheckCircle } from "lucide-react";
-import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "@shared/marketplace-fulfillment";
+import { isDigitalMarketplaceProduct, marketplaceCheckoutMethods, resolveMarketplaceShippingCost } from "@shared/marketplace-fulfillment";
 
 interface CheckoutPageProps {
   // Product details passed via route state
@@ -19,13 +20,14 @@ interface CheckoutPageProps {
 
 export default function CheckoutPage() {
   const { user } = useUser();
-  const [location, navigate] = useLocation();
+  const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Get product from URL params
   const params = new URLSearchParams(window.location.search);
   const productId = params.get("productId");
-  const quantity = parseInt(params.get("quantity") || "1");
+  const quantity = Number(params.get("quantity") ?? "1");
 
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +43,8 @@ export default function CheckoutPage() {
   const [checkoutIdempotencyKey] = useState(() => crypto.randomUUID());
 
   // Form state
-  const [fulfillmentMethod, setFulfillmentMethod] = useState<"shipping" | "local_pickup">("shipping");
+  const [selectedMethod, setSelectedMethod] = useState<"shipping" | "local_pickup">("shipping");
+  const [creatingOrder, setCreatingOrder] = useState(false);
   const [shippingAddress, setShippingAddress] = useState({
     street: "",
     city: "",
@@ -86,24 +89,29 @@ export default function CheckoutPage() {
   };
 
   const isDigital = product ? isDigitalMarketplaceProduct(product) : false;
+  const methods = product ? marketplaceCheckoutMethods(product) : [];
+  const fulfillmentMethod = methods.includes(selectedMethod) ? selectedMethod : methods[0];
+  const validQuantity = Number.isInteger(quantity) && quantity >= 1 && quantity <= 100 &&
+    (product?.inventory == null || quantity <= product.inventory);
 
   // A pre-order preview only; once an order exists, orderTotal (the amount
   // the server persisted and will submit to Square) is authoritative instead.
   const calculateTotal = () => {
-    if (!product) return 0;
+    if (!product || !validQuantity || !fulfillmentMethod) return 0;
     const subtotal = parseFloat(product.price) * quantity;
     const shipping = resolveMarketplaceShippingCost(product, fulfillmentMethod);
     return subtotal + shipping;
   };
 
   const handleCreateOrder = async () => {
+    if (creatingOrder || !validQuantity || !fulfillmentMethod) return;
     if (!user) {
       toast({
         title: "Please log in",
         description: "You must be logged in to place an order",
         variant: "destructive",
       });
-      navigate("/login");
+      navigate(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       return;
     }
 
@@ -116,7 +124,7 @@ export default function CheckoutPage() {
       };
 
       if (fulfillmentMethod === "shipping") {
-        if (!shippingAddress.street || !shippingAddress.city || !shippingAddress.zipCode) {
+        if (![shippingAddress.street, shippingAddress.city, shippingAddress.state, shippingAddress.zipCode].every((field) => field.trim())) {
           toast({
             title: "Missing information",
             description: "Please fill in all shipping address fields",
@@ -127,6 +135,7 @@ export default function CheckoutPage() {
         orderData.shippingAddress = shippingAddress;
       }
 
+      setCreatingOrder(true);
       const response = await fetch("/api/orders/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -154,10 +163,13 @@ export default function CheckoutPage() {
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setCreatingOrder(false);
     }
   };
 
   const handlePaymentSuccess = () => {
+    void queryClient.invalidateQueries({ queryKey: ["marketplace-orders"] });
     setStep("success");
   };
 
@@ -185,7 +197,7 @@ export default function CheckoutPage() {
               <CheckCircle className="h-20 w-20 text-green-600 mx-auto mb-6" />
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Order Confirmed!</h1>
               <p className="text-gray-600 mb-6">
-                Thank you for your purchase. You'll receive an email confirmation shortly.
+                Thank you for your purchase. You can view your order and delivery details below.
               </p>
               <div className="space-y-3">
                 <Button
@@ -338,7 +350,14 @@ export default function CheckoutPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <RadioGroup value={fulfillmentMethod} onValueChange={(v: any) => setFulfillmentMethod(v)}>
+                {isDigital && fulfillmentMethod ? (
+                  <p>Digital delivery. No shipping address is required.</p>
+                ) : !fulfillmentMethod ? (
+                  <p role="status">Online delivery is unavailable for this product.</p>
+                ) : (
+                <RadioGroup value={fulfillmentMethod} onValueChange={(value) => {
+                  if (value === "shipping" || value === "local_pickup") setSelectedMethod(value);
+                }}>
                   {product.shippingEnabled && (
                     <div className="flex items-center space-x-2 border rounded-lg p-4 hover:bg-gray-50">
                       <RadioGroupItem value="shipping" id="shipping" />
@@ -365,6 +384,7 @@ export default function CheckoutPage() {
                     </div>
                   )}
                 </RadioGroup>
+                )}
               </CardContent>
             </Card>
 
@@ -463,11 +483,13 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
+                {!validQuantity && <p role="status">This quantity is unavailable. Return to the product page to choose another quantity.</p>}
                 <Button
                   onClick={handleCreateOrder}
+                  disabled={creatingOrder || !fulfillmentMethod || !validQuantity}
                   className="w-full bg-orange-500 hover:bg-orange-600"
                 >
-                  Continue to Payment
+                  {creatingOrder ? "Creating order…" : "Continue to Payment"}
                 </Button>
 
                 <p className="text-xs text-gray-500 text-center">

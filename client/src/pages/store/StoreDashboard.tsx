@@ -381,7 +381,11 @@ export default function StoreDashboard() {
 
           {/* Orders Tab */}
           <TabsContent value="orders">
-            <StoreDashboardOrdersTab recentSales={recentSales} />
+            <StoreDashboardOrdersTab sellerId={String(user?.id)} onOrderUpdated={(id, status, trackingNumber) => {
+              setRecentSales((sales) => sales.map((sale) => sale.order.id === id
+                ? { ...sale, order: { ...sale.order, status, trackingNumber } }
+                : sale));
+            }} />
           </TabsContent>
 
           {/* Drops Tab */}

@@ -11,12 +11,14 @@ export interface ProductCardProps {
     description?: string;
     price: number;
     image_url?: string;
-    inventory?: number;
+    inventory?: number | null;
     category?: string;
     is_active?: boolean;
   };
   onView?: (id: string) => void;
   onAddToCart?: (id: string) => void;
+  /** Label for the action button; defaults to "Add". */
+  actionLabel?: string;
   onToggleFavorite?: (id: string) => void;
   showActions?: boolean;
 }
@@ -25,10 +27,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   product,
   onView,
   onAddToCart,
+  actionLabel = "Add",
   onToggleFavorite,
   showActions = true,
 }) => {
-  const isOutOfStock = product.inventory !== undefined && product.inventory <= 0;
+  const isOutOfStock = product.inventory != null && product.inventory <= 0;
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
@@ -119,13 +122,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               className="bg-orange-500 hover:bg-orange-600"
             >
               <ShoppingCart size={16} className="mr-1" />
-              Add
+              {actionLabel}
             </Button>
           )}
         </div>
 
         {/* Inventory Info */}
-        {product.inventory !== undefined && product.inventory > 0 && product.inventory <= 5 && (
+        {product.inventory != null && product.inventory > 0 && product.inventory <= 5 && (
           <p className="text-xs text-orange-600 mt-2">
             Only {product.inventory} left in stock!
           </p>

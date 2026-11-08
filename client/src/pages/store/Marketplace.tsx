@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { getMarketplaceProducts } from "@/lib/store/marketplaceApi";
 import { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
@@ -95,6 +95,7 @@ export default function Marketplace() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Marketplace</h1>
           <p className="text-gray-600">Discover amazing products from local chefs and creators</p>
+          <Link href="/orders/my-purchases" className="mt-2 inline-block text-sm font-medium underline">My Marketplace orders</Link>
         </div>
 
         <div className="bg-white rounded-lg p-6 mb-6 shadow-sm">
