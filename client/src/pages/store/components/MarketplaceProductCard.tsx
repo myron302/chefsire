@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
+import { PRODUCT_PLACEHOLDER, onProductImageError } from "@/lib/image-fallback";
 
 interface MarketplaceProductCardProps {
   product: MarketplaceProduct;
@@ -22,7 +23,8 @@ export function MarketplaceProductCard({
     >
       <div className="relative">
         <img
-          src={product.images?.[0] || "/placeholder-product.jpg"}
+          src={product.images?.[0] || PRODUCT_PLACEHOLDER}
+          onError={onProductImageError}
           alt={product.name}
           className="w-full h-48 object-cover rounded-t-lg"
         />
