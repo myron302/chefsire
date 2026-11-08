@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
+import type { payments as createSquarePayments } from "@square/web-sdk";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+type SquareCard = Awaited<ReturnType<NonNullable<Awaited<ReturnType<typeof createSquarePayments>>>["card"]>>;
 
 interface SquarePaymentFormProps {
   amount: number;
@@ -20,62 +23,65 @@ export default function SquarePaymentForm({
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [squarePayments, setSquarePayments] = useState<any>(null);
-  const [card, setCard] = useState<any>(null);
+  const [card, setCard] = useState<SquareCard | null>(null);
+  const submitting = useRef(false);
   const { toast } = useToast();
 
   const cardContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    initializeSquare();
+    const request = new AbortController();
+    let attachedCard: SquareCard | undefined;
+    const destroy = () => {
+      const instance = attachedCard;
+      attachedCard = undefined;
+      if (instance) void Promise.resolve(instance.destroy()).catch(() => {});
+    };
+
+    async function initializeSquare() {
+      try {
+        const response = await fetch("/api/payments/square-config", {
+          credentials: "include",
+          signal: request.signal,
+        });
+        if (!response.ok) throw new Error("Failed to load payment configuration");
+        const { config } = await response.json();
+        const { payments } = await import("@square/web-sdk");
+        if (request.signal.aborted) return;
+        const instance = await payments(config.applicationId, config.locationId);
+        if (request.signal.aborted) return;
+        if (!instance || !cardContainerRef.current) throw new Error("Square card form is unavailable");
+
+        attachedCard = await instance.card();
+        if (request.signal.aborted) {
+          destroy();
+          return;
+        }
+        await attachedCard.attach(cardContainerRef.current);
+        if (!request.signal.aborted) setCard(attachedCard);
+      } catch {
+        destroy();
+        if (!request.signal.aborted) setError("Failed to load payment form. Please refresh the page.");
+      } finally {
+        if (!request.signal.aborted) setIsLoading(false);
+      }
+    }
+
+    void initializeSquare();
+    return () => {
+      request.abort();
+      destroy();
+    };
   }, []);
 
-  const initializeSquare = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      // Get Square configuration from backend
-      const configResponse = await fetch("/api/payments/square-config", {
-        credentials: "include",
-      });
-
-      if (!configResponse.ok) {
-        throw new Error("Failed to load payment configuration");
-      }
-
-      const config = await configResponse.json();
-
-      // Dynamically import Square Web SDK
-      const { payments } = await import("@square/web-sdk");
-
-      // Initialize Square Payments
-      const paymentsInstance = payments(
-        config.config.applicationId,
-        config.config.locationId
-      );
-
-      setSquarePayments(paymentsInstance);
-
-      // Initialize card payment method
-      const cardInstance = await paymentsInstance.card();
-      await cardInstance.attach(cardContainerRef.current!);
-
-      setCard(cardInstance);
-      setIsLoading(false);
-    } catch (err: any) {
-      console.error("Square initialization error:", err);
-      setError("Failed to load payment form. Please refresh the page.");
-      setIsLoading(false);
-    }
-  };
-
   const handlePayment = async () => {
+    if (submitting.current) return;
     if (!card) {
       setError("Payment form not ready. Please try again.");
       return;
     }
 
+    submitting.current = true;
     setIsProcessing(true);
     setError(null);
 
@@ -98,7 +104,7 @@ export default function SquarePaymentForm({
 
         const paymentData = await paymentResponse.json();
 
-        if (paymentResponse.ok && paymentData.ok) {
+        if (paymentResponse.ok && paymentData.ok && paymentData.payment?.status === "COMPLETED") {
           toast({
             title: "✓ Payment successful!",
             description: `Your order has been confirmed. Order #${orderId}`,
@@ -130,6 +136,7 @@ export default function SquarePaymentForm({
         onPaymentError(errorMsg);
       }
     } finally {
+      submitting.current = false;
       setIsProcessing(false);
     }
   };
@@ -154,18 +161,13 @@ export default function SquarePaymentForm({
         </div>
 
         {/* Square Card Form */}
+        <div ref={cardContainerRef} className="min-h-[100px]" aria-busy={isLoading} />
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
           </div>
         ) : (
           <>
-            <div
-              ref={cardContainerRef}
-              id="card-container"
-              className="min-h-[100px]"
-            />
-
             {error && (
               <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />

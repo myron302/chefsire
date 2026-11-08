@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies from lockfile
         run: npm ci
       - name: Test Marketplace checkout and private file isolation
-        run: node --import tsx --test shared/marketplace-fulfillment.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts
+        run: node --import tsx --test client/src/components/SquarePaymentForm.test.ts shared/marketplace-fulfillment.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts
       - name: Test hosted invoice payment ownership
         run: node --import tsx --test server/lib/wedding-square-invoice-payment-customer.test.ts
       - name: Test owner-scoped sandbox checkout eligibility
