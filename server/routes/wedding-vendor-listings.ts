@@ -156,6 +156,41 @@ router.post("/vendor-listings", async (req, res) => {
 });
 
 /**
+ * GET /api/wedding/vendor-listings/public
+ * Public vendor directory: ONLY listings an admin has set to "published". Returns business-facing fields
+ * (no contact name, email or phone; quote requests go through ChefSire). Declared before `/:id`.
+ */
+router.get("/vendor-listings/public", async (_req, res) => {
+  try {
+    await ensureWeddingVendorListingsTable();
+    const result: any = await db.execute(sql`
+      SELECT
+        id,
+        business_name AS "businessName",
+        website,
+        instagram_handle AS "instagramHandle",
+        category,
+        city,
+        state,
+        description,
+        min_price AS "minPrice",
+        max_price AS "maxPrice",
+        years_in_business AS "yearsInBusiness"
+      FROM wedding_vendor_listings
+      WHERE status = 'published'
+      ORDER BY updated_at DESC
+      LIMIT 200
+    `);
+    const rows = result?.rows ?? result ?? [];
+    res.setHeader("Cache-Control", "public, max-age=60");
+    return res.json({ ok: true, listings: rows });
+  } catch (err: any) {
+    console.error("[Wedding Vendor Listings] public list error:", err);
+    return res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
+
+/**
  * GET /api/wedding/vendor-listings
  * Admin list.
  */
