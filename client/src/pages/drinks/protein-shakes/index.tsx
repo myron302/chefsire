@@ -877,13 +877,7 @@ export default function ProteinShakesPage({ params }: Params) {
                       <Heart className={`h-4 w-4 ${isFavorite(recipe.id) ? 'fill-red-500 text-red-500' : ''}`} />
                     </Button>
                   </div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                      <span className="text-sm">{recipe.rating}</span>
-                    </div>
-                    <span className="text-sm text-muted-foreground">({recipe.reviews} reviews)</span>
-                  </div>
+                  <span />
                   <div className="grid grid-cols-3 gap-2 text-center mb-3">
                     <div>
                       <div className="font-bold text-blue-600">{recipe.protein}g</div>

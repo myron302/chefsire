@@ -594,11 +594,7 @@ export default function WheyProteinShakesPage() {
 
                       {/* Rating / Difficulty (leave placement as-is) */}
                       <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{shake.rating}</span>
-                          <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                        </div>
+                        <span />
                         <Badge variant="outline" className="text-xs">
                           {shake.difficulty}
                         </Badge>
@@ -939,11 +935,7 @@ export default function WheyProteinShakesPage() {
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant="outline">{shake.wheyType}</Badge>
                       <Badge className="bg-blue-100 text-blue-800">{shake.fitnessGoal}</Badge>
-                      <div className="flex items-center gap-1 ml-auto">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{shake.rating}</span>
-                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                      </div>
+                      <span />
                     </div>
                   </CardHeader>
 

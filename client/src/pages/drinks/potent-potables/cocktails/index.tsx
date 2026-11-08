@@ -668,20 +668,7 @@ export default function ClassicCocktailsPage() {
 
                         {/* GLASS RATING */}
                         <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-1">
-                            {[...Array(5)].map((_, i) => (
-                              <GlassWater
-                                key={i}
-                                className={`w-4 h-4 ${
-                                  i < Math.floor(cocktail.rating)
-                                    ? 'fill-blue-500 text-blue-500'
-                                    : 'text-gray-300'
-                                }`}
-                              />
-                            ))}
-                            <span className="font-medium ml-1">{cocktail.rating}</span>
-                            <span className="text-gray-500 text-sm">({cocktail.reviews})</span>
-                          </div>
+                          <span />
                           <Badge variant="outline" className="text-xs">
                             {cocktail.difficulty}
                           </Badge>
@@ -986,20 +973,7 @@ export default function ClassicCocktailsPage() {
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant="outline">{cocktail.era}</Badge>
                       <Badge className="bg-blue-100 text-blue-800">{cocktail.category}</Badge>
-                      <div className="flex items-center gap-1 ml-auto">
-                        {[...Array(5)].map((_, i) => (
-                          <GlassWater
-                            key={i}
-                            className={`h-4 w-4 ${
-                              i < Math.floor(cocktail.rating)
-                                ? 'fill-blue-500 text-blue-500'
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
-                        <span className="font-medium ml-1">{cocktail.rating}</span>
-                        <span className="text-gray-500 text-sm">({cocktail.reviews})</span>
-                      </div>
+                      <span />
                     </div>
                   </CardHeader>
                   
@@ -1191,20 +1165,7 @@ export default function ClassicCocktailsPage() {
                     </div>
 
                     <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        {[...Array(5)].map((_, i) => (
-                          <GlassWater
-                            key={i}
-                            className={`h-5 w-5 ${
-                              i < Math.floor(selectedCocktail.rating)
-                                ? 'fill-blue-500 text-blue-500'
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
-                        <span className="font-bold text-lg">{selectedCocktail.rating}</span>
-                        <span className="text-gray-500">({selectedCocktail.reviews} reviews)</span>
-                      </div>
+                      <span />
                       <Badge variant="outline">{selectedCocktail.difficulty}</Badge>
                     </div>
 

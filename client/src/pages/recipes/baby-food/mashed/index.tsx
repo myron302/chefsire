@@ -619,11 +619,7 @@ export default function MashedFoodsPage() {
                   </div>
 
                   <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium text-sm">{recipe.rating}</span>
-                      <span className="text-gray-500 text-xs">({recipe.reviews})</span>
-                    </div>
+                    <span />
                     <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
                   </div>
 
