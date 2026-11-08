@@ -16,3 +16,6 @@ export function fallbackTo(placeholder: string) {
 }
 
 export const onProductImageError = fallbackTo(PRODUCT_PLACEHOLDER);
+
+export const MEDIA_PLACEHOLDER = "/placeholder.svg";
+export const onMediaImageError = fallbackTo(MEDIA_PLACEHOLDER);

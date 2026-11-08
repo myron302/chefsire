@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import SquarePaymentForm from "@/components/SquarePaymentForm";
 import { Package, MapPin, Truck, ShoppingBag, CheckCircle } from "lucide-react";
 import { isDigitalMarketplaceProduct, marketplaceCheckoutMethods, resolveMarketplaceShippingCost } from "@shared/marketplace-fulfillment";
+import { onProductImageError } from "@/lib/image-fallback";
 
 interface CheckoutPageProps {
   // Product details passed via route state
@@ -241,6 +242,7 @@ export default function CheckoutPage() {
                         src={product.images[0]}
                         alt={product.name}
                         className="w-full h-full object-cover rounded"
+                        onError={onProductImageError}
                       />
                     ) : (
                       <Package className="h-8 w-8 text-gray-400" />
@@ -313,6 +315,7 @@ export default function CheckoutPage() {
                         src={product.images[0]}
                         alt={product.name}
                         className="w-full h-full object-cover rounded"
+                        onError={onProductImageError}
                       />
                     ) : (
                       <Package className="h-10 w-10 text-gray-400" />

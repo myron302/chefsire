@@ -17,6 +17,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { useUser } from "@/contexts/UserContext";
 import { Link } from "wouter";
 import MediaCarousel from "@/components/posts/MediaCarousel";
+import { onMediaImageError } from "@/lib/image-fallback";
 
 // ─── Demo data — shown to guests when the DB has no real posts yet ───────────
 // These make the site feel alive for new visitors before the community grows.
@@ -221,7 +222,7 @@ function SimpleRecipeCard({
     <Card className="overflow-hidden">
       <div className="relative cursor-pointer" onClick={() => onCardClick?.(post)}>
         {post.imageUrl ? (
-          <img src={post.imageUrl} alt={post.caption || "Recipe"} className="w-full h-64 object-cover" loading="lazy" decoding="async" />
+          <img src={post.imageUrl} alt={post.caption || "Recipe"} className="w-full h-64 object-cover" loading="lazy" decoding="async" onError={onMediaImageError} />
         ) : (
           <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
             <Heart className="w-8 h-8 text-gray-400" />
@@ -475,7 +476,7 @@ export default function Feed() {
                   className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
                   data-testid={`trending-recipe-${recipe.id}`}
                 >
-                  <img src={recipe.post.imageUrl} alt={recipe.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" loading="lazy" decoding="async" />
+                  <img src={recipe.post.imageUrl} alt={recipe.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" loading="lazy" decoding="async" onError={onMediaImageError} />
                   <div className="flex-1">
                     <p className="text-sm font-medium">{recipe.title}</p>
                     <p className="text-xs text-muted-foreground">
