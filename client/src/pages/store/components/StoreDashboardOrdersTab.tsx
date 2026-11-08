@@ -1,26 +1,54 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StoreRecentSalesList, { type RecentSale } from "./StoreRecentSalesList";
 
 type StoreDashboardOrdersTabProps = {
-  recentSales: RecentSale[];
+  sellerId: string;
   onOrderUpdated: (id: string, status: string, trackingNumber: string | null) => void;
 };
 
-export default function StoreDashboardOrdersTab({ recentSales, onOrderUpdated }: StoreDashboardOrdersTabProps) {
+const PAGE_SIZE = 20;
+
+export default function StoreDashboardOrdersTab({ sellerId, onOrderUpdated }: StoreDashboardOrdersTabProps) {
+  const [page, setPage] = useState(0);
+  const queryClient = useQueryClient();
+  const queryKey = ["marketplace-seller-orders", sellerId];
+  const orders = useQuery<{ sales: RecentSale[]; hasMore: boolean }>({
+    queryKey: [...queryKey, page],
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+    queryFn: async () => (await apiRequest("GET", `/api/orders/my-sales?paidOnly=true&limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`)).json(),
+  });
+  function updateOrder(id: string, status: string, trackingNumber: string | null) {
+    onOrderUpdated(id, status, trackingNumber);
+    void queryClient.invalidateQueries({ queryKey });
+  }
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recent Orders</CardTitle>
-        <CardDescription>Orders placed by your customers</CardDescription>
+        <CardTitle>Paid Orders</CardTitle>
+        <CardDescription>Orders with verified payment, ready to fulfill or review</CardDescription>
       </CardHeader>
       <CardContent>
-        <StoreRecentSalesList
-          recentSales={recentSales}
-          renderFulfillment={(sale) => <Fulfillment sale={sale} onOrderUpdated={onOrderUpdated} />}
-        />
+        {orders.isPending ? <p role="status">Loading orders…</p> : orders.isError ? (
+          <p role="alert">Could not load orders. <button onClick={() => orders.refetch()}>Try again</button></p>
+        ) : (
+          <StoreRecentSalesList
+            recentSales={orders.data.sales}
+            renderFulfillment={(sale) => <Fulfillment sale={sale} onOrderUpdated={updateOrder} />}
+          />
+        )}
+        {(page > 0 || orders.data?.hasMore) && (
+          <div className="mt-4 flex items-center justify-between">
+            <Button variant="outline" disabled={page === 0 || orders.isFetching} onClick={() => setPage(page - 1)}>Previous</Button>
+            <span>Page {page + 1}</span>
+            <Button variant="outline" disabled={!orders.data?.hasMore || orders.isFetching} onClick={() => setPage(page + 1)}>Next</Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

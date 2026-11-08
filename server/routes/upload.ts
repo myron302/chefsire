@@ -12,7 +12,7 @@
  * extension and, through `file.mimetype`, chose whether the upload was allowed at all. HTML bytes declared
  * `image/jpeg` and named `attack.html` landed as `<uuid>.html` and came back as `text/html` on ChefSire's origin.
  */
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
@@ -115,7 +115,7 @@ function displayFilename(originalName: string): string {
 }
 
 // POST /api/upload - General file upload (videos, documents, images)
-router.post(["/", "/marketplace-digital"], requireAuth, (req, res) => {
+const receiveUpload = (privateMarketplaceFile: boolean): RequestHandler => (req, res) => {
   stagingUpload.single('file')(req, res, async (err) => {
     if (err) {
       await discardStagedUpload(req.file);
@@ -155,7 +155,7 @@ router.post(["/", "/marketplace-digital"], requireAuth, (req, res) => {
 
       let fileUrl: string;
 
-      if (req.path === "/marketplace-digital" || req.path === "/marketplace-digital/") {
+      if (privateMarketplaceFile) {
         fileUrl = await storeMarketplaceDigitalFile(req.user!.id, staged);
       } else if (isR2Configured()) {
         const key = generatedMediaKey("posts", validated.extension);
@@ -185,7 +185,9 @@ router.post(["/", "/marketplace-digital"], requireAuth, (req, res) => {
       await discardStagedUpload(req.file);
     }
   });
-});
+};
+router.post("/", requireAuth, receiveUpload(false));
+router.post("/marketplace-digital", requireAuth, receiveUpload(true));
 
 // Memory-storage multer for image processing (25MB limit, images only)
 // POST /api/upload/image - Compressed image upload with thumbnail

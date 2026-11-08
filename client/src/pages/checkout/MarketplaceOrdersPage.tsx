@@ -24,7 +24,9 @@ export default function MarketplaceOrdersPage() {
   const orderId = params?.id === "my-purchases" ? null : params?.id;
   const endpoint = orderId ? `/api/orders/${encodeURIComponent(orderId)}` : "/api/orders/my-purchases";
   const purchases = useQuery<Purchase[]>({
-    queryKey: [endpoint, user?.id],
+    queryKey: ["marketplace-orders", endpoint, user?.id],
+    staleTime: 0,
+    refetchOnMount: "always",
     enabled: Boolean(user),
     queryFn: async () => {
       const data = await (await apiRequest("GET", endpoint)).json();

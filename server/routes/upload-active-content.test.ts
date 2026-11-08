@@ -356,7 +356,8 @@ test("R2 receives the verified content type and a generated key, and never recei
 test("the router mounts only the supported upload routes", () => {
   const routes = (uploadRouter as unknown as { stack: { route?: { path: string | string[]; methods: Record<string, boolean> } }[] }).stack
     .filter((layer) => layer.route)
-    .flatMap((layer) => [layer.route!.path].flat().map((route) => `POST ${route}`));
+    .flatMap((layer) => [layer.route!.path].flat().map((route) =>
+      `${Object.keys(layer.route!.methods).join(",").toUpperCase()} ${route}`));
   assert.deepEqual(routes, ["POST /", "POST /marketplace-digital", "POST /image"]);
 });
 
@@ -364,7 +365,7 @@ test("marketplace downloads are stored privately and bound to the authenticated 
   const route = "/api/upload/marketplace-digital";
   const document = [{ field: "file", filename: "cookbook.pdf", contentType: "application/pdf", body: pdf() }];
   assert.equal((await upload(route, document, { authenticated: false })).status, 401);
-  const result = await upload(route, document);
+  const result = await upload("/api/upload/Marketplace-Digital", document);
   assert.equal(result.status, 200);
   const ref = String(result.payload.url);
   assert.match(ref, /^private:[0-9a-f-]{36}$/);

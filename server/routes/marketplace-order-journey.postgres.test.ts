@@ -34,7 +34,7 @@ if (!PG_URL) {
       const ids: Record<string, string> = {};
       for (const name of ["buyer", "seller", "other"]) {
         ids[name] = (await local.query(
-          "INSERT INTO users (username, email, password, auth_version) VALUES ($1, $2, 'fixture', 1) RETURNING id",
+          "INSERT INTO users (username, email, display_name, password, auth_version) VALUES ($1, $2, $1, 'fixture', 1) RETURNING id",
           [name, `${name}@example.test`],
         )).rows[0].id;
       }
@@ -69,6 +69,7 @@ if (!PG_URL) {
       const status = `${base}/${pickupOrder.id}/status`;
       assert.equal((await call("GET", downloads, "buyer")).status, 404);
       assert.equal((await call("PATCH", status, "seller", { status: "processing" })).status, 409);
+      assert.equal((await call("GET", `${base}/my-sales?paidOnly=true`, "seller")).json.count, 0);
       const before = await call("GET", `${base}/my-purchases`, "buyer");
       assert.equal(before.json.orders.length, 2);
       assert.ok(before.json.orders.every((entry: { verifiedPaid: boolean }) => !entry.verifiedPaid));
@@ -87,6 +88,11 @@ if (!PG_URL) {
       assert.equal((await call("GET", downloads, "seller")).status, 404);
       const sales = await call("GET", `${base}/my-sales`, "seller");
       assert.equal(sales.json.summary.verifiedPaidOrders, 2);
+      const page1 = await call("GET", `${base}/my-sales?paidOnly=true&limit=1`, "seller");
+      const page2 = await call("GET", `${base}/my-sales?paidOnly=true&limit=1&offset=1`, "seller");
+      assert.equal(page1.json.hasMore, true);
+      assert.equal(page2.json.hasMore, false);
+      assert.notEqual(page1.json.sales[0].order.id, page2.json.sales[0].order.id);
       assert.ok(!sales.text.includes(file));
       assert.equal((await call("PATCH", status, "other", { status: "processing" })).status, 403);
       assert.equal((await call("PATCH", status, "seller", { status: "processing" })).status, 200);

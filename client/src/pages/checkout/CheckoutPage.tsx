@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ export default function CheckoutPage() {
   const { user } = useUser();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Get product from URL params
   const params = new URLSearchParams(window.location.search);
@@ -167,6 +169,7 @@ export default function CheckoutPage() {
   };
 
   const handlePaymentSuccess = () => {
+    void queryClient.invalidateQueries({ queryKey: ["marketplace-orders"] });
     setStep("success");
   };
 

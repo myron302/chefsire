@@ -9,7 +9,7 @@ import { requireAuth } from "../middleware";
 import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
-import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, toClientOrder } from "../lib/marketplace-payment";
+import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, toClientOrder, verifiedMarketplaceEarningWhere } from "../lib/marketplace-payment";
 import { marketplaceDigitalFilePath } from "../lib/marketplace-digital-file";
 import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../../shared/marketplace-fulfillment";
 
@@ -280,11 +280,12 @@ router.get("/my-purchases", requireAuth, async (req, res) => {
 router.get("/my-sales", requireAuth, async (req, res) => {
   try {
     const sellerId = req.user!.id;
-    const limit = parseInt(req.query.limit as string) || 50;
-    const offset = parseInt(req.query.offset as string) || 0;
-    const status = req.query.status as string;
+    const limit = Math.max(1, Math.min(100, Number.parseInt(String(req.query.limit), 10) || 50));
+    const offset = Math.max(0, Number.parseInt(String(req.query.offset), 10) || 0);
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const paidOnly = req.query.paidOnly === "true";
 
-    let query = db
+    const rows = await db
       .select({
         order: clientOrderColumns,
         product: clientProductColumns,
@@ -298,38 +299,15 @@ router.get("/my-sales", requireAuth, async (req, res) => {
       .from(orders)
       .innerJoin(products, eq(orders.productId, products.id))
       .innerJoin(users, eq(orders.buyerId, users.id))
-      .where(eq(orders.sellerId, sellerId))
-      .orderBy(desc(orders.createdAt))
-      .limit(limit)
+      .where(and(
+        eq(orders.sellerId, sellerId),
+        status ? eq(orders.status, status) : undefined,
+        paidOnly ? verifiedMarketplaceEarningWhere(orders) : undefined,
+      ))
+      .orderBy(desc(orders.createdAt), desc(orders.id))
+      .limit(limit + 1)
       .offset(offset);
-
-    if (status) {
-      query = db
-        .select({
-          order: clientOrderColumns,
-          product: clientProductColumns,
-          buyer: {
-            id: users.id,
-            username: users.username,
-            displayName: users.displayName,
-            avatar: users.avatar
-          }
-        })
-        .from(orders)
-        .innerJoin(products, eq(orders.productId, products.id))
-        .innerJoin(users, eq(orders.buyerId, users.id))
-        .where(
-          and(
-            eq(orders.sellerId, sellerId),
-            eq(orders.status, status)
-          )
-        )
-        .orderBy(desc(orders.createdAt))
-        .limit(limit)
-        .offset(offset) as any;
-    }
-
-    const sales = await query;
+    const sales = rows.slice(0, limit);
 
     // Calculate totals
     // Quoted order economics are not verified earnings. Only independently
@@ -346,6 +324,7 @@ router.get("/my-sales", requireAuth, async (req, res) => {
       ok: true,
       sales: sales.map((entry: (typeof sales)[number]) => ({ ...entry, verifiedPaid: isVerifiedMarketplaceEarning(entry.order) })),
       count: sales.length,
+      hasMore: rows.length > limit,
       summary: {
         totalRevenue: totalRevenue.toFixed(2),
         totalPlatformFees: totalPlatformFees.toFixed(2),
