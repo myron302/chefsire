@@ -3,22 +3,19 @@ import { BarChart3, Flame, GitFork, Target, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { NutritionCampaign } from "@/pages/nutrition/campaigns/mockCampaigns";
 
-function compactNumber(value: number) {
-  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
 export default function CampaignStats({ campaigns }: { campaigns: NutritionCampaign[] }) {
-  const totalSaves = campaigns.reduce((sum, campaign) => sum + campaign.saves, 0);
-  const totalRemixes = campaigns.reduce((sum, campaign) => sum + campaign.remixes, 0);
-  const averageCompletion = Math.round(campaigns.reduce((sum, campaign) => sum + campaign.completionRate, 0) / campaigns.length);
-  const creatorCount = new Set(campaigns.map((campaign) => campaign.creator.id)).size;
+  const count = campaigns.length || 1;
+  const goals = new Set(campaigns.map((campaign) => campaign.dietType)).size;
+  const avgDays = Math.round(campaigns.reduce((sum, campaign) => sum + campaign.durationDays, 0) / count);
+  const avgProtein = Math.round(campaigns.reduce((sum, campaign) => sum + campaign.macros.proteinPerDay, 0) / count);
+  const beginnerFriendly = campaigns.filter((campaign) => campaign.difficulty === "beginner").length;
 
   const stats = [
-    { label: "Public systems", value: campaigns.length.toString(), icon: Target, tone: "from-emerald-500 to-lime-500" },
-    { label: "Creator saves", value: compactNumber(totalSaves), icon: Flame, tone: "from-orange-500 to-rose-500" },
-    { label: "Remix drafts", value: compactNumber(totalRemixes), icon: GitFork, tone: "from-cyan-500 to-blue-500" },
-    { label: "Avg completion", value: `${averageCompletion}%`, icon: BarChart3, tone: "from-violet-500 to-fuchsia-500" },
-    { label: "Elite creators", value: creatorCount.toString(), icon: Users, tone: "from-slate-700 to-slate-950" },
+    { label: "Programs", value: campaigns.length.toString(), icon: Target, tone: "from-emerald-500 to-lime-500" },
+    { label: "Nutrition goals", value: goals.toString(), icon: Flame, tone: "from-orange-500 to-rose-500" },
+    { label: "Avg length", value: `${avgDays} days`, icon: GitFork, tone: "from-cyan-500 to-blue-500" },
+    { label: "Avg protein", value: `${avgProtein}g/day`, icon: BarChart3, tone: "from-violet-500 to-fuchsia-500" },
+    { label: "Beginner friendly", value: beginnerFriendly.toString(), icon: Users, tone: "from-slate-700 to-slate-950" },
   ];
 
   return (

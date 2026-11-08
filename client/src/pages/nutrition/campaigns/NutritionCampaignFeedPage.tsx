@@ -36,10 +36,10 @@ function matchesDuration(campaign: NutritionCampaign, value: NutritionCampaignFi
 
 function sortCampaigns(campaigns: NutritionCampaign[], sort: NutritionCampaignFiltersState["sort"]) {
   return [...campaigns].sort((a, b) => {
-    if (sort === "new") return Number(b.isNew) - Number(a.isNew) || b.saves - a.saves;
-    if (sort === "popular") return b.saves - a.saves;
-    if (sort === "completion") return b.completionRate - a.completionRate;
-    return Number(b.isTrending) - Number(a.isTrending) || b.remixes - a.remixes;
+    if (sort === "new") return Number(b.isNew) - Number(a.isNew) || Number(b.isFeatured) - Number(a.isFeatured);
+    if (sort === "protein") return b.macros.proteinPerDay - a.macros.proteinPerDay;
+    if (sort === "shortest") return a.durationDays - b.durationDays;
+    return Number(b.isFeatured) - Number(a.isFeatured);
   });
 }
 
@@ -78,7 +78,7 @@ export default function NutritionCampaignFeedPage() {
     return sortCampaigns(visible, filters.sort);
   }, [filters]);
 
-  const trendingCampaigns = nutritionCampaigns.filter((campaign) => campaign.isTrending).slice(0, 4);
+  const featuredCampaigns = nutritionCampaigns.filter((campaign) => campaign.isFeatured).slice(0, 4);
   const seasonalCampaigns = nutritionCampaigns.filter((campaign) => campaign.seasonalTags.length > 0 && campaign.isNew).slice(0, 3);
   const popularCategories = Array.from(new Set(nutritionCampaigns.map((campaign) => campaign.category)));
 
@@ -90,25 +90,27 @@ export default function NutritionCampaignFeedPage() {
 
         <section className="space-y-5">
           <SectionHeader
-            eyebrow="Momentum"
-            title="Trending Campaigns"
-            description="Nutrition systems gaining saves, remixes, and completion velocity across the ChefSire community."
+            eyebrow="Editor's picks"
+            title="Featured Programs"
+            description="Hand-picked programs from the ChefSire kitchen to start with."
           />
           <div className="grid gap-5 lg:grid-cols-2">
-            {trendingCampaigns.map((campaign, index) => <CampaignCard key={campaign.id} campaign={campaign} featured={index === 0} />)}
+            {featuredCampaigns.map((campaign, index) => <CampaignCard key={campaign.id} campaign={campaign} featured={index === 0} />)}
           </div>
         </section>
 
+        {featuredNutritionCreators.length > 0 && (
         <section className="space-y-5">
-          <SectionHeader
-            eyebrow="Creator economy"
-            title="Featured Creators"
-            description="Follow nutrition creators with repeatable planning styles, strong consistency scores, and ready-to-remix campaign libraries."
-          />
-          <div className="flex gap-4 overflow-x-auto pb-2">
-            {featuredNutritionCreators.map((creator) => <CampaignCreatorPreview key={creator.id} creator={creator} />)}
-          </div>
-        </section>
+            <SectionHeader
+              eyebrow="Creator economy"
+              title="Featured Creators"
+              description="Follow nutrition creators with repeatable planning styles, strong consistency scores, and ready-to-remix campaign libraries."
+            />
+            <div className="flex gap-4 overflow-x-auto pb-2">
+              {featuredNutritionCreators.map((creator) => <CampaignCreatorPreview key={creator.id} creator={creator} />)}
+            </div>
+          </section>
+        )}
 
         <section className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
           <Card className="overflow-hidden border-white/70 bg-white/85 shadow-xl shadow-emerald-950/5 backdrop-blur">
@@ -152,7 +154,7 @@ export default function NutritionCampaignFeedPage() {
           <SectionHeader
             eyebrow="Discovery feed"
             title="Main Feed Grid"
-            description="Filter by diet type, prep intensity, calories, protein, budget, duration, and signal type. The scaffold is intentionally frontend-only for this foundation pass."
+            description="Filter by diet type, prep intensity, calories, protein, budget, and duration."
           />
           <CampaignFilters filters={filters} resultCount={filteredCampaigns.length} onChange={setFilters} />
 
@@ -170,7 +172,7 @@ export default function NutritionCampaignFeedPage() {
                 <Card className="border-dashed bg-white/80">
                   <CardContent className="p-8 text-center">
                     <h3 className="text-xl font-bold text-slate-950">No campaigns match this filter set yet.</h3>
-                    <p className="mt-2 text-sm text-slate-600">Reset filters or broaden your macro ranges to rediscover available mock campaigns.</p>
+                    <p className="mt-2 text-sm text-slate-600">Reset filters or broaden your macro ranges to see more programs.</p>
                     <Button className="mt-4 rounded-full" onClick={() => setFilters(defaultFilters)}>Reset filters</Button>
                   </CardContent>
                 </Card>
@@ -183,12 +185,12 @@ export default function NutritionCampaignFeedPage() {
                     <div key={campaign.id} className="rounded-3xl border bg-gradient-to-br from-slate-50 to-white p-4">
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="font-bold text-slate-950">{campaign.title}</h3>
-                        <Badge variant="outline">{campaign.completionRate}%</Badge>
+                        <Badge variant="outline" className="capitalize">{campaign.difficulty}</Badge>
                       </div>
                       <div className="mt-3 grid grid-cols-3 gap-2 text-center text-sm">
                         <div className="rounded-2xl bg-emerald-50 p-2"><strong>{campaign.macros.caloriesPerDay}</strong><br /><span className="text-xs text-slate-500">cal</span></div>
                         <div className="rounded-2xl bg-lime-50 p-2"><strong>{campaign.macros.proteinPerDay}g</strong><br /><span className="text-xs text-slate-500">protein</span></div>
-                        <div className="rounded-2xl bg-cyan-50 p-2"><strong>{campaign.remixes}</strong><br /><span className="text-xs text-slate-500">remixes</span></div>
+                        <div className="rounded-2xl bg-cyan-50 p-2"><strong>{campaign.durationDays}</strong><br /><span className="text-xs text-slate-500">days</span></div>
                       </div>
                     </div>
                   ))}
