@@ -64,8 +64,8 @@ app.use(passport.initialize());
 
 // Setup OAuth providers
 setupGoogleOAuth();
-setupFacebookOAuth();
-setupTikTokOAuth();
+app.locals.facebookOAuthAvailable = setupFacebookOAuth();
+app.locals.tiktokOAuthAvailable = setupTikTokOAuth();
 
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));

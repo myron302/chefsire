@@ -98,3 +98,12 @@ test("callback without a flow (missing / malformed state, or only the legacy sha
     assert.equal(setCookies(r).some((x) => x.startsWith("auth_token=")), false);
   }
 });
+
+test("optional OAuth starts and callbacks fail safely when their strategies are disabled", async () => {
+  for (const path of ["facebook", "facebook/callback", "tiktok", "tiktok/callback", "instagram"]) {
+    const response = await get(`/api/auth/${path}`);
+    assert.equal(response.status, 404);
+    assert.match(await response.text(), /sign-in method is unavailable/);
+    assert.equal(response.headers.get("set-cookie"), null);
+  }
+});
