@@ -1,77 +1,80 @@
 import { Camera, ChefHat, Flower, Heart, MapPin, Music, Sparkles } from "lucide-react";
 
-export const VENDORS = [
-  {
-    id: 1,
-    type: "caterer",
-    name: "Bella Vista Catering",
-    rating: 4.9,
-    reviews: 127,
-    priceRange: "$$$",
-    image: "https://images.unsplash.com/photo-1555244162-803834f70033",
-    specialty: "Farm-to-Table",
-    verified: true,
-    featured: true,
-    sponsored: true,
-    availability: "Available",
-    minGuests: 50,
-    maxGuests: 500,
-    description: "Award-winning catering with locally sourced ingredients",
-    amenities: ["Tastings", "Custom Menus", "Dietary Options", "Bar Service"],
-    responseTime: "2 hours",
-    viewsToday: 23,
-  },
-  {
-    id: 2,
-    type: "venue",
-    name: "The Grand Ballroom",
-    rating: 4.8,
-    reviews: 89,
-    priceRange: "$$$$",
-    image: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3",
-    capacity: "50-300",
-    verified: true,
-    featured: false,
-    availability: "Limited",
-    description: "Elegant historic venue with stunning architecture",
-    amenities: ["In-House Catering", "Parking", "Bridal Suite", "Dance Floor"],
-    responseTime: "24 hours",
-  },
-  {
-    id: 3,
-    type: "photographer",
-    name: "Moments Photography",
-    rating: 5.0,
-    reviews: 203,
-    priceRange: "$$$",
-    image: "https://images.unsplash.com/photo-1537633552985-df8429e8048b",
-    style: "Documentary",
-    verified: true,
-    featured: false,
-    availability: "Available",
-    description: "Capturing authentic moments with artistic flair",
-    packages: ["6 hours", "8 hours", "Full day"],
-    responseTime: "1 hour",
-  },
-  {
-    id: 4,
-    type: "dj",
-    name: "Elite Entertainment DJ",
-    rating: 4.7,
-    reviews: 156,
-    priceRange: "$$",
-    image: "https://images.unsplash.com/photo-1493676304819-0d7a8d026dcf",
-    specialty: "All Genres",
-    verified: false,
-    featured: false,
-    availability: "Available",
-    description: "Professional DJ services with premium sound systems",
-    amenities: ["MC Services", "Lighting", "Dance Floor", "Wireless Mics"],
-    responseTime: "3 hours",
-  },
-] as const;
+/**
+ * A wedding vendor in the public directory. Vendors come ONLY from listings an admin has published
+ * (GET /api/wedding/vendor-listings/public). The hub previously showed four invented vendors with fabricated
+ * ratings, review counts, "verified"/"sponsored" badges and live-looking view counts; there are no ratings yet.
+ */
+export interface Vendor {
+  id: number;
+  type: string;
+  name: string;
+  priceRange: string | null;
+  description: string | null;
+  location: string | null;
+  website: string | null;
+  instagramHandle: string | null;
+  yearsInBusiness: number | null;
+}
 
-export type Vendor = (typeof VENDORS)[number];
+export type PublishedVendorListing = {
+  id: number | string;
+  businessName: string;
+  category?: string | null;
+  city?: string | null;
+  state?: string | null;
+  description?: string | null;
+  website?: string | null;
+  instagramHandle?: string | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  yearsInBusiness?: number | null;
+};
+
+const CATEGORY_KEYWORDS: Array<[string, RegExp]> = [
+  ["caterer", /cater|food|chef|bak|cake|dessert/i],
+  ["venue", /venue|ballroom|hall|barn|estate|hotel|garden/i],
+  ["photographer", /photo|video|film/i],
+  ["dj", /dj|music|band|entertain|sound/i],
+  ["florist", /flor|flower|bloom/i],
+  ["planner", /plan|coordinat|design|decor/i],
+];
+
+/** Maps a vendor's free-text category to one of the directory filter values ("other" when nothing matches). */
+export function normalizeVendorCategory(raw: string | null | undefined): string {
+  const value = (raw || "").trim();
+  if (!value) return "other";
+  const exact = value.toLowerCase();
+  if (["caterer", "venue", "photographer", "dj", "florist", "planner"].includes(exact)) return exact;
+  for (const [type, pattern] of CATEGORY_KEYWORDS) if (pattern.test(value)) return type;
+  return "other";
+}
+
+function formatPriceRange(min: number | null | undefined, max: number | null | undefined): string | null {
+  const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
+  const lo = typeof min === "number" && min > 0 ? min : null;
+  const hi = typeof max === "number" && max > 0 ? max : null;
+  if (lo && hi) return lo === hi ? fmt(lo) : `${fmt(lo)}–${fmt(hi)}`;
+  if (lo) return `From ${fmt(lo)}`;
+  if (hi) return `Up to ${fmt(hi)}`;
+  return null;
+}
+
+export function toVendor(listing: PublishedVendorListing): Vendor {
+  const location = [listing.city, listing.state].filter(Boolean).join(", ") || null;
+  const website = typeof listing.website === "string" && /^https?:\/\//i.test(listing.website.trim()) ? listing.website.trim() : null;
+  return {
+    id: Number(listing.id),
+    type: normalizeVendorCategory(listing.category),
+    name: listing.businessName,
+    priceRange: formatPriceRange(listing.minPrice, listing.maxPrice),
+    description: listing.description ?? null,
+    location,
+    website,
+    instagramHandle: listing.instagramHandle ? String(listing.instagramHandle).replace(/^@/, "") : null,
+    yearsInBusiness: typeof listing.yearsInBusiness === "number" && listing.yearsInBusiness > 0 ? listing.yearsInBusiness : null,
+  };
+}
 
 export const VENDOR_CATEGORIES = [
   { value: "all", label: "All", icon: Sparkles },

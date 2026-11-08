@@ -8,9 +8,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import { VENDORS, VENDOR_CATEGORIES, vendorIconTone } from "@/pages/services/lib/wedding-planning-core";
+import { VENDOR_CATEGORIES, vendorIconTone, type Vendor } from "@/pages/services/lib/wedding-planning-core";
 
 interface WeddingPlanningVendorFiltersProps {
+  vendors: Vendor[];
   selectedDate: string;
   onSelectedDateChange: (value: string) => void;
   guestCount: number;
@@ -31,6 +32,7 @@ export function WeddingPlanningVendorFilters({
   searchLocation,
   onSearchLocationChange,
   vendorLocationRef,
+  vendors,
   selectedVendorType,
   onSelectedVendorTypeChange,
   filteredVendorCount,
@@ -107,7 +109,7 @@ export function WeddingPlanningVendorFilters({
         {VENDOR_CATEGORIES.map((category) => {
           const Icon = category.icon as any;
           const isSelected = selectedVendorType === category.value;
-          const count = category.value === "all" ? VENDORS.length : VENDORS.filter((v) => v.type === category.value).length;
+          const count = category.value === "all" ? vendors.length : vendors.filter((v) => v.type === category.value).length;
 
           return (
             <Button

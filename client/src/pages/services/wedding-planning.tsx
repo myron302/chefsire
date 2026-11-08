@@ -42,7 +42,6 @@ import {
   DEFAULT_BUDGET_ALLOCATIONS,
   DEFAULT_PLANNING_TASKS,
   DEFAULT_REGISTRY_LINKS,
-  VENDORS,
   BudgetAllocation,
   inferBudgetKeyFromTask,
   normalizeRegistryLinks,
@@ -72,6 +71,7 @@ import { WeddingPlanningEventDetailsEditor } from "@/pages/services/wedding-plan
 import { WeddingPlanningInvitationPreview } from "@/pages/services/wedding-planning/components/WeddingPlanningInvitationPreview";
 import { WeddingPlanningVendorPromoCard } from "@/pages/services/wedding-planning/components/WeddingPlanningVendorPromoCard";
 import { WeddingPlanningVendorCtaSection } from "@/pages/services/wedding-planning/components/WeddingPlanningVendorCtaSection";
+import { usePublishedVendors } from "@/pages/services/lib/use-published-vendors";
 
 export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlanningView } = {}) {
   const { toast } = useToast();
@@ -461,9 +461,11 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
     });
   }, []);
 
-  const filteredVendors = useMemo(() => (selectedVendorType === "all" ? VENDORS : VENDORS.filter((v) => v.type === selectedVendorType)), [
-    selectedVendorType,
-  ]);
+  const { data: vendors = [] } = usePublishedVendors();
+  const filteredVendors = useMemo(
+    () => (selectedVendorType === "all" ? vendors : vendors.filter((v) => v.type === selectedVendorType)),
+    [selectedVendorType, vendors]
+  );
 
   const toggleSaveVendor = useCallback((vendorId: number) => {
     setSavedVendors((prev) => {
@@ -490,8 +492,8 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
 
   const quoteVendor = useMemo(() => {
     if (!quoteVendorId) return null;
-    return VENDORS.find((v) => v.id === quoteVendorId) || null;
-  }, [quoteVendorId]);
+    return vendors.find((v) => v.id === quoteVendorId) || null;
+  }, [quoteVendorId, vendors]);
 
   // Load existing quote requests so "Quote Requested" persists across refresh/devices
   useEffect(() => {
@@ -543,6 +545,8 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
         credentials: "include",
         body: JSON.stringify({
           vendorId: quoteVendorId,
+          vendorType: quoteVendor?.type,
+          vendorName: quoteVendor?.name,
           // Keep legacy key and include active backend key for compatibility.
           eventDate: quoteForm.eventDate,
           weddingDate: quoteForm.eventDate,
@@ -2391,6 +2395,7 @@ const displaySmartTips = useMemo(() => {
         selectedVendorType={selectedVendorType}
         onSelectedVendorTypeChange={setSelectedVendorType}
         filteredVendorCount={filteredVendors.length}
+        vendors={vendors}
       />
 
 {/* Vendors grid */}
