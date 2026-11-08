@@ -1,11 +1,10 @@
-import { authEntryDestination } from "@/lib/auth-entry";
+import { authEntryDestination, authEntryLink } from "@/lib/auth-entry";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@/contexts/UserContext";
 import { Crown, Castle, Shield, AlertCircle } from "lucide-react";
 import { FcGoogle } from 'react-icons/fc';
 import { googleSignInUrl } from "@/lib/google-signin";
-import { FaFacebook, FaInstagram, FaTiktok } from 'react-icons/fa';
 
 export default function LoginPage() {
   const [errors, setErrors] = useState({ email: "", password: "", general: "" });
@@ -13,9 +12,8 @@ export default function LoginPage() {
   const [, setLocation] = useLocation();
   const { login } = useUser();
   const destination = authEntryDestination(window.location.search);
-  const googleLoginUrl = destination === "/feed"
-    ? "/api/auth/google"
-    : `/api/auth/google?next=${encodeURIComponent(destination)}`;
+  const googleLoginUrl = authEntryLink("/api/auth/google", window.location.search);
+  const signupUrl = authEntryLink("/signup", window.location.search);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -168,29 +166,14 @@ export default function LoginPage() {
           </div>
 
           {/* Social OAuth Buttons */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3">
             <a
               href={googleLoginUrl}
               onClick={(e) => { e.preventDefault(); window.location.assign(googleSignInUrl(googleLoginUrl)); }}
               className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
             >
               <FcGoogle className="w-5 h-5" />
-              <span className="hidden sm:inline">Google</span>
-            </a>
-            <a
-              href="/api/auth/facebook"
-              className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <FaFacebook className="w-5 h-5 text-blue-600" />
-              <FaInstagram className="w-4 h-4 text-pink-600" />
-              <span className="hidden sm:inline">Facebook / Instagram</span>
-            </a>
-            <a
-              href="/api/auth/tiktok"
-              className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <FaTiktok className="w-5 h-5" />
-              <span className="hidden sm:inline">TikTok</span>
+              <span>Google</span>
             </a>
           </div>
 
@@ -198,7 +181,7 @@ export default function LoginPage() {
           <div className="text-center mt-6 pt-6 border-t border-blue-300/30">
             <p className="text-blue-100">
               No kingdom yet?{" "}
-              <a href="/signup" className="text-blue-300 hover:text-blue-200 font-semibold underline">
+              <a href={signupUrl} className="text-blue-300 hover:text-blue-200 font-semibold underline">
                 Claim Your Throne
               </a>
             </p>

@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   Crown, ChevronDown, Sparkles, Castle, Shield, Gem,
-  Eye, EyeOff, Phone, Mail, CheckCircle2, XCircle
+  Eye, EyeOff, Mail, CheckCircle2
 } from 'lucide-react';
 import { FcGoogle } from 'react-icons/fc';
-import { FaFacebook, FaInstagram, FaTiktok } from 'react-icons/fa';
+import { authEntryLink } from "@/lib/auth-entry";
 import { googleSignInUrl } from "@/lib/google-signin";
 import { IMAGE_UPLOAD_ACCEPT } from "@shared/media-types";
 
@@ -20,13 +20,11 @@ type Errors = {
   title: string;
   phone: string;
   captcha: string;
-  verify: string;
   businessName: string;
   businessCategory: string;
 };
 
 type AccountType = 'personal' | 'business';
-type VerifyMethod = 'sms' | 'email';
 
 const TITLE_SUFFIX_MAP: Record<string, string> = {
   'king': 'king',
@@ -60,12 +58,14 @@ function slugify(raw: string) {
 
 export default function SignupPage() {
   const [, setLocation] = useLocation();
+  const search = window.location.search;
+  const googleSignupUrl = authEntryLink("/api/auth/google", search);
 
   // Core state
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Errors>({
     firstName: '', lastName: '', username: '', email: '', password: '',
-    title: '', phone: '', captcha: '', verify: '', businessName: '', businessCategory: ''
+    title: '', phone: '', captcha: '', businessName: '', businessCategory: ''
   });
 
   // Form state
@@ -94,13 +94,6 @@ export default function SignupPage() {
 
   // Password visibility
   const [showPassword, setShowPassword] = useState(false);
-
-  // Verification UI helpers (email option visible; SMS is UI-only here)
-  const [verifyMethod, setVerifyMethod] = useState<VerifyMethod>('email');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [emailLinkSent, setEmailLinkSent] = useState(false);
 
   // CAPTCHA (lightweight math)
   const [captchaA, setCaptchaA] = useState(0);
@@ -243,33 +236,6 @@ export default function SignupPage() {
     return data;
   }
 
-  // --- Handlers (UI-only for SMS/email buttons shown on the form) ---
-  const handleSendEmailLink = async () => {
-    // This button is just visual here; the real email is sent by the server on signup.
-    await new Promise(r => setTimeout(r, 350));
-    setEmailLinkSent(true);
-  };
-
-  const handleSendOtp = async () => {
-    if (!isPhoneValid) {
-      setErrors(e => ({ ...e, phone: 'Invalid phone number' }));
-      return;
-    }
-    setErrors(e => ({ ...e, phone: '' }));
-    await new Promise(r => setTimeout(r, 350));
-    setOtpSent(true);
-  };
-
-  const handleVerifyOtp = async () => {
-    if (otpCode.length !== 6) {
-      setErrors(e => ({ ...e, verify: 'Code must be 6 digits' }));
-      return;
-    }
-    await new Promise(r => setTimeout(r, 350));
-    setOtpVerified(true);
-    setErrors(e => ({ ...e, verify: '' }));
-  };
-
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (loading) return;
@@ -277,13 +243,13 @@ export default function SignupPage() {
     // Reset errors
     setErrors({
       firstName: '', lastName: '', username: '', email: '', password: '',
-      title: '', phone: '', captcha: '', verify: '', businessName: '', businessCategory: ''
+      title: '', phone: '', captcha: '', businessName: '', businessCategory: ''
     });
 
     // Validate
     const newErrors: Errors = {
       firstName: '', lastName: '', username: '', email: '', password: '',
-      title: '', phone: '', captcha: '', verify: '', businessName: '', businessCategory: ''
+      title: '', phone: '', captcha: '', businessName: '', businessCategory: ''
     };
 
     if (!firstName.trim()) newErrors.firstName = 'First name is required';
@@ -321,11 +287,15 @@ export default function SignupPage() {
     try {
       const result = await apiSignup();
 
-      // Store email so /verify-email page can offer "Resend"
-      sessionStorage.setItem('pendingVerificationEmail', email.trim());
-
-      // Redirect to the verify page; backend already sent an email
-      setLocation('/verify-email');
+      const verifyUrl = new URL(authEntryLink("/verify-email", search), window.location.origin);
+      if (result.emailError) verifyUrl.searchParams.set("delivery", "unavailable");
+      try {
+        sessionStorage.setItem("pendingVerificationEmail", email.trim());
+        sessionStorage.setItem("pendingVerificationSearch", verifyUrl.search);
+      } catch {
+        // Account creation succeeds even when the browser blocks storage.
+      }
+      setLocation(verifyUrl.pathname + verifyUrl.search);
     } catch (err: any) {
       alert(err?.message || 'Signup failed. Please try again.');
     } finally {
@@ -730,7 +700,7 @@ export default function SignupPage() {
             {/* Phone */}
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-yellow-100 mb-2">
-                Phone Number {verifyMethod === 'sms' ? '*' : '(Optional)'}
+                Phone Number (Optional)
               </label>
               <input
                 id="phone"
@@ -745,116 +715,12 @@ export default function SignupPage() {
                 autoComplete="tel"
               />
               {errors.phone && <p className="mt-2 text-sm text-red-300">{errors.phone}</p>}
-              <p className="mt-1 text-xs text-yellow-200">
-                Required for SMS verification; optional for email verification
-              </p>
             </div>
 
-            {/* Verification Method (UI only) */}
-            <div className="p-4 bg-white/10 rounded-2xl border border-yellow-300/30">
-              <label className="block text-sm font-medium text-yellow-100 mb-3">
-                Verification Method *
-              </label>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-yellow-100">
-                  <input
-                    type="radio"
-                    name="verifyMethod"
-                    value="email"
-                    checked={verifyMethod === 'email'}
-                    onChange={() => setVerifyMethod('email')}
-                  />
-                  <Mail className="w-4 h-4" /> Verify by Email Link
-                </label>
-                <label className="flex items-center gap-2 text-yellow-100">
-                  <input
-                    type="radio"
-                    name="verifyMethod"
-                    value="sms"
-                    checked={verifyMethod === 'sms'}
-                    onChange={() => setVerifyMethod('sms')}
-                  />
-                  <Phone className="w-4 h-4" /> Verify by SMS (OTP)
-                </label>
-              </div>
-
-              {/* Email link flow (visual only; real mail is sent server-side on submit) */}
-              {verifyMethod === 'email' && (
-                <div className="mt-3 flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleSendEmailLink}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400 text-purple-900 font-semibold hover:bg-yellow-300 transition"
-                  >
-                    <Mail className="w-4 h-4" /> Send Test Link
-                  </button>
-                  {emailLinkSent ? (
-                    <span className="inline-flex items-center gap-1 text-green-300 text-sm">
-                      <CheckCircle2 className="w-4 h-4" /> (UI test) Link prepared.
-                    </span>
-                  ) : (
-                    <span className="text-yellow-200 text-sm">Actual link comes after you submit the form.</span>
-                  )}
-                </div>
-              )}
-
-              {/* SMS OTP flow (visual only) */}
-              {verifyMethod === 'sms' && (
-                <div className="mt-3 space-y-3">
-                  {!otpSent ? (
-                    <button
-                      type="button"
-                      onClick={handleSendOtp}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400 text-purple-900 font-semibold hover:bg-yellow-300 transition"
-                    >
-                      <Phone className="w-4 h-4" /> Send Code
-                    </button>
-                  ) : (
-                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
-                      <div className="flex-1">
-                        <label className="block text-xs text-yellow-200 mb-1">Enter 6-digit code</label>
-                        <input
-                          inputMode="numeric"
-                          pattern="\d*"
-                          maxLength={6}
-                          value={otpCode}
-                          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                          className="w-full px-4 py-3 bg-white/20 border border-yellow-300/50 rounded-2xl text-white focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                          placeholder="123456"
-                          autoComplete="one-time-code"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleVerifyOtp}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-yellow-400 text-purple-900 font-semibold hover:bg-yellow-300 transition"
-                        >
-                          Verify
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSendOtp}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/20 text-yellow-100 border border-yellow-300/30 font-semibold hover:bg-white/10 transition"
-                        >
-                          Resend
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {otpVerified && (
-                    <span className="inline-flex items-center gap-1 text-green-300 text-sm">
-                      <CheckCircle2 className="w-4 h-4" /> Phone verified
-                    </span>
-                  )}
-                  {!otpVerified && errors.verify && (
-                    <span className="inline-flex items-center gap-1 text-red-300 text-sm">
-                      <XCircle className="w-4 h-4" /> {errors.verify}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
+            <p className="flex items-center gap-2 text-sm text-yellow-100">
+              <Mail className="h-4 w-4" aria-hidden="true" />
+              After sign-up, use the link in your email to verify your account and choose your password.
+            </p>
 
             {/* CAPTCHA */}
             <div>
@@ -932,29 +798,14 @@ export default function SignupPage() {
           </div>
 
           {/* Social OAuth Buttons */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3">
             <a
-              href="/api/auth/google"
-              onClick={(e) => { e.preventDefault(); window.location.assign(googleSignInUrl("/api/auth/google")); }}
+              href={googleSignupUrl}
+              onClick={(e) => { e.preventDefault(); window.location.assign(googleSignInUrl(googleSignupUrl)); }}
               className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
             >
               <FcGoogle className="w-5 h-5" />
-              <span className="hidden sm:inline">Google</span>
-            </a>
-            <a
-              href="/api/auth/facebook"
-              className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <FaFacebook className="w-5 h-5 text-blue-600" />
-              <FaInstagram className="w-4 h-4 text-pink-600" />
-              <span className="hidden sm:inline">Facebook / Instagram</span>
-            </a>
-            <a
-              href="/api/auth/tiktok"
-              className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <FaTiktok className="w-5 h-5" />
-              <span className="hidden sm:inline">TikTok</span>
+              <span>Google</span>
             </a>
           </div>
 
@@ -962,7 +813,7 @@ export default function SignupPage() {
           <div className="text-center mt-6 pt-6 border-t border-yellow-300/30">
             <p className="text-yellow-100">
               Already rule a kingdom?{' '}
-              <a href="/login" className="text-yellow-300 hover:text-yellow-200 font-semibold underline">
+              <a href={authEntryLink("/login", search)} className="text-yellow-300 hover:text-yellow-200 font-semibold underline">
                 Enter Your Castle
               </a>
             </p>

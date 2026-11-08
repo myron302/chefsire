@@ -2,11 +2,14 @@
 import { useState } from 'react';
 import { Crown, Mail, CheckCircle2, Sparkles, ArrowRight } from 'lucide-react';
 import { useLocation } from 'wouter';
+import { authEntryLink } from '@/lib/auth-entry';
 
 export default function VerifyEmailPage() {
   const [, setLocation] = useLocation();
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
+  const search = window.location.search;
+  const [deliveryUnavailable, setDeliveryUnavailable] = useState(() => new URLSearchParams(search).get("delivery") === "unavailable");
 
   const handleResendEmail = async () => {
     setResending(true);
@@ -29,6 +32,7 @@ export default function VerifyEmailPage() {
         throw new Error('Failed to resend email');
       }
 
+      setDeliveryUnavailable(false);
       setResent(true);
       setTimeout(() => setResent(false), 5000);
     } catch (error) {
@@ -92,7 +96,7 @@ export default function VerifyEmailPage() {
             <div className="text-center space-y-3">
               <h2 className="text-2xl font-bold text-white">Account Created Successfully!</h2>
               <p className="text-yellow-100 text-base">
-                We've sent a royal decree to your email address. Please check your inbox and click the verification link to activate your account.
+                {deliveryUnavailable ? "We couldn't send your verification email. Use Resend Email to try again." : "Check your inbox and open the verification link to activate your account."}
               </p>
             </div>
 
@@ -128,7 +132,7 @@ export default function VerifyEmailPage() {
             {resent && (
               <div className="bg-green-500/20 border border-green-400 rounded-2xl p-4 flex items-center space-x-3">
                 <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
-                <p className="text-green-300 text-sm">Verification email resent! Check your inbox.</p>
+                <p className="text-green-300 text-sm">If the account still needs verification, an email will arrive shortly.</p>
               </div>
             )}
 
@@ -162,7 +166,7 @@ export default function VerifyEmailPage() {
 
             {/* Go to Login */}
             <button
-              onClick={() => setLocation('/login')}
+              onClick={() => setLocation(authEntryLink("/login", search))}
               className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-300 hover:to-orange-300 text-purple-900 font-bold rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl"
             >
               Already Verified? Enter Your Castle

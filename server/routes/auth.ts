@@ -26,6 +26,12 @@ import { isDatabaseUnavailableError, sendServiceUnavailable } from "../lib/db-av
 import { claimFlow, FlowCapacityError, flowCookieName, flowCookiesToEvict, isFlowId, newFlowId, OAUTH_VERIFY_TIMEOUT_MS, openFlow, sealFlow } from "../lib/oauth-flow";
 
 const router = Router();
+function requireOptionalOAuth(provider: "facebook" | "tiktok") {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (req.app.locals[`${provider}OAuthAvailable`] === true) return next();
+    return res.status(404).json({ error: "This sign-in method is unavailable. Use Google or email." });
+  };
+}
 const OAUTH_RETURN_COOKIE = "oauth_return_to";
 const oauthReturnCookieOptions = {
   httpOnly: true,
@@ -609,7 +615,7 @@ router.get("/auth/google/callback", oauthCallbackLimiter, (req, res, next) => {
  * GET /auth/facebook
  * Initiates Facebook OAuth flow
  */
-router.get("/auth/facebook", passport.authenticate("facebook", {
+router.get("/auth/facebook", requireOptionalOAuth("facebook"), passport.authenticate("facebook", {
   scope: ["email", "public_profile"],
 }));
 
@@ -617,7 +623,7 @@ router.get("/auth/facebook", passport.authenticate("facebook", {
  * GET /auth/facebook/callback
  * Facebook OAuth callback
  */
-router.get("/auth/facebook/callback",
+router.get("/auth/facebook/callback", requireOptionalOAuth("facebook"),
   passport.authenticate("facebook", { failureRedirect: "/login?error=facebook-auth-failed", session: false }),
   async (req, res) => {
     try {
@@ -652,7 +658,7 @@ router.get("/auth/facebook/callback",
  * GET /auth/tiktok
  * Initiates TikTok OAuth flow
  */
-router.get("/auth/tiktok", passport.authenticate("tiktok", {
+router.get("/auth/tiktok", requireOptionalOAuth("tiktok"), passport.authenticate("tiktok", {
   scope: ["user.info.basic"],
 }));
 
@@ -660,7 +666,7 @@ router.get("/auth/tiktok", passport.authenticate("tiktok", {
  * GET /auth/tiktok/callback
  * TikTok OAuth callback
  */
-router.get("/auth/tiktok/callback",
+router.get("/auth/tiktok/callback", requireOptionalOAuth("tiktok"),
   passport.authenticate("tiktok", { failureRedirect: "/login?error=tiktok-auth-failed", session: false }),
   async (req, res) => {
     try {
@@ -696,9 +702,9 @@ router.get("/auth/tiktok/callback",
  * Note: Instagram OAuth is handled through Facebook
  * Redirect users to use Facebook login for Instagram integration
  */
-router.get("/auth/instagram", (req, res) => {
+router.get("/auth/instagram", requireOptionalOAuth("facebook"), (_req, res) => {
   // Instagram Basic Display API requires Facebook OAuth
-  res.redirect("/auth/facebook");
+  res.redirect("/api/auth/facebook");
 });
 
 export default router;

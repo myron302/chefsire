@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { act, create } from "react-test-renderer";
 import { AuthEntryGate } from "./auth-entry";
-import { authEntryDestination } from "../lib/auth-entry";
+import { authEntryDestination, authEntryLink } from "../lib/auth-entry";
 
 for (const page of ["/login", "/signup"]) {
   test(`${page}: refresh waits; authenticated direct visit and Back replace the entry`, () => {
@@ -58,4 +58,14 @@ test("an admitted form survives indeterminate checks without trusting a cached p
     assert.deepEqual(calls, [], "only a verified identity may redirect");
   }
   act(() => { view.unmount(); });
+});
+
+test("checkout return survives signup and verification links without accepting an external destination", () => {
+  const checkout = "/checkout?productId=product-id&quantity=2";
+  const search = `?next=${encodeURIComponent(checkout)}`;
+  for (const path of ["/signup", "/verify-email", "/login", "/api/auth/google"] as const) {
+    assert.equal(authEntryLink(path, search), path + search);
+    assert.equal(authEntryLink(path, "?next=%2F%2Fevil.test"), path);
+  }
+  assert.equal(authEntryLink("/login", "?next=%2Fverify%2Fsuccess"), "/login");
 });

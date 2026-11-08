@@ -1,27 +1,38 @@
 // client/src/pages/verify-success.tsx
 import { Crown, CheckCircle2, Sparkles, ArrowRight } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
+import { authEntryLink } from '@/lib/auth-entry';
 
 export default function VerifySuccessPage() {
   const [, setLocation] = useLocation();
   const [countdown, setCountdown] = useState(5);
+  const [loginUrl] = useState(() => {
+    try {
+      return authEntryLink("/login", sessionStorage.getItem("pendingVerificationSearch") ?? "");
+    } catch {
+      return "/login";
+    }
+  });
 
-  // Auto-redirect to login after 5 seconds
+  const goToLogin = useCallback(() => {
+    try {
+      sessionStorage.removeItem("pendingVerificationSearch");
+      sessionStorage.removeItem("pendingVerificationEmail");
+    } catch {
+      // Navigation works without browser storage.
+    }
+    setLocation(loginUrl, { replace: true });
+  }, [loginUrl, setLocation]);
+
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setLocation('/login');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [setLocation]);
+    if (countdown === 0) {
+      goToLogin();
+      return;
+    }
+    const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown, goToLogin]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-red-800 to-orange-600 py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
@@ -83,7 +94,7 @@ export default function VerifySuccessPage() {
 
             {/* Manual Login Button */}
             <button
-              onClick={() => setLocation('/login')}
+              onClick={goToLogin}
               className="w-full mt-6 bg-gradient-to-r from-purple-600 via-red-500 to-orange-500 hover:from-purple-700 hover:via-red-600 hover:to-orange-600 text-white font-semibold py-6 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2"
             >
               <Crown className="w-5 h-5" />
