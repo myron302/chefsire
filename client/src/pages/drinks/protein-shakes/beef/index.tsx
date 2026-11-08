@@ -563,11 +563,7 @@ export default function BeefProteinPage() {
 
                       {/* MOVED: Rating and Difficulty just above recipe box */}
                       <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{shake.rating}</span>
-                          <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                        </div>
+                        <span />
                         <Badge variant="outline">{shake.difficulty}</Badge>
                       </div>
 
@@ -808,11 +804,7 @@ export default function BeefProteinPage() {
 
                     {/* MOVED: Rating and Difficulty just above recipe box */}
                     <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{shake.rating}</span>
-                        <span className="text-gray-500 text-sm">({shake.reviews})</span>
-                      </div>
+                      <span />
                       <Badge variant="outline">{shake.difficulty}</Badge>
                     </div>
 

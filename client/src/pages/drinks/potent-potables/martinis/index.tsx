@@ -615,20 +615,7 @@ export default function MartinisPage() {
 
                     {/* GLASS RATING */}
                     <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-1">
-                        {[...Array(5)].map((_, i) => (
-                          <GlassWater
-                            key={i}
-                            className={`w-4 h-4 ${
-                              i < Math.floor(martini.rating)
-                                ? 'fill-purple-500 text-purple-500'
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
-                        <span className="font-medium ml-1">{martini.rating}</span>
-                        <span className="text-gray-500 text-sm">({martini.reviews})</span>
-                      </div>
+                      <span />
                       <Badge variant="outline" className="text-xs">
                         {martini.difficulty}
                       </Badge>

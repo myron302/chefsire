@@ -705,11 +705,7 @@ export default function CatsPage() {
 
                   {/* Difficulty & Reviews */}
                   <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{recipe.rating}</span>
-                      <span className="text-gray-500 text-sm">({recipe.reviews})</span>
-                    </div>
+                    <span />
                     <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
                   </div>
 

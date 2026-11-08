@@ -517,11 +517,7 @@ export default function DetoxTeasPage() {
 
                       {/* RATING & DIFFICULTY - MOVED TO BE IMMEDIATELY ABOVE RECIPE CARD */}
                       <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{tea.rating}</span>
-                          <span className="text-gray-500 text-sm">({tea.reviews})</span>
-                        </div>
+                        <span />
                         <Badge variant="outline" className="text-xs">
                           {tea.difficulty}
                         </Badge>

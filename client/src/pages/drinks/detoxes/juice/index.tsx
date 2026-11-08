@@ -567,11 +567,7 @@ export default function DetoxJuicesPage() {
 
                       {/* Rating and Difficulty immediately above recipe card */}
                       <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-1">
-                          <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                          <span className="font-medium">{juice.rating}</span>
-                          <span className="text-gray-500 text-sm">({juice.reviews})</span>
-                        </div>
+                        <span />
                         <Badge variant="outline" className="text-xs">
                           {juice.difficulty}
                         </Badge>
@@ -830,11 +826,7 @@ export default function DetoxJuicesPage() {
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
                     <Badge variant="outline">{juice.detoxLevel}</Badge>
-                    <div className="flex items-center gap-1 ml-auto">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{juice.rating}</span>
-                      <span className="text-gray-500 text-sm">({juice.reviews})</span>
-                    </div>
+                    <span />
                   </div>
                 </CardHeader>
 
