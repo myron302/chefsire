@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { Users, Timer, Trophy, Star, Flame, Share2, Crown, Award, Target, Video, ArrowLeft, Send } from 'lucide-react';
 import { useUser } from '@/contexts/UserContext';
+import { roomAffordances } from './competition-room-rules';
 
 type Competition = {
   id: string;
@@ -244,8 +245,14 @@ export default function CompetitionRoomPage() {
   }
 
   const status = comp.status;
-  const canSubmit = !!user && !isHost && (status === 'upcoming' || status === 'live');
-  const canVote = !!user && !myEntry && (status === 'live' || status === 'judging') && competitors.length > 0;
+  const rules = roomAffordances({
+    status,
+    signedIn: !!user,
+    isHost,
+    hasEntry: !!myEntry,
+    competitorCount: competitors.length,
+  });
+  const { canSubmit, canVote } = rules;
   const ranked = status === 'completed'
     ? [...competitors].sort((a, b) => (a.placement ?? 999) - (b.placement ?? 999))
     : competitors;
@@ -325,34 +332,37 @@ export default function CompetitionRoomPage() {
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             {/* Host controls */}
-            {isHost && status !== 'completed' && status !== 'canceled' && (
+            {rules.hostAction && (
               <div className="bg-white border-2 border-gray-300 rounded-3xl p-6 shadow-xl">
                 <h2 className="text-lg font-bold text-gray-900 mb-2">Host controls</h2>
                 <p className="text-gray-700 text-sm mb-4">
-                  {status === 'upcoming' && `Start the battle when competitors are ready. The clock runs for ${comp.timeLimitMinutes} minutes.`}
+                  {status === 'upcoming' && `Start the battle to open entries. The clock runs for ${comp.timeLimitMinutes} minutes.`}
                   {status === 'live' && 'End cooking to open judging.'}
                   {status === 'judging' && 'Finalize results once enough votes are in.'}
                 </p>
                 <button
                   disabled={busy}
-                  onClick={() =>
-                    run(
-                      () =>
-                        postJson(
-                          `/api/competitions/${id}/${status === 'upcoming' ? 'start' : status === 'live' ? 'end' : 'complete'}`
-                        ),
-                      status === 'upcoming' ? 'The battle is live!' : status === 'live' ? 'Judging is open.' : 'Results are final.'
-                    )
-                  }
+                  onClick={() => {
+                    const action = rules.hostAction!;
+                    run(() => postJson(`/api/competitions/${id}/${action.endpoint}`), action.success);
+                  }}
                   className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-white font-bold shadow-lg disabled:opacity-50"
                 >
-                  {status === 'upcoming' ? 'Start Battle' : status === 'live' ? 'End Cooking & Start Judging' : 'Finalize Results'}
+                  {rules.hostAction.label}
                 </button>
               </div>
             )}
 
+            {/* Upcoming: entries open when the host starts */}
+            {rules.waitingForHost && (
+              <div className="bg-white/90 border-2 border-gray-300 rounded-3xl p-6 shadow-xl">
+                <h2 className="text-lg font-bold text-gray-900 mb-1">Waiting for the host to start</h2>
+                <p className="text-gray-700 text-sm">Entries open as soon as {nameOf(comp.creatorId)} starts the battle. This page updates automatically.</p>
+              </div>
+            )}
+
             {/* Join / submit dish */}
-            {(canSubmit || (!user && (status === 'upcoming' || status === 'live'))) && (
+            {(canSubmit || rules.promptSignInToCompete) && (
               <div className="bg-white border-2 border-gray-300 rounded-3xl p-6 shadow-xl">
                 <h2 className="text-lg font-bold text-gray-900 mb-3">{myEntry ? 'Your dish' : 'Join this battle'}</h2>
                 {!user ? (
@@ -469,7 +479,7 @@ export default function CompetitionRoomPage() {
                 </button>
               </div>
             )}
-            {!user && (status === 'live' || status === 'judging') && competitors.length > 0 && (
+            {rules.promptSignInToVote && (
               <button onClick={requireSignIn} className="px-6 py-3 bg-white border-2 border-gray-300 rounded-full font-bold text-gray-900 shadow">
                 Sign in to vote
               </button>
@@ -513,7 +523,7 @@ export default function CompetitionRoomPage() {
 
             <div className="bg-white/90 border-2 border-gray-300 rounded-2xl p-4 shadow-lg text-sm text-gray-700">
               <Video className="w-5 h-5 text-gray-500 mb-2" />
-              Live video for battles is coming soon. For now, share your dish photos and votes here.
+              Live video and dish photo uploads are coming soon. For now, enter your dish name and description, and vote here.
             </div>
           </div>
         </div>
