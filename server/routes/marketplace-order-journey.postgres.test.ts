@@ -72,6 +72,11 @@ if (!PG_URL) {
       assert.equal((await call("GET", `${base}/my-sales?paidOnly=true`, "seller")).json.count, 0);
       const before = await call("GET", `${base}/my-purchases`, "buyer");
       assert.equal(before.json.orders.length, 2);
+      const firstPurchasePage = await call("GET", `${base}/my-purchases?limit=1`, "buyer");
+      const secondPurchasePage = await call("GET", `${base}/my-purchases?limit=1&offset=1`, "buyer");
+      assert.equal(firstPurchasePage.json.hasMore, true);
+      assert.equal(secondPurchasePage.json.hasMore, false);
+      assert.notEqual(firstPurchasePage.json.orders[0].order.id, secondPurchasePage.json.orders[0].order.id);
       assert.ok(before.json.orders.every((entry: { verifiedPaid: boolean }) => !entry.verifiedPaid));
       assert.ok(!before.text.includes(file));
       assert.deepEqual((await call("GET", `${base}/my-purchases`, "other")).json.orders, []);

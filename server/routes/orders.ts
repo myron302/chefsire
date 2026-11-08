@@ -243,8 +243,8 @@ router.post("/checkout", requireAuth, async (req, res) => {
 router.get("/my-purchases", requireAuth, async (req, res) => {
   try {
     const buyerId = req.user!.id;
-    const limit = parseInt(req.query.limit as string) || 50;
-    const offset = parseInt(req.query.offset as string) || 0;
+    const limit = Math.max(1, Math.min(100, Number.parseInt(String(req.query.limit), 10) || 50));
+    const offset = Math.max(0, Number.parseInt(String(req.query.offset), 10) || 0);
 
     const userOrders = await db
       .select({
@@ -261,14 +261,15 @@ router.get("/my-purchases", requireAuth, async (req, res) => {
       .innerJoin(products, eq(orders.productId, products.id))
       .innerJoin(users, eq(orders.sellerId, users.id))
       .where(eq(orders.buyerId, buyerId))
-      .orderBy(desc(orders.createdAt))
-      .limit(limit)
+      .orderBy(desc(orders.createdAt), desc(orders.id))
+      .limit(limit + 1)
       .offset(offset);
 
     res.json({
       ok: true,
-      orders: userOrders.map((entry: (typeof userOrders)[number]) => ({ ...entry, verifiedPaid: isVerifiedMarketplaceEarning(entry.order) })),
-      count: userOrders.length
+      orders: userOrders.slice(0, limit).map((entry: (typeof userOrders)[number]) => ({ ...entry, verifiedPaid: isVerifiedMarketplaceEarning(entry.order) })),
+      count: Math.min(userOrders.length, limit),
+      hasMore: userOrders.length > limit
     });
   } catch (error) {
     console.error("Error fetching purchases:", error);
