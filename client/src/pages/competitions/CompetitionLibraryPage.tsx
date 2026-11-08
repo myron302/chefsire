@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Search, Sparkles, Filter, Timer, Users, Trophy, Flame, Calendar, Video, Eye, Plus, Layers, Home, TrendingUp, Zap, Star } from 'lucide-react';
+import { competitionLibraryStats } from './competition-library-stats';
 
 const THEMES = [
   { id: 'freestyle', name: 'Freestyle', icon: '🎨', gradient: 'from-purple-500 via-pink-500 to-orange-500' },
@@ -64,6 +65,8 @@ export default function CompetitionsLibraryPage() {
   const [loadError, setLoadError] = useState(false);
   // The API reports `note` when the competitions tables have not been created in this database yet.
   const [notReady, setNotReady] = useState(false);
+  // Server-reported total (all visible competitions), which can exceed the 100 loaded rows.
+  const [serverTotal, setServerTotal] = useState<number | null>(null);
 
   // Read status from URL query parameter
   useEffect(() => {
@@ -84,6 +87,7 @@ export default function CompetitionsLibraryPage() {
         if (cancelled) return;
         setItems(Array.isArray(data?.items) ? data.items : []);
         setNotReady(Boolean(data?.note));
+        setServerTotal(Number.isFinite(Number(data?.total)) ? Number(data.total) : null);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -102,12 +106,10 @@ export default function CompetitionsLibraryPage() {
     (!themeName || item.themeName === themeName) &&
     (!q.trim() || String(item.title || '').toLowerCase().includes(q.trim().toLowerCase()))
   );
-  const stats = {
-    total: items.length,
-    live: items.filter((item) => item.status === 'live').length,
-    judging: items.filter((item) => item.status === 'judging').length,
-    champions: items.filter((item) => item.status === 'completed').length,
-  };
+  // Creating requires the competitions tables; hide the CTAs until the library has loaded and is available.
+  const canCreate = !loading && !loadError && !notReady;
+  // Total comes from the server; status counts come from the loaded rows and are labeled when partial.
+  const { partial: statsArePartial, ...stats } = competitionLibraryStats(items, serverTotal);
 
   const getStatusBadge = (s: string) => {
     const colors: Record<string, string> = {
@@ -171,6 +173,7 @@ export default function CompetitionsLibraryPage() {
               <Home className="w-4 h-4" />
               <span>Home</span>
             </button>
+{canCreate && (
             <button
               onClick={() => setLocation('/competitions/new')}
               className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 rounded-full transition-all duration-300 hover:scale-105 text-white font-semibold shadow-lg"
@@ -178,6 +181,7 @@ export default function CompetitionsLibraryPage() {
               <Plus className="w-5 h-5" />
               Create Competition
             </button>
+            )}
           </div>
 
           {/* Animated Header */}
@@ -200,9 +204,9 @@ export default function CompetitionsLibraryPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {[
               { icon: TrendingUp, label: 'Total Battles', value: stats.total, color: 'from-blue-500 to-cyan-500' },
-              { icon: Zap, label: 'Live Now', value: stats.live, color: 'from-green-500 to-emerald-500' },
-              { icon: Star, label: 'Judging', value: stats.judging, color: 'from-amber-500 to-orange-500' },
-              { icon: Trophy, label: 'Champions', value: stats.champions, color: 'from-purple-500 to-pink-500' }
+              { icon: Zap, label: statsArePartial ? 'Live (latest 100)' : 'Live Now', value: stats.live, color: 'from-green-500 to-emerald-500' },
+              { icon: Star, label: statsArePartial ? 'Judging (latest 100)' : 'Judging', value: stats.judging, color: 'from-amber-500 to-orange-500' },
+              { icon: Trophy, label: statsArePartial ? 'Champions (latest 100)' : 'Champions', value: stats.champions, color: 'from-purple-500 to-pink-500' }
             ].map((stat, i) => (
               <div
                 key={i}
@@ -390,6 +394,8 @@ export default function CompetitionsLibraryPage() {
           ))}
         </div>
 
+        {canCreate && (
+          <>
         {/* CTA Footer */}
         <div className="mt-12 relative group">
           <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-3xl blur-2xl opacity-30 group-hover:opacity-50 transition-all duration-500"></div>
@@ -412,6 +418,8 @@ export default function CompetitionsLibraryPage() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );
