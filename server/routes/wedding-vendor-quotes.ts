@@ -13,6 +13,7 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
+import { sendVendorQuoteRequestEmail } from "../utils/mailer";
 
 const router = Router();
 
@@ -50,6 +51,33 @@ async function ensureWeddingVendorQuotesTable() {
   `);
 }
 // ────────────────────────────────────────────────────────────────
+
+/**
+ * How a quote request reaches the vendor. Indirected so tests can observe delivery without SMTP.
+ * Delivery goes ONLY to the published listing's own email address -- never to a fallback inbox -- so
+ * "sent to the vendor" is only ever reported when the vendor's address was actually handed to the mailer.
+ */
+export const quoteDelivery = {
+  send: (params: Parameters<typeof sendVendorQuoteRequestEmail>[0]) => sendVendorQuoteRequestEmail(params),
+};
+
+const isMissingRelation = (err: any) => err?.code === "42P01" || /relation .* does not exist/i.test(err?.message || "");
+
+/** The published listing a quote may target, or null (unpublished, nonexistent, or directory not created). */
+async function findPublishedListing(vendorId: number) {
+  try {
+    const result: any = await db.execute(sql`
+      SELECT id, business_name AS "businessName", category, email
+      FROM wedding_vendor_listings
+      WHERE id = ${vendorId} AND status = 'published'
+      LIMIT 1
+    `);
+    return (result?.rows ?? result ?? [])[0] ?? null;
+  } catch (err: any) {
+    if (isMissingRelation(err)) return null;
+    throw err;
+  }
+}
 
 const QuoteSchema = z.object({
   vendorId: z.number().int().nonnegative(),
@@ -137,6 +165,14 @@ router.post("/vendor-quotes", requireAuth, async (req, res) => {
     const q = parsed.data;
     const weddingDate = toDateOrNull(q.weddingDate);
 
+    // Quotes may only target a vendor that is published in the directory right now.
+    const listing = await findPublishedListing(q.vendorId);
+    if (!listing) {
+      return res.status(404).json({ ok: false, error: "This vendor isn't accepting quote requests through ChefSire." });
+    }
+    const vendorName: string = listing.businessName;
+    const vendorType: string | null = listing.category ?? null;
+
     const result: any = await db.execute(sql`
       INSERT INTO wedding_vendor_quotes (
         user_id, vendor_id, vendor_type, vendor_name,
@@ -144,7 +180,7 @@ router.post("/vendor-quotes", requireAuth, async (req, res) => {
         message, status
       )
       VALUES (
-        ${userId}, ${q.vendorId}, ${q.vendorType ?? null}, ${q.vendorName ?? null},
+        ${userId}, ${q.vendorId}, ${vendorType}, ${vendorName},
         ${weddingDate}::date, ${q.guestCount ?? null}, ${q.contactEmail ?? null}, ${q.contactPhone ?? null},
         ${q.message ?? null}, 'requested'
       )
@@ -176,14 +212,38 @@ router.post("/vendor-quotes", requireAuth, async (req, res) => {
     const row = result?.rows?.[0] ?? result?.[0];
     const created = !!row?.inserted;
 
+    // Deliver to the vendor's own listed address. Reported honestly: delivered is true only if the mailer accepted it.
+    let delivered = false;
+    const vendorEmail = typeof listing.email === "string" && listing.email.includes("@") ? listing.email : null;
+    if (vendorEmail) {
+      try {
+        await quoteDelivery.send({
+          vendorTo: vendorEmail,
+          vendorName,
+          vendorType: vendorType ?? undefined,
+          userEmail: q.contactEmail ?? (req.user as any)?.email ?? undefined,
+          userPhone: q.contactPhone ?? undefined,
+          weddingDate: weddingDate ?? undefined,
+          guestCount: q.guestCount ?? undefined,
+          message: q.message ?? undefined,
+          quoteId: row?.id ?? undefined,
+        });
+        delivered = true;
+      } catch (err) {
+        console.error("[Wedding Quotes] vendor delivery failed:", (err as any)?.message || err);
+      }
+    }
+
     return res.json({
       ok: true,
       created,
+      delivered,
+      vendorName,
       quote: {
         id: row?.id ?? null,
         vendorId: row?.vendorId ?? q.vendorId,
-        vendorType: row?.vendorType ?? q.vendorType ?? null,
-        vendorName: row?.vendorName ?? q.vendorName ?? null,
+        vendorType: row?.vendorType ?? vendorType,
+        vendorName: row?.vendorName ?? vendorName,
         weddingDate: row?.weddingDate ? String(row.weddingDate).slice(0, 10) : weddingDate,
         guestCount: typeof row?.guestCount === "number" ? row.guestCount : q.guestCount ?? null,
         contactEmail: row?.contactEmail ?? q.contactEmail ?? null,

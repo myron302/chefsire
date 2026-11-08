@@ -561,13 +561,23 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
         throw new Error(err?.message || "Failed to request quote");
       }
 
+      const data = await res.json().catch(() => ({}));
       setRequestedQuotes((prev) => new Set<number>(prev).add(quoteVendorId));
       setIsQuoteDialogOpen(false);
 
-      toast({
-        title: "Quote requested",
-        description: "We sent your request. The vendor will contact you soon.",
-      });
+      const vendorLabel = data?.vendorName || quoteVendor?.name || "the vendor";
+      if (data?.delivered) {
+        toast({
+          title: "Quote request sent",
+          description: `We emailed ${vendorLabel} your request. They'll reply to ${quoteForm.contactEmail || "your email"}.`,
+        });
+      } else {
+        toast({
+          title: "Request saved, not delivered",
+          description: `We couldn't reach ${vendorLabel} by email right now. Please contact them through their website or Instagram.`,
+          variant: "destructive",
+        });
+      }
     } catch (e: any) {
       toast({
         title: "Quote request failed",
@@ -575,7 +585,7 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
         variant: "destructive",
       });
     }
-  }, [quoteVendorId, quoteForm, toast]);
+  }, [quoteVendorId, quoteForm, quoteVendor, toast]);
 
   const completedTasks = useMemo(() => planningTasks.filter((task) => task.completed).length, [planningTasks]);
   const planningProgress = planningTasks.length === 0 ? 0 : Math.round((completedTasks / planningTasks.length) * 100);
