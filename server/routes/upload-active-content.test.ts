@@ -353,9 +353,27 @@ test("R2 receives the verified content type and a generated key, and never recei
 
 /* ------------------------------------------------------------------ the router in isolation */
 
-test("the router mounts the two routes the clients call, and nothing else", () => {
-  const routes = (uploadRouter as unknown as { stack: { route?: { path: string; methods: Record<string, boolean> } }[] }).stack
+test("the router mounts only the supported upload routes", () => {
+  const routes = (uploadRouter as unknown as { stack: { route?: { path: string | string[]; methods: Record<string, boolean> } }[] }).stack
     .filter((layer) => layer.route)
-    .map((layer) => `${Object.keys(layer.route!.methods).join(",").toUpperCase()} ${layer.route!.path}`);
-  assert.deepEqual(routes, ["POST /", "POST /image"]);
+    .flatMap((layer) => [layer.route!.path].flat().map((route) => `POST ${route}`));
+  assert.deepEqual(routes, ["POST /", "POST /marketplace-digital", "POST /image"]);
+});
+
+test("marketplace downloads are stored privately and bound to the authenticated uploader", async () => {
+  const route = "/api/upload/marketplace-digital";
+  const document = [{ field: "file", filename: "cookbook.pdf", contentType: "application/pdf", body: pdf() }];
+  assert.equal((await upload(route, document, { authenticated: false })).status, 401);
+  const result = await upload(route, document);
+  assert.equal(result.status, 200);
+  const ref = String(result.payload.url);
+  assert.match(ref, /^private:[0-9a-f-]{36}$/);
+  const { marketplaceDigitalFilePath } = await import("../lib/marketplace-digital-file");
+  const file = await marketplaceDigitalFilePath("11111111-1111-4111-8111-111111111111", ref);
+  assert.ok(file);
+  assert.deepEqual(fs.readFileSync(file), document[0].body);
+  assert.equal(await marketplaceDigitalFilePath("someone-else", ref), null);
+  assert.equal(await marketplaceDigitalFilePath("11111111-1111-4111-8111-111111111111", "/uploads/legacy.pdf"), null);
+  const response = await fetch(`${origin}/uploads/${path.relative(uploadsDir, file)}`);
+  assert.ok([403, 404].includes(response.status));
 });

@@ -29,6 +29,8 @@ jobs:
           cache: npm
       - name: Install dependencies from lockfile
         run: npm ci
+      - name: Test Marketplace checkout and private file isolation
+        run: node --import tsx --test shared/marketplace-fulfillment.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts
       - name: Test hosted invoice payment ownership
         run: node --import tsx --test server/lib/wedding-square-invoice-payment-customer.test.ts
       - name: Test owner-scoped sandbox checkout eligibility
@@ -190,6 +192,10 @@ jobs:
           cache: npm
       - name: Install dependencies from lockfile
         run: npm ci
+      - name: Test buyer and seller Marketplace order journey
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test server/routes/marketplace-order-journey.postgres.test.ts
       - name: Verify schema declaration coverage
         run: node --import tsx --test server/lib/schema-table-coverage.test.ts
       - name: Apply both Wedding Square migration files to a rollback-only PostgreSQL transaction and check constraints

@@ -1,5 +1,6 @@
 // server/routes/orders.ts
 import { Router } from "express";
+import path from "node:path";
 import { z } from "zod";
 import { db } from "../db";
 import { orders, products, users, stores } from "../../shared/schema";
@@ -9,6 +10,7 @@ import { effectiveMarketplaceTier } from "../lib/subscription-security";
 import { calculateSellerPayout, DeliveryMethod, ProductCategory } from "../lib/commissions";
 import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../services/notification-service";
 import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, toClientOrder } from "../lib/marketplace-payment";
+import { marketplaceDigitalFilePath } from "../lib/marketplace-digital-file";
 import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../../shared/marketplace-fulfillment";
 
 const router = Router();
@@ -17,6 +19,7 @@ const router = Router();
 // request (single-use payment token, verification token, buyer email) is
 // server-only and is never selected into a client response.
 const { captureRequestSnapshot: _serverOnlyCaptureRequest, ...clientOrderColumns } = getTableColumns(orders);
+const { digitalFileUrl: _privateDownload, ...clientProductColumns } = getTableColumns(products);
 
 function checkoutInputsMatch(order: typeof orders.$inferSelect, input: {
   productId: string;
@@ -80,7 +83,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "Product not found" });
     }
 
-    if (!product.isActive) {
+    if (!product.isActive || product.inStoreOnly || product.isExternal) {
       return res.status(400).json({ ok: false, error: "Product is not available" });
     }
 
@@ -95,6 +98,10 @@ router.post("/checkout", requireAuth, async (req, res) => {
 
     const productCategory = (product as any).productCategory || "physical";
     const isDigital = isDigitalMarketplaceProduct({ isDigital: product.isDigital, productCategory });
+
+    if (isDigital && !await marketplaceDigitalFilePath(product.sellerId, product.digitalFileUrl)) {
+      return res.status(409).json({ ok: false, error: "The seller must upload a secure download before this product can be purchased" });
+    }
 
     // Validate fulfillment method against server-owned product capabilities.
     if (!isDigital && body.fulfillmentMethod === "shipping" && !product.shippingEnabled) {
@@ -242,7 +249,7 @@ router.get("/my-purchases", requireAuth, async (req, res) => {
     const userOrders = await db
       .select({
         order: clientOrderColumns,
-        product: products,
+        product: clientProductColumns,
         seller: {
           id: users.id,
           username: users.username,
@@ -260,7 +267,7 @@ router.get("/my-purchases", requireAuth, async (req, res) => {
 
     res.json({
       ok: true,
-      orders: userOrders,
+      orders: userOrders.map((entry: (typeof userOrders)[number]) => ({ ...entry, verifiedPaid: isVerifiedMarketplaceEarning(entry.order) })),
       count: userOrders.length
     });
   } catch (error) {
@@ -280,7 +287,7 @@ router.get("/my-sales", requireAuth, async (req, res) => {
     let query = db
       .select({
         order: clientOrderColumns,
-        product: products,
+        product: clientProductColumns,
         buyer: {
           id: users.id,
           username: users.username,
@@ -300,7 +307,7 @@ router.get("/my-sales", requireAuth, async (req, res) => {
       query = db
         .select({
           order: clientOrderColumns,
-          product: products,
+          product: clientProductColumns,
           buyer: {
             id: users.id,
             username: users.username,
@@ -337,7 +344,7 @@ router.get("/my-sales", requireAuth, async (req, res) => {
 
     res.json({
       ok: true,
-      sales,
+      sales: sales.map((entry: (typeof sales)[number]) => ({ ...entry, verifiedPaid: isVerifiedMarketplaceEarning(entry.order) })),
       count: sales.length,
       summary: {
         totalRevenue: totalRevenue.toFixed(2),
@@ -435,6 +442,8 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
         }).where(and(
           eq(orders.id, orderId),
           eq(orders.status, order.status!),
+          eq(orders.paymentStatus, order.paymentStatus),
+          eq(orders.sellerRevenueStatus, order.sellerRevenueStatus),
           ...(status === "cancelled" ? [inArray(orders.paymentStatus, cancellablePaymentStates)] : []),
           ...(status === "cancelled" ? [eq(orders.inventoryStatus, order.inventoryStatus)] : []),
         )).returning();
@@ -481,6 +490,30 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
   }
 });
 
+// Download authority is scoped to the buyer and the current verified payment.
+router.get("/:id/download", requireAuth, async (req, res, next) => {
+  try {
+    const [entry] = await db.select({
+      order: clientOrderColumns,
+      file: products.digitalFileUrl,
+      filename: products.digitalFileName,
+    }).from(orders).innerJoin(products, eq(orders.productId, products.id)).where(and(
+      eq(orders.id, req.params.id),
+      eq(orders.buyerId, req.user!.id),
+      eq(products.sellerId, orders.sellerId),
+    )).limit(1);
+    if (!entry || entry.order.deliveryMethod !== DeliveryMethod.DIGITAL || !isVerifiedMarketplaceEarning(entry.order)) {
+      return res.status(404).json({ ok: false, error: "Download not available" });
+    }
+    const filename = await marketplaceDigitalFilePath(entry.order.sellerId, entry.file);
+    if (!filename) return res.status(404).json({ ok: false, error: "Contact the seller to make the download available" });
+    res.set({ "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/octet-stream" });
+    res.download(path.basename(filename), entry.filename || "download", { root: path.dirname(filename) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/orders/:id - Get single order details
 router.get("/:id", requireAuth, async (req, res) => {
   try {
@@ -490,7 +523,7 @@ router.get("/:id", requireAuth, async (req, res) => {
     const [orderDetails] = await db
       .select({
         order: clientOrderColumns,
-        product: products,
+        product: clientProductColumns,
         seller: {
           id: users.id,
           username: users.username,
@@ -515,7 +548,8 @@ router.get("/:id", requireAuth, async (req, res) => {
 
     res.json({
       ok: true,
-      order: orderDetails
+      order: orderDetails,
+      verifiedPaid: isVerifiedMarketplaceEarning(orderDetails.order),
     });
   } catch (error) {
     console.error("Error fetching order:", error);

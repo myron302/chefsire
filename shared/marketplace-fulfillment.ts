@@ -26,3 +26,19 @@ export function resolveMarketplaceShippingCost(product: {
   const cost = typeof product.shippingCost === "number" ? product.shippingCost : parseFloat(product.shippingCost);
   return Number.isFinite(cost) ? cost : 0;
 }
+
+export function marketplaceCheckoutMethods(product: Parameters<typeof isDigitalMarketplaceProduct>[0] & {
+  shippingEnabled?: boolean | null;
+  localPickupEnabled?: boolean | null;
+  isExternal?: boolean | null;
+  inStoreOnly?: boolean | null;
+  isActive?: boolean | null;
+}): Array<"shipping" | "local_pickup"> {
+  if (product.isExternal || product.inStoreOnly || product.isActive === false) return [];
+  // The checkout API derives DIGITAL from the product; no address is required.
+  if (isDigitalMarketplaceProduct(product)) return ["local_pickup"];
+  const methods: Array<"shipping" | "local_pickup"> = [];
+  if (product.shippingEnabled) methods.push("shipping");
+  if (product.localPickupEnabled) methods.push("local_pickup");
+  return methods;
+}

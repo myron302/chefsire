@@ -1,3 +1,4 @@
+import { marketplaceCheckoutMethods } from "@shared/marketplace-fulfillment";
 import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,13 @@ export interface StoreProduct {
   price: string;
   images: string[];
   category: string;
-  inventory: number;
+  inventory: number | null;
+  isExternal?: boolean;
+  inStoreOnly?: boolean;
+  isDigital?: boolean;
+  productCategory?: string;
+  shippingEnabled?: boolean;
+  localPickupEnabled?: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -209,9 +216,9 @@ export default function StoreViewerContent({
                 <ProductCard
                   product={product as any}
                   actionLabel="Buy"
-                  onAddToCart={(productId) =>
-                    navigate(`/checkout?productId=${encodeURIComponent(String(productId))}&quantity=1`)
-                  }
+                  onAddToCart={previewMode || marketplaceCheckoutMethods(product).length === 0
+                    ? undefined
+                    : (productId) => navigate(`/checkout?productId=${encodeURIComponent(String(productId))}&quantity=1`)}
                 />
                 <div className="absolute top-3 right-3 flex gap-2">
                   {typeof product.viewCount === "number" && (

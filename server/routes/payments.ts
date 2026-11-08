@@ -3,7 +3,7 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "../db";
-import { orders, users, commissions } from "../../shared/schema";
+import { orders, users, commissions, products } from "../../shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
 import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireSquareRefundEvidence, toClientOrder } from "../lib/marketplace-payment";
@@ -18,6 +18,9 @@ import {
   settleMarketplaceCaptureFailure,
   type SquarePaymentsClient,
 } from "../services/marketplace-checkout-reconciliation";
+
+import { marketplaceDigitalFilePath } from "../lib/marketplace-digital-file";
+import { DeliveryMethod } from "../lib/commissions";
 
 const router = Router();
 /**
@@ -87,6 +90,15 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     // means Square may have received a request. A crash after capture_pending
     // is written remains genuinely ambiguous; seller/config/client failures do
     // not poison the order because they happen before that boundary.
+    if (order.paymentStatus === "unverified" && order.deliveryMethod === DeliveryMethod.DIGITAL) {
+      const [product] = await db.select({ file: products.digitalFileUrl }).from(products).where(and(
+        eq(products.id, order.productId),
+        eq(products.sellerId, order.sellerId),
+      )).limit(1);
+      if (!product || !await marketplaceDigitalFilePath(order.sellerId, product.file)) {
+        return res.status(409).json({ ok: false, error: "A secure download is unavailable for this order" });
+      }
+    }
     const [seller] = await db.select().from(users).where(eq(users.id, order.sellerId)).limit(1);
     if (!seller) return res.status(404).json({ ok: false, error: "Seller not found" });
     const amountInCents = Math.round(parseFloat(order.totalAmount) * 100);

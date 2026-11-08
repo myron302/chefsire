@@ -1,3 +1,4 @@
+import { marketplaceCheckoutMethods } from "@shared/marketplace-fulfillment";
 import React, { useState, useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,10 +43,11 @@ interface ProductData {
   viewCount?: number;
   favoriteCount?: number;
   tags?: string[];
-  digitalDownloadUrl?: string;
   digitalFileName?: string;
   digitalFileSize?: number;
-  inventory?: number;
+  inventory?: number | null;
+  isActive?: boolean;
+  isExternal?: boolean;
   createdAt: string;
 }
 
@@ -98,6 +100,7 @@ export default function ProductPage() {
   };
 
   useEffect(() => {
+    setQuantity(1);
     fetchProduct();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -108,7 +111,7 @@ export default function ProductPage() {
     Math.min(100, product?.inventory !== undefined && product?.inventory !== null ? product.inventory : 100)
   );
   const isOutOfStock = product?.inventory !== undefined && product?.inventory !== null && product.inventory <= 0;
-  const canCheckout = !!product && !isOutOfStock && !product.inStoreOnly;
+  const canCheckout = !!product && !isOutOfStock && marketplaceCheckoutMethods(product).length > 0;
 
   // Single-product checkout: the existing /checkout page creates the order
   // server-side and collects payment through Square.
@@ -236,7 +239,7 @@ export default function ProductPage() {
                   <span className="text-3xl font-bold text-green-600">
                     ${product.price}
                   </span>
-                  {product.inventory !== undefined && (
+                  {product.inventory != null && (
                     <Badge variant={product.inventory > 0 ? "default" : "destructive"}>
                       {product.inventory > 0 ? `${product.inventory} in stock` : "Out of stock"}
                     </Badge>
@@ -375,15 +378,9 @@ export default function ProductPage() {
                 disabled={!canCheckout}
               >
                 <ShoppingCart className="w-5 h-5 mr-2" />
-                {isOutOfStock ? "Out of Stock" : product.inStoreOnly ? "Available In Store Only" : "Buy Now"}
+                {isOutOfStock ? "Out of Stock" : product.inStoreOnly ? "Available In Store Only" : canCheckout ? "Buy Now" : "Online Checkout Unavailable"}
               </Button>
 
-              {product.isDigital && product.digitalDownloadUrl && (
-                <Button className="w-full" size="lg" variant="outline">
-                  <Download className="w-5 h-5 mr-2" />
-                  Download Now
-                </Button>
-              )}
             </div>
           </div>
         </div>

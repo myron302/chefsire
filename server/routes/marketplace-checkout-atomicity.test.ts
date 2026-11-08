@@ -212,7 +212,7 @@ test("the stored capture request (buyer payment token, email) never reaches a bu
 
   // Seller- and buyer-facing listings select only client-safe columns...
   assert.doesNotMatch(orders, /order: orders,/);
-  assert.equal((orders.match(/order: clientOrderColumns,/g) ?? []).length, 4, "my-purchases, my-sales (x2), and order details");
+  assert.equal((orders.match(/order: clientOrderColumns,/g) ?? []).length, 5, "my-purchases, my-sales (x2), order details, and protected download");
   assert.match(orders, /const \{ captureRequestSnapshot: _serverOnlyCaptureRequest, \.\.\.clientOrderColumns \} = getTableColumns\(orders\)/);
   // ...and every full-row response is redacted.
   for (const source of [orders, payments]) {

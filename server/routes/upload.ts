@@ -18,6 +18,7 @@ import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
 import fs from "fs";
 import { MEDIA_REJECTION_MESSAGES, MEDIA_REJECTION_STATUS } from "@shared/media-types";
+import { storeMarketplaceDigitalFile } from "../lib/marketplace-digital-file";
 import { uploadUrlPath } from "../lib/uploads-dir";
 import { isR2Configured, publicUrl, uploadFileToR2 } from "../lib/r2";
 import { UnsupportedMediaError, imageUpload, storeUploadedImage } from "../services/image-upload";
@@ -114,7 +115,7 @@ function displayFilename(originalName: string): string {
 }
 
 // POST /api/upload - General file upload (videos, documents, images)
-router.post("/", requireAuth, (req, res) => {
+router.post(["/", "/marketplace-digital"], requireAuth, (req, res) => {
   stagingUpload.single('file')(req, res, async (err) => {
     if (err) {
       await discardStagedUpload(req.file);
@@ -154,7 +155,9 @@ router.post("/", requireAuth, (req, res) => {
 
       let fileUrl: string;
 
-      if (isR2Configured()) {
+      if (req.path === "/marketplace-digital" || req.path === "/marketplace-digital/") {
+        fileUrl = await storeMarketplaceDigitalFile(req.user!.id, staged);
+      } else if (isR2Configured()) {
         const key = generatedMediaKey("posts", validated.extension);
         // The content type R2 stores, and therefore the one a browser is handed, is the verified one.
         await uploadFileToR2(key, staged, validated.contentType);

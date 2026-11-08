@@ -11,7 +11,7 @@ export interface ProductCardProps {
     description?: string;
     price: number;
     image_url?: string;
-    inventory?: number;
+    inventory?: number | null;
     category?: string;
     is_active?: boolean;
   };
@@ -31,7 +31,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onToggleFavorite,
   showActions = true,
 }) => {
-  const isOutOfStock = product.inventory !== undefined && product.inventory <= 0;
+  const isOutOfStock = product.inventory != null && product.inventory <= 0;
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
@@ -128,7 +128,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </div>
 
         {/* Inventory Info */}
-        {product.inventory !== undefined && product.inventory > 0 && product.inventory <= 5 && (
+        {product.inventory != null && product.inventory > 0 && product.inventory <= 5 && (
           <p className="text-xs text-orange-600 mt-2">
             Only {product.inventory} left in stock!
           </p>
