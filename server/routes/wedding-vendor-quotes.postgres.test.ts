@@ -89,6 +89,8 @@ if (!PG_URL) {
     } finally {
       quoteDelivery.send = originalSend;
       server.close();
+      // Leave the shared CI database as we found it: later steps create these tables from scratch.
+      await local.query("DROP TABLE IF EXISTS wedding_vendor_quotes, wedding_vendor_listings, users CASCADE").catch(() => {});
       await local.end();
     }
   });
