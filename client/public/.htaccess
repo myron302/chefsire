@@ -1,8 +1,9 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # Keep API requests on the server/API handler instead of serving the SPA shell.
-  RewriteCond %{REQUEST_URI} ^/api(?:/|$) [NC]
+  # Keep Express-owned paths on the Node app instead of serving the SPA shell:
+  # /api (API), /healthz (health check) and /uploads (user-uploaded files).
+  RewriteCond %{REQUEST_URI} ^/(?:api|healthz|uploads)(?:/|$) [NC]
   RewriteRule ^ - [L]
 
   # Serve real files and directories directly.

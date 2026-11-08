@@ -8,6 +8,7 @@ import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
 import { serializePublicUser } from "../serializers/public-user";
+import { decodeInlineImage, inlineAvatarVersion, isInlineImageDataUri } from "../lib/inline-avatar";
 import { effectiveMarketplaceTier, effectiveSubscriptionPresentation } from "../lib/subscription-security";
 
 const r = Router();
@@ -46,6 +47,40 @@ r.get("/search", async (req, res) => {
   } catch (error) {
     console.error("GET /users/search error", error);
     res.status(500).json({ message: "Failed to search users" });
+  }
+});
+
+/**
+ * GET /api/users/:id/avatar
+ * Serves a legacy inline (base64) avatar as a normal image so responses can reference it by URL instead of
+ * embedding megabytes of base64. Avatars are already part of the public profile. Stored data is not changed.
+ */
+r.get("/:id/avatar", async (req, res) => {
+  try {
+    const user = await storage.getUser(req.params.id);
+    const avatar = user?.avatar;
+    if (!user || !avatar) return res.status(404).end();
+    if (!isInlineImageDataUri(avatar)) {
+      // Already a real URL: send the browser there (only same-site paths or https).
+      if (avatar.startsWith("/") && !avatar.startsWith("//")) return res.redirect(302, avatar);
+      if (avatar.startsWith("https://")) return res.redirect(302, avatar);
+      return res.status(404).end();
+    }
+    const decoded = decodeInlineImage(avatar);
+    if (!decoded) return res.status(404).end();
+    const version = inlineAvatarVersion(avatar);
+    const etag = `"${version}"`;
+    res.setHeader("ETag", etag);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader(
+      "Cache-Control",
+      req.query.v === version ? "public, max-age=31536000, immutable" : "public, max-age=300",
+    );
+    if (req.headers["if-none-match"] === etag) return res.status(304).end();
+    res.type(decoded.contentType).send(decoded.body);
+  } catch (error) {
+    console.error("Error serving avatar:", error);
+    res.status(500).end();
   }
 });
 
