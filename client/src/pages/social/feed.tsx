@@ -83,7 +83,7 @@ const demoTrendingRecipes = [
     post: {
       id: "post-2",
       imageUrl: "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-2", displayName: "Emma Watson" },
+      user: { id: "chef-2", displayName: "Emma Whitfield" },
       likesCount: 189,
     },
   },
@@ -122,13 +122,6 @@ const demoTrendingRecipes = [
   },
 ];
 
-const demoSuggestedUsers = [
-  { id: "chef-6", displayName: "Gordon Ramsay", specialty: "Fine Dining", avatar: "https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=100&h=100&fit=crop&auto=format" },
-  { id: "chef-7", displayName: "Nadia Singh", specialty: "Indian Cuisine", avatar: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format" },
-  { id: "chef-8", displayName: "Carlos Rodriguez", specialty: "Mexican Street Food", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&auto=format" },
-  { id: "chef-9", displayName: "Sakura Tanaka", specialty: "Japanese Fusion", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format" },
-  { id: "chef-10", displayName: "Oliver Bennett", specialty: "Plant-Based", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format" },
-];
 
 const demoPosts: PostWithUser[] = [
   {
@@ -139,7 +132,7 @@ const demoPosts: PostWithUser[] = [
   {
     id: "demo-post-2", caption: "Classic Fish & Chips", imageUrl: "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=400&h=400&fit=crop&auto=format",
     isRecipe: true, likesCount: 189, commentsCount: 0, tags: [], userId: "chef-2", createdAt: new Date(),
-    user: { ...DEMO_USER_BASE, id: "chef-2", username: "emma.w", email: "emma@example.com", displayName: "Emma Watson", specialty: "British", avatar: "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=100&h=100&fit=crop&auto=format" },
+    user: { ...DEMO_USER_BASE, id: "chef-2", username: "emma.whitfield", email: "emma@example.com", displayName: "Emma Whitfield", specialty: "British", avatar: "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=100&h=100&fit=crop&auto=format" },
   },
   {
     id: "demo-post-3", caption: "Spicy Thai Green Curry", imageUrl: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=400&fit=crop&auto=format",
@@ -331,6 +324,14 @@ export default function Feed() {
   const displayPosts = usingDemoFeed ? demoPosts : realPosts;
   const displaySuggestedUsers = suggestedUsers ?? [];
   const displayTrendingRecipes: any[] = trendingRecipes ?? (isGuest ? demoTrendingRecipes : []);
+  // Guests see real ChefSire members who have posted, never placeholder or celebrity names.
+  const featuredChefs = Array.from(
+    new Map(
+      realPosts
+        .filter((post) => post.user?.id && (post.user.displayName || post.user.username))
+        .map((post) => [post.user.id, post.user] as const)
+    ).values()
+  ).slice(0, 5);
 
   if (postsLoading) {
     return (
@@ -495,20 +496,20 @@ export default function Feed() {
             </div>
           </section>
 
-          {isGuest && (
+          {isGuest && featuredChefs.length > 0 && (
             <section className="mb-8">
               <h3 className="font-semibold mb-4">Featured Chefs</h3>
               <div className="space-y-3">
-                {demoSuggestedUsers.slice(0, 5).map((u) => (
+                {featuredChefs.map((u) => (
                   <div key={u.id} className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <Avatar className="w-10 h-10">
-                        <AvatarImage src={u.avatar} alt={u.displayName} />
-                        <AvatarFallback>{u.displayName[0]}</AvatarFallback>
+                        <AvatarImage src={u.avatar ?? undefined} alt={u.displayName || u.username} />
+                        <AvatarFallback>{(u.displayName || u.username || "C")[0]}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium">{u.displayName}</p>
-                        <p className="text-xs text-muted-foreground">{u.specialty}</p>
+                        <Link href={`/profile/${u.id}`}><a className="text-sm font-medium hover:underline">{u.displayName || u.username}</a></Link>
+                        {u.specialty && <p className="text-xs text-muted-foreground">{u.specialty}</p>}
                       </div>
                     </div>
                     <Link href="/login">
