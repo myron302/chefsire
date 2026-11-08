@@ -19,6 +19,7 @@ import {
   Eye,
   Package
 } from "lucide-react";
+import { PRODUCT_PLACEHOLDER, onProductImageError } from "@/lib/image-fallback";
 
 interface ProductData {
   id: number;
@@ -202,7 +203,8 @@ export default function ProductPage() {
             <Card className="mb-4">
               <CardContent className="p-0">
                 <img
-                  src={product.images?.[selectedImage] || "/placeholder-product.jpg"}
+                  src={product.images?.[selectedImage] || PRODUCT_PLACEHOLDER}
+                  onError={onProductImageError}
                   alt={product.name}
                   className="w-full h-96 object-cover rounded-lg"
                 />

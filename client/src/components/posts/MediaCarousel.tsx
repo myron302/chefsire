@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { normalizeMediaUrl } from "@/lib/mediaUrl";
 import { cn } from "@/lib/utils";
+import { onMediaImageError } from "@/lib/image-fallback";
 
 type MediaCarouselProps = {
   imageUrl?: string | null;
@@ -88,7 +89,7 @@ export default function MediaCarousel({
       {isVideoMediaUrl(activeMedia) ? (
         <video src={activeMedia} controls muted={mutedVideo} playsInline preload={preloadVideo} className={cn(mediaClassName, videoClassName)} />
       ) : (
-        <img src={activeMedia} alt={alt} className={mediaClassName} data-testid={testId} loading="lazy" decoding="async" />
+        <img key={activeMedia} src={activeMedia} alt={alt} className={mediaClassName} data-testid={testId} loading="lazy" decoding="async" onError={onMediaImageError} />
       )}
 
       {hasGallery && (

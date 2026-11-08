@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Search, Sparkles, Filter, Timer, Users, Trophy, Flame, Calendar, Video, Eye, Plus, Layers, Home, TrendingUp, Zap, Star } from 'lucide-react';
+import { competitionLibraryStats } from './competition-library-stats';
 
 const THEMES = [
   { id: 'freestyle', name: 'Freestyle', icon: '🎨', gradient: 'from-purple-500 via-pink-500 to-orange-500' },
@@ -49,9 +50,23 @@ export default function CompetitionsLibraryPage() {
   const [status, setStatus] = useState('all');
   const [theme, setTheme] = useState('');
   const [loading, setLoading] = useState(false);
-  const [items, setItems] = useState([]);
-  const [hoveredCard, setHoveredCard] = useState(null);
-  const [stats, setStats] = useState({ total: 156, live: 8, upcoming: 24, judging: 12 });
+  type CompetitionItem = {
+    id: string;
+    title: string;
+    themeName?: string | null;
+    status: string;
+    isPrivate?: boolean;
+    timeLimitMinutes?: number | null;
+    createdAt: string;
+    participants?: number;
+  };
+  const [items, setItems] = useState<CompetitionItem[]>([]);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  // The API reports `note` when the competitions tables have not been created in this database yet.
+  const [notReady, setNotReady] = useState(false);
+  // Server-reported total (all visible competitions), which can exceed the 100 loaded rows.
+  const [serverTotal, setServerTotal] = useState<number | null>(null);
 
   // Read status from URL query parameter
   useEffect(() => {
@@ -62,24 +77,42 @@ export default function CompetitionsLibraryPage() {
     }
   }, []);
 
-  // Mock data for demo
-  const mockItems = [
-    { id: '1', title: 'Midnight Pasta Showdown', themeName: 'Italian Night', status: 'live', isPrivate: false, timeLimitMinutes: 60, createdAt: new Date().toISOString(), participants: 6 },
-    { id: '2', title: 'Taco Fiesta Challenge', themeName: 'Taco Tuesday', status: 'judging', isPrivate: false, timeLimitMinutes: 45, createdAt: new Date().toISOString(), participants: 8 },
-    { id: '3', title: 'Asian Fusion Battle', themeName: 'Asian Fusion', status: 'upcoming', isPrivate: true, timeLimitMinutes: 90, createdAt: new Date().toISOString(), participants: 4 },
-    { id: '4', title: 'Dessert Wars Championship', themeName: 'Desserts & Baking', status: 'completed', isPrivate: false, timeLimitMinutes: 120, createdAt: new Date().toISOString(), participants: 10 },
-    { id: '5', title: 'Budget Kitchen Heroes', themeName: 'Budget ($10)', status: 'live', isPrivate: false, timeLimitMinutes: 30, createdAt: new Date().toISOString(), participants: 5 },
-    { id: '6', title: 'Lightning Round Cook-Off', themeName: 'Quick 30-Min', status: 'upcoming', isPrivate: false, timeLimitMinutes: 30, createdAt: new Date().toISOString(), participants: 7 },
-    { id: '7', title: 'Freestyle Mayhem', themeName: 'Freestyle', status: 'live', isPrivate: false, timeLimitMinutes: 60, createdAt: new Date().toISOString(), participants: 12 },
-    { id: '8', title: 'Spicy Heat Challenge', themeName: 'Spicy Challenge', status: 'upcoming', isPrivate: false, timeLimitMinutes: 45, createdAt: new Date().toISOString(), participants: 9 }
-  ];
-
+  // Real competitions from the API (the old hardcoded demo list and stats are gone).
   useEffect(() => {
-    setItems(mockItems);
+    let cancelled = false;
+    setLoading(true);
+    fetch('/api/competitions/library?limit=100', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data) => {
+        if (cancelled) return;
+        setItems(Array.isArray(data?.items) ? data.items : []);
+        setNotReady(Boolean(data?.note));
+        setServerTotal(Number.isFinite(Number(data?.total)) ? Number(data.total) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const getStatusBadge = (s) => {
-    const colors = {
+  const themeName = THEMES.find((t) => t.id === theme)?.name;
+  const visibleItems = items.filter((item) =>
+    (status === 'all' || item.status === status) &&
+    (!themeName || item.themeName === themeName) &&
+    (!q.trim() || String(item.title || '').toLowerCase().includes(q.trim().toLowerCase()))
+  );
+  // Creating requires the competitions tables; hide the CTAs until the library has loaded and is available.
+  const canCreate = !loading && !loadError && !notReady;
+  // Total comes from the server; status counts come from the loaded rows and are labeled when partial.
+  const { partial: statsArePartial, ...stats } = competitionLibraryStats(items, serverTotal);
+
+  const getStatusBadge = (s: string) => {
+    const colors: Record<string, string> = {
       live: 'bg-gradient-to-r from-green-500 to-emerald-500 animate-pulse',
       judging: 'bg-gradient-to-r from-amber-500 to-orange-500',
       completed: 'bg-gradient-to-r from-blue-500 to-purple-500',
@@ -140,6 +173,7 @@ export default function CompetitionsLibraryPage() {
               <Home className="w-4 h-4" />
               <span>Home</span>
             </button>
+{canCreate && (
             <button
               onClick={() => setLocation('/competitions/new')}
               className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 rounded-full transition-all duration-300 hover:scale-105 text-white font-semibold shadow-lg"
@@ -147,6 +181,7 @@ export default function CompetitionsLibraryPage() {
               <Plus className="w-5 h-5" />
               Create Competition
             </button>
+            )}
           </div>
 
           {/* Animated Header */}
@@ -169,9 +204,9 @@ export default function CompetitionsLibraryPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {[
               { icon: TrendingUp, label: 'Total Battles', value: stats.total, color: 'from-blue-500 to-cyan-500' },
-              { icon: Zap, label: 'Live Now', value: stats.live, color: 'from-green-500 to-emerald-500' },
-              { icon: Star, label: 'Judging', value: stats.judging, color: 'from-amber-500 to-orange-500' },
-              { icon: Trophy, label: 'Champions', value: '42', color: 'from-purple-500 to-pink-500' }
+              { icon: Zap, label: statsArePartial ? 'Live (latest 100)' : 'Live Now', value: stats.live, color: 'from-green-500 to-emerald-500' },
+              { icon: Star, label: statsArePartial ? 'Judging (latest 100)' : 'Judging', value: stats.judging, color: 'from-amber-500 to-orange-500' },
+              { icon: Trophy, label: statsArePartial ? 'Champions (latest 100)' : 'Champions', value: stats.champions, color: 'from-purple-500 to-pink-500' }
             ].map((stat, i) => (
               <div
                 key={i}
@@ -267,8 +302,31 @@ export default function CompetitionsLibraryPage() {
 
       {/* Competition Cards Grid */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 pb-12">
+        {(loading || loadError || notReady || visibleItems.length === 0) && (
+          <div className="bg-white/90 rounded-3xl p-10 text-center shadow-xl mb-6" role="status">
+            {loading ? (
+              <p className="text-gray-700 font-semibold">Loading competitions…</p>
+            ) : loadError ? (
+              <p className="text-gray-700 font-semibold">Competitions couldn't load right now. Please try again shortly.</p>
+            ) : notReady ? (
+              <p className="text-gray-900 text-xl font-bold">Cookoff Arena battles are opening soon. Check back shortly!</p>
+            ) : (
+              <>
+                <p className="text-gray-900 text-xl font-bold mb-2">
+                  {items.length === 0 ? 'No competitions yet — start the first one!' : 'No competitions match these filters.'}
+                </p>
+                <button
+                  onClick={() => setLocation('/competitions/new')}
+                  className="mt-3 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-white font-semibold shadow-md"
+                >
+                  Create Competition
+                </button>
+              </>
+            )}
+          </div>
+        )}
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {items.map((item, i) => (
+          {visibleItems.map((item, i) => (
             <div
               key={item.id}
               className="group relative cursor-pointer"
@@ -304,7 +362,7 @@ export default function CompetitionsLibraryPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4" />
-                        <span className="text-sm font-semibold">{item.participants}</span>
+                        <span className="text-sm font-semibold">{item.participants ?? ''}</span>
                       </div>
                     </div>
                   </div>
@@ -336,6 +394,8 @@ export default function CompetitionsLibraryPage() {
           ))}
         </div>
 
+        {canCreate && (
+          <>
         {/* CTA Footer */}
         <div className="mt-12 relative group">
           <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-3xl blur-2xl opacity-30 group-hover:opacity-50 transition-all duration-500"></div>
@@ -358,6 +418,8 @@ export default function CompetitionsLibraryPage() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -33,6 +33,8 @@ jobs:
         run: node --import tsx --test client/src/components/SquarePaymentForm.test.ts shared/marketplace-fulfillment.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts
       - name: Test public avatar projection and inline avatar serving
         run: node --import tsx --test server/lib/inline-avatar.test.ts
+      - name: Test Cookoff Arena stats and image placeholder fallback
+        run: node --import tsx --test client/src/pages/competitions/competition-library-stats.test.ts
       - name: Test hosted invoice payment ownership
         run: node --import tsx --test server/lib/wedding-square-invoice-payment-customer.test.ts
       - name: Test owner-scoped sandbox checkout eligibility

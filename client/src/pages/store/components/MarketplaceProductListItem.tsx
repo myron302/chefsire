@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
+import { PRODUCT_PLACEHOLDER, onProductImageError } from "@/lib/image-fallback";
 
 interface MarketplaceProductListItemProps {
   product: MarketplaceProduct;
@@ -22,7 +23,8 @@ export function MarketplaceProductListItem({
     >
       <CardContent className="p-4 flex gap-4">
         <img
-          src={product.images?.[0] || "/placeholder-product.jpg"}
+          src={product.images?.[0] || PRODUCT_PLACEHOLDER}
+          onError={onProductImageError}
           alt={product.name}
           className="w-24 h-24 object-cover rounded-lg flex-shrink-0"
         />
