@@ -119,17 +119,9 @@ export default function CampaignCard({ campaign, featured = false }: { campaign:
           </div>
           <div className="rounded-2xl bg-slate-50 p-3">
             <HeartPulse className="h-4 w-4 text-emerald-700" />
-            <div className="mt-1 font-bold text-slate-950">{campaign.completionRate}%</div>
-            <div className="text-xs text-slate-500">Completion</div>
+            <div className="mt-1 font-bold capitalize text-slate-950">{campaign.dietType.replace("-", " ")}</div>
+            <div className="text-xs text-slate-500">Goal</div>
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium text-slate-600">Community completion</span>
-            <span className="font-bold text-slate-950">{campaign.completionRate}%</span>
-          </div>
-          <Progress value={campaign.completionRate} className="h-2" />
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -139,10 +131,7 @@ export default function CampaignCard({ campaign, featured = false }: { campaign:
         </div>
 
         <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex gap-4 text-sm text-slate-500">
-            <span className="inline-flex items-center gap-1"><Users className="h-4 w-4" /> {compactNumber(campaign.saves)} saves</span>
-            <span className="inline-flex items-center gap-1"><GitFork className="h-4 w-4" /> {compactNumber(campaign.remixes)} remixes</span>
-          </div>
+          <div className="text-sm text-slate-500">Curated by ChefSire</div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button variant="outline" className="rounded-full" onClick={showPreview}>Preview</Button>
             <Button className="rounded-full bg-slate-950 text-white hover:bg-emerald-700" onClick={() => void shareCampaign()}>

@@ -56,7 +56,7 @@ export interface NutritionCampaign {
   isFeatured: boolean;
 }
 
-export const nutritionCampaigns: NutritionCampaign[] = [
+const campaignCatalog: NutritionCampaign[] = [
   {
     id: "lean-athlete-reset",
     title: "Lean Athlete Reset",
@@ -587,6 +587,31 @@ export const nutritionCampaigns: NutritionCampaign[] = [
   },
 ];
 
-export const featuredNutritionCreators = Array.from(
-  new Map(nutritionCampaigns.map((campaign) => [campaign.creator.id, campaign.creator])).values(),
-).filter((creator) => creator.isFeatured);
+/**
+ * These programs are published by ChefSire itself. The catalog originally attributed them to invented creators
+ * with follower counts, saves, remixes and completion rates; none of those people or numbers were real, so the
+ * public catalog presents every program as ChefSire-curated and carries no community metrics until real ones exist.
+ */
+export const CHEFSIRE_KITCHEN: NutritionCampaignCreator = {
+  id: "chefsire-kitchen",
+  name: "ChefSire Kitchen",
+  handle: "chefsire",
+  avatarUrl: "/images/android-chrome-192x192.png",
+  specialty: "Curated by ChefSire",
+  followers: 0,
+  campaignCount: campaignCatalog.length,
+  consistencyScore: 0,
+  isFeatured: false,
+};
+
+export const nutritionCampaigns: NutritionCampaign[] = campaignCatalog.map((campaign) => ({
+  ...campaign,
+  creator: CHEFSIRE_KITCHEN,
+  saves: 0,
+  remixes: 0,
+  completionRate: 0,
+  isTrending: false,
+}));
+
+/** No outside nutrition creators publish campaigns yet. */
+export const featuredNutritionCreators: NutritionCampaignCreator[] = [];

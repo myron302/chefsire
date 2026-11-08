@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { NutritionCampaignBudget, NutritionCampaignDifficulty, NutritionCampaignPrepIntensity, NutritionDietType } from "@/pages/nutrition/campaigns/mockCampaigns";
 
-export type CampaignSort = "trending" | "popular" | "new" | "completion";
+export type CampaignSort = "featured" | "new" | "protein" | "shortest";
 export type CalorieFilter = "all" | "under-1800" | "1800-2300" | "over-2300";
 export type ProteinFilter = "all" | "100-plus" | "140-plus" | "170-plus";
 export type DurationFilter = "all" | "14" | "21" | "28-plus";
@@ -44,7 +44,7 @@ const defaultFilters: NutritionCampaignFiltersState = {
   protein: "all",
   budget: "all",
   duration: "all",
-  sort: "trending",
+  sort: "featured",
 };
 
 const dietOptions: Array<{ value: NutritionCampaignFiltersState["dietType"]; label: string }> = [
@@ -80,10 +80,10 @@ export default function CampaignFilters({ filters, resultCount, onChange }: Camp
 
         <Tabs value={filters.sort} onValueChange={(value) => updateFilter("sort", value as CampaignSort)}>
           <TabsList className="grid w-full grid-cols-4 rounded-full bg-slate-100 p-1 lg:w-auto">
-            <TabsTrigger value="trending" className="rounded-full">Trending</TabsTrigger>
-            <TabsTrigger value="popular" className="rounded-full">Popular</TabsTrigger>
+            <TabsTrigger value="featured" className="rounded-full">Featured</TabsTrigger>
             <TabsTrigger value="new" className="rounded-full">New</TabsTrigger>
-            <TabsTrigger value="completion" className="rounded-full">Completion</TabsTrigger>
+            <TabsTrigger value="protein" className="rounded-full">Protein</TabsTrigger>
+            <TabsTrigger value="shortest" className="rounded-full">Shortest</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>

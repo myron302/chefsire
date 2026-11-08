@@ -5,14 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { NutritionCampaign } from "@/pages/nutrition/campaigns/mockCampaigns";
 
-function compactNumber(value: number) {
-  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
 export default function CampaignHero({ campaigns }: { campaigns: NutritionCampaign[] }) {
-  const totalSaves = campaigns.reduce((sum, campaign) => sum + campaign.saves, 0);
-  const trendingCount = campaigns.filter((campaign) => campaign.isTrending).length;
-  const averageCompletion = Math.round(campaigns.reduce((sum, campaign) => sum + campaign.completionRate, 0) / campaigns.length);
+  const goalCount = new Set(campaigns.map((campaign) => campaign.dietType)).size;
+  const durations = campaigns.map((campaign) => campaign.durationDays);
+  const minDays = durations.length ? Math.min(...durations) : 0;
+  const maxDays = durations.length ? Math.max(...durations) : 0;
+  const lineup = campaigns.filter((campaign) => campaign.isFeatured).concat(campaigns.filter((campaign) => !campaign.isFeatured)).slice(0, 3);
 
   return (
     <section className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-slate-950 px-6 py-8 text-white shadow-2xl shadow-emerald-950/20 sm:px-8 lg:px-10 lg:py-12">
@@ -31,7 +29,7 @@ export default function CampaignHero({ campaigns }: { campaigns: NutritionCampai
               Discover Elite Nutrition Systems
             </h1>
             <p className="max-w-2xl text-base leading-7 text-emerald-50/80 sm:text-lg">
-              Share, remix, and follow creator-built meal plan campaigns with clear macros, prep intensity, budget signals, and completion momentum.
+              Curated meal plan programs from the ChefSire kitchen, with clear macros, prep intensity, duration, and weekly budget for each one.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -44,13 +42,13 @@ export default function CampaignHero({ campaigns }: { campaigns: NutritionCampai
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="secondary" className="rounded-full bg-white/10 text-white ring-1 ring-white/15">
-              <Flame className="mr-1.5 h-3.5 w-3.5 text-orange-300" /> {trendingCount} trending systems
+              <Flame className="mr-1.5 h-3.5 w-3.5 text-orange-300" /> {campaigns.length} programs
             </Badge>
             <Badge variant="secondary" className="rounded-full bg-white/10 text-white ring-1 ring-white/15">
-              <Users className="mr-1.5 h-3.5 w-3.5 text-cyan-200" /> {compactNumber(totalSaves)} saves
+              <Users className="mr-1.5 h-3.5 w-3.5 text-cyan-200" /> {goalCount} nutrition goals
             </Badge>
             <Badge variant="secondary" className="rounded-full bg-white/10 text-white ring-1 ring-white/15">
-              <BarChart3 className="mr-1.5 h-3.5 w-3.5 text-lime-200" /> {averageCompletion}% completion avg
+              <BarChart3 className="mr-1.5 h-3.5 w-3.5 text-lime-200" /> {minDays}–{maxDays} day plans
             </Badge>
           </div>
         </div>
@@ -61,22 +59,22 @@ export default function CampaignHero({ campaigns }: { campaigns: NutritionCampai
             <div className="rounded-[1.5rem] bg-white p-4 text-slate-950 shadow-xl">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-600">Live remix board</p>
-                  <h2 className="mt-1 text-2xl font-black">Macro Systems</h2>
+                  <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-600">Program lineup</p>
+                  <h2 className="mt-1 text-2xl font-black">Featured Programs</h2>
                 </div>
                 <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
                   <GitFork className="h-6 w-6" />
                 </div>
               </div>
               <div className="mt-5 space-y-3">
-                {["Protein-first cut", "Plant prep engine", "Family budget reset"].map((label, index) => (
-                  <div key={label} className="rounded-2xl border bg-gradient-to-r from-slate-50 to-emerald-50/70 p-3">
+                {lineup.map((campaign) => (
+                  <div key={campaign.id} className="rounded-2xl border bg-gradient-to-r from-slate-50 to-emerald-50/70 p-3">
                     <div className="flex items-center justify-between text-sm font-semibold">
-                      <span>{label}</span>
-                      <span className="text-emerald-700">+{[420, 315, 276][index]} saves</span>
+                      <span>{campaign.title}</span>
+                      <span className="text-emerald-700">{campaign.durationDays} days</span>
                     </div>
-                    <div className="mt-2 h-2 rounded-full bg-slate-200">
-                      <div className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-lime-400" style={{ width: `${[84, 72, 66][index]}%` }} />
+                    <div className="mt-1 text-xs text-slate-500">
+                      {campaign.macros.caloriesPerDay.toLocaleString()} cal · {campaign.macros.proteinPerDay}g protein · {campaign.estimatedBudget}
                     </div>
                   </div>
                 ))}
