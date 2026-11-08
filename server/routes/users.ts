@@ -68,7 +68,7 @@ r.get("/:id/avatar", async (req, res) => {
     }
     const decoded = decodeInlineImage(avatar);
     if (!decoded) return res.status(404).end();
-    const version = inlineAvatarVersion(user.id, avatar);
+    const version = inlineAvatarVersion(avatar);
     const etag = `"${version}"`;
     res.setHeader("ETag", etag);
     res.setHeader("X-Content-Type-Options", "nosniff");
