@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import type { User as UserType, PostWithUser } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { MEDIA_PLACEHOLDER, onMediaImageError } from "@/lib/image-fallback";
 
 /** Store type for the Store tab (client-side shape for UI) */
 type Store = {
@@ -161,103 +162,58 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
-  // Custom drinks (mock)
-  const { data: drinksData, isLoading: drinksLoading } = useQuery({
-    queryKey: ["/api/custom-drinks/user", profileUserId],
+  // Custom drinks this user created (visibility enforced by the API; signed-out viewers get none).
+  const { data: drinksData, isLoading: drinksLoading } = useQuery<{ drinks: any[] }>({
+    queryKey: ["/api/drinks/custom-drinks/user", profileUserId],
     queryFn: async () => {
-      return {
-        drinks: [
-          {
-            id: "1",
-            name: "Tropical Sunrise",
-            category: "Smoothie",
-            description: "Refreshing tropical smoothie with mango and pineapple",
-            calories: 180,
-            protein: 3,
-            fiber: 5,
-            likesCount: 15,
-            savesCount: 8,
-            imageUrl: "https://images.unsplash.com/photo-1570197788417-0e82375c9371",
-          },
-          {
-            id: "2",
-            name: "Protein Power Shake",
-            category: "Protein Shake",
-            description: "High protein shake for post-workout recovery",
-            calories: 220,
-            protein: 25,
-            fiber: 2,
-            imageUrl: "https://images.unsplash.com/photo-1592924357228-91a4daadcfea",
-          },
-        ],
-      };
+      const res = await fetch(`/api/drinks/custom-drinks/user/${encodeURIComponent(String(profileUserId))}`, { credentials: "include" });
+      if (!res.ok) return { drinks: [] };
+      const data = await res.json();
+      return { drinks: Array.isArray(data?.drinks) ? data.drinks : [] };
     },
+    retry: false,
     enabled: !!profileUserId,
   });
 
-  // Drink stats (mock)
-  const { data: statsData, isLoading: statsLoading } = useQuery({
-    queryKey: ["/api/user-drink-stats", profileUserId],
+  // Drink stats (the API only serves your own).
+  const { data: statsData, isLoading: statsLoading } = useQuery<{ stats: any | null }>({
+    queryKey: ["/api/drinks/user-drink-stats", profileUserId],
     queryFn: async () => {
-      return {
-        stats: {
-          totalDrinksMade: 47,
-          level: 5,
-          totalPoints: 2350,
-          currentStreak: 4,
-          badges: ["early-bird", "smoothie-master", "health-guru"],
-          smoothiesMade: 18,
-          proteinShakesMade: 12,
-          detoxesMade: 9,
-          cocktailsMade: 8,
-        },
-      };
+      const res = await fetch(`/api/drinks/user-drink-stats/${encodeURIComponent(String(profileUserId))}`, { credentials: "include" });
+      if (!res.ok) return { stats: null };
+      const data = await res.json();
+      return { stats: data?.stats ?? null };
     },
+    retry: false,
+    enabled: !!profileUserId && isOwnProfile,
+  });
+
+  // Saved drinks (the API only serves your own).
+  const { data: savedDrinksData, isLoading: savedDrinksLoading } = useQuery<{ drinks: any[] }>({
+    queryKey: ["/api/drinks/custom-drinks/saved", profileUserId],
+    queryFn: async () => {
+      const res = await fetch(`/api/drinks/custom-drinks/saved/${encodeURIComponent(String(profileUserId))}`, { credentials: "include" });
+      if (!res.ok) return { drinks: [] };
+      const data = await res.json();
+      return { drinks: Array.isArray(data?.drinks) ? data.drinks : [] };
+    },
+    retry: false,
+    enabled: !!profileUserId && isOwnProfile,
+  });
+
+  // Cookoffs this user hosts (competitions library filtered by creator; visibility enforced by the API).
+  const { data: competitionsData, isLoading: competitionsLoading } = useQuery<{ competitions: any[] }>({
+    queryKey: ["/api/competitions/library", "creator", profileUserId],
+    queryFn: async () => {
+      const res = await fetch(`/api/competitions/library?creator=${encodeURIComponent(String(profileUserId))}&limit=50`, { credentials: "include" });
+      if (!res.ok) return { competitions: [] };
+      const data = await res.json();
+      return { competitions: Array.isArray(data?.items) ? data.items : [] };
+    },
+    retry: false,
     enabled: !!profileUserId,
   });
 
-  // Saved drinks (mock)
-  const { data: savedDrinksData, isLoading: savedDrinksLoading } = useQuery({
-    queryKey: ["/api/custom-drinks/saved", profileUserId],
-    queryFn: async () => ({ drinks: [] }),
-    enabled: !!profileUserId,
-  });
-
-  // Competitions / cookoffs (mock)
-  const { data: competitionsData, isLoading: competitionsLoading } = useQuery({
-    queryKey: ["/api/competitions/user", profileUserId],
-    queryFn: async () => ({
-      competitions: [
-        {
-          id: "1",
-          title: "Midnight Pasta Showdown",
-          themeName: "Italian Night",
-          status: "completed",
-          placement: 1,
-          participants: 6,
-          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "2",
-          title: "Taco Fiesta Challenge",
-          themeName: "Taco Tuesday",
-          status: "judging",
-          placement: 2,
-          participants: 8,
-          createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "3",
-          title: "Quick 30-Min Sprint",
-          themeName: "Quick 30-Min",
-          status: "live",
-          participants: 5,
-          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        },
-      ],
-    }),
-    enabled: !!profileUserId,
-  });
 
   // Store — real API call
   const { data: storeData } = useQuery<{ store: Store | null }>({
@@ -864,7 +820,7 @@ export default function Profile() {
                 {drinksData.drinks.map((d) => (
                   <Card key={d.id} className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow">
                     <div className="aspect-video overflow-hidden">
-                      <img src={d.imageUrl} alt={d.name} className="w-full h-full object-cover" />
+                      <img src={d.imageUrl || MEDIA_PLACEHOLDER} alt={d.name} className="w-full h-full object-cover" onError={onMediaImageError} />
                     </div>
                     <CardContent className="p-4">
                       <div className="flex justify-between items-center mb-2">
@@ -930,7 +886,7 @@ export default function Profile() {
           ) : (
             <div className="text-center py-12">
               <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold mb-2">No cookoff entries yet</h3>
+              <h3 className="text-lg font-semibold mb-2">No cookoffs hosted yet</h3>
               <Button onClick={() => setLocation("/competitions")}>
                 <Plus className="w-4 h-4 mr-2" /> Find a Competition
               </Button>
@@ -1039,7 +995,7 @@ export default function Profile() {
               {savedDrinksData.drinks.map((d) => (
                 <Card key={d.id} className="overflow-hidden">
                   <div className="aspect-video overflow-hidden">
-                    <img src={d.imageUrl} alt={d.name} className="w-full h-full object-cover" />
+                    <img src={d.imageUrl || MEDIA_PLACEHOLDER} alt={d.name} className="w-full h-full object-cover" onError={onMediaImageError} />
                   </div>
                   <CardContent className="p-4">
                     <div className="flex justify-between">
@@ -1109,7 +1065,7 @@ export default function Profile() {
 
                 <h3 className="text-lg font-semibold mb-3">Badges & Achievements</h3>
                 <div className="flex flex-wrap gap-2 mb-8">
-                  {statsData.stats.badges.map((badge) => (
+                  {(statsData.stats.badges ?? []).map((badge: string) => (
                     <Badge key={badge} className="bg-blue-100 text-blue-800 hover:bg-blue-200">
                       <Star className="w-3 h-3 mr-1 fill-blue-800" />
                       {titleCase(badge)}
@@ -1274,44 +1230,27 @@ export default function Profile() {
                       onClick={async () => {
                         if (!confirm("Delete this post? This action cannot be undone.")) return;
                         try {
-                          console.log("=== DELETE POST DEBUG (PROFILE) ===");
-                          console.log("Post ID:", selectedPost.id);
-                          console.log("Current User ID:", currentUser?.id);
-                          console.log("Post Owner ID:", selectedPost.user?.id);
-                          console.log("Auth token cookie:", document.cookie);
-
                           const res = await fetch(`/api/posts/${selectedPost.id}`, {
                             method: "DELETE",
                             credentials: "include",
                           });
-
-                          console.log("Response status:", res.status);
-                          console.log("Response headers:", Object.fromEntries(res.headers.entries()));
-
-                          const responseText = await res.text();
-                          console.log("Response body:", responseText);
-
                           if (!res.ok) {
-                            let errorMsg = `HTTP Status: ${res.status}\n\nResponse Body:\n${responseText}\n\nCookies:\n${document.cookie}`;
-                            try {
-                              const err = JSON.parse(responseText);
-                              errorMsg = `HTTP Status: ${res.status}\n\nError Message: ${err.message || err.error || 'Unknown'}\n\nFull Response:\n${JSON.stringify(err, null, 2)}\n\nAuth Cookie:\n${document.cookie}`;
-                            } catch (e) {
-                              // Response wasn't JSON, use text
-                            }
-                            console.error("DELETE FAILED:", errorMsg);
-                            alert(`❌ DELETE FAILED\n\n${errorMsg}`);
+                            const err = await res.json().catch(() => ({}));
+                            toast({
+                              title: "Couldn't delete post",
+                              description: err?.message || err?.error || `Request failed (${res.status})`,
+                              variant: "destructive",
+                            });
                             return;
                           }
-
-                          console.log("✅ Delete successful");
                           setSelectedPost(null);
                           window.location.reload();
                         } catch (error) {
-                          const errorMsg = error instanceof Error ? error.message : String(error);
-                          const stack = error instanceof Error ? error.stack : 'N/A';
-                          console.error("DELETE EXCEPTION:", error);
-                          alert(`❌ DELETE EXCEPTION\n\nError: ${errorMsg}\n\nStack:\n${stack}\n\nCookies:\n${document.cookie}`);
+                          toast({
+                            title: "Couldn't delete post",
+                            description: error instanceof Error ? error.message : "Please try again.",
+                            variant: "destructive",
+                          });
                         }
                       }}
                     >

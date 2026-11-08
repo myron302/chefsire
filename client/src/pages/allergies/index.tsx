@@ -107,14 +107,11 @@ export default function AllergiesDashboard() {
   const { data: membersData, isLoading, error: membersError } = useQuery({
     queryKey: ["/api/allergies/family-members"],
     queryFn: async () => {
-      console.log("Fetching family members...");
       const res = await fetch("/api/allergies/family-members", {
         credentials: "include",
       });
-      console.log("Family members response status:", res.status);
       if (!res.ok) throw new Error("Failed to fetch family members");
       const data = await res.json();
-      console.log("Family members data received:", data);
       return data;
     },
     staleTime: 0, // Always fetch fresh data
@@ -127,12 +124,6 @@ export default function AllergiesDashboard() {
 
   const members: FamilyMember[] = membersData?.members || [];
 
-  console.log("=== ALLERGIES PAGE DEBUG ===");
-  console.log("Is loading:", isLoading);
-  console.log("Members data:", membersData);
-  console.log("Members array:", members);
-  console.log("Members count:", members.length);
-  console.log("Selected member:", selectedMember);
 
   // Fetch allergen profiles for selected member
   const { data: profilesData } = useQuery({
@@ -152,8 +143,6 @@ export default function AllergiesDashboard() {
   // Add family member mutation
   const addMemberMutation = useMutation({
     mutationFn: async (data: typeof memberForm & { householdMemberId: string | null }) => {
-      console.log("=== ADD FAMILY MEMBER DEBUG ===");
-      console.log("Form data:", data);
 
       const res = await fetch("/api/allergies/family-members", {
         method: "POST",
@@ -162,11 +151,8 @@ export default function AllergiesDashboard() {
         body: JSON.stringify(data),
       });
 
-      console.log("Response status:", res.status);
-      console.log("Response ok:", res.ok);
 
       const responseText = await res.text();
-      console.log("Response text:", responseText);
 
       if (!res.ok) {
         let errorMessage = "Failed to add family member";
@@ -249,17 +235,13 @@ export default function AllergiesDashboard() {
   // Add allergen profile mutation
   const addAllergenMutation = useMutation({
     mutationFn: async (data: any) => {
-      console.log("=== ADD ALLERGEN MUTATION ===");
-      console.log("Data being sent:", data);
       const res = await fetch("/api/allergies/profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(data),
       });
-      console.log("Response status:", res.status);
       const responseData = await res.json();
-      console.log("Response data:", responseData);
       if (!res.ok) {
         // Throw error with full server response
         const error: any = new Error(responseData.message || "Failed to add allergen");
@@ -345,10 +327,6 @@ export default function AllergiesDashboard() {
 
   // Handle add allergen
   const handleAddAllergen = () => {
-    console.log("=== HANDLE ADD ALLERGEN ===");
-    console.log("Selected member:", selectedMember);
-    console.log("Allergen form:", allergenForm);
-    console.log("Selected allergen value:", selectedAllergenValue);
 
     if (!selectedMember) {
       console.error("No selected member!");
@@ -370,7 +348,6 @@ export default function AllergiesDashboard() {
       notes: allergenForm.notes || null,
     };
 
-    console.log("Data to send:", dataToSend);
     addAllergenMutation.mutate(dataToSend);
   };
 
@@ -635,7 +612,6 @@ export default function AllergiesDashboard() {
                       </div>
                       <div className="flex gap-2">
                         <Dialog open={showAllergenDialog} onOpenChange={(open) => {
-                          console.log("Dialog opening:", open);
                           if (open) {
                             // Reset state when opening dialog
                             setSelectedAllergenValue("");
@@ -671,8 +647,6 @@ export default function AllergiesDashboard() {
                                 <Select
                                   value={selectedAllergenValue}
                                   onValueChange={(val) => {
-                                    console.log("Allergen dropdown value changed to:", val);
-                                    console.log("Current selectedAllergenValue before update:", selectedAllergenValue);
                                     setSelectedAllergenValue(val);
                                     if (val === "custom") {
                                       setShowCustomAllergen(true);
@@ -682,10 +656,8 @@ export default function AllergiesDashboard() {
                                       setCustomAllergen("");
                                       // Set the label as the allergen name
                                       const selected = commonAllergens.find(a => a.value === val);
-                                      console.log("Setting allergen form to:", selected?.label || val);
                                       setAllergenForm({ ...allergenForm, allergen: selected?.label || val });
                                     }
-                                    console.log("selectedAllergenValue updated to:", val);
                                   }}
                                 >
                                   <SelectTrigger id="allergen" className="bg-white text-black">
