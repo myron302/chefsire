@@ -118,17 +118,25 @@ if (!PG_URL) {
         patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: "1ZBBB" }),
       ]);
       // Barrier: wait until both requests have read the order and are blocked on the row lock, so both read the
-      // same tracking number before either can write.
-      for (let waited = 0; ; waited += 25) {
-        const blocked = (await local.query(
-          "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE 'update \"orders\"%'",
-        )).rows[0].n;
-        if (blocked >= 2) break;
-        if (waited > 10_000) throw new Error(`only ${blocked} request(s) reached the row lock`);
-        await new Promise((r) => setTimeout(r, 25));
+      // same tracking number before either can write. On any failure the lock is rolled back and the connection
+      // released, so a broken barrier fails the test instead of hanging CI.
+      let committed = false;
+      try {
+        for (let waited = 0; ; waited += 25) {
+          const blocked = (await local.query(
+            "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE 'update \"orders\"%'",
+          )).rows[0].n;
+          if (blocked >= 2) break;
+          if (waited > 10_000) throw new Error(`only ${blocked} request(s) reached the row lock`);
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        await holder.query("COMMIT");
+        committed = true;
+      } finally {
+        if (!committed) await holder.query("ROLLBACK").catch(() => {});
+        holder.release();
+        if (!committed) await racing.catch(() => {});
       }
-      await holder.query("COMMIT");
-      holder.release();
       const [a, b] = await racing;
       assert.deepEqual([a.status, b.status].sort(), [200, 409]);
       const winner = a.status === 200 ? "1ZAAA" : "1ZBBB";

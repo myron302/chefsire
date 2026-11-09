@@ -203,7 +203,7 @@ jobs:
       - name: Test buyer and seller Marketplace order journey
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/routes/marketplace-order-journey.postgres.test.ts server/routes/marketplace-sample-listings.postgres.test.ts server/routes/marketplace-fulfillment-status.postgres.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/routes/marketplace-order-journey.postgres.test.ts server/routes/marketplace-sample-listings.postgres.test.ts server/routes/marketplace-fulfillment-status.postgres.test.ts server/routes/marketplace-order-detail-access.postgres.test.ts
       - name: Test wedding vendor directory and quote delivery against PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
