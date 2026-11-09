@@ -39,6 +39,10 @@ CATEGORY_MAP = {
 
 con = duckdb.connect()
 con.execute("INSTALL httpfs; LOAD httpfs; INSTALL spatial; LOAD spatial; SET s3_region='us-west-2';")
+src = f"read_parquet('s3://overturemaps-us-west-2/release/{release}/theme=places/type=place/*', hive_partitioning=1)"
+cols = con.execute(f"SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM {src} LIMIT 0)").fetchall()
+for c in cols:
+    print("COLUMN", c[0], "::", c[1][:300])
 cats = ", ".join(f"'{c}'" for c in CATEGORY_MAP)
 mapping = " ".join(f"WHEN '{k}' THEN '{v}'" for k, v in CATEGORY_MAP.items())
 
