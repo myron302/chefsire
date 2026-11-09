@@ -15,6 +15,8 @@ export interface MarketplaceProduct {
   category: string;
   isFeatured?: boolean;
   isNew?: boolean;
+  /** Seeded demo listing: shown as an example, never purchasable. */
+  isSample?: boolean;
   viewCount?: number;
   favoriteCount?: number;
   inventory?: number;

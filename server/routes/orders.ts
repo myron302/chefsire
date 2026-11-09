@@ -12,6 +12,7 @@ import { sendOrderPlacedNotification, sendOrderStatusNotification } from "../ser
 import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, toClientOrder, verifiedMarketplaceEarningWhere } from "../lib/marketplace-payment";
 import { marketplaceDigitalFilePath } from "../lib/marketplace-digital-file";
 import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../../shared/marketplace-fulfillment";
+import { isSampleProduct, SAMPLE_LISTING_CODE, SAMPLE_LISTING_MESSAGE } from "../../shared/marketplace-sample";
 
 const router = Router();
 
@@ -85,6 +86,11 @@ router.post("/checkout", requireAuth, async (req, res) => {
 
     if (!product.isActive || product.inStoreOnly || product.isExternal) {
       return res.status(400).json({ ok: false, error: "Product is not available" });
+    }
+
+    // Seeded demo listings are shown as examples only and never become payable orders.
+    if (isSampleProduct(product)) {
+      return res.status(409).json({ ok: false, code: SAMPLE_LISTING_CODE, error: SAMPLE_LISTING_MESSAGE });
     }
 
     // This check improves checkout feedback. Inventory is not mutated here;

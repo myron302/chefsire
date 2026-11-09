@@ -3,6 +3,7 @@ import { ShoppingCart, Heart, Eye } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { isSampleProduct } from "@shared/marketplace-sample";
 
 export interface ProductCardProps {
   product: {
@@ -14,6 +15,8 @@ export interface ProductCardProps {
     inventory?: number | null;
     category?: string;
     is_active?: boolean;
+    sellerId?: string;
+    isSample?: boolean;
   };
   onView?: (id: string) => void;
   onAddToCart?: (id: string) => void;
@@ -32,6 +35,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   showActions = true,
 }) => {
   const isOutOfStock = product.inventory != null && product.inventory <= 0;
+  const isSample = product.isSample === true || isSampleProduct(product);
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
@@ -51,6 +55,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Status Badges */}
         <div className="absolute top-2 right-2 flex flex-col gap-1">
+          {isSample && (
+            <Badge className="bg-amber-100 text-amber-900 border border-amber-400">Sample listing</Badge>
+          )}
           {isOutOfStock && (
             <Badge variant="destructive" className="bg-red-500">
               Out of Stock
@@ -111,7 +118,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             ${parseFloat(String(product.price)).toFixed(2)}
           </span>
 
-          {showActions && onAddToCart && (
+          {showActions && onAddToCart && !isSample && (
             <Button
               size="sm"
               disabled={isOutOfStock}
