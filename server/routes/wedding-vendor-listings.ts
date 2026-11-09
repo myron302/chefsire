@@ -74,6 +74,12 @@ export async function ensureWeddingVendorListingsTable() {
       ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION,
       ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP
   `);
+  // Production's table predates this file's CREATE TABLE (it has agreed_to_terms instead of agree, and email
+  // NOT NULL), so CREATE TABLE IF NOT EXISTS never reconciled it. Bring any older table up to what this code writes:
+  // add the missing agree column and allow listings without an email (email was always optional here).
+  await db.execute(sql`ALTER TABLE wedding_vendor_listings ADD COLUMN IF NOT EXISTS agree BOOLEAN NOT NULL DEFAULT FALSE`);
+  await db.execute(sql`ALTER TABLE wedding_vendor_listings ALTER COLUMN email DROP NOT NULL`);
+
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS wedding_vendor_listings_source_id_uidx
       ON wedding_vendor_listings(source_id) WHERE source_id IS NOT NULL
