@@ -12,6 +12,7 @@ import SquarePaymentForm from "@/components/SquarePaymentForm";
 import { Package, MapPin, Truck, ShoppingBag, CheckCircle } from "lucide-react";
 import { isDigitalMarketplaceProduct, marketplaceCheckoutMethods, resolveMarketplaceShippingCost } from "@shared/marketplace-fulfillment";
 import { onProductImageError } from "@/lib/image-fallback";
+import { isSampleProduct, SAMPLE_LISTING_MESSAGE } from "@shared/marketplace-sample";
 
 interface CheckoutPageProps {
   // Product details passed via route state
@@ -68,6 +69,12 @@ export default function CheckoutPage() {
       const response = await fetch(`/api/marketplace/products/${productId}`);
       if (response.ok) {
         const data = await response.json();
+        // Sample listings are examples only: send the visitor back to the listing instead of a checkout form.
+        if (data?.isSample === true || isSampleProduct(data)) {
+          toast({ title: "Sample listing", description: SAMPLE_LISTING_MESSAGE });
+          navigate(`/product/${encodeURIComponent(String(data.id))}`);
+          return;
+        }
         setProduct(data);
       } else {
         toast({

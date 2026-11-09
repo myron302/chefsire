@@ -1,4 +1,5 @@
 import { marketplaceCheckoutMethods } from "@shared/marketplace-fulfillment";
+import { isSampleProduct, SAMPLE_LISTING_MESSAGE } from "@shared/marketplace-sample";
 import React, { useState, useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,6 +50,7 @@ interface ProductData {
   inventory?: number | null;
   isActive?: boolean;
   isExternal?: boolean;
+  isSample?: boolean;
   createdAt: string;
 }
 
@@ -112,7 +114,8 @@ export default function ProductPage() {
     Math.min(100, product?.inventory !== undefined && product?.inventory !== null ? product.inventory : 100)
   );
   const isOutOfStock = product?.inventory !== undefined && product?.inventory !== null && product.inventory <= 0;
-  const canCheckout = !!product && !isOutOfStock && marketplaceCheckoutMethods(product).length > 0;
+  const isSample = !!product && (product.isSample === true || isSampleProduct(product));
+  const canCheckout = !!product && !isSample && !isOutOfStock && marketplaceCheckoutMethods(product).length > 0;
 
   // Single-product checkout: the existing /checkout page creates the order
   // server-side and collects payment through Square.
@@ -236,6 +239,11 @@ export default function ProductPage() {
           <div>
             <div className="flex justify-between items-start mb-4">
               <div>
+                {isSample && (
+                  <Badge variant="outline" className="mb-2 border-amber-400 bg-amber-50 text-amber-800">
+                    Sample listing
+                  </Badge>
+                )}
                 <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
                 <div className="flex items-center gap-4 mb-2">
                   <span className="text-3xl font-bold text-green-600">
@@ -380,8 +388,13 @@ export default function ProductPage() {
                 disabled={!canCheckout}
               >
                 <ShoppingCart className="w-5 h-5 mr-2" />
-                {isOutOfStock ? "Out of Stock" : product.inStoreOnly ? "Available In Store Only" : canCheckout ? "Buy Now" : "Online Checkout Unavailable"}
+                {isSample ? "Sample Listing" : isOutOfStock ? "Out of Stock" : product.inStoreOnly ? "Available In Store Only" : canCheckout ? "Buy Now" : "Online Checkout Unavailable"}
               </Button>
+              {isSample && (
+                <p className="text-sm text-gray-600" data-testid="sample-listing-notice">
+                  {SAMPLE_LISTING_MESSAGE}
+                </p>
+              )}
 
             </div>
           </div>

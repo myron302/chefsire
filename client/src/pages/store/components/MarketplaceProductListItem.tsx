@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 import { PRODUCT_PLACEHOLDER, onProductImageError } from "@/lib/image-fallback";
+import { isSampleProduct } from "@shared/marketplace-sample";
 
 interface MarketplaceProductListItemProps {
   product: MarketplaceProduct;
@@ -31,7 +32,12 @@ export function MarketplaceProductListItem({
 
         <div className="flex-1">
           <div className="flex justify-between items-start mb-2">
-            <h3 className="font-semibold text-lg">{product.name}</h3>
+            <div>
+              <h3 className="font-semibold text-lg">{product.name}</h3>
+              {(product.isSample === true || isSampleProduct(product)) && (
+                <Badge className="bg-amber-100 text-amber-900 border border-amber-400">Sample listing</Badge>
+              )}
+            </div>
             <span className="font-bold text-lg text-green-600">${product.price}</span>
           </div>
 

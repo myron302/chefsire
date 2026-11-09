@@ -13,6 +13,7 @@ import {
 import { createProductSchema, searchProductsSchema, updateProductSchema } from "./marketplace/schemas";
 import { countProductsByCategory } from "./marketplace/utils";
 import { serializePublicUser } from "../serializers/public-user";
+import { isSampleProduct } from "../../shared/marketplace-sample";
 
 const r = Router();
 
@@ -25,7 +26,8 @@ const toPublicProduct = (viewerId?: string | null) => (product: any) => {
   const { digitalFileUrl, salesCount, viewsCount, ...rest } = product ?? {};
   const isOwner = Boolean(viewerId) && String(product?.sellerId) === String(viewerId);
   const visible = isOwner ? product : rest;
-  return addDeliveryMethods(product?.seller ? { ...visible, seller: serializePublicUser(product.seller) } : visible);
+  const withSeller = product?.seller ? { ...visible, seller: serializePublicUser(product.seller) } : visible;
+  return addDeliveryMethods({ ...withSeller, isSample: isSampleProduct(product) });
 };
 
 /**

@@ -6,6 +6,7 @@ import { db } from "../db";
 import { orders, users, commissions, products } from "../../shared/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
+import { isSampleProduct, SAMPLE_LISTING_CODE, SAMPLE_LISTING_MESSAGE } from "../../shared/marketplace-sample";
 import { buildSquareRefundRequest, canonicalizeMarketplaceRefundReason, getDefinitiveSquareRefundFailure, hasLegacyPaymentIndicators, requireSquareRefundEvidence, toClientOrder } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 import { getSquareClient } from "../lib/square-client";
@@ -77,6 +78,11 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     }
     if (!["unverified", "capture_pending", "capture_reconciliation"].includes(order.paymentStatus)) {
       return res.status(400).json({ ok: false, error: "Order already processed" });
+    }
+    // A sample listing never starts a capture, even for an order created before sample listings were refused at
+    // checkout. Orders already mid-capture still reconcile normally.
+    if (order.paymentStatus === "unverified" && isSampleProduct({ id: order.productId, sellerId: order.sellerId })) {
+      return res.status(409).json({ ok: false, code: SAMPLE_LISTING_CODE, error: SAMPLE_LISTING_MESSAGE });
     }
     if (order.paymentStatus !== "capture_reconciliation" && (!process.env.SQUARE_ACCESS_TOKEN || !process.env.SQUARE_LOCATION_ID || !squareEnvironmentConfigured())) {
       return res.status(503).json({

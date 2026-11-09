@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 import { PRODUCT_PLACEHOLDER, onProductImageError } from "@/lib/image-fallback";
+import { isSampleProduct } from "@shared/marketplace-sample";
 
 interface MarketplaceProductCardProps {
   product: MarketplaceProduct;
@@ -31,6 +32,9 @@ export function MarketplaceProductCard({
         <div className="absolute top-2 left-2 flex gap-2">
           {product.isFeatured && <Badge className="bg-yellow-500">Featured</Badge>}
           {product.isNew && <Badge className="bg-green-500">New</Badge>}
+          {(product.isSample === true || isSampleProduct(product)) && (
+            <Badge className="bg-amber-100 text-amber-900 border border-amber-400">Sample listing</Badge>
+          )}
         </div>
         <Button
           size="sm"

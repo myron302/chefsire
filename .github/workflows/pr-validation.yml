@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies from lockfile
         run: npm ci
       - name: Test Marketplace checkout and private file isolation
-        run: node --import tsx --test client/src/components/SquarePaymentForm.test.ts shared/marketplace-fulfillment.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts
+        run: node --import tsx --test client/src/components/SquarePaymentForm.test.ts shared/marketplace-fulfillment.test.ts shared/marketplace-sample.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts
       - name: Test public avatar projection and inline avatar serving
         run: node --import tsx --test server/lib/inline-avatar.test.ts
       - name: Test Cookoff Arena stats and image placeholder fallback
@@ -203,7 +203,7 @@ jobs:
       - name: Test buyer and seller Marketplace order journey
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test server/routes/marketplace-order-journey.postgres.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/routes/marketplace-order-journey.postgres.test.ts server/routes/marketplace-sample-listings.postgres.test.ts
       - name: Test wedding vendor directory and quote delivery against PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
