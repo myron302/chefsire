@@ -55,10 +55,17 @@ if (!PG_URL) {
       `);
 
       const patch = (id: string, who: string, body: Record<string, unknown>) => call("PATCH", `/api/orders/${id}/status`, who, body);
-      const buyerNotes = async () => {
-        await new Promise((r) => setTimeout(r, 150)); // notifications are written after the response
-        return (await local.query("SELECT message FROM notifications WHERE user_id = $1 ORDER BY created_at, id", [ids.buyer])).rows
-          .map((r: { message: string }) => r.message);
+      // Notifications are written just after the response, so wait (up to 10 s) until at least `expected` exist, then
+      // settle briefly and read again so an unexpected extra (duplicate) notification is still caught.
+      const readNotes = async () => (await local.query(
+        "SELECT message FROM notifications WHERE user_id = $1 ORDER BY created_at, id", [ids.buyer],
+      )).rows.map((r: { message: string }) => r.message);
+      const buyerNotes = async (expected: number) => {
+        for (let waited = 0; (await readNotes()).length < expected && waited < 10_000; waited += 50) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        await new Promise((r) => setTimeout(r, 300));
+        return readNotes();
       };
 
       // Only the seller may move an order.
@@ -79,7 +86,7 @@ if (!PG_URL) {
       assert.equal((await patch(pickupOrder.id, "seller", { status: "delivered" })).status, 200);
       assert.equal((await patch(pickupOrder.id, "seller", { status: "processing" })).status, 409, "no going backwards");
       assert.equal((await patch(pickupOrder.id, "seller", { status: "cancelled" })).status, 409, "a paid order isn't cancelled without a refund");
-      assert.deepEqual(await buyerNotes(), [
+      assert.deepEqual(await buyerNotes(2), [
         "Your order for cookies is being prepared for pickup",
         "Your order for cookies has been picked up",
       ]);
@@ -142,7 +149,7 @@ if (!PG_URL) {
       const winner = a.status === 200 ? "1ZAAA" : "1ZBBB";
       assert.equal((await local.query("SELECT tracking_number FROM orders WHERE id = $1", [shippedOrder.id])).rows[0].tracking_number, winner);
       assert.equal((await patch(shippedOrder.id, "seller", { status: "delivered" })).status, 200);
-      const notes = await buyerNotes();
+      const notes = await buyerNotes(8);
       assert.deepEqual(notes.slice(2), [
         "Your order for jam is being prepared",
         "Your order for jam has shipped",
