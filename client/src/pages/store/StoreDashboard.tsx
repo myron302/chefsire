@@ -39,7 +39,7 @@ import {
 } from "./lib/storeDashboard";
 
 export default function StoreDashboard() {
-  const { user, updateUser } = useUser();
+  const { user, updateUser, loading: authLoading } = useUser();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
@@ -294,6 +294,17 @@ export default function StoreDashboard() {
       });
     }
   };
+
+  // loadDashboard only runs for a signed-in user, so without this a signed-out visitor waited on "Loading" forever.
+  if (!authLoading && !user) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12 text-center">
+        <h1 className="text-2xl font-bold mb-2">Store Dashboard</h1>
+        <p className="mb-4 text-gray-600">Sign in to manage your store, products and orders.</p>
+        <button className="underline font-medium" onClick={() => setLocation(`/login?next=${encodeURIComponent("/store/dashboard")}`)}>Sign in</button>
+      </div>
+    );
+  }
 
   if (loading) {
     return <StoreDashboardLoadingState />;
