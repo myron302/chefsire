@@ -43,8 +43,10 @@ export default function DailyQuests() {
     isLoading,
     error,
   } = useQuery<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>({
-    queryKey: ["/api/quests/daily", user?.id],
-    queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>(`/api/quests/daily/${user?.id}`),
+    // The server reads the user from the session (GET /api/quests/daily). The key differs from QuestsPage's, which
+    // caches a reshaped list under ["/api/quests/daily", userId]; sharing it would hand this widget the wrong shape.
+    queryKey: ["/api/quests/daily", user?.id, "feed-widget"],
+    queryFn: () => fetchJSON<{ quests: Array<{ progress: Omit<QuestProgress, 'quest'>, quest: Quest }> }>("/api/quests/daily"),
     enabled: !loading && !!user?.id, // Only fetch when loading is done AND user exists
     retry: false, // Don't retry on error
     refetchInterval: 30000, // Refetch every 30 seconds to check for updates
