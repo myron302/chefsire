@@ -216,7 +216,12 @@ router.get("/vendor-listings/public", async (_req, res) => {
         CASE WHEN source IS NOT NULL AND user_id IS NULL THEN phone ELSE NULL END AS phone
       FROM wedding_vendor_listings
       WHERE status = 'published'
-      ORDER BY (source IS NOT NULL AND user_id IS NULL) ASC, business_name ASC
+      -- Members first; then listings a couple can actually act on (website and phone); names that start with a
+      -- letter before ones starting with digits or symbols ("10selden"); then A-Z.
+      ORDER BY (source IS NOT NULL AND user_id IS NULL) ASC,
+               (website IS NOT NULL AND phone IS NOT NULL) DESC,
+               (business_name ~ '^[A-Za-z]') DESC,
+               lower(business_name) ASC
       LIMIT 5000
     `);
     // Phone is only present for unclaimed listings; drop the key entirely for member listings.
