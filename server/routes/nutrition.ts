@@ -1,6 +1,6 @@
 // server/routes/nutrition.ts
 import { Router } from "express";
-import { nutritionEntitlement, revokeNutritionTrial } from "../lib/nutrition-entitlement";
+import { nutritionEntitlement, revokeNutritionTrial, startNutritionTrialResponse } from "../lib/nutrition-entitlement";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { effectiveSubscriptionPresentation, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
@@ -37,7 +37,9 @@ r.post("/users/:id/trial", requireAuth, async (req, res) => {
   if (req.user!.id !== req.params.id) {
     return res.status(403).json({ message: "You can only change your own nutrition subscription" });
   }
-  return res.status(503).json(paidUpgradeUnavailableResponse);
+  // Same cardless 30-day trial as POST /api/users/:id/nutrition/trial (Settings uses this path).
+  const { status, body } = await startNutritionTrialResponse(req.params.id);
+  return res.status(status).json(body);
 });
 
 /**
@@ -267,6 +269,20 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    // An active cardless trial is the one premium state this server can end itself: revoke it (never restartable).
+    const entitlement = await nutritionEntitlement(userId);
+    if (entitlement.trial.status === "active") {
+      await revokeNutritionTrial(userId);
+      return res.json({
+        ok: true,
+        message: "Your Nutrition Premium trial has been cancelled. You're on the Free plan.",
+        currentTier: "free",
+        status: "inactive",
+        endsAt: null,
+        tierInfo: NUTRITION_SUBSCRIPTION_TIERS.free,
+      });
     }
 
     // Recorded state is not authorization, but it determines whether claiming

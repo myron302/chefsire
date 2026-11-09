@@ -85,6 +85,74 @@ if (!PG_URL) {
     }
   });
 
+  test("Settings' start and Cancel buttons: start, see premium, cancel ends it for good", async () => {
+    const local = await connectLocalPg();
+    const schema = await import("../../shared/schema");
+    const { default: usersRouter } = await import("./users");
+    const { default: nutritionRouter } = await import("./nutrition");
+    const { hasNutritionPremium } = await import("../lib/nutrition-entitlement");
+    const app = express();
+    app.use(express.json());
+    app.use("/api/users", usersRouter);
+    app.use("/api/nutrition", nutritionRouter);
+    const server = app.listen(0, "127.0.0.1");
+    try {
+      await local.query(`
+        DROP TABLE IF EXISTS nutrition_intro_trials, users CASCADE;
+        ${ddl(schema.users, "users")};
+        ${readFileSync(new URL("../../docs/ops/2026-11-09-nutrition-intro-trials.sql", import.meta.url), "utf8")}
+      `);
+      const ids: Record<string, string> = {};
+      for (const name of ["member", "bystander", "legacy"]) {
+        ids[name] = (await local.query(
+          "INSERT INTO users (username, email, display_name, password, auth_version) VALUES ($1, $2, $1, 'fixture', 1) RETURNING id",
+          [name, `${name}@example.test`],
+        )).rows[0].id;
+      }
+      await local.query("UPDATE users SET nutrition_premium = true WHERE id = $1", [ids.legacy]);
+      const call = makeCaller(() => `http://127.0.0.1:${(server.address() as AddressInfo).port}`, (who) => ids[who]);
+
+      // Settings starts the trial through /api/nutrition/users/:id/trial; any requested length is ignored.
+      const started = await call("POST", `/api/nutrition/users/${ids.member}/trial`, "member", { days: 365 });
+      assert.equal(started.status, 200, started.text);
+      assert.equal(new Date(started.json.trialEndsAt).getTime() - new Date(started.json.trial.activatedAt).getTime(), 30 * 24 * 3600 * 1000);
+      assert.equal((await call("POST", `/api/users/${ids.member}/nutrition/trial`, "member", {})).status, 409, "the other path sees the same one trial");
+      assert.equal((await call("POST", `/api/nutrition/users/${ids.member}/trial`, "bystander", {})).status, 403);
+
+      const sub = await call("GET", "/api/nutrition/subscription", "member");
+      assert.equal(sub.json.currentTier, "premium");
+      assert.equal(sub.json.status, "active");
+      assert.ok(sub.json.endsAt);
+
+      // Cancel (the visible Settings button) ends it.
+      assert.equal((await call("POST", "/api/nutrition/subscription/cancel", "anon", {})).status, 401);
+      const cancelled = await call("POST", "/api/nutrition/subscription/cancel", "member", {});
+      assert.equal(cancelled.status, 200, cancelled.text);
+      assert.equal(cancelled.json.currentTier, "free");
+      assert.equal(cancelled.json.status, "inactive");
+      assert.ok((await local.query("SELECT revoked_at FROM nutrition_intro_trials WHERE user_id = $1", [ids.member])).rows[0].revoked_at);
+      assert.equal(await hasNutritionPremium(ids.member), false);
+      const after = await call("GET", "/api/nutrition/subscription", "member");
+      assert.equal(after.json.currentTier, "free");
+      assert.equal(after.json.trial.status, "cancelled");
+      for (const path of [`/api/nutrition/users/${ids.member}/trial`, `/api/users/${ids.member}/nutrition/trial`]) {
+        assert.equal((await call("POST", path, "member", {})).status, 409, `no restart via ${path}`);
+      }
+
+      // Someone with nothing to cancel is told they're on Free; a legacy recorded subscription still isn't
+      // "cancelled" without a provider (503, unchanged).
+      const none = await call("POST", "/api/nutrition/subscription/cancel", "bystander", {});
+      assert.equal(none.status, 200);
+      assert.equal(none.json.currentTier, "free");
+      assert.equal((await call("POST", "/api/nutrition/subscription/cancel", "legacy", {})).status, 503);
+      assert.equal(await hasNutritionPremium(ids.legacy), false);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await local.query("DROP TABLE IF EXISTS nutrition_intro_trials, users CASCADE");
+      await local.end();
+    }
+  });
+
   test("entitlement reads fail closed when the trials table is unavailable", async () => {
     const local = await connectLocalPg();
     try {

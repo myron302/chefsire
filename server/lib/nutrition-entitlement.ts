@@ -78,3 +78,28 @@ export async function withNutritionEntitlement<T extends { id: string }>(user: T
     return { ...user, nutritionPremium: false, nutritionTrialEndsAt: null };
   }
 }
+
+/**
+ * The one trial-start response, shared by POST /api/users/:id/nutrition/trial (Nutrition page) and
+ * POST /api/nutrition/users/:id/trial (Settings). Any requested length is ignored: the database fixes 30 days.
+ */
+export async function startNutritionTrialResponse(userId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  try {
+    const trial = await activateNutritionTrial(userId);
+    if (!trial) {
+      return { status: 409, body: { ok: false, code: "NUTRITION_TRIAL_USED", message: "You've already used your free Nutrition Premium trial." } };
+    }
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        trialEndsAt: trial.expiresAt,
+        trial,
+        message: "Your 30-day Nutrition Premium trial is active. No credit card required and no charge when it ends.",
+      },
+    };
+  } catch (error) {
+    console.error("Nutrition trial activation failed:", (error as Error)?.message);
+    return { status: 503, body: { ok: false, message: "We couldn't start your trial right now. Please try again." } };
+  }
+}
