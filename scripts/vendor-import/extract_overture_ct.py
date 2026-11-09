@@ -1,78 +1,72 @@
-"""Extract Connecticut wedding-vendor candidates from Overture Maps Places (CDLA-Permissive-2.0 / Apache-2.0).
+"""Extract Connecticut wedding-vendor candidates from Overture Maps Places.
 
-Read-only: writes a CSV and a category summary. Nothing here touches the ChefSire database.
+Overture Places is openly licensed (CDLA-Permissive-2.0, with Foursquare-sourced records under Apache-2.0),
+so the rows may be stored and shown. This script is read-only: it writes a JSON file and a summary and never
+touches the ChefSire database. The server imports the JSON as unclaimed listings.
+
 Usage: python extract_overture_ct.py <release> <out_dir>
 """
-import sys, duckdb, pathlib
+import json, pathlib, sys
+
+import duckdb
 
 release, out = sys.argv[1], pathlib.Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
 
-# Overture place categories relevant to weddings -> ChefSire vendor category.
+# Overture taxonomy.primary -> ChefSire vendor category (free text; the client maps it to a filter).
 CATEGORY_MAP = {
     "florist": "Florist",
-    "flowers_and_gifts_shop": "Florist",
+    "wholesale_florist": "Florist",
+    "flowers_and_gifts_store": "Florist",  # name must look like a florist (below)
     "wedding_planning": "Planner",
-    "event_planning": "Planner",
     "party_and_event_planning": "Planner",
+    "event_or_party_service": "Planner",
+    "event_photography_service": "Photographer",
+    "photography_service": "Photographer",
+    "session_photography_service": "Photographer",
     "photographer": "Photographer",
-    "event_photography": "Photographer",
     "videographer": "Videographer",
     "caterer": "Caterer",
-    "bakery": "Bakery",
-    "cupcake_shop": "Bakery",
-    "custom_cakes_shop": "Bakery",
+    "bakery": "Bakery & Cakes",
+    "custom_cakes_shop": "Bakery & Cakes",
+    "cupcake_shop": "Bakery & Cakes",
+    "patisserie_cake_shop": "Bakery & Cakes",
     "dj_service": "DJ",
     "musician": "Music",
+    "band_orchestra_symphony": "Music",
     "bridal_shop": "Bridal",
-    "formal_wear_store": "Bridal",
-    "venue_and_event_space": "Venue",
-    "wedding_chapel": "Venue",
-    "banquet_hall": "Venue",
-    "party_equipment_rental": "Rentals",
-    "limo_services": "Transportation",
     "makeup_artist": "Beauty",
-    "hair_salon": "Beauty",
-    "officiating_services": "Officiant",
+    "party_equipment_rental": "Rentals",
+    "photo_booth_rental": "Rentals",
+    "audiovisual_equipment_rental": "Rentals",
+    "limo_service": "Transportation",
+    "event_venue": "Venue",
     "winery": "Venue",
 }
 
 con = duckdb.connect()
 con.execute("INSTALL httpfs; LOAD httpfs; INSTALL spatial; LOAD spatial; SET s3_region='us-west-2';")
 src = f"read_parquet('s3://overturemaps-us-west-2/release/{release}/theme=places/type=place/*', hive_partitioning=1)"
-cols = con.execute(f"SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM {src} LIMIT 0)").fetchall()
-for c in cols:
-    print("COLUMN", c[0], "::", c[1][:300])
-disc = con.execute(f"""
-  SELECT taxonomy.primary AS c, count(*) n FROM {src}
-  WHERE bbox.xmin BETWEEN -73.73 AND -71.78 AND bbox.ymin BETWEEN 40.95 AND 42.06
-    AND regexp_matches(taxonomy.primary, 'photo|video|venue|event|banquet|wedding|bridal|limo|officiant|party|ballroom|reception|music|band|dj|cake|dessert|florist|flower|tent|rental|chauffeur|makeup')
-  GROUP BY 1 ORDER BY 2 DESC LIMIT 80""").fetchall()
-for c in disc:
-    print("TAXON", c[0], c[1])
 cats = ", ".join(f"'{c}'" for c in CATEGORY_MAP)
 mapping = " ".join(f"WHEN '{k}' THEN '{v}'" for k, v in CATEGORY_MAP.items())
 
 con.execute(f"""
-CREATE TABLE ct AS
+CREATE TABLE raw AS
 SELECT
-  id AS overture_id,
-  names.primary AS business_name,
+  id AS source_id,
+  trim(names.primary) AS business_name,
   taxonomy.primary AS source_category,
   CASE taxonomy.primary {mapping} END AS category,
   confidence,
   websites[1] AS website,
   emails[1] AS email,
-  operating_status,
   phones[1] AS phone,
-  socials[1] AS social,
   addresses[1].freeform AS street,
-  addresses[1].locality AS city,
-  addresses[1].region AS state,
+  trim(addresses[1].locality) AS city,
   addresses[1].postcode AS postcode,
-  ST_Y(geometry) AS lat,
-  ST_X(geometry) AS lng
-FROM read_parquet('s3://overturemaps-us-west-2/release/{release}/theme=places/type=place/*', hive_partitioning=1)
+  round(ST_Y(geometry), 6) AS lat,
+  round(ST_X(geometry), 6) AS lng
+FROM {src}
 WHERE bbox.xmin BETWEEN -73.73 AND -71.78
   AND bbox.ymin BETWEEN 40.95 AND 42.06
   AND taxonomy.primary IN ({cats})
@@ -81,16 +75,45 @@ WHERE bbox.xmin BETWEEN -73.73 AND -71.78
   AND upper(addresses[1].region) IN ('CT', 'CONNECTICUT')
 """)
 
-con.execute(f"COPY (SELECT * FROM ct ORDER BY category, city, business_name) TO '{out / 'ct_wedding_vendors.csv'}' (HEADER)")
+# Keep confident, locatable rows; a gift shop counts only when its name says florist; one row per name+city.
+con.execute(r"""
+CREATE TABLE ct AS
+SELECT * EXCLUDE (rn) FROM (
+  SELECT *, row_number() OVER (PARTITION BY lower(business_name), lower(city) ORDER BY confidence DESC) rn
+  FROM raw
+  WHERE confidence >= 0.7
+    AND business_name IS NOT NULL AND length(business_name) >= 2
+    AND city IS NOT NULL AND length(city) >= 2
+    AND (source_category <> 'flowers_and_gifts_store'
+         OR regexp_matches(lower(business_name), 'flor|flower|bloom|petal|blossom|rose|botanical'))
+) WHERE rn = 1
+""")
+
+rows = con.execute("SELECT * FROM ct ORDER BY category, city, business_name").fetchall()
+cols = [d[0] for d in con.description]
+records = []
+for r in rows:
+    rec = dict(zip(cols, r))
+    rec.pop("confidence", None)
+    rec.pop("source_category", None)
+    rec["state"] = "CT"
+    records.append({k: v for k, v in rec.items() if v is not None})
+
+payload = {
+    "source": "overture",
+    "release": release,
+    "license": "Overture Maps Places: CDLA-Permissive-2.0 (some records Apache-2.0). https://docs.overturemaps.org/attribution/",
+    "region": "CT",
+    "listings": records,
+}
+(out / "wedding-vendors-ct.json").write_text(json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n")
+
 summary = con.execute("""
-  SELECT category, source_category, count(*) AS n,
-         count(*) FILTER (WHERE confidence >= 0.7) AS n_conf70,
-         count(website) AS with_site, count(email) AS with_email, count(phone) AS with_phone
-  FROM ct GROUP BY ALL ORDER BY category, n DESC
+  SELECT category, count(*) n, count(website) site, count(email) email, count(phone) phone
+  FROM ct GROUP BY 1 ORDER BY 2 DESC
 """).fetchall()
-total = con.execute("SELECT count(*), count(*) FILTER (WHERE confidence >= 0.7) FROM ct").fetchone()
-lines = [f"# Overture {release}: CT wedding-vendor candidates", "", f"Total: {total[0]} (confidence >= 0.7: {total[1]})", "",
-         "| ChefSire category | Overture category | rows | conf>=0.7 | website | email | phone |", "|---|---|---|---|---|---|---|"]
-lines += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} | {r[6]} |" for r in summary]
+lines = [f"# Overture {release}: CT wedding vendors kept", "", f"Total: {len(records)}", "",
+         "| Category | rows | website | email | phone |", "|---|---|---|---|---|"]
+lines += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} |" for r in summary]
 (out / "summary.md").write_text("\n".join(lines) + "\n")
 print("\n".join(lines))
