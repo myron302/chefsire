@@ -352,10 +352,12 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       status: z.enum(["pending", "processing", "shipped", "delivered", "cancelled", "refunded"]),
-      trackingNumber: z.string().optional()
+      trackingNumber: z.string().max(100).optional()
     }).strict();
 
-    const { status, trackingNumber } = schema.parse(req.body);
+    const parsed = schema.parse(req.body);
+    const status = parsed.status;
+    const trackingNumber = parsed.trackingNumber?.trim() || undefined;
     const orderId = req.params.id;
     const userId = req.user!.id;
 
@@ -392,9 +394,15 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     if (status === "shipped" && status !== order.status && !canMarkShipped(order.deliveryMethod)) {
       return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Only shipped orders can be marked shipped" });
     }
+    // Tracking numbers belong to shipping: they are accepted only on the way to (or while in) "shipped".
+    if (trackingNumber && status !== "shipped") {
+      return res.status(400).json({ ok: false, code: "TRACKING_NOT_APPLICABLE", error: "A tracking number can only be added to a shipped order" });
+    }
+    // Adding or changing the tracking number of an order that is already shipped.
+    const trackingOnly = status === order.status && status === "shipped" && !!trackingNumber && trackingNumber !== order.trackingNumber;
     // A repeated request (double click, retry) for the status the order already has changes nothing and does not
-    // notify the buyer again. Adding a tracking number to a shipped order still goes through.
-    if (status === order.status && !(trackingNumber && trackingNumber !== order.trackingNumber)) {
+    // notify the buyer again.
+    if (status === order.status && !trackingOnly) {
       return res.json({ ok: true, message: "Order status unchanged", order: toClientOrder(order) });
     }
     if (["processing", "shipped", "delivered"].includes(status) && !isVerifiedMarketplaceEarning(order)) {
@@ -440,6 +448,8 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
           eq(orders.status, order.status!),
           eq(orders.paymentStatus, order.paymentStatus),
           eq(orders.sellerRevenueStatus, order.sellerRevenueStatus),
+          // Two concurrent tracking edits can't both win: the loser gets FULFILLMENT_STATE_CONFLICT.
+          sql`${orders.trackingNumber} IS NOT DISTINCT FROM ${order.trackingNumber}`,
           ...(status === "cancelled" ? [inArray(orders.paymentStatus, cancellablePaymentStates)] : []),
           ...(status === "cancelled" ? [eq(orders.inventoryStatus, order.inventoryStatus)] : []),
         )).returning();
@@ -466,7 +476,7 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     if (product) {
       sendOrderStatusNotification(
         order.buyerId,
-        status,
+        trackingOnly ? "tracking_updated" : status,
         orderId,
         product.name,
         order.deliveryMethod
