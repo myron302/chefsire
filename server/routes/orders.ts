@@ -352,12 +352,13 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
   try {
     const schema = z.object({
       status: z.enum(["pending", "processing", "shipped", "delivered", "cancelled", "refunded"]),
-      trackingNumber: z.string().max(100).optional()
+      // Trimmed before the length check, so surrounding spaces never push a valid number over the limit.
+      trackingNumber: z.string().trim().max(100).optional()
     }).strict();
 
     const parsed = schema.parse(req.body);
     const status = parsed.status;
-    const trackingNumber = parsed.trackingNumber?.trim() || undefined;
+    const trackingNumber = parsed.trackingNumber || undefined;
     const orderId = req.params.id;
     const userId = req.user!.id;
 
@@ -395,7 +396,8 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
       return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Only shipped orders can be marked shipped" });
     }
     // Tracking numbers belong to shipping: they are accepted only on the way to (or while in) "shipped".
-    if (trackingNumber && status !== "shipped") {
+    // The delivery method is checked too, so an older pickup order wrongly left in "shipped" can't take one either.
+    if (trackingNumber && (status !== "shipped" || !canMarkShipped(order.deliveryMethod))) {
       return res.status(400).json({ ok: false, code: "TRACKING_NOT_APPLICABLE", error: "A tracking number can only be added to a shipped order" });
     }
     // Adding or changing the tracking number of an order that is already shipped.
