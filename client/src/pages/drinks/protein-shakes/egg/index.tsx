@@ -80,8 +80,8 @@ export default function EggProteinPage() {
   const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
-  const topRatedRecipes = useMemo(
-    () => [...eggProteinRecipes].sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 6),
+  const featuredRecipes = useMemo(
+    () => [...eggProteinRecipes].sort((a, b) => a.name.localeCompare(b.name)).slice(0, 6),
     [],
   );
   const flavorTypes = useMemo(
@@ -344,12 +344,6 @@ export default function EggProteinPage() {
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">4.7</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1 mb-6">
@@ -357,7 +351,7 @@ export default function EggProteinPage() {
             { id: 'browse', label: 'Browse All', icon: Search },
             { id: 'types', label: 'Flavor Types', icon: Sparkles },
             { id: 'goals', label: 'Goal Tags', icon: Target },
-            { id: 'featured', label: 'Top Rated', icon: Star },
+            { id: 'featured', label: 'Featured', icon: Star },
           ].map((tab) => {
             const Icon = tab.icon as any;
             return (
@@ -448,9 +442,9 @@ export default function EggProteinPage() {
         )}
 
         {/* Recipe Grid */}
-        {(activeTab === 'browse' ? filteredRecipes : topRatedRecipes).length > 0 && (
+        {(activeTab === 'browse' ? filteredRecipes : featuredRecipes).length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(activeTab === 'browse' ? filteredRecipes : topRatedRecipes).map((recipe) => {
+            {(activeTab === 'browse' ? filteredRecipes : featuredRecipes).map((recipe) => {
             const useMetric = !!metricFlags[recipe.id];
               const canonicalSlug = resolveCanonicalDrinkSlug({ slug: recipe.slug, name: recipe.name, sourceRoute: '/drinks/protein-shakes/egg' });
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);

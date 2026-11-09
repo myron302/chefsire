@@ -536,7 +536,7 @@ export default function BeefProteinPage() {
                       <div className="flex flex-wrap gap-1 mb-3">
                         <Badge className="bg-red-100 text-red-800">Beef Protein</Badge>
                         <Badge variant="outline">{shake.flavor}</Badge>
-                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 
@@ -777,7 +777,7 @@ export default function BeefProteinPage() {
                     <div className="flex flex-wrap gap-1 mt-2">
                       <Badge className="bg-red-100 text-red-800">Beef Protein</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
-                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      
                     </div>
                   </CardHeader>
 

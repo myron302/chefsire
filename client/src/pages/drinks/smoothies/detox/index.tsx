@@ -440,12 +440,6 @@ export default function DetoxSmoothiesPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-gray-600">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-gray-600">{detoxSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
@@ -591,7 +585,7 @@ export default function DetoxSmoothiesPage() {
 
                       <div className="flex items-center gap-2">
                         <Badge className="bg-gray-100 text-gray-700 border-gray-300">{smoothie.smoothieType}</Badge>
-                        {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

@@ -498,12 +498,6 @@ export default function EspressoDrinksPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">4.8★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-amber-400">{espressoDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
@@ -651,7 +645,7 @@ export default function EspressoDrinksPage() {
                       <div className="flex items-center gap-2">
                         <Badge className="bg-amber-100 text-amber-600 border-amber-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.energyLevel}</Badge>
-                        {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

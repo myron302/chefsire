@@ -478,7 +478,7 @@ export default function DetoxWatersPage() {
                       <div className="flex items-center gap-2 mb-2">
                         <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
                         <Badge variant="outline">{water.flavorProfile}</Badge>
-                        {water.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

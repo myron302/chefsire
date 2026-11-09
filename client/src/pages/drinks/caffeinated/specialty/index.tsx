@@ -503,12 +503,6 @@ export default function SpecialtyPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-400">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-purple-400">{specialtyDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
@@ -655,7 +649,7 @@ export default function SpecialtyPage() {
                       <div className="flex items-center gap-2">
                         <Badge className="bg-purple-100 text-purple-600 border-purple-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.caffeineLevel}</Badge>
-                        {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

@@ -6,10 +6,14 @@ import { fileURLToPath } from "node:url";
 
 /**
  * Built-in recipe data (drinks, pet food, baby food) carries invented rating, review-count and "trending" values.
- * None of it may be shown or used to rank recipes as if it were measured. Real review data lives in other pages.
+ * None of it may be shown, used to rank recipes, or turned into a popularity claim. Real review data lives in other
+ * pages (excluded below) and in the database.
  */
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DIRS = ["drinks", "pet-food", "recipes/baby-food"].map((d) => path.join(ROOT, d));
+const PAGES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SRC = path.resolve(PAGES, "..");
+const DIRS = ["drinks", "pet-food", "recipes/baby-food"].map((d) => path.join(PAGES, d));
+// Shared code that surfaces built-in drinks outside those folders.
+const SHARED = ["components/UniversalSearch.tsx", "contexts/DrinksContext.tsx"].map((f) => path.join(SRC, f));
 // Pages in these folders that show REAL, user-submitted reviews.
 const REAL_REVIEW_PAGES = new Set(["collection-detail.tsx", "creator-dashboard.tsx"]);
 
@@ -22,29 +26,42 @@ function tsxFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-const files = DIRS.flatMap((d) => tsxFiles(d));
+const files = [...DIRS.flatMap((d) => tsxFiles(d)), ...SHARED];
+const rel = (f: string) => path.relative(SRC, f);
 
-test("no sort option or default ranks built-in recipes by invented ratings or popularity", () => {
-  assert.ok(files.length > 40);
+const RULES: Array<[RegExp, string]> = [
+  // Ranking by invented values.
+  [/<option value="(rating|trending)"/, "rating/trending sort option"],
+  [/useState(<[^>]*>)?\((['"])(rating|trending)\2\)/, "defaults to a rating/trending sort"],
+  [/\b[ab]\.(rating|reviews)\b[^;\n]*-\s*\(?\s*[ab]\.(rating|reviews)\b/, "sorts by rating or review count"],
+  [/includes\((['"])trending\1\)/, "trending filter"],
+  // Labels and claims.
+  [/Highest Rated|Top Rated|Sort by Rating|Most Popular This Week|Avg Rating|Average Rating/, "rating/popularity label"],
+  [/\d\.\d\s*★/, "hardcoded star rating"],
+  [/\.trending\s*&&/, "Trending badge"],
+  // Rendered values.
+  [/\{[\w.?]+\.rating\}|\{[\w.?]+\.metadata\.rating\}/, "renders a rating value"],
+  [/\{[\w.?]+\.reviews\}|\breviews<\/span>/, "renders a review count"],
+];
+
+test("built-in recipe pages and shared drink code never rank by, label, or show invented ratings/popularity", () => {
+  assert.ok(files.length > 40, `scanned ${files.length} files`);
   const offenders: string[] = [];
   for (const f of files) {
     const s = readFileSync(f, "utf8");
-    const rel = path.relative(ROOT, f);
-    if (/<option value="(rating|trending)"/.test(s)) offenders.push(`${rel}: rating/trending sort option`);
-    if (/Highest Rated|Sort by Rating|Most Popular This Week/.test(s)) offenders.push(`${rel}: rating/popularity label`);
-    if (/useState(<[^>]*>)?\((['"])(rating|trending)\2\)/.test(s)) offenders.push(`${rel}: defaults to rating/trending`);
-    if (/b\.reviews\s*-\s*a\.reviews|\(b\.reviews \?\? 0\) - \(a\.reviews \?\? 0\)/.test(s)) offenders.push(`${rel}: sorts by review count`);
+    for (const [re, what] of RULES) if (re.test(s)) offenders.push(`${rel(f)}: ${what}`);
   }
   assert.deepEqual(offenders, []);
 });
 
-test("no built-in recipe card shows an invented rating or a Trending badge", () => {
-  const offenders: string[] = [];
-  for (const f of files) {
-    const s = readFileSync(f, "utf8");
-    const rel = path.relative(ROOT, f);
-    if (/\.trending && \(/.test(s)) offenders.push(`${rel}: Trending badge`);
-    if (/\{[a-zA-Z_]+\.rating\}|\{[a-zA-Z_]+\.metadata\.rating\}/.test(s)) offenders.push(`${rel}: renders a rating value`);
-  }
-  assert.deepEqual(offenders, []);
+test("the rules catch the forms that slipped through before", () => {
+  const samples = [
+    "{cocktail.trending && <Badge className=\"x\">Trending</Badge>}",
+    "<div className=\"t\">4.6★</div><div>Avg Rating</div>",
+    "{drink.rating}",
+    "<span>{drink.reviews} reviews</span>",
+    ".sort((a, b) => (b.reviews || 0) - (a.reviews || 0))",
+    "if (activeFilters.includes('trending')) {",
+  ];
+  for (const sample of samples) assert.ok(RULES.some(([re]) => re.test(sample)), sample);
 });

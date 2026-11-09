@@ -476,7 +476,7 @@ export default function PlantBasedProteinPage() {
                       <div className="flex items-center gap-2 mb-3">
                         <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                         <Badge variant="outline">{shake.flavor}</Badge>
-                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 
@@ -778,7 +778,7 @@ export default function PlantBasedProteinPage() {
                     <div className="flex items-center gap-2 mt-2">
                       <Badge className="bg-green-100 text-green-800">{shake.proteinSource}</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
-                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      
                     </div>
                   </CardHeader>
 

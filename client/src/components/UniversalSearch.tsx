@@ -38,7 +38,7 @@ export default function UniversalSearch({
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
 
-  const trendingDrinks = getTrendingDrinks();
+  const suggestedDrinks = getTrendingDrinks();
 
   const categoryIcons = {
     'smoothies': Leaf,
@@ -96,9 +96,6 @@ export default function UniversalSearch({
     if (activeFilters.includes('featured')) {
       results = results.filter(drink => drink.featured);
     }
-    if (activeFilters.includes('trending')) {
-      results = results.filter(drink => drink.trending);
-    }
     if (activeFilters.includes('quick')) {
       results = results.filter(drink => (drink.prepTime || 0) < 5);
     }
@@ -110,7 +107,7 @@ export default function UniversalSearch({
   };
 
   const filteredResults = getFilteredResults();
-  const displayResults = searchQuery.length > 0 ? filteredResults : trendingDrinks.slice(0, 6);
+  const displayResults = searchQuery.length > 0 ? filteredResults : suggestedDrinks.slice(0, 6);
 
   return (
     <div className={`relative ${className}`}>
@@ -245,15 +242,6 @@ export default function UniversalSearch({
 
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3 text-xs text-gray-500">
-                                {drink.rating && (
-                                  <span className="flex items-center gap-1">
-                                    <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                                    {drink.rating}
-                                  </span>
-                                )}
-                                {drink.reviews && (
-                                  <span>{drink.reviews} reviews</span>
-                                )}
                               </div>
                               
                               <div className="flex items-center gap-1">

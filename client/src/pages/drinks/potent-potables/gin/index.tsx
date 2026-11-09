@@ -403,12 +403,6 @@ export default function GinCocktailsPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-teal-600">4.7★</div>
-                <div className="text-sm text-gray-600">Avg Rating</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-blue-600">3.5 min</div>
                 <div className="text-sm text-gray-600">Avg Prep</div>
               </CardContent>

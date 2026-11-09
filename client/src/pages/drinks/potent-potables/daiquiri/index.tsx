@@ -354,12 +354,6 @@ export default function DaiquiriPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-emerald-600">4.6★</div>
-                <div className="text-sm text-gray-600">Avg Rating</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-cyan-600">3.3 min</div>
                 <div className="text-sm text-gray-600">Avg Prep</div>
               </CardContent>
@@ -450,7 +444,7 @@ export default function DaiquiriPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <Badge className="bg-teal-100 text-teal-800">{c.spiritType}</Badge>
                           <Badge variant="outline">{c.era}</Badge>
-                          {c.trending && <Badge className="bg-emerald-100 text-emerald-800">Trending</Badge>}
+                          
                         </div>
                       </CardHeader>
 

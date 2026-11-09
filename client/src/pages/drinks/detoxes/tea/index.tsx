@@ -495,7 +495,7 @@ export default function DetoxTeasPage() {
                         <Badge className="bg-amber-100 text-amber-800">{tea.teaType}</Badge>
                         <Badge variant="outline">{tea.detoxFocus}</Badge>
                         {tea.nutrition.caffeine === 0 && <Badge className="bg-green-100 text-green-800">Caffeine-Free</Badge>}
-                        {tea.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

@@ -619,7 +619,7 @@ export default function CaseinProteinPage() {
                       <div className="flex flex-wrap gap-1 mb-3">
                         <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
                         <Badge variant="outline">{shake.flavor}</Badge>
-                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                         <Badge className="bg-blue-100 text-blue-800">{shake.releaseTime}</Badge>
                       </div>
                     </CardHeader>
@@ -989,7 +989,7 @@ export default function CaseinProteinPage() {
                       <Badge className="bg-purple-100 text-purple-800">{shake.caseinType}</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
                       <Badge className="bg-blue-100 text-blue-800">{shake.releaseTime}</Badge>
-                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      
                     </div>
                   </CardHeader>
 

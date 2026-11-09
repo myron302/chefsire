@@ -491,12 +491,6 @@ export default function ColdBrewDrinksPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-rose-400">4.8★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-rose-400">{coldBrewDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
@@ -644,7 +638,7 @@ export default function ColdBrewDrinksPage() {
                       <div className="flex items-center gap-2">
                         <Badge className="bg-rose-100 text-rose-600 border-rose-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.energyLevel}</Badge>
-                        {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

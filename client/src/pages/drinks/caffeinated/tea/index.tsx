@@ -511,12 +511,6 @@ export default function TeaPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-400">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-green-400">{teaDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
@@ -663,7 +657,7 @@ export default function TeaPage() {
                       <div className="flex items-center gap-2">
                         <Badge className="bg-green-100 text-green-600 border-green-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.caffeineLevel}</Badge>
-                        {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

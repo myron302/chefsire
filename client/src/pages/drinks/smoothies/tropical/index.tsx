@@ -468,12 +468,6 @@ export default function TropicalSmoothiesPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-pink-600">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-blue-600">4 min</div>
               <div className="text-sm text-gray-600">Avg Prep</div>
             </CardContent>
@@ -626,7 +620,7 @@ export default function TropicalSmoothiesPage() {
 
                       <div className="flex items-center gap-2">
                         <Badge className="bg-purple-100 text-purple-800">{smoothie.flavor}</Badge>
-                        {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

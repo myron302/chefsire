@@ -439,12 +439,6 @@ export default function CognacBrandyPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-red-600">4.6★</div>
-                <div className="text-sm text-gray-600">Avg Rating</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-orange-600">3.5 min</div>
                 <div className="text-sm text-gray-600">Avg Prep</div>
               </CardContent>
@@ -549,7 +543,7 @@ export default function CognacBrandyPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <Badge className={categoryData?.color}>{cocktail.spiritType}</Badge>
                           <Badge variant="outline">{cocktail.era}</Badge>
-                          {cocktail.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                          
                         </div>
                       </CardHeader>
                       

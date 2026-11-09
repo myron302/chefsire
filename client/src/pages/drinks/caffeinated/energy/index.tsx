@@ -503,12 +503,6 @@ export default function EnergyPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-400">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-orange-400">{energyDrinks.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
@@ -655,7 +649,7 @@ export default function EnergyPage() {
                       <div className="flex items-center gap-2">
                         <Badge className="bg-orange-100 text-orange-600 border-orange-200">{drink.drinkType}</Badge>
                         <Badge variant="outline">{drink.caffeineLevel}</Badge>
-                        {drink.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

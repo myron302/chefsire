@@ -436,7 +436,7 @@ export default function DetoxesHub() {
                         <div className={`text-lg font-bold ${category.textColor}`}>
                           <Trophy className="h-5 w-5 mx-auto" />
                         </div>
-                        <div className="text-xs text-gray-600">Top Rated</div>
+                        <div className="text-xs text-gray-600">Guided</div>
                       </div>
                     </div>
 

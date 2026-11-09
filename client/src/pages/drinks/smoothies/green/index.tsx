@@ -476,12 +476,6 @@ export default function GreenSmoothiesPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-teal-600">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-lime-600">{greenSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
@@ -627,7 +621,7 @@ export default function GreenSmoothiesPage() {
 
                       <div className="flex items-center gap-2">
                         <Badge className="bg-green-100 text-green-800">{smoothie.greenType}</Badge>
-                        {smoothie.trending && <Badge className="bg-orange-100 text-orange-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

@@ -410,12 +410,6 @@ export default function VodkaCocktailsPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-blue-600">4.6★</div>
-                <div className="text-sm text-gray-600">Avg Rating</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-cyan-600">2.5 min</div>
                 <div className="text-sm text-gray-600">Avg Prep</div>
               </CardContent>

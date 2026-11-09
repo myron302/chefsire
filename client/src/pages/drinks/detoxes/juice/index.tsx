@@ -562,7 +562,7 @@ export default function DetoxJuicesPage() {
                       <div className="flex items-center gap-2 mb-2">
                         <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
                         <Badge variant="outline">{juice.detoxLevel}</Badge>
-                        {juice.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
 
                       {/* Rating and Difficulty immediately above recipe card */}

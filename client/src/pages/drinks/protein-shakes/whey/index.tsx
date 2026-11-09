@@ -446,7 +446,6 @@ export default function WheyProteinShakesPage() {
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-blue-600">35g+</div><div className="text-sm text-gray-600">Avg Protein</div></CardContent></Card>
-          <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-green-600">4.7★</div><div className="text-sm text-gray-600">Avg Rating</div></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-purple-600">3 min</div><div className="text-sm text-gray-600">Avg Prep</div></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><div className="text-2xl font-bold text-orange-600">6</div><div className="text-sm text-gray-600">Recipes</div></CardContent></Card>
         </div>
@@ -569,7 +568,7 @@ export default function WheyProteinShakesPage() {
                       <div className="flex items-center gap-2 mb-2">
                         <Badge variant="outline">{shake.wheyType}</Badge>
                         <Badge className="bg-blue-100 text-blue-800">{shake.fitnessGoal}</Badge>
-                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

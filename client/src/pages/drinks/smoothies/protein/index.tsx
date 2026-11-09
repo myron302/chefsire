@@ -472,12 +472,6 @@ export default function ProteinSmoothiesPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-cyan-600">{proteinSmoothies.length}</div>
               <div className="text-sm text-gray-600">Recipes</div>
             </CardContent>
@@ -629,7 +623,7 @@ export default function ProteinSmoothiesPage() {
 
                       <div className="flex items-center gap-2">
                         <Badge className="bg-blue-100 text-blue-800">{smoothie.proteinType}</Badge>
-                        {smoothie.trending && <Badge className="bg-orange-100 text-orange-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 
