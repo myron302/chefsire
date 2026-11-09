@@ -180,7 +180,7 @@ export default function CaseinProteinPage() {
   const [selectedGoal, setSelectedGoal] = useState("")
   const [selectedTiming, setSelectedTiming] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
-  const [sortBy, setSortBy] = useState<"rating"|"protein"|"price"|"release-time">("rating")
+  const [sortBy, setSortBy] = useState<"name"|"protein"|"price"|"release-time">("name")
   const [showUniversalSearch, setShowUniversalSearch] = useState(false)
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null)
   const [showKit, setShowKit] = useState(false)
@@ -316,8 +316,8 @@ export default function CaseinProteinPage() {
     // Sort results
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case "rating":
-          return (b.rating || 0) - (a.rating || 0)
+        case "name":
+          return String(a.name || '').localeCompare(String(b.name || ''))
         case "protein":
           return (b.nutrition.protein || 0) - (a.nutrition.protein || 0)
         case "price":
@@ -568,7 +568,7 @@ export default function CaseinProteinPage() {
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
                 >
-                  <option value="rating">Sort by Rating</option>
+                  <option value="name">Sort by Name</option>
                   <option value="protein">Sort by Protein</option>
                   <option value="price">Sort by Price</option>
                   <option value="release-time">Sort by Release Time</option>

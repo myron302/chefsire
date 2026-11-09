@@ -128,7 +128,7 @@ export default function WheyProteinShakesPage() {
   const [selectedGoal, setSelectedGoal] = useState('');
   const [selectedWheyType, setSelectedWheyType] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'time'>('rating');
+  const [sortBy, setSortBy] = useState<'name' | 'protein' | 'calories' | 'time'>('name');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit controlled modal (mirror Egg)
@@ -254,7 +254,7 @@ export default function WheyProteinShakesPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'protein': return (b.nutrition?.protein || 0) - (a.nutrition?.protein || 0);
         case 'calories': return (a.nutrition?.calories || 0) - (b.nutrition?.calories || 0);
         case 'time': return (a.prepTime || 0) - (b.prepTime || 0);
@@ -514,7 +514,7 @@ export default function WheyProteinShakesPage() {
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
                 >
-                  <option value="rating">Sort by Rating</option>
+                  <option value="name">Sort by Name</option>
                   <option value="protein">Sort by Protein</option>
                   <option value="calories">Sort by Calories</option>
                   <option value="time">Sort by Prep Time</option>

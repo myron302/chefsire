@@ -1042,12 +1042,6 @@ export default function SmoothiesPage() {
                           alt={recipe.name}
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute top-3 right-3">
-                          <Badge className="bg-white text-gray-900">
-                            <Star className="w-3 h-3 mr-1 text-yellow-400 fill-current" />
-                            {recipe.rating}
-                          </Badge>
-                        </div>
                       </div>
                       
                       <CardContent className="p-4">

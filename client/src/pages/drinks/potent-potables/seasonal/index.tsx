@@ -285,7 +285,7 @@ export default function SeasonalCocktailsPage() {
     return true;
   }).sort((a, b) => {
     if (sortBy === 'trending') return b.reviews - a.reviews;
-    if (sortBy === 'rating') return b.rating - a.rating;
+    if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
     if (sortBy === 'calories-low') return a.nutrition.calories - b.nutrition.calories;
     if (sortBy === 'cost-low') return a.estimatedCost - b.estimatedCost;
     if (sortBy === 'time-quick') return a.prepTime - b.prepTime;
@@ -508,7 +508,7 @@ export default function SeasonalCocktailsPage() {
                 className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
               >
                 <option value="trending">Most Popular</option>
-                <option value="rating">Highest Rated</option>
+                <option value="name">Name (A–Z)</option>
                 <option value="calories-low">Lowest Calories</option>
                 <option value="cost-low">Most Budget-Friendly</option>
                 <option value="time-quick">Quickest Prep</option>

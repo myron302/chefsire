@@ -210,7 +210,7 @@ export default function CollagenProteinPage() {
   const [selectedSource, setSelectedSource] = useState('');
   const [selectedGoal, setSelectedGoal] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('rating');
+  const [sortBy, setSortBy] = useState('name');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
 
@@ -283,7 +283,7 @@ export default function CollagenProteinPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'bioavailability': return (b.bioavailability || 0) - (a.bioavailability || 0);
         case 'price': return (a.price || 0) - (b.price || 0);
         case 'collagen': return (b.nutrition?.collagen || 0) - (a.nutrition?.collagen || 0);
@@ -590,7 +590,7 @@ export default function CollagenProteinPage() {
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
                 >
-                  <option value="rating">Sort by Rating</option>
+                  <option value="name">Sort by Name</option>
                   <option value="bioavailability">Sort by Bioavailability</option>
                   <option value="price">Sort by Price</option>
                   <option value="collagen">Sort by Collagen Content</option>

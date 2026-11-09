@@ -187,7 +187,7 @@ export default function ClassicCocktailsPage() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('rating');
+  const [sortBy, setSortBy] = useState('name');
   const [selectedCocktail, setSelectedCocktail] = useState<typeof classicCocktails[0] | null>(null);
   
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
@@ -313,7 +313,7 @@ export default function ClassicCocktailsPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'era': return a.era.localeCompare(b.era);
         case 'difficulty': 
           const difficultyOrder = { 'Easy': 1, 'Medium': 2, 'Hard': 3 };
@@ -585,7 +585,7 @@ export default function ClassicCocktailsPage() {
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
-                    <option value="rating">Sort by Rating</option>
+                    <option value="name">Sort by Name</option>
                     <option value="era">Sort by Era</option>
                     <option value="difficulty">Sort by Difficulty</option>
                     <option value="abv">Sort by ABV</option>

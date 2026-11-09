@@ -54,7 +54,6 @@ export default function PetFoodRecipePage() {
             {recipe.metadata.category ? <Badge variant="outline">{recipe.metadata.category}</Badge> : null}
             {recipe.metadata.difficulty ? <Badge variant="outline">{recipe.metadata.difficulty}</Badge> : null}
             {recipe.metadata.prepTime ? <Badge variant="outline" className="gap-1"><Clock className="w-3 h-3" />{recipe.metadata.prepTime} min</Badge> : null}
-            {recipe.metadata.rating ? <Badge variant="outline" className="gap-1"><Star className="w-3 h-3" />{recipe.metadata.rating}</Badge> : null}
           </div>
         </CardHeader>
         <CardContent className="grid md:grid-cols-2 gap-6">

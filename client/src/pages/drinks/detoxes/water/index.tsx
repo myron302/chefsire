@@ -67,7 +67,7 @@ export default function DetoxWatersPage() {
   const [selectedWaterType, setSelectedWaterType] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('rating');
+  const [sortBy, setSortBy] = useState('name');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -182,7 +182,7 @@ export default function DetoxWatersPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
         case 'prepTime': return (a.prepTime || 0) - (b.prepTime || 0);
         default: return 0;
@@ -430,7 +430,7 @@ export default function DetoxWatersPage() {
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
                     >
-                      <option value="rating">Sort by Rating</option>
+                      <option value="name">Sort by Name</option>
                       <option value="calories">Sort by Calories</option>
                       <option value="prepTime">Sort by Prep Time</option>
                     </select>
@@ -721,10 +721,6 @@ export default function DetoxWatersPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          <div className="flex items-center justify-between text-sm">
-                            <span>Rating:</span>
-                            <span className="font-semibold text-cyan-600">{water.rating} ⭐</span>
-                          </div>
                           <div className="flex items-center justify-between text-sm">
                             <span>Prep Time:</span>
                             <span className="font-semibold text-cyan-600">{water.prepTime} mins</span>

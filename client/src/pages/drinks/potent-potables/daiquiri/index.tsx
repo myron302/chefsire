@@ -129,7 +129,7 @@ export default function DaiquiriPage() {
     })
     .sort((a, b) => {
       if (sortBy === "trending") return (b.reviews ?? 0) - (a.reviews ?? 0);
-      if (sortBy === "rating") return (b.rating ?? 0) - (a.rating ?? 0);
+      if (sortBy === "name") return String(a.name || '').localeCompare(String(b.name || ''));
       if (sortBy === "abv") return parseInt(b.abv) - parseInt(a.abv);
       return 0;
     });
@@ -417,7 +417,7 @@ export default function DaiquiriPage() {
                     onChange={(e) => setSortBy(e.target.value)}
                   >
                     <option value="trending">Most Popular</option>
-                    <option value="rating">Highest Rated</option>
+                    <option value="name">Name (A–Z)</option>
                     <option value="abv">Highest ABV</option>
                   </select>
                 </div>

@@ -262,7 +262,7 @@ export default function VodkaCocktailsPage() {
     return true;
   }).sort((a, b) => {
     if (sortBy === 'trending') return b.reviews - a.reviews;
-    if (sortBy === 'rating') return b.rating - a.rating;
+    if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
     if (sortBy === 'alcohol-low') return parseInt(a.abv) - parseInt(b.abv);
     if (sortBy === 'alcohol-high') return parseInt(b.abv) - parseInt(a.abv);
     if (sortBy === 'cost-low') return a.estimatedCost - b.estimatedCost;
@@ -476,7 +476,7 @@ export default function VodkaCocktailsPage() {
                 className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
               >
                 <option value="trending">Most Popular</option>
-                <option value="rating">Highest Rated</option>
+                <option value="name">Name (A–Z)</option>
                 <option value="alcohol-low">Lowest ABV</option>
                 <option value="alcohol-high">Highest ABV</option>
                 <option value="cost-low">Most Budget-Friendly</option>

@@ -70,7 +70,7 @@ export default function EggProteinPage() {
   const [filterTag, setFilterTag] = useState('All');
   const [activeTab, setActiveTab] = useState<'browse' | 'types' | 'goals' | 'featured'>('browse');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'prepTime'>('rating');
+  const [sortBy, setSortBy] = useState<'name' | 'protein' | 'calories' | 'prepTime'>('name');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showKit, setShowKit] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
@@ -106,7 +106,7 @@ export default function EggProteinPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'protein': return (b.protein || 0) - (a.protein || 0);
         case 'calories': return (a.calories || 0) - (b.calories || 0);
         case 'prepTime': return (a.prepTime || 0) - (b.prepTime || 0);
@@ -405,7 +405,7 @@ export default function EggProteinPage() {
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
                     >
-                      <option value="rating">Sort by Rating</option>
+                      <option value="name">Sort by Name</option>
                       <option value="protein">Sort by Protein</option>
                       <option value="calories">Sort by Calories</option>
                       <option value="prepTime">Sort by Prep Time</option>

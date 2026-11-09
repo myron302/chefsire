@@ -88,7 +88,7 @@ export default function PlantBasedProteinPage() {
   const [selectedGoal, setSelectedGoal] = useState('');
   const [selectedAllergen, setSelectedAllergen] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'rating'|'protein'|'price'|'calories'>('rating');
+  const [sortBy, setSortBy] = useState<'name'|'protein'|'price'|'calories'>('name');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -221,7 +221,7 @@ export default function PlantBasedProteinPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'protein': return (b.nutrition.protein || 0) - (a.nutrition.protein || 0);
         case 'price': return (a.price || 0) - (b.price || 0);
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
@@ -426,7 +426,7 @@ export default function PlantBasedProteinPage() {
                   <option value="Nuts">Nut-Free</option>
                 </select>
                 <select className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
-                  <option value="rating">Sort by Rating</option>
+                  <option value="name">Sort by Name</option>
                   <option value="protein">Sort by Protein</option>
                   <option value="price">Sort by Price</option>
                   <option value="calories">Sort by Calories</option>

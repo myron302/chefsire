@@ -345,7 +345,7 @@ export const smallPetRecipes = [
 export default function SmallPetsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'time'>('rating');
+  const [sortBy, setSortBy] = useState<'name' | 'protein' | 'calories' | 'time'>('name');
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
@@ -363,7 +363,7 @@ export default function SmallPetsPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'protein': return (b.nutrition?.protein || 0) - (a.nutrition?.protein || 0);
         case 'calories': return (a.nutrition?.calories || 0) - (b.nutrition?.calories || 0);
         case 'time': return (a.prepTime || 0) - (b.prepTime || 0);
@@ -575,7 +575,7 @@ export default function SmallPetsPage() {
               {categories.filter(c => c !== 'All').map(cat => (<option key={cat} value={cat}>{cat}</option>))}
             </select>
             <select className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm w-full sm:w-auto" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
-              <option value="rating">Sort by Rating</option>
+              <option value="name">Sort by Name</option>
               <option value="protein">Sort by Protein</option>
               <option value="calories">Sort by Calories</option>
               <option value="time">Sort by Prep Time</option>

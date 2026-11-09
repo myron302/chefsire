@@ -136,7 +136,7 @@ export default function MatchaDrinksPage() {
   const [selectedBenefit, setSelectedBenefit] = useState("");
   const [maxCalories, setMaxCalories] = useState<number | "all">("all");
   const [onlyZeroSugar, setOnlyZeroSugar] = useState(false);
-  const [sortBy, setSortBy] = useState<"rating" | "caffeine" | "cost" | "calories">("rating");
+  const [sortBy, setSortBy] = useState<"name" | "caffeine" | "cost" | "calories">("name");
   const [activeTab, setActiveTab] = useState<"browse" | "types" | "benefits" | "featured" | "trending">("browse");
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
@@ -269,8 +269,8 @@ export default function MatchaDrinksPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case "rating":
-          return (b.rating || 0) - (a.rating || 0);
+        case "name":
+          return String(a.name || '').localeCompare(String(b.name || ''));
         case "caffeine":
           return (b.nutrition.caffeine || 0) - (a.nutrition.caffeine || 0);
         case "cost":
@@ -508,7 +508,7 @@ export default function MatchaDrinksPage() {
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
                     >
-                      <option value="rating">Sort by Rating</option>
+                      <option value="name">Sort by Name</option>
                       <option value="caffeine">Sort by Caffeine</option>
                       <option value="cost">Sort by Cost</option>
                       <option value="calories">Sort by Calories</option>

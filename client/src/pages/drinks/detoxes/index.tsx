@@ -472,10 +472,6 @@ export default function DetoxesHub() {
                   <div className="p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-lg border border-green-200 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all">
                     <div className="flex items-center justify-between mb-2">
                       <Badge className="bg-green-500 text-white">#{index + 1}</Badge>
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{detox.rating}</span>
-                      </div>
                     </div>
                     <h3 className="font-bold mb-2">{detox.name}</h3>
                     <div className="flex items-center justify-between text-sm text-gray-600">

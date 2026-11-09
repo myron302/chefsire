@@ -274,7 +274,7 @@ export default function CognacBrandyPage() {
     return true;
   }).sort((a, b) => {
     if (sortBy === 'trending') return b.reviews - a.reviews;
-    if (sortBy === 'rating') return b.rating - a.rating;
+    if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
     if (sortBy === 'abv') return parseInt(b.abv) - parseInt(a.abv);
     return 0;
   });
@@ -504,7 +504,7 @@ export default function CognacBrandyPage() {
                     onChange={(e) => setSortBy(e.target.value)}
                   >
                     <option value="trending">Most Popular</option>
-                    <option value="rating">Highest Rated</option>
+                    <option value="name">Name (A–Z)</option>
                     <option value="abv">Highest ABV</option>
                   </select>
                 </div>
@@ -797,19 +797,6 @@ export default function CognacBrandyPage() {
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant="outline">{cocktail.era}</Badge>
                       <Badge className="bg-orange-100 text-orange-800">{cocktail.category}</Badge>
-                      <div className="flex items-center gap-1 ml-auto">
-                        {[...Array(5)].map((_, i) => (
-                          <GlassWater
-                            key={i}
-                            className={`h-4 w-4 ${
-                              i < Math.floor(cocktail.rating)
-                                ? 'fill-orange-500 text-orange-500'
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
-                        <span className="font-medium ml-1">{cocktail.rating}</span>
-                      </div>
                     </div>
                   </CardHeader>
                   

@@ -142,7 +142,7 @@ export default function ProteinSmoothiesPage() {
   const [selectedGoal, setSelectedGoal] = useState('');
   const [minProtein, setMinProtein] = useState<number | 'all'>('all');
   const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
-  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'fiber'>('rating');
+  const [sortBy, setSortBy] = useState<'name' | 'protein' | 'calories' | 'fiber'>('name');
   const [activeTab, setActiveTab] = useState<'browse'|'types'|'goals'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
@@ -261,7 +261,7 @@ export default function ProteinSmoothiesPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'protein': return (b.nutrition.protein || 0) - (a.nutrition.protein || 0);
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
         case 'fiber': return (b.nutrition.fiber || 0) - (a.nutrition.fiber || 0);
@@ -581,7 +581,7 @@ export default function ProteinSmoothiesPage() {
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
                     >
-                      <option value="rating">Sort by Rating</option>
+                      <option value="name">Sort by Name</option>
                       <option value="protein">Sort by Protein</option>
                       <option value="calories">Sort by Calories</option>
                       <option value="fiber">Sort by Fiber</option>
