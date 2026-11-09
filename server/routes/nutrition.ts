@@ -1,5 +1,6 @@
 // server/routes/nutrition.ts
 import { Router } from "express";
+import { nutritionEntitlement, revokeNutritionTrial, startNutritionTrialResponse } from "../lib/nutrition-entitlement";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { effectiveSubscriptionPresentation, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
@@ -36,7 +37,9 @@ r.post("/users/:id/trial", requireAuth, async (req, res) => {
   if (req.user!.id !== req.params.id) {
     return res.status(403).json({ message: "You can only change your own nutrition subscription" });
   }
-  return res.status(503).json(paidUpgradeUnavailableResponse);
+  // Same cardless 30-day trial as POST /api/users/:id/nutrition/trial (Settings uses this path).
+  const { status, body } = await startNutritionTrialResponse(req.params.id);
+  return res.status(status).json(body);
 });
 
 /**
@@ -176,18 +179,16 @@ r.get("/subscription", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const currentTier = coerceNutritionTierFromUser(user);
-    const effectiveState = effectiveSubscriptionPresentation(
-      currentTier,
-      deriveNutritionStatus(user),
-      (user as any).nutritionTrialEndsAt,
-    );
+    // Server-verified: an active cardless trial (or, later, verified paid access). Legacy user columns are not evidence.
+    const entitlement = await nutritionEntitlement(user.id);
+    const currentTier = entitlement.premium ? "premium" : "free";
 
     res.json({
       ok: true,
       currentTier,
-      status: effectiveState.status,
-      endsAt: effectiveState.endsAt,
+      status: entitlement.premium ? "active" : "inactive",
+      endsAt: entitlement.endsAt,
+      trial: entitlement.trial,
       tierInfo: NUTRITION_SUBSCRIPTION_TIERS[currentTier],
     });
   } catch (error) {
@@ -208,7 +209,7 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const currentTier = coerceNutritionTierFromUser(existingUser);
+    const currentTier = (await nutritionEntitlement(userId)).premium ? "premium" : coerceNutritionTierFromUser(existingUser);
     const now = new Date();
 
     // Client input is not billing evidence. Existing legacy entitlement remains readable,
@@ -218,6 +219,8 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
     }
 
     // tier === "free" => immediate downgrade/cancel for nutrition
+    // Downgrading ends an active cardless trial early; it can never be restarted.
+    await revokeNutritionTrial(userId);
     const previousEndsAtRaw = (existingUser as any).nutritionTrialEndsAt;
     const previousEndsAt = parseValidDateOrNull(previousEndsAtRaw) ?? now;
 
@@ -266,6 +269,20 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    // An active cardless trial is the one premium state this server can end itself: revoke it (never restartable).
+    const entitlement = await nutritionEntitlement(userId);
+    if (entitlement.trial.status === "active") {
+      await revokeNutritionTrial(userId);
+      return res.json({
+        ok: true,
+        message: "Your Nutrition Premium trial has been cancelled. You're on the Free plan.",
+        currentTier: "free",
+        status: "inactive",
+        endsAt: null,
+        tierInfo: NUTRITION_SUBSCRIPTION_TIERS.free,
+      });
     }
 
     // Recorded state is not authorization, but it determines whether claiming

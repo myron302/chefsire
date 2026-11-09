@@ -1,6 +1,7 @@
 // server/routes/auth.ts - WITH MAILER (won't crash if email fails)
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { looksLikePhone, normalizePhone } from "../../shared/phone";
+import { withNutritionEntitlement } from "../lib/nutrition-entitlement";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import passport from "passport";
@@ -284,7 +285,7 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
     res.json({
       success: true,
       token, // Also send token in response for optional use
-      user: serializeAuthenticatedUser(user),
+      user: await withNutritionEntitlement(serializeAuthenticatedUser(user)),
     });
   } catch (error) {
     // An unreachable database is not "Login failed" and certainly not "Invalid email or password": retryable, nothing granted, nothing revealed.
@@ -524,7 +525,7 @@ router.get("/auth/me", async (req, res) => {
 
     res.json({
       success: true,
-      user: serializeAuthenticatedUser(user),
+      user: await withNutritionEntitlement(serializeAuthenticatedUser(user)),
     });
   } catch (error) {
     console.error("Error fetching current user:", error);
