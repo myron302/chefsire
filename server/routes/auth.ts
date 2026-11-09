@@ -210,13 +210,17 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
  */
 router.post("/auth/login", loginLimiter, async (req, res) => {
   try {
+    // The "email" field holds either an email address or a username (older clients only ever send an email).
     const { email, password } = req.body;
+    const identifier = typeof email === "string" ? email.trim() : "";
 
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
+    if (!identifier || !password) {
+      return res.status(400).json({ error: "Email or username and password are required" });
     }
 
-    const user = await storage.findByEmail(email);
+    const user = identifier.includes("@")
+      ? await storage.findByEmail(identifier)
+      : await storage.findByLoginUsername(identifier);
     if (!user) {
       return res.status(401).json({ error: "Invalid email or password" });
     }

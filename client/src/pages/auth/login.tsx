@@ -24,9 +24,10 @@ export default function LoginPage() {
     setErrors({ email: "", password: "", general: "" });
 
     let ok = true;
-    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+    // Either an email address or a username.
+    if (!email || (email.includes("@") && !/\S+@\S+\.\S+/.test(email))) {
       ok = false;
-      setErrors((prev) => ({ ...prev, email: "Please enter a valid royal decree address." }));
+      setErrors((prev) => ({ ...prev, email: "Please enter your email address or username." }));
     }
     if (!password || password.length < 6) {
       ok = false;
@@ -94,18 +95,21 @@ export default function LoginPage() {
               {/* Royal Decree (Email) Field */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-blue-100 mb-2">
-                  Royal Decree Address *
+                  Royal Decree Address or Username *
                 </label>
                 <div className="relative">
                   <input
-                    type="email"
+                    type="text"
                     id="email"
                     name="email"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     required
                     className={`block w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-blue-200 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent ${
                       errors.email ? "border-red-400" : "border-blue-300/50"
                     }`}
-                    placeholder="your@royalcourt.com"
+                    placeholder="your@royalcourt.com or username"
                   />
                   <Castle className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-300 w-5 h-5" />
                 </div>
