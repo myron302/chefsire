@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
 import { Button } from "@/components/ui/button";
@@ -42,9 +43,28 @@ export function WeddingPlanningVendorGrid({
     );
   }
 
+  return <VendorGridList filteredVendors={filteredVendors} savedVendors={savedVendors} requestedQuotes={requestedQuotes} onToggleSave={onToggleSave} onRequestQuote={onRequestQuote} />;
+}
+
+const PAGE_SIZE = 24;
+
+function VendorGridList({
+  filteredVendors,
+  savedVendors,
+  requestedQuotes,
+  onToggleSave,
+  onRequestQuote,
+}: WeddingPlanningVendorGridProps) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  // A new filter starts from the top of the list again.
+  useEffect(() => setVisible(PAGE_SIZE), [filteredVendors]);
+  const shown = filteredVendors.slice(0, visible);
+  const hasUnclaimed = filteredVendors.some((v) => v.unclaimed);
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
-      {filteredVendors.map((vendor) => (
+    <div className="mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+      {shown.map((vendor) => (
         <WeddingPlanningVendorCard
           key={vendor.id}
           vendor={vendor}
@@ -54,6 +74,21 @@ export function WeddingPlanningVendorGrid({
           onRequestQuote={onRequestQuote}
         />
       ))}
+    </div>
+      {visible < filteredVendors.length && (
+        <div className="flex justify-center mt-6">
+          <Button variant="outline" onClick={() => setVisible((n) => n + PAGE_SIZE)}>
+            Show more ({filteredVendors.length - visible} more)
+          </Button>
+        </div>
+      )}
+      {hasUnclaimed && (
+        <p className="mt-6 text-xs text-muted-foreground text-center">
+          Listings marked "Not on ChefSire yet" come from public business data (Overture Maps Foundation) and haven't been
+          claimed by the business. Contact them directly, or{" "}
+          <Link href="/services/vendor-listing" className="underline">list your own business</Link>.
+        </p>
+      )}
     </div>
   );
 }

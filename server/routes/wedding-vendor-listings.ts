@@ -12,12 +12,15 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { hasCurrentAdminAuthority } from "../lib/admin-authority";
+import { scheduleOpenVendorImport } from "../lib/wedding-vendor-import";
 
 const router = Router();
 
 // ────────────────────────────────────────────────────────────────
 // Ensure table exists (runs automatically on first access)
-async function ensureWeddingVendorListingsTable() {
+let listingsTableReady = false;
+export async function ensureWeddingVendorListingsTable() {
+  if (listingsTableReady) return;
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS wedding_vendor_listings (
       id BIGSERIAL PRIMARY KEY,
@@ -57,6 +60,26 @@ async function ensureWeddingVendorListingsTable() {
     CREATE INDEX IF NOT EXISTS wedding_vendor_listings_status_idx
       ON wedding_vendor_listings(status)
   `);
+
+  // Unclaimed listings imported from open business data (source = 'overture'). A listing is "claimed" once
+  // user_id is set through the claim flow; until then it shows public business info only and takes no quotes.
+  await db.execute(sql`
+    ALTER TABLE wedding_vendor_listings
+      ADD COLUMN IF NOT EXISTS source VARCHAR(32),
+      ADD COLUMN IF NOT EXISTS source_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS source_release VARCHAR(32),
+      ADD COLUMN IF NOT EXISTS street VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS postcode VARCHAR(16),
+      ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS wedding_vendor_listings_source_id_uidx
+      ON wedding_vendor_listings(source_id) WHERE source_id IS NOT NULL
+  `);
+  listingsTableReady = true;
+  scheduleOpenVendorImport();
 }
 // ────────────────────────────────────────────────────────────────
 
@@ -157,8 +180,10 @@ router.post("/vendor-listings", async (req, res) => {
 
 /**
  * GET /api/wedding/vendor-listings/public
- * Public vendor directory: ONLY listings an admin has set to "published". Returns business-facing fields
- * (no contact name, email or phone; quote requests go through ChefSire). Declared before `/:id`.
+ * Public vendor directory: ONLY listings with status "published". Member listings return business-facing fields
+ * (no contact name, email or phone; quote requests go through ChefSire). Unclaimed listings imported from open
+ * business data also return their public business phone, since couples contact them directly.
+ * Never returns email. Declared before `/:id`.
  */
 router.get("/vendor-listings/public", async (_req, res) => {
   try {
@@ -175,13 +200,22 @@ router.get("/vendor-listings/public", async (_req, res) => {
         description,
         min_price AS "minPrice",
         max_price AS "maxPrice",
-        years_in_business AS "yearsInBusiness"
+        years_in_business AS "yearsInBusiness",
+        (source IS NOT NULL AND user_id IS NULL) AS "unclaimed",
+        CASE WHEN source IS NOT NULL AND user_id IS NULL THEN phone ELSE NULL END AS phone
       FROM wedding_vendor_listings
       WHERE status = 'published'
-      ORDER BY updated_at DESC
-      LIMIT 200
+      ORDER BY (source IS NOT NULL AND user_id IS NULL) ASC, business_name ASC
+      LIMIT 5000
     `);
-    const rows = result?.rows ?? result ?? [];
+    // Phone is only present for unclaimed listings; drop the key entirely for member listings.
+    const rows = (result?.rows ?? result ?? []).map((row: any) => {
+      if (row.phone == null) {
+        const { phone: _omit, ...rest } = row;
+        return rest;
+      }
+      return row;
+    });
     res.setHeader("Cache-Control", "public, max-age=60");
     return res.json({ ok: true, listings: rows });
   } catch (err: any) {
@@ -287,7 +321,7 @@ router.get("/vendor-listings/:id", requireAuth, requireAdmin, async (req, res) =
 /**
  * PATCH /api/wedding/vendor-listings/:id/status
  * Admin update status.
- * Body: { status: "pending" | "approved" | "rejected" | "published" }
+ * Body: { status: "pending" | "approved" | "rejected" | "published" | "hidden" | "retired" }
  */
 router.patch("/vendor-listings/:id/status", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -297,7 +331,7 @@ router.patch("/vendor-listings/:id/status", requireAuth, requireAdmin, async (re
     if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid id" });
 
     const status = typeof req.body?.status === "string" ? req.body.status : "";
-    const allowed = new Set(["pending", "approved", "rejected", "published"]);
+    const allowed = new Set(["pending", "approved", "rejected", "published", "hidden", "retired"]);
     if (!allowed.has(status)) return res.status(400).json({ ok: false, error: "Invalid status" });
 
     const result: any = await db.execute(sql`

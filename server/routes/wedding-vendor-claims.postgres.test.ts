@@ -1,0 +1,150 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import express from "express";
+import type { AddressInfo } from "node:net";
+import { PG_URL, connectLocalPg, ddl, makeCaller } from "../test-support/authz-pg-harness";
+
+// The test drives the import itself; keep the automatic boot import of the bundled file out of it.
+process.env.WEDDING_VENDOR_IMPORT = "off";
+
+if (!PG_URL) {
+  test("Wedding vendor claims (requires CS_TEST_PG_URL)", { skip: true }, () => {});
+} else {
+  test("open-data import, claim by business email, reports, and quote refusal for unclaimed listings", async () => {
+    const local = await connectLocalPg();
+    const schema = await import("../../shared/schema");
+    const { default: listingsRouter, ensureWeddingVendorListingsTable } = await import("./wedding-vendor-listings");
+    const { default: claimsRouter, claimDelivery, maskEmail } = await import("./wedding-vendor-claims");
+    const { default: quotesRouter, quoteDelivery } = await import("./wedding-vendor-quotes");
+    const { importOpenVendors, normalizeWebsite } = await import("../lib/wedding-vendor-import");
+
+    const app = express();
+    app.use(express.json());
+    app.use("/api/wedding", quotesRouter);
+    app.use("/api/wedding", listingsRouter);
+    app.use("/api/wedding", claimsRouter);
+    const server = app.listen(0, "127.0.0.1");
+
+    const mails: any[] = [];
+    const originalClaimSend = claimDelivery.send;
+    const originalQuoteSend = quoteDelivery.send;
+    claimDelivery.send = async (p) => { mails.push(p); return undefined as any; };
+    quoteDelivery.send = async () => { throw new Error("quotes must not be sent in this test"); };
+
+    try {
+      await local.query(`
+        DROP TABLE IF EXISTS wedding_vendor_reports, wedding_vendor_claims, wedding_vendor_imports, wedding_vendor_quotes, wedding_vendor_listings, users CASCADE;
+        ${ddl(schema.users, "users")};
+      `);
+      const ids: Record<string, string> = {};
+      for (const name of ["owner", "stranger", "r1", "r2", "r3"]) {
+        ids[name] = (await local.query(
+          "INSERT INTO users (username, email, display_name, password, auth_version) VALUES ($1, $2, $1, 'fixture', 1) RETURNING id",
+          [name, `${name}@example.test`],
+        )).rows[0].id;
+      }
+      const call = makeCaller(() => `http://127.0.0.1:${(server.address() as AddressInfo).port}`, (who) => ids[who]);
+      await ensureWeddingVendorListingsTable();
+
+      // Import: website gets a scheme, rows are published and unclaimed.
+      assert.equal(normalizeWebsite("www.blooms.example"), "https://www.blooms.example/");
+      assert.equal(normalizeWebsite("not a url"), null);
+      const release1 = {
+        source: "overture",
+        release: "r1",
+        listings: [
+          { source_id: "a", business_name: "Blooms Co", category: "Florist", city: "Hartford", state: "CT", website: "www.blooms.example", email: "Owner@Blooms.example", phone: "8605550100" },
+          { source_id: "b", business_name: "Walk-in Cakes", category: "Bakery & Cakes", city: "Milford", state: "CT", phone: "2035550101" },
+          { source_id: "c", business_name: "Closing Soon DJ", category: "DJ", city: "Bristol", state: "CT" },
+        ],
+      };
+      assert.deepEqual(await importOpenVendors(release1), { imported: true, rows: 3, retired: 0 });
+      assert.equal((await importOpenVendors(release1)).imported, false, "a release is imported once");
+
+      const dir = await call("GET", "/api/wedding/vendor-listings/public");
+      assert.equal(dir.status, 200);
+      const byName = Object.fromEntries(dir.json.listings.map((l: any) => [l.businessName, l]));
+      assert.equal(byName["Blooms Co"].unclaimed, true);
+      assert.equal(byName["Blooms Co"].phone, "8605550100");
+      assert.equal(byName["Blooms Co"].website, "https://www.blooms.example/");
+      for (const l of dir.json.listings) assert.equal("email" in l, false, "email is never public");
+      const bloomsId = Number(byName["Blooms Co"].id);
+      const cakesId = Number(byName["Walk-in Cakes"].id);
+      const djId = Number(byName["Closing Soon DJ"].id);
+
+      // Unclaimed listings do not take quote requests.
+      const quote = await call("POST", "/api/wedding/vendor-quotes", "stranger", { vendorId: bloomsId, contactEmail: "c@example.test" });
+      assert.equal(quote.status, 409);
+      assert.equal(quote.json.unclaimed, true);
+
+      // Claim needs sign-in; with an email on file, the link goes ONLY to that address.
+      assert.equal((await call("POST", `/api/wedding/vendor-listings/${bloomsId}/claim`, "anon")).status, 401);
+      const claim = await call("POST", `/api/wedding/vendor-listings/${bloomsId}/claim`, "owner");
+      assert.equal(claim.status, 200, claim.text);
+      assert.equal(claim.json.method, "email");
+      assert.equal(claim.json.sentTo, maskEmail("owner@blooms.example"));
+      assert.equal(mails.length, 1);
+      assert.equal(mails[0].to, "owner@blooms.example");
+      const token = new URL(mails[0].verifyUrl).searchParams.get("token")!;
+      assert.ok(token && token.length > 30);
+
+      // Another account cannot use the link; a bad token is refused.
+      assert.equal((await call("POST", "/api/wedding/vendor-listings/claims/verify", "stranger", { token })).status, 403);
+      assert.equal((await call("POST", "/api/wedding/vendor-listings/claims/verify", "owner", { token: "nope" })).status, 404);
+
+      const verified = await call("POST", "/api/wedding/vendor-listings/claims/verify", "owner", { token });
+      assert.equal(verified.status, 200, verified.text);
+      assert.equal(verified.json.listing.businessName, "Blooms Co");
+      assert.equal((await call("POST", "/api/wedding/vendor-listings/claims/verify", "owner", { token })).status, 409, "single use");
+      assert.equal((await local.query("SELECT user_id FROM wedding_vendor_listings WHERE id = $1", [bloomsId])).rows[0].user_id, ids.owner);
+
+      // Claimed: no longer unclaimed, phone no longer public, cannot be claimed again.
+      const after = await call("GET", "/api/wedding/vendor-listings/public");
+      const blooms = after.json.listings.find((l: any) => Number(l.id) === bloomsId);
+      assert.equal(blooms.unclaimed, false);
+      assert.equal("phone" in blooms, false);
+      assert.equal((await call("POST", `/api/wedding/vendor-listings/${bloomsId}/claim`, "stranger")).status, 409);
+
+      // No email on file: the claim waits for review and nothing is mailed.
+      const review = await call("POST", `/api/wedding/vendor-listings/${cakesId}/claim`, "stranger");
+      assert.equal(review.json.method, "review");
+      assert.equal(mails.length, 1);
+
+      // Reports: duplicates from one user count once; three different users hide an unclaimed listing.
+      assert.equal((await call("POST", `/api/wedding/vendor-listings/${djId}/report`, "r1", { reason: "bogus" })).status, 400);
+      for (const who of ["r1", "r1", "r2"]) {
+        const r = await call("POST", `/api/wedding/vendor-listings/${djId}/report`, who, { reason: "closed" });
+        assert.equal(r.json.hidden, false);
+      }
+      assert.equal((await call("POST", `/api/wedding/vendor-listings/${djId}/report`, "r3", { reason: "closed" })).json.hidden, true);
+      const hiddenDir = await call("GET", "/api/wedding/vendor-listings/public");
+      assert.equal(hiddenDir.json.listings.some((l: any) => Number(l.id) === djId), false);
+
+      // Re-import: claimed listings are not overwritten, hidden listings stay hidden,
+      // and an unclaimed listing missing from the new release is retired.
+      const release2 = {
+        source: "overture",
+        release: "r2",
+        listings: [
+          { source_id: "a", business_name: "Blooms Co RENAMED", city: "Hartford", state: "CT" },
+          { source_id: "c", business_name: "Closing Soon DJ", city: "Bristol", state: "CT" },
+        ],
+      };
+      const second = await importOpenVendors(release2);
+      assert.equal(second.imported, true);
+      assert.equal(second.retired, 1);
+      const rows = (await local.query("SELECT source_id, business_name, status FROM wedding_vendor_listings ORDER BY source_id")).rows;
+      assert.deepEqual(rows.map((r: any) => [r.source_id, r.business_name, r.status]), [
+        ["a", "Blooms Co", "published"],
+        ["b", "Walk-in Cakes", "retired"],
+        ["c", "Closing Soon DJ", "hidden"],
+      ]);
+    } finally {
+      claimDelivery.send = originalClaimSend;
+      quoteDelivery.send = originalQuoteSend;
+      server.close();
+      await local.query("DROP TABLE IF EXISTS wedding_vendor_reports, wedding_vendor_claims, wedding_vendor_imports, wedding_vendor_quotes, wedding_vendor_listings, users CASCADE").catch(() => {});
+      await local.end();
+    }
+  });
+}

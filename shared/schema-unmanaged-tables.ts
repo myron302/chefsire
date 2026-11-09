@@ -52,4 +52,7 @@ export const UNMANAGED_TABLES: Readonly<Record<string, UnmanagedTable>> = {
   wedding_registry_links: entry("runtime_ddl", "server/migrations/20251213_wedding_registry_links.sql + server/routes/wedding-registry-links.ts"),
   wedding_vendor_listings: entry("runtime_ddl", "server/routes/wedding-vendor-listings.ts"),
   wedding_vendor_quotes: entry("runtime_ddl", "server/routes/wedding-vendor-quotes.ts"),
+  wedding_vendor_claims: entry("runtime_ddl", "server/routes/wedding-vendor-claims.ts"),
+  wedding_vendor_reports: entry("runtime_ddl", "server/routes/wedding-vendor-claims.ts"),
+  wedding_vendor_imports: entry("runtime_ddl", "server/lib/wedding-vendor-import.ts"),
 };

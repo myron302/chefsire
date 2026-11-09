@@ -777,6 +777,31 @@ export async function sendVendorQuoteRequestEmail(params: {
 }
 
 /**
+ * Ownership check for an unclaimed wedding-vendor listing: sent ONLY to the email already on the listing, so only
+ * someone who controls that business inbox can complete the claim.
+ */
+export async function sendVendorClaimVerificationEmail(params: { to: string; businessName: string; verifyUrl: string }) {
+  const { to, businessName, verifyUrl } = params;
+  const from = process.env.WEDDING_MAIL_FROM || process.env.MAIL_FROM || "ChefSire Weddings <invitations@chefsire.com>";
+  if (weddingInitError || !weddingTransport) {
+    throw new Error(weddingInitError || "Email transport not available");
+  }
+  const name = escapeHtml(businessName || "your business");
+  const html = `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55">
+      <h2>Confirm you manage ${name} on ChefSire</h2>
+      <p>Someone asked to manage the ChefSire wedding vendor listing for <b>${name}</b>. If that was you, confirm below
+         while signed in to the ChefSire account you used. Once confirmed, couples can send you quote requests.</p>
+      <p style="margin:24px 0"><a href="${verifyUrl}" style="display:inline-block;background:#db2777;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Confirm and manage my listing</a></p>
+      <p style="font-size:13px;color:#555">This link expires in 48 hours. If you didn't ask for this, ignore this email and nothing changes.</p>
+      <hr style="border:none;border-top:1px solid #eee;margin:24px 0" />
+      <p style="font-size:12px;color:#666">ChefSire • Weddings</p>
+    </div>
+  `;
+  return weddingTransport.sendMail({ from, to, subject: `Confirm your ChefSire listing for ${businessName}`, html });
+}
+
+/**
  * Notify admin/ops when a new vendor listing application is submitted.
  * Recipient: VENDOR_LISTINGS_TO → VENDOR_QUOTES_TO → MAIL_USER
  */

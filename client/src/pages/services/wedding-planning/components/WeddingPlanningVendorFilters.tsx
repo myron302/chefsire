@@ -77,7 +77,7 @@ export function WeddingPlanningVendorFilters({
                 className="w-full"
               />
               <p className="mt-1 text-[10px] md:text-xs text-muted-foreground">
-                Start typing any city/state in the US — this is no longer limited to a single state.
+                Type a city (e.g., Hartford) or a state code (CT) to narrow the list.
               </p>
             </div>
 
@@ -105,7 +105,7 @@ export function WeddingPlanningVendorFilters({
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
+      <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mb-6">
         {VENDOR_CATEGORIES.map((category) => {
           const Icon = category.icon as any;
           const isSelected = selectedVendorType === category.value;

@@ -1,9 +1,11 @@
 import { Camera, ChefHat, Flower, Heart, MapPin, Music, Sparkles } from "lucide-react";
 
 /**
- * A wedding vendor in the public directory. Vendors come ONLY from listings an admin has published
- * (GET /api/wedding/vendor-listings/public). The hub previously showed four invented vendors with fabricated
- * ratings, review counts, "verified"/"sponsored" badges and live-looking view counts; there are no ratings yet.
+ * A wedding vendor in the public directory (GET /api/wedding/vendor-listings/public). Two kinds:
+ * - member listings: published vendors on ChefSire, who take quote requests;
+ * - unclaimed listings: real businesses from open business data (Overture Maps) that haven't joined yet. They show
+ *   public business info (phone, website) only, take no quote requests, and can be claimed by the owner.
+ * There are no ratings or reviews; none are ever invented.
  */
 export interface Vendor {
   id: number;
@@ -15,6 +17,11 @@ export interface Vendor {
   website: string | null;
   instagramHandle: string | null;
   yearsInBusiness: number | null;
+  city: string | null;
+  state: string | null;
+  /** Public business phone, only for unclaimed listings. */
+  phone: string | null;
+  unclaimed: boolean;
 }
 
 export type PublishedVendorListing = {
@@ -29,6 +36,8 @@ export type PublishedVendorListing = {
   minPrice?: number | null;
   maxPrice?: number | null;
   yearsInBusiness?: number | null;
+  phone?: string | null;
+  unclaimed?: boolean | null;
 };
 
 const CATEGORY_KEYWORDS: Array<[string, RegExp]> = [
@@ -60,9 +69,52 @@ function formatPriceRange(min: number | null | undefined, max: number | null | u
   return null;
 }
 
+/** Only http(s) links are rendered; a bare domain ("www.example.com") is treated as https. */
+export function safeWebsite(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const v = raw.trim();
+  const withScheme = /^https?:\/\//i.test(v) ? v : /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(v) ? `https://${v}` : null;
+  if (!withScheme) return null;
+  try {
+    const u = new URL(withScheme);
+    return u.protocol === "http:" || u.protocol === "https:" ? withScheme : null;
+  } catch {
+    return null;
+  }
+}
+
+/** US numbers as (203) 555-0100; anything else is shown as given. */
+export function formatPhone(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const digits = raw.replace(/\D/g, "");
+  const ten = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return ten.length === 10 ? `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` : raw.trim();
+}
+
+/** tel: link target for a displayed phone, or null. */
+export function phoneHref(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  const digits = raw.replace(/[^\d+]/g, "");
+  return digits.replace(/\D/g, "").length >= 7 ? `tel:${digits}` : null;
+}
+
+/**
+ * Filters by the Location box. Accepts what people type or what Google autocomplete fills in
+ * ("Hartford", "Hartford, CT", "Hartford, CT, USA", "CT"). Empty query: everything.
+ */
+export function filterVendorsByLocation(vendors: Vendor[], query: string): Vendor[] {
+  const parts = (query || "").split(",").map((p) => p.trim().toLowerCase()).filter(Boolean);
+  if (!parts.length) return vendors;
+  const first = parts[0];
+  const stateOnly = /^[a-z]{2}$/.test(first) && parts.length === 1;
+  if (stateOnly) return vendors.filter((v) => (v.state || "").toLowerCase() === first);
+  return vendors.filter((v) => (v.city || "").toLowerCase() === first);
+}
+
 export function toVendor(listing: PublishedVendorListing): Vendor {
   const location = [listing.city, listing.state].filter(Boolean).join(", ") || null;
-  const website = typeof listing.website === "string" && /^https?:\/\//i.test(listing.website.trim()) ? listing.website.trim() : null;
+  const website = safeWebsite(listing.website);
+  const unclaimed = listing.unclaimed === true;
   return {
     id: Number(listing.id),
     type: normalizeVendorCategory(listing.category),
@@ -73,6 +125,10 @@ export function toVendor(listing: PublishedVendorListing): Vendor {
     website,
     instagramHandle: listing.instagramHandle ? String(listing.instagramHandle).replace(/^@/, "") : null,
     yearsInBusiness: typeof listing.yearsInBusiness === "number" && listing.yearsInBusiness > 0 ? listing.yearsInBusiness : null,
+    city: listing.city ?? null,
+    state: listing.state ?? null,
+    phone: unclaimed && typeof listing.phone === "string" && listing.phone.trim() ? listing.phone.trim() : null,
+    unclaimed,
   };
 }
 
@@ -84,6 +140,7 @@ export const VENDOR_CATEGORIES = [
   { value: "dj", label: "DJ & Music", icon: Music },
   { value: "florist", label: "Florist", icon: Flower },
   { value: "planner", label: "Planner", icon: Heart },
+  { value: "other", label: "More", icon: Sparkles },
 ] as const;
 
 export interface BudgetAllocation {

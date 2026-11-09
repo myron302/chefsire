@@ -4,6 +4,9 @@ import express from "express";
 import type { AddressInfo } from "node:net";
 import { PG_URL, connectLocalPg, ddl, makeCaller } from "../test-support/authz-pg-harness";
 
+// This test checks the directory's own rows; keep the bundled open-data import out of it.
+process.env.WEDDING_VENDOR_IMPORT = "off";
+
 if (!PG_URL) {
   test("Wedding vendor quotes (requires CS_TEST_PG_URL)", { skip: true }, () => {});
 } else {

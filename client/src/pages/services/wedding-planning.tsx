@@ -50,6 +50,7 @@ import {
   PlanningTask,
   RegistryLink,
   WeddingPlanningView,
+  filterVendorsByLocation,
 } from "@/pages/services/lib/wedding-planning-core";
 import {
   useBudgetSettingsPersistence,
@@ -463,8 +464,12 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
 
   const { data: vendors = [] } = usePublishedVendors();
   const filteredVendors = useMemo(
-    () => (selectedVendorType === "all" ? vendors : vendors.filter((v) => v.type === selectedVendorType)),
-    [selectedVendorType, vendors]
+    () =>
+      filterVendorsByLocation(
+        selectedVendorType === "all" ? vendors : vendors.filter((v) => v.type === selectedVendorType),
+        searchLocation
+      ),
+    [selectedVendorType, vendors, searchLocation]
   );
 
   const toggleSaveVendor = useCallback((vendorId: number) => {

@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { sendVendorQuoteRequestEmail } from "../utils/mailer";
+import { ensureWeddingVendorListingsTable } from "./wedding-vendor-listings";
 
 const router = Router();
 
@@ -66,8 +67,10 @@ const isMissingRelation = (err: any) => err?.code === "42P01" || /relation .* do
 /** The published listing a quote may target, or null (unpublished, nonexistent, or directory not created). */
 async function findPublishedListing(vendorId: number) {
   try {
+    await ensureWeddingVendorListingsTable();
     const result: any = await db.execute(sql`
-      SELECT id, business_name AS "businessName", category, email
+      SELECT id, business_name AS "businessName", category, email,
+             (source IS NOT NULL AND user_id IS NULL) AS unclaimed
       FROM wedding_vendor_listings
       WHERE id = ${vendorId} AND status = 'published'
       LIMIT 1
@@ -169,6 +172,14 @@ router.post("/vendor-quotes", requireAuth, async (req, res) => {
     const listing = await findPublishedListing(q.vendorId);
     if (!listing) {
       return res.status(404).json({ ok: false, error: "This vendor isn't accepting quote requests through ChefSire." });
+    }
+    // Unclaimed listings come from public business data; nobody at the business has joined, so don't email them leads.
+    if (listing.unclaimed) {
+      return res.status(409).json({
+        ok: false,
+        unclaimed: true,
+        error: "This business hasn't joined ChefSire yet. Contact them directly by phone or through their website.",
+      });
     }
     const vendorName: string = listing.businessName;
     const vendorType: string | null = listing.category ?? null;

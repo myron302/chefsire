@@ -66,6 +66,7 @@ const WeddingPlanningVendorsPage = React.lazy(() => import("@/pages/services/wed
 const WeddingVendorMap = React.lazy(() => import("@/pages/services/wedding-map"));
 const PublicRegistryPage = React.lazy(() => import("@/pages/services/public-registry"));
 const VendorListingPage = React.lazy(() => import("@/pages/services/vendor-listing"));
+const VendorClaimPage = React.lazy(() => import("@/pages/services/vendor-claim"));
 const Marketplace = React.lazy(() => import("@/pages/store/Marketplace"));
 const StoreViewer = React.lazy(() => import("@/pages/store/StoreViewer"));
 const StoreDashboard = React.lazy(() => import("@/pages/store/StoreDashboard"));
@@ -361,6 +362,7 @@ export default function App() {
                 <Route path="/services/wedding-map" component={WeddingVendorMap} />
                 <Route path="/services/public-registry" component={PublicRegistryPage} />
                 <Route path="/services/vendor-listing" component={VendorListingPage} />
+                <Route path="/services/vendor-claim" component={VendorClaimPage} />
 
                 {/* Store / Marketplace */}
                 {/* Alias used by nav/sidebar */}
