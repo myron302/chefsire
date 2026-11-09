@@ -120,27 +120,30 @@ export async function importOpenVendors(payload: OpenVendorPayload): Promise<{ i
     )
   `);
 
-  // Never go backwards: a release older than (or equal to) one already imported is ignored. Overture release names
-  // ("2026-10-21.0") sort chronologically as strings.
-  const latest: any = await db.execute(sql`
-    SELECT release, row_count AS "rowCount" FROM wedding_vendor_imports
-    WHERE source = ${source} AND finished_at IS NOT NULL
-    ORDER BY release DESC LIMIT 1
-  `);
-  const previous = (latest?.rows ?? latest ?? [])[0] as { release: string; rowCount: number | null } | undefined;
-  if (previous && previous.release >= release) return { imported: false, rows: 0, retired: 0 };
-
   const rows = payload.listings.map(toListingRow).filter((r) => r.sourceId && r.businessName && r.businessName.length >= 2);
   if (rows.length === 0) return { imported: false, rows: 0, retired: 0 };
 
-  // A much smaller file than last time looks like a broken extract, not thousands of closures: import it, but
-  // retire nothing. Retirement is also capped per run.
-  const previousCount = Number(previous?.rowCount ?? 0);
-  const retireAllowed = !previousCount || rows.length >= previousCount * MIN_RELATIVE_SIZE_FOR_RETIREMENT;
-
-  // All-or-nothing: the marker, every upsert and the retirement commit together. A second process importing the
-  // same release waits on the marker's primary key, then finds it taken and does nothing.
+  // All-or-nothing: the ordering check, the marker, every upsert and the retirement commit together.
   return db.transaction(async (tx: typeof db) => {
+    // One import per source at a time, across releases and app instances: the lock is held on this transaction's
+    // connection until commit, so the "is this release newer?" check below can't race another import.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"wedding_vendor_import:" + source}))`);
+
+    // Never go backwards: a release older than (or equal to) one already imported is ignored. Overture release
+    // names ("2026-10-21.0") sort chronologically as strings.
+    const latest: any = await tx.execute(sql`
+      SELECT release, row_count AS "rowCount" FROM wedding_vendor_imports
+      WHERE source = ${source} AND finished_at IS NOT NULL
+      ORDER BY release DESC LIMIT 1
+    `);
+    const previous = (latest?.rows ?? latest ?? [])[0] as { release: string; rowCount: number | null } | undefined;
+    if (previous && previous.release >= release) return { imported: false, rows: 0, retired: 0 };
+
+    // A much smaller file than last time looks like a broken extract, not thousands of closures: import it, but
+    // retire nothing. Retirement is also capped per run.
+    const previousCount = Number(previous?.rowCount ?? 0);
+    const retireAllowed = !previousCount || rows.length >= previousCount * MIN_RELATIVE_SIZE_FOR_RETIREMENT;
+
     const claimed: any = await tx.execute(sql`
       INSERT INTO wedding_vendor_imports (source, release) VALUES (${source}, ${release})
       ON CONFLICT DO NOTHING RETURNING release

@@ -163,6 +163,26 @@ if (!PG_URL) {
         ["e", "New Florist E", "published"],
         ["s", "Stale Claim Venue", "hidden"],
       ]);
+
+      // Race: a newer and an older release imported at the same moment (two app instances, separate connections).
+      // Without per-source serialization the older one reads the same "latest release", waits on the newer one's row
+      // locks, then overwrites it. The directory must end on the newer release.
+      const vendors = (tag: string) =>
+        ["a", "c", "d", "e", "s"].map((id) => ({ source_id: id, business_name: `${tag} ${id}`, city: "Avon", state: "CT" }));
+      const newer = importOpenVendors({ source: "overture", release: "r5", listings: vendors("V5") });
+      const older = importOpenVendors({ source: "overture", release: "r4", listings: vendors("V4") });
+      const [newerResult, olderResult] = await Promise.all([newer, older]);
+      assert.equal(newerResult.imported, true);
+      const unclaimedNames = (await local.query(
+        "SELECT source_id, business_name, source_release FROM wedding_vendor_listings WHERE user_id IS NULL AND source_id IN ('d','e') ORDER BY source_id",
+      )).rows;
+      assert.deepEqual(unclaimedNames.map((r: any) => [r.business_name, r.source_release]), [["V5 d", "r5"], ["V5 e", "r5"]]);
+      const latestMarker = (await local.query(
+        "SELECT release FROM wedding_vendor_imports WHERE finished_at IS NOT NULL ORDER BY finished_at DESC, release DESC LIMIT 1",
+      )).rows[0].release;
+      assert.equal(latestMarker, "r5", `older release must not finish after the newer one (older result: ${JSON.stringify(olderResult)})`);
+      // Claimed listing untouched throughout.
+      assert.equal((await local.query("SELECT business_name FROM wedding_vendor_listings WHERE source_id = 'a'")).rows[0].business_name, "Blooms Co");
     } finally {
       claimDelivery.send = originalClaimSend;
       quoteDelivery.send = originalQuoteSend;
