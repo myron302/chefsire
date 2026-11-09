@@ -376,11 +376,6 @@ export default function DrinksPage() {
                     <div className="font-bold">{selectedRecipe.protein}g</div>
                     <div className="text-xs text-gray-600">Protein</div>
                   </div>
-                  <div className="text-center p-3 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
-                    <Star className="h-5 w-5 mx-auto mb-1 text-purple-600" />
-                    <div className="font-bold">{selectedRecipe.rating}</div>
-                    <div className="text-xs text-gray-600">Rating</div>
-                  </div>
                 </div>
 
                 <div className="mb-6">
@@ -510,12 +505,6 @@ export default function DrinksPage() {
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                       />
                       <div className="absolute top-3 left-3 flex gap-2">
-                        {category.trending && (
-                          <Badge className="bg-red-500 text-white text-xs">
-                            <Flame className="h-3 w-3 mr-1" />
-                            Trending
-                          </Badge>
-                        )}
                         {category.premium && (
                           <Badge className="bg-yellow-500 text-white text-xs">
                             <Star className="h-3 w-3 mr-1" />
@@ -607,12 +596,6 @@ export default function DrinksPage() {
                       <Badge className="bg-white/90 text-gray-900 text-xs">
                         {recipe.category}
                       </Badge>
-                    </div>
-                    <div className="absolute top-3 right-3">
-                      <div className="bg-white/90 px-2 py-1 rounded-full flex items-center gap-1">
-                        <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                        <span className="text-xs font-bold">{recipe.rating}</span>
-                      </div>
                     </div>
                   </div>
                   <CardContent className="p-6">

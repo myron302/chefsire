@@ -115,7 +115,7 @@ export default function LiqueursPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedMethod, setSelectedMethod] = useState('All Methods');
-  const [sortBy, setSortBy] = useState('trending');
+  const [sortBy, setSortBy] = useState('name');
   const [showFilters, setShowFilters] = useState(false);
   const [alcoholRange, setAlcoholRange] = useState([0, 45]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -249,8 +249,7 @@ export default function LiqueursPage() {
     if (onlyIBA && !cocktail.iba_official) return false;
     return true;
   }).sort((a, b) => {
-    if (sortBy === 'trending') return b.reviews - a.reviews;
-    if (sortBy === 'rating') return b.rating - a.rating;
+    if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
     if (sortBy === 'alcohol-low') return parseInt(a.abv) - parseInt(b.abv);
     if (sortBy === 'alcohol-high') return parseInt(b.abv) - parseInt(a.abv);
     if (sortBy === 'cost-low') return a.estimatedCost - b.estimatedCost;
@@ -399,12 +398,6 @@ export default function LiqueursPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-pink-600">4.6★</div>
-                <div className="text-sm text-gray-600">Avg Rating</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-purple-600">3 min</div>
                 <div className="text-sm text-gray-600">Avg Prep</div>
               </CardContent>
@@ -463,8 +456,7 @@ export default function LiqueursPage() {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
               >
-                <option value="trending">Most Popular</option>
-                <option value="rating">Highest Rated</option>
+                <option value="name">Name (A–Z)</option>
                 <option value="alcohol-low">Lowest ABV</option>
                 <option value="alcohol-high">Highest ABV</option>
                 <option value="cost-low">Most Budget-Friendly</option>
@@ -549,12 +541,6 @@ export default function LiqueursPage() {
                     </div>
                     <div className="flex gap-2 mb-2">
                       <Badge className="bg-purple-100 text-purple-700">{cocktail.category}</Badge>
-                      {cocktail.trending && (
-                        <Badge className="bg-pink-500">
-                          <TrendingUp className="w-3 h-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
                       {cocktail.featured && (
                         <Badge className="bg-purple-500">
                           <GlassWater className="w-3 h-3 mr-1" />

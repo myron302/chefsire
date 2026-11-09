@@ -540,14 +540,6 @@ export default function PotentPotablesPage() {
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
-                        {category.trending && (
-                          <div className="absolute top-3 left-3">
-                            <Badge className="bg-orange-500 text-white border-0">
-                              <TrendingUp className="h-3 w-3 mr-1" />
-                              Trending
-                            </Badge>
-                          </div>
-                        )}
 
                         {category.featured && (
                           <div className="absolute top-3 left-3">
@@ -665,10 +657,6 @@ export default function PotentPotablesPage() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-xl font-bold group-hover:text-purple-600 transition-colors">{cocktail.name}</h3>
-                      <div className="flex items-center gap-1">
-                        <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                        <span className="text-sm font-bold">{cocktail.rating}</span>
-                      </div>
                     </div>
                     <p className="text-sm text-gray-600 mb-3">{cocktail.description}</p>
                     <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">

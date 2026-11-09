@@ -302,14 +302,6 @@ export default function PetFoodHub() {
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
-                      {category.trending && (
-                        <div className="absolute top-3 left-3">
-                          <Badge className="bg-orange-500 text-white border-0">
-                            <TrendingUp className="h-3 w-3 mr-1" />
-                            Trending
-                          </Badge>
-                        </div>
-                      )}
 
                       {category.featured && (
                         <div className="absolute top-3 left-3">
@@ -428,10 +420,6 @@ export default function PetFoodHub() {
                     <span className="flex items-center gap-1">
                       <Clock className="h-4 w-4" />
                       {recipe.prepTime}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      {recipe.rating}
                     </span>
                   </div>
 

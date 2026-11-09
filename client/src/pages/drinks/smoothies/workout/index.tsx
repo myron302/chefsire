@@ -196,7 +196,7 @@ export default function WorkoutSmoothiesPage() {
   const [selectedBenefit, setSelectedBenefit] = useState('');
   const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
-  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
+  const [sortBy, setSortBy] = useState<'name' | 'protein' | 'cost' | 'calories'>('name');
   const [activeTab, setActiveTab] = useState<'browse'|'types'|'benefits'|'featured'|'trending'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
@@ -314,7 +314,7 @@ export default function WorkoutSmoothiesPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'protein': return (b.nutrition.protein || 0) - (a.nutrition.protein || 0);
         case 'cost': return (a.estimatedCost || 0) - (b.estimatedCost || 0);
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
@@ -519,12 +519,6 @@ export default function WorkoutSmoothiesPage() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">4.7★</div>
-              <div className="text-sm text-gray-600">Avg Rating</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-cyan-600">4 min</div>
               <div className="text-sm text-gray-600">Avg Prep</div>
             </CardContent>
@@ -629,7 +623,7 @@ export default function WorkoutSmoothiesPage() {
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
                     >
-                      <option value="rating">Sort by Rating</option>
+                      <option value="name">Sort by Name</option>
                       <option value="protein">Sort by Protein</option>
                       <option value="cost">Sort by Cost</option>
                       <option value="calories">Sort by Calories</option>
@@ -678,7 +672,7 @@ export default function WorkoutSmoothiesPage() {
                       <div className="flex items-center gap-2">
                         <Badge className="bg-sky-100 text-sky-800">{smoothie.workoutType}</Badge>
                         <Badge variant="outline">{smoothie.energyLevel}</Badge>
-                        {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 

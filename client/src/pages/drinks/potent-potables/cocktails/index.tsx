@@ -187,7 +187,7 @@ export default function ClassicCocktailsPage() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('rating');
+  const [sortBy, setSortBy] = useState('name');
   const [selectedCocktail, setSelectedCocktail] = useState<typeof classicCocktails[0] | null>(null);
   
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
@@ -313,7 +313,7 @@ export default function ClassicCocktailsPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'era': return a.era.localeCompare(b.era);
         case 'difficulty': 
           const difficultyOrder = { 'Easy': 1, 'Medium': 2, 'Hard': 3 };
@@ -488,12 +488,6 @@ export default function ClassicCocktailsPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-indigo-600">4.5★</div>
-                <div className="text-sm text-gray-600">Avg Rating</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-purple-600">4 min</div>
                 <div className="text-sm text-gray-600">Avg Prep</div>
               </CardContent>
@@ -585,7 +579,7 @@ export default function ClassicCocktailsPage() {
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
-                    <option value="rating">Sort by Rating</option>
+                    <option value="name">Sort by Name</option>
                     <option value="era">Sort by Era</option>
                     <option value="difficulty">Sort by Difficulty</option>
                     <option value="abv">Sort by ABV</option>
@@ -633,7 +627,7 @@ export default function ClassicCocktailsPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <Badge variant="outline">{cocktail.era}</Badge>
                           <Badge className="bg-blue-100 text-blue-800">{cocktail.category}</Badge>
-                          {cocktail.trending && <Badge className="bg-indigo-100 text-indigo-800">Trending</Badge>}
+                          
                         </div>
                       </CardHeader>
                       

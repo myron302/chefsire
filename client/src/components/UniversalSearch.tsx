@@ -38,7 +38,7 @@ export default function UniversalSearch({
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
 
-  const trendingDrinks = getTrendingDrinks();
+  const suggestedDrinks = getTrendingDrinks();
 
   const categoryIcons = {
     'smoothies': Leaf,
@@ -58,7 +58,6 @@ export default function UniversalSearch({
 
   const filterOptions = [
     { id: 'featured', label: 'Featured', icon: Star },
-    { id: 'trending', label: 'Trending', icon: TrendingUp },
     { id: 'quick', label: 'Quick (< 5 min)', icon: Clock },
     { id: 'high-protein', label: 'High Protein', icon: Zap },
   ];
@@ -97,9 +96,6 @@ export default function UniversalSearch({
     if (activeFilters.includes('featured')) {
       results = results.filter(drink => drink.featured);
     }
-    if (activeFilters.includes('trending')) {
-      results = results.filter(drink => drink.trending);
-    }
     if (activeFilters.includes('quick')) {
       results = results.filter(drink => (drink.prepTime || 0) < 5);
     }
@@ -111,7 +107,7 @@ export default function UniversalSearch({
   };
 
   const filteredResults = getFilteredResults();
-  const displayResults = searchQuery.length > 0 ? filteredResults : trendingDrinks.slice(0, 6);
+  const displayResults = searchQuery.length > 0 ? filteredResults : suggestedDrinks.slice(0, 6);
 
   return (
     <div className={`relative ${className}`}>
@@ -149,7 +145,7 @@ export default function UniversalSearch({
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-4">
                 <span className="text-gray-600">
-                  {searchQuery ? `${filteredResults.length} results` : 'Trending now'}
+                  {searchQuery ? `${filteredResults.length} results` : 'Suggested drinks'}
                 </span>
                 <div className="flex items-center gap-1 text-blue-600">
                   <Star className="h-3 w-3" />
@@ -222,9 +218,6 @@ export default function UniversalSearch({
                               {drink.featured && (
                                 <Star className="h-3 w-3 text-yellow-500 fill-current" />
                               )}
-                              {drink.trending && (
-                                <TrendingUp className="h-3 w-3 text-red-500" />
-                              )}
                             </div>
                             
                             <p className="text-sm text-gray-600 mb-2 line-clamp-1">
@@ -249,15 +242,6 @@ export default function UniversalSearch({
 
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3 text-xs text-gray-500">
-                                {drink.rating && (
-                                  <span className="flex items-center gap-1">
-                                    <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                                    {drink.rating}
-                                  </span>
-                                )}
-                                {drink.reviews && (
-                                  <span>{drink.reviews} reviews</span>
-                                )}
                               </div>
                               
                               <div className="flex items-center gap-1">

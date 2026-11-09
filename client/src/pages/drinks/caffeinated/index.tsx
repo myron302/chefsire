@@ -633,14 +633,6 @@ export default function CaffeinatedDrinksPage() {
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
 
-                      {category.trending && (
-                        <div className="absolute top-3 left-3">
-                          <Badge className="bg-orange-500 text-white border-0">
-                            <TrendingUp className="h-3 w-3 mr-1" />
-                            Trending
-                          </Badge>
-                        </div>
-                      )}
 
                       {category.featured && (
                         <div className="absolute top-3 left-3">
@@ -1014,12 +1006,6 @@ export default function CaffeinatedDrinksPage() {
                           alt={recipe.name}
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute top-3 right-3">
-                          <Badge className="bg-white text-gray-900">
-                            <Star className="w-3 h-3 mr-1 text-yellow-400 fill-current" />
-                            {recipe.rating}
-                          </Badge>
-                        </div>
                       </div>
 
                       <CardContent className="p-4">

@@ -121,7 +121,7 @@ export default function DetoxJuicesPage() {
   const [detoxIntensity, setDetoxIntensity] = useState(['Any']);
   const [maxCalories, setMaxCalories] = useState(200);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('rating');
+  const [sortBy, setSortBy] = useState('name');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -238,7 +238,7 @@ export default function DetoxJuicesPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'calories': return (a.nutrition.calories || 0) - (b.nutrition.calories || 0);
         case 'intensity':
           const intensityOrder = { 'Intense': 3, 'Moderate': 2, 'Gentle': 1 };
@@ -514,7 +514,7 @@ export default function DetoxJuicesPage() {
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
                     >
-                      <option value="rating">Sort by Rating</option>
+                      <option value="name">Sort by Name</option>
                       <option value="calories">Sort by Calories</option>
                       <option value="intensity">Sort by Intensity</option>
                     </select>
@@ -562,7 +562,7 @@ export default function DetoxJuicesPage() {
                       <div className="flex items-center gap-2 mb-2">
                         <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
                         <Badge variant="outline">{juice.detoxLevel}</Badge>
-                        {juice.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
 
                       {/* Rating and Difficulty immediately above recipe card */}

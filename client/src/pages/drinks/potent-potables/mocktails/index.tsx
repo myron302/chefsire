@@ -138,7 +138,7 @@ export default function MocktailsPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedOccasion, setSelectedOccasion] = useState('All Occasions');
-  const [sortBy, setSortBy] = useState('trending');
+  const [sortBy, setSortBy] = useState('name');
   const [selectedMocktail, setSelectedMocktail] = useState<typeof mocktails[0] | null>(null);
   const [calorieRange, setCalorieRange] = useState([0, 150]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -267,8 +267,7 @@ export default function MocktailsPage() {
     }
     return true;
   }).sort((a, b) => {
-    if (sortBy === 'trending') return b.reviews - a.reviews;
-    if (sortBy === 'rating') return b.rating - a.rating;
+    if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
     if (sortBy === 'calories-low') return a.nutrition.calories - b.nutrition.calories;
     if (sortBy === 'cost-low') return a.estimatedCost - b.estimatedCost;
     if (sortBy === 'time-quick') return a.prepTime - b.prepTime;
@@ -498,8 +497,7 @@ export default function MocktailsPage() {
               onChange={(e) => setSortBy(e.target.value)}
               className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
             >
-              <option value="trending">Most Popular</option>
-              <option value="rating">Highest Rated</option>
+              <option value="name">Name (A–Z)</option>
               <option value="calories-low">Lowest Calories</option>
               <option value="cost-low">Most Budget-Friendly</option>
               <option value="time-quick">Quickest Prep</option>
@@ -548,12 +546,6 @@ export default function MocktailsPage() {
                     </Button>
                   </div>
                   <div className="flex gap-2 mb-2">
-                    {mocktail.trending && (
-                      <Badge className="bg-purple-500">
-                        <TrendingUp className="w-3 h-3 mr-1" />
-                        Trending
-                      </Badge>
-                    )}
                     {mocktail.featured && (
                       <Badge className="bg-pink-500">
                         <GlassWater className="w-3 h-3 mr-1" />

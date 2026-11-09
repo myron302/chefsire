@@ -375,7 +375,7 @@ export default function ToddlerMealsPage() {
   const [showOrganic, setShowOrganic] = useState(false);
   const [showVegetarian, setShowVegetarian] = useState(false);
   const [showVegan, setShowVegan] = useState(false);
-  const [sortBy, setSortBy] = useState('rating');
+  const [sortBy, setSortBy] = useState('name');
 
   const getFilteredRecipes = () => {
     let filtered = toddlerRecipes.filter(recipe => {
@@ -391,7 +391,7 @@ export default function ToddlerMealsPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'prepTime': return (a.prepTime || 0) - (b.prepTime || 0);
         case 'protein': return (b.nutrition.protein || 0) - (a.nutrition.protein || 0);
         default: return 0;
@@ -514,7 +514,7 @@ export default function ToddlerMealsPage() {
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
               >
-                <option value="rating">Sort by Rating</option>
+                <option value="name">Sort by Name</option>
                 <option value="prepTime">Sort by Prep Time</option>
                 <option value="protein">Sort by Protein</option>
               </select>

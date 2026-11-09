@@ -79,7 +79,7 @@ export default function BeefProteinPage() {
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [filterTag, setFilterTag] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'creatine'>('rating');
+  const [sortBy, setSortBy] = useState<'name' | 'protein' | 'calories' | 'creatine'>('name');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [showKit, setShowKit] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
@@ -220,7 +220,7 @@ export default function BeefProteinPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'protein': return (b.protein || 0) - (a.protein || 0);
         case 'calories': return (a.calories || 0) - (b.calories || 0);
         case 'creatine': return (b.creatine || 0) - (a.creatine || 0);
@@ -476,7 +476,7 @@ export default function BeefProteinPage() {
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
                 >
-                  <option value="rating">Sort by Rating</option>
+                  <option value="name">Sort by Name</option>
                   <option value="protein">Sort by Protein</option>
                   <option value="calories">Sort by Calories</option>
                   <option value="creatine">Sort by Creatine</option>
@@ -536,7 +536,7 @@ export default function BeefProteinPage() {
                       <div className="flex flex-wrap gap-1 mb-3">
                         <Badge className="bg-red-100 text-red-800">Beef Protein</Badge>
                         <Badge variant="outline">{shake.flavor}</Badge>
-                        {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 
@@ -777,7 +777,7 @@ export default function BeefProteinPage() {
                     <div className="flex flex-wrap gap-1 mt-2">
                       <Badge className="bg-red-100 text-red-800">Beef Protein</Badge>
                       <Badge variant="outline">{shake.flavor}</Badge>
-                      {shake.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                      
                     </div>
                   </CardHeader>
 

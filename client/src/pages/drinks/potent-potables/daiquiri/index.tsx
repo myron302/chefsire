@@ -104,7 +104,7 @@ export default function DaiquiriPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [activeTab, setActiveTab] = useState<"browse" | "style" | "featured">("browse");
   const [selectedStyle, setSelectedStyle] = useState("all");
-  const [sortBy, setSortBy] = useState("trending");
+  const [sortBy, setSortBy] = useState("name");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -128,8 +128,7 @@ export default function DaiquiriPage() {
       return true;
     })
     .sort((a, b) => {
-      if (sortBy === "trending") return (b.reviews ?? 0) - (a.reviews ?? 0);
-      if (sortBy === "rating") return (b.rating ?? 0) - (a.rating ?? 0);
+      if (sortBy === "name") return String(a.name || '').localeCompare(String(b.name || ''));
       if (sortBy === "abv") return parseInt(b.abv) - parseInt(a.abv);
       return 0;
     });
@@ -355,12 +354,6 @@ export default function DaiquiriPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-emerald-600">4.6★</div>
-                <div className="text-sm text-gray-600">Avg Rating</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-cyan-600">3.3 min</div>
                 <div className="text-sm text-gray-600">Avg Prep</div>
               </CardContent>
@@ -416,8 +409,7 @@ export default function DaiquiriPage() {
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
-                    <option value="trending">Most Popular</option>
-                    <option value="rating">Highest Rated</option>
+                    <option value="name">Name (A–Z)</option>
                     <option value="abv">Highest ABV</option>
                   </select>
                 </div>
@@ -452,7 +444,7 @@ export default function DaiquiriPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <Badge className="bg-teal-100 text-teal-800">{c.spiritType}</Badge>
                           <Badge variant="outline">{c.era}</Badge>
-                          {c.trending && <Badge className="bg-emerald-100 text-emerald-800">Trending</Badge>}
+                          
                         </div>
                       </CardHeader>
 

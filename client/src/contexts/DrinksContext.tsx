@@ -372,17 +372,19 @@ export function DrinksProvider({ children }: { children: React.ReactNode }) {
       pool = SAMPLE_DRINKS.filter(drink => drink.category === category);
     }
     
-    // Prioritize featured and trending drinks
+    // Built-in drinks carry invented rating/review/trending values; never rank by them.
     return pool
-      .filter(drink => drink.featured || drink.trending)
-      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      .filter(drink => drink.featured)
+      .sort((a, b) => a.name.localeCompare(b.name))
       .slice(0, 6);
   };
 
+  // Suggestions for the empty search panel: featured built-in drinks, A-Z. (Name kept for API compatibility;
+  // there is no real popularity signal for built-in drinks.)
   const getTrendingDrinks = () => {
     return SAMPLE_DRINKS
-      .filter(drink => drink.trending)
-      .sort((a, b) => (b.reviews || 0) - (a.reviews || 0))
+      .filter(drink => drink.featured)
+      .sort((a, b) => a.name.localeCompare(b.name))
       .slice(0, 8);
   };
 

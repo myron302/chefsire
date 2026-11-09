@@ -150,7 +150,7 @@ export default function CognacBrandyPage() {
 
   const [activeTab, setActiveTab] = useState('browse');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [sortBy, setSortBy] = useState('trending');
+  const [sortBy, setSortBy] = useState('name');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCocktail, setSelectedCocktail] = useState<typeof cognacCocktails[0] | null>(null);
   
@@ -273,8 +273,7 @@ export default function CognacBrandyPage() {
     }
     return true;
   }).sort((a, b) => {
-    if (sortBy === 'trending') return b.reviews - a.reviews;
-    if (sortBy === 'rating') return b.rating - a.rating;
+    if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
     if (sortBy === 'abv') return parseInt(b.abv) - parseInt(a.abv);
     return 0;
   });
@@ -440,12 +439,6 @@ export default function CognacBrandyPage() {
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-red-600">4.6★</div>
-                <div className="text-sm text-gray-600">Avg Rating</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-orange-600">3.5 min</div>
                 <div className="text-sm text-gray-600">Avg Prep</div>
               </CardContent>
@@ -503,8 +496,7 @@ export default function CognacBrandyPage() {
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
-                    <option value="trending">Most Popular</option>
-                    <option value="rating">Highest Rated</option>
+                    <option value="name">Name (A–Z)</option>
                     <option value="abv">Highest ABV</option>
                   </select>
                 </div>
@@ -551,7 +543,7 @@ export default function CognacBrandyPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <Badge className={categoryData?.color}>{cocktail.spiritType}</Badge>
                           <Badge variant="outline">{cocktail.era}</Badge>
-                          {cocktail.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                          
                         </div>
                       </CardHeader>
                       
@@ -797,19 +789,6 @@ export default function CognacBrandyPage() {
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant="outline">{cocktail.era}</Badge>
                       <Badge className="bg-orange-100 text-orange-800">{cocktail.category}</Badge>
-                      <div className="flex items-center gap-1 ml-auto">
-                        {[...Array(5)].map((_, i) => (
-                          <GlassWater
-                            key={i}
-                            className={`h-4 w-4 ${
-                              i < Math.floor(cocktail.rating)
-                                ? 'fill-orange-500 text-orange-500'
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
-                        <span className="font-medium ml-1">{cocktail.rating}</span>
-                      </div>
                     </div>
                   </CardHeader>
                   

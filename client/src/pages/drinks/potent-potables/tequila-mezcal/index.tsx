@@ -514,12 +514,6 @@ export default function TequilaMezcalPage() {
                     </div>
                     <div className="flex gap-2 mb-2">
                       <Badge className="bg-green-100 text-green-700">{cocktail.category}</Badge>
-                      {cocktail.trending && (
-                        <Badge className="bg-emerald-500">
-                          <TrendingUp className="w-3 h-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
                       {cocktail.spiritType === 'Mezcal' && (
                         <Badge className="bg-orange-600">
                           <Flame className="w-3 h-3 mr-1" />

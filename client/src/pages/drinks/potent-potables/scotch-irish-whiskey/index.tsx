@@ -493,12 +493,6 @@ export default function ScotchIrishWhiskeyPage() {
                     </div>
                     <div className="flex gap-2 mb-2">
                       <Badge className="bg-amber-100 text-amber-700">{cocktail.category}</Badge>
-                      {cocktail.trending && (
-                        <Badge className="bg-red-500">
-                          <TrendingUp className="w-3 h-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
                       {cocktail.featured && (
                         <Badge className="bg-amber-500">
                           <GlassWater className="w-3 h-3 mr-1" />

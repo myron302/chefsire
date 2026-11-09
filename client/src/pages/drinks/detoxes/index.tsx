@@ -400,12 +400,6 @@ export default function DetoxesHub() {
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute top-3 left-3 flex gap-2">
-                      {category.trending && (
-                        <Badge className="bg-red-500 text-white text-xs">
-                          <Flame className="h-3 w-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
                       {category.featured && (
                         <Badge className="bg-yellow-500 text-white text-xs">
                           <Star className="h-3 w-3 mr-1" />
@@ -442,7 +436,7 @@ export default function DetoxesHub() {
                         <div className={`text-lg font-bold ${category.textColor}`}>
                           <Trophy className="h-5 w-5 mx-auto" />
                         </div>
-                        <div className="text-xs text-gray-600">Top Rated</div>
+                        <div className="text-xs text-gray-600">Guided</div>
                       </div>
                     </div>
 
@@ -457,12 +451,12 @@ export default function DetoxesHub() {
           </div>
         </div>
 
-        {/* Popular Detoxes */}
+        {/* Detox picks (editorial, not a popularity ranking) */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-6 w-6 text-green-500" />
-              Most Popular This Week
+              Detox Picks
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -472,10 +466,6 @@ export default function DetoxesHub() {
                   <div className="p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-lg border border-green-200 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all">
                     <div className="flex items-center justify-between mb-2">
                       <Badge className="bg-green-500 text-white">#{index + 1}</Badge>
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="font-medium">{detox.rating}</span>
-                      </div>
                     </div>
                     <h3 className="font-bold mb-2">{detox.name}</h3>
                     <div className="flex items-center justify-between text-sm text-gray-600">
@@ -559,7 +549,7 @@ export default function DetoxesHub() {
 
               <div className="p-6 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-400 relative">
                 <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white">
-                  Most Popular
+                  Recommended
                 </Badge>
                 <div className="text-center mb-4 mt-2">
                   <div className="text-3xl font-bold text-blue-600 mb-1">3 Days</div>

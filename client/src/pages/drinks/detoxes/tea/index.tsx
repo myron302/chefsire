@@ -69,7 +69,7 @@ export default function DetoxTeasPage() {
   const [selectedFocus, setSelectedFocus] = useState('');
   const [caffeineLevel, setCaffeineLevel] = useState(['Any']);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('rating');
+  const [sortBy, setSortBy] = useState('name');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -187,7 +187,7 @@ export default function DetoxTeasPage() {
 
     filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'rating': return (b.rating || 0) - (a.rating || 0);
+        case 'name': return String(a.name || '').localeCompare(String(b.name || ''));
         case 'prepTime': return (a.prepTime || 0) - (b.prepTime || 0);
         case 'cost': return (a.estimatedCost || 0) - (b.estimatedCost || 0);
         default: return 0;
@@ -446,7 +446,7 @@ export default function DetoxTeasPage() {
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
                     >
-                      <option value="rating">Sort by Rating</option>
+                      <option value="name">Sort by Name</option>
                       <option value="prepTime">Sort by Prep Time</option>
                       <option value="cost">Sort by Cost</option>
                     </select>
@@ -495,7 +495,7 @@ export default function DetoxTeasPage() {
                         <Badge className="bg-amber-100 text-amber-800">{tea.teaType}</Badge>
                         <Badge variant="outline">{tea.detoxFocus}</Badge>
                         {tea.nutrition.caffeine === 0 && <Badge className="bg-green-100 text-green-800">Caffeine-Free</Badge>}
-                        {tea.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
+                        
                       </div>
                     </CardHeader>
 
@@ -738,10 +738,6 @@ export default function DetoxTeasPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          <div className="flex items-center justify-between text-sm">
-                            <span>Rating:</span>
-                            <span className="font-semibold">{tea.rating} ⭐</span>
-                          </div>
                           <div className="flex items-center justify-between text-sm">
                             <span>Prep Time:</span>
                             <span className="font-semibold">{tea.prepTime} mins</span>

@@ -667,12 +667,6 @@ export default function SmoothiesPage() {
                     ) : null}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     <div className="absolute top-3 left-3 flex gap-2">
-                      {category.trending && (
-                        <Badge className="bg-red-500 text-white text-xs">
-                          <Flame className="h-3 w-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
                       {category.featured && (
                         <Badge className="bg-yellow-500 text-white text-xs">
                           <Star className="h-3 w-3 mr-1" />
@@ -1042,12 +1036,6 @@ export default function SmoothiesPage() {
                           alt={recipe.name}
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute top-3 right-3">
-                          <Badge className="bg-white text-gray-900">
-                            <Star className="w-3 h-3 mr-1 text-yellow-400 fill-current" />
-                            {recipe.rating}
-                          </Badge>
-                        </div>
                       </div>
                       
                       <CardContent className="p-4">
