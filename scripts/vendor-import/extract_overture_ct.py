@@ -43,6 +43,13 @@ src = f"read_parquet('s3://overturemaps-us-west-2/release/{release}/theme=places
 cols = con.execute(f"SELECT column_name, column_type FROM (DESCRIBE SELECT * FROM {src} LIMIT 0)").fetchall()
 for c in cols:
     print("COLUMN", c[0], "::", c[1][:300])
+disc = con.execute(f"""
+  SELECT taxonomy.primary AS c, count(*) n FROM {src}
+  WHERE bbox.xmin BETWEEN -73.73 AND -71.78 AND bbox.ymin BETWEEN 40.95 AND 42.06
+    AND regexp_matches(taxonomy.primary, 'photo|video|venue|event|banquet|wedding|bridal|limo|officiant|party|ballroom|reception|music|band|dj|cake|dessert|florist|flower|tent|rental|chauffeur|makeup')
+  GROUP BY 1 ORDER BY 2 DESC LIMIT 80""").fetchall()
+for c in disc:
+    print("TAXON", c[0], c[1])
 cats = ", ".join(f"'{c}'" for c in CATEGORY_MAP)
 mapping = " ".join(f"WHEN '{k}' THEN '{v}'" for k, v in CATEGORY_MAP.items())
 
