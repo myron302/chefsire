@@ -3,6 +3,7 @@
 
 import { db } from "../db";
 import { eq } from "drizzle-orm";
+import { orderStatusSentence } from "../../shared/marketplace-order-status";
 import {
   creatorCampaignFollows,
   creatorDropRsvps,
@@ -956,21 +957,16 @@ export async function sendOrderStatusNotification(
   buyerId: string,
   status: string,
   orderId: string,
-  itemName: string
+  itemName: string,
+  deliveryMethod?: string | null
 ) {
   try {
-    const statusMessages: Record<string, string> = {
-      confirmed: "confirmed",
-      shipped: "has been shipped",
-      delivered: "has been delivered",
-      cancelled: "was cancelled",
-    };
 
     await db.insert(notifications).values({
       userId: buyerId,
       type: "order",
       title: "Order Update",
-      message: `Your order for ${itemName} ${statusMessages[status] || status}`,
+      message: `Your order for ${itemName} ${orderStatusSentence(status, deliveryMethod)}`,
       linkUrl: `/orders/${orderId}`,
       priority: status === "delivered" ? "high" : "normal",
     });
