@@ -60,8 +60,10 @@ export default function AISuggestions() {
     isLoading,
     error,
   } = useQuery<{ suggestions: AISuggestion[] }>({
-    queryKey: ["/api/suggestions/today", user?.id],
-    queryFn: () => fetchJSON<{ suggestions: AISuggestion[] }>(`/api/suggestions/today/${user?.id}`),
+    // The server reads the user from the session (GET /api/suggestions/today). The key differs from SuggestionsPage's,
+    // which caches a bare array under ["/api/suggestions/today", userId].
+    queryKey: ["/api/suggestions/today", user?.id, "feed-widget"],
+    queryFn: () => fetchJSON<{ suggestions: AISuggestion[] }>("/api/suggestions/today"),
     enabled: !loading && !!user?.id, // Only fetch when loading is done AND user exists
     retry: false, // Don't retry on error
   });
