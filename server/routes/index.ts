@@ -85,6 +85,7 @@ import weddingPlanningTasksRouter from "./wedding-planning-tasks";
 import weddingRegistryLinksRouter from "./wedding-registry-links";
 import weddingVendorQuotesRouter from "./wedding-vendor-quotes";
 import weddingVendorListingsRouter from "./wedding-vendor-listings";
+import weddingVendorClaimsRouter from "./wedding-vendor-claims";
 import weddingInsightsRouter from "./wedding-insights";
 
 // Catering marketplace
@@ -259,6 +260,7 @@ r.use("/wedding", weddingPlanningTasksRouter);
 r.use("/wedding", weddingRegistryLinksRouter);
 r.use("/wedding", weddingVendorQuotesRouter);
 r.use("/wedding", weddingVendorListingsRouter);
+r.use("/wedding", weddingVendorClaimsRouter);
 r.use("/wedding", weddingInsightsRouter);
 
 r.use("/adaptive-planner", adaptivePlannerRouter);

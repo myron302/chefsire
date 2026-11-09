@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 import { Vendor, VENDOR_CATEGORIES } from "@/pages/services/lib/wedding-planning-core";
+import { WeddingPlanningUnclaimedVendorActions } from "@/pages/services/wedding-planning/components/WeddingPlanningUnclaimedVendorActions";
 
 interface WeddingPlanningVendorCardProps {
   vendor: Vendor;
@@ -24,7 +25,14 @@ export const WeddingPlanningVendorCard = memo(
         <CardContent className="p-3 md:p-4">
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="min-w-0">
-              <Badge variant="secondary" className="text-[10px] md:text-xs mb-1">{categoryLabel}</Badge>
+              <div className="flex flex-wrap items-center gap-1 mb-1">
+                <Badge variant="secondary" className="text-[10px] md:text-xs">{categoryLabel}</Badge>
+                {vendor.unclaimed && (
+                  <Badge variant="outline" className="text-[10px] md:text-xs text-muted-foreground" title="This business hasn't joined ChefSire yet">
+                    Not on ChefSire yet
+                  </Badge>
+                )}
+              </div>
               <h3 className="font-semibold text-base md:text-lg">{vendor.name}</h3>
             </div>
             <Button
@@ -68,7 +76,9 @@ export const WeddingPlanningVendorCard = memo(
                 </a>
               )}
             </div>
-            {isQuoteRequested ? (
+            {vendor.unclaimed ? (
+              <WeddingPlanningUnclaimedVendorActions vendor={vendor} />
+            ) : isQuoteRequested ? (
               <Badge variant="secondary" className="text-[10px] md:text-xs">Quote Requested</Badge>
             ) : (
               <Button size="sm" variant="outline" onClick={() => onRequestQuote(vendor.id)} className="text-xs w-full sm:w-auto">
