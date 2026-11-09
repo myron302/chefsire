@@ -216,6 +216,7 @@ export async function importOpenVendors(payload: OpenVendorPayload): Promise<{ i
 }
 
 let scheduled = false;
+const RETRY_AFTER_MS = 15 * 60 * 1000;
 
 /** Fire-and-forget import of the bundled data file, at most once per process. Never throws. */
 export function scheduleOpenVendorImport(): void {
@@ -230,7 +231,11 @@ export function scheduleOpenVendorImport(): void {
         console.log(`[Wedding Vendor Import] ${payload.source} ${payload.release}: ${result.rows} listings upserted, ${result.retired} retired`);
       }
     } catch (err) {
-      console.error("[Wedding Vendor Import] failed:", err);
+      console.error("[Wedding Vendor Import] failed (will retry in 15 minutes):", err);
+      // The import rolled back; let the next directory request after the cool-down try again.
+      setTimeout(() => {
+        scheduled = false;
+      }, RETRY_AFTER_MS).unref?.();
     }
   });
 }
