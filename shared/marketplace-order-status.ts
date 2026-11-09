@@ -43,6 +43,8 @@ export function orderStatusSentence(status: string, method: OrderDeliveryMethod)
       return isPickup(method) ? "is being prepared for pickup" : "is being prepared";
     case "shipped":
       return "has shipped";
+    case "tracking_updated":
+      return "has updated tracking information";
     case "delivered":
       return isPickup(method) ? "has been picked up" : method === "digital" ? "is complete" : "has been delivered";
     case "cancelled":

@@ -90,12 +90,36 @@ if (!PG_URL) {
       const tracked = await patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: "1Z999" });
       assert.equal(tracked.status, 200, tracked.text);
       assert.equal(tracked.json.order.trackingNumber, "1Z999");
+      // The same tracking number again, or blank, is a no-op; a tracking number on a non-shipping step is refused.
+      assert.equal((await patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: " 1Z999 " })).json.message, "Order status unchanged");
+      assert.equal((await patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: "  " })).json.message, "Order status unchanged");
+      const misplaced = await patch(shippedOrder.id, "seller", { status: "delivered", trackingNumber: "1Z000" });
+      assert.equal(misplaced.status, 400, misplaced.text);
+      assert.equal(misplaced.json.code, "TRACKING_NOT_APPLICABLE");
+      assert.equal((await patch(pickupOrder.id, "seller", { status: "delivered", trackingNumber: "1Z000" })).status, 400);
+      // Two concurrent tracking edits: exactly one wins, the other is told to reload.
+      // Hold the row lock so both requests read the same tracking number before either can write.
+      const holder = await local.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT id FROM orders WHERE id = $1 FOR UPDATE", [shippedOrder.id]);
+      const racing = Promise.all([
+        patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: "1ZAAA" }),
+        patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: "1ZBBB" }),
+      ]);
+      await new Promise((r) => setTimeout(r, 500));
+      await holder.query("COMMIT");
+      holder.release();
+      const [a, b] = await racing;
+      assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+      const winner = a.status === 200 ? "1ZAAA" : "1ZBBB";
+      assert.equal((await local.query("SELECT tracking_number FROM orders WHERE id = $1", [shippedOrder.id])).rows[0].tracking_number, winner);
       assert.equal((await patch(shippedOrder.id, "seller", { status: "delivered" })).status, 200);
       const notes = await buyerNotes();
       assert.deepEqual(notes.slice(2), [
         "Your order for jam is being prepared",
         "Your order for jam has shipped",
-        "Your order for jam has shipped",
+        "Your order for jam has updated tracking information",
+        "Your order for jam has updated tracking information",
         "Your order for jam has been delivered",
       ]);
 

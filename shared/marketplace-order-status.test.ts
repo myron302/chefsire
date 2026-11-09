@@ -15,4 +15,5 @@ test("pickup orders are picked up, never shipped or delivered", () => {
   assert.equal(orderStatusSentence("delivered", "shipped"), "has been delivered");
   assert.equal(orderStatusSentence("shipped", "shipped"), "has shipped");
   assert.equal(orderStatusSentence("cancelled", "pickup"), "was cancelled");
+  assert.equal(orderStatusSentence("tracking_updated", "shipped"), "has updated tracking information");
 });
