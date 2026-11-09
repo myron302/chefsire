@@ -1,5 +1,6 @@
 // client/src/pages/auth/signup.tsx
 import * as React from 'react';
+import { stripTitlePrefix, titlePrefix, typedUsername, withTitlePrefix } from "@/lib/signup-username";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
@@ -55,6 +56,7 @@ function slugify(raw: string) {
     .replace(/(^-|-$)+/g, '')
     .slice(0, 32);
 }
+
 
 export default function SignupPage() {
   const [, setLocation] = useLocation();
@@ -155,14 +157,20 @@ export default function SignupPage() {
     };
   }, [showTitleDropdown]);
 
-  // Build a default username from first+last only (NO title suffix/hyphen)
+  // A chosen title starts the username ("king-"), and the user types the rest ("king-abc123"). Until the user edits
+  // the username, it's filled from first + last name after the title prefix.
+  const titleValues = useMemo(() => royalTitles.map((t) => t.value), [royalTitles]);
   const [userEditedUsername, setUserEditedUsername] = useState(false);
   useEffect(() => {
     if (userEditedUsername) return;
-    const base = `${firstName} ${lastName}`.trim();
-    if (!base) return;
-    setUsername(slugify(base)); // strictly slugified name — no title, no hyphen
-  }, [firstName, lastName, userEditedUsername]);
+    const base = slugify(`${firstName} ${lastName}`.trim());
+    setUsername(`${titlePrefix(selectedTitle)}${base}`.slice(0, 32));
+  }, [firstName, lastName, userEditedUsername, selectedTitle]);
+
+  const chooseTitle = (title: string) => {
+    setSelectedTitle(title);
+    setUsername((current) => withTitlePrefix(current, title, titleValues).slice(0, 32));
+  };
 
   // Basic validators
   const isEmailValid = useMemo(() => /\S+@\S+\.\S+/.test(email.trim()), [email]);
@@ -255,6 +263,7 @@ export default function SignupPage() {
     if (!firstName.trim()) newErrors.firstName = 'First name is required';
     if (!lastName.trim()) newErrors.lastName = 'Last name is required';
     if (!username.trim()) newErrors.username = 'Username is required';
+    else if (selectedTitle && !stripTitlePrefix(username.trim(), titleValues).replace(/-/g, '')) newErrors.username = `Add your name after "${titlePrefix(selectedTitle)}"`;
     if (!email.trim()) newErrors.email = 'Email is required';
     else if (!isEmailValid) newErrors.email = 'Email is not valid';
     if (!password) newErrors.password = 'Password is required';
@@ -387,7 +396,7 @@ export default function SignupPage() {
                   <div className="absolute z-50 mt-2 w-full bg-white/95 backdrop-blur-lg border border-yellow-300/50 rounded-2xl shadow-2xl max-h-80 overflow-y-auto">
                     <button
                       type="button"
-                      onClick={() => { setSelectedTitle(''); setShowTitleDropdown(false); }}
+                      onClick={() => { chooseTitle(''); setShowTitleDropdown(false); }}
                       className="w-full text-left px-4 py-3 hover:bg-purple-100 transition text-gray-700 border-b border-gray-200"
                     >
                       <span className="text-gray-500">No Title</span>
@@ -396,7 +405,7 @@ export default function SignupPage() {
                       <button
                         key={t.value}
                         type="button"
-                        onClick={() => { setSelectedTitle(t.value); setShowTitleDropdown(false); }}
+                        onClick={() => { chooseTitle(t.value); setShowTitleDropdown(false); }}
                         className={`w-full text-left px-4 py-3 hover:bg-purple-100 transition border-b border-gray-100 last:border-0 ${
                           selectedTitle === t.value ? 'bg-purple-50' : ''
                         }`}
@@ -618,7 +627,7 @@ export default function SignupPage() {
               </div>
             </div>
 
-            {/* Username (no auto suffix, no hyphen from title) */}
+            {/* Username: starts with the chosen title ("king-"), then the name the user types */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-yellow-100 mb-2">
                 Username *
@@ -627,11 +636,17 @@ export default function SignupPage() {
                 id="username"
                 name="signup_username"
                 value={username}
-                onChange={(e) => { setUsername(e.target.value); setUserEditedUsername(true); }}
+                onChange={(e) => {
+                  // The title prefix stays in front; choose "No Title" to remove it.
+                  const typed = e.target.value;
+                  setUsername(typedUsername(typed, selectedTitle, titleValues).slice(0, 32));
+                  setUserEditedUsername(true);
+                }}
+                maxLength={32}
                 className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
                   errors.username ? 'border-red-400' : 'border-yellow-300/50'
                 }`}
-                placeholder="arthur-pendragon"
+                placeholder={selectedTitle ? `${titlePrefix(selectedTitle)}yourname` : "arthur-pendragon"}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"
@@ -639,7 +654,9 @@ export default function SignupPage() {
               />
               {errors.username && <p className="mt-2 text-sm text-red-300">{errors.username}</p>}
               <p className="mt-1 text-xs text-yellow-200">
-                We’ll use exactly what you type here (just cleaned to a URL-safe handle).
+                {selectedTitle
+                  ? `Your title starts your username: ${titlePrefix(selectedTitle)}yourname. Choose "No Title" to remove it.`
+                  : "We’ll use exactly what you type here (just cleaned to a URL-safe handle)."}
               </p>
             </div>
 
