@@ -97,6 +97,17 @@ if (!PG_URL) {
       assert.equal(misplaced.status, 400, misplaced.text);
       assert.equal(misplaced.json.code, "TRACKING_NOT_APPLICABLE");
       assert.equal((await patch(pickupOrder.id, "seller", { status: "delivered", trackingNumber: "1Z000" })).status, 400);
+      // An older pickup order wrongly left in "shipped" still can't take a tracking number.
+      await local.query("UPDATE orders SET status = 'shipped' WHERE id = $1", [pickupOrder.id]);
+      const legacy = await patch(pickupOrder.id, "seller", { status: "shipped", trackingNumber: "1ZLEGACY" });
+      assert.equal(legacy.status, 400, legacy.text);
+      assert.equal(legacy.json.code, "TRACKING_NOT_APPLICABLE");
+      await local.query("UPDATE orders SET status = 'delivered' WHERE id = $1", [pickupOrder.id]);
+      // 100 characters plus surrounding spaces is accepted (trimmed first); 101 is not.
+      const padded = await patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: `  ${"T".repeat(100)}  ` });
+      assert.equal(padded.status, 200, padded.text);
+      assert.equal(padded.json.order.trackingNumber, "T".repeat(100));
+      assert.equal((await patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: "T".repeat(101) })).status, 400);
       // Two concurrent tracking edits: exactly one wins, the other is told to reload.
       // Hold the row lock so both requests read the same tracking number before either can write.
       const holder = await local.connect();
@@ -106,7 +117,16 @@ if (!PG_URL) {
         patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: "1ZAAA" }),
         patch(shippedOrder.id, "seller", { status: "shipped", trackingNumber: "1ZBBB" }),
       ]);
-      await new Promise((r) => setTimeout(r, 500));
+      // Barrier: wait until both requests have read the order and are blocked on the row lock, so both read the
+      // same tracking number before either can write.
+      for (let waited = 0; ; waited += 25) {
+        const blocked = (await local.query(
+          "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE 'update \"orders\"%'",
+        )).rows[0].n;
+        if (blocked >= 2) break;
+        if (waited > 10_000) throw new Error(`only ${blocked} request(s) reached the row lock`);
+        await new Promise((r) => setTimeout(r, 25));
+      }
       await holder.query("COMMIT");
       holder.release();
       const [a, b] = await racing;
@@ -118,6 +138,7 @@ if (!PG_URL) {
       assert.deepEqual(notes.slice(2), [
         "Your order for jam is being prepared",
         "Your order for jam has shipped",
+        "Your order for jam has updated tracking information",
         "Your order for jam has updated tracking information",
         "Your order for jam has updated tracking information",
         "Your order for jam has been delivered",
