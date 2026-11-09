@@ -6,6 +6,8 @@ export function serializeAuthenticatedUser(user: User) {
   return {
     id: user.id,
     email: user.email,
+    // The account owner's own phone (only ever sent to the owner; never in public serializers).
+    phone: user.phone ?? null,
     username: user.username,
     displayName: user.displayName,
     royalTitle: user.royalTitle,

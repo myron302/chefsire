@@ -1,5 +1,6 @@
 // server/routes/auth.ts - WITH MAILER (won't crash if email fails)
 import { Router, type NextFunction, type Request, type Response } from "express";
+import { looksLikePhone, normalizePhone } from "../../shared/phone";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import passport from "passport";
@@ -116,7 +117,7 @@ const TITLE_LABELS: Record<string, string> = {
  * POST /auth/signup
  */
 router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
-  const { firstName, lastName, username, email, password, selectedTitle } = req.body ?? {};
+  const { firstName, lastName, username, email, password, selectedTitle, phone } = req.body ?? {};
   // Avatar file comes from req.file if multer is used, or handle manually from FormData
   const avatarFile = (req as any).file; // Will be set if multer middleware is used
 
@@ -131,6 +132,12 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
 
     if (!username) {
       return res.status(400).json({ error: "Username is required" });
+    }
+
+    // Optional phone: stored normalized (E.164) for phone login. Blank means none; anything unparseable is refused.
+    const phoneValue = typeof phone === "string" && phone.trim() ? normalizePhone(phone) : null;
+    if (typeof phone === "string" && phone.trim() && !phoneValue) {
+      return res.status(400).json({ error: "Enter a valid phone number, or leave it blank" });
     }
 
     // Check if user already exists
@@ -163,6 +170,7 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       royalTitle: selectedTitle || null,
+      phone: phoneValue,
       showFullName: false,
       emailVerifiedAt: null,
       avatar: avatarUrl,
@@ -195,6 +203,12 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
     if ((error as { code?: string })?.code === "23505" && /email/i.test((error as { constraint?: string }).constraint ?? "")) {
       return res.status(400).json({ error: "Email already registered" });
     }
+    if ((error as { code?: string })?.code === "23505" && /phone/i.test((error as { constraint?: string }).constraint ?? "")) {
+      return res.status(400).json({ error: "That phone number can't be used for a new account. Use another or leave it blank" });
+    }
+    if ((error as { code?: string })?.code === "23505" && /username/i.test((error as { constraint?: string }).constraint ?? "")) {
+      return res.status(400).json({ error: "That username is taken. Try another" });
+    }
     // The database could not be reached: nothing was created, and saying "failed to create account" would invite a duplicate attempt blindly.
     if (isDatabaseUnavailableError(error)) {
       console.error("Signup could not reach the database:", (error as Error)?.name);
@@ -206,21 +220,35 @@ router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
 });
 
 /**
+ * The account a login identifier names: an email (has "@"), a phone number, or a username. A phone-shaped identifier
+ * is tried as a phone first; if no account has that phone it is tried as a username (usernames may be all digits).
+ * If it matches one account by phone and a different one by username, it names nobody.
+ */
+async function findLoginAccount(identifier: string) {
+  if (identifier.includes("@")) return storage.findByEmail(identifier);
+  const phone = looksLikePhone(identifier) ? normalizePhone(identifier) : null;
+  const [byPhone, byUsername] = await Promise.all([
+    phone ? storage.findByLoginPhone(phone) : Promise.resolve(undefined),
+    storage.findByLoginUsername(identifier),
+  ]);
+  if (byPhone && byUsername && byPhone.id !== byUsername.id) return undefined;
+  return byPhone ?? byUsername;
+}
+
+/**
  * POST /auth/login
  */
 router.post("/auth/login", loginLimiter, async (req, res) => {
   try {
-    // The "email" field holds either an email address or a username (older clients only ever send an email).
+    // The "email" field holds an email address, a username or a phone number (older clients only ever send an email).
     const { email, password } = req.body;
     const identifier = typeof email === "string" ? email.trim() : "";
 
     if (!identifier || !password) {
-      return res.status(400).json({ error: "Email or username and password are required" });
+      return res.status(400).json({ error: "Email, username or phone and password are required" });
     }
 
-    const user = identifier.includes("@")
-      ? await storage.findByEmail(identifier)
-      : await storage.findByLoginUsername(identifier);
+    const user = await findLoginAccount(identifier);
     if (!user) {
       return res.status(401).json({ error: "Invalid email or password" });
     }

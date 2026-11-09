@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { requireAuth, optionalAuth } from "../middleware";
 import { resolveSelfUserId } from "../lib/self-scope";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
+import { normalizePhone } from "../../shared/phone";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
 import { serializePublicUser } from "../serializers/public-user";
@@ -133,8 +134,20 @@ r.put("/:id", requireAuth, async (req, res) => {
       isPrivate: z.boolean().optional(),
       specialty: z.string().optional(),
       isChef: z.boolean().optional(),
+      // Blank or null removes the phone; anything else must be a valid number.
+      phone: z.string().max(32).nullable().optional(),
     });
-    const body = schema.parse(req.body);
+    const { phone, ...profile } = schema.parse(req.body);
+    const body: Record<string, unknown> = { ...profile };
+    if (phone !== undefined) {
+      if (phone === null || !phone.trim()) {
+        body.phone = null;
+      } else {
+        const normalized = normalizePhone(phone);
+        if (!normalized) return res.status(400).json({ message: "Enter a valid phone number, or leave it blank" });
+        body.phone = normalized;
+      }
+    }
 
     // Explicit profile allowlist above intentionally excludes every subscription/entitlement field.
     const updated = await storage.updateUser(req.params.id, body);
@@ -145,6 +158,9 @@ r.put("/:id", requireAuth, async (req, res) => {
       return res
         .status(400)
         .json({ message: "Invalid user data", errors: error.issues });
+    }
+    if (error?.code === "23505" && /phone/i.test(error?.constraint ?? "")) {
+      return res.status(400).json({ message: "That phone number is already on another account" });
     }
     console.error("PUT /users/:id error", error);
     res.status(500).json({
@@ -193,7 +209,7 @@ r.post("/:id/catering/enable", requireAuth, async (req, res) => {
       coordinates,
     );
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Catering enabled", user: updated });
+    res.json({ message: "Catering enabled", user: serializeAuthenticatedUser(updated) });
   } catch (error: any) {
     if (error?.issues)
       return res.status(400).json({ message: "Invalid data", errors: error.issues });
@@ -207,7 +223,7 @@ r.post("/:id/catering/disable", requireAuth, async (req, res) => {
     if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Catering disabled", user: updated });
+    res.json({ message: "Catering disabled", user: serializeAuthenticatedUser(updated) });
   } catch (error) {
     console.error("POST /users/:id/catering/disable error", error);
     res.status(500).json({ message: "Failed to disable catering" });
@@ -235,7 +251,7 @@ r.put("/:id/catering/settings", requireAuth, async (req, res) => {
       settings
     );
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Catering settings updated", user: updated });
+    res.json({ message: "Catering settings updated", user: serializeAuthenticatedUser(updated) });
   } catch (error: any) {
     if (error?.issues)
       return res.status(400).json({ message: "Invalid data", errors: error.issues });
