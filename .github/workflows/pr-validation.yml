@@ -207,7 +207,7 @@ jobs:
       - name: Test wedding vendor directory and quote delivery against PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/routes/wedding-vendor-quotes.postgres.test.ts server/routes/wedding-vendor-claims.postgres.test.ts server/routes/wedding-vendor-legacy-table.postgres.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/routes/wedding-vendor-quotes.postgres.test.ts server/routes/wedding-vendor-claims.postgres.test.ts server/routes/wedding-vendor-legacy-table.postgres.test.ts server/routes/wedding-budget-settings.postgres.test.ts
       - name: Verify schema declaration coverage
         run: node --import tsx --test server/lib/schema-table-coverage.test.ts
       - name: Apply both Wedding Square migration files to a rollback-only PostgreSQL transaction and check constraints

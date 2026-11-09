@@ -97,8 +97,10 @@ r.post("/budget-settings", requireAuth, async (req, res) => {
     const payload = JSON.stringify(allocations);
 
     const result: any = await db.execute(sql`
-      INSERT INTO wedding_budget_settings (user_id, budget_min, budget_max, guest_count, allocations, updated_at, created_at)
-      VALUES (${userId}, ${budgetMin}, ${budgetMax}, ${guestCount}, ${payload}::jsonb, NOW(), NOW())
+      -- created_at is left to its column default: the production table predates that column (it has only updated_at),
+      -- and naming it here made every save fail with "column created_at does not exist".
+      INSERT INTO wedding_budget_settings (user_id, budget_min, budget_max, guest_count, allocations, updated_at)
+      VALUES (${userId}, ${budgetMin}, ${budgetMax}, ${guestCount}, ${payload}::jsonb, NOW())
       ON CONFLICT (user_id)
       DO UPDATE SET
         budget_min = EXCLUDED.budget_min,
