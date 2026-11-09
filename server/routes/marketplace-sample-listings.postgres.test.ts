@@ -63,6 +63,9 @@ if (!PG_URL) {
       const sampleView = await call("GET", "/api/marketplace/products/prod-1", "anon");
       assert.equal(sampleView.status, 200, sampleView.text);
       assert.equal(sampleView.json.isSample, true);
+      // Cards and the product page show the seller's name.
+      assert.equal(sampleView.json.sellerName, "Demo");
+      assert.equal((await call("GET", `/api/marketplace/products/${real.id}`, "anon")).json.sellerName, "seller");
       assert.equal((await call("GET", `/api/marketplace/products/${real.id}`, "anon")).json.isSample, false);
       assert.equal((await call("GET", "/api/marketplace/products/prod-2", "anon")).json.isSample, false);
       const listing = await call("GET", "/api/marketplace/products", "anon");

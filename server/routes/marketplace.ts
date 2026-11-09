@@ -26,7 +26,11 @@ const toPublicProduct = (viewerId?: string | null) => (product: any) => {
   const { digitalFileUrl, salesCount, viewsCount, ...rest } = product ?? {};
   const isOwner = Boolean(viewerId) && String(product?.sellerId) === String(viewerId);
   const visible = isOwner ? product : rest;
-  const withSeller = product?.seller ? { ...visible, seller: serializePublicUser(product.seller) } : visible;
+  const seller = product?.seller ? serializePublicUser(product.seller) : null;
+  // Product cards and the product page show `sellerName`; derive it from the seller's public identity.
+  const withSeller = seller
+    ? { ...visible, seller, sellerName: seller.displayName || seller.username || "" }
+    : visible;
   return addDeliveryMethods({ ...withSeller, isSample: isSampleProduct(product) });
 };
 
