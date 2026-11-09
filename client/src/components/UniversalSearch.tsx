@@ -58,7 +58,6 @@ export default function UniversalSearch({
 
   const filterOptions = [
     { id: 'featured', label: 'Featured', icon: Star },
-    { id: 'trending', label: 'Trending', icon: TrendingUp },
     { id: 'quick', label: 'Quick (< 5 min)', icon: Clock },
     { id: 'high-protein', label: 'High Protein', icon: Zap },
   ];
@@ -149,7 +148,7 @@ export default function UniversalSearch({
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-4">
                 <span className="text-gray-600">
-                  {searchQuery ? `${filteredResults.length} results` : 'Trending now'}
+                  {searchQuery ? `${filteredResults.length} results` : 'Suggested drinks'}
                 </span>
                 <div className="flex items-center gap-1 text-blue-600">
                   <Star className="h-3 w-3" />
@@ -221,9 +220,6 @@ export default function UniversalSearch({
                               <span className="font-medium text-gray-900">{drink.name}</span>
                               {drink.featured && (
                                 <Star className="h-3 w-3 text-yellow-500 fill-current" />
-                              )}
-                              {drink.trending && (
-                                <TrendingUp className="h-3 w-3 text-red-500" />
                               )}
                             </div>
                             

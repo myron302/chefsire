@@ -126,7 +126,7 @@ export default function WhiskeyBourbonPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedSpirit, setSelectedSpirit] = useState('All Spirits');
   const [selectedMethod, setSelectedMethod] = useState('All Methods');
-  const [sortBy, setSortBy] = useState('trending');
+  const [sortBy, setSortBy] = useState('name');
   const [showFilters, setShowFilters] = useState(false);
   const [alcoholRange, setAlcoholRange] = useState([0, 45]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -258,7 +258,6 @@ export default function WhiskeyBourbonPage() {
     if (onlyIBA && !cocktail.iba_official) return false;
     return true;
   }).sort((a, b) => {
-    if (sortBy === 'trending') return b.reviews - a.reviews;
     if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
     if (sortBy === 'alcohol-low') return parseInt(a.abv) - parseInt(b.abv);
     if (sortBy === 'alcohol-high') return parseInt(b.abv) - parseInt(a.abv);
@@ -481,7 +480,6 @@ export default function WhiskeyBourbonPage() {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="px-4 py-3 border rounded-lg bg-white text-base sm:text-sm w-full sm:w-[240px]"
               >
-                <option value="trending">Most Popular</option>
                 <option value="name">Name (A–Z)</option>
                 <option value="alcohol-low">Lowest ABV</option>
                 <option value="alcohol-high">Highest ABV</option>
@@ -567,12 +565,6 @@ export default function WhiskeyBourbonPage() {
                     </div>
                     <div className="flex gap-2 mb-2">
                       <Badge className="bg-amber-100 text-amber-700">{cocktail.category}</Badge>
-                      {cocktail.trending && (
-                        <Badge className="bg-orange-500">
-                          <TrendingUp className="w-3 h-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
                       {cocktail.featured && (
                         <Badge className="bg-amber-500">
                           <GlassWater className="w-3 h-3 mr-1" />

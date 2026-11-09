@@ -150,7 +150,7 @@ export default function CognacBrandyPage() {
 
   const [activeTab, setActiveTab] = useState('browse');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [sortBy, setSortBy] = useState('trending');
+  const [sortBy, setSortBy] = useState('name');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCocktail, setSelectedCocktail] = useState<typeof cognacCocktails[0] | null>(null);
   
@@ -273,7 +273,6 @@ export default function CognacBrandyPage() {
     }
     return true;
   }).sort((a, b) => {
-    if (sortBy === 'trending') return b.reviews - a.reviews;
     if (sortBy === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
     if (sortBy === 'abv') return parseInt(b.abv) - parseInt(a.abv);
     return 0;
@@ -503,7 +502,6 @@ export default function CognacBrandyPage() {
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
-                    <option value="trending">Most Popular</option>
                     <option value="name">Name (A–Z)</option>
                     <option value="abv">Highest ABV</option>
                   </select>

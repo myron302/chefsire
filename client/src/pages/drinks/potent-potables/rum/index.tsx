@@ -514,12 +514,6 @@ export default function RumCocktailsPage() {
                     </div>
                     <div className="flex gap-2 mb-2">
                       <Badge className="bg-orange-100 text-orange-700">{cocktail.category}</Badge>
-                      {cocktail.trending && (
-                        <Badge className="bg-red-500">
-                          <TrendingUp className="w-3 h-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
                       {cocktail.featured && (
                         <Badge className="bg-orange-500">
                           <GlassWater className="w-3 h-3 mr-1" />

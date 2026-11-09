@@ -36,7 +36,7 @@ jobs:
       - name: Test Cookoff Arena stats and image placeholder fallback
         run: node --import tsx --test client/src/pages/competitions/competition-library-stats.test.ts client/src/pages/competitions/competition-room-rules.test.ts
       - name: Test wedding vendor directory mapping
-        run: node --import tsx --test client/src/pages/services/lib/wedding-vendors.test.ts
+        run: node --import tsx --test client/src/pages/services/lib/wedding-vendors.test.ts client/src/pages/drinks/no-fake-popularity.test.ts
       - name: Test hosted invoice payment ownership
         run: node --import tsx --test server/lib/wedding-square-invoice-payment-customer.test.ts
       - name: Test owner-scoped sandbox checkout eligibility

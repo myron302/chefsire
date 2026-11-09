@@ -400,12 +400,6 @@ export default function DetoxesHub() {
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     <div className="absolute top-3 left-3 flex gap-2">
-                      {category.trending && (
-                        <Badge className="bg-red-500 text-white text-xs">
-                          <Flame className="h-3 w-3 mr-1" />
-                          Trending
-                        </Badge>
-                      )}
                       {category.featured && (
                         <Badge className="bg-yellow-500 text-white text-xs">
                           <Star className="h-3 w-3 mr-1" />
@@ -457,12 +451,12 @@ export default function DetoxesHub() {
           </div>
         </div>
 
-        {/* Popular Detoxes */}
+        {/* Detox picks (editorial, not a popularity ranking) */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-6 w-6 text-green-500" />
-              Most Popular This Week
+              Detox Picks
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -555,7 +549,7 @@ export default function DetoxesHub() {
 
               <div className="p-6 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-400 relative">
                 <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white">
-                  Most Popular
+                  Recommended
                 </Badge>
                 <div className="text-center mb-4 mt-2">
                   <div className="text-3xl font-bold text-blue-600 mb-1">3 Days</div>

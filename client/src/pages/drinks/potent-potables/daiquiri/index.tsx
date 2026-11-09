@@ -104,7 +104,7 @@ export default function DaiquiriPage() {
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [activeTab, setActiveTab] = useState<"browse" | "style" | "featured">("browse");
   const [selectedStyle, setSelectedStyle] = useState("all");
-  const [sortBy, setSortBy] = useState("trending");
+  const [sortBy, setSortBy] = useState("name");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -128,7 +128,6 @@ export default function DaiquiriPage() {
       return true;
     })
     .sort((a, b) => {
-      if (sortBy === "trending") return (b.reviews ?? 0) - (a.reviews ?? 0);
       if (sortBy === "name") return String(a.name || '').localeCompare(String(b.name || ''));
       if (sortBy === "abv") return parseInt(b.abv) - parseInt(a.abv);
       return 0;
@@ -416,7 +415,6 @@ export default function DaiquiriPage() {
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
-                    <option value="trending">Most Popular</option>
                     <option value="name">Name (A–Z)</option>
                     <option value="abv">Highest ABV</option>
                   </select>
