@@ -7,7 +7,6 @@
 -- No DROP, no UPDATE/DELETE. One transaction: any error rolls everything back.
 BEGIN;
 
-\restrict M9D7XikuD2XVkxr2LbQ3gWOJDtx56KrTU5gVhPLjnvdNQTt29ZrSfO0Md9vmTRC
 
 CREATE TABLE public.catering_attempt_square_payments (
     id character varying DEFAULT gen_random_uuid() NOT NULL,
@@ -1163,7 +1162,6 @@ ALTER TABLE ONLY public.remix_saves
 ALTER TABLE ONLY public.square_oauth_transactions
     ADD CONSTRAINT square_oauth_transactions_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
-\unrestrict M9D7XikuD2XVkxr2LbQ3gWOJDtx56KrTU5gVhPLjnvdNQTt29ZrSfO0Md9vmTRC
 
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS checkout_idempotency_key character varying(64);
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS seller_tier_snapshot text;
