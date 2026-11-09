@@ -35,6 +35,7 @@ import GoLiveModal from "@/components/GoLiveModal";
 import CameraModal from "@/components/CameraModal";
 import { uploadMediaUrl } from "@/lib/uploadMedia";
 import { MEDIA_UPLOAD_ACCEPT } from "@shared/media-types";
+import { buildRecipePostPayload } from "@/lib/recipe-post-payload";
 
 const EMPTY_SELECT = "__empty__";
 
@@ -463,13 +464,27 @@ export default function CreatePost() {
           : formData.caption;
 
       // No userId: the server always makes the authenticated session the post's author.
-      const postData = {
+      const postData: Record<string, unknown> = {
         caption: captionToSend,
         imageUrl: formData.imageUrl,
         additionalImages: formData.additionalImages,
         tags,
         isRecipe,
       };
+      // The server creates the post and its recipe together from this one request (POST /api/posts requires
+      // `recipe` when isRecipe is true). Sending it separately afterwards made every recipe post fail with
+      // "Recipe details are required for recipe posts".
+      if (isRecipe) {
+        postData.recipe = buildRecipePostPayload({
+          title: formData.recipeTitle,
+          ingredients: ingredientRowsToStrings(formData.ingredients),
+          instructions: normalizeSteps(formData.instructions),
+          cookTime: formData.cookTime,
+          servings: formData.servings,
+          difficulty: formData.difficulty,
+          imageUrl: formData.imageUrl,
+        });
+      }
 
       const postResponse = await apiRequest("POST", "/api/posts", postData);
       if (!postResponse.ok) {
@@ -477,29 +492,6 @@ export default function CreatePost() {
         throw new Error(err?.message || "Failed to create post");
       }
       const post = await postResponse.json();
-
-      // Recipe row (linked to post.id)
-      if (isRecipe && formData.recipeTitle) {
-        const ingredients = ingredientRowsToStrings(formData.ingredients);
-        const instructions = normalizeSteps(formData.instructions);
-
-        const recipeData = {
-          postId: post.id,
-          title: formData.recipeTitle,
-          ingredients,
-          instructions,
-          cookTime: formData.cookTime ? parseInt(formData.cookTime) : null,
-          servings: formData.servings ? parseInt(formData.servings) : null,
-          difficulty: formData.difficulty,
-          imageUrl: formData.imageUrl || null,
-        };
-
-        const recipeRes = await apiRequest("POST", "/api/recipes", recipeData);
-        if (!recipeRes.ok) {
-          const err = await recipeRes.json().catch(() => ({}));
-          throw new Error(err?.message || "Failed to create recipe");
-        }
-      }
 
       return post;
     },
