@@ -79,6 +79,11 @@ export async function ensureWeddingVendorListingsTable() {
   // add the missing agree column and allow listings without an email (email was always optional here).
   await db.execute(sql`ALTER TABLE wedding_vendor_listings ADD COLUMN IF NOT EXISTS agree BOOLEAN NOT NULL DEFAULT FALSE`);
   await db.execute(sql`ALTER TABLE wedding_vendor_listings ALTER COLUMN email DROP NOT NULL`);
+  // The older table also carries CHECK constraints for a different status/plan vocabulary (active/suspended,
+  // premium) that reject what this code writes (published/hidden/retired, pro). The routes validate both values
+  // themselves (status PATCH allow-list, zod plan enum), so drop the stale checks.
+  await db.execute(sql`ALTER TABLE wedding_vendor_listings DROP CONSTRAINT IF EXISTS wedding_vendor_listings_status_check`);
+  await db.execute(sql`ALTER TABLE wedding_vendor_listings DROP CONSTRAINT IF EXISTS wedding_vendor_listings_plan_check`);
 
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS wedding_vendor_listings_source_id_uidx

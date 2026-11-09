@@ -11,7 +11,8 @@ if (!PG_URL) {
     const local = await connectLocalPg();
     const schema = await import("../../shared/schema");
     try {
-      // The shape production actually has: agreed_to_terms (no agree), email/category/city NOT NULL, integer id.
+      // The shape production actually has: agreed_to_terms (no agree), email/category/city NOT NULL, integer id,
+      // and CHECK constraints on status and plan from an older vocabulary.
       await local.query(`
         DROP TABLE IF EXISTS wedding_vendor_imports, wedding_vendor_listings, users CASCADE;
         ${ddl(schema.users, "users")};
@@ -31,8 +32,8 @@ if (!PG_URL) {
           min_price INTEGER,
           max_price INTEGER,
           years_in_business VARCHAR,
-          plan VARCHAR NOT NULL DEFAULT 'basic',
-          status VARCHAR NOT NULL DEFAULT 'pending',
+          plan VARCHAR NOT NULL DEFAULT 'basic' CONSTRAINT wedding_vendor_listings_plan_check CHECK (plan IN ('basic', 'featured', 'premium')),
+          status VARCHAR NOT NULL DEFAULT 'pending' CONSTRAINT wedding_vendor_listings_status_check CHECK (status IN ('pending', 'approved', 'rejected', 'active', 'suspended')),
           reviewed_at TIMESTAMP,
           reviewed_by VARCHAR,
           admin_notes TEXT,
@@ -60,6 +61,10 @@ if (!PG_URL) {
         ["Has Email Florist", "published", false, "f@example.test"],
         ["No Email Bakery", "published", false, null],
       ]);
+
+      // Statuses and plans this code uses are accepted now.
+      await local.query("UPDATE wedding_vendor_listings SET status = 'hidden', plan = 'pro' WHERE business_name = 'No Email Bakery'");
+      await local.query("UPDATE wedding_vendor_listings SET status = 'retired' WHERE business_name = 'No Email Bakery'");
     } finally {
       await local.query("DROP TABLE IF EXISTS wedding_vendor_imports, wedding_vendor_listings, users CASCADE").catch(() => {});
       await local.end();
