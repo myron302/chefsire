@@ -120,7 +120,7 @@ function ThreadRow({ thread, meId }: { thread: DMThread; meId?: string }) {
 }
 
 export default function DMInboxPage() {
-  const { user } = useUser();
+  const { user, loading: authLoading } = useUser();
   const meId = user?.id;
   const qc = useQueryClient();
   const [location, setLocation] = useLocation();
@@ -130,8 +130,10 @@ export default function DMInboxPage() {
   const newUsername = urlParams.get("new") || "";
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["dm", "threads"],
+    // Scoped to the signed-in user; signed-out visitors get a sign-in prompt instead of a 401 error.
+    queryKey: ["dm", "threads", meId],
     queryFn: fetchThreads,
+    enabled: Boolean(meId),
   });
 
   const [toUsername, setToUsername] = React.useState(newUsername);
@@ -268,6 +270,16 @@ export default function DMInboxPage() {
 
     // Otherwise, open suggestions.
     setShowSearchSuggestions(true);
+  }
+
+  if (!authLoading && !user) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12 text-center">
+        <h1 className="text-2xl font-bold mb-2">Royal Table Talk</h1>
+        <p className="mb-4 text-gray-600">Sign in to read and send messages.</p>
+        <Link href={`/login?next=${encodeURIComponent("/messages")}`} className="underline font-medium">Sign in</Link>
+      </div>
+    );
   }
 
   return (
