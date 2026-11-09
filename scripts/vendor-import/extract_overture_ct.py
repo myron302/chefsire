@@ -51,10 +51,12 @@ CREATE TABLE ct AS
 SELECT
   id AS overture_id,
   names.primary AS business_name,
-  categories.primary AS source_category,
-  CASE categories.primary {mapping} END AS category,
+  taxonomy.primary AS source_category,
+  CASE taxonomy.primary {mapping} END AS category,
   confidence,
   websites[1] AS website,
+  emails[1] AS email,
+  operating_status,
   phones[1] AS phone,
   socials[1] AS social,
   addresses[1].freeform AS street,
@@ -66,7 +68,8 @@ SELECT
 FROM read_parquet('s3://overturemaps-us-west-2/release/{release}/theme=places/type=place/*', hive_partitioning=1)
 WHERE bbox.xmin BETWEEN -73.73 AND -71.78
   AND bbox.ymin BETWEEN 40.95 AND 42.06
-  AND categories.primary IN ({cats})
+  AND taxonomy.primary IN ({cats})
+  AND coalesce(operating_status, 'open') = 'open'
   AND addresses[1].country = 'US'
   AND upper(addresses[1].region) IN ('CT', 'CONNECTICUT')
 """)
@@ -75,12 +78,12 @@ con.execute(f"COPY (SELECT * FROM ct ORDER BY category, city, business_name) TO 
 summary = con.execute("""
   SELECT category, source_category, count(*) AS n,
          count(*) FILTER (WHERE confidence >= 0.7) AS n_conf70,
-         count(website) AS with_site, count(phone) AS with_phone
+         count(website) AS with_site, count(email) AS with_email, count(phone) AS with_phone
   FROM ct GROUP BY ALL ORDER BY category, n DESC
 """).fetchall()
 total = con.execute("SELECT count(*), count(*) FILTER (WHERE confidence >= 0.7) FROM ct").fetchone()
 lines = [f"# Overture {release}: CT wedding-vendor candidates", "", f"Total: {total[0]} (confidence >= 0.7: {total[1]})", "",
-         "| ChefSire category | Overture category | rows | conf>=0.7 | website | phone |", "|---|---|---|---|---|---|"]
-lines += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} |" for r in summary]
+         "| ChefSire category | Overture category | rows | conf>=0.7 | website | email | phone |", "|---|---|---|---|---|---|---|"]
+lines += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} | {r[6]} |" for r in summary]
 (out / "summary.md").write_text("\n".join(lines) + "\n")
 print("\n".join(lines))
