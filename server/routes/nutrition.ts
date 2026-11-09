@@ -1,5 +1,6 @@
 // server/routes/nutrition.ts
 import { Router } from "express";
+import { nutritionEntitlement, revokeNutritionTrial } from "../lib/nutrition-entitlement";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { effectiveSubscriptionPresentation, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
@@ -176,18 +177,16 @@ r.get("/subscription", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const currentTier = coerceNutritionTierFromUser(user);
-    const effectiveState = effectiveSubscriptionPresentation(
-      currentTier,
-      deriveNutritionStatus(user),
-      (user as any).nutritionTrialEndsAt,
-    );
+    // Server-verified: an active cardless trial (or, later, verified paid access). Legacy user columns are not evidence.
+    const entitlement = await nutritionEntitlement(user.id);
+    const currentTier = entitlement.premium ? "premium" : "free";
 
     res.json({
       ok: true,
       currentTier,
-      status: effectiveState.status,
-      endsAt: effectiveState.endsAt,
+      status: entitlement.premium ? "active" : "inactive",
+      endsAt: entitlement.endsAt,
+      trial: entitlement.trial,
       tierInfo: NUTRITION_SUBSCRIPTION_TIERS[currentTier],
     });
   } catch (error) {
@@ -208,7 +207,7 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    const currentTier = coerceNutritionTierFromUser(existingUser);
+    const currentTier = (await nutritionEntitlement(userId)).premium ? "premium" : coerceNutritionTierFromUser(existingUser);
     const now = new Date();
 
     // Client input is not billing evidence. Existing legacy entitlement remains readable,
@@ -218,6 +217,8 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
     }
 
     // tier === "free" => immediate downgrade/cancel for nutrition
+    // Downgrading ends an active cardless trial early; it can never be restarted.
+    await revokeNutritionTrial(userId);
     const previousEndsAtRaw = (existingUser as any).nutritionTrialEndsAt;
     const previousEndsAt = parseValidDateOrNull(previousEndsAtRaw) ?? now;
 

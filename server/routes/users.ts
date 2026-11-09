@@ -6,6 +6,7 @@ import { requireAuth, optionalAuth } from "../middleware";
 import { resolveSelfUserId } from "../lib/self-scope";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { normalizePhone } from "../../shared/phone";
+import { activateNutritionTrial } from "../lib/nutrition-entitlement";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
 import { serializePublicUser } from "../serializers/public-user";
@@ -385,11 +386,23 @@ r.post("/:id/nutrition/trial", requireAuth, async (req, res) => {
   if ((req.user as { id: string }).id !== req.params.id) {
     return res.status(403).json({ message: "You can only change your own nutrition subscription" });
   }
-  return res.status(503).json({
-    ok: false,
-    code: "SUBSCRIPTION_BILLING_NOT_CONFIGURED",
-    message: "Nutrition premium trials are unavailable until eligibility can be verified server-side.",
-  });
+  // A cardless, one-time 30-day trial recorded server-side (server/lib/nutrition-entitlement.ts). No payment details,
+  // no automatic charge at the end; a second request never extends or restarts it.
+  try {
+    const trial = await activateNutritionTrial(req.params.id);
+    if (!trial) {
+      return res.status(409).json({ ok: false, code: "NUTRITION_TRIAL_USED", message: "You've already used your free Nutrition Premium trial." });
+    }
+    return res.json({
+      ok: true,
+      trialEndsAt: trial.expiresAt,
+      trial,
+      message: "Your 30-day Nutrition Premium trial is active. No credit card required and no charge when it ends.",
+    });
+  } catch (error) {
+    console.error("Nutrition trial activation failed:", (error as Error)?.message);
+    return res.status(503).json({ ok: false, message: "We couldn't start your trial right now. Please try again." });
+  }
 });
 
 // Goals, daily summaries, and logs are served only by the authenticated

@@ -463,3 +463,13 @@ export const weddingIntroTrials = pgTable("wedding_intro_trials", {
   check("wedding_intro_trials_tier_check", sql`${t.tier} IN ('premium', 'elite')`),
   check("wedding_intro_trials_check", sql`${t.expiresAt} = ${t.activatedAt} + interval '336 hours'`),
 ]);
+
+// Nutrition Premium cardless 30-day introductory trial: one per account, server-dated (docs/ops/2026-11-09-nutrition-intro-trials.sql).
+export const nutritionIntroTrials = pgTable("nutrition_intro_trials", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  activatedAt: timestamp("activated_at", { withTimezone: true }).notNull().default(sql`statement_timestamp()`),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`statement_timestamp() + interval '720 hours'`),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => [
+  check("nutrition_intro_trials_check", sql`${t.expiresAt} = ${t.activatedAt} + interval '720 hours'`),
+]);

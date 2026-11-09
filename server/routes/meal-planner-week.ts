@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from "express";
+import { hasNutritionPremium } from "../lib/nutrition-entitlement";
 import { randomUUID } from "crypto";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
@@ -19,7 +20,6 @@ import { recordMealPlannerEvent } from "./meal-planner-events.js";
 import { classifyLocalRecipeRefs, filterVisibleRecipeIds, recipeVisibleToViewer, redactUnavailableRecipes } from "../lib/recipe-visibility.js";
 import {
   addDays,
-  assertPremiumNutrition,
   endOfDay,
   fmtISODate,
   mapEntriesToWeeklyMeals,
@@ -407,7 +407,7 @@ router.get("/settings", requireAuth, async (req: Request, res: Response) => {
     if (!u) return res.status(404).json({ message: "User not found" });
 
     res.json({
-      premium: assertPremiumNutrition(u),
+      premium: await hasNutritionPremium(u.id),
       settings: {
         dailyCalorieGoal: u.dailyCalorieGoal || 2000,
         macroGoals: (u.macroGoals as any) || { protein: 150, carbs: 200, fat: 65 },
@@ -1360,7 +1360,7 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
     const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!u) return res.status(404).json({ message: "User not found" });
 
-    if (!assertPremiumNutrition(u)) {
+    if (!(await hasNutritionPremium(u.id))) {
       return res.status(403).json({
         message: "Nutrition premium required",
         code: "NUTRITION_PREMIUM_REQUIRED",
