@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 import { useUser } from "@/contexts/UserContext";
 import { apiRequest } from "@/lib/queryClient";
+import { orderStatusLabel } from "@shared/marketplace-order-status";
 
 type Purchase = {
   order: {
@@ -55,7 +56,7 @@ export default function MarketplaceOrdersPage() {
           <h2 className="font-semibold">{product.name}</h2>
           <p>{order.quantity} × · ${Number(order.totalAmount).toFixed(2)} total</p>
           <p>Payment: {verifiedPaid ? "Paid" : order.paymentStatus.replaceAll("_", " ")}</p>
-          <p>Order: {order.status ?? "pending"}</p>
+          <p>Order: {orderStatusLabel(order.status, order.deliveryMethod)}</p>
           {verifiedPaid && order.buyerId === user.id && order.deliveryMethod === "digital" && (
             <a className="underline" href={`/api/orders/${encodeURIComponent(order.id)}/download`}>Download purchase</a>
           )}

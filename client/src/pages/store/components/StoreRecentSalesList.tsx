@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { orderStatusLabel } from "@shared/marketplace-order-status";
 import { Package, ShoppingCart } from "lucide-react";
 
 export type RecentSale = {
@@ -59,7 +60,7 @@ export default function StoreRecentSalesList({ recentSales, renderFulfillment }:
               <p className="font-bold text-green-600 text-sm">+${Number(sale.order.sellerAmount).toFixed(2)}</p>
             ) : <p className="text-sm text-gray-500">No verified earnings</p>}
             <Badge variant={sale.order.status === "delivered" ? "default" : "secondary"} className="text-xs mt-0.5">
-              {sale.order.status}
+              {orderStatusLabel(sale.order.status, sale.order.deliveryMethod)}
             </Badge>
             {renderFulfillment?.(sale)}
           </div>

@@ -13,6 +13,7 @@ import { hasLegacyPaymentIndicators, isVerifiedMarketplaceEarning, toClientOrder
 import { marketplaceDigitalFilePath } from "../lib/marketplace-digital-file";
 import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../../shared/marketplace-fulfillment";
 import { isSampleProduct, SAMPLE_LISTING_CODE, SAMPLE_LISTING_MESSAGE } from "../../shared/marketplace-sample";
+import { canMarkShipped } from "../../shared/marketplace-order-status";
 
 const router = Router();
 
@@ -387,6 +388,15 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
     if (status !== order.status && !(transitions[order.status ?? "pending"] ?? []).includes(status)) {
       return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Invalid fulfillment transition" });
     }
+    // Pickup, in-store and digital orders are never shipped.
+    if (status === "shipped" && status !== order.status && !canMarkShipped(order.deliveryMethod)) {
+      return res.status(409).json({ ok: false, code: "INVALID_FULFILLMENT_TRANSITION", error: "Only shipped orders can be marked shipped" });
+    }
+    // A repeated request (double click, retry) for the status the order already has changes nothing and does not
+    // notify the buyer again. Adding a tracking number to a shipped order still goes through.
+    if (status === order.status && !(trackingNumber && trackingNumber !== order.trackingNumber)) {
+      return res.json({ ok: true, message: "Order status unchanged", order: toClientOrder(order) });
+    }
     if (["processing", "shipped", "delivered"].includes(status) && !isVerifiedMarketplaceEarning(order)) {
       return res.status(409).json({
         ok: false,
@@ -458,7 +468,8 @@ router.patch("/:id/status", requireAuth, async (req, res) => {
         order.buyerId,
         status,
         orderId,
-        product.name
+        product.name,
+        order.deliveryMethod
       );
     }
 
