@@ -18,6 +18,9 @@ export const users = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     username: text("username").notNull().unique(),
     email: text("email").notNull().unique(),
+    // E.164 ("+18605551234"), unverified, optional; used only to identify the account at password login.
+    // Production has CHECK users_phone_e164_check and partial UNIQUE index users_phone_unique (applied 2026-11-09).
+    phone: varchar("phone", { length: 16 }),
     password: text("password"),
     displayName: text("display_name").notNull(),
     firstName: text("first_name"),

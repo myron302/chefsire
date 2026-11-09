@@ -2559,6 +2559,7 @@ export default function SettingsPage() {
     bio: user?.bio || "",
     avatar: user?.avatar || "",
     isPrivate: user?.isPrivate || false,
+    phone: user?.phone || "",
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -2785,6 +2786,8 @@ export default function SettingsPage() {
           bio: profile.bio,
           avatar: profile.avatar,
           isPrivate: profile.isPrivate,
+          // Sent only when changed, so saving other fields never touches the phone. Blank removes it.
+          ...(profile.phone.trim() !== (user.phone || "") ? { phone: profile.phone.trim() } : {}),
         }),
       });
 
@@ -2800,7 +2803,9 @@ export default function SettingsPage() {
         displayName: data.user.displayName,
         bio: data.user.bio,
         avatar: data.user.avatar,
+        phone: data.user.phone ?? null,
       } as any);
+      setProfile((current) => ({ ...current, phone: data.user.phone || "" }));
 
       toast({
         title: "✓ Profile updated",
@@ -3031,6 +3036,21 @@ export default function SettingsPage() {
                     value={profile.displayName}
                     onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
                   />
+                </div>
+
+                {/* Phone (optional): lets the owner sign in with it; never shown on the profile */}
+                <div>
+                  <Label htmlFor="phone">Phone (optional)</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={profile.phone}
+                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                    placeholder="(860) 555-1234"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Private. Lets you sign in with your phone number instead of your email or username. Leave blank to remove.</p>
                 </div>
 
                 {/* Bio */}

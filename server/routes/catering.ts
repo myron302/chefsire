@@ -1,6 +1,7 @@
 // server/routes/catering.ts
 import { Router } from "express";
 import { storage } from "../storage";
+import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { sendCateringRequestNotification } from "../services/notification-service";
 import { db } from "../db";
 import { users } from "../../shared/schema";
@@ -91,7 +92,7 @@ r.post("/users/:id/enable", requireAuth, async (req, res, next) => {
     if (!coordinates) return res.status(422).json({ message: "We couldn't find that service location." });
     const updated = await storage.enableCatering(req.params.id, String(location), Number(radius), bio, coordinates);
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Catering enabled successfully", user: updated });
+    res.json({ message: "Catering enabled successfully", user: serializeAuthenticatedUser(updated) });
   } catch (error) { next(error); }
 });
 
@@ -103,7 +104,7 @@ r.post("/users/:id/disable", requireAuth, async (req, res, next) => {
     if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Catering disabled successfully", user: updated });
+    res.json({ message: "Catering disabled successfully", user: serializeAuthenticatedUser(updated) });
   } catch (error) { next(error); }
 });
 
@@ -123,7 +124,7 @@ r.put("/users/:id/settings", requireAuth, async (req, res, next) => {
     }
     const updated = await storage.updateCateringSettings(req.params.id, settings);
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Catering settings updated", user: updated });
+    res.json({ message: "Catering settings updated", user: serializeAuthenticatedUser(updated) });
   } catch (error) { next(error); }
 });
 
@@ -136,7 +137,7 @@ r.put("/users/:id/profile", requireAuth, async (req, res, next) => {
     if (!coordinates) return res.status(422).json({ message: "We couldn't find that service location. Try a city, ZIP code, or latitude,longitude." });
     const updated = await storage.updateUser(req.params.id, { displayName: profile.displayName, avatar: profile.avatar || null, specialty: profile.specialty, cateringEnabled: profile.enabled, cateringLocation: profile.location, cateringLatitude: coordinates.latitude.toString(), cateringLongitude: coordinates.longitude.toString(), cateringRadius: profile.radius, cateringBio: profile.bio });
     if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Catering profile saved", user: updated });
+    res.json({ message: "Catering profile saved", user: serializeAuthenticatedUser(updated) });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid catering profile", errors: error.issues });
     next(error);

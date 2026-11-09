@@ -1,6 +1,7 @@
 // client/src/pages/auth/signup.tsx
 import * as React from 'react';
 import { stripTitlePrefix, titlePrefix, typedUsername, withTitlePrefix } from "@/lib/signup-username";
+import { normalizePhone } from "@shared/phone";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
@@ -174,10 +175,8 @@ export default function SignupPage() {
 
   // Basic validators
   const isEmailValid = useMemo(() => /\S+@\S+\.\S+/.test(email.trim()), [email]);
-  const isPhoneValid = useMemo(() => {
-    const digits = (phone || '').replace(/\D/g, '');
-    return digits.length === 0 || (digits.length >= 10 && digits.length <= 15);
-  }, [phone]);
+  // Same rule the server applies (shared/phone): blank, or a number it can store for phone sign-in.
+  const isPhoneValid = useMemo(() => !phone.trim() || normalizePhone(phone) !== null, [phone]);
 
   const passwordScore = useMemo(() => {
     const p = password || '';
@@ -728,10 +727,11 @@ export default function SignupPage() {
                 className={`w-full px-4 py-3 bg-white/20 border rounded-2xl placeholder-yellow-200 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent ${
                   errors.phone ? 'border-red-400' : 'border-yellow-300/50'
                 }`}
-                placeholder="+1 (555) 123-4567"
+                placeholder="(860) 555-1234"
                 autoComplete="tel"
               />
               {errors.phone && <p className="mt-2 text-sm text-red-300">{errors.phone}</p>}
+              <p className="mt-1 text-xs text-yellow-200">Private. Lets you sign in with your phone number too. Outside the US/Canada, start with + and your country code.</p>
             </div>
 
             <p className="flex items-center gap-2 text-sm text-yellow-100">

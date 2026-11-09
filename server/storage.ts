@@ -114,6 +114,7 @@ export interface IStorage {
   // Email Verification
   findByEmail(email: string): Promise<User | undefined>;
   findByLoginUsername(username: string): Promise<User | undefined>;
+  findByLoginPhone(phone: string): Promise<User | undefined>;
   findById(id: string): Promise<User | undefined>;
   findVerificationToken(hashedToken: string): Promise<any | undefined>;
   verifyUserEmail(userId: string): Promise<void>;
@@ -485,6 +486,13 @@ export class DrizzleStorage implements IStorage {
    * Password login by username: an exact, case-insensitive match (no LIKE wildcards, so "chef_a" never matches
    * "chefxa"). If two accounts differ only by case the name is ambiguous and nobody is returned.
    */
+  /** Password login by an E.164 phone (already normalized). Unique in the database; two rows would refuse both. */
+  async findByLoginPhone(phone: string): Promise<User | undefined> {
+    const db = getDb();
+    const result = await db.select().from(users).where(eq(users.phone, phone)).limit(2);
+    return result.length === 1 ? result[0] : undefined;
+  }
+
   async findByLoginUsername(username: string): Promise<User | undefined> {
     const db = getDb();
     const name = username.trim().toLowerCase();

@@ -5,6 +5,8 @@ import { createSessionController, type SessionController, type SessionState, typ
 type User = {
   id: string;
   email: string;
+  /** E.164; only ever present for the signed-in owner. */
+  phone?: string | null;
   username?: string;
   displayName?: string;
   royalTitle?: string | null;
