@@ -56,9 +56,10 @@ if (!PG_URL) {
           { source_id: "a", business_name: "Blooms Co", category: "Florist", city: "Hartford", state: "CT", website: "www.blooms.example", email: "Owner@Blooms.example", phone: "8605550100" },
           { source_id: "b", business_name: "Walk-in Cakes", category: "Bakery & Cakes", city: "Milford", state: "CT", phone: "2035550101" },
           { source_id: "c", business_name: "Closing Soon DJ", category: "DJ", city: "Bristol", state: "CT" },
+          { source_id: "s", business_name: "Stale Claim Venue", category: "Venue", city: "Avon", state: "CT", email: "venue@example.test" },
         ],
       };
-      assert.deepEqual(await importOpenVendors(release1), { imported: true, rows: 3, retired: 0 });
+      assert.deepEqual(await importOpenVendors(release1), { imported: true, rows: 4, retired: 0 });
       assert.equal((await importOpenVendors(release1)).imported, false, "a release is imported once");
 
       const dir = await call("GET", "/api/wedding/vendor-listings/public");
@@ -71,6 +72,7 @@ if (!PG_URL) {
       const bloomsId = Number(byName["Blooms Co"].id);
       const cakesId = Number(byName["Walk-in Cakes"].id);
       const djId = Number(byName["Closing Soon DJ"].id);
+      const staleId = Number(byName["Stale Claim Venue"].id);
 
       // Unclaimed listings do not take quote requests.
       const quote = await call("POST", "/api/wedding/vendor-quotes", "stranger", { vendorId: bloomsId, contactEmail: "c@example.test" });
@@ -105,10 +107,18 @@ if (!PG_URL) {
       assert.equal("phone" in blooms, false);
       assert.equal((await call("POST", `/api/wedding/vendor-listings/${bloomsId}/claim`, "stranger")).status, 409);
 
+      // A claim started while published can't complete after the listing is hidden.
+      assert.equal((await call("POST", `/api/wedding/vendor-listings/${staleId}/claim`, "stranger")).json.method, "email");
+      const staleToken = new URL(mails.at(-1).verifyUrl).searchParams.get("token")!;
+      await local.query("UPDATE wedding_vendor_listings SET status = 'hidden' WHERE id = $1", [staleId]);
+      assert.equal((await call("POST", "/api/wedding/vendor-listings/claims/verify", "stranger", { token: staleToken })).status, 409);
+      assert.equal((await local.query("SELECT user_id FROM wedding_vendor_listings WHERE id = $1", [staleId])).rows[0].user_id, null);
+      const mailsBeforeReview = mails.length;
+
       // No email on file: the claim waits for review and nothing is mailed.
       const review = await call("POST", `/api/wedding/vendor-listings/${cakesId}/claim`, "stranger");
       assert.equal(review.json.method, "review");
-      assert.equal(mails.length, 1);
+      assert.equal(mails.length, mailsBeforeReview);
 
       // Reports: duplicates from one user count once; three different users hide an unclaimed listing.
       assert.equal((await call("POST", `/api/wedding/vendor-listings/${djId}/report`, "r1", { reason: "bogus" })).status, 400);
@@ -120,24 +130,38 @@ if (!PG_URL) {
       const hiddenDir = await call("GET", "/api/wedding/vendor-listings/public");
       assert.equal(hiddenDir.json.listings.some((l: any) => Number(l.id) === djId), false);
 
-      // Re-import: claimed listings are not overwritten, hidden listings stay hidden,
+      // An older or same release is ignored.
+      assert.equal((await importOpenVendors({ ...release1, release: "r0" })).imported, false);
+
+      // A much smaller file (looks broken) imports but retires nothing.
+      const tiny = await importOpenVendors({ source: "overture", release: "r2", listings: [{ source_id: "a", business_name: "Blooms Co RENAMED", city: "Hartford", state: "CT" }] });
+      assert.deepEqual(tiny, { imported: true, rows: 1, retired: 0 });
+      assert.equal((await local.query("SELECT status FROM wedding_vendor_listings WHERE source_id = 'b'")).rows[0].status, "published");
+
+      // Normal re-import: claimed listings are not overwritten, hidden listings stay hidden,
       // and an unclaimed listing missing from the new release is retired.
-      const release2 = {
+      const release3 = {
         source: "overture",
-        release: "r2",
+        release: "r3",
         listings: [
           { source_id: "a", business_name: "Blooms Co RENAMED", city: "Hartford", state: "CT" },
           { source_id: "c", business_name: "Closing Soon DJ", city: "Bristol", state: "CT" },
+          { source_id: "d", business_name: "New Florist D", city: "Avon", state: "CT" },
+          { source_id: "e", business_name: "New Florist E", city: "Avon", state: "CT" },
+          { source_id: "s", business_name: "Stale Claim Venue", city: "Avon", state: "CT" },
         ],
       };
-      const second = await importOpenVendors(release2);
-      assert.equal(second.imported, true);
-      assert.equal(second.retired, 1);
+      const third = await importOpenVendors(release3);
+      assert.equal(third.imported, true);
+      assert.equal(third.retired, 1);
       const rows = (await local.query("SELECT source_id, business_name, status FROM wedding_vendor_listings ORDER BY source_id")).rows;
       assert.deepEqual(rows.map((r: any) => [r.source_id, r.business_name, r.status]), [
         ["a", "Blooms Co", "published"],
         ["b", "Walk-in Cakes", "retired"],
         ["c", "Closing Soon DJ", "hidden"],
+        ["d", "New Florist D", "published"],
+        ["e", "New Florist E", "published"],
+        ["s", "Stale Claim Venue", "hidden"],
       ]);
     } finally {
       claimDelivery.send = originalClaimSend;

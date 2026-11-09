@@ -89,12 +89,16 @@ async function findUnclaimedListing(id: number) {
   `))[0] ?? null;
 }
 
-/** Makes `userId` the owner if the listing is still unclaimed. Returns the listing, or null if someone beat them. */
+/**
+ * Makes `userId` the owner if the listing is STILL claimable at this moment: unclaimed, imported, and published.
+ * A listing hidden by reports or retired after the claim started can't be taken over with an old link or approval.
+ * Returns the listing, or null.
+ */
 async function assignOwner(listingId: number, userId: string) {
   return rowsOf(await db.execute(sql`
     UPDATE wedding_vendor_listings
     SET user_id = ${userId}, claimed_at = NOW(), updated_at = NOW()
-    WHERE id = ${listingId} AND user_id IS NULL
+    WHERE id = ${listingId} AND user_id IS NULL AND source IS NOT NULL AND status = 'published'
     RETURNING id, business_name AS "businessName"
   `))[0] ?? null;
 }
@@ -179,7 +183,7 @@ router.post("/vendor-listings/claims/verify", requireAuth, async (req: any, res)
     await db.execute(sql`
       UPDATE wedding_vendor_claims SET status = ${listing ? "verified" : "rejected"}, resolved_at = NOW() WHERE id = ${claim.id}
     `);
-    if (!listing) return res.status(409).json({ ok: false, error: "Another account already manages this listing." });
+    if (!listing) return res.status(409).json({ ok: false, error: "This listing can no longer be claimed (it's managed by another account or no longer listed)." });
     return res.json({ ok: true, listing });
   } catch (err: any) {
     console.error("[Wedding Vendor Claims] verify error:", err);
@@ -263,7 +267,7 @@ router.post("/vendor-claims/:id/:decision(approve|reject)", requireAuth, require
     await db.execute(sql`
       UPDATE wedding_vendor_claims SET status = ${listing ? "approved" : "rejected"}, resolved_at = NOW() WHERE id = ${id}
     `);
-    if (!listing) return res.status(409).json({ ok: false, error: "Another account already manages this listing." });
+    if (!listing) return res.status(409).json({ ok: false, error: "This listing can no longer be claimed (it's managed by another account or no longer listed)." });
     return res.json({ ok: true, status: "approved", listing });
   } catch (err: any) {
     console.error("[Wedding Vendor Claims] admin decision error:", err);
