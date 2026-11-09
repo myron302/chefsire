@@ -74,6 +74,9 @@ if (!PG_URL) {
       const djId = Number(byName["Closing Soon DJ"].id);
       const staleId = Number(byName["Stale Claim Venue"].id);
 
+      // Order: complete listings (website and phone) first, letter-initial names before digit-initial ones.
+      assert.deepEqual(dir.json.listings.map((l: any) => l.businessName).slice(0, 1), ["Blooms Co"]);
+
       // Unclaimed listings do not take quote requests.
       const quote = await call("POST", "/api/wedding/vendor-quotes", "stranger", { vendorId: bloomsId, contactEmail: "c@example.test" });
       assert.equal(quote.status, 409);
