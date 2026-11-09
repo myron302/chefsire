@@ -20,7 +20,8 @@ import MediaCarousel from "@/components/posts/MediaCarousel";
 import { onMediaImageError } from "@/lib/image-fallback";
 
 // ─── Demo data — shown to guests when the DB has no real posts yet ───────────
-// These make the site feel alive for new visitors before the community grows.
+// These make the site feel alive for new visitors before the community grows. Like and comment counts are 0:
+// demo content never claims popularity it doesn't have.
 // Once real posts exist they are replaced automatically.
 
 const DEMO_USER_BASE = {
@@ -73,7 +74,7 @@ const demoTrendingRecipes = [
       id: "post-1",
       imageUrl: "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=400&h=400&fit=crop&auto=format",
       user: { id: "chef-1", displayName: "Marco Romano" },
-      likesCount: 245,
+      likesCount: 0,
     },
   },
   {
@@ -84,7 +85,7 @@ const demoTrendingRecipes = [
       id: "post-2",
       imageUrl: "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=400&h=400&fit=crop&auto=format",
       user: { id: "chef-2", displayName: "Emma Whitfield" },
-      likesCount: 189,
+      likesCount: 0,
     },
   },
   {
@@ -95,7 +96,7 @@ const demoTrendingRecipes = [
       id: "post-3",
       imageUrl: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=400&fit=crop&auto=format",
       user: { id: "chef-3", displayName: "Anong Siriporn" },
-      likesCount: 312,
+      likesCount: 0,
     },
   },
   {
@@ -106,7 +107,7 @@ const demoTrendingRecipes = [
       id: "post-4",
       imageUrl: "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&h=400&fit=crop&auto=format",
       user: { id: "chef-4", displayName: "Pierre Dubois" },
-      likesCount: 567,
+      likesCount: 0,
     },
   },
   {
@@ -117,7 +118,7 @@ const demoTrendingRecipes = [
       id: "post-5",
       imageUrl: "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=400&h=400&fit=crop&auto=format",
       user: { id: "chef-5", displayName: "Julia Green" },
-      likesCount: 134,
+      likesCount: 0,
     },
   },
 ];
@@ -126,27 +127,27 @@ const demoTrendingRecipes = [
 const demoPosts: PostWithUser[] = [
   {
     id: "demo-post-1", caption: "Creamy Mushroom Risotto", imageUrl: "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true, likesCount: 245, commentsCount: 0, tags: [], userId: "chef-1", createdAt: new Date(),
+    isRecipe: true, likesCount: 0, commentsCount: 0, tags: [], userId: "chef-1", createdAt: new Date(),
     user: { ...DEMO_USER_BASE, id: "chef-1", username: "marco.romano", email: "marco@example.com", displayName: "Marco Romano", specialty: "Italian", avatar: "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=100&h=100&fit=crop&auto=format" },
   },
   {
     id: "demo-post-2", caption: "Classic Fish & Chips", imageUrl: "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true, likesCount: 189, commentsCount: 0, tags: [], userId: "chef-2", createdAt: new Date(),
+    isRecipe: true, likesCount: 0, commentsCount: 0, tags: [], userId: "chef-2", createdAt: new Date(),
     user: { ...DEMO_USER_BASE, id: "chef-2", username: "emma.whitfield", email: "emma@example.com", displayName: "Emma Whitfield", specialty: "British", avatar: "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=100&h=100&fit=crop&auto=format" },
   },
   {
     id: "demo-post-3", caption: "Spicy Thai Green Curry", imageUrl: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true, likesCount: 312, commentsCount: 0, tags: [], userId: "chef-3", createdAt: new Date(),
+    isRecipe: true, likesCount: 0, commentsCount: 0, tags: [], userId: "chef-3", createdAt: new Date(),
     user: { ...DEMO_USER_BASE, id: "chef-3", username: "anong", email: "anong@example.com", displayName: "Anong Siriporn", specialty: "Thai", avatar: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=100&h=100&fit=crop&auto=format" },
   },
   {
     id: "demo-post-4", caption: "Chocolate Lava Cake", imageUrl: "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true, likesCount: 567, commentsCount: 0, tags: [], userId: "chef-4", createdAt: new Date(),
+    isRecipe: true, likesCount: 0, commentsCount: 0, tags: [], userId: "chef-4", createdAt: new Date(),
     user: { ...DEMO_USER_BASE, id: "chef-4", username: "pierre", email: "pierre@example.com", displayName: "Pierre Dubois", specialty: "Pastry", avatar: "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=100&h=100&fit=crop&auto=format" },
   },
   {
     id: "demo-post-5", caption: "Fresh Caesar Salad", imageUrl: "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true, likesCount: 134, commentsCount: 0, tags: [], userId: "chef-5", createdAt: new Date(),
+    isRecipe: true, likesCount: 0, commentsCount: 0, tags: [], userId: "chef-5", createdAt: new Date(),
     user: { ...DEMO_USER_BASE, id: "chef-5", username: "julia.green", email: "julia@example.com", displayName: "Julia Green", specialty: "Salads", avatar: "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=100&h=100&fit=crop&auto=format" },
   },
 ];
@@ -274,7 +275,7 @@ export default function Feed() {
   const isGuest = !currentUserId;
   const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
 
-  const { data: selectedPostLikes = [] } = useQueryClientLikes<{ id: string; displayName: string; avatar?: string }[]>({
+  const { data: selectedPostLikes = [], isSuccess: selectedPostLikesLoaded } = useQueryClientLikes<{ id: string; displayName: string; avatar?: string }[]>({
     queryKey: ["/api/posts", selectedPost?.id, "likes"],
     queryFn: async () => {
       if (!selectedPost?.id) return [];
@@ -587,7 +588,8 @@ export default function Feed() {
                 <div className="flex flex-col space-y-2 text-sm text-muted-foreground border-t pt-4">
                   <div className="flex items-center space-x-1">
                     <Heart className="h-4 w-4" />
-                    <span>{selectedPost.likesCount || 0} likes</span>
+                    {/* The liker list is fetched fresh when the post opens; the feed's copy of the count can be stale. */}
+                    <span>{selectedPostLikesLoaded ? selectedPostLikes.length : selectedPost.likesCount || 0} likes</span>
                   </div>
                   {selectedPostLikes.length > 0 && (
                     <span className="text-xs text-muted-foreground">
