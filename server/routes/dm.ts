@@ -266,54 +266,52 @@ r.get("/threads/:id/messages", requireAuth, async (req, res) => {
  */
 r.post("/threads", requireAuth, async (req, res) => {
   const userId = req.user!.id;
+  const body = z.object({
+    participantIds: z.array(z.string()).min(1),
+    title: z.string().max(120).optional(),
+    isGroup: z.boolean().optional().default(false),
+  }).parse(req.body);
 
-  const body = z
-    .object({
-      participantIds: z.array(z.string()).min(1),
-      title: z.string().max(120).optional(),
-      isGroup: z.boolean().optional().default(false),
-    })
-    .parse(req.body);
+  try {
+    const result = await db.transaction(async (tx) => {
+      // A stale authenticated HTTP request may still be in flight while a
+      // terminal closure commits. This row lock serializes the entire thread
+      // creation/reuse decision with closure and avoids orphaned threads.
+      await lockMemberForContentWrite(tx, userId);
 
-  // Reuse 1:1 threads
-  if (!body.isGroup && body.participantIds.length === 1) {
-    const other = body.participantIds[0];
+      if (!body.isGroup && body.participantIds.length === 1) {
+        const other = body.participantIds[0];
+        const mine = await tx.select().from(dmParticipants)
+          .where(eq(dmParticipants.userId, userId));
+        const theirs = await tx.select().from(dmParticipants)
+          .where(eq(dmParticipants.userId, other));
+        const mySet = new Set(mine.map(p => p.threadId));
+        const candidates = theirs.map(p => p.threadId).filter(id => mySet.has(id));
+        // Never reuse a catering-linked conversation for ordinary DMs.
+        const linked = await bookingLinkedThreadIds(candidates);
+        const shared = candidates.find(id => !linked.has(id));
+        if (shared) return { threadId: shared, reused: true };
+      }
 
-    const mine = await db
-      .select()
-      .from(dmParticipants)
-      .where(eq(dmParticipants.userId, userId));
-    const theirs = await db
-      .select()
-      .from(dmParticipants)
-      .where(eq(dmParticipants.userId, other));
-
-    const mySet = new Set(mine.map((p) => p.threadId));
-    const candidates: string[] = theirs.map((p: { threadId: string }) => p.threadId).filter((id: string) => mySet.has(id));
-    // A booking conversation is never adopted as the pair's generic 1:1 thread. Without this the reuse below would
-    // hand a booking thread id back to a generic caller, and the same two people's ordinary DMs would land inside a
-    // booking's history. The pair keeps a generic thread and one distinct conversation per booking.
-    const linked = await bookingLinkedThreadIds(candidates);
-    const shared = candidates.find((id: string) => !linked.has(id));
-    if (shared) return res.json({ ok: true, threadId: shared, reused: true });
+      const [thread] = await tx.insert(dmThreads)
+        .values({ isGroup: body.isGroup, title: body.title }).returning();
+      const uniqueIds = Array.from(new Set([userId, ...body.participantIds]));
+      await tx.insert(dmParticipants).values(
+        uniqueIds.map((uid, i) => ({
+          threadId: thread.id,
+          userId: uid,
+          role: i === 0 ? "owner" : "member",
+        })),
+      );
+      return { threadId: thread.id, reused: false };
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    if (error instanceof MemberContentWriteBlockedError) {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
+    throw error;
   }
-
-  // Create new thread + participants
-  const [thread] = await db
-    .insert(dmThreads)
-    .values({ isGroup: body.isGroup, title: body.title })
-    .returning();
-
-  const uniqueIds = Array.from(new Set([userId, ...body.participantIds]));
-  await db.insert(dmParticipants).values(
-    uniqueIds.map((uid, i) => ({
-      threadId: thread.id,
-      userId: uid,
-      role: i === 0 ? "owner" : "member",
-    }))
-  );
-
-  res.json({ ok: true, threadId: thread.id, reused: false });
 });
 
 /**
