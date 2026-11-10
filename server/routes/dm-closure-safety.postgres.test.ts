@@ -34,11 +34,12 @@ if (!PG_URL) {
         CREATE TABLE catering_booking_conversations(booking_id varchar PRIMARY KEY,thread_id varchar UNIQUE);
         ${ddl(notifications, "notifications")};
       `);
-      const [closed, active, friend] = (await local.query(`
+      const [closed, active, friend, newRecipient] = (await local.query(`
         INSERT INTO users(username,email,display_name) VALUES
           ('closed','closed@example.test','Old Person Name'),
           ('active','active@example.test','Active Member'),
-          ('friend','friend@example.test','Friend')
+          ('friend','friend@example.test','Friend'),
+          ('new-recipient','new-recipient@example.test','New Recipient')
         RETURNING id
       `)).rows;
       await local.query("INSERT INTO account_status(user_id,status,reason) VALUES($1,'closed','Test closed')", [closed.id]);
@@ -62,7 +63,7 @@ if (!PG_URL) {
       const closedRecipient = await send("/api/dm/threads", active.id, { participantIds: [closed.id] });
       assert.equal(closedRecipient.status, 409, JSON.stringify(closedRecipient.data));
       assert.equal(closedRecipient.data.code, "MEMBER_CONTENT_WRITE_BLOCKED");
-      const validThread = await send("/api/dm/threads", active.id, { participantIds: [friend.id] });
+      const validThread = await send("/api/dm/threads", active.id, { participantIds: [newRecipient.id] });
       assert.equal(validThread.status, 200, JSON.stringify(validThread.data));
       assert.equal(validThread.data.reused, false);
       assert.ok(validThread.data.threadId);
