@@ -16,7 +16,8 @@
 // that arrives in a query string, a body, or a path parameter is never an identity — see `viewerIdFrom`.
 
 import type { Request } from "express";
-import { eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { accountHidden } from "./account-hidden-sql";
 import { follows, posts, users } from "../../shared/schema";
 import type { Comment, Post, PostWithUser } from "../../shared/schema";
 
@@ -37,19 +38,25 @@ export function viewerIdFrom(req: Request): string | null {
  */
 export function visiblePostsCondition(viewerId?: string | null) {
   const authorIsPublic = or(eq(users.isPrivate, false), isNull(users.isPrivate));
+  // Posts by suspended accounts are hidden from everyone (back office account status); nothing is deleted.
+  const authorNotHidden = sql`NOT ${accountHidden(posts.userId)}`;
 
-  if (!viewerId) return authorIsPublic;
+  if (!viewerId) return and(authorIsPublic, authorNotHidden);
 
-  return or(
-    authorIsPublic,
-    eq(posts.userId, viewerId),
-    sql`EXISTS (SELECT 1 FROM ${follows} WHERE ${follows.followerId} = ${viewerId} AND ${follows.followingId} = ${posts.userId})`
+  return and(
+    or(
+      authorIsPublic,
+      eq(posts.userId, viewerId),
+      sql`EXISTS (SELECT 1 FROM ${follows} WHERE ${follows.followerId} = ${viewerId} AND ${follows.followingId} = ${posts.userId})`
+    ),
+    authorNotHidden,
   );
 }
 
 /**
- * May `viewerId` see content owned by `ownerId`? Owner always can; a public account is open to everyone
- * including anonymous callers; a private account is open only to its approved followers.
+ * May `viewerId` see content owned by `ownerId`? Owner always can; nobody else can see a suspended account's
+ * content; a public account is open to everyone including anonymous callers; a private account is open only to its
+ * approved followers.
  */
 export async function canViewUserContent(
   viewerId: string | null | undefined,
@@ -57,6 +64,11 @@ export async function canViewUserContent(
 ): Promise<boolean> {
   if (!ownerId) return false;
   if (viewerId && viewerId === ownerId) return true;
+
+  // A suspended account's content is hidden from everyone else, through every path (lists use
+  // visiblePostsCondition; direct post, comment and liker lookups come through here). Fails closed.
+  const { isAccountHidden } = await import("./account-status");
+  if (await isAccountHidden(ownerId)) return false;
 
   // Imported lazily: storage imports this module for `visiblePostsCondition`, and a static import back would
   // make that a cycle. The module is cached after the first call.

@@ -10,3 +10,7 @@ process.env.NODE_ENV = process.env.NODE_ENV || "test";
 import { setSessionLookupForTests } from "../lib/auth-session";
 
 setSessionLookupForTests(async (id) => ({ id, authVersion: 1 }));
+
+
+// The same suites have no account_status table: every account is active.
+import "./active-account-status";

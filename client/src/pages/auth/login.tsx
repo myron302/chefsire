@@ -6,8 +6,20 @@ import { Crown, Castle, Shield, AlertCircle } from "lucide-react";
 import { FcGoogle } from 'react-icons/fc';
 import { googleSignInUrl } from "@/lib/google-signin";
 
+/** Messages for the ?error= codes the Google/Facebook/TikTok sign-in callbacks redirect back with. */
+export const SIGN_IN_ERROR_MESSAGES: Record<string, string> = {
+  "account-suspended": "This account is suspended. Contact support@chefsire.com if you think this is a mistake.",
+  "service-unavailable": "We couldn't sign you in right now. Please try again in a moment.",
+  "google-auth-failed": "Google sign-in didn't complete. Please try again.",
+  "no-user": "We couldn't find an account for that sign-in. Try another way to sign in, or sign up.",
+};
+
 export default function LoginPage() {
-  const [errors, setErrors] = useState({ email: "", password: "", general: "" });
+  const [errors, setErrors] = useState(() => ({
+    email: "",
+    password: "",
+    general: SIGN_IN_ERROR_MESSAGES[new URLSearchParams(window.location.search).get("error") ?? ""] ?? "",
+  }));
   const [loading, setLoading] = useState(false);
   const [, setLocation] = useLocation();
   const { login } = useUser();

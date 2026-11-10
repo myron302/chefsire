@@ -1,5 +1,6 @@
 // server/middleware/auth.ts
 import type { Request, Response, NextFunction } from "express";
+import { getAccountStatus, isAllowedForRestricted } from "../lib/account-status";
 import { verifyAuthToken } from "../lib/jwt-config";
 import { checkSession } from "../lib/auth-session";
 import { sendServiceUnavailable } from "../lib/db-availability";
@@ -76,6 +77,28 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return res.status(401).json({ error: "Unauthorized", code: "BAD_TOKEN" });
     }
     const fullUser = session.user;
+
+    // Restricted accounts can browse but not change anything (back office account status). Reads stay cheap: the
+    // status is only looked up for requests that write. Restriction is the soft moderation level, so if the status
+    // can't be read the write proceeds (logged) rather than turning one failed lookup into a site-wide write outage.
+    // Suspension does not depend on this: it revokes every session (auth_version) and sign-in fails closed.
+    if (!["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase())) {
+      const path = req.originalUrl || req.url;
+      if (!isAllowedForRestricted(req.method, path)) {
+        let status = "active";
+        try {
+          status = (await getAccountStatus(String(decoded.id))).status;
+        } catch (error) {
+          console.error("[auth] account status unavailable for a write; allowing (restriction is advisory on failure).", (error as Error)?.message);
+        }
+        if (status === "restricted") {
+          return res.status(403).json({
+            error: "Your account is restricted, so you can't make changes right now. Contact support@chefsire.com for help.",
+            code: "ACCOUNT_RESTRICTED",
+          });
+        }
+      }
+    }
 
     req.user = {
       id: String(decoded.id),

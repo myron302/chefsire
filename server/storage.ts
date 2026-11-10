@@ -76,6 +76,7 @@ import {
 } from "@shared/schema";
 import { isProviderInRange, milesBetween, type Coordinates } from "./services/catering-geo";
 import { visiblePostsCondition } from "./lib/post-visibility";
+import { accountHidden } from "./lib/account-hidden-sql";
 import { recipeVisibleToViewer } from "./lib/recipe-visibility";
 import { serializePublicUser } from "./serializers/public-user";
 import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
@@ -700,10 +701,12 @@ export class DrizzleStorage implements IStorage {
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
       .leftJoin(recipes, eq(recipes.postId, posts.id))
+      // Signed out: join nothing (an absent join condition rendered "LEFT JOIN likes WHERE ...", a SQL syntax
+      // error, so signed-out visitors got a 500 on every profile's posts).
       .leftJoin(likes, viewerId ? and(
         eq(likes.postId, posts.id),
         eq(likes.userId, viewerId)
-      ) : undefined)
+      ) : sql`false`)
       .where(and(eq(posts.userId, userId), visiblePostsCondition(viewerId)))
       .orderBy(desc(posts.createdAt))
       .offset(offset)
@@ -1368,7 +1371,8 @@ export class DrizzleStorage implements IStorage {
       .select({ product: products, seller: users })
       .from(products)
       .innerJoin(users, eq(products.sellerId, users.id))
-      .where(eq(products.id, id))
+      // A suspended seller's products are hidden (back office account status); nothing is deleted.
+      .where(and(eq(products.id, id), sql`NOT ${accountHidden(products.sellerId)}`))
       .limit(1);
 
     if (!result[0]) return undefined;
@@ -1381,7 +1385,7 @@ export class DrizzleStorage implements IStorage {
       .select({ product: products, seller: users })
       .from(products)
       .innerJoin(users, eq(products.sellerId, users.id))
-      .where(and(eq(products.sellerId, sellerId), eq(products.isActive, true)))
+      .where(and(eq(products.sellerId, sellerId), eq(products.isActive, true), sql`NOT ${accountHidden(products.sellerId)}`))
       .orderBy(desc(products.createdAt))
       .offset(offset)
       .limit(limit);
@@ -1397,7 +1401,7 @@ export class DrizzleStorage implements IStorage {
     limit = 20
   ): Promise<ProductWithSeller[]> {
     const db = getDb();
-    const conditions: any[] = [eq(products.isActive, true)];
+    const conditions: any[] = [eq(products.isActive, true), sql`NOT ${accountHidden(products.sellerId)}`];
 
     if (category) conditions.push(eq(products.category, category));
     if (location) conditions.push(eq(products.pickupLocation, location));

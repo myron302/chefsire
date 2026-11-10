@@ -14,6 +14,7 @@ import { createProductSchema, searchProductsSchema, updateProductSchema } from "
 import { countProductsByCategory } from "./marketplace/utils";
 import { serializePublicUser } from "../serializers/public-user";
 import { isSampleProduct } from "../../shared/marketplace-sample";
+import { isAccountHidden } from "../lib/account-status";
 
 const r = Router();
 
@@ -196,7 +197,7 @@ r.delete("/products/:id", requireAuth, async (req, res) => {
 r.get("/storefront/:username", optionalAuth, async (req, res) => {
   try {
     const user = await storage.getUserByUsername(req.params.username);
-    if (!user) return res.status(404).json({ message: "Storefront not found" });
+    if (!user || (await isAccountHidden(user.id))) return res.status(404).json({ message: "Storefront not found" });
 
     const products = await storage.getUserProducts(user.id, 0, 50);
     res.json({
