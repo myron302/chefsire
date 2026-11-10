@@ -12,7 +12,7 @@ if (!PG_URL) {
 } else {
   test("stale closed-account tokens cannot create threads or messages; notification bodies contain no retained PII", async () => {
     const local = await connectLocalPg();
-    const { users } = await import("../../shared/schema");
+    const { users, notifications } = await import("../../shared/schema");
     const { default: dmRouter } = await import("./dm");
     const app = express();
     app.use(express.json());
@@ -32,9 +32,7 @@ if (!PG_URL) {
           sender_id varchar NOT NULL,body text NOT NULL,attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
           created_at timestamp DEFAULT now());
         CREATE TABLE catering_booking_conversations(booking_id varchar PRIMARY KEY,thread_id varchar UNIQUE);
-        CREATE TABLE notifications(id varchar PRIMARY KEY DEFAULT gen_random_uuid(),user_id varchar,
-          type text,title text,message text,link_url text,priority text,metadata jsonb,
-          created_at timestamp DEFAULT now());
+        ${ddl(notifications, "notifications")};
       `);
       const [closed, active, friend] = (await local.query(`
         INSERT INTO users(username,email,display_name) VALUES
