@@ -63,10 +63,22 @@ export const OPS_SECURITY_HEADERS: Record<string, string> = {
  * Mounted first in app.ts. Marks ops requests (res.locals.opsHost) and enforces the boundary in both directions.
  * `clientDir` is the built client; the portal page is ops.html in it.
  */
+/**
+ * Apache (Plesk) hands every ops-host request to the app by rewriting it to OPS_FORWARD_PREFIX + the original path
+ * (client/public/.htaccess), because otherwise it would answer page paths with the customer app's index.html. The
+ * boundary restores the original path first, so every rule below sees exactly what the browser asked for.
+ */
+export const OPS_FORWARD_PREFIX = "/__ops-portal";
+
 export function opsHostBoundary(getClientDir: () => string, env: () => NodeJS.ProcessEnv = () => process.env): RequestHandler {
   return (req, res, next) => {
     const onOps = isOpsRequest(req, env());
     res.locals.opsHost = onOps;
+    if (onOps && (req.url === OPS_FORWARD_PREFIX || req.url.startsWith(`${OPS_FORWARD_PREFIX}/`) || req.url.startsWith(`${OPS_FORWARD_PREFIX}?`))) {
+      req.url = req.url.slice(OPS_FORWARD_PREFIX.length) || "/";
+      if (req.url.startsWith("?")) req.url = `/${req.url}`;
+      if (!req.url.startsWith("/")) req.url = `/${req.url}`;
+    }
     const p = req.path;
     if (!onOps) {
       // The staff portal and its page don't exist on the customer site.
@@ -88,7 +100,20 @@ export function opsHostBoundary(getClientDir: () => string, env: () => NodeJS.Pr
       return;
     }
     if (isOpsStatic(p) && (req.method === "GET" || req.method === "HEAD")) {
-      next();
+      // Served here, never passed on: a missing asset must be a 404, not the customer app's page fallback.
+      const dir = getClientDir();
+      // Only plain paths inside /assets or /images (no dot segments that could land on another file).
+      if (!dir || path.posix.normalize(p) !== p || /%2e|\\/i.test(req.originalUrl ?? "")) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      if (p.startsWith("/assets/")) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.sendFile(p.slice(1), { root: dir, dotfiles: "deny" }, (error) => {
+        if (error && !res.headersSent) {
+          res.removeHeader("Cache-Control");
+          res.status(404).json({ error: "Not found" });
+        }
+      });
       return;
     }
     if (p.startsWith("/api/") || p === "/api" || p.startsWith("/uploads") || p === "/index.html") {
