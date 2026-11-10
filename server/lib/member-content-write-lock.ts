@@ -26,7 +26,7 @@ export async function lockMemberForContentWrite(tx: any, userId: string): Promis
   const status = rowsOf(await tx.execute(sql`
     SELECT status FROM account_status WHERE user_id = ${userId}
   `));
-  if (status.length > 1 || (status.length === 1 && !["active", "restricted"].includes(String(status[0].status)))) {
+  if (status.length > 1 || (status.length === 1 && String(status[0].status) !== "active")) {
     throw new MemberContentWriteBlockedError();
   }
 }
