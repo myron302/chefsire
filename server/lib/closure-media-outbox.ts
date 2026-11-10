@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { assertInternalClosureMutationAllowed } from "./closure-feature";
 
 /**
  * Draft Part 3b media cleanup ledger. This is a QUEUE of candidate references,
@@ -35,6 +36,7 @@ export function validateClosureMediaCandidate(candidate: ClosureMediaCandidate):
 const rowsOf = (r: any): any[] => r?.rows ?? (Array.isArray(r) ? r : []);
 /** Inserts one durable candidate; duplicates are harmless and never reset completed cleanup state. */
 export async function enqueueClosureMediaCandidate(tx: any, candidate: ClosureMediaCandidate): Promise<boolean> {
+  assertInternalClosureMutationAllowed();
   validateClosureMediaCandidate(candidate);
   const rows = rowsOf(await tx.execute(sql`
     INSERT INTO account_closure_media_cleanup (member_id, storage_provider, object_key, source_kind)
