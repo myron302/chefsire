@@ -16,6 +16,8 @@ if (!PG_URL) {
       "subscription_history", "drink_bundle_checkout_sessions", "catering_booking_payments",
       "catering_booking_invoices", "catering_bookings",
       "creator_membership_sales_ledger", "creator_membership_checkout_sessions", "creator_memberships",
+      "drink_gifts", "drink_collection_purchases", "drink_collection_sales_ledger",
+      "drink_collection_checkout_sessions", "drink_collections",
       "wedding_square_enrollment_attempts", "wedding_square_subscriptions",
       "payouts", "commissions", "orders", "users",
     ];
@@ -38,6 +40,11 @@ if (!PG_URL) {
         CREATE TABLE creator_memberships (id varchar PRIMARY KEY, user_id varchar, creator_user_id varchar, status text);
         CREATE TABLE creator_membership_checkout_sessions (id varchar PRIMARY KEY, user_id varchar, creator_user_id varchar, status text);
         CREATE TABLE creator_membership_sales_ledger (id varchar PRIMARY KEY, user_id varchar, creator_user_id varchar, status text);
+        CREATE TABLE drink_collections (id varchar PRIMARY KEY, user_id varchar);
+        CREATE TABLE drink_collection_checkout_sessions (id varchar PRIMARY KEY, user_id varchar, collection_id varchar, status text);
+        CREATE TABLE drink_collection_sales_ledger (id varchar PRIMARY KEY, user_id varchar, collection_id varchar, status text);
+        CREATE TABLE drink_collection_purchases (id varchar PRIMARY KEY, user_id varchar, collection_id varchar, status text);
+        CREATE TABLE drink_gifts (id varchar PRIMARY KEY, purchaser_user_id varchar, recipient_user_id varchar, status text);
       `);
       const [user] = (await local.query(
         "INSERT INTO users(username, email, display_name) VALUES('closure-test', 'closure-test@example.test', 'Test') RETURNING id",
@@ -55,9 +62,15 @@ if (!PG_URL) {
       await local.query("INSERT INTO creator_memberships VALUES ('membership-1','other',$1,'active')", [id]);
       await local.query("INSERT INTO creator_membership_checkout_sessions VALUES ('member-checkout-1','other',$1,'pending')", [id]);
       await local.query("INSERT INTO creator_membership_sales_ledger VALUES ('member-sale-1','other',$1,'pending')", [id]);
+      await local.query("INSERT INTO drink_collections VALUES ('collection-1',$1)", [id]);
+      await local.query("INSERT INTO drink_collection_checkout_sessions VALUES ('collection-checkout','other','collection-1','pending')");
+      await local.query("INSERT INTO drink_collection_sales_ledger VALUES ('collection-sale','other','collection-1','refunded_pending')");
+      await local.query("INSERT INTO drink_collection_purchases VALUES ('collection-purchase','other','collection-1','refunded_pending')");
+      await local.query("INSERT INTO drink_gifts VALUES ('gift-1',$1,'other','pending')", [id]);
       const blockers = await inspect();
       assert.deepEqual(blockers.map(x => x.code), [
         "MARKETPLACE_ORDERS", "SELLER_PAYOUTS", "WEDDING_SUBSCRIPTIONS", "DRINK_BUNDLE_CHECKOUTS",
+        "DRINK_COLLECTION_PAYMENTS", "DRINK_COLLECTION_PURCHASES", "DRINK_GIFTS",
         "CREATOR_MEMBERSHIPS", "CREATOR_MEMBERSHIP_CHECKOUTS", "CREATOR_MEMBERSHIP_SALES",
       ]);
       assert.ok(blockers.every(x => x.count === 1 && x.message.length > 10));
@@ -81,6 +94,12 @@ if (!PG_URL) {
       await local.query("UPDATE orders SET payment_status='refunded', refund_idempotency_key='refund-id', capture_request_snapshot=NULL, inventory_status='sold' WHERE id='order-1'");
       assert.ok(!(await inspect()).some(x => x.code === "MARKETPLACE_PAYMENTS"),
         "a completed refund must not be treated as permanently unsettled");
+      await local.query("UPDATE drink_collection_checkout_sessions SET status='completed'");
+      await local.query("UPDATE drink_collection_sales_ledger SET status='refunded'");
+      await local.query("UPDATE drink_collection_purchases SET status='refunded'");
+      await local.query("UPDATE drink_gifts SET status='revoked'");
+      assert.ok(!(await inspect()).some(x => x.code.startsWith("DRINK_COLLECTION_") || x.code === "DRINK_GIFTS"),
+        "resolved collection transactions and gifts stay in their retained ledgers");
       // Creator revenue/membership rows are retained; closed or refunded state
       // removes the unresolved-obligation blocker, not the ledger evidence.
       await local.query("UPDATE creator_memberships SET status='cancelled'");
