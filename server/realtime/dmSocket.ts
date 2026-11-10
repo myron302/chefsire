@@ -203,16 +203,22 @@ export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOpti
               .set({ lastReadMessageId: created.id, lastReadAt: new Date() })
               .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
 
-            // Notifications must not persist an old name or a message excerpt
-            // on another person's account after the sender's identity is erased.
-            const othersResult = await tx.execute(sql`
+            return created;
+          });
+
+          // Notification work happens AFTER the sender-row lock is released:
+          // inserting another participant's notification inside the send
+          // transaction can deadlock with that participant sending in reverse.
+          // Never retain a snippet or original sender name in these alerts.
+          try {
+            const othersResult = await db.execute(sql`
               SELECT p.user_id AS "userId" FROM dm_participants p
               LEFT JOIN account_status st ON st.user_id = p.user_id
               WHERE p.thread_id = ${threadId} AND p.user_id <> ${userId}
                 AND COALESCE(st.status, 'active') IN ('active', 'restricted')
             `);
             const others = (othersResult as any)?.rows ?? (Array.isArray(othersResult) ? othersResult : []);
-            if (others.length > 0) await tx.insert(notifications).values(
+            if (others.length > 0) await db.insert(notifications).values(
               others.map((participant: { userId: string }) => ({
                 userId: participant.userId,
                 type: "dm",
@@ -222,12 +228,13 @@ export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOpti
                 metadata: {
                   threadId,
                   senderId: userId,
-                  messageId: created.id,
+                  messageId: msg.id,
                 },
               })),
             );
-            return created;
-          });
+          } catch {
+            // Notifications are best effort; message persistence already committed.
+          }
 
           // Broadcast to everyone in the room (including sender for confirm)
           ns.to(threadId).emit("message", { threadId, message: msg });
