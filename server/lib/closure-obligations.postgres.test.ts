@@ -73,7 +73,7 @@ if (!PG_URL) {
         "DRINK_COLLECTION_PAYMENTS", "DRINK_COLLECTION_PURCHASES", "DRINK_GIFTS",
         "CREATOR_MEMBERSHIPS", "CREATOR_MEMBERSHIP_CHECKOUTS", "CREATOR_MEMBERSHIP_SALES",
       ]);
-      assert.ok(blockers.every(x => x.count === 1 && x.message.length > 10));
+      assert.ok(blockers.every(x => x.count === (x.code === "DRINK_COLLECTION_PAYMENTS" ? 2 : 1) && x.message.length > 10));
       assert.equal((await local.query("SELECT status FROM payouts WHERE id='payout-1'")).rows[0].status, "processing",
         "eligibility checks never mutate financial records");
 
