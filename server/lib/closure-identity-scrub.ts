@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { assertInternalClosureMutationAllowed } from "./closure-feature";
 
 /**
  * Part 3b's identity scrub primitive. This is NOT a closure operation: calling
@@ -17,6 +18,7 @@ const rowsOf = (result: any): any[] => result?.rows ?? (Array.isArray(result) ? 
 export type IdentityScrubResult = { userId: string; affected: 1; authVersion: number };
 
 export async function scrubMemberIdentityWithinClosure(tx: any, userId: string): Promise<IdentityScrubResult> {
+  assertInternalClosureMutationAllowed();
   const random = randomBytes(16).toString("hex");
   const anonymousName = `deleted-${random}`;
   const anonymousEmail = `deleted+${random}@deleted.invalid`;
