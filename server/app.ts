@@ -16,6 +16,8 @@ import { uploadsStaticHandler } from "./lib/uploads-static";
 import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./lib/public-static-dirs";
 import { createCorsMiddleware, currentCorsPolicy } from "./lib/cors-policy";
 import { resolveTrustProxy, TrustProxyConfigError, type TrustProxyResolution } from "./lib/proxy-trust";
+import { opsHostBoundary } from "./lib/ops-host";
+import { createOpsRouter } from "./routes/ops";
 
 const app = express();
 
@@ -41,8 +43,15 @@ console.log(`✓ trust proxy: ${trustProxy.description}${trustProxy.source === "
 // Browser origin policy: an explicit allowlist (CLIENT_URL, APP_BASE_URL, APP_URL, CORS_ALLOWED_ORIGINS, and CORS_DEV_ORIGINS outside
 // production) that fails closed. This used to be `cors({ credentials: true, origin: process.env.CLIENT_URL || true })`, which reflected
 // ANY origin with credentials whenever CLIENT_URL was missing. The same policy guards both Socket.IO servers. See lib/cors-policy.ts.
+// Staff portal boundary (ops.chefsire.com), first: staff APIs only exist on the ops host, and the ops host serves only
+// them and the portal page. See lib/ops-host.ts.
+const clientDir = resolveClientStaticDir() ?? "";
+app.use(opsHostBoundary(() => clientDir));
+
 currentCorsPolicy(); // resolve now so configuration warnings print at boot, not on the first cross-origin request
-app.use(createCorsMiddleware());
+const corsMiddleware = createCorsMiddleware();
+// The ops host is same-origin only: it never answers with CORS headers.
+app.use((req, res, next) => (res.locals.opsHost ? next() : corsMiddleware(req, res, next)));
 app.use(express.json({
   limit: "2mb",
   verify: (req, _res, buf) => {
@@ -76,6 +85,9 @@ app.get("/healthz", (_req: Request, res: Response) => {
   res.status(200).json({ ok: true, env: process.env.NODE_ENV || "development" });
 });
 
+// Staff portal API (ops host only; the boundary above 404s it everywhere else)
+app.use("/api/ops", createOpsRouter());
+
 // API routes (mounted under /api)
 app.use("/api", routes);
 
@@ -96,7 +108,6 @@ app.use("/uploads", uploadsStaticHandler(UPLOADS_DIR));
 // Serve built client at dist/public. The candidate locations and the choice between them live in
 // lib/public-static-dirs, which is also what private booking storage validates itself against: this mount is
 // unauthenticated, so the isolation check has to be reading the same list the app actually serves from.
-const clientDir = resolveClientStaticDir() ?? "";
 const hasClient = clientDir !== "";
 
 if (!hasClient) {

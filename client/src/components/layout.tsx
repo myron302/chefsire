@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useUser } from "@/contexts/UserContext";
 import {
   MessageCircle, User, ChevronDown, ChevronRight,
-  Settings, LogOut, Plus, Shield,
+  Settings, LogOut, Plus,
 } from "lucide-react";
 import Sidebar from "@/components/sidebar";
 import MobileNav from "@/components/mobile-nav";
@@ -24,17 +23,6 @@ export default function Layout({ children }: LayoutProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
   const { user, logout, loading, sessionStatus } = useUser();
-  // Staff see a link to the control panel; the server decides who is staff (and re-checks every action).
-  const staffAccess = useQuery<{ isStaff: boolean }>({
-    queryKey: ["admin", "me", user?.id],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/me", { credentials: "include" });
-      return res.ok ? res.json() : { isStaff: false };
-    },
-    enabled: Boolean(user?.id),
-    staleTime: 5 * 60 * 1000,
-  });
-
   useEffect(() => {
     const link = document.createElement("link");
     link.href =
@@ -844,16 +832,6 @@ export default function Layout({ children }: LayoutProps) {
                             >
                               <Settings className="w-5 h-5 mr-3" /> Settings
                             </Link>
-
-                            {staffAccess.data?.isStaff && (
-                              <Link
-                                href="/admin"
-                                onClick={() => setIsDropdownOpen(false)}
-                                className="flex items-center px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-                              >
-                                <Shield className="w-5 h-5 mr-3" /> Control panel
-                              </Link>
-                            )}
 
                             <button
                               onClick={handleLogout}

@@ -1,127 +1,155 @@
 /**
- * Back office part 1: group-based staff permissions (permissions on groups, accounts in groups) and the audit log.
- * Real HTTP against the real router and permission engine; SQL on a real local PostgreSQL (CS_TEST_PG_URL),
- * using the production DDL from docs/ops/2026-11-09-staff-groups.sql.
+ * Back office: group-based staff permissions (permissions on groups, staff in groups) and the audit log, through the
+ * staff portal API (/api/ops/admin) with staff accounts. Real HTTP against the real routers and permission engine;
+ * SQL on a real local PostgreSQL (CS_TEST_PG_URL) with the production DDL in docs/ops.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import express from "express";
 import type { AddressInfo } from "node:net";
 import { PG_URL, connectLocalPg, ddl, makeCaller } from "../test-support/authz-pg-harness";
+import { BACK_OFFICE_SQL, CLEAN_UP_BACK_OFFICE, DROP_BACK_OFFICE, makeStaff, makeStaffCaller } from "../test-support/staff-portal-harness";
 
 if (!PG_URL) {
   test("Back office staff groups (requires CS_TEST_PG_URL)", { skip: true }, () => {});
 } else {
-  process.env.INTERNAL_ADMIN_EMAILS = "owner@chefsire.test";
-
   test("owners manage groups; staff get exactly their groups' permissions; every change is audited", async () => {
     const local = await connectLocalPg();
     const schema = await import("../../shared/schema");
-    const { default: router } = await import("./admin-staff");
+    const { createOpsRouter } = await import("./ops");
     const { getStaffAccess, hasStaffPermission } = await import("../lib/staff-permissions");
     const app = express();
     app.use(express.json());
-    app.use("/api/admin", router);
+    app.use("/api/ops", createOpsRouter());
     const server = app.listen(0, "127.0.0.1");
     try {
-      await local.query(`
-        DROP TABLE IF EXISTS admin_audit_log, staff_group_members, staff_group_permissions, staff_groups, users CASCADE;
-        ${ddl(schema.users, "users")};
-        ${readFileSync(new URL("../../docs/ops/2026-11-09-staff-groups.sql", import.meta.url), "utf8")}
-      `);
-      const ids: Record<string, string> = {};
-      const mk = async (name: string, email: string) => {
-        ids[name] = (await local.query(
-          `INSERT INTO users (username, email, display_name, password, auth_version, email_verified_at, email_verified_via)
-           VALUES ($1, $2, $1, 'fixture', 1, now(), 'email_link') RETURNING id`, [name, email],
-        )).rows[0].id;
-      };
-      await mk("owner", "owner@chefsire.test");
-      await mk("helper", "helper@example.test");
-      await mk("marketer", "marketer@example.test");
-      await mk("member", "member@example.test");
-      const call = makeCaller(() => `http://127.0.0.1:${(server.address() as AddressInfo).port}`, (who) => ids[who]);
+      await local.query(`${DROP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE; ${ddl(schema.users, "users")}; ${BACK_OFFICE_SQL}`);
+      const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const staff: Record<string, { id: string; cookie: string }> = {};
+      staff.owner = await makeStaff(local, "owner", { isOwner: true });
+      staff.helper = await makeStaff(local, "helper");
+      staff.marketer = await makeStaff(local, "marketer");
+      staff.mod = await makeStaff(local, "mod");
+      const call = makeStaffCaller(base, (who) => staff[who]?.cookie);
+      const memberId = (await local.query(`INSERT INTO users (username, email, display_name, password, auth_version) VALUES ('member', 'm@example.test', 'member', 'x', 1) RETURNING id`)).rows[0].id;
 
       // Built-in groups are seeded with their permissions.
-      const groups = (await call("GET", "/api/admin/groups", "owner")).json.groups;
+      const groups = (await call("GET", "/api/ops/admin/groups", "owner")).json.groups;
       assert.deepEqual(groups.map((g: any) => g.name), ["Administrators", "Marketing", "Support"]);
       assert.ok(groups.find((g: any) => g.name === "Support").permissions.includes("members.suspend"));
       assert.ok(!groups.find((g: any) => g.name === "Marketing").permissions.includes("members.suspend"));
 
-      // Who is staff: the owner holds everything; ordinary members hold nothing and can't reach the panel.
-      const ownerMe = (await call("GET", "/api/admin/me", "owner")).json;
+      // Owners hold everything; staff without groups hold nothing; no session = 401; a member's sign-in is not a staff session.
+      const ownerMe = (await call("GET", "/api/ops/admin/me", "owner")).json;
       assert.equal(ownerMe.isOwner, true);
       assert.ok(ownerMe.permissions.includes("staff.manage"));
-      const memberMe = (await call("GET", "/api/admin/me", "member")).json;
-      assert.equal(memberMe.isStaff, false);
-      assert.equal((await call("GET", "/api/admin/me", "anon")).status, 401);
-      for (const who of ["member", "anon"]) {
-        assert.notEqual((await call("GET", "/api/admin/groups", who)).status, 200);
-        assert.notEqual((await call("GET", "/api/admin/audit", who)).status, 200);
+      assert.deepEqual((await call("GET", "/api/ops/admin/me", "helper")).json.permissions, []);
+      assert.equal((await call("GET", "/api/ops/admin/me", "anon")).status, 401);
+      const memberCall = makeCaller(base, () => memberId);
+      assert.equal((await memberCall("GET", "/api/ops/admin/me", "member")).status, 401, "a member token is not a staff session");
+      for (const who of ["helper", "anon"]) {
+        assert.notEqual((await call("GET", "/api/ops/admin/groups", who)).status, 200);
+        assert.notEqual((await call("GET", "/api/ops/admin/audit", who)).status, 200);
       }
 
-      // Put accounts into groups (by username or email); permissions follow the group.
-      assert.equal((await call("POST", "/api/admin/groups/grp-support/members", "owner", { account: "HELPER" })).status, 201);
-      assert.equal((await call("POST", "/api/admin/groups/grp-support/members", "owner", { account: "helper@example.test" })).json.alreadyMember, true);
-      assert.equal((await call("POST", "/api/admin/groups/grp-marketing/members", "owner", { account: "marketer" })).status, 201);
-      assert.equal((await call("POST", "/api/admin/groups/grp-marketing/members", "owner", { account: "nobody-here" })).status, 404);
-      assert.equal(await hasStaffPermission(ids.helper, "members.suspend"), true);
-      assert.equal(await hasStaffPermission(ids.marketer, "members.suspend"), false);
-      assert.equal(await hasStaffPermission(ids.marketer, "reports.view"), true);
+      // Put staff into groups; permissions follow the group.
+      assert.equal((await call("POST", "/api/ops/admin/groups/grp-support/members", "owner", { staffId: staff.helper.id })).status, 201);
+      assert.equal((await call("POST", "/api/ops/admin/groups/grp-support/members", "owner", { staffId: staff.helper.id })).json.alreadyMember, true);
+      assert.equal((await call("POST", "/api/ops/admin/groups/grp-marketing/members", "owner", { staffId: staff.marketer.id })).status, 201);
+      assert.equal((await call("POST", "/api/ops/admin/groups/grp-marketing/members", "owner", { staffId: memberId })).status, 404, "member accounts can't be put in staff groups");
+      assert.equal(await hasStaffPermission(staff.helper.id, "members.suspend"), true);
+      assert.equal(await hasStaffPermission(staff.marketer.id, "members.suspend"), false);
+      assert.equal(await hasStaffPermission(staff.marketer.id, "reports.view"), true);
 
       // Staff can't manage staff (staff.manage is Owner-only and can't be granted to a group).
-      assert.equal((await call("GET", "/api/admin/groups", "helper")).status, 403);
-      assert.equal((await call("POST", "/api/admin/groups/grp-support/members", "helper", { account: "member" })).status, 403);
-      const grantManage = await call("POST", "/api/admin/groups", "owner", { name: "Sneaky", permissions: ["staff.manage"] });
-      assert.equal(grantManage.status, 400);
+      assert.equal((await call("GET", "/api/ops/admin/groups", "helper")).status, 403);
+      assert.equal((await call("POST", "/api/ops/admin/groups/grp-support/members", "helper", { staffId: staff.mod.id })).status, 403);
+      assert.equal((await call("POST", "/api/ops/admin/groups", "owner", { name: "Sneaky", permissions: ["staff.manage"] })).status, 400);
       await local.query("INSERT INTO staff_group_permissions (group_id, permission) VALUES ('grp-support', 'staff.manage')");
-      assert.equal(await hasStaffPermission(ids.helper, "staff.manage"), false, "even if written directly, a group can't confer staff.manage");
+      assert.equal(await hasStaffPermission(staff.helper.id, "staff.manage"), false, "even if written directly, a group can't confer staff.manage");
 
       // Custom groups: create with permissions, edit them, unknown permissions refused, duplicate names refused.
-      const created = await call("POST", "/api/admin/groups", "owner", { name: "Moderators", description: "Content team", permissions: ["members.view", "members.restrict"] });
+      const created = await call("POST", "/api/ops/admin/groups", "owner", { name: "Moderators", description: "Content team", permissions: ["members.view", "members.restrict"] });
       assert.equal(created.status, 201, created.text);
       const gid = created.json.group.id;
-      assert.equal((await call("POST", "/api/admin/groups", "owner", { name: "moderators" })).status, 409);
-      assert.equal((await call("PATCH", `/api/admin/groups/${gid}`, "owner", { permissions: ["members.view", "made.up"] })).status, 400);
-      assert.equal((await call("POST", `/api/admin/groups/${gid}/members`, "owner", { account: "member" })).status, 201);
-      assert.equal(await hasStaffPermission(ids.member, "members.restrict"), true);
-      assert.equal((await call("PATCH", `/api/admin/groups/${gid}`, "owner", { permissions: ["members.view"] })).status, 200);
-      assert.equal(await hasStaffPermission(ids.member, "members.restrict"), false, "removing a permission from the group takes effect immediately");
-      assert.deepEqual((await getStaffAccess(ids.member)).groups.map((g) => g.name), ["Moderators"]);
+      assert.equal((await call("POST", "/api/ops/admin/groups", "owner", { name: "moderators" })).status, 409);
+      assert.equal((await call("PATCH", `/api/ops/admin/groups/${gid}`, "owner", { permissions: ["members.view", "made.up"] })).status, 400);
+      assert.equal((await call("POST", `/api/ops/admin/groups/${gid}/members`, "owner", { staffId: staff.mod.id })).status, 201);
+      assert.equal(await hasStaffPermission(staff.mod.id, "members.restrict"), true);
+      assert.equal((await call("PATCH", `/api/ops/admin/groups/${gid}`, "owner", { permissions: ["members.view"] })).status, 200);
+      assert.equal(await hasStaffPermission(staff.mod.id, "members.restrict"), false, "removing a permission from the group takes effect immediately");
+      assert.deepEqual((await getStaffAccess(staff.mod.id)).groups.map((g) => g.name), ["Moderators"]);
+      const listed = (await call("GET", "/api/ops/admin/groups", "owner")).json.groups.find((g: any) => g.id === gid);
+      assert.deepEqual(listed.members.map((m: any) => m.login), ["mod"]);
 
       // Built-ins can't be deleted or renamed; custom groups can be deleted (members lose its permissions).
-      assert.equal((await call("DELETE", "/api/admin/groups/grp-support", "owner")).status, 400);
-      assert.equal((await call("PATCH", "/api/admin/groups/grp-support", "owner", { name: "Help Desk" })).status, 400);
-      assert.equal((await call("DELETE", `/api/admin/groups/${ids.member}/members/${ids.member}`, "owner")).status, 404);
-      assert.equal((await call("DELETE", `/api/admin/groups/grp-marketing/members/${ids.marketer}`, "owner")).status, 200);
-      assert.equal(await hasStaffPermission(ids.marketer, "reports.view"), false);
-      assert.equal((await call("DELETE", `/api/admin/groups/${gid}`, "owner")).status, 200);
-      assert.equal(await hasStaffPermission(ids.member, "members.view"), false);
+      assert.equal((await call("DELETE", "/api/ops/admin/groups/grp-support", "owner")).status, 400);
+      assert.equal((await call("PATCH", "/api/ops/admin/groups/grp-support", "owner", { name: "Help Desk" })).status, 400);
+      assert.equal((await call("DELETE", `/api/ops/admin/groups/grp-support/members/${staff.mod.id}`, "owner")).status, 404);
+      assert.equal((await call("DELETE", `/api/ops/admin/groups/grp-marketing/members/${staff.marketer.id}`, "owner")).status, 200);
+      assert.equal(await hasStaffPermission(staff.marketer.id, "reports.view"), false);
+      assert.equal((await call("DELETE", `/api/ops/admin/groups/${gid}`, "owner")).status, 200);
+      assert.equal(await hasStaffPermission(staff.mod.id, "members.view"), false);
 
-      // The audit log records every change, newest first, readable by audit.view holders only.
-      const audit = await call("GET", "/api/admin/audit?limit=200", "owner");
+      // The audit log records every change, newest first, by staff identity; readable by audit.view holders only.
+      const audit = await call("GET", "/api/ops/admin/audit?limit=200", "owner");
       assert.equal(audit.status, 200);
       const actions = audit.json.entries.map((e: any) => e.action);
       for (const a of ["staff.member.add", "staff.member.remove", "staff.group.create", "staff.group.update", "staff.group.delete"]) {
         assert.ok(actions.includes(a), `audited: ${a}`);
       }
-      assert.ok(audit.json.entries.every((e: any) => e.actorLabel === "owner"));
-      const del = audit.json.entries.find((e: any) => e.action === "staff.group.delete");
-      assert.deepEqual(del.details.removedMembers, [ids.member]);
-      assert.equal((await call("GET", "/api/admin/audit", "helper")).status, 403, "Support has no audit.view");
+      assert.ok(audit.json.entries.every((e: any) => e.actorLabel === "Owner (owner)" && e.actorType === "staff"));
+      assert.deepEqual(audit.json.entries.find((e: any) => e.action === "staff.group.delete").details.removedMembers, [staff.mod.id]);
+      assert.equal((await call("GET", "/api/ops/admin/audit", "helper")).status, 403, "Support has no audit.view");
 
-      // Audit entries outlive the accounts they mention (no foreign keys).
-      await local.query("DELETE FROM users WHERE id = $1", [ids.marketer]);
-      const kept = (await call("GET", `/api/admin/audit?targetId=${ids.marketer}`, "owner")).json.entries;
-      assert.ok(kept.length >= 2);
+      // Audit entries outlive the staff accounts they mention (no foreign keys).
+      await local.query("DELETE FROM staff_users WHERE id = $1", [staff.marketer.id]);
+      assert.ok((await call("GET", `/api/ops/admin/audit?targetId=${staff.marketer.id}`, "owner")).json.entries.length >= 2);
 
-      // An owner whose email is no longer verified loses owner powers.
-      await local.query("UPDATE users SET email_verified_at = NULL, email_verified_via = NULL WHERE id = $1", [ids.owner]);
-      assert.equal((await call("GET", "/api/admin/groups", "owner")).status, 403);
+      // A disabled staff account has no access, even with a live session cookie.
+      await local.query("UPDATE staff_users SET status = 'disabled' WHERE id = $1", [staff.helper.id]);
+      assert.equal((await call("GET", "/api/ops/admin/members", "helper")).status, 401);
+      assert.equal(await hasStaffPermission(staff.helper.id, "members.view"), false);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await local.query("DROP TABLE IF EXISTS admin_audit_log, staff_group_members, staff_group_permissions, staff_groups, users CASCADE");
+      await local.query(`${CLEAN_UP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE;`);
+      await local.end();
+    }
+  });
+
+  test("two Owners removing each other at the same moment always leave an active Owner", async () => {
+    const local = await connectLocalPg();
+    const schema = await import("../../shared/schema");
+    const { createOpsRouter } = await import("./ops");
+    const app = express();
+    app.use(express.json());
+    app.use("/api/ops", createOpsRouter());
+    const server = app.listen(0, "127.0.0.1");
+    try {
+      await local.query(`${DROP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE; ${ddl(schema.users, "users")}; ${BACK_OFFICE_SQL}`);
+      const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const moves = [
+        ["status", { status: "disabled", reason: "Race" }, "status", { status: "disabled", reason: "Race" }],
+        ["owner", { isOwner: false, reason: "Race" }, "owner", { isOwner: false, reason: "Race" }],
+        ["status", { status: "disabled", reason: "Race" }, "owner", { isOwner: false, reason: "Race" }],
+      ] as const;
+      for (let round = 0; round < 9; round++) {
+        await local.query("DELETE FROM staff_sessions; DELETE FROM staff_user_groups; DELETE FROM staff_users;");
+        const a = await makeStaff(local, `a${round}`, { isOwner: true });
+        const b = await makeStaff(local, `b${round}`, { isOwner: true });
+        const call = makeStaffCaller(base, (who) => (who === "a" ? a.cookie : b.cookie));
+        const [moveA, bodyA, moveB, bodyB] = moves[round % moves.length];
+        const results = await Promise.all([
+          call("POST", `/api/ops/admin/staff/${b.id}/${moveA}`, "a", bodyA),
+          call("POST", `/api/ops/admin/staff/${a.id}/${moveB}`, "b", bodyB),
+        ]);
+        const owners = (await local.query("SELECT count(*)::int n FROM staff_users WHERE is_owner AND status = 'active'")).rows[0].n;
+        assert.ok(owners >= 1, `round ${round}: an active Owner remains (results ${results.map((r) => r.status)})`);
+        assert.ok(results.some((r) => r.status === 200), `round ${round}: one of the two changes goes through`);
+      }
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await local.query(`${CLEAN_UP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE;`);
       await local.end();
     }
   });
