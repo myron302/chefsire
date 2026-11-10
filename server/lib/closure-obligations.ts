@@ -26,7 +26,9 @@ export type ClosureBlockerCode =
   | "CREATOR_MEMBERSHIP_CHECKOUTS"
   | "CREATOR_MEMBERSHIP_SALES"
   | "MARKETPLACE_PAID_PLAN"
-  | "SUBSCRIPTION_HISTORY";
+  | "SUBSCRIPTION_HISTORY"
+  | "MEAL_PLAN_PAYMENT_EVIDENCE"
+  | "CREATOR_PAID_DIGITAL_ACCESS";
 
 export type ClosureBlocker = { code: ClosureBlockerCode; count: number; message: string };
 const rowsOf = (x: any): any[] => x?.rows ?? (Array.isArray(x) ? x : []);
@@ -164,6 +166,37 @@ export async function inspectLocalClosureObligations(tx: any, userId: string): P
       query: sql`SELECT count(*)::int AS n FROM creator_membership_sales_ledger
         WHERE (user_id = ${userId} OR creator_user_id = ${userId})
           AND (status IS NULL OR status NOT IN ('completed', 'refunded', 'cancelled'))`,
+    },
+    {
+      code: "MEAL_PLAN_PAYMENT_EVIDENCE",
+      message: "A meal-plan payment or entitlement has not reached an authoritative final state.",
+      // "unverified" is not a free entitlement; it can conceal an unfinished
+      // external charge. Do not infer a refund merely from local fields.
+      query: sql`SELECT count(*)::int AS n FROM meal_plan_purchases
+        WHERE user_id = ${userId}
+          AND (payment_status IS NULL OR payment_status NOT IN
+            ('verified_paid', 'free_acquired', 'refunded', 'failed', 'cancelled'))`,
+    },
+    {
+      code: "CREATOR_PAID_DIGITAL_ACCESS",
+      message: "Customers have paid access to creator products that still need preservation or transfer.",
+      // A closing creator cannot delete an asset already sold to someone else.
+      // Preserve the purchased content or fulfill obligations before closure.
+      // This is intentionally independent of locally-completed payment status.
+      query: sql`SELECT (
+        (SELECT count(*) FROM meal_plan_purchases p
+          JOIN meal_plan_blueprints b ON b.id = p.blueprint_id
+          WHERE b.creator_id = ${userId} AND p.user_id <> ${userId}
+            AND p.payment_status = 'verified_paid')
+        + (SELECT count(*) FROM drink_bundle_purchases p
+          JOIN drink_bundles b ON b.id = p.bundle_id
+          WHERE b.user_id = ${userId} AND p.user_id <> ${userId}
+            AND p.status = 'completed' AND p.access_revoked_at IS NULL)
+        + (SELECT count(*) FROM drink_collection_purchases p
+          JOIN drink_collections c ON c.id = p.collection_id
+          WHERE c.user_id = ${userId} AND p.user_id <> ${userId}
+            AND p.status = 'completed' AND p.access_revoked_at IS NULL)
+      )::int AS n`,
     },
     {
       code: "MARKETPLACE_PAID_PLAN",
