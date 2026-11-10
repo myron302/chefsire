@@ -1,3 +1,4 @@
+import "../test-support/auth-test-env";
 /** Part 3b internal tombstone primitive (not a closure endpoint). */
 import test from "node:test";
 import assert from "node:assert/strict";
