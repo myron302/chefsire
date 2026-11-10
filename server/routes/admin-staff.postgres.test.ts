@@ -116,4 +116,41 @@ if (!PG_URL) {
       await local.end();
     }
   });
+
+  test("two Owners removing each other at the same moment always leave an active Owner", async () => {
+    const local = await connectLocalPg();
+    const schema = await import("../../shared/schema");
+    const { createOpsRouter } = await import("./ops");
+    const app = express();
+    app.use(express.json());
+    app.use("/api/ops", createOpsRouter());
+    const server = app.listen(0, "127.0.0.1");
+    try {
+      await local.query(`${DROP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE; ${ddl(schema.users, "users")}; ${BACK_OFFICE_SQL}`);
+      const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const moves = [
+        ["status", { status: "disabled", reason: "Race" }, "status", { status: "disabled", reason: "Race" }],
+        ["owner", { isOwner: false, reason: "Race" }, "owner", { isOwner: false, reason: "Race" }],
+        ["status", { status: "disabled", reason: "Race" }, "owner", { isOwner: false, reason: "Race" }],
+      ] as const;
+      for (let round = 0; round < 9; round++) {
+        await local.query("DELETE FROM staff_sessions; DELETE FROM staff_user_groups; DELETE FROM staff_users;");
+        const a = await makeStaff(local, `a${round}`, { isOwner: true });
+        const b = await makeStaff(local, `b${round}`, { isOwner: true });
+        const call = makeStaffCaller(base, (who) => (who === "a" ? a.cookie : b.cookie));
+        const [moveA, bodyA, moveB, bodyB] = moves[round % moves.length];
+        const results = await Promise.all([
+          call("POST", `/api/ops/admin/staff/${b.id}/${moveA}`, "a", bodyA),
+          call("POST", `/api/ops/admin/staff/${a.id}/${moveB}`, "b", bodyB),
+        ]);
+        const owners = (await local.query("SELECT count(*)::int n FROM staff_users WHERE is_owner AND status = 'active'")).rows[0].n;
+        assert.ok(owners >= 1, `round ${round}: an active Owner remains (results ${results.map((r) => r.status)})`);
+        assert.ok(results.some((r) => r.status === 200), `round ${round}: one of the two changes goes through`);
+      }
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await local.query(`${CLEAN_UP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE;`);
+      await local.end();
+    }
+  });
 }

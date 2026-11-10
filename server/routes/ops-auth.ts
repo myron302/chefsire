@@ -149,11 +149,20 @@ export function createOpsAuthRouter(options: { limit?: number } = {}) {
     if (!session) return;
     const parsed = codeBody.safeParse(req.body);
     if (!parsed.success || !parsed.data.code) return fail(res, 400, "Enter the 6-digit code from your authenticator app.");
+    if (await isLocked(session.staff.id)) return fail(res, 423, LOCKED_MESSAGE, "STAFF_LOCKED");
     const [row] = rowsOf(await db.execute(sql`SELECT totp_pending_enc AS "pendingEnc" FROM staff_users WHERE id = ${session.staff.id}`));
     if (!row?.pendingEnc) return fail(res, 400, "Set up your authenticator first.");
     const secret = decryptSecret(row.pendingEnc);
     const step = verifyTotp(secret, parsed.data.code);
-    if (step === null) return fail(res, 401, "That code didn't match. Check the time on your phone and try again.");
+    if (step === null) {
+      // Wrong codes count toward the same 5-failure lockout as every other sign-in step.
+      if (await recordFailure(session.staff.id)) {
+        await revokeStaffSession(session.hash);
+        clearStaffCookie(res);
+        return fail(res, 423, LOCKED_MESSAGE, "STAFF_LOCKED");
+      }
+      return fail(res, 401, "That code didn't match. Check the time on your phone and try again.");
+    }
     const codes = newRecoveryCodes();
     await db.transaction(async (tx: any) => {
       await tx.execute(sql`

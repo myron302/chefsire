@@ -104,18 +104,26 @@ class StaffChangeError extends Error {
   }
 }
 
+/** Serializes every staff account change, so two Owners can't remove each other at the same moment. */
+export const STAFF_CHANGE_LOCK = 72_416_001;
+
 /** Locks the target and checks that at least one other active Owner would remain. */
 async function lockTarget(tx: any, req: any, options: { removingOwner: boolean }) {
+  // One staff-account change at a time (transaction-scoped): the Owner count below can't go stale before commit.
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${STAFF_CHANGE_LOCK})`);
+  // Re-check the acting Owner under the lock: a change committed while this request waited may have removed them.
+  const actor = rowsOf(await tx.execute(sql`SELECT 1 FROM staff_users WHERE id = ${actorOf(req)} AND is_owner AND status = 'active'`));
+  if (!actor.length) throw new StaffChangeError(403, "You don't have permission to do that.");
   const [target] = rowsOf(await tx.execute(sql`
     SELECT id, login, is_owner AS "isOwner", status FROM staff_users WHERE id = ${req.params.id} FOR UPDATE
   `));
   if (!target) throw new StaffChangeError(404, "Staff member not found");
   if (target.id === actorOf(req)) throw new StaffChangeError(400, "You can't do that to your own account. Ask another Owner.");
   if (options.removingOwner && target.isOwner && target.status === "active") {
-    const [others] = rowsOf(await tx.execute(sql`
-      SELECT count(*)::int AS n FROM staff_users WHERE is_owner AND status = 'active' AND id <> ${target.id}
-    `));
-    if ((others?.n ?? 0) < 1) throw new StaffChangeError(400, "There must always be at least one active Owner.");
+    const others = rowsOf(await tx.execute(sql`
+      SELECT id FROM staff_users WHERE is_owner AND status = 'active' AND id <> ${target.id} ORDER BY id FOR UPDATE
+    `)).length;
+    if (others < 1) throw new StaffChangeError(400, "There must always be at least one active Owner.");
   }
   return target;
 }

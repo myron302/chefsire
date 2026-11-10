@@ -40,6 +40,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "staff.member.add": "Added to group",
   "staff.member.remove": "Removed from group",
   "staff.invite.create": "Invited staff",
+  "staff.invite.bootstrap": "Owner invite created on the server",
   "staff.invite.revoke": "Cancelled invite",
   "staff.user.created": "Joined the portal",
   "staff.user.disable": "Disabled staff account",

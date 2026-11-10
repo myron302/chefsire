@@ -142,7 +142,8 @@ if (!PG_URL) {
       assert.match(setup.json.uri, /^otpauth:\/\/totp\/ChefSire%20Staff%3Amyron\?secret=/);
       const stored = (await local.query("SELECT totp_pending_enc, totp_secret_enc FROM staff_users WHERE login = 'myron'")).rows[0];
       assert.ok(stored.totp_pending_enc.startsWith("v1.") && !stored.totp_pending_enc.includes(secret), "the secret is stored encrypted");
-      assert.equal((await myron.send("POST", "/api/ops/auth/mfa/enroll", { code: codeAt(5) })).status, 401);
+      assert.equal((await myron.send("POST", "/api/ops/auth/mfa/enroll", { code: codeAt(5) })).status, 401, "a wrong setup code counts as a failure");
+      assert.equal((await local.query("SELECT failed_attempts FROM staff_users WHERE login = 'myron'")).rows[0].failed_attempts, 1);
       const preEnrollCookie = myron.cookie;
       const enrolled = await myron.send("POST", "/api/ops/auth/mfa/enroll", { code: codeAt(0) });
       assert.equal(enrolled.status, 200, enrolled.text);
