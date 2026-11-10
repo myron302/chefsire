@@ -14,7 +14,7 @@ if (!PG_URL) {
     const { users } = await import("../../shared/schema");
     const tables = [
       "subscription_history", "drink_bundle_checkout_sessions", "catering_booking_payments",
-      "catering_booking_invoices", "catering_bookings",
+      "catering_booking_invoices", "catering_booking_payment_attempts", "catering_bookings",
       "creator_membership_sales_ledger", "creator_membership_checkout_sessions", "creator_memberships",
       "drink_gifts", "drink_collection_purchases", "drink_collection_sales_ledger",
       "drink_collection_checkout_sessions", "drink_collections",
@@ -36,6 +36,12 @@ if (!PG_URL) {
         CREATE TABLE catering_bookings (id varchar PRIMARY KEY, customer_id varchar, provider_id varchar, status text);
         CREATE TABLE catering_booking_invoices (id varchar PRIMARY KEY, booking_id varchar, status text, amount_cents bigint);
         CREATE TABLE catering_booking_payments (id varchar PRIMARY KEY, invoice_id varchar, status text, amount_cents bigint);
+        CREATE TABLE catering_booking_payment_attempts (
+          id varchar PRIMARY KEY, customer_id varchar, provider_id varchar, state text,
+          square_create_started_at timestamptz, square_create_resolved_at timestamptz,
+          square_create_uncertain_at timestamptz, closure_verified_at timestamptz,
+          refund_review_at timestamptz
+        );
         CREATE TABLE drink_bundle_checkout_sessions (id varchar PRIMARY KEY, user_id varchar, status text);
         CREATE TABLE subscription_history (id varchar PRIMARY KEY, user_id varchar, status text);
         CREATE TABLE creator_memberships (id varchar PRIMARY KEY, user_id varchar, creator_user_id varchar, status text);
@@ -97,6 +103,15 @@ if (!PG_URL) {
       await local.query("INSERT INTO catering_booking_payments VALUES ('payment-1','invoice-1','recorded',1000)");
       assert.ok(!(await inspect()).some(x => x.code === "CATERING_INVOICES"),
         "the local invoice calculation is settled; the independent provider verification gate remains mandatory");
+      await local.query("INSERT INTO catering_booking_payment_attempts VALUES ('attempt-1',$1,'provider','expired',now(),null,now(),null,null)", [id]);
+      assert.equal((await inspect()).find(x => x.code === "CATERING_PAYMENT_ATTEMPTS")?.count, 1,
+        "even expired local checkout can conceal a Square link-creation outcome");
+      await local.query("UPDATE catering_booking_payment_attempts SET square_create_resolved_at=now(), closure_verified_at=now() WHERE id='attempt-1'");
+      assert.ok(!(await inspect()).some(x => x.code === "CATERING_PAYMENT_ATTEMPTS"),
+        "verified terminal create/link state may proceed to the separate provider reconciliation gate");
+      await local.query("UPDATE catering_booking_payment_attempts SET refund_review_at=now() WHERE id='attempt-1'");
+      assert.ok((await inspect()).some(x => x.code === "CATERING_PAYMENT_ATTEMPTS"),
+        "durable refund-review marker is a hard stop until manually reconciled");
       // A historical completed refund may keep its immutable idempotency key for evidence.
       await local.query("UPDATE orders SET payment_status='refunded', refund_idempotency_key='refund-id', capture_request_snapshot=NULL, inventory_status='sold' WHERE id='order-1'");
       assert.ok(!(await inspect()).some(x => x.code === "MARKETPLACE_PAYMENTS"),
