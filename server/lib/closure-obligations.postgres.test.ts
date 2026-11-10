@@ -18,6 +18,7 @@ if (!PG_URL) {
       "creator_membership_sales_ledger", "creator_membership_checkout_sessions", "creator_memberships",
       "drink_gifts", "drink_collection_purchases", "drink_collection_sales_ledger",
       "drink_collection_checkout_sessions", "drink_collections",
+      "meal_plan_purchases", "meal_plan_blueprints", "drink_bundle_purchases", "drink_bundles",
       "wedding_square_enrollment_attempts", "wedding_square_subscriptions",
       "payouts", "commissions", "orders", "users",
     ];
@@ -45,6 +46,12 @@ if (!PG_URL) {
         CREATE TABLE drink_collection_sales_ledger (id varchar PRIMARY KEY, user_id varchar, collection_id varchar, status text);
         CREATE TABLE drink_collection_purchases (id varchar PRIMARY KEY, user_id varchar, collection_id varchar, status text);
         CREATE TABLE drink_gifts (id varchar PRIMARY KEY, purchaser_user_id varchar, recipient_user_id varchar, status text);
+        CREATE TABLE meal_plan_blueprints (id varchar PRIMARY KEY, creator_id varchar);
+        CREATE TABLE meal_plan_purchases (id varchar PRIMARY KEY, user_id varchar, blueprint_id varchar, payment_status text);
+        CREATE TABLE drink_bundles (id varchar PRIMARY KEY, user_id varchar);
+        CREATE TABLE drink_bundle_purchases (id varchar PRIMARY KEY, user_id varchar, bundle_id varchar,
+          status text, access_revoked_at timestamptz);
+        ALTER TABLE drink_collection_purchases ADD COLUMN access_revoked_at timestamptz;
       `);
       const [user] = (await local.query(
         "INSERT INTO users(username, email, display_name) VALUES('closure-test', 'closure-test@example.test', 'Test') RETURNING id",
@@ -106,6 +113,26 @@ if (!PG_URL) {
       await local.query("UPDATE creator_membership_checkout_sessions SET status='completed'");
       await local.query("UPDATE creator_membership_sales_ledger SET status='completed'");
       assert.ok(!(await inspect()).some(x => x.code.startsWith("CREATOR_")));
+      // Seller closure must not destroy paid digital entitlements that belong
+      // to another user, even when every Square payment is already completed.
+      await local.query("INSERT INTO meal_plan_blueprints VALUES ('blueprint-1',$1)", [id]);
+      await local.query("INSERT INTO drink_bundles VALUES ('bundle-created-1',$1)", [id]);
+      await local.query("INSERT INTO meal_plan_purchases VALUES ('meal-buyer-1','another','blueprint-1','verified_paid')");
+      await local.query("INSERT INTO drink_bundle_purchases VALUES ('bundle-buyer-1','another','bundle-created-1','completed',null)");
+      await local.query("INSERT INTO drink_collection_purchases VALUES ('collection-buyer-1','another','collection-1','completed',null)");
+      await local.query("INSERT INTO meal_plan_purchases VALUES ('meal-unverified-1',$1,'blueprint-1','unverified')", [id]);
+      let paid = await inspect();
+      assert.equal(paid.find(x => x.code === "CREATOR_PAID_DIGITAL_ACCESS")?.count, 3,
+        "three completed sales to other buyers remain obligations to preserve paid content");
+      assert.equal(paid.find(x => x.code === "MEAL_PLAN_PAYMENT_EVIDENCE")?.count, 1,
+        "an unverified buyer charge cannot be mistaken for an eligible payment");
+      await local.query("UPDATE meal_plan_purchases SET payment_status = 'refunded' WHERE id IN ('meal-buyer-1','meal-unverified-1')");
+      await local.query("UPDATE drink_bundle_purchases SET status='refunded' WHERE id='bundle-buyer-1'");
+      await local.query("UPDATE drink_collection_purchases SET status='refunded' WHERE id='collection-buyer-1'");
+      paid = await inspect();
+      assert.ok(!paid.some(x => x.code === "CREATOR_PAID_DIGITAL_ACCESS" || x.code === "MEAL_PLAN_PAYMENT_EVIDENCE"),
+        "resolved buyer charges and revoked creator obligations are retained, not erased");
+
       await local.query("DROP TABLE subscription_history");
       await assert.rejects(inspect(), (err: any) =>
         err instanceof ClosureObligationsUnavailableError && err.check === "SUBSCRIPTION_HISTORY");
