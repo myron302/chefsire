@@ -9,7 +9,7 @@ import { eraseDirectMemberPrivateContentWithinClosure } from "./closure-private-
 import { redactOrdinaryDmWithinClosure } from "./closure-message-redaction";
 import { unpublishClosingSellerWithinTransaction } from "./closure-store-unpublish";
 import { scrubMemberIdentityWithinClosure } from "./closure-identity-scrub";
-import { writeMemberClosureAuditWithinTransaction, type ClosureActor } from "./closure-audit";
+import { writeMemberClosureAuditWithinTransaction, validateClosureAudit, type ClosureActor } from "./closure-audit";
 
 /**
  * ISOLATED TEST-ONLY closure composition, not a production API.
@@ -35,6 +35,9 @@ export async function executeIsolatedClosurePrototype(input: {
   userId: string; actor: ClosureActor;
 }): Promise<ClosurePrototypeResult> {
   assertInternalClosureMutationAllowed();
+  // Reject an invalid actor before any account state or idempotency status is read.
+  validateClosureAudit({memberId:input.userId, actor:input.actor,
+    counts:{personalContentRows:0,messagesRedacted:0,productsUnpublished:0,mediaCandidatesQueued:0}});
   return db.transaction(async (tx: any): Promise<ClosurePrototypeResult> => {
     // Same lock as Marketplace order and payment-reservation writes; other
     // financial write paths must be retrofitted before this becomes production.
