@@ -252,6 +252,32 @@ function assertStillReservedWithoutEvidence(state: Awaited<ReturnType<typeof sna
   assert.equal(state.revenue, 0, "no seller revenue without verified capture");
 }
 
+postgresTest("capture preparation refuses deactivated buyers and closed sellers before any stock reservation", async () => {
+  const h = await setup(8);
+  try {
+    const buyerOrder = await seedOrder(h, "buyer-deactivated");
+    await h.admin.query("INSERT INTO account_status (user_id, status) VALUES ('buyer', 'deactivated')");
+    await assert.rejects(
+      reserveMarketplaceCapture(h.deps, buyerOrder, reservationRequest),
+      (error: any) => error.code === "COMMERCE_ACCOUNT_UNAVAILABLE",
+    );
+    assert.equal((await snapshot(h, buyerOrder.id)).inventory, 8);
+    assert.equal((await load(h, buyerOrder.id)).paymentStatus, "unverified");
+    await h.admin.query("DELETE FROM account_status WHERE user_id = 'buyer'");
+
+    const sellerOrder = await seedOrder(h, "seller-closed");
+    await h.admin.query("INSERT INTO account_status (user_id, status) VALUES ('seller', 'closed')");
+    await assert.rejects(
+      reserveMarketplaceCapture(h.deps, sellerOrder, reservationRequest),
+      (error: any) => error.code === "COMMERCE_ACCOUNT_UNAVAILABLE",
+    );
+    assert.equal((await snapshot(h, sellerOrder.id)).inventory, 8);
+    assert.equal((await load(h, sellerOrder.id)).paymentStatus, "unverified");
+  } finally {
+    await teardown(h);
+  }
+});
+
 // ---------------------------------------------------------------- Finding 1
 
 postgresTest("happy path: first attempt charges once and finalizes accounting once", async () => {
