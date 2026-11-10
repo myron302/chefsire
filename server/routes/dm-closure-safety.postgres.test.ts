@@ -59,6 +59,13 @@ if (!PG_URL) {
       assert.equal(deniedMessage.data.code, "MEMBER_CONTENT_WRITE_BLOCKED");
       const deniedThread = await send("/api/dm/threads", closed.id, { participantIds: [friend.id] });
       assert.equal(deniedThread.status, 409, JSON.stringify(deniedThread.data));
+      const closedRecipient = await send("/api/dm/threads", active.id, { participantIds: [closed.id] });
+      assert.equal(closedRecipient.status, 409, JSON.stringify(closedRecipient.data));
+      assert.equal(closedRecipient.data.code, "MEMBER_CONTENT_WRITE_BLOCKED");
+      const validThread = await send("/api/dm/threads", active.id, { participantIds: [friend.id] });
+      assert.equal(validThread.status, 200, JSON.stringify(validThread.data));
+      assert.equal(validThread.data.reused, false);
+      assert.ok(validThread.data.threadId);
       const accepted = await send("/api/dm/threads/shared/messages", active.id, { text: "Private content in DM" });
       assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
       assert.equal((await local.query("SELECT count(*)::int AS n FROM dm_messages")).rows[0].n, 1);
