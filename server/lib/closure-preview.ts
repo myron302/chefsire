@@ -5,6 +5,7 @@ import { inspectClosureDmInventory, type ClosureDmInventory } from "./closure-me
 import { inspectClosureStoreInventory, type ClosureStoreInventory } from "./closure-store-inventory";
 import { inspectClosureUserForeignKeys } from "./closure-fk-inventory";
 import { inspectClosurePrivateContent, type ClosurePrivateContentInventory } from "./closure-private-content-inventory";
+import { inspectPrivateErasureCascadeRisks, type ClosureCascadeRisk } from "./closure-cascade-risks";
 
 /**
  * Read-only staff preview for Part 3b. Not authorization to close.
@@ -25,6 +26,7 @@ export type MemberClosurePreview = {
   verification: "local_only" | "unavailable";
   unknownForeignKeyTables: string[];
   manualReviewForeignKeyTables: string[];
+  cascadeRisks: ClosureCascadeRisk[];
   reasons: string[];
 };
 
@@ -43,7 +45,7 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
         localBlockers: [], dmInventory: null, storeInventory: null,
         privateContentInventory: null,
         verification: "local_only",
-        unknownForeignKeyTables: [], manualReviewForeignKeyTables: [],
+        unknownForeignKeyTables: [], manualReviewForeignKeyTables: [], cascadeRisks: [], cascadeRisks: [],
         reasons: ["Account not found", "Permanent account closure is not enabled"],
       };
       const [statusRow] = rowsOf(await tx.execute(sql`
@@ -54,6 +56,7 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
       const storeInventory = await inspectClosureStoreInventory(tx, userId);
       const foreignKeys = await inspectClosureUserForeignKeys(tx);
       const privateContentInventory = await inspectClosurePrivateContent(tx, userId);
+      const cascadeRisks = await inspectPrivateErasureCascadeRisks(tx);
       return {
         permanentlyDisabled: true, accountExists: true,
         status: statusRow?.status ?? "active",
@@ -61,9 +64,11 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
         verification: "local_only",
         unknownForeignKeyTables: foreignKeys.unknownTables,
         manualReviewForeignKeyTables: foreignKeys.manualReviewTables,
+        cascadeRisks,
         reasons: [
           ...foreignKeys.unknownTables.map(t => `Unclassified account dependency: ${t}`),
           ...foreignKeys.manualReviewTables.map(t => `Manual retention review required: ${t}`),
+          ...(cascadeRisks.length ? [`${cascadeRisks.length} indirect private-content dependencies require retention review`] : []),
           "Permanent account closure is disabled",
           "Provider subscription/payment/refund/dispute records are not yet independently reconciled",
           "Legal retention and media cleanup sign-off are not complete",
