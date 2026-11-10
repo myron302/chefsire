@@ -772,8 +772,26 @@ export class DrizzleStorage implements IStorage {
 
   async createRecipe(insertRecipe: InsertRecipe): Promise<Recipe> {
     const db = getDb();
-    const result = await db.insert(recipes).values(insertRecipe).returning();
-    return result[0];
+    // A recipe linked to a post is authored content. In particular, a POST
+    // request creates its post first; closure can begin between that insert
+    // and this one. Serialize recipe creation with the same author-row lock.
+    if (insertRecipe.postId) {
+      return db.transaction(async (tx) => {
+        const [owner] = await tx.select({ userId: posts.userId })
+          .from(posts).where(eq(posts.id, insertRecipe.postId!)).limit(1);
+        if (!owner) throw new Error("Recipe post no longer exists");
+        await lockMemberForContentWrite(tx, owner.userId);
+        const [stillPresent] = await tx.select({ id: posts.id })
+          .from(posts).where(and(eq(posts.id, insertRecipe.postId!), eq(posts.userId, owner.userId))).limit(1);
+        if (!stillPresent) throw new Error("Recipe post no longer exists");
+        const [created] = await tx.insert(recipes).values(insertRecipe).returning();
+        return created;
+      });
+    }
+    // External/imported recipes without a user-owned post have no author to
+    // lock. Keep the existing import path; do not infer an account identity.
+    const [created] = await db.insert(recipes).values(insertRecipe).returning();
+    return created;
   }
 
   async updateRecipe(id: string, updates: Partial<Recipe>): Promise<Recipe | undefined> {
