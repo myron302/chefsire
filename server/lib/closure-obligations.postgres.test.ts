@@ -15,6 +15,7 @@ if (!PG_URL) {
     const tables = [
       "subscription_history", "drink_bundle_checkout_sessions", "catering_booking_payments",
       "catering_booking_invoices", "catering_bookings",
+      "creator_membership_sales_ledger", "creator_membership_checkout_sessions", "creator_memberships",
       "wedding_square_enrollment_attempts", "wedding_square_subscriptions",
       "payouts", "commissions", "orders", "users",
     ];
@@ -34,6 +35,9 @@ if (!PG_URL) {
         CREATE TABLE catering_booking_payments (id varchar PRIMARY KEY, invoice_id varchar, status text, amount_cents bigint);
         CREATE TABLE drink_bundle_checkout_sessions (id varchar PRIMARY KEY, user_id varchar, status text);
         CREATE TABLE subscription_history (id varchar PRIMARY KEY, user_id varchar, status text);
+        CREATE TABLE creator_memberships (id varchar PRIMARY KEY, user_id varchar, creator_user_id varchar, status text);
+        CREATE TABLE creator_membership_checkout_sessions (id varchar PRIMARY KEY, user_id varchar, creator_user_id varchar, status text);
+        CREATE TABLE creator_membership_sales_ledger (id varchar PRIMARY KEY, user_id varchar, creator_user_id varchar, status text);
       `);
       const [user] = (await local.query(
         "INSERT INTO users(username, email, display_name) VALUES('closure-test', 'closure-test@example.test', 'Test') RETURNING id",
@@ -48,9 +52,13 @@ if (!PG_URL) {
       await local.query("INSERT INTO payouts VALUES ('payout-1',$1,'processing')", [id]);
       await local.query("INSERT INTO wedding_square_subscriptions VALUES ('wedding-1',$1,'ACTIVE')", [id]);
       await local.query("INSERT INTO drink_bundle_checkout_sessions VALUES ('bundle-1',$1,'pending')", [id]);
+      await local.query("INSERT INTO creator_memberships VALUES ('membership-1','other',$1,'active')", [id]);
+      await local.query("INSERT INTO creator_membership_checkout_sessions VALUES ('member-checkout-1','other',$1,'pending')", [id]);
+      await local.query("INSERT INTO creator_membership_sales_ledger VALUES ('member-sale-1','other',$1,'pending')", [id]);
       const blockers = await inspect();
       assert.deepEqual(blockers.map(x => x.code), [
         "MARKETPLACE_ORDERS", "SELLER_PAYOUTS", "WEDDING_SUBSCRIPTIONS", "DRINK_BUNDLE_CHECKOUTS",
+        "CREATOR_MEMBERSHIPS", "CREATOR_MEMBERSHIP_CHECKOUTS", "CREATOR_MEMBERSHIP_SALES",
       ]);
       assert.ok(blockers.every(x => x.count === 1 && x.message.length > 10));
       assert.equal((await local.query("SELECT status FROM payouts WHERE id='payout-1'")).rows[0].status, "processing",
@@ -73,6 +81,12 @@ if (!PG_URL) {
       await local.query("UPDATE orders SET payment_status='refunded', refund_idempotency_key='refund-id', capture_request_snapshot=NULL, inventory_status='sold' WHERE id='order-1'");
       assert.ok(!(await inspect()).some(x => x.code === "MARKETPLACE_PAYMENTS"),
         "a completed refund must not be treated as permanently unsettled");
+      // Creator revenue/membership rows are retained; closed or refunded state
+      // removes the unresolved-obligation blocker, not the ledger evidence.
+      await local.query("UPDATE creator_memberships SET status='cancelled'");
+      await local.query("UPDATE creator_membership_checkout_sessions SET status='completed'");
+      await local.query("UPDATE creator_membership_sales_ledger SET status='completed'");
+      assert.ok(!(await inspect()).some(x => x.code.startsWith("CREATOR_")));
       await local.query("DROP TABLE subscription_history");
       await assert.rejects(inspect(), (err: any) =>
         err instanceof ClosureObligationsUnavailableError && err.check === "SUBSCRIPTION_HISTORY");
