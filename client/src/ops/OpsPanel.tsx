@@ -49,6 +49,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "staff.owner.revoke": "Removed Owner",
   "staff.access.reset": "Reset staff access",
   "staff.access.reset.completed": "Set up access again",
+  "staff.access.reset.emergency": "Access reset from the server (emergency)",
   "staff.mfa.enrolled": "Set up authenticator",
   "staff.signin": "Signed in",
   "member.status.active": "Reinstated account",

@@ -55,7 +55,9 @@
     "db:migrate:images": "tsx server/scripts/migrate-base64-images.ts",
     "r2:remediate:legacy": "tsx server/scripts/remediate-legacy-r2-media.ts",
     "compress:uploads": "tsx server/scripts/compress-uploads.ts",
-    "compress:uploads:dry": "tsx server/scripts/compress-uploads.ts --dry-run"
+    "compress:uploads:dry": "tsx server/scripts/compress-uploads.ts --dry-run",
+    "staff:invite": "tsx server/scripts/create-staff-invite.ts",
+    "staff:reset-access": "tsx server/scripts/reset-staff-access.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1073.0",

@@ -274,6 +274,25 @@ if (!PG_URL) {
       assert.ok(audit.every((e: any) => e.actorType === "staff"));
       assert.equal(audit.find((e: any) => e.action === "staff.user.disable").reason, "Left the company");
 
+      // ---- Break-glass from the server: the only way back for an Owner who lost their phone and recovery codes.
+      const { issueStaffResetLink, StaffRecoveryError } = await import("../lib/staff-recovery");
+      await assert.rejects(issueStaffResetLink("nobody", "Lost phone"), StaffRecoveryError);
+      await assert.rejects(issueStaffResetLink("myron", ""), StaffRecoveryError);
+      assert.equal((await myron.send("GET", "/api/ops/admin/me")).status, 200);
+      const emergency = await issueStaffResetLink("MYRON", "Lost phone and recovery codes");
+      assert.ok(emergency.link.startsWith(`https://${OPS}/invite#`));
+      assert.equal((await myron.send("GET", "/api/ops/admin/me")).status, 401, "every session ends at once");
+      assert.equal((await browser().send("POST", "/api/ops/auth/login", { login: "myron", password: "correct horse battery staple" })).status, 401, "the old password is gone");
+      const second = await issueStaffResetLink("myron", "Sent the first link to the wrong place");
+      const back = browser();
+      assert.equal((await back.send("POST", "/api/ops/auth/invite/accept", { token: emergency.link.split("#")[1], password: "a new owner password" })).status, 404, "an earlier link stops working");
+      assert.equal((await back.send("POST", "/api/ops/auth/invite/accept", { token: second.link.split("#")[1], password: "a new owner password" })).status, 201);
+      assert.equal((await back.send("GET", "/api/ops/auth/me")).json.stage, "enroll", "the authenticator is set up again");
+      const owner = (await local.query("SELECT is_owner, status FROM staff_users WHERE login = 'myron'")).rows[0];
+      assert.deepEqual(owner, { is_owner: true, status: "active" }, "still the Owner");
+      const recoveryAudit = (await local.query("SELECT actor_type, reason FROM admin_audit_log WHERE action = 'staff.access.reset.emergency' ORDER BY id")).rows;
+      assert.deepEqual(recoveryAudit.map((r) => [r.actor_type, r.reason]), [["system", "Lost phone and recovery codes"], ["system", "Sent the first link to the wrong place"]]);
+
       // ---- Without STAFF_SECRET_KEY the portal refuses to sign anyone in.
       const key = process.env.STAFF_SECRET_KEY;
       delete process.env.STAFF_SECRET_KEY;
