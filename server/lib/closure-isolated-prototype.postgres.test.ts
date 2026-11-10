@@ -93,6 +93,11 @@ if (!PG_URL) {
       assert.equal((await local.query("SELECT count(*)::int n FROM admin_audit_log")).rows[0].n,1);
       assert.deepEqual(await executeIsolatedClosurePrototype({userId:member.id,actor:{kind:"member",memberId:member.id}}),
         {changed:false,status:"closed"});
+      await assert.rejects(
+        executeIsolatedClosurePrototype({userId:member.id,actor:{kind:"member",memberId:friend.id}}),
+        /only close own/,
+        "a different member cannot probe even the idempotent closed-account response",
+      );
       assert.equal((await local.query("SELECT count(*)::int n FROM admin_audit_log")).rows[0].n,1);
 
       const [blocked] = (await local.query("INSERT INTO users(username,email,display_name) VALUES('has-order','order@example.test','Order User') RETURNING id")).rows;
