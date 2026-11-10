@@ -6,7 +6,9 @@ import { requireAuth, optionalAuth } from "../middleware";
 import { resolveSelfUserId } from "../lib/self-scope";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { normalizePhone } from "../../shared/phone";
-import { isAccountHidden } from "../lib/account-status";
+import { AccountStatusError, deactivateOwnAccount, isAccountHidden } from "../lib/account-status";
+import { sql } from "drizzle-orm";
+import { db } from "../db";
 import { startNutritionTrialResponse } from "../lib/nutrition-entitlement";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
@@ -405,6 +407,49 @@ r.post("/:id/nutrition/trial", requireAuth, async (req, res) => {
  * Delete user account (requires authentication)
  * GDPR compliance - allows users to delete their own accounts
  */
+/**
+ * POST /users/:id/deactivate
+ * The member deactivates their own account: hidden from everyone and signed out everywhere. Nothing is deleted:
+ * signing in again (any method) reactivates it with all their data (wedding planner, meal plans, pantry, store...).
+ */
+r.post("/:id/deactivate", requireAuth, async (req, res) => {
+  if ((req.user as { id: string }).id !== req.params.id) {
+    return res.status(403).json({ message: "You can only deactivate your own account" });
+  }
+  try {
+    await deactivateOwnAccount(req.params.id);
+    res.clearCookie("auth_token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" });
+    res.json({ ok: true, deactivated: true });
+  } catch (error) {
+    if (error instanceof AccountStatusError) return res.status(error.status).json({ message: error.message });
+    console.error("POST /users/:id/deactivate error", error);
+    res.status(500).json({ message: "We couldn't deactivate your account right now. Please try again." });
+  }
+});
+
+export const KEEP_RECORDS_MESSAGE =
+  "Your account has purchase, sales or booking records that ChefSire has to keep, so it can't be deleted from here. " +
+  "You can deactivate it instead (everything is hidden and you're signed out), or email support@chefsire.com to close it.";
+
+/** Does this account have transaction records that must be kept (orders bought or sold, catering bookings, meal plan purchases)? */
+async function hasTransactionRecords(userId: string): Promise<boolean> {
+  const rowsOf = (result: any): any[] => result?.rows ?? (Array.isArray(result) ? result : []);
+  const checks = [
+    sql`SELECT 1 FROM orders WHERE buyer_id = ${userId} OR seller_id = ${userId} LIMIT 1`,
+    sql`SELECT 1 FROM catering_bookings WHERE customer_id = ${userId} OR provider_id = ${userId} LIMIT 1`,
+    sql`SELECT 1 FROM meal_plan_purchases WHERE user_id = ${userId} LIMIT 1`,
+  ];
+  for (const check of checks) {
+    try {
+      if (rowsOf(await db.execute(check)).length) return true;
+    } catch (error: any) {
+      if (error?.code === "42P01") continue; // table not present in this environment
+      throw error;
+    }
+  }
+  return false;
+}
+
 r.delete("/:id", requireAuth, async (req, res) => {
   try {
     // Security: users can only delete their own account
@@ -420,15 +465,30 @@ r.delete("/:id", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // Transaction records are kept whatever happens to the account; deleting the account would take them with it.
+    if (await hasTransactionRecords(userId)) {
+      return res.status(409).json({ code: "ACCOUNT_HAS_RECORDS", message: KEEP_RECORDS_MESSAGE });
+    }
+
     // storage.deleteUser runs the whole thing in one transaction: it clears this account's remix
     // likes and saves and repairs the counters they backed before removing the account, because
     // those engagement rows reference users(id) with NO ACTION on purpose (see
     // server/lib/remix-engagement-cleanup.ts). Other related records still rely on their own FK
     // behaviour.
-    const deleted = await storage.deleteUser(userId);
+    let deleted = false;
+    try {
+      deleted = await storage.deleteUser(userId);
+    } catch (error: any) {
+      // Something else still points at the account (a foreign key): say so plainly instead of a generic failure.
+      if (error?.code === "23503") {
+        console.warn("DELETE /users/:id refused by a reference", error?.constraint ?? error?.detail);
+        return res.status(409).json({ code: "ACCOUNT_HAS_RECORDS", message: KEEP_RECORDS_MESSAGE });
+      }
+      throw error;
+    }
 
     if (!deleted) {
-      return res.status(500).json({ message: "Failed to delete account" });
+      return res.status(500).json({ message: "We couldn't delete your account right now. Please try again." });
     }
 
     // Clear auth cookie
@@ -444,7 +504,7 @@ r.delete("/:id", requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error("DELETE /users/:id error", error);
-    res.status(500).json({ message: "Failed to delete account" });
+    res.status(500).json({ message: "We couldn't delete your account right now. Please try again, or email support@chefsire.com." });
   }
 });
 

@@ -54,6 +54,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "member.status.active": "Reinstated account",
   "member.status.restricted": "Restricted account",
   "member.status.suspended": "Suspended account",
+  "member.deactivated": "Member deactivated their account",
+  "member.reactivated": "Member reactivated by signing in",
 };
 
 export default function OpsPanel({ me }: { me: OpsMe }) {
@@ -379,6 +381,7 @@ const STATUS_STYLE: Record<string, string> = {
   active: "bg-green-100 text-green-800",
   restricted: "bg-amber-100 text-amber-900",
   suspended: "bg-red-100 text-red-800",
+  deactivated: "bg-gray-200 text-gray-800",
 };
 const StatusBadge = ({ status }: { status: string }) => (
   <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[status] ?? ""}`}>{status[0].toUpperCase() + status.slice(1)}</span>

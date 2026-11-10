@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { getStaffAccess, requireStaffPermission } from "../lib/staff-permissions";
 import { hasCurrentAdminAuthority } from "../lib/admin-authority";
-import { ACCOUNT_STATUSES, AccountStatusError, getAccountStatus, setAccountStatus, type AccountStatus } from "../lib/account-status";
+import { ACCOUNT_STATUSES, STAFF_SETTABLE_STATUSES, AccountStatusError, getAccountStatus, setAccountStatus, type AccountStatus } from "../lib/account-status";
 
 /**
  * Back office: members. Search, a member's record (profile, status, staff groups, their transactions - the newest
@@ -133,7 +133,7 @@ r.get("/members/:id", requireStaffPermission("members.view"), async (req, res) =
 });
 
 const statusBody = z.object({
-  status: z.enum(ACCOUNT_STATUSES),
+  status: z.enum(STAFF_SETTABLE_STATUSES),
   reason: z.string().trim().min(3, "Give a reason (at least 3 characters)").max(500),
 }).strict();
 
