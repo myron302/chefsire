@@ -15,6 +15,7 @@ import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../
 import { isSampleProduct, SAMPLE_LISTING_CODE, SAMPLE_LISTING_MESSAGE } from "../../shared/marketplace-sample";
 import { canMarkShipped } from "../../shared/marketplace-order-status";
 import { isAccountHidden } from "../lib/account-status";
+import { CommerceAccountUnavailableError, lockActiveCommerceAccounts } from "../lib/commerce-account-lock";
 
 const router = Router();
 
@@ -169,7 +170,9 @@ router.post("/checkout", requireAuth, async (req, res) => {
     // reserves inventory atomically with capture_pending.
     let newOrder: typeof orders.$inferSelect;
     try {
-      [newOrder] = await db.insert(orders).values({
+      [newOrder] = await db.transaction(async (tx) => {
+        await lockActiveCommerceAccounts(tx, buyerId, product.sellerId);
+        return tx.insert(orders).values({
         buyerId,
         sellerId: product.sellerId,
         productId: product.id,
@@ -186,7 +189,11 @@ router.post("/checkout", requireAuth, async (req, res) => {
         fulfillmentMethod: body.fulfillmentMethod,
         status: "pending"
         }).returning();
+      });
     } catch (error: any) {
+      if (error instanceof CommerceAccountUnavailableError) {
+        return res.status(409).json({ ok: false, code: error.code, error: error.message });
+      }
       if (error?.code === "23505") {
         const [replayed] = await db.select().from(orders).where(and(
           eq(orders.buyerId, buyerId),
