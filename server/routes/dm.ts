@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
-import { lockMemberForContentWrite, MemberContentWriteBlockedError } from "../lib/member-content-write-lock";
+import { lockMemberForContentWrite, lockAvailableDmParticipants, MemberContentWriteBlockedError } from "../lib/member-content-write-lock";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import {
@@ -277,7 +277,7 @@ r.post("/threads", requireAuth, async (req, res) => {
       // A stale authenticated HTTP request may still be in flight while a
       // terminal closure commits. This row lock serializes the entire thread
       // creation/reuse decision with closure and avoids orphaned threads.
-      await lockMemberForContentWrite(tx, userId);
+      await lockAvailableDmParticipants(tx, userId, body.participantIds);
 
       if (!body.isGroup && body.participantIds.length === 1) {
         const other = body.participantIds[0];
