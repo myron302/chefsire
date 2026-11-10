@@ -26,11 +26,13 @@ if (!PG_URL) {
         INSERT INTO users(username,email,display_name,first_name,last_name,phone,password,bio,avatar,
           google_id, facebook_id, instagram_id, tiktok_id, provider,
           catering_location, catering_enabled, daily_calorie_goal, macro_goals, dietary_restrictions,
-          email_verified_at, email_verified_via, monthly_revenue)
+          email_verified_at, email_verified_via, monthly_revenue,
+          subscription_tier, subscription_status, nutrition_premium, wedding_tier, vendor_tier,
+          followers_count, following_count, posts_count)
         VALUES('oldname','original@example.test','Original Name','Original','Name','+18605551234',
           'secret-password','private bio','/uploads/avatar.jpg','google-sub','fb-sub','ig-sub','tiktok-sub',
           'google','Old Location',true,1200,'{"protein":20,"carbs":40,"fat":20}','["nuts"]',
-          now(),'google',123.45)
+          now(),'google',123.45,'premium','active',true,'elite','pro',10,12,5)
         RETURNING id, auth_version
       `)).rows;
       const [counterparty] = (await local.query(
@@ -64,6 +66,14 @@ if (!PG_URL) {
       assert.deepEqual(scrubbed.dietary_restrictions,[]);
       assert.equal(scrubbed.catering_enabled,false);
       assert.equal(scrubbed.monthly_revenue,"123.45","retained financial field stays unchanged");
+      assert.equal(scrubbed.subscription_tier,"free");
+      assert.equal(scrubbed.subscription_status,"inactive");
+      assert.equal(scrubbed.nutrition_premium,false);
+      assert.equal(scrubbed.wedding_tier,"free");
+      assert.equal(scrubbed.vendor_tier,"free");
+      assert.equal(scrubbed.followers_count,0);
+      assert.equal(scrubbed.following_count,0);
+      assert.equal(scrubbed.posts_count,0);
       const joined = await local.query("SELECT u.display_name FROM orders o JOIN users u ON u.id=o.buyer_id WHERE o.id='order1'");
       assert.equal(joined.rows[0].display_name,"Deleted user");
       const messages = (await local.query("SELECT id, body, attachments FROM dm_messages ORDER BY id")).rows;
