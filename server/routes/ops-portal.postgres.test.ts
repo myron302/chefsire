@@ -109,6 +109,18 @@ if (!PG_URL) {
       assert.match((await anon.send("GET", "/")).text, /staff portal/, "every page path on the ops host is the portal");
       assert.match((await anon.send("GET", "/invite")).text, /staff portal/);
       assert.equal((await anon.send("GET", "/assets/app.js")).status, 200);
+      assert.equal((await anon.send("GET", "/assets/missing.js")).status, 404, "a missing asset is a 404, never the customer page");
+      assert.equal((await anon.send("GET", "/assets/../index.html")).status, 404);
+      // Apache (Plesk) hands ops-host requests over as /__ops-portal + the original path; the rules apply to the original.
+      assert.match((await anon.send("GET", "/__ops-portal/")).text, /staff portal/);
+      assert.match((await anon.send("GET", "/__ops-portal/invite?x=1")).text, /staff portal/);
+      assert.equal((await anon.send("GET", "/__ops-portal/uploads/x.jpg")).status, 404);
+      assert.equal((await anon.send("GET", "/__ops-portal/index.html")).status, 404);
+      assert.equal((await anon.send("GET", "/__ops-portal/api/posts")).status, 404);
+      assert.equal((await anon.send("GET", "/__ops-portal/assets/missing.js")).status, 404);
+      assert.equal((await anon.send("GET", "/__ops-portal/api/ops/auth/me")).json.signedIn, false);
+      assert.match(String((await anon.send("GET", "/__ops-portal/invite")).headers["content-security-policy"]), /frame-ancestors 'none'/);
+      assert.match((await site.send("GET", "/__ops-portal/")).text, /customer app/, "the prefix means nothing on the customer site");
       const preflight = await anon.send("OPTIONS", "/api/ops/auth/login", undefined, { origin: `https://${SITE}`, "access-control-request-method": "POST" });
       assert.equal(preflight.status, 403);
       assert.equal(preflight.headers["access-control-allow-origin"], undefined);
