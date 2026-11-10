@@ -82,6 +82,7 @@ import { serializePublicUser } from "./serializers/public-user";
 import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
 import { purgeRemixEngagementForUser } from "./lib/remix-engagement-cleanup";
 import type { PasswordHash } from "./lib/password-hash";
+import { lockMemberForContentWrite } from "./lib/member-content-write-lock";
 
 /**
  * Database-ready user data. `password` can only be a `PasswordHash` (from `hashPassword`) or null/absent for
@@ -561,14 +562,17 @@ export class DrizzleStorage implements IStorage {
 
   async createPost(insertPost: InsertPost): Promise<Post> {
     const db = getDb();
-    const result = await db.insert(posts).values(insertPost).returning();
-
-    await db
-      .update(users)
-      .set({ postsCount: sql`${users.postsCount} + 1` })
-      .where(eq(users.id, insertPost.userId));
-
-    return result[0];
+    // A valid token may have passed the HTTP gate before closure committed.
+    // Serialize the post and its counter with the closing member's users row
+    // so an in-flight request cannot resurrect personal content afterward.
+    return db.transaction(async (tx) => {
+      await lockMemberForContentWrite(tx, insertPost.userId);
+      const [created] = await tx.insert(posts).values(insertPost).returning();
+      await tx.update(users)
+        .set({ postsCount: sql`${users.postsCount} + 1` })
+        .where(eq(users.id, insertPost.userId));
+      return created;
+    });
   }
 
   async updatePost(id: string, updates: Partial<Post>): Promise<Post | undefined> {
@@ -1037,12 +1041,14 @@ export class DrizzleStorage implements IStorage {
 
   async createComment(insertComment: InsertComment): Promise<Comment> {
     const db = getDb();
-    const result = await db.insert(comments).values(insertComment).returning();
-    await db
-      .update(posts)
-      .set({ commentsCount: sql`${posts.commentsCount} + 1` })
-      .where(eq(posts.id, insertComment.postId));
-    return result[0];
+    return db.transaction(async (tx) => {
+      await lockMemberForContentWrite(tx, insertComment.userId);
+      const [created] = await tx.insert(comments).values(insertComment).returning();
+      await tx.update(posts)
+        .set({ commentsCount: sql`${posts.commentsCount} + 1` })
+        .where(eq(posts.id, insertComment.postId));
+      return created;
+    });
   }
 
   /**
