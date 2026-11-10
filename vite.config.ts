@@ -31,6 +31,13 @@ export default defineConfig(async ({ mode }) => {
     build: {
       outDir: resolve(__dirname, "dist/public"),
       emptyOutDir: true,
+      rollupOptions: {
+        // The customer app, and the staff portal page served only on the ops host (see server/lib/ops-host.ts).
+        input: {
+          main: resolve(__dirname, "client", "index.html"),
+          ops: resolve(__dirname, "client", "ops.html"),
+        },
+      },
     },
     server: {
       fs: {

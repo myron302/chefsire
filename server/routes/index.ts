@@ -64,8 +64,6 @@ import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
 import paymentsRouter from "./payments";
 import payoutsRouter from "./payouts";
-import adminStaffRouter from "./admin-staff";
-import adminMembersRouter from "./admin-members";
 
 // File uploads
 import uploadRouter from "./upload";
@@ -222,8 +220,6 @@ r.use("/orders", ordersRouter);
 r.use("/payments", paymentsRouter);
 r.use("/payouts", payoutsRouter);
 // Back office: staff groups/permissions and the audit log (server/lib/staff-permissions.ts).
-r.use("/admin", adminStaffRouter);
-r.use("/admin", adminMembersRouter);
 
 // File uploads
 r.use("/upload", uploadRouter);

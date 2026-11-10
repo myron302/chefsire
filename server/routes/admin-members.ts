@@ -2,14 +2,14 @@ import { Router } from "express";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { requireAuth } from "../middleware";
 import { getStaffAccess, requireStaffPermission } from "../lib/staff-permissions";
 import { hasCurrentAdminAuthority } from "../lib/admin-authority";
 import { ACCOUNT_STATUSES, AccountStatusError, getAccountStatus, setAccountStatus, type AccountStatus } from "../lib/account-status";
 
 /**
  * Back office: members. Search, a member's record (profile, status, staff groups, their transactions - the newest
- * 200 per section with the full count - and their audit history), and status changes. Mounted at /api/admin.
+ * 200 per section with the full count - and their audit history), and status changes. Mounted at /api/ops/admin
+ * behind requireStaffSession (ops host only).
  *
  * Transaction records are read from their own tables and are never modified here: they exist whether the member is
  * active, restricted or suspended.
@@ -25,7 +25,7 @@ const searchQuery = z.object({
 });
 
 // Search by username, display name, email or phone (contains, case-insensitive), optionally by status.
-r.get("/members", requireAuth, requireStaffPermission("members.view"), async (req, res) => {
+r.get("/members", requireStaffPermission("members.view"), async (req, res) => {
   try {
     const q = searchQuery.parse(req.query);
     const term = q.q ? `%${q.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
@@ -45,7 +45,7 @@ r.get("/members", requireAuth, requireStaffPermission("members.view"), async (re
     res.json({ ok: true, members: rows.slice(0, q.limit), hasMore: rows.length > q.limit });
   } catch (error: any) {
     if (error?.issues) return res.status(400).json({ ok: false, error: "Invalid search" });
-    console.error("[admin] member search failed", error);
+    console.error("[ops] member search failed", error);
     res.status(500).json({ ok: false, error: "Failed to search members" });
   }
 });
@@ -66,12 +66,12 @@ async function section(name: string, query: ReturnType<typeof sql>, countQuery?:
     const total = count ? Number(rowsOf(count)[0]?.n ?? list.length) : list.length;
     return { name, rows: list, total, truncated: total > list.length, error: null as string | null };
   } catch (error) {
-    console.error(`[admin] member record section ${name} failed`, (error as Error)?.message);
+    console.error(`[ops] member record section ${name} failed`, (error as Error)?.message);
     return { name, rows: [] as any[], total: 0, truncated: false, error: "Unavailable" };
   }
 }
 
-r.get("/members/:id", requireAuth, requireStaffPermission("members.view"), async (req, res) => {
+r.get("/members/:id", requireStaffPermission("members.view"), async (req, res) => {
   try {
     const id = req.params.id;
     const [user] = rowsOf(await db.execute(sql`
@@ -80,12 +80,8 @@ r.get("/members/:id", requireAuth, requireStaffPermission("members.view"), async
       FROM users WHERE id = ${id}
     `));
     if (!user) return res.status(404).json({ ok: false, error: "Member not found" });
-    const viewer = await getStaffAccess((req.user as any).id);
-    const [status, groups, isOwner] = await Promise.all([
-      getAccountStatus(id),
-      db.execute(sql`SELECT g.id, g.name FROM staff_group_members m JOIN staff_groups g ON g.id = m.group_id WHERE m.user_id = ${id} ORDER BY g.name`),
-      hasCurrentAdminAuthority(id),
-    ]);
+    const viewer = await getStaffAccess((req as any).staff.id);
+    const [status, isOwner] = await Promise.all([getAccountStatus(id), hasCurrentAdminAuthority(id)]);
     const canSeeMoney = viewer.permissions.includes("orders.view");
     const sections = await Promise.all([
       canSeeMoney ? section("Marketplace orders (buying)", sql`
@@ -123,7 +119,6 @@ r.get("/members/:id", requireAuth, requireStaffPermission("members.view"), async
       ok: true,
       member: { ...user, isOwner },
       status,
-      groups: rowsOf(groups),
       records: sections.filter(Boolean),
       history: rowsOf(history),
       canChangeStatus: {
@@ -132,7 +127,7 @@ r.get("/members/:id", requireAuth, requireStaffPermission("members.view"), async
       },
     });
   } catch (error) {
-    console.error("[admin] member record failed", error);
+    console.error("[ops] member record failed", error);
     res.status(500).json({ ok: false, error: "Failed to load member" });
   }
 });
@@ -147,10 +142,10 @@ function permissionFor(from: AccountStatus, to: AccountStatus) {
   return to === "suspended" || from === "suspended" ? "members.suspend" : "members.restrict";
 }
 
-r.post("/members/:id/status", requireAuth, requireStaffPermission("members.view"), async (req, res) => {
+r.post("/members/:id/status", requireStaffPermission("members.view"), async (req, res) => {
   try {
     const body = statusBody.parse(req.body);
-    const actorId = (req.user as any).id;
+    const actorId = (req as any).staff.id;
     const access = await getStaffAccess(actorId);
     const result = await setAccountStatus({
       actorId,
@@ -165,7 +160,7 @@ r.post("/members/:id/status", requireAuth, requireStaffPermission("members.view"
   } catch (error: any) {
     if (error?.issues) return res.status(400).json({ ok: false, error: error.issues[0]?.message ?? "Invalid request" });
     if (error instanceof AccountStatusError) return res.status(error.status).json({ ok: false, error: error.message });
-    console.error("[admin] status change failed", error);
+    console.error("[ops] status change failed", error);
     res.status(500).json({ ok: false, error: "Failed to change status" });
   }
 });
