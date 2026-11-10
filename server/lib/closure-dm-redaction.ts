@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { assertInternalClosureMutationAllowed } from "./closure-feature";
 
 /**
  * Stage 1 internal, unexposed text+attachment redaction building block.
@@ -13,6 +14,7 @@ const rowsOf = (result: any): any[] => result?.rows ?? (Array.isArray(result) ? 
 
 /** Leaves thread ids, original timestamps, sender id and other people's content unchanged. */
 export async function redactOrdinaryMemberMessagesWithinTransaction(tx: any, userId: string): Promise<number> {
+  assertInternalClosureMutationAllowed();
   const rows = rowsOf(await tx.execute(sql`
     WITH targets AS MATERIALIZED (
       SELECT m.id
