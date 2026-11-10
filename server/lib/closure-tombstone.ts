@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { assertInternalClosureMutationAllowed } from "./closure-feature";
 
 /**
  * Part 3b internal tombstone primitive. THIS IS NOT THE CLOSURE ENGINE.
@@ -41,6 +42,7 @@ export async function applyClosedMemberIdentityWithinTransaction(
   userId: string,
   identity: ClosedMemberIdentity,
 ): Promise<void> {
+  assertInternalClosureMutationAllowed();
   const [member] = rowsOf(await tx.execute(sql`
     SELECT id FROM users WHERE id = ${userId} FOR UPDATE
   `));
