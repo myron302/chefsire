@@ -19,6 +19,9 @@ export type ClosureBlockerCode =
   | "CATERING_BOOKINGS"
   | "CATERING_INVOICES"
   | "DRINK_BUNDLE_CHECKOUTS"
+  | "DRINK_COLLECTION_PAYMENTS"
+  | "DRINK_COLLECTION_PURCHASES"
+  | "DRINK_GIFTS"
   | "CREATOR_MEMBERSHIPS"
   | "CREATOR_MEMBERSHIP_CHECKOUTS"
   | "CREATOR_MEMBERSHIP_SALES"
@@ -112,6 +115,34 @@ export async function inspectLocalClosureObligations(tx: any, userId: string): P
       query: sql`SELECT count(*)::int AS n FROM drink_bundle_checkout_sessions
         WHERE user_id = ${userId}
           AND (status IS NULL OR status NOT IN ('completed', 'refunded', 'failed', 'cancelled', 'expired'))`,
+    },
+    {
+      code: "DRINK_COLLECTION_PAYMENTS",
+      message: "Drink collection checkout or sales refunds are not fully resolved.",
+      query: sql`SELECT
+        (SELECT count(*) FROM drink_collection_checkout_sessions c
+          WHERE (c.user_id = ${userId} OR EXISTS
+            (SELECT 1 FROM drink_collections d WHERE d.id = c.collection_id AND d.user_id = ${userId}))
+            AND (c.status IS NULL OR c.status NOT IN ('completed','failed','canceled','refunded','revoked')))
+        + (SELECT count(*) FROM drink_collection_sales_ledger l
+          WHERE (l.user_id = ${userId} OR EXISTS
+            (SELECT 1 FROM drink_collections d WHERE d.id = l.collection_id AND d.user_id = ${userId}))
+            AND (l.status IS NULL OR l.status NOT IN ('completed','refunded','revoked')))::int AS n`,
+    },
+    {
+      code: "DRINK_COLLECTION_PURCHASES",
+      message: "Drink collection purchase or refund remains unsettled.",
+      query: sql`SELECT count(*)::int AS n FROM drink_collection_purchases p
+        WHERE (p.user_id = ${userId} OR EXISTS
+          (SELECT 1 FROM drink_collections d WHERE d.id = p.collection_id AND d.user_id = ${userId}))
+          AND (p.status IS NULL OR p.status NOT IN ('completed','refunded','revoked'))`,
+    },
+    {
+      code: "DRINK_GIFTS",
+      message: "A gift purchase or recipient obligation is still pending.",
+      query: sql`SELECT count(*)::int AS n FROM drink_gifts
+        WHERE (purchaser_user_id = ${userId} OR recipient_user_id = ${userId})
+          AND (status IS NULL OR status NOT IN ('completed','revoked','refunded','canceled'))`,
     },
     {
       code: "CREATOR_MEMBERSHIPS",
