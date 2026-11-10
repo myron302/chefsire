@@ -17,6 +17,7 @@ export type ClosureBlockerCode =
   | "WEDDING_SUBSCRIPTIONS"
   | "WEDDING_ENROLLMENTS"
   | "CATERING_BOOKINGS"
+  | "CATERING_INVOICES"
   | "DRINK_BUNDLE_CHECKOUTS"
   | "MARKETPLACE_PAID_PLAN"
   | "SUBSCRIPTION_HISTORY";
@@ -55,7 +56,7 @@ export async function inspectLocalClosureObligations(tx: any, userId: string): P
         WHERE (buyer_id = ${userId} OR seller_id = ${userId})
           AND (payment_status IS NULL OR payment_status NOT IN ('captured', 'refunded', 'unverified')
             OR inventory_status IN ('reserved', 'legacy_unverified')
-            OR refund_idempotency_key IS NOT NULL
+            OR (refund_idempotency_key IS NOT NULL AND payment_status <> 'refunded')
             OR capture_request_snapshot IS NOT NULL)`,
     },
     {
@@ -81,7 +82,7 @@ export async function inspectLocalClosureObligations(tx: any, userId: string): P
       code: "WEDDING_ENROLLMENTS",
       message: "Wedding subscription enrollment or recovery remains unresolved.",
       query: sql`SELECT count(*)::int AS n FROM wedding_square_enrollment_attempts
-        WHERE user_id = ${userId} AND status IN ('reserved', 'submitting', 'needs_reconciliation', 'confirmed')`,
+        WHERE user_id = ${userId} AND status IN ('reserved', 'submitting', 'needs_reconciliation')`,
     },
     {
       code: "CATERING_BOOKINGS",
@@ -89,6 +90,18 @@ export async function inspectLocalClosureObligations(tx: any, userId: string): P
       query: sql`SELECT count(*)::int AS n FROM catering_bookings
         WHERE (customer_id = ${userId} OR provider_id = ${userId})
           AND (status IS NULL OR status NOT IN ('completed', 'cancelled'))`,
+    },
+    {
+      code: "CATERING_INVOICES",
+      message: "Outstanding catering invoices or payments must be settled.",
+      query: sql`SELECT count(*)::int AS n FROM catering_booking_invoices i
+        JOIN catering_bookings b ON b.id = i.booking_id
+        WHERE (b.customer_id = ${userId} OR b.provider_id = ${userId})
+          AND i.status = 'issued'
+          AND coalesce((
+            SELECT sum(p.amount_cents) FROM catering_booking_payments p
+            WHERE p.invoice_id = i.id AND p.status = 'recorded'
+          ), 0) < i.amount_cents`,
     },
     {
       code: "DRINK_BUNDLE_CHECKOUTS",
