@@ -18,6 +18,7 @@ export type ClosureBlockerCode =
   | "WEDDING_ENROLLMENTS"
   | "CATERING_BOOKINGS"
   | "CATERING_INVOICES"
+  | "CATERING_PAYMENT_ATTEMPTS"
   | "DRINK_BUNDLE_CHECKOUTS"
   | "DRINK_COLLECTION_PAYMENTS"
   | "DRINK_COLLECTION_PURCHASES"
@@ -110,6 +111,19 @@ export async function inspectLocalClosureObligations(tx: any, userId: string): P
             SELECT sum(p.amount_cents) FROM catering_booking_payments p
             WHERE p.invoice_id = i.id AND p.status = 'recorded'
           ), 0) < i.amount_cents`,
+    },
+    {
+      code: "CATERING_PAYMENT_ATTEMPTS",
+      message: "A catering Square checkout, payment, refund review, or unknown provider result remains unresolved.",
+      // A terminal-looking local state cannot override an unconfirmed
+      // external link-creation outcome or refund activity. Keep the evidence
+      // and require independent provider readback in the eventual close gate.
+      query: sql`SELECT count(*)::int AS n FROM catering_booking_payment_attempts
+        WHERE (customer_id = ${userId} OR provider_id = ${userId})
+          AND (state IS NULL OR state NOT IN ('completed','failed','expired','cancelled','superseded')
+            OR (square_create_started_at IS NOT NULL AND square_create_resolved_at IS NULL)
+            OR (square_create_uncertain_at IS NOT NULL AND closure_verified_at IS NULL)
+            OR refund_review_at IS NOT NULL)`,
     },
     {
       code: "DRINK_BUNDLE_CHECKOUTS",
