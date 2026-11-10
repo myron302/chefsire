@@ -1,6 +1,20 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # Staff portal host (ops.chefsire.com, a Plesk alias of this site): only the built assets are served from disk.
+  # Every other request goes to the Node app, which applies the staff portal boundary (lib/ops-host.ts): the portal
+  # page with its security headers, the staff API, and 404 for everything else. Without this, Apache would answer
+  # "/" and page paths with the customer app's index.html. Rewriting to a path that doesn't exist on disk is what
+  # hands the request to the app instead of a static file or the directory index.
+  RewriteRule ^__ops-portal$ - [L]
+  RewriteCond %{HTTP_HOST} ^ops\.chefsire\.com(:\d+)?$ [NC]
+  RewriteCond %{REQUEST_URI} !^/(?:assets|images)/ [NC]
+  RewriteCond %{REQUEST_URI} !^/(?:api|healthz)(?:/|$) [NC]
+  RewriteRule ^ /__ops-portal [L]
+
+  # The portal page is never served on the customer site.
+  RewriteRule ^ops\.html$ index.html [L]
+
   # Keep Express-owned paths on the Node app instead of serving the SPA shell:
   # /api (API), /healthz (health check) and /uploads (user-uploaded files).
   RewriteCond %{REQUEST_URI} ^/(?:api|healthz|uploads)(?:/|$) [NC]
