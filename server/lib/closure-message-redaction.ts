@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { assertInternalClosureMutationAllowed } from "./closure-feature";
 
 /**
  * Redact ONLY ordinary member-authored DMs as part of the eventual, locked,
@@ -13,6 +14,7 @@ const rowsOf = (result: any): any[] => result?.rows ?? (Array.isArray(result) ? 
 export const REDACTED_MEMBER_DM_BODY = "This message was removed";
 
 export async function redactOrdinaryDmWithinClosure(tx: any, userId: string): Promise<number> {
+  assertInternalClosureMutationAllowed();
   const changed = rowsOf(await tx.execute(sql`
     UPDATE dm_messages m
     SET body = ${REDACTED_MEMBER_DM_BODY},
