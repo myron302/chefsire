@@ -4,6 +4,7 @@ import { inspectLocalClosureObligations, type ClosureBlocker } from "./closure-o
 import { inspectClosureDmInventory, type ClosureDmInventory } from "./closure-message-inventory";
 import { inspectClosureStoreInventory, type ClosureStoreInventory } from "./closure-store-inventory";
 import { inspectClosureUserForeignKeys } from "./closure-fk-inventory";
+import { inspectClosurePrivateContent, type ClosurePrivateContentInventory } from "./closure-private-content-inventory";
 
 /**
  * Read-only staff preview for Part 3b. Not authorization to close.
@@ -20,6 +21,7 @@ export type MemberClosurePreview = {
   localBlockers: ClosureBlocker[];
   dmInventory: ClosureDmInventory | null;
   storeInventory: ClosureStoreInventory | null;
+  privateContentInventory: ClosurePrivateContentInventory | null;
   verification: "local_only" | "unavailable";
   unknownForeignKeyTables: string[];
   manualReviewForeignKeyTables: string[];
@@ -39,6 +41,8 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
       if (!member) return {
         permanentlyDisabled: true, accountExists: false, status: null,
         localBlockers: [], dmInventory: null, storeInventory: null,
+      privateContentInventory: null,
+        privateContentInventory: null,
         verification: "local_only",
         unknownForeignKeyTables: [], manualReviewForeignKeyTables: [],
         reasons: ["Account not found", "Permanent account closure is not enabled"],
@@ -50,10 +54,11 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
       const dmInventory = await inspectClosureDmInventory(tx, userId);
       const storeInventory = await inspectClosureStoreInventory(tx, userId);
       const foreignKeys = await inspectClosureUserForeignKeys(tx);
+      const privateContentInventory = await inspectClosurePrivateContent(tx, userId);
       return {
         permanentlyDisabled: true, accountExists: true,
         status: statusRow?.status ?? "active",
-        localBlockers, dmInventory, storeInventory,
+        localBlockers, dmInventory, storeInventory, privateContentInventory,
         verification: "local_only",
         unknownForeignKeyTables: foreignKeys.unknownTables,
         manualReviewForeignKeyTables: foreignKeys.manualReviewTables,
