@@ -1,7 +1,8 @@
 // server/routes/dm.ts
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray, lt, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
+import { lockMemberForContentWrite, MemberContentWriteBlockedError } from "../lib/member-content-write-lock";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import {
@@ -342,33 +343,45 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
 
   if (await refuseBookingLinkedThread(id, res)) return;
 
-  const [msg] = await db
-    .insert(dmMessages)
-    .values({
-      threadId: id,
-      senderId: userId,
-      body: body.text,
-      attachments: body.attachments ?? [],
-    })
-    .returning();
-
-  // Mark my read
-  await db
-    .update(dmParticipants)
-    .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
-    .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+  // Membership and auth checked above can become stale while permanent account
+  // closure is in flight. Recheck under the users FOR UPDATE lock in the SAME
+  // transaction as the message and read marker, so a closed account cannot
+  // write after its old token was revoked.
+  let msg: typeof dmMessages.$inferSelect;
+  try {
+    msg = await db.transaction(async (tx) => {
+      await lockMemberForContentWrite(tx, userId);
+      const currentMembership = await tx.select({ id: dmParticipants.id })
+        .from(dmParticipants)
+        .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
+        .limit(1);
+      if (!currentMembership.length) throw new MemberContentWriteBlockedError();
+      const linked = await tx.execute(sql`
+        SELECT 1 FROM catering_booking_conversations WHERE thread_id = ${id} LIMIT 1
+      `);
+      const linkedRows = (linked as any)?.rows ?? (Array.isArray(linked) ? linked : []);
+      if (linkedRows.length) throw new MemberContentWriteBlockedError();
+      const [created] = await tx.insert(dmMessages).values({
+        threadId: id,
+        senderId: userId,
+        body: body.text,
+        attachments: body.attachments ?? [],
+      }).returning();
+      await tx.update(dmParticipants)
+        .set({ lastReadMessageId: created.id, lastReadAt: new Date() })
+        .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+      return created;
+    });
+  } catch (error) {
+    if (error instanceof MemberContentWriteBlockedError) {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
+    throw error;
+  }
 
   // Notify other participants
   try {
-    const { users } = await import("../../shared/schema");
     const { notifications } = await import("../../shared/schema");
-    const [sender] = await db
-      .select({ displayName: users.displayName, username: users.username })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    const senderName = sender?.displayName || sender?.username || "Someone";
-
     const others = await db
       .select({ userId: dmParticipants.userId })
       .from(dmParticipants)
@@ -379,8 +392,8 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
         others.map((p) => ({
           userId: p.userId,
           type: "message",
-          title: `New message from ${senderName}`,
-          message: body.text.length > 80 ? body.text.slice(0, 80) + "…" : body.text,
+          title: "New message",
+          message: "You have a new message.",
           linkUrl: `/messages`,
           priority: "normal",
         }))
