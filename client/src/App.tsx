@@ -97,6 +97,7 @@ const ClubsPage = React.lazy(() => import("@/pages/clubs"));
 const ClubDetailPage = React.lazy(() => import("@/pages/clubs/[id]"));
 const SubstitutionsPage = React.lazy(() => import("@/pages/substitutions/SubstitutionsPage"));
 const Settings = React.lazy(() => import("@/pages/settings"));
+const AdminPanel = React.lazy(() => import("@/pages/admin/AdminPanel"));
 const SquareConnectionPage = React.lazy(() => import("@/pages/square-connection"));
 const BiteMapPage = React.lazy(() => import("@/pages/bitemap/index.tsx"));
 const LeaderboardPage = React.lazy(() => import("@/pages/leaderboard/LeaderboardPage"));
@@ -200,6 +201,7 @@ export default function App() {
                 </Route>
                 <Route path="/profile/:userId?" component={Profile} />
                 <Route path="/settings" component={Settings} />
+                <Route path="/admin" component={AdminPanel} />
                 <Route path="/settings/payouts" component={SquareConnectionPage} />
                 <Route path="/" component={Feed} />
                 <Route path="/feed" component={Feed} />
