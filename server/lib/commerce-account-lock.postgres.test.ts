@@ -6,6 +6,20 @@ import { BACK_OFFICE_SQL, CLEAN_UP_BACK_OFFICE, DROP_BACK_OFFICE } from "../test
 import { CommerceAccountUnavailableError, lockActiveCommerceAccounts } from "../lib/commerce-account-lock";
 import { sql } from "drizzle-orm";
 
+async function waitForBlockedLock(local: any, phrase: string) {
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const result = await local.query(
+      "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE $1",
+      [`%${phrase}%`],
+    );
+    if (Number(result.rows[0]?.n) > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Expected concurrent transaction to wait on account lock: ${phrase}`);
+}
+
+
 if (!PG_URL) {
   test("Commerce/closure lock integration requires CS_TEST_PG_URL", { skip: true }, () => {});
 } else {
@@ -32,7 +46,8 @@ if (!PG_URL) {
           await tx.execute(sql`INSERT INTO orders(buyer_id, seller_id, product_id, quantity, total_amount, platform_fee, seller_amount, fulfillment_method)
             VALUES (${buyer.id}, ${seller.id}, 'none', 1, 10, 1, 9, 'local_pickup')`);
         });
-        // Holding the users row lock prevents checkout from getting past the account status check.
+        // Confirm checkout is actually waiting on the account row before staff closes.
+        await waitForBlockedLock(local, "FROM users WHERE id IN");
         await holder.query("COMMIT");
         await assert.rejects(checkout, CommerceAccountUnavailableError);
       } finally {
@@ -81,6 +96,7 @@ if (!PG_URL) {
         await tx.execute(sql`INSERT INTO account_status (user_id, status) VALUES (${buyer.id}, 'closed')`);
         return true;
       });
+      await waitForBlockedLock(local, "FROM users WHERE id =");
       release();
       await checkout;
       assert.equal(await close, false, "closure sees the committed order and must refuse");
