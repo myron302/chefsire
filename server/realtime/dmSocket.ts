@@ -1,6 +1,6 @@
 // server/realtime/dmSocket.ts
 import type { Server as HttpServer } from "http";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { lockMemberForContentWrite, MemberContentWriteBlockedError } from "../lib/member-content-write-lock";
 import { db } from "../db";
 import {
@@ -205,11 +205,15 @@ export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOpti
 
             // Notifications must not persist an old name or a message excerpt
             // on another person's account after the sender's identity is erased.
-            const others = await tx.select({ userId: dmParticipants.userId })
-              .from(dmParticipants)
-              .where(and(eq(dmParticipants.threadId, threadId), ne(dmParticipants.userId, userId)));
+            const othersResult = await tx.execute(sql`
+              SELECT p.user_id AS "userId" FROM dm_participants p
+              LEFT JOIN account_status st ON st.user_id = p.user_id
+              WHERE p.thread_id = ${threadId} AND p.user_id <> ${userId}
+                AND COALESCE(st.status, 'active') IN ('active', 'restricted')
+            `);
+            const others = (othersResult as any)?.rows ?? (Array.isArray(othersResult) ? othersResult : []);
             if (others.length > 0) await tx.insert(notifications).values(
-              others.map((participant) => ({
+              others.map((participant: { userId: string }) => ({
                 userId: participant.userId,
                 type: "dm",
                 title: "New message",
