@@ -289,7 +289,7 @@ r.post("/threads", requireAuth, async (req, res) => {
         const candidates = theirs.map(p => p.threadId).filter(id => mySet.has(id));
         // Never reuse a catering-linked conversation for ordinary DMs.
         const linked = await bookingLinkedThreadIds(candidates);
-        const shared = candidates.find(id => !linked.has(id));
+        const shared = candidates.find((id: string) => !linked.has(id));
         if (shared) return { threadId: shared, reused: true };
       }
 
