@@ -2603,6 +2603,8 @@ export default function SettingsPage() {
 
   const [interests, setInterests] = useState<string[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
 
   const getPasswordStrength = (value: string): { strength: number; label: string; color: string } => {
     let strength = 0;
@@ -2917,10 +2919,26 @@ export default function SettingsPage() {
     } catch (error: any) {
       console.error("Account deletion error:", error);
       toast({
-        title: "Failed to delete account",
+        title: "Your account wasn't deleted",
         description: error.message || "An error occurred",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleDeactivateAccount = async () => {
+    if (!user?.id) return;
+    setDeactivating(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/deactivate`, { method: "POST", credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error((data as any)?.message || "We couldn't deactivate your account right now.");
+      toast({ title: "Account deactivated", description: "Sign in any time to reactivate it. Everything will be there." });
+      setTimeout(() => { window.location.href = "/"; }, 1500);
+    } catch (error: any) {
+      toast({ title: "Your account wasn't deactivated", description: error.message, variant: "destructive" });
+    } finally {
+      setDeactivating(false);
     }
   };
 
@@ -3458,8 +3476,33 @@ export default function SettingsPage() {
             <CardTitle className="text-red-600">Danger Zone</CardTitle>
             <CardDescription>Irreversible and destructive actions</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-4 border border-red-200 rounded-lg bg-red-50">
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="font-semibold">Deactivate Account</div>
+                <div className="text-sm text-gray-600">
+                  Take a break: your profile, posts and store are hidden and you're signed out everywhere. Nothing is
+                  deleted. Sign in any time to come back, and your wedding planner, meal plans, pantry and everything else
+                  will be exactly as you left them.
+                </div>
+              </div>
+              <Button variant="outline" onClick={() => setShowDeactivateConfirm(true)}>Deactivate</Button>
+            </div>
+
+            {showDeactivateConfirm && (
+              <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-4">
+                <p className="mb-3 text-sm text-gray-700">
+                  Deactivate your account now? You'll be signed out. To come back, just sign in again.
+                  Paid plans aren't cancelled by deactivating; manage them on the Subscription tab.
+                </p>
+                <div className="flex gap-3">
+                  <Button onClick={handleDeactivateAccount} disabled={deactivating}>{deactivating ? "Deactivating…" : "Yes, deactivate"}</Button>
+                  <Button variant="outline" onClick={() => setShowDeactivateConfirm(false)}>Cancel</Button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 p-4 border border-red-200 rounded-lg bg-red-50 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="font-semibold text-red-600">Delete Account</div>
                 <div className="text-sm text-gray-600">Permanently delete your account and all associated data</div>

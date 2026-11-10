@@ -238,4 +238,4 @@ jobs:
       - name: Verify Google email ownership and legacy tester reclamation on isolated PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/routes/auth-account-prehijack.test.ts server/routes/auth-login-username.postgres.test.ts server/routes/auth-login-phone.postgres.test.ts server/routes/recipe-post-create.postgres.test.ts server/routes/nutrition-trial.postgres.test.ts server/routes/admin-staff.postgres.test.ts server/routes/admin-members.postgres.test.ts server/routes/ops-portal.postgres.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/routes/auth-account-prehijack.test.ts server/routes/auth-login-username.postgres.test.ts server/routes/auth-login-phone.postgres.test.ts server/routes/recipe-post-create.postgres.test.ts server/routes/nutrition-trial.postgres.test.ts server/routes/admin-staff.postgres.test.ts server/routes/admin-members.postgres.test.ts server/routes/ops-portal.postgres.test.ts server/routes/account-deactivation.postgres.test.ts
