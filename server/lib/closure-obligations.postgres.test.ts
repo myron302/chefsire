@@ -13,7 +13,8 @@ if (!PG_URL) {
     const { db } = await import("../db");
     const { users } = await import("../../shared/schema");
     const tables = [
-      "subscription_history", "drink_bundle_checkout_sessions", "catering_bookings",
+      "subscription_history", "drink_bundle_checkout_sessions", "catering_booking_payments",
+      "catering_booking_invoices", "catering_bookings",
       "wedding_square_enrollment_attempts", "wedding_square_subscriptions",
       "payouts", "commissions", "orders", "users",
     ];
@@ -29,6 +30,8 @@ if (!PG_URL) {
         CREATE TABLE wedding_square_subscriptions (id varchar PRIMARY KEY, user_id varchar, provider_status text);
         CREATE TABLE wedding_square_enrollment_attempts (id varchar PRIMARY KEY, user_id varchar, status text);
         CREATE TABLE catering_bookings (id varchar PRIMARY KEY, customer_id varchar, provider_id varchar, status text);
+        CREATE TABLE catering_booking_invoices (id varchar PRIMARY KEY, booking_id varchar, status text, amount_cents bigint);
+        CREATE TABLE catering_booking_payments (id varchar PRIMARY KEY, invoice_id varchar, status text, amount_cents bigint);
         CREATE TABLE drink_bundle_checkout_sessions (id varchar PRIMARY KEY, user_id varchar, status text);
         CREATE TABLE subscription_history (id varchar PRIMARY KEY, user_id varchar, status text);
       `);
@@ -59,6 +62,17 @@ if (!PG_URL) {
       assert.ok(paymentBlocked.some(x => x.code === "MARKETPLACE_PAYMENTS"));
       assert.ok(!paymentBlocked.some(x => x.code === "MARKETPLACE_ORDERS"));
 
+      // Completed/closed bookings do not themselves block, but an unpaid issued invoice does.
+      await local.query("INSERT INTO catering_bookings VALUES ('booking-1',$1,'other','completed')", [id]);
+      await local.query("INSERT INTO catering_booking_invoices VALUES ('invoice-1','booking-1','issued',1000)");
+      assert.ok((await inspect()).some(x => x.code === "CATERING_INVOICES"));
+      await local.query("INSERT INTO catering_booking_payments VALUES ('payment-1','invoice-1','recorded',1000)");
+      assert.ok(!(await inspect()).some(x => x.code === "CATERING_INVOICES"),
+        "the local invoice calculation is settled; the independent provider verification gate remains mandatory");
+      // A historical completed refund may keep its immutable idempotency key for evidence.
+      await local.query("UPDATE orders SET payment_status='refunded', refund_idempotency_key='refund-id', capture_request_snapshot=NULL, inventory_status='sold' WHERE id='order-1'");
+      assert.ok(!(await inspect()).some(x => x.code === "MARKETPLACE_PAYMENTS"),
+        "a completed refund must not be treated as permanently unsettled");
       await local.query("DROP TABLE subscription_history");
       await assert.rejects(inspect(), (err: any) =>
         err instanceof ClosureObligationsUnavailableError && err.check === "SUBSCRIPTION_HISTORY");
