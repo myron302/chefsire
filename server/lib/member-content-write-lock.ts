@@ -30,3 +30,39 @@ export async function lockMemberForContentWrite(tx: any, userId: string): Promis
     throw new MemberContentWriteBlockedError();
   }
 }
+
+/**
+ * New shared DM threads may only include accounts able to receive messages.
+ * Lock ALL participants in stable id order before creating the thread, so a
+ * concurrent closure cannot slip between a recipient check and the insert.
+ * Restricted members can still receive; they cannot author new content.
+ */
+export async function lockAvailableDmParticipants(
+  tx: any,
+  senderId: string,
+  recipientIds: readonly string[],
+): Promise<void> {
+  const ids = [...new Set([senderId, ...recipientIds])].sort();
+  if (ids.some(id => !id || typeof id !== "string") || ids.length < 2 || ids.length > 100) {
+    throw new MemberContentWriteBlockedError();
+  }
+  const found = rowsOf(await tx.execute(sql`
+    SELECT id FROM users
+    WHERE id IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})
+    ORDER BY id FOR UPDATE
+  `));
+  if (found.length !== ids.length || found.some(row => !ids.includes(String(row.id)))) {
+    throw new MemberContentWriteBlockedError();
+  }
+  const statuses = rowsOf(await tx.execute(sql`
+    SELECT user_id, status FROM account_status
+    WHERE user_id IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})
+  `));
+  for (const row of statuses) {
+    if (row.user_id === senderId) {
+      if (row.status !== "active") throw new MemberContentWriteBlockedError();
+    } else if (!["active", "restricted"].includes(String(row.status))) {
+      throw new MemberContentWriteBlockedError();
+    }
+  }
+}
