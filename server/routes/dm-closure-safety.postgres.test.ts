@@ -69,9 +69,9 @@ if (!PG_URL) {
       const accepted = await send("/api/dm/threads/shared/messages", active.id, { text: "Private content in DM" });
       assert.equal(accepted.status, 200, JSON.stringify(accepted.data));
       assert.equal((await local.query("SELECT count(*)::int AS n FROM dm_messages")).rows[0].n, 1);
-      const notifications = (await local.query("SELECT title,message FROM notifications ORDER BY id")).rows;
-      assert.equal(notifications.length, 2);
-      assert.ok(notifications.every((n: any) => n.title === "New message" &&
+      const notificationRows = (await local.query("SELECT title,message FROM notifications ORDER BY id")).rows;
+      assert.equal(notificationRows.length, 2);
+      assert.ok(notificationRows.every((n: any) => n.title === "New message" &&
         n.message === "You have a new message."), "notification copies must not retain message text or old identity");
       const [created] = (await local.query("SELECT body,sender_id FROM dm_messages")).rows;
       assert.deepEqual(created, { body: "Private content in DM", sender_id: active.id });
