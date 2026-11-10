@@ -5,7 +5,8 @@
  *   npx tsx server/scripts/create-staff-invite.ts --login myron --name "Myron" --owner [--group grp-support]
  *
  * Once an active Owner exists, staff are invited from the portal. An Owner invite from here is then refused unless
- * --emergency is given (lost access to every Owner account); that use is recorded in the audit log.
+ * --emergency is given (lost access to every Owner account); that use is recorded in the audit log. To get an
+ * existing staff member back in (lost phone), use reset-staff-access.ts instead.
  */
 import "../lib/load-env";
 import { sql } from "drizzle-orm";
@@ -33,14 +34,17 @@ if ((owners?.n ?? 0) > 0 && !emergency) {
   process.exit(1);
 }
 const token = randomToken(32);
-await db.execute(sql`
+// The invite and its audit entry are written together: no invite can exist without its record.
+await db.transaction(async (tx: any) => {
+await tx.execute(sql`
   INSERT INTO staff_invites (token_hash, login, display_name, is_owner, group_ids, expires_at)
   VALUES (${sha256(token)}, ${login}, ${name}, ${owner}, ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(groups)}::jsonb)), now() + interval '72 hours')
 `);
-await db.execute(sql`
+await tx.execute(sql`
   INSERT INTO admin_audit_log (actor_type, actor_id, actor_label, action, target_type, target_id, reason, details)
   VALUES ('system', NULL, 'Server script', 'staff.invite.bootstrap', 'staff_invite', ${login},
     ${emergency ? "Emergency Owner recovery" : "First Owner setup"}, ${JSON.stringify({ login, isOwner: owner, groups, emergency })}::jsonb)
 `);
+});
 console.log(`Invite for ${login}${owner ? " (Owner)" : ""}: https://${opsHost() ?? "ops.chefsire.com"}/invite#${token}`);
 process.exit(0);
