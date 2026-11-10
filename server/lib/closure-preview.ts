@@ -45,7 +45,7 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
         localBlockers: [], dmInventory: null, storeInventory: null,
         privateContentInventory: null,
         verification: "local_only",
-        unknownForeignKeyTables: [], manualReviewForeignKeyTables: [], cascadeRisks: [], cascadeRisks: [],
+        unknownForeignKeyTables: [], manualReviewForeignKeyTables: [], cascadeRisks: [],
         reasons: ["Account not found", "Permanent account closure is not enabled"],
       };
       const [statusRow] = rowsOf(await tx.execute(sql`
@@ -83,7 +83,7 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
       localBlockers: [], dmInventory: null, storeInventory: null,
       privateContentInventory: null,
       verification: "unavailable",
-      unknownForeignKeyTables: [], manualReviewForeignKeyTables: [],
+      unknownForeignKeyTables: [], manualReviewForeignKeyTables: [], cascadeRisks: [],
       reasons: ["Closure eligibility cannot be verified; no account data was changed"],
     };
   }
