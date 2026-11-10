@@ -135,6 +135,7 @@ async function setup(initialInventory = 10): Promise<Harness> {
   await admin.query(`
     CREATE TABLE products (id varchar PRIMARY KEY, inventory integer, is_active boolean NOT NULL DEFAULT true, sales_count integer DEFAULT 0);
     CREATE TABLE users (id varchar PRIMARY KEY, monthly_revenue numeric(10,2) DEFAULT 0);
+    CREATE TABLE account_status (user_id varchar PRIMARY KEY, status text NOT NULL);
   `);
   await admin.query(tableDdl(orders));
   await admin.query(tableDdl(commissions));
@@ -143,7 +144,7 @@ async function setup(initialInventory = 10): Promise<Harness> {
   // commissions_order_uidx on top of the schema-derived tables.
   await enforceMarketplaceCheckoutAtomicity(admin, migration, false);
   await admin.query(`INSERT INTO products (id, inventory) VALUES ('product', $1)`, [initialInventory]);
-  await admin.query(`INSERT INTO users (id) VALUES ('seller')`);
+  await admin.query(`INSERT INTO users (id) VALUES ('seller'), ('buyer')`);
 
   const pool = new pg.Pool({ connectionString: connectionString!, options: `-c search_path=${schema}`, max: 8 });
   const db = drizzle(pool, { schema: dbSchema });
