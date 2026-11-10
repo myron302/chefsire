@@ -1,7 +1,7 @@
 // server/routes/dm.ts
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { lockMemberForContentWrite, lockAvailableDmParticipants, MemberContentWriteBlockedError } from "../lib/member-content-write-lock";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
@@ -380,14 +380,19 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
   // Notify other participants
   try {
     const { notifications } = await import("../../shared/schema");
-    const others = await db
-      .select({ userId: dmParticipants.userId })
-      .from(dmParticipants)
-      .where(and(eq(dmParticipants.threadId, id), ne(dmParticipants.userId, userId)));
+    // Closed/deactivated/suspended participants remain in historical threads
+    // but must not accumulate new notifications after their access was revoked.
+    const result = await db.execute(sql`
+      SELECT p.user_id AS "userId" FROM dm_participants p
+      LEFT JOIN account_status st ON st.user_id = p.user_id
+      WHERE p.thread_id = ${id} AND p.user_id <> ${userId}
+        AND COALESCE(st.status, 'active') IN ('active', 'restricted')
+    `);
+    const others = (result as any)?.rows ?? (Array.isArray(result) ? result : []);
 
     if (others.length > 0) {
       await db.insert(notifications).values(
-        others.map((p) => ({
+        others.map((p: { userId: string }) => ({
           userId: p.userId,
           type: "message",
           title: "New message",
