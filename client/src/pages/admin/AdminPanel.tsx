@@ -254,7 +254,7 @@ type MemberRecord = {
   member: { id: string; username: string; displayName: string | null; email: string; phone: string | null; createdAt: string | null; isOwner: boolean };
   status: { status: string; reason: string | null; changedAt: string | null };
   groups: { id: string; name: string }[];
-  records: { name: string; rows: Record<string, unknown>[]; error: string | null }[];
+  records: { name: string; rows: Record<string, unknown>[]; total: number; truncated: boolean; error: string | null }[];
   history: AuditEntry[];
   canChangeStatus: { restrict: boolean; suspend: boolean };
 };
@@ -368,7 +368,10 @@ function MemberDetail({ id, onBack }: { id: string; onBack: () => void }) {
       </Card>
       {records.map((section) => (
         <Card key={section.name}>
-          <CardHeader><CardTitle className="text-base">{section.name} ({section.rows.length})</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">{section.name} ({section.total})</CardTitle>
+            {section.truncated && <CardDescription>Showing the newest {section.rows.length} of {section.total}. Every record is kept.</CardDescription>}
+          </CardHeader>
           <CardContent className="overflow-x-auto">
             {section.error ? <p className="text-sm text-muted-foreground">Unavailable.</p> : section.rows.length === 0 ? <p className="text-sm text-muted-foreground">None.</p> : (
               <table className="w-full text-left text-sm">

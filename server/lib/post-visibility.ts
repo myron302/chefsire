@@ -54,8 +54,9 @@ export function visiblePostsCondition(viewerId?: string | null) {
 }
 
 /**
- * May `viewerId` see content owned by `ownerId`? Owner always can; a public account is open to everyone
- * including anonymous callers; a private account is open only to its approved followers.
+ * May `viewerId` see content owned by `ownerId`? Owner always can; nobody else can see a suspended account's
+ * content; a public account is open to everyone including anonymous callers; a private account is open only to its
+ * approved followers.
  */
 export async function canViewUserContent(
   viewerId: string | null | undefined,
@@ -63,6 +64,11 @@ export async function canViewUserContent(
 ): Promise<boolean> {
   if (!ownerId) return false;
   if (viewerId && viewerId === ownerId) return true;
+
+  // A suspended account's content is hidden from everyone else, through every path (lists use
+  // visiblePostsCondition; direct post, comment and liker lookups come through here). Fails closed.
+  const { isAccountHidden } = await import("./account-status");
+  if (await isAccountHidden(ownerId)) return false;
 
   // Imported lazily: storage imports this module for `visiblePostsCondition`, and a static import back would
   // make that a cycle. The module is cached after the first call.

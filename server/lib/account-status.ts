@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { writeAudit } from "./staff-permissions";
+import { accountStatusTestReader } from "./account-status-test-hook";
 
 /**
  * Member account status (back office part 2). Stored in account_status; no row means active.
@@ -19,7 +20,11 @@ export type AccountStatusRecord = { status: AccountStatus; reason: string | null
 
 const rowsOf = (result: any): any[] => result?.rows ?? (Array.isArray(result) ? result : []);
 
+export { setAccountStatusReaderForTests } from "./account-status-test-hook";
+
 export async function getAccountStatus(userId: string, executor: any = db): Promise<AccountStatusRecord> {
+  const testReader = accountStatusTestReader();
+  if (testReader && executor === db) return testReader(userId);
   const [row] = rowsOf(await executor.execute(sql`
     SELECT status, reason, changed_by AS "changedBy", changed_at AS "changedAt" FROM account_status WHERE user_id = ${userId}
   `));
@@ -57,11 +62,13 @@ export function isAllowedForRestricted(method: string, path: string): boolean {
 
 export { accountHidden } from "./account-hidden-sql";
 
+/** Is this account hidden from others (suspended)? Fails closed: if the status can't be read, treat it as hidden. */
 export async function isAccountHidden(userId: string): Promise<boolean> {
   try {
     return (await getAccountStatus(userId)).status === "suspended";
-  } catch {
-    return false;
+  } catch (error) {
+    console.error("[account-status] status unavailable; hiding the account's content until it can be read.", (error as Error)?.message);
+    return true;
   }
 }
 

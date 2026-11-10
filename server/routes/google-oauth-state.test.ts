@@ -3,6 +3,8 @@
  * Real auth router + real cookie handling; Google itself is replaced by a stub passport strategy.
  */
 import "../test-support/auth-test-env";
+// Database double: no account_status table, so every account is active here.
+import "../test-support/active-account-status";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

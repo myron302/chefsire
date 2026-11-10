@@ -701,10 +701,12 @@ export class DrizzleStorage implements IStorage {
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
       .leftJoin(recipes, eq(recipes.postId, posts.id))
+      // Signed out: join nothing (an absent join condition rendered "LEFT JOIN likes WHERE ...", a SQL syntax
+      // error, so signed-out visitors got a 500 on every profile's posts).
       .leftJoin(likes, viewerId ? and(
         eq(likes.postId, posts.id),
         eq(likes.userId, viewerId)
-      ) : undefined)
+      ) : sql`false`)
       .where(and(eq(posts.userId, userId), visiblePostsCondition(viewerId)))
       .orderBy(desc(posts.createdAt))
       .offset(offset)

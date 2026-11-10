@@ -8,8 +8,8 @@ import { hasCurrentAdminAuthority } from "../lib/admin-authority";
 import { ACCOUNT_STATUSES, AccountStatusError, getAccountStatus, setAccountStatus, type AccountStatus } from "../lib/account-status";
 
 /**
- * Back office: members. Search, a member's full record (profile, status, staff groups, every transaction they're
- * part of, and their audit history), and status changes. Mounted at /api/admin.
+ * Back office: members. Search, a member's record (profile, status, staff groups, their transactions - the newest
+ * 200 per section with the full count - and their audit history), and status changes. Mounted at /api/admin.
  *
  * Transaction records are read from their own tables and are never modified here: they exist whether the member is
  * active, restricted or suspended.
@@ -50,13 +50,24 @@ r.get("/members", requireAuth, requireStaffPermission("members.view"), async (re
   }
 });
 
-/** One section of a member's record; a missing or unreadable table is reported, never fatal. */
-async function section(name: string, query: ReturnType<typeof sql>) {
+export const MEMBER_RECORD_SECTION_LIMIT = 200;
+
+/**
+ * One section of a member's record: the newest MEMBER_RECORD_SECTION_LIMIT rows plus the full count, so the UI says
+ * "newest 200 of N" instead of implying it shows everything. A missing or unreadable table is reported, never fatal.
+ */
+async function section(name: string, query: ReturnType<typeof sql>, countQuery?: ReturnType<typeof sql>) {
   try {
-    return { name, rows: rowsOf(await db.execute(query)), error: null as string | null };
+    const [rows, count] = await Promise.all([
+      db.execute(query),
+      countQuery ? db.execute(countQuery) : Promise.resolve(null),
+    ]);
+    const list = rowsOf(rows);
+    const total = count ? Number(rowsOf(count)[0]?.n ?? list.length) : list.length;
+    return { name, rows: list, total, truncated: total > list.length, error: null as string | null };
   } catch (error) {
     console.error(`[admin] member record section ${name} failed`, (error as Error)?.message);
-    return { name, rows: [] as any[], error: "Unavailable" };
+    return { name, rows: [] as any[], total: 0, truncated: false, error: "Unavailable" };
   }
 }
 
@@ -81,19 +92,23 @@ r.get("/members/:id", requireAuth, requireStaffPermission("members.view"), async
         SELECT o.id, o.created_at AS "createdAt", p.name AS item, o.quantity, o.total_amount AS total, o.status,
           o.payment_status AS "paymentStatus", s.username AS counterparty
         FROM orders o LEFT JOIN products p ON p.id = o.product_id LEFT JOIN users s ON s.id = o.seller_id
-        WHERE o.buyer_id = ${id} ORDER BY o.created_at DESC LIMIT 200`) : null,
+        WHERE o.buyer_id = ${id} ORDER BY o.created_at DESC LIMIT ${MEMBER_RECORD_SECTION_LIMIT}`,
+        sql`SELECT count(*)::int AS n FROM orders WHERE buyer_id = ${id}`) : null,
       canSeeMoney ? section("Marketplace orders (selling)", sql`
         SELECT o.id, o.created_at AS "createdAt", p.name AS item, o.quantity, o.total_amount AS total, o.status,
           o.payment_status AS "paymentStatus", b.username AS counterparty
         FROM orders o LEFT JOIN products p ON p.id = o.product_id LEFT JOIN users b ON b.id = o.buyer_id
-        WHERE o.seller_id = ${id} ORDER BY o.created_at DESC LIMIT 200`) : null,
+        WHERE o.seller_id = ${id} ORDER BY o.created_at DESC LIMIT ${MEMBER_RECORD_SECTION_LIMIT}`,
+        sql`SELECT count(*)::int AS n FROM orders WHERE seller_id = ${id}`) : null,
       canSeeMoney ? section("Catering bookings", sql`
         SELECT b.id, b.created_at AS "createdAt", b.event_date AS "eventDate", b.agreed_price AS total, b.currency, b.status,
           CASE WHEN b.customer_id = ${id} THEN 'customer' ELSE 'provider' END AS role
-        FROM catering_bookings b WHERE b.customer_id = ${id} OR b.provider_id = ${id} ORDER BY b.created_at DESC LIMIT 200`) : null,
+        FROM catering_bookings b WHERE b.customer_id = ${id} OR b.provider_id = ${id} ORDER BY b.created_at DESC LIMIT ${MEMBER_RECORD_SECTION_LIMIT}`,
+        sql`SELECT count(*)::int AS n FROM catering_bookings WHERE customer_id = ${id} OR provider_id = ${id}`) : null,
       canSeeMoney ? section("Meal plan purchases", sql`
         SELECT id, created_at AS "createdAt", price_paid_cents AS "priceCents", payment_status AS "paymentStatus", acquisition_type AS "acquisitionType"
-        FROM meal_plan_purchases WHERE user_id = ${id} ORDER BY created_at DESC LIMIT 200`) : null,
+        FROM meal_plan_purchases WHERE user_id = ${id} ORDER BY created_at DESC LIMIT ${MEMBER_RECORD_SECTION_LIMIT}`,
+        sql`SELECT count(*)::int AS n FROM meal_plan_purchases WHERE user_id = ${id}`) : null,
       section("Plans and trials", sql`
         SELECT 'Wedding trial' AS plan, tier, activated_at AS "startedAt", expires_at AS "endsAt", revoked_at AS "cancelledAt" FROM wedding_intro_trials WHERE user_id = ${id}
         UNION ALL

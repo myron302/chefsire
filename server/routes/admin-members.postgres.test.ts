@@ -17,6 +17,77 @@ if (!PG_URL) {
 } else {
   process.env.INTERNAL_ADMIN_EMAILS = "owner@chefsire.test";
 
+  test("a suspended author's posts, comments and likers are hidden on every path, and come back on reinstatement", async () => {
+    const local = await connectLocalPg();
+    const schema = await import("../../shared/schema");
+    const { default: posts } = await import("./posts");
+    const { default: adminMembers } = await import("./admin-members");
+    const app = express();
+    app.use(express.json());
+    app.use("/api/posts", posts);
+    app.use("/api/admin", adminMembers);
+    const server = app.listen(0, "127.0.0.1");
+    try {
+      await local.query(`
+        DROP TABLE IF EXISTS account_status, admin_audit_log, staff_group_members, staff_group_permissions, staff_groups,
+          comment_likes, likes, comments, follows, recipes, posts, users CASCADE;
+        DROP FUNCTION IF EXISTS admin_audit_log_append_only CASCADE;
+        ${ddl(schema.users, "users")};
+        ${ddl(schema.posts, "posts")};
+        ${ddl(schema.recipes, "recipes")};
+        ${ddl(schema.comments, "comments")};
+        ${ddl(schema.likes, "likes")};
+        ${ddl(schema.commentLikes, "comment_likes")};
+        ${ddl(schema.follows, "follows")};
+        ${readFileSync(new URL("../../docs/ops/2026-11-09-staff-groups.sql", import.meta.url), "utf8")}
+        ${readFileSync(new URL("../../docs/ops/2026-11-10-account-status.sql", import.meta.url), "utf8")}
+      `);
+      const ids: Record<string, string> = {};
+      for (const name of ["author", "fan", "helper"]) {
+        ids[name] = (await local.query(
+          `INSERT INTO users (username, email, display_name, password, auth_version, is_private) VALUES ($1, $2, $1, 'fixture', 1, false) RETURNING id`,
+          [name, `${name}@example.test`],
+        )).rows[0].id;
+      }
+      await local.query("INSERT INTO staff_group_members (group_id, user_id) VALUES ('grp-support', $1)", [ids.helper]);
+      const call = makeCaller(() => `http://127.0.0.1:${(server.address() as AddressInfo).port}`, (who) => ids[who]);
+
+      const created = await call("POST", "/api/posts", "author", { caption: "public dinner", imageUrl: "https://images.example.test/d.jpg", additionalImages: [] });
+      assert.equal(created.status, 201, created.text);
+      const postId = created.json.id;
+      assert.equal((await call("POST", "/api/posts/comments", "fan", { postId, text: "looks great" })).status, 201);
+      assert.equal((await call("POST", "/api/posts/likes", "fan", { postId })).status, 201);
+
+      const paths = [`/api/posts/${postId}`, `/api/posts/${postId}/comments`, `/api/posts/${postId}/likes`];
+      const visibleTo = async (who: string) => {
+        const out: Record<string, number> = {};
+        for (const p of paths) out[p] = (await call("GET", p, who)).status;
+        const byUser = await call("GET", `/api/posts/user/${ids.author}`, who);
+        out.byUser = byUser.status === 200 && JSON.stringify(byUser.json).includes(postId) ? 200 : 404;
+        const explore = await call("GET", "/api/posts/explore", who);
+        out.explore = JSON.stringify(explore.json ?? "").includes(postId) ? 200 : 404;
+        return out;
+      };
+      const all = (status: number) => Object.fromEntries([...paths, "byUser", "explore"].map((p) => [p, status]));
+      assert.deepEqual(await visibleTo("anon"), all(200));
+      assert.deepEqual(await visibleTo("fan"), all(200));
+
+      assert.equal((await call("POST", `/api/admin/members/${ids.author}/status`, "helper", { status: "suspended", reason: "Investigation" })).status, 200);
+      assert.deepEqual(await visibleTo("anon"), all(404), "hidden from anonymous visitors on every path");
+      assert.deepEqual(await visibleTo("fan"), all(404), "hidden from other members on every path, including the one who commented and liked");
+
+      assert.equal((await call("POST", `/api/admin/members/${ids.author}/status`, "helper", { status: "active", reason: "Cleared" })).status, 200);
+      assert.deepEqual(await visibleTo("fan"), all(200), "reinstated: everything is back");
+      const counts = (await local.query("SELECT (SELECT count(*) FROM posts)::int p, (SELECT count(*) FROM comments)::int c, (SELECT count(*) FROM likes)::int l")).rows[0];
+      assert.deepEqual(counts, { p: 1, c: 1, l: 1 }, "nothing was deleted");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await local.query(`DROP TABLE IF EXISTS account_status, admin_audit_log, staff_group_members, staff_group_permissions, staff_groups,
+        comment_likes, likes, comments, follows, recipes, posts, users CASCADE; DROP FUNCTION IF EXISTS admin_audit_log_append_only CASCADE;`);
+      await local.end();
+    }
+  });
+
   test("restrict and suspend are enforced everywhere, reversible, audited, and transaction records are always kept", async () => {
     const local = await connectLocalPg();
     const schema = await import("../../shared/schema");
