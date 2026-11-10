@@ -5,6 +5,9 @@ import { PG_URL, connectLocalPg, ddl } from "../test-support/authz-pg-harness";
 import { BACK_OFFICE_SQL, CLEAN_UP_BACK_OFFICE, DROP_BACK_OFFICE } from "../test-support/staff-portal-harness";
 import { CommerceAccountUnavailableError, lockActiveCommerceAccounts } from "../lib/commerce-account-lock";
 import { sql } from "drizzle-orm";
+import { readFileSync } from "node:fs";
+
+const CLOSURE_SQL = readFileSync(new URL("../../docs/ops/2026-11-10-account-closure-preparation.sql", import.meta.url), "utf8");
 
 async function waitForBlockedLock(local: any, phrase: string) {
   const deadline = Date.now() + 10000;
@@ -33,6 +36,7 @@ if (!PG_URL) {
         ${ddl(schema.products, "products")};
         ${ddl(schema.orders, "orders")};
         ${BACK_OFFICE_SQL}
+        ${CLOSURE_SQL}
       `);
       const [buyer] = (await local.query("INSERT INTO users(username, email, display_name) VALUES('close-buyer','b@example.test','Buyer') RETURNING id")).rows;
       const [seller] = (await local.query("INSERT INTO users(username, email, display_name) VALUES('close-seller','s@example.test','Seller') RETURNING id")).rows;
@@ -71,6 +75,7 @@ if (!PG_URL) {
         ${ddl(schema.products, "products")};
         ${ddl(schema.orders, "orders")};
         ${BACK_OFFICE_SQL}
+        ${CLOSURE_SQL}
       `);
       const [buyer] = (await local.query("INSERT INTO users(username, email, display_name) VALUES('buy-first','buyer@example.test','Buyer') RETURNING id")).rows;
       const [seller] = (await local.query("INSERT INTO users(username, email, display_name) VALUES('sell-first','seller@example.test','Seller') RETURNING id")).rows;
