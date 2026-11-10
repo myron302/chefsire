@@ -872,8 +872,11 @@ export class DrizzleStorage implements IStorage {
 
   async createStory(insertStory: InsertStory): Promise<Story> {
     const db = getDb();
-    const result = await db.insert(stories).values(insertStory).returning();
-    return result[0];
+    return db.transaction(async (tx) => {
+      await lockMemberForContentWrite(tx, insertStory.userId);
+      const [created] = await tx.insert(stories).values(insertStory).returning();
+      return created;
+    });
   }
 
   async getActiveStories(_userId?: string): Promise<StoryWithUser[]> {
@@ -904,26 +907,20 @@ export class DrizzleStorage implements IStorage {
    */
   async likePost(userId: string, postId: string): Promise<Like> {
     const db = getDb();
-    const [inserted] = await db
-      .insert(likes)
-      .values({ userId, postId })
-      .onConflictDoNothing()
-      .returning();
-
-    if (!inserted) {
-      const [existing] = await db
-        .select()
-        .from(likes)
-        .where(and(eq(likes.userId, userId), eq(likes.postId, postId)))
-        .limit(1);
-      return existing;
-    }
-
-    await db
-      .update(posts)
-      .set({ likesCount: sql`${posts.likesCount} + 1` })
-      .where(eq(posts.id, postId));
-    return inserted;
+    return db.transaction(async (tx) => {
+      await lockMemberForContentWrite(tx, userId);
+      const [inserted] = await tx.insert(likes)
+        .values({ userId, postId }).onConflictDoNothing().returning();
+      if (!inserted) {
+        const [existing] = await tx.select().from(likes)
+          .where(and(eq(likes.userId, userId), eq(likes.postId, postId))).limit(1);
+        return existing;
+      }
+      await tx.update(posts)
+        .set({ likesCount: sql`${posts.likesCount} + 1` })
+        .where(eq(posts.id, postId));
+      return inserted;
+    });
   }
 
   async unlikePost(userId: string, postId: string): Promise<boolean> {
