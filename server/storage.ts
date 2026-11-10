@@ -964,30 +964,17 @@ export class DrizzleStorage implements IStorage {
    */
   async likeComment(userId: string, commentId: string): Promise<CommentLike> {
     const db = getDb();
-    // Ensure the comment exists before attempting to like
-    const existingComment = await db
-      .select()
-      .from(comments)
-      .where(eq(comments.id, commentId))
-      .limit(1);
-    if (!existingComment[0]) {
-      throw new Error("Comment not found");
-    }
-    // Insert like if it doesn't already exist
-    const [like] = await db
-      .insert(commentLikes)
-      .values({ userId, commentId })
-      .onConflictDoNothing()
-      .returning();
-    // If a new like was inserted, return it.  If the like already existed the
-    // database will not insert a duplicate, and we simply return the existing
-    // record.  We do not maintain a separate likes count on the comments table
-    // because the underlying schema does not include such a column.
-    if (like) {
-      return like;
-    }
-    // Return a synthetic result when the like already exists
-    return { id: '', userId, commentId, createdAt: new Date().toISOString() } as any;
+    return db.transaction(async (tx) => {
+      await lockMemberForContentWrite(tx, userId);
+      const existingComment = await tx.select().from(comments)
+        .where(eq(comments.id, commentId)).limit(1);
+      if (!existingComment[0]) throw new Error("Comment not found");
+      const [like] = await tx.insert(commentLikes).values({ userId, commentId })
+        .onConflictDoNothing().returning();
+      if (like) return like;
+      // Preserve the existing idempotent return shape for an existing like.
+      return { id: "", userId, commentId, createdAt: new Date().toISOString() } as any;
+    });
   }
 
   /**
