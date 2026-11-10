@@ -16,6 +16,7 @@ export type ClosureBlockerCode =
   | "SELLER_PAYOUTS"
   | "WEDDING_SUBSCRIPTIONS"
   | "WEDDING_ENROLLMENTS"
+  | "WEDDING_CARD_OPERATIONS"
   | "CATERING_BOOKINGS"
   | "CATERING_INVOICES"
   | "CATERING_PAYMENT_ATTEMPTS"
@@ -92,6 +93,18 @@ export async function inspectLocalClosureObligations(tx: any, userId: string): P
       message: "Wedding subscription enrollment or recovery remains unresolved.",
       query: sql`SELECT count(*)::int AS n FROM wedding_square_enrollment_attempts
         WHERE user_id = ${userId} AND status IN ('reserved', 'submitting', 'needs_reconciliation')`,
+    },
+    {
+      code: "WEDDING_CARD_OPERATIONS",
+      message: "A Wedding Square card setup or card replacement is still awaiting provider reconciliation.",
+      query: sql`SELECT (
+        (SELECT count(*) FROM wedding_square_card_setup_attempts
+          WHERE user_id = ${userId}
+            AND (status IS NULL OR status NOT IN ('confirmed', 'aborted')))
+        + (SELECT count(*) FROM wedding_square_card_updates
+          WHERE user_id = ${userId}
+            AND (status IS NULL OR status <> 'confirmed'))
+      )::int AS n`,
     },
     {
       code: "CATERING_BOOKINGS",
