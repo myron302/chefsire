@@ -163,6 +163,9 @@ router.post("/create-payment", requireAuth, async (req, res) => {
     });
   } catch (error: any) {
     console.error("Payment processing error:", error);
+    if (error?.code === "COMMERCE_ACCOUNT_UNAVAILABLE") {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
     if (error?.code === "INSUFFICIENT_INVENTORY") {
       return res.status(409).json({ ok: false, code: error.code, error: error.message });
     }
