@@ -443,7 +443,8 @@ async function hasTransactionRecords(userId: string): Promise<boolean> {
     try {
       if (rowsOf(await db.execute(check)).length) return true;
     } catch (error: any) {
-      if (error?.code === "42P01") continue; // table not present in this environment
+      // A ledger table missing outside tests is a broken environment: refuse rather than risk deleting records.
+      if (error?.code === "42P01" && process.env.NODE_ENV === "test") continue;
       throw error;
     }
   }

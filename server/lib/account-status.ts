@@ -44,13 +44,24 @@ export async function getAccountStatus(userId: string, executor: any = db): Prom
  * account is reactivated here: signing back in is how a member undoes deactivation.
  */
 export async function signInBlock(userId: string): Promise<null | { code: string; message: string }> {
+  const suspended = { code: "ACCOUNT_SUSPENDED", message: "This account is suspended. Contact support@chefsire.com if you think this is a mistake." };
   try {
-    const { status } = await getAccountStatus(userId);
-    if (status === "suspended") {
-      return { code: "ACCOUNT_SUSPENDED", message: "This account is suspended. Contact support@chefsire.com if you think this is a mistake." };
+    // Suites that run sign-in on a database double answer status reads through the test hook (no transaction there).
+    if (accountStatusTestReader()) {
+      const { status } = await getAccountStatus(userId);
+      if (status === "suspended") return suspended;
+      if (status === "deactivated") await reactivateOwnAccount(userId);
+      return null;
     }
-    if (status === "deactivated") await reactivateOwnAccount(userId);
-    return null;
+    // The decision and any reactivation happen under the same account-row lock staff status changes take, so a
+    // suspension racing this sign-in is either seen here (refused) or applied after it (that session then ends).
+    return await db.transaction(async (tx: any) => {
+      await tx.execute(sql`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`);
+      const { status } = await getAccountStatus(userId, tx);
+      if (status === "suspended") return suspended;
+      if (status === "deactivated") await reactivateWithin(tx, userId);
+      return null;
+    });
   } catch (error) {
     console.error("[account-status] sign-in status check failed; refusing.", (error as Error)?.message);
     return { code: "ACCOUNT_STATUS_UNAVAILABLE", message: "We couldn't sign you in right now. Please try again." };
@@ -166,13 +177,15 @@ export async function deactivateOwnAccount(userId: string): Promise<{ changed: b
 }
 
 /** Signing back in reactivates a deactivated account (only that status; staff decisions are never lifted here). */
+async function reactivateWithin(tx: any, userId: string): Promise<boolean> {
+  const removed = rowsOf(await tx.execute(sql`
+    DELETE FROM account_status WHERE user_id = ${userId} AND status = 'deactivated' RETURNING user_id
+  `));
+  if (!removed.length) return false;
+  await writeMemberAudit(tx, userId, "member.reactivated", { reason: "Signed in again" });
+  return true;
+}
+
 export async function reactivateOwnAccount(userId: string): Promise<boolean> {
-  return db.transaction(async (tx: any) => {
-    const removed = rowsOf(await tx.execute(sql`
-      DELETE FROM account_status WHERE user_id = ${userId} AND status = 'deactivated' RETURNING user_id
-    `));
-    if (!removed.length) return false;
-    await writeMemberAudit(tx, userId, "member.reactivated", { reason: "Signed in again" });
-    return true;
-  });
+  return db.transaction((tx: any) => reactivateWithin(tx, userId));
 }

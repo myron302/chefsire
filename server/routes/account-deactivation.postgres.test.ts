@@ -198,4 +198,82 @@ if (!PG_URL) {
       await local.end();
     }
   });
+
+  test("a suspension that lands while a deactivated member is signing in wins: no session, still suspended", async () => {
+    const local = await connectLocalPg();
+    const schema = await import("../../shared/schema");
+    const { default: auth } = await import("./auth");
+    const { signInBlock } = await import("../lib/account-status");
+    const { default: bcryptjs } = await import("bcryptjs");
+    const app = express();
+    app.set("trust proxy", true);
+    app.use(express.json());
+    app.use(cookieParser());
+    app.use("/api", auth);
+    const server = app.listen(0, "127.0.0.1");
+    try {
+      await local.query(`${DROP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE; ${ddl(schema.users, "users")}; ${BACK_OFFICE_SQL} ${DEACTIVATION_SQL}`);
+      const id = (await local.query(
+        `INSERT INTO users (username, email, display_name, password, auth_version, email_verified_at, email_verified_via)
+         VALUES ('racer', 'racer@example.test', 'racer', $1, 2, now(), 'email_link') RETURNING id`,
+        [await bcryptjs.hash("member-password", 4)],
+      )).rows[0].id;
+      const deactivate = () => local.query("INSERT INTO account_status (user_id, status, reason, changed_by) VALUES ($1, 'deactivated', 'Deactivated by the member', $1) ON CONFLICT (user_id) DO UPDATE SET status = 'deactivated'", [id]);
+
+      /** Staff suspend the account while holding the account-row lock; `during` runs while the lock is held. */
+      const suspendWhile = async <T>(during: () => Promise<T>, waitingQuery: string) => {
+        const holder = await local.connect();
+        let committed = false;
+        try {
+          await holder.query("BEGIN");
+          await holder.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [id]);
+          await holder.query("UPDATE account_status SET status = 'suspended', reason = 'Fraud' WHERE user_id = $1", [id]);
+          await holder.query("UPDATE users SET auth_version = auth_version + 1 WHERE id = $1", [id]);
+          const racing = during();
+          const started = Date.now();
+          for (;;) {
+            const n = (await local.query(
+              "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE $1", [waitingQuery],
+            )).rows[0].n;
+            if (n >= 1) break;
+            if (Date.now() - started > 10_000) throw new Error("the sign-in never reached the account lock");
+            await new Promise((r) => setTimeout(r, 25));
+          }
+          await holder.query("COMMIT");
+          committed = true;
+          return await racing;
+        } finally {
+          if (!committed) await holder.query("ROLLBACK").catch(() => {});
+          holder.release();
+        }
+      };
+
+      // Password sign-in (HTTP): read deactivated -> staff suspend commits -> the sign-in must be refused.
+      await deactivate();
+      const res = await suspendWhile(() => fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/auth/login`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "racer@example.test", password: "member-password" }),
+      }), "%from users where id = $1 for update%");
+      assert.equal(res.status, 403, await res.clone().text());
+      assert.equal((await res.json()).code, "ACCOUNT_SUSPENDED");
+      assert.equal(res.headers.get("set-cookie"), null, "no session cookie");
+      assert.equal((await local.query("SELECT status FROM account_status WHERE user_id = $1", [id])).rows[0].status, "suspended");
+
+      // The shared gate every sign-in method uses (password, Google, Facebook, TikTok), same interleaving.
+      await local.query("UPDATE account_status SET status = 'deactivated' WHERE user_id = $1", [id]);
+      const verdict = await suspendWhile(() => signInBlock(id), "%from users where id = $1 for update%");
+      assert.equal(verdict?.code, "ACCOUNT_SUSPENDED");
+      assert.equal((await local.query("SELECT status FROM account_status WHERE user_id = $1", [id])).rows[0].status, "suspended");
+      assert.equal((await local.query("SELECT count(*)::int n FROM admin_audit_log WHERE action = 'member.reactivated'")).rows[0].n, 0, "never reactivated");
+
+      // Without a race, signing in reactivates (and is audited once).
+      await local.query("UPDATE account_status SET status = 'deactivated' WHERE user_id = $1", [id]);
+      assert.equal(await signInBlock(id), null);
+      assert.equal((await local.query("SELECT count(*)::int n FROM account_status WHERE user_id = $1", [id])).rows[0].n, 0);
+      assert.equal((await local.query("SELECT count(*)::int n FROM admin_audit_log WHERE action = 'member.reactivated'")).rows[0].n, 1);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await local.query(`${CLEAN_UP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE;`);
+      await local.end();
+    }
+  });
 }
