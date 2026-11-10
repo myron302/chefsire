@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { assertInternalClosureMutationAllowed } from "./closure-feature";
 
 /** Minimal, PII-free closure audit. Must be in the SAME transaction as closure. */
 export type ClosureActor =
@@ -40,6 +41,7 @@ export async function writeMemberClosureAuditWithinTransaction(
   tx: any,
   input: { memberId: string; actor: ClosureActor; counts: ClosureAuditCounts },
 ): Promise<void> {
+  assertInternalClosureMutationAllowed();
   validateClosureAudit(input);
   const reason = input.actor.kind === "staff" ? input.actor.reason.trim() : "Requested by member";
   const details = JSON.stringify({ ...input.counts, actorKind: input.actor.kind });
