@@ -36,6 +36,7 @@ import {
 } from "../lib/marketplace-payment";
 import { executeRecoverableProviderOperation, ProviderReconciliationRequiredError } from "../lib/provider-reconciliation";
 import { getSquareClient } from "../lib/square-client";
+import { lockActiveCommerceAccounts } from "../lib/commerce-account-lock";
 
 type OrderRow = typeof orders.$inferSelect;
 
@@ -85,6 +86,10 @@ export async function reserveMarketplaceCapture(
   });
 
   return deps.db.transaction(async (tx: any) => {
+    // Before claiming stock or an immutable provider payment request, serialize
+    // with account closure on BOTH buyer and seller. An already-reserved
+    // request is handled by separate evidence/reconciliation paths, not here.
+    await lockActiveCommerceAccounts(tx, order.buyerId, order.sellerId);
     // One conditional UPDATE is the stock check and reservation. It locks
     // this product row, so concurrent attempts cannot both claim the last
     // unit. NULL inventory remains the existing unlimited-stock sentinel.
