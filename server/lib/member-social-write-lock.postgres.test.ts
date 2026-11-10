@@ -12,13 +12,14 @@ if (!PG_URL) {
     const local = await connectLocalPg();
     const schema = await import("../../shared/schema");
     const { storage } = await import("../storage");
-    const tables = "comment_likes, likes, comments, stories, posts, users";
+    const tables = "comment_likes, likes, comments, recipes, stories, posts, users";
     try {
       await local.query(`
         DROP TABLE IF EXISTS ${tables} CASCADE;
         ${ddl(schema.users, "users")};
         ${ddl(schema.posts, "posts")};
         ${ddl(schema.stories, "stories")};
+        ${ddl(schema.recipes, "recipes")};
         ${ddl(schema.comments, "comments")};
         ${ddl(schema.likes, "likes")};
         ${ddl(schema.commentLikes, "comment_likes")};
@@ -31,6 +32,7 @@ if (!PG_URL) {
       const storyInput = { userId: id, imageUrl: "/uploads/story.jpg", mediaType: "image" as const,
         expiresAt: new Date(Date.now() + 3600000) };
       await storage.createStory(storyInput);
+      await storage.createRecipe({ postId: post.id, title: "Original recipe", ingredients: ["A"], instructions: ["B"] });
       const comment = await storage.createComment({ userId: id, postId: post.id, content: "Original comment" });
       await storage.likePost(id, post.id);
       await storage.likeComment(id, comment.id);
@@ -39,6 +41,7 @@ if (!PG_URL) {
           (SELECT count(*)::int FROM posts) AS posts,
           (SELECT count(*)::int FROM comments) AS comments,
           (SELECT count(*)::int FROM stories) AS stories,
+          (SELECT count(*)::int FROM recipes) AS recipes,
           (SELECT count(*)::int FROM likes) AS likes,
           (SELECT count(*)::int FROM comment_likes) AS comment_likes,
           (SELECT posts_count FROM users WHERE id=$1) AS posts_count,
@@ -48,6 +51,7 @@ if (!PG_URL) {
       assert.equal(baseline.posts, 1);
       assert.equal(baseline.comments, 1);
       assert.equal(baseline.stories, 1);
+      assert.equal(baseline.recipes, 1);
       assert.equal(baseline.likes, 1);
       assert.equal(baseline.comment_likes, 1);
 
@@ -56,6 +60,7 @@ if (!PG_URL) {
         assert.rejects(task, (e: unknown) => e instanceof MemberContentWriteBlockedError);
       await denied(() => storage.createPost({ userId: id, imageUrl: "/uploads/resurrection.jpg" }));
       await denied(() => storage.createStory(storyInput));
+      await denied(() => storage.createRecipe({ postId: post.id, title: "After close", ingredients: ["X"], instructions: ["Y"] }));
       await denied(() => storage.createComment({ userId: id, postId: post.id, content: "after close" }));
       await denied(() => storage.likePost(id, post.id));
       await denied(() => storage.likeComment(id, comment.id));
@@ -64,6 +69,7 @@ if (!PG_URL) {
           (SELECT count(*)::int FROM posts) AS posts,
           (SELECT count(*)::int FROM comments) AS comments,
           (SELECT count(*)::int FROM stories) AS stories,
+          (SELECT count(*)::int FROM recipes) AS recipes,
           (SELECT count(*)::int FROM likes) AS likes,
           (SELECT count(*)::int FROM comment_likes) AS comment_likes,
           (SELECT posts_count FROM users WHERE id=$1) AS posts_count,
