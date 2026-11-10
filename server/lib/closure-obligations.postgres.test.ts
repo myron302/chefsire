@@ -20,6 +20,7 @@ if (!PG_URL) {
       "drink_collection_checkout_sessions", "drink_collections",
       "meal_plan_purchases", "meal_plan_blueprints", "drink_bundle_purchases", "drink_bundles",
       "wedding_square_enrollment_attempts", "wedding_square_subscriptions",
+      "wedding_square_card_setup_attempts", "wedding_square_card_updates",
       "payouts", "commissions", "orders", "users",
     ];
     try {
@@ -33,6 +34,8 @@ if (!PG_URL) {
         CREATE TABLE payouts (id varchar PRIMARY KEY, seller_id varchar, status text);
         CREATE TABLE wedding_square_subscriptions (id varchar PRIMARY KEY, user_id varchar, provider_status text);
         CREATE TABLE wedding_square_enrollment_attempts (id varchar PRIMARY KEY, user_id varchar, status text);
+        CREATE TABLE wedding_square_card_setup_attempts (id varchar PRIMARY KEY, user_id varchar, status text);
+        CREATE TABLE wedding_square_card_updates (id varchar PRIMARY KEY, user_id varchar, status text);
         CREATE TABLE catering_bookings (id varchar PRIMARY KEY, customer_id varchar, provider_id varchar, status text);
         CREATE TABLE catering_booking_invoices (id varchar PRIMARY KEY, booking_id varchar, status text, amount_cents bigint);
         CREATE TABLE catering_booking_payments (id varchar PRIMARY KEY, invoice_id varchar, status text, amount_cents bigint);
@@ -103,6 +106,14 @@ if (!PG_URL) {
       await local.query("INSERT INTO catering_booking_payments VALUES ('payment-1','invoice-1','recorded',1000)");
       assert.ok(!(await inspect()).some(x => x.code === "CATERING_INVOICES"),
         "the local invoice calculation is settled; the independent provider verification gate remains mandatory");
+      await local.query("INSERT INTO wedding_square_card_setup_attempts VALUES ('setup-1',$1,'card_submitting')", [id]);
+      await local.query("INSERT INTO wedding_square_card_updates VALUES ('update-1',$1,'needs_reconciliation')", [id]);
+      assert.equal((await inspect()).find(x => x.code === "WEDDING_CARD_OPERATIONS")?.count, 2,
+        "incomplete enrollment and replacement operations independently block closure");
+      await local.query("UPDATE wedding_square_card_setup_attempts SET status='aborted'");
+      await local.query("UPDATE wedding_square_card_updates SET status='confirmed'");
+      assert.ok(!(await inspect()).some(x => x.code === "WEDDING_CARD_OPERATIONS"),
+        "terminal history remains in the ledger, separate provider reconciliation is still required");
       await local.query("INSERT INTO catering_booking_payment_attempts VALUES ('attempt-1',$1,'provider','expired',now(),null,now(),null,null)", [id]);
       assert.equal((await inspect()).find(x => x.code === "CATERING_PAYMENT_ATTEMPTS")?.count, 1,
         "even expired local checkout can conceal a Square link-creation outcome");
