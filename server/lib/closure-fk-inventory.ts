@@ -55,6 +55,8 @@ export const CLOSURE_FK_CLASSES = {
     "creator_membership_sales_ledger"
   ],
   "retain_shared": [
+    "account_status",
+    "account_closure_media_cleanup",
     "dm_participants",
     "dm_messages",
     "stores",
