@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { assertInternalClosureMutationAllowed } from "./closure-feature";
 
 /**
  * Media is a TWO-PHASE privacy operation. A committed closure can register a
@@ -44,6 +45,7 @@ export function validateClosureMediaKey(provider: ClosureMediaProvider, key: str
 
 /** Called within the same transaction as the future account closure. Enqueue only. */
 export async function enqueueClosureMediaCandidate(tx: any, value: ClosureMediaCandidate): Promise<void> {
+  assertInternalClosureMutationAllowed();
   validateClosureMediaKey(value.provider, value.storageKey);
   if (!["ordinary_dm_attachment", "profile_avatar", "ordinary_post_media", "unpurchased_product_media"].includes(value.kind)) {
     throw new Error("Unknown media class");
