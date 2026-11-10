@@ -1,3 +1,4 @@
+import "../test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PG_URL, connectLocalPg } from "../test-support/authz-pg-harness";
