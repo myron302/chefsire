@@ -44,7 +44,10 @@ if (!PG_URL) {
     DROP TABLE IF EXISTS email_verification_tokens, users CASCADE;
     CREATE TABLE users (${userCols.join(",")});
     CREATE TABLE email_verification_tokens (id varchar PRIMARY KEY DEFAULT gen_random_uuid(), user_id varchar NOT NULL, token_hash varchar(64) NOT NULL,
-      email varchar(255) NOT NULL, expires_at timestamp NOT NULL DEFAULT now() + interval '24 hours', consumed_at timestamp, created_at timestamp NOT NULL DEFAULT now());`);
+      email varchar(255) NOT NULL, expires_at timestamp NOT NULL DEFAULT now() + interval '24 hours', consumed_at timestamp, created_at timestamp NOT NULL DEFAULT now());
+    -- Sign-in consults account status (no row = active); this suite must not depend on another suite leaving it behind.
+    CREATE TABLE IF NOT EXISTS account_status (user_id varchar PRIMARY KEY, status text NOT NULL, reason text, changed_by varchar,
+      changed_at timestamptz NOT NULL DEFAULT now());`);
 
   // The canonical-email unique index is part of the schema the application now relies on.
   await local.query(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (lower(email))`);

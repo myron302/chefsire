@@ -13,7 +13,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import type { AddressInfo } from "node:net";
 import { PG_URL, connectLocalPg, ddl } from "../test-support/authz-pg-harness";
-import { BACK_OFFICE_SQL, DROP_BACK_OFFICE, STAFF_COOKIE_NAME } from "../test-support/staff-portal-harness";
+import { BACK_OFFICE_SQL, CLEAN_UP_BACK_OFFICE, DROP_BACK_OFFICE, STAFF_COOKIE_NAME } from "../test-support/staff-portal-harness";
 import { createHash, randomBytes } from "node:crypto";
 
 const OPS = "ops.chefsire.test";
@@ -273,7 +273,7 @@ if (!PG_URL) {
       assert.equal(totpCode("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 1), "287082", "RFC 6238 test vector");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await local.query(`${DROP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE;`);
+      await local.query(`${CLEAN_UP_BACK_OFFICE} DROP TABLE IF EXISTS users CASCADE;`);
       await local.end();
     }
   });

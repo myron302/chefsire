@@ -18,6 +18,11 @@ export const DROP_BACK_OFFICE = `DROP TABLE IF EXISTS staff_user_groups, staff_i
   account_status, admin_audit_log, staff_group_members, staff_group_permissions, staff_groups CASCADE;
   DROP FUNCTION IF EXISTS admin_audit_log_append_only CASCADE;`;
 
+/** Cleanup: drop the back office tables but leave an empty account_status, which other suites' sign-ins read. */
+export const CLEAN_UP_BACK_OFFICE = `${DROP_BACK_OFFICE}
+  CREATE TABLE IF NOT EXISTS account_status (user_id varchar PRIMARY KEY, status text NOT NULL, reason text, changed_by varchar,
+    changed_at timestamptz NOT NULL DEFAULT now());`;
+
 export const STAFF_COOKIE_NAME = "__Host-chefsire_ops";
 
 /** A staff account that has finished setup, with a signed-in session. Returns its id and session cookie. */

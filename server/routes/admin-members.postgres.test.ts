@@ -10,7 +10,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import type { AddressInfo } from "node:net";
 import { PG_URL, connectLocalPg, ddl, makeCaller } from "../test-support/authz-pg-harness";
-import { BACK_OFFICE_SQL, DROP_BACK_OFFICE, makeStaff, makeStaffCaller } from "../test-support/staff-portal-harness";
+import { BACK_OFFICE_SQL, CLEAN_UP_BACK_OFFICE, DROP_BACK_OFFICE, makeStaff, makeStaffCaller } from "../test-support/staff-portal-harness";
 
 if (!PG_URL) {
   test("Back office members (requires CS_TEST_PG_URL)", { skip: true }, () => {});
@@ -81,7 +81,7 @@ if (!PG_URL) {
       assert.deepEqual(counts, { p: 1, c: 1, l: 1 }, "nothing was deleted");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await local.query(`${DROP_BACK_OFFICE} DROP TABLE IF EXISTS comment_likes, likes, comments, follows, recipes, posts, users CASCADE;`);
+      await local.query(`${CLEAN_UP_BACK_OFFICE} DROP TABLE IF EXISTS comment_likes, likes, comments, follows, recipes, posts, users CASCADE;`);
       await local.end();
     }
   });
@@ -213,7 +213,7 @@ if (!PG_URL) {
       await assert.rejects(local.query("DELETE FROM admin_audit_log"), /append-only/);
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
-      await local.query(`${DROP_BACK_OFFICE} DROP TABLE IF EXISTS orders, products, stores, notifications, users CASCADE;`);
+      await local.query(`${CLEAN_UP_BACK_OFFICE} DROP TABLE IF EXISTS orders, products, stores, notifications, users CASCADE;`);
       await local.end();
     }
   });
