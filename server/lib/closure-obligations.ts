@@ -19,6 +19,9 @@ export type ClosureBlockerCode =
   | "CATERING_BOOKINGS"
   | "CATERING_INVOICES"
   | "DRINK_BUNDLE_CHECKOUTS"
+  | "CREATOR_MEMBERSHIPS"
+  | "CREATOR_MEMBERSHIP_CHECKOUTS"
+  | "CREATOR_MEMBERSHIP_SALES"
   | "MARKETPLACE_PAID_PLAN"
   | "SUBSCRIPTION_HISTORY";
 
@@ -109,6 +112,27 @@ export async function inspectLocalClosureObligations(tx: any, userId: string): P
       query: sql`SELECT count(*)::int AS n FROM drink_bundle_checkout_sessions
         WHERE user_id = ${userId}
           AND (status IS NULL OR status NOT IN ('completed', 'refunded', 'failed', 'cancelled', 'expired'))`,
+    },
+    {
+      code: "CREATOR_MEMBERSHIPS",
+      message: "An active creator membership or subscriber obligation remains.",
+      query: sql`SELECT count(*)::int AS n FROM creator_memberships
+        WHERE (user_id = ${userId} OR creator_user_id = ${userId})
+          AND (status IS NULL OR status NOT IN ('cancelled', 'canceled', 'expired', 'ended', 'refunded'))`,
+    },
+    {
+      code: "CREATOR_MEMBERSHIP_CHECKOUTS",
+      message: "A creator membership checkout still needs payment reconciliation.",
+      query: sql`SELECT count(*)::int AS n FROM creator_membership_checkout_sessions
+        WHERE (user_id = ${userId} OR creator_user_id = ${userId})
+          AND (status IS NULL OR status NOT IN ('completed', 'refunded', 'failed', 'cancelled', 'expired'))`,
+    },
+    {
+      code: "CREATOR_MEMBERSHIP_SALES",
+      message: "Creator membership revenue or refund obligations are unresolved.",
+      query: sql`SELECT count(*)::int AS n FROM creator_membership_sales_ledger
+        WHERE (user_id = ${userId} OR creator_user_id = ${userId})
+          AND (status IS NULL OR status NOT IN ('completed', 'refunded', 'cancelled'))`,
     },
     {
       code: "MARKETPLACE_PAID_PLAN",
