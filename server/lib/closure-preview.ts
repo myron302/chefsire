@@ -41,7 +41,6 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
       if (!member) return {
         permanentlyDisabled: true, accountExists: false, status: null,
         localBlockers: [], dmInventory: null, storeInventory: null,
-      privateContentInventory: null,
         privateContentInventory: null,
         verification: "local_only",
         unknownForeignKeyTables: [], manualReviewForeignKeyTables: [],
@@ -77,6 +76,7 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
     return {
       permanentlyDisabled: true, accountExists: true, status: null,
       localBlockers: [], dmInventory: null, storeInventory: null,
+      privateContentInventory: null,
       verification: "unavailable",
       unknownForeignKeyTables: [], manualReviewForeignKeyTables: [],
       reasons: ["Closure eligibility cannot be verified; no account data was changed"],
