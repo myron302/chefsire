@@ -63,6 +63,13 @@ if (!PG_URL) {
         db.transaction((tx: any) => lockMemberForContentWrite(tx, sender)),
         (e: unknown) => e instanceof MemberContentWriteBlockedError,
       );
+      // The HTTP restricted-write gate must not be bypassed by Socket.IO,
+      // which does not pass through HTTP requireAuth on every event.
+      await local.query("UPDATE account_status SET status='restricted' WHERE user_id=$1", [sender]);
+      await assert.rejects(
+        db.transaction((tx: any) => lockMemberForContentWrite(tx, sender)),
+        (e: unknown) => e instanceof MemberContentWriteBlockedError,
+      );
     } finally {
       await local.query("DROP TABLE IF EXISTS dm_messages, users CASCADE");
       await local.end();
