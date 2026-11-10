@@ -1,10 +1,9 @@
 import { sql } from "drizzle-orm";
 
 /**
- * Locks both marketplace participants before creating new financial obligations.
- * Every future permanent-closure transaction must acquire the same users-row lock
- * and verify obligations under that lock. Sorting avoids deadlocks for opposite-side buyers.
- * Run exclusively inside the caller's PostgreSQL transaction, never before it.
+ * Serializes creation of a new financial obligation with account closure.
+ * Future closure takes the same users FOR UPDATE row lock before checking
+ * obligations. Sort users to prevent opposite-side purchase deadlocks.
  */
 export class CommerceAccountUnavailableError extends Error {
   readonly code = "COMMERCE_ACCOUNT_UNAVAILABLE";
@@ -16,17 +15,24 @@ export class CommerceAccountUnavailableError extends Error {
 const rowsOf = (result: any): any[] => result?.rows ?? (Array.isArray(result) ? result : []);
 
 export async function lockActiveCommerceAccounts(tx: any, buyerId: string, sellerId: string): Promise<void> {
-  // The read and lock happen in one query; a concurrent member close/suspension
-  // either commits first and is observed, or waits until this transaction commits.
-  const locked = rowsOf(await tx.execute(sql`
-    SELECT u.id, COALESCE(st.status, 'active') AS status
-    FROM users u LEFT JOIN account_status st ON st.user_id = u.id
-    WHERE u.id IN (${buyerId}, ${sellerId})
-    ORDER BY u.id
-    FOR UPDATE OF u
+  // FIRST take both users-row locks. Critically, do not join account_status here:
+  // under READ COMMITTED a join evaluated before waiting for a lock can see an
+  // older status snapshot. The status SELECT below must start AFTER lock acquisition.
+  const people = rowsOf(await tx.execute(sql`
+    SELECT id FROM users WHERE id IN (${buyerId}, ${sellerId}) ORDER BY id FOR UPDATE
   `));
-  const statuses = new Map(locked.map((r) => [r.id, r.status]));
-  if (statuses.get(buyerId) !== "active" || statuses.get(sellerId) !== "active") {
+  const expected = new Set([buyerId, sellerId]);
+  if (people.length !== expected.size || people.some((p) => !expected.has(p.id))) {
+    throw new CommerceAccountUnavailableError();
+  }
+
+  // Fresh statement snapshot, under the users-row lock: if closure committed
+  // first, its terminal status is visible; otherwise closure waits for commit.
+  const statuses = rowsOf(await tx.execute(sql`
+    SELECT user_id AS id, status FROM account_status WHERE user_id IN (${buyerId}, ${sellerId})
+  `));
+  if (statuses.some((row) => row.status !== "active")) {
+    // The table stores only non-active rows today. Explicit active is harmless.
     throw new CommerceAccountUnavailableError();
   }
 }
