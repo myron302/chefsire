@@ -51,7 +51,7 @@ export async function inspectPrivateErasureCascadeRisks(tx: any): Promise<Closur
       JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
       WHERE c.contype = 'f' AND child_ns.nspname = 'public'
         AND parent_ns.nspname = 'public'
-        AND parent.relname = ANY(${[...CLOSURE_FK_CLASSES.erase_private]})
+        AND parent.relname::text IN (${sql.join(CLOSURE_FK_CLASSES.erase_private.map(name => sql`${name}`), sql`, `)})
       UNION ALL
       SELECT d.child_table, child.relname::text, c.conname::text,
              c.confdeltype, d.depth + 1, d.path || child.oid
