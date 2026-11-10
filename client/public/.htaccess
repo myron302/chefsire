@@ -11,6 +11,12 @@
   RewriteCond %{REQUEST_URI} ^/__ops-portal(/|$)
   RewriteRule ^ - [L]
 
+  # "/" itself: Apache's directory index has already turned it into /index.html by the time these rules run (which
+  # the app rightly refuses on the ops host), so match the original request line instead.
+  RewriteCond %{HTTP_HOST} ^ops\.chefsire\.com(:\d+)?$ [NC]
+  RewriteCond %{THE_REQUEST} ^[A-Z]+\s/(?:\?\S*)?\s
+  RewriteRule ^ /__ops-portal/ [L]
+
   RewriteCond %{HTTP_HOST} ^ops\.chefsire\.com(:\d+)?$ [NC]
   RewriteCond %{REQUEST_URI} ^/(?:assets|images)/ [NC]
   RewriteCond %{REQUEST_FILENAME} -f
