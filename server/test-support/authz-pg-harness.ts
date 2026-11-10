@@ -18,6 +18,10 @@ export async function connectLocalPg() {
   const { pool } = await import("../db/index");
   (pool as any).connect = () => local.connect();
   (pool as any).query = (q: any, params?: any[]) => (typeof q === "string" ? local.query(q, params) : local.query(params ? { ...q, values: params } : q));
+  // Product and post queries consult account_status (back office: hidden suspended accounts). Production has it
+  // (docs/ops/2026-11-10-account-status.sql); suites that build their own tables get an empty one (no row = active).
+  await local.query(`CREATE TABLE IF NOT EXISTS account_status (user_id varchar PRIMARY KEY, status text NOT NULL, reason text,
+    changed_by varchar, changed_at timestamptz NOT NULL DEFAULT now())`);
   return local;
 }
 

@@ -14,6 +14,7 @@ import { marketplaceDigitalFilePath } from "../lib/marketplace-digital-file";
 import { isDigitalMarketplaceProduct, resolveMarketplaceShippingCost } from "../../shared/marketplace-fulfillment";
 import { isSampleProduct, SAMPLE_LISTING_CODE, SAMPLE_LISTING_MESSAGE } from "../../shared/marketplace-sample";
 import { canMarkShipped } from "../../shared/marketplace-order-status";
+import { isAccountHidden } from "../lib/account-status";
 
 const router = Router();
 
@@ -86,6 +87,11 @@ router.post("/checkout", requireAuth, async (req, res) => {
     }
 
     if (!product.isActive || product.inStoreOnly || product.isExternal) {
+      return res.status(400).json({ ok: false, error: "Product is not available" });
+    }
+
+    // A suspended seller's products can't be bought (they're hidden everywhere else too).
+    if (await isAccountHidden(product.sellerId)) {
       return res.status(400).json({ ok: false, error: "Product is not available" });
     }
 

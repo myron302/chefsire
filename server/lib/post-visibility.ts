@@ -16,7 +16,8 @@
 // that arrives in a query string, a body, or a path parameter is never an identity — see `viewerIdFrom`.
 
 import type { Request } from "express";
-import { eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { accountHidden } from "./account-hidden-sql";
 import { follows, posts, users } from "../../shared/schema";
 import type { Comment, Post, PostWithUser } from "../../shared/schema";
 
@@ -37,13 +38,18 @@ export function viewerIdFrom(req: Request): string | null {
  */
 export function visiblePostsCondition(viewerId?: string | null) {
   const authorIsPublic = or(eq(users.isPrivate, false), isNull(users.isPrivate));
+  // Posts by suspended accounts are hidden from everyone (back office account status); nothing is deleted.
+  const authorNotHidden = sql`NOT ${accountHidden(posts.userId)}`;
 
-  if (!viewerId) return authorIsPublic;
+  if (!viewerId) return and(authorIsPublic, authorNotHidden);
 
-  return or(
-    authorIsPublic,
-    eq(posts.userId, viewerId),
-    sql`EXISTS (SELECT 1 FROM ${follows} WHERE ${follows.followerId} = ${viewerId} AND ${follows.followingId} = ${posts.userId})`
+  return and(
+    or(
+      authorIsPublic,
+      eq(posts.userId, viewerId),
+      sql`EXISTS (SELECT 1 FROM ${follows} WHERE ${follows.followerId} = ${viewerId} AND ${follows.followingId} = ${posts.userId})`
+    ),
+    authorNotHidden,
   );
 }
 

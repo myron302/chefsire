@@ -76,6 +76,7 @@ import {
 } from "@shared/schema";
 import { isProviderInRange, milesBetween, type Coordinates } from "./services/catering-geo";
 import { visiblePostsCondition } from "./lib/post-visibility";
+import { accountHidden } from "./lib/account-hidden-sql";
 import { recipeVisibleToViewer } from "./lib/recipe-visibility";
 import { serializePublicUser } from "./serializers/public-user";
 import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
@@ -1368,7 +1369,8 @@ export class DrizzleStorage implements IStorage {
       .select({ product: products, seller: users })
       .from(products)
       .innerJoin(users, eq(products.sellerId, users.id))
-      .where(eq(products.id, id))
+      // A suspended seller's products are hidden (back office account status); nothing is deleted.
+      .where(and(eq(products.id, id), sql`NOT ${accountHidden(products.sellerId)}`))
       .limit(1);
 
     if (!result[0]) return undefined;
@@ -1381,7 +1383,7 @@ export class DrizzleStorage implements IStorage {
       .select({ product: products, seller: users })
       .from(products)
       .innerJoin(users, eq(products.sellerId, users.id))
-      .where(and(eq(products.sellerId, sellerId), eq(products.isActive, true)))
+      .where(and(eq(products.sellerId, sellerId), eq(products.isActive, true), sql`NOT ${accountHidden(products.sellerId)}`))
       .orderBy(desc(products.createdAt))
       .offset(offset)
       .limit(limit);
@@ -1397,7 +1399,7 @@ export class DrizzleStorage implements IStorage {
     limit = 20
   ): Promise<ProductWithSeller[]> {
     const db = getDb();
-    const conditions: any[] = [eq(products.isActive, true)];
+    const conditions: any[] = [eq(products.isActive, true), sql`NOT ${accountHidden(products.sellerId)}`];
 
     if (category) conditions.push(eq(products.category, category));
     if (location) conditions.push(eq(products.pickupLocation, location));

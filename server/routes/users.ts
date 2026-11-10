@@ -6,6 +6,7 @@ import { requireAuth, optionalAuth } from "../middleware";
 import { resolveSelfUserId } from "../lib/self-scope";
 import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 import { normalizePhone } from "../../shared/phone";
+import { isAccountHidden } from "../lib/account-status";
 import { startNutritionTrialResponse } from "../lib/nutrition-entitlement";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
@@ -95,7 +96,8 @@ r.get("/:id", async (req, res) => {
     if (!user) {
       user = await storage.getUserByUsername(id);
     }
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // A suspended account's profile is hidden, answered exactly like a missing one.
+    if (!user || (await isAccountHidden(user.id))) return res.status(404).json({ message: "User not found" });
     res.json(serializePublicUser(user));
   } catch (error) {
     console.error("GET /users/:id error", error);
@@ -106,7 +108,8 @@ r.get("/:id", async (req, res) => {
 r.get("/username/:username", async (req, res) => {
   try {
     const user = await storage.getUserByUsername(req.params.username);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // A suspended account's profile is hidden, answered exactly like a missing one.
+    if (!user || (await isAccountHidden(user.id))) return res.status(404).json({ message: "User not found" });
     res.json(serializePublicUser(user));
   } catch (error) {
     console.error("GET /users/username/:username error", error);

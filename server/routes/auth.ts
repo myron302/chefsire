@@ -2,6 +2,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { looksLikePhone, normalizePhone } from "../../shared/phone";
 import { withNutritionEntitlement } from "../lib/nutrition-entitlement";
+import { signInBlock } from "../lib/account-status";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import passport from "passport";
@@ -269,6 +270,10 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
     if (!isValid) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
+
+    // Suspended accounts can't sign in by any method.
+    const blocked = await signInBlock(user.id);
+    if (blocked) return res.status(blocked.code === "ACCOUNT_SUSPENDED" ? 403 : 503).json({ error: blocked.message, code: blocked.code });
 
     // Create JWT token
     const token = issueAuthToken(user);
@@ -621,6 +626,8 @@ router.get("/auth/google/callback", oauthCallbackLimiter, (req, res, next) => {
       }
 
       // Create JWT token for the user
+      const blocked = await signInBlock(user.id);
+      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : "/login?error=service-unavailable");
       const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
@@ -667,6 +674,8 @@ router.get("/auth/facebook/callback", requireOptionalOAuth("facebook"),
       }
 
       // Create JWT token for the user
+      const blocked = await signInBlock(user.id);
+      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : "/login?error=service-unavailable");
       const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
@@ -710,6 +719,8 @@ router.get("/auth/tiktok/callback", requireOptionalOAuth("tiktok"),
       }
 
       // Create JWT token for the user
+      const blocked = await signInBlock(user.id);
+      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : "/login?error=service-unavailable");
       const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
