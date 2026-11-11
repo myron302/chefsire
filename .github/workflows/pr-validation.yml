@@ -208,6 +208,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node --import tsx --test --test-concurrency=1 server/services/marketplace-checkout-reconciliation.postgres.test.ts
+      - name: Verify catering offer customer/provider closure gate on isolated PostgreSQL
+        env:
+          CATERING_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/routes/catering-offer-negotiation-http.test.ts
       - name: Test wedding vendor directory and quote delivery against PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
