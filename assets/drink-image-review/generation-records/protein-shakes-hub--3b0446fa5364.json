@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "categoryId": "protein-shakes-hub",
+  "route": "/drinks/protein-shakes",
+  "masterFilename": "chocolate-whey-protein-shake-original.png",
+  "batch": "pilot-2026-10-19",
+  "masterPath": "masters/chocolate-whey-protein-shake-original.png",
+  "sha256": "3b0446fa5364a17e8ed063ba53b2555e03ecfa20126e46697d7659263fe20138",
+  "bytes": 2689697,
+  "width": 1536,
+  "height": 1024,
+  "format": "png",
+  "importedAt": "2026-10-20T18:51:35.656Z",
+  "importSource": {
+    "kind": "repository",
+    "name": "PR #1322 (dbf650b)"
+  },
+  "originalFilename": "chocolate-whey-protein-shake-original.png",
+  "generation": {
+    "provider": "OpenAI image_gen.imagegen; underlying model version not exposed",
+    "model": null,
+    "generationId": null,
+    "generatedAt": null,
+    "prompt": null,
+    "reference": "Owner-approved square daiquiri image attached by user in this conversation; supplied as reference input to every generation"
+  },
+  "historicalRecord": {
+    "file": "pilot-records.json",
+    "name": "chocolate-whey-protein-shake-original",
+    "note": "Prompt, source path and approval state live in the unchanged historical record."
+  },
+  "supersedes": null,
+  "usageTerms": "Generated with OpenAI image generation. Commercial use is subject to the applicable OpenAI terms and applicable law. Exclusive ownership or copyright protection is not guaranteed."
+}
