@@ -3504,10 +3504,10 @@ export default function SettingsPage() {
 
             <div className="flex flex-col gap-3 p-4 border border-red-200 rounded-lg bg-red-50 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="font-semibold text-red-600">Delete Account</div>
-                <div className="text-sm text-gray-600">Permanently delete your account and all associated data</div>
+                <div className="font-semibold text-red-600">Permanently close account</div>
+                <div className="text-sm text-gray-600">Temporarily unavailable while privacy and financial-record retention safeguards are finalized. You can deactivate your account now or contact support@chefsire.com about a closure request.</div>
               </div>
-              <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+              <Button variant="destructive" disabled title="Permanent closure is not available yet">
                 <Trash2 size={16} className="mr-2" />
                 Delete Account
               </Button>

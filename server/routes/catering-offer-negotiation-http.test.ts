@@ -49,6 +49,7 @@ if (!PG_URL) {
   await local.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE; CREATE SCHEMA ${SCHEMA};`);
   await local.query(`
     CREATE TABLE users (id varchar PRIMARY KEY, username text, display_name text);
+    CREATE TABLE account_status (user_id varchar PRIMARY KEY REFERENCES users(id), status text NOT NULL);
     CREATE TABLE catering_inquiries (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
       customer_id varchar NOT NULL REFERENCES users(id), chef_id varchar NOT NULL REFERENCES users(id),
@@ -175,6 +176,21 @@ if (!PG_URL) {
   });
 
   // ------------------------------------------------------------------------------------- first offer / create
+  test("0. new catering offer cannot create a booking for closed customer", async () => {
+    const inquiryId = await inquiry();
+    await local.query("INSERT INTO account_status(user_id,status) VALUES ($1,'closed')", [CUSTOMER_A]);
+    try {
+      const response = await call("POST", `/inquiries/${inquiryId}/provider-confirm`,
+        tok(PROVIDER), { priceCents: 150000 });
+      assert.equal(response.status, 409, response.text);
+      assert.equal(response.body.code, "COMMERCE_ACCOUNT_UNAVAILABLE");
+      const count = await local.query("SELECT count(*)::int n FROM catering_bookings WHERE inquiry_id=$1", [inquiryId]);
+      assert.equal(count.rows[0].n, 0, "no obligation created for closed party");
+    } finally {
+      await local.query("DELETE FROM account_status WHERE user_id=$1", [CUSTOMER_A]);
+    }
+  });
+
   test("1. a provider creates the first offer for their own accepted inquiry: booking and revision 1 in one transaction", async () => {
     const inquiryId = await inquiry();
     const response = await call("POST", `/inquiries/${inquiryId}/provider-confirm`, tok(PROVIDER), { priceCents: 150000, note: "Buffet for 40", guestCount: 45 });

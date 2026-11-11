@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
-import { and, count, desc, eq, gte, lte, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringAvailabilityExceptions, cateringAvailabilitySettings, cateringBookingActivity, cateringBookings, cateringPackages, cateringReviews, notifications } from "@shared/schema";
 import { cateringBookingCancelSchema, cateringBookingIdSchema, cateringBookingPageSchema } from "@shared/catering-bookings";
@@ -17,6 +17,7 @@ import { lockCateringBilling } from "../services/catering-booking-adjustments";
 import { closeOpenAttemptsInTransaction } from "../services/catering-square-payments";
 import { cateringSquarePayments } from "../services/catering-square-payments-instance";
 import { lockCateringInquiry } from "../services/catering-inquiry-withdrawal";
+import { CommerceAccountUnavailableError, lockActiveCommerceAccounts } from "../lib/commerce-account-lock";
 import { lockCateringReviewRelationship } from "../services/catering-review-relationship-lock";
 import { acceptanceRetryContradictsAccepted, acceptanceWouldContradictBilling, bookingTermsFromRevision, CATERING_OFFER_ALREADY_EXISTS_MESSAGE, createProviderOfferRevision, firstOfferRetryMatches, listCateringOfferRevisions, resolveCateringOfferAcceptance, stampCateringOfferAccepted } from "../services/catering-offer-negotiation";
 
@@ -45,6 +46,24 @@ r.get("/bookings/:id", requireAuth, async (req, res, next) => { try {
 r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, next) => { try {
   const inquiryId = cateringBookingIdSchema.parse(req.params.inquiryId); const providerId = (req.user as { id: string }).id; const offer = cateringFirstOfferSchema.parse(req.body ?? {}); const now = new Date();
   const result = await db.transaction(async (tx: typeof db) => {
+    // Lock BOTH contractual parties first, in stable users.id order. The
+    // subsequent inquiry row lock and revalidation prevent stale accepted
+    // offers. Do not lock the inquiry first: closure will acquire users locks.
+    const partyQuery: any = await tx.execute(sql`
+      SELECT customer_id, chef_id FROM catering_inquiries WHERE id = ${inquiryId}
+    `);
+    const [parties] = partyQuery.rows ?? partyQuery;
+    if (!parties || parties.chef_id !== providerId) {
+      return { error: 404, message: "Accepted inquiry not found" } as const;
+    }
+    try {
+      await lockActiveCommerceAccounts(tx, parties.customer_id, providerId);
+    } catch (error) {
+      if (error instanceof CommerceAccountUnavailableError) {
+        return { error: 409, code: error.code, message: error.message } as const;
+      }
+      throw error;
+    }
     // The inquiry row is locked before its status is judged, and a customer's withdrawal locks the same row before it looks
     // for a booking, so an inquiry can end up withdrawn or booked but never both.
     const locked = await lockCateringInquiry(tx, inquiryId);

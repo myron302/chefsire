@@ -1,7 +1,8 @@
 // server/routes/dm.ts
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray, lt, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { lockMemberForContentWrite, lockAvailableDmParticipants, MemberContentWriteBlockedError } from "../lib/member-content-write-lock";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import {
@@ -265,54 +266,52 @@ r.get("/threads/:id/messages", requireAuth, async (req, res) => {
  */
 r.post("/threads", requireAuth, async (req, res) => {
   const userId = req.user!.id;
+  const body = z.object({
+    participantIds: z.array(z.string()).min(1),
+    title: z.string().max(120).optional(),
+    isGroup: z.boolean().optional().default(false),
+  }).parse(req.body);
 
-  const body = z
-    .object({
-      participantIds: z.array(z.string()).min(1),
-      title: z.string().max(120).optional(),
-      isGroup: z.boolean().optional().default(false),
-    })
-    .parse(req.body);
+  try {
+    const result = await db.transaction(async (tx) => {
+      // A stale authenticated HTTP request may still be in flight while a
+      // terminal closure commits. This row lock serializes the entire thread
+      // creation/reuse decision with closure and avoids orphaned threads.
+      await lockAvailableDmParticipants(tx, userId, body.participantIds);
 
-  // Reuse 1:1 threads
-  if (!body.isGroup && body.participantIds.length === 1) {
-    const other = body.participantIds[0];
+      if (!body.isGroup && body.participantIds.length === 1) {
+        const other = body.participantIds[0];
+        const mine = await tx.select().from(dmParticipants)
+          .where(eq(dmParticipants.userId, userId));
+        const theirs = await tx.select().from(dmParticipants)
+          .where(eq(dmParticipants.userId, other));
+        const mySet = new Set(mine.map(p => p.threadId));
+        const candidates = theirs.map(p => p.threadId).filter(id => mySet.has(id));
+        // Never reuse a catering-linked conversation for ordinary DMs.
+        const linked = await bookingLinkedThreadIds(candidates);
+        const shared = candidates.find((id: string) => !linked.has(id));
+        if (shared) return { threadId: shared, reused: true };
+      }
 
-    const mine = await db
-      .select()
-      .from(dmParticipants)
-      .where(eq(dmParticipants.userId, userId));
-    const theirs = await db
-      .select()
-      .from(dmParticipants)
-      .where(eq(dmParticipants.userId, other));
-
-    const mySet = new Set(mine.map((p) => p.threadId));
-    const candidates: string[] = theirs.map((p: { threadId: string }) => p.threadId).filter((id: string) => mySet.has(id));
-    // A booking conversation is never adopted as the pair's generic 1:1 thread. Without this the reuse below would
-    // hand a booking thread id back to a generic caller, and the same two people's ordinary DMs would land inside a
-    // booking's history. The pair keeps a generic thread and one distinct conversation per booking.
-    const linked = await bookingLinkedThreadIds(candidates);
-    const shared = candidates.find((id: string) => !linked.has(id));
-    if (shared) return res.json({ ok: true, threadId: shared, reused: true });
+      const [thread] = await tx.insert(dmThreads)
+        .values({ isGroup: body.isGroup, title: body.title }).returning();
+      const uniqueIds = Array.from(new Set([userId, ...body.participantIds]));
+      await tx.insert(dmParticipants).values(
+        uniqueIds.map((uid, i) => ({
+          threadId: thread.id,
+          userId: uid,
+          role: i === 0 ? "owner" : "member",
+        })),
+      );
+      return { threadId: thread.id, reused: false };
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    if (error instanceof MemberContentWriteBlockedError) {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
+    throw error;
   }
-
-  // Create new thread + participants
-  const [thread] = await db
-    .insert(dmThreads)
-    .values({ isGroup: body.isGroup, title: body.title })
-    .returning();
-
-  const uniqueIds = Array.from(new Set([userId, ...body.participantIds]));
-  await db.insert(dmParticipants).values(
-    uniqueIds.map((uid, i) => ({
-      threadId: thread.id,
-      userId: uid,
-      role: i === 0 ? "owner" : "member",
-    }))
-  );
-
-  res.json({ ok: true, threadId: thread.id, reused: false });
 });
 
 /**
@@ -342,45 +341,62 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
 
   if (await refuseBookingLinkedThread(id, res)) return;
 
-  const [msg] = await db
-    .insert(dmMessages)
-    .values({
-      threadId: id,
-      senderId: userId,
-      body: body.text,
-      attachments: body.attachments ?? [],
-    })
-    .returning();
-
-  // Mark my read
-  await db
-    .update(dmParticipants)
-    .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
-    .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+  // Membership and auth checked above can become stale while permanent account
+  // closure is in flight. Recheck under the users FOR UPDATE lock in the SAME
+  // transaction as the message and read marker, so a closed account cannot
+  // write after its old token was revoked.
+  let msg: typeof dmMessages.$inferSelect;
+  try {
+    msg = await db.transaction(async (tx) => {
+      await lockMemberForContentWrite(tx, userId);
+      const currentMembership = await tx.select({ id: dmParticipants.id })
+        .from(dmParticipants)
+        .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
+        .limit(1);
+      if (!currentMembership.length) throw new MemberContentWriteBlockedError();
+      const linked = await tx.execute(sql`
+        SELECT 1 FROM catering_booking_conversations WHERE thread_id = ${id} LIMIT 1
+      `);
+      const linkedRows = (linked as any)?.rows ?? (Array.isArray(linked) ? linked : []);
+      if (linkedRows.length) throw new MemberContentWriteBlockedError();
+      const [created] = await tx.insert(dmMessages).values({
+        threadId: id,
+        senderId: userId,
+        body: body.text,
+        attachments: body.attachments ?? [],
+      }).returning();
+      await tx.update(dmParticipants)
+        .set({ lastReadMessageId: created.id, lastReadAt: new Date() })
+        .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+      return created;
+    });
+  } catch (error) {
+    if (error instanceof MemberContentWriteBlockedError) {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
+    throw error;
+  }
 
   // Notify other participants
   try {
-    const { users } = await import("../../shared/schema");
     const { notifications } = await import("../../shared/schema");
-    const [sender] = await db
-      .select({ displayName: users.displayName, username: users.username })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    const senderName = sender?.displayName || sender?.username || "Someone";
-
-    const others = await db
-      .select({ userId: dmParticipants.userId })
-      .from(dmParticipants)
-      .where(and(eq(dmParticipants.threadId, id), ne(dmParticipants.userId, userId)));
+    // Closed/deactivated/suspended participants remain in historical threads
+    // but must not accumulate new notifications after their access was revoked.
+    const result = await db.execute(sql`
+      SELECT p.user_id AS "userId" FROM dm_participants p
+      LEFT JOIN account_status st ON st.user_id = p.user_id
+      WHERE p.thread_id = ${id} AND p.user_id <> ${userId}
+        AND COALESCE(st.status, 'active') IN ('active', 'restricted')
+    `);
+    const others = (result as any)?.rows ?? (Array.isArray(result) ? result : []);
 
     if (others.length > 0) {
       await db.insert(notifications).values(
-        others.map((p) => ({
+        others.map((p: { userId: string }) => ({
           userId: p.userId,
           type: "message",
-          title: `New message from ${senderName}`,
-          message: body.text.length > 80 ? body.text.slice(0, 80) + "…" : body.text,
+          title: "New message",
+          message: "You have a new message.",
           linkUrl: `/messages`,
           priority: "normal",
         }))

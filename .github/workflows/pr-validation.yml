@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies from lockfile
         run: npm ci
       - name: Test Marketplace checkout and private file isolation
-        run: node --import tsx --test client/src/components/SquarePaymentForm.test.ts shared/marketplace-fulfillment.test.ts shared/marketplace-sample.test.ts shared/marketplace-order-status.test.ts client/src/components/feed-widgets-endpoints.test.ts client/src/pages/signed-out-prompts.test.ts client/src/lib/signup-username.test.ts shared/phone.test.ts client/src/pages/auth/phone-ui.test.ts client/src/pages/social/feed-counts.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts
+        run: node --import tsx --test client/src/components/SquarePaymentForm.test.ts shared/marketplace-fulfillment.test.ts shared/marketplace-sample.test.ts shared/marketplace-order-status.test.ts client/src/components/feed-widgets-endpoints.test.ts client/src/pages/signed-out-prompts.test.ts client/src/lib/signup-username.test.ts shared/phone.test.ts client/src/pages/auth/phone-ui.test.ts client/src/pages/social/feed-counts.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts server/routes/catering-generic-dm-bypass.test.ts
       - name: Test public avatar projection and inline avatar serving
         run: node --import tsx --test server/lib/inline-avatar.test.ts
       - name: Test Cookoff Arena stats and image placeholder fallback
@@ -204,6 +204,14 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node --import tsx --test --test-concurrency=1 server/routes/marketplace-order-journey.postgres.test.ts server/routes/marketplace-sample-listings.postgres.test.ts server/routes/marketplace-fulfillment-status.postgres.test.ts server/routes/marketplace-order-detail-access.postgres.test.ts
+      - name: Verify Marketplace Square capture lifecycle and closure-account gates on PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/services/marketplace-checkout-reconciliation.postgres.test.ts
+      - name: Verify catering offer customer/provider closure gate on isolated PostgreSQL
+        env:
+          CATERING_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/routes/catering-offer-negotiation-http.test.ts
       - name: Test wedding vendor directory and quote delivery against PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
@@ -238,4 +246,4 @@ jobs:
       - name: Verify Google email ownership and legacy tester reclamation on isolated PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/routes/auth-account-prehijack.test.ts server/routes/auth-login-username.postgres.test.ts server/routes/auth-login-phone.postgres.test.ts server/routes/recipe-post-create.postgres.test.ts server/routes/nutrition-trial.postgres.test.ts server/routes/admin-staff.postgres.test.ts server/routes/admin-members.postgres.test.ts server/routes/ops-portal.postgres.test.ts server/routes/account-deactivation.postgres.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/routes/auth-account-prehijack.test.ts server/routes/auth-login-username.postgres.test.ts server/routes/auth-login-phone.postgres.test.ts server/routes/recipe-post-create.postgres.test.ts server/routes/nutrition-trial.postgres.test.ts server/routes/admin-staff.postgres.test.ts server/routes/admin-members.postgres.test.ts server/routes/ops-portal.postgres.test.ts server/routes/account-deactivation.postgres.test.ts server/routes/account-closure-safety.postgres.test.ts server/lib/commerce-account-lock.postgres.test.ts server/lib/closure-obligations.postgres.test.ts server/lib/closure-message-inventory.postgres.test.ts server/lib/closure-tombstone.postgres.test.ts server/lib/closure-media-candidates.postgres.test.ts server/lib/closure-dm-redaction.postgres.test.ts server/lib/closure-fk-inventory.postgres.test.ts server/lib/closure-private-content-inventory.postgres.test.ts server/lib/closure-private-planner-erasure.postgres.test.ts server/lib/closure-store-unpublish.postgres.test.ts server/lib/closure-store-inventory.postgres.test.ts server/lib/closure-write-primitives.postgres.test.ts server/lib/closure-media-outbox.postgres.test.ts server/lib/closure-audit.postgres.test.ts server/lib/closure-cascade-risks.postgres.test.ts server/lib/closure-feature.test.ts server/lib/closure-private-content-erasure.postgres.test.ts server/lib/closure-isolated-prototype.postgres.test.ts server/lib/member-content-write-lock.postgres.test.ts server/routes/dm-closure-safety.postgres.test.ts server/lib/member-social-write-lock.postgres.test.ts
