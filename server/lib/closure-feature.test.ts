@@ -11,6 +11,7 @@ test("permanent closure remains hard-disabled outside isolated PostgreSQL tests"
   assert.equal(PERMANENT_CLOSURE_AVAILABLE, false);
   const previousMode = process.env.NODE_ENV;
   const previousUrl = process.env.CS_TEST_PG_URL;
+  const previousDatabaseUrl = process.env.DATABASE_URL;
   let called = false;
   const fakeTx = {execute: async()=> { called = true; throw new Error("SQL MUST NOT RUN"); }};
   try {
@@ -32,8 +33,19 @@ test("permanent closure remains hard-disabled outside isolated PostgreSQL tests"
     delete process.env.CS_TEST_PG_URL;
     assert.throws(()=>assertInternalClosureMutationAllowed(),/disabled/,
       "NODE_ENV=test alone is insufficient");
+    process.env.CS_TEST_PG_URL = "postgres://u:p@neon.example/chefsire_test";
+    assert.throws(()=>assertInternalClosureMutationAllowed(),/disabled/,
+      "remote test URL cannot authorize destructive prototype");
+    process.env.CS_TEST_PG_URL = "postgres://u:p@127.0.0.1/chefsire_test";
+    process.env.DATABASE_URL = "postgres://user:pass@neon.example/production";
+    assert.throws(()=>assertInternalClosureMutationAllowed(),/disabled/,
+      "an otherwise valid local test URL cannot authorize production DATABASE_URL");
+    process.env.DATABASE_URL = "postgres://u:p@p3c-tests.invalid/none";
+    assert.doesNotThrow(()=>assertInternalClosureMutationAllowed(),
+      "the harness sentinel permits only validated local test URLs");
   } finally {
     if(previousMode===undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV=previousMode;
     if(previousUrl===undefined) delete process.env.CS_TEST_PG_URL; else process.env.CS_TEST_PG_URL=previousUrl;
+    if(previousDatabaseUrl===undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL=previousDatabaseUrl;
   }
 });
