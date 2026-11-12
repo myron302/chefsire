@@ -39,6 +39,13 @@ import {
 } from "./lib/storeDashboard";
 
 export default function StoreDashboard() {
+  const { user } = useUser();
+  // A confirmed account change must discard private store, sales and editor
+  // state. Same-owner session refreshes preserve the mounted editor and draft.
+  return <StoreDashboardSession key={user?.id ?? "anonymous"} />;
+}
+
+function StoreDashboardSession() {
   const { user, updateUser, loading: authLoading } = useUser();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -63,18 +70,23 @@ export default function StoreDashboard() {
   const tabsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (user?.id) loadDashboard();
+    const request = new AbortController();
+    if (user?.id) void loadDashboard(user.id, request.signal);
+    return () => request.abort();
   }, [user?.id]);
 
-  const loadDashboard = async () => {
+  const loadDashboard = async (ownerId: string, signal: AbortSignal) => {
     setLoading(true);
     try {
       // Load store
-      const storeRes = await fetch(`/api/stores/user/${user!.id}`, {
+      const storeRes = await fetch(`/api/stores/user/${encodeURIComponent(ownerId)}`, {
         credentials: "include",
+        signal,
       });
+      if (signal.aborted) return;
       if (storeRes.ok) {
         const storeData = await storeRes.json();
+        if (signal.aborted) return;
         const s = storeData.store;
         setStore(s);
         if (storeData.socialProof) setSocialProof(storeData.socialProof);
@@ -84,9 +96,10 @@ export default function StoreDashboard() {
           let productStats = getInitialProductStats();
           try {
             const sellerProducts = await getSellerMarketplaceProducts(
-              user!.id,
-              { credentials: "include" },
+              ownerId,
+              { credentials: "include", signal },
             );
+            if (signal.aborted) return;
             setProducts(sellerProducts);
             setProductsLoaded(true);
             productStats = {
@@ -95,6 +108,7 @@ export default function StoreDashboard() {
                 .length,
             };
           } catch {
+            if (signal.aborted) return;
             setProducts([]);
             setProductsLoaded(false);
             productStats = getInitialProductStats();
@@ -103,10 +117,13 @@ export default function StoreDashboard() {
           // Store stats
           const statsRes = await fetch(`/api/stores/${s.id}/stats`, {
             credentials: "include",
+            signal,
           });
+          if (signal.aborted) return;
           let storeStats = getInitialStoreStats();
           if (statsRes.ok) {
             const sd = await statsRes.json();
+            if (signal.aborted) return;
             storeStats = sd.stats || storeStats;
           }
 
@@ -123,24 +140,31 @@ export default function StoreDashboard() {
       // Subscription tier
       const tierRes = await fetch("/api/subscriptions/my-tier", {
         credentials: "include",
+        signal,
       });
+      if (signal.aborted) return;
       if (tierRes.ok) {
         const td = await tierRes.json();
+        if (signal.aborted) return;
         setTier(td);
       }
 
       // Recent sales
       const salesRes = await fetch("/api/orders/my-sales?limit=10", {
         credentials: "include",
+        signal,
       });
+      if (signal.aborted) return;
       if (salesRes.ok) {
         const sd = await salesRes.json();
+        if (signal.aborted) return;
         setRecentSales(sd.sales || []);
       }
     } catch (error) {
+      if (signal.aborted) return;
       console.error("Dashboard load error:", error);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   };
 
