@@ -101,6 +101,14 @@ export default function SearchAutocomplete() {
   }, []);
 
   useEffect(() => {
+    // Cancel the previous request when either the query or source changes.
+    // A late response must never replace suggestions for newer input.
+    const controller = new AbortController();
+    // Displayed suggestions and keyboard selection belong to the old query
+    // too. Invalidate them before the debounce so Enter cannot use old routes.
+    setResults(null);
+    setSelectedIndex(-1);
+    setIsOpen(false);
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
@@ -108,27 +116,37 @@ export default function SearchAutocomplete() {
     if (!searchText.trim()) {
       setResults(null);
       setIsOpen(false);
-      return;
+      setIsLoading(false);
+      return () => controller.abort();
     }
 
     debounceTimer.current = setTimeout(async () => {
       setIsLoading(true);
       try {
         const response = await fetch(
-          `/api/search/autocomplete?q=${encodeURIComponent(searchText.trim())}&source=${encodeURIComponent(sourceFilter)}`
+          `/api/search/autocomplete?q=${encodeURIComponent(searchText.trim())}&source=${encodeURIComponent(sourceFilter)}`,
+          { signal: controller.signal }
         );
+        if (!response.ok) {
+          throw new Error(`Autocomplete request failed: ${response.status}`);
+        }
         const data = await response.json();
+        if (controller.signal.aborted) return;
         setResults(data);
         setIsOpen(true);
         setSelectedIndex(-1);
       } catch (error) {
+        if (controller.signal.aborted) return;
         console.error("Autocomplete error:", error);
+        setResults(null);
+        setIsOpen(false);
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) setIsLoading(false);
       }
     }, 300);
 
     return () => {
+      controller.abort();
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
       }
