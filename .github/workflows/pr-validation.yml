@@ -31,6 +31,10 @@ jobs:
         run: npm ci
       - name: Test Marketplace checkout and private file isolation
         run: node --import tsx --test client/src/components/SquarePaymentForm.test.ts shared/marketplace-fulfillment.test.ts shared/marketplace-sample.test.ts shared/marketplace-order-status.test.ts client/src/components/feed-widgets-endpoints.test.ts client/src/pages/signed-out-prompts.test.ts client/src/lib/signup-username.test.ts shared/phone.test.ts client/src/pages/auth/phone-ui.test.ts client/src/pages/social/feed-counts.test.ts server/routes/marketplace-checkout-atomicity.test.ts server/routes/marketplace-payment-fulfillment.test.ts server/routes/upload-active-content.test.ts
+      - name: Test Marketplace checkout session isolation
+        run: node --import tsx --test client/src/pages/checkout/CheckoutPage.test.ts
+      - name: Test autocomplete request and navigation isolation
+        run: node --import tsx --test client/src/components/SearchAutocomplete.test.ts
       - name: Test public avatar projection and inline avatar serving
         run: node --import tsx --test server/lib/inline-avatar.test.ts
       - name: Test Cookoff Arena stats and image placeholder fallback

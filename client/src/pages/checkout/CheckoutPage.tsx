@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import React, { useState, useEffect, useRef } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,22 +14,22 @@ import { isDigitalMarketplaceProduct, marketplaceCheckoutMethods, resolveMarketp
 import { onProductImageError } from "@/lib/image-fallback";
 import { isSampleProduct, SAMPLE_LISTING_MESSAGE } from "@shared/marketplace-sample";
 
-interface CheckoutPageProps {
-  // Product details passed via route state
-  productId?: string;
-  quantity?: number;
+export default function CheckoutPage() {
+  const { user } = useUser();
+  const params = new URLSearchParams(useSearch());
+  const productId = params.get("productId");
+  const quantity = params.get("quantity") ?? "1";
+  // Changing the buyer or purchase must destroy the old order/card form and
+  // give the new checkout its own retry identity. Ordinary renders retain it.
+  return <CheckoutSession key={JSON.stringify([user?.id ?? null, productId, quantity])}
+    productId={productId} quantity={Number(quantity)} />;
 }
 
-export default function CheckoutPage() {
+function CheckoutSession({ productId, quantity }: { productId: string | null; quantity: number }) {
   const { user } = useUser();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  // Get product from URL params
-  const params = new URLSearchParams(window.location.search);
-  const productId = params.get("productId");
-  const quantity = Number(params.get("quantity") ?? "1");
 
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +43,12 @@ export default function CheckoutPage() {
   // The server binds this identity to the immutable order inputs and rejects
   // reuse for a different purchase.
   const [checkoutIdempotencyKey] = useState(() => crypto.randomUUID());
+  const active = useRef(true);
+
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
 
   // Form state
   const [selectedMethod, setSelectedMethod] = useState<"shipping" | "local_pickup">("shipping");
@@ -56,19 +62,23 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => {
+    const request = new AbortController();
     if (productId) {
-      fetchProduct();
+      void fetchProduct(request.signal);
     } else {
       navigate("/marketplace");
     }
+    return () => request.abort();
   }, [productId]);
 
-  const fetchProduct = async () => {
+  const fetchProduct = async (signal: AbortSignal) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/marketplace/products/${productId}`);
+      const response = await fetch(`/api/marketplace/products/${encodeURIComponent(productId!)}`, { signal });
+      if (signal.aborted) return;
       if (response.ok) {
         const data = await response.json();
+        if (signal.aborted) return;
         // Sample listings are examples only: send the visitor back to the listing instead of a checkout form.
         if (data?.isSample === true || isSampleProduct(data)) {
           toast({ title: "Sample listing", description: SAMPLE_LISTING_MESSAGE });
@@ -85,6 +95,7 @@ export default function CheckoutPage() {
         navigate("/marketplace");
       }
     } catch (error) {
+      if (signal.aborted) return;
       console.error("Error fetching product:", error);
       toast({
         title: "Error",
@@ -92,7 +103,7 @@ export default function CheckoutPage() {
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   };
 
@@ -152,6 +163,9 @@ export default function CheckoutPage() {
       });
 
       const data = await response.json();
+      // A request already sent may have persisted an order. Never replay it
+      // or attach its response to a different purchase/account after navigation.
+      if (!active.current) return;
 
       if (response.ok && data.ok) {
         setOrderId(data.order.id);
@@ -165,6 +179,7 @@ export default function CheckoutPage() {
         throw new Error(data.error || "Failed to create order");
       }
     } catch (error: any) {
+      if (!active.current) return;
       console.error("Order creation error:", error);
       toast({
         title: "Failed to create order",
@@ -172,11 +187,12 @@ export default function CheckoutPage() {
         variant: "destructive",
       });
     } finally {
-      setCreatingOrder(false);
+      if (active.current) setCreatingOrder(false);
     }
   };
 
   const handlePaymentSuccess = () => {
+    if (!active.current) return;
     void queryClient.invalidateQueries({ queryKey: ["marketplace-orders"] });
     setStep("success");
   };

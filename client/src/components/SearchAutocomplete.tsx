@@ -104,6 +104,11 @@ export default function SearchAutocomplete() {
     // Cancel the previous request when either the query or source changes.
     // A late response must never replace suggestions for newer input.
     const controller = new AbortController();
+    // Displayed suggestions and keyboard selection belong to the old query
+    // too. Invalidate them before the debounce so Enter cannot use old routes.
+    setResults(null);
+    setSelectedIndex(-1);
+    setIsOpen(false);
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
