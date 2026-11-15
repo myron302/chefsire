@@ -82,6 +82,8 @@ import { serializePublicUser } from "./serializers/public-user";
 import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
 import { purgeRemixEngagementForUser } from "./lib/remix-engagement-cleanup";
 import { lockMemberForContentWrite } from "./lib/member-content-write-lock";
+import { withRealSampleCounts } from "./lib/sample-post-counts";
+import { isSamplePost, SAMPLE_POST_IDS } from "../shared/social-sample";
 import type { PasswordHash } from "./lib/password-hash";
 
 /**
@@ -557,7 +559,10 @@ export class DrizzleStorage implements IStorage {
       .limit(1);
 
     if (!result[0]) return undefined;
-    return { ...result[0].post, user: result[0].user, recipe: result[0].recipe || undefined };
+    const [corrected] = await withRealSampleCounts(db, [
+      { ...result[0].post, user: result[0].user, recipe: result[0].recipe || undefined },
+    ]);
+    return corrected;
   }
 
   async createPost(insertPost: InsertPost): Promise<Post> {
@@ -683,12 +688,13 @@ export class DrizzleStorage implements IStorage {
       .offset(offset)
       .limit(limit);
 
-    return result.map((row) => ({
+    // Sample posts carry invented popularity from the seed; report what the rows actually say.
+    return withRealSampleCounts(db, result.map((row) => ({
       ...row.post,
       user: row.user,
       recipe: row.recipe || undefined,
       isLiked: row.isLiked,
-    }));
+    })));
   }
 
   /** `viewerId` is the authenticated viewer; the privacy predicate is applied here too, not only at the route. */
@@ -717,12 +723,13 @@ export class DrizzleStorage implements IStorage {
       .offset(offset)
       .limit(limit);
 
-    return result.map((row) => ({
+    // A demo account's own profile gets the same correction as the feed.
+    return withRealSampleCounts(db, result.map((row) => ({
       ...row.post,
       user: row.user,
       recipe: row.recipe || undefined,
       isLiked: row.isLiked
-    }));
+    })));
   }
 
   /** `viewerId` is the authenticated viewer; Explore never surfaces a private account's posts to outsiders. */
@@ -826,12 +833,20 @@ export class DrizzleStorage implements IStorage {
       .orderBy(
         desc(sql`(${posts.likesCount} * 2 + ${posts.commentsCount})`)
       )
-      .limit(limit);
+      // Fetch a wider slice than asked for, because sample posts are dropped below and a demo post
+      // claiming 234 likes would otherwise have displaced a real one from the page entirely.
+      .limit(limit + SAMPLE_POST_IDS.size);
 
-    return result.map((row) => ({
-      ...row.recipe,
-      post: { ...row.post, user: row.user },
-    }));
+    // Ranked by likesCount * 2 + commentsCount, which is exactly the number the seed invented, so a
+    // sample post would top the list on popularity it never earned. They are excluded outright
+    // rather than re-ranked: a demonstration post has no business in a popularity chart at all.
+    return result
+      .filter((row) => !isSamplePost(row.post))
+      .slice(0, limit)
+      .map((row) => ({
+        ...row.recipe,
+        post: { ...row.post, user: row.user },
+      }));
   }
 
   async searchLocalRecipes(searchParams: {

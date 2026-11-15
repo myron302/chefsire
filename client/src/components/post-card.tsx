@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser, Recipe } from "@shared/schema";
+import { isSamplePost, SAMPLE_POST_LABEL, SAMPLE_POST_NOTE } from "@shared/social-sample";
 import { MoreHorizontal, Plus, Minus, CalendarDays } from "lucide-react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { shareContent, getPostShareUrl } from "@/lib/share";
@@ -142,6 +143,10 @@ export default function PostCard({
   const queryClient = useQueryClient();
   const { user } = useUser();
   const effectiveUserId = currentUserId ?? user?.id;
+
+  // Demonstration content, labelled so nobody mistakes it for a real member's work. The marker is
+  // the seeded id pair, never the caption, so a real post can never be labelled a sample.
+  const isSample = isSamplePost(post);
 
   const [isLiked, setIsLiked] = useState(post.isLiked || false);
   const [isSaved, setIsSaved] = useState(post.isSaved || false);
@@ -526,6 +531,18 @@ export default function PostCard({
             </Link>
             <p className="text-xs text-muted-foreground">
               {formatDistanceToNow(new Date(post.createdAt ?? Date.now()), { addSuffix: true })}
+              {isSample && (
+                <>
+                  {" · "}
+                  <span
+                    className="font-medium text-amber-700"
+                    title={SAMPLE_POST_NOTE}
+                    data-testid={`text-sample-post-${post.id}`}
+                  >
+                    {SAMPLE_POST_LABEL}
+                  </span>
+                </>
+              )}
             </p>
           </div>
         </div>
