@@ -4,8 +4,11 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
+import { CLOSURE_BLOCKER_CODES } from "./closure-obligations";
 import {
+  FAMILY_REQUIREMENTS,
   PROVIDER_REFERENCE_SOURCES,
+  providerEvidenceFingerprint,
   PROVIDER_EVIDENCE_FRESHNESS_MS,
   REFUSING_SQUARE_READBACK,
   REQUIRED_PROVIDER_FAMILIES,
@@ -34,6 +37,9 @@ const reference = (over: Partial<ProviderReference> = {}): ProviderReference => 
   merchantId: "MERCHANT_1",
   providerId: "sqpmt_1",
   localStatus: "captured",
+  amountExpectation: "required",
+  expectedAmountCents: 2500,
+  expectedCurrency: "USD",
   ...over,
 });
 
@@ -52,35 +58,68 @@ function portReturning(
   };
 }
 
-const settled = (providerId = "sqpmt_1"): ProviderObjectState => ({
+/** A provider object with nothing outstanding AND every applicable check actually performed. */
+const settled = (providerId = "sqpmt_1", over: Partial<ProviderObjectState> = {}): ProviderObjectState => ({
   providerId,
   status: "COMPLETED",
   amountCents: 2500,
   currency: "USD",
+  checksPerformed: ["refunds", "disputes", "renewals", "settlement"],
+  ...over,
 });
 
-test("every required ledger family has a declared provider reference source", () => {
-  assertProviderFamilyCoverage();
-  const covered = new Set(PROVIDER_REFERENCE_SOURCES.map((source) => source.family));
+test("coverage is required per KIND, not merely per family", () => {
+  // The weaker contract -- "this family has at least one source" -- would pass a family whose
+  // payments are read back but whose refunds are not.
   for (const family of REQUIRED_PROVIDER_FAMILIES) {
-    assert.ok(covered.has(family), `${family} has no provider reference source`);
+    const requirement = FAMILY_REQUIREMENTS[family];
+    // An unresolved family refuses outright, which is a stronger guarantee than having a source.
+    if (requirement.unresolved) continue;
+    for (const kind of requirement.providerKinds) {
+      assert.ok(
+        PROVIDER_REFERENCE_SOURCES.some((source) => source.family === family && source.kind === kind),
+        `${family} requires a ${kind} source and has none`,
+      );
+    }
+    if (requirement.strategy !== "SQUARE_BACKED") {
+      assert.ok(requirement.localBlockers.length > 0,
+        `${family} has no Square object, so it must name the local checks that inspect it`);
+    }
+    for (const blocker of requirement.localBlockers) {
+      assert.ok((CLOSURE_BLOCKER_CODES as readonly string[]).includes(blocker),
+        `${family} names ${blocker}, which closure-obligations.ts does not define`);
+    }
   }
 });
 
-test("a family with no source makes the whole verdict UNAVAILABLE rather than improving it", async () => {
-  // The dangerous failure this guards: a forgotten ledger looks exactly like a settled one, because
-  // both produce no references. Simulated by reconciling with the coverage check made to fail.
-  const sources = PROVIDER_REFERENCE_SOURCES as unknown as { family: string }[];
-  const removed = sources.splice(0, sources.length);
+test("removing one KIND of source for a covered family is caught by the coverage assertion", () => {
+  // The assertion itself, not just the declarations: with a per-family check this passes, because
+  // MARKETPLACE_ORDERS would still have its payment source while its refunds went unread.
+  const sources = PROVIDER_REFERENCE_SOURCES as unknown as { family: string; kind: string }[];
+  const index = sources.findIndex((source) => source.family === "MARKETPLACE_ORDERS" && source.kind === "refund");
+  assert.ok(index >= 0);
+  const [removed] = sources.splice(index, 1);
   try {
-    assert.throws(() => assertProviderFamilyCoverage(), ClosureProviderEvidenceUnavailableError);
-    const manifest = await reconcileProviderEvidence("user-1", [], portReturning([]), NOW);
-    assert.equal(manifest.verdict, "UNAVAILABLE");
-    assert.equal(manifest.exceptions[0].code, "FAMILY_NOT_COVERED");
+    assert.throws(() => assertProviderFamilyCoverage(), (error: any) =>
+      error instanceof ClosureProviderEvidenceUnavailableError &&
+      error.family === "MARKETPLACE_ORDERS" &&
+      /no refund reference source/.test(error.message));
   } finally {
-    sources.push(...removed);
-    assertProviderFamilyCoverage();
+    sources.splice(index, 0, removed);
   }
+});
+
+test("an unresolved family refuses outright, and merchant payouts are unresolved today", () => {
+  // A Square merchant payout is money from Square to ChefSire's bank, aggregating many members'
+  // transactions. Attributing one to a single member needs payout-entry evidence, and no such
+  // ledger exists, so coverage refuses rather than pretending the family is covered.
+  assert.throws(() => assertProviderFamilyCoverage(), (error: any) =>
+    error instanceof ClosureProviderEvidenceUnavailableError &&
+    error.family === "SQUARE_MERCHANT_PAYOUTS" &&
+    /payout-entry/.test(error.message));
+  assert.equal(FAMILY_REQUIREMENTS.SQUARE_MERCHANT_PAYOUTS.strategy, "SQUARE_BACKED");
+  assert.ok(FAMILY_REQUIREMENTS.SELLER_PAYOUTS.strategy === "HYBRID",
+    "a seller payout is ChefSire owing a seller, which a merchant payout does not settle");
 });
 
 test("the shipped port refuses, so this build cannot reach Square and gets UNAVAILABLE", async () => {
@@ -192,16 +231,23 @@ test("a terminal subscription with an unpaid invoice behind it is still BLOCKED"
   // The exact case the design calls out: a CANCELED subscription says nothing about its invoices.
   const port: SquareReadbackPort = {
     async readObjects(kind) {
-      if (kind === "subscription") return { objects: [{ providerId: "sub_1", status: "CANCELED", amountCents: null, currency: null }], complete: true };
-      return { objects: [{ providerId: "inv_1", status: "UNPAID", amountCents: 4900, currency: "USD" }], complete: true };
+      if (kind === "subscription") {
+        return { objects: [{ providerId: "sub_1", status: "CANCELED", amountCents: null, currency: null,
+          checksPerformed: ["renewals"] }], complete: true };
+      }
+      return { objects: [{ providerId: "inv_1", status: "UNPAID", amountCents: 4900, currency: "USD",
+        checksPerformed: ["refunds"] }], complete: true };
     },
   };
   const manifest = await reconcileProviderEvidence("user-1", [
-    reference({ family: "WEDDING_SUBSCRIPTIONS", kind: "subscription", table: "wedding_square_subscriptions", localRowId: "s1", providerId: "sub_1" }),
-    reference({ family: "WEDDING_INVOICES", kind: "invoice", table: "wedding_square_invoice_evidence", localRowId: "i1", providerId: "inv_1" }),
+    reference({ family: "WEDDING_SUBSCRIPTIONS", kind: "subscription", table: "wedding_square_subscriptions",
+      localRowId: "s1", providerId: "sub_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null }),
+    reference({ family: "WEDDING_INVOICES", kind: "invoice", table: "wedding_square_invoice_evidence",
+      localRowId: "i1", providerId: "inv_1", expectedAmountCents: 4900, expectedCurrency: "USD" }),
   ], port, NOW);
   assert.equal(manifest.verdict, "BLOCKED");
-  assert.deepEqual(manifest.exceptions.map((item) => item.code), ["PROVIDER_STATUS_NOT_TERMINAL"]);
+  assert.deepEqual(manifest.exceptions.map((item) => item.code), ["PROVIDER_STATUS_NOT_TERMINAL"],
+    "the subscription is clear on its own; only the invoice behind it blocks");
   assert.equal(manifest.exceptions[0].family, "WEDDING_INVOICES");
 });
 
@@ -219,12 +265,15 @@ test("a payout that reads PAID still blocks until the provider's reversal window
   // Square's Payouts overview: a payout initially marked PAID can transition to FAILED if the
   // seller's bank answers later than Square expects. So PAID alone must not clear.
   const payout = (over: Partial<ProviderObjectState> = {}) =>
-    reconcileProviderEvidence("user-1", [reference({ kind: "payout", providerId: "po_1" })],
-      portReturning([{ providerId: "po_1", status: "PAID", amountCents: 9710, currency: "USD", ...over }]), NOW);
+    reconcileProviderEvidence("user-1",
+      [reference({ kind: "payout", providerId: "po_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
+      portReturning([{ providerId: "po_1", status: "PAID", amountCents: 9710, currency: "USD",
+        checksPerformed: ["settlement"], ...over }]), NOW);
 
   const silent = await payout();
   assert.equal(silent.verdict, "BLOCKED", "an adapter that says nothing about reversal must not clear");
-  assert.deepEqual(silent.exceptions.map((item) => item.code), ["PROVISIONAL_SETTLEMENT"]);
+  assert.deepEqual(silent.exceptions.map((item) => item.code), ["AMOUNT_UNVERIFIABLE", "PROVISIONAL_SETTLEMENT"].slice(1),
+    JSON.stringify(silent.exceptions));
 
   const stillOpen = await payout({ settlementProvisional: true });
   assert.equal(stillOpen.verdict, "BLOCKED");
@@ -241,12 +290,12 @@ test("a payout that reads PAID still blocks until the provider's reversal window
 test("a refund that is only APPROVED blocks, because Square does not say it equals COMPLETED", async () => {
   const manifest = await reconcileProviderEvidence(
     "user-1",
-    [reference({ kind: "refund", providerId: "rf_1" })],
+    [reference({ kind: "refund", providerId: "rf_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
     portReturning([{ providerId: "rf_1", status: "APPROVED", amountCents: 500, currency: "USD" }]),
     NOW,
   );
-  assert.equal(manifest.verdict, "BLOCKED");
-  assert.deepEqual(manifest.exceptions.map((item) => item.code), ["PROVIDER_STATUS_NOT_TERMINAL"]);
+  assert.equal(manifest.verdict, "BLOCKED", JSON.stringify(manifest.exceptions));
+  assert.ok(manifest.exceptions.some((item) => item.code === "PROVIDER_STATUS_NOT_TERMINAL"));
 });
 
 test("the statuses Square actually defines are recognized, so real states do not read as unknown", async () => {
@@ -264,14 +313,110 @@ test("the statuses Square actually defines are recognized, so real states do not
   for (const [kind, status, expected] of cases) {
     const manifest = await reconcileProviderEvidence(
       "user-1",
-      [reference({ kind, providerId: `obj_${status}` })],
-      portReturning([{ providerId: `obj_${status}`, status, amountCents: 100, currency: "USD", settlementProvisional: false }]),
+      [reference({ kind, providerId: `obj_${status}`, expectedAmountCents: 100, expectedCurrency: "USD" })],
+      portReturning([{ providerId: `obj_${status}`, status, amountCents: 100, currency: "USD",
+        settlementProvisional: false, checksPerformed: ["refunds", "disputes", "renewals", "settlement"] }]),
       NOW,
     );
     assert.equal(manifest.verdict, expected, `${kind} ${status}: ${JSON.stringify(manifest.exceptions)}`);
     assert.ok(!manifest.exceptions.some((item) => item.code === "UNKNOWN_PROVIDER_STATUS"),
       `${kind} ${status} is a documented Square value and must be recognized`);
   }
+});
+
+test("the revalidation fingerprint changes when any field changes, not just identity", () => {
+  // GPT's P1 on the first cut: the fingerprint covered table, row id, kind and provider id only,
+  // so a row could change its financial status or its Square account between the readback and the
+  // final gate without voiding the decision.
+  const base = reference();
+  const baseline = providerEvidenceFingerprint([base]);
+  const variations: [string, Partial<ProviderReference>][] = [
+    ["local status", { localStatus: "refunded" }],
+    ["merchant", { merchantId: "MERCHANT_2" }],
+    ["environment", { environment: "sandbox" }],
+    ["expected amount", { expectedAmountCents: 2600 }],
+    ["amount expectation", { amountExpectation: "not_applicable" as const }],
+    ["expected currency", { expectedCurrency: "CAD" }],
+    ["provider id", { providerId: "sqpmt_2" }],
+    ["family", { family: "MEAL_PLAN_PURCHASES" }],
+    ["kind", { kind: "refund" }],
+    ["table", { table: "meal_plan_purchases" }],
+    ["row id", { localRowId: "order-2" }],
+  ];
+  for (const [label, over] of variations) {
+    assert.notEqual(providerEvidenceFingerprint([reference(over)]), baseline,
+      `a changed ${label} must void the evidence`);
+  }
+  // Order must not matter, or an unrelated re-read would look like a change.
+  assert.equal(
+    providerEvidenceFingerprint([reference(), reference({ localRowId: "order-2" })]),
+    providerEvidenceFingerprint([reference({ localRowId: "order-2" }), reference()]),
+  );
+  // Field values cannot imitate a different combination by containing the separator.
+  assert.notEqual(
+    providerEvidenceFingerprint([reference({ localRowId: "a|b", providerId: "c" })]),
+    providerEvidenceFingerprint([reference({ localRowId: "a", providerId: "b|c" })]),
+  );
+});
+
+test("a check the adapter never performed is UNAVAILABLE, not an absence of findings", async () => {
+  // The same omission that made a PAID payout read as settled: optional flags left unset look
+  // exactly like checks that ran and found nothing.
+  const silent = await reconcileProviderEvidence("user-1", [reference()],
+    portReturning([settled("sqpmt_1", { checksPerformed: undefined })]), NOW);
+  assert.equal(silent.verdict, "UNAVAILABLE");
+  assert.deepEqual(silent.exceptions.map((item) => item.code), ["CHECK_NOT_PERFORMED"]);
+
+  const partial = await reconcileProviderEvidence("user-1", [reference()],
+    portReturning([settled("sqpmt_1", { checksPerformed: ["refunds"] })]), NOW);
+  assert.equal(partial.verdict, "UNAVAILABLE", "a payment needs refunds AND disputes checked");
+  assert.match(partial.exceptions[0].detail, /disputes/);
+
+  // A refund object needs no separate refund check: its own status is the answer.
+  const refund = await reconcileProviderEvidence("user-1",
+    [reference({ kind: "refund", providerId: "rf_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
+    portReturning([{ providerId: "rf_1", status: "COMPLETED", amountCents: 500, currency: "USD" }]), NOW);
+  assert.ok(!refund.exceptions.some((item) => item.code === "CHECK_NOT_PERFORMED"));
+});
+
+test("a completed payment for the wrong amount or currency is BLOCKED", async () => {
+  const wrongAmount = await reconcileProviderEvidence("user-1", [reference()],
+    portReturning([settled("sqpmt_1", { amountCents: 9900 })]), NOW);
+  assert.equal(wrongAmount.verdict, "BLOCKED");
+  assert.deepEqual(wrongAmount.exceptions.map((item) => item.code), ["AMOUNT_MISMATCH"]);
+
+  const wrongCurrency = await reconcileProviderEvidence("user-1", [reference()],
+    portReturning([settled("sqpmt_1", { currency: "CAD" })]), NOW);
+  assert.equal(wrongCurrency.verdict, "BLOCKED");
+  assert.deepEqual(wrongCurrency.exceptions.map((item) => item.code), ["CURRENCY_MISMATCH"]);
+});
+
+test("an amount nobody can verify is UNAVAILABLE, from either side", async () => {
+  const noLocalAmount = await reconcileProviderEvidence("user-1",
+    [reference({ expectedAmountCents: null })], portReturning([settled()]), NOW);
+  assert.equal(noLocalAmount.verdict, "UNAVAILABLE");
+  assert.deepEqual(noLocalAmount.exceptions.map((item) => item.code), ["AMOUNT_UNVERIFIABLE"]);
+
+  const noProviderAmount = await reconcileProviderEvidence("user-1", [reference()],
+    portReturning([settled("sqpmt_1", { amountCents: null })]), NOW);
+  assert.equal(noProviderAmount.verdict, "UNAVAILABLE");
+  assert.deepEqual(noProviderAmount.exceptions.map((item) => item.code), ["AMOUNT_UNVERIFIABLE"]);
+});
+
+test("terminal is not settled: a FAILED payment the ledger recorded as captured is BLOCKED", async () => {
+  // FAILED is a finished attempt, not proof that nothing is owed. If the ledger says the money
+  // moved and the provider says it did not, one of them is wrong and neither may be assumed.
+  const manifest = await reconcileProviderEvidence("user-1", [reference({ localStatus: "captured" })],
+    portReturning([settled("sqpmt_1", { status: "FAILED" })]), NOW);
+  assert.equal(manifest.verdict, "BLOCKED");
+  assert.deepEqual(manifest.exceptions.map((item) => item.code), ["LOCAL_PROVIDER_DISAGREEMENT"]);
+
+  // A FAILED attempt the ledger also calls failed is consistent, and its amount is not compared --
+  // there is no amount to compare, because no money moved.
+  const consistent = await reconcileProviderEvidence("user-1",
+    [reference({ localStatus: "failed", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
+    portReturning([settled("sqpmt_1", { status: "FAILED", amountCents: null, currency: null })]), NOW);
+  assert.equal(consistent.verdict, "RECONCILED_LOCAL_AND_PROVIDER");
 });
 
 test("evidence expires, and an expired manifest is refused rather than downgraded", async () => {
@@ -305,6 +450,10 @@ test("the final gate refuses the wrong member, a non-clear verdict and expired e
     (error: any) => error instanceof ClosureProviderEvidenceUnavailableError && /expired/.test(error.message),
   );
 
-  // The clear, fresh, right-member case with unchanged ledgers is the only one that passes.
-  await assertProviderEvidenceUsable(unchanged, "user-1", clear, NOW);
+  // And even the clear, fresh, right-member case refuses today, because the final gate asserts
+  // coverage and the merchant-payout family is unresolved. That is the correct answer while a
+  // required family cannot be evidenced at all.
+  await assert.rejects(() => assertProviderEvidenceUsable(unchanged, "user-1", clear, NOW),
+    (error: any) => error instanceof ClosureProviderEvidenceUnavailableError &&
+      error.family === "SQUARE_MERCHANT_PAYOUTS");
 });

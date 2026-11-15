@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { CLOSURE_BLOCKER_CODES, type ClosureBlockerCode } from "./closure-obligations";
 
 /**
  * Part 3b: provider-backed closure evidence. READ-ONLY, and it CANNOT REACH SQUARE.
@@ -48,10 +49,40 @@ export const REQUIRED_PROVIDER_FAMILIES = [
   "WEDDING_INVOICES",
   "CATERING_PAYMENTS",
   "DRINK_COLLECTION_CHECKOUTS",
+  "DRINK_GIFTS",
+  "DRINK_COLLECTION_SALES",
   "CREATOR_MEMBERSHIPS",
   "CREATOR_MEMBERSHIP_CHECKOUTS",
+  "CREATOR_MEMBERSHIP_SALES",
+  "MEAL_PLAN_PURCHASES",
+  "SELLER_COMMISSIONS",
+  "SELLER_PAYOUTS",
+  "SQUARE_MERCHANT_PAYOUTS",
 ] as const;
 export type ProviderFamily = (typeof REQUIRED_PROVIDER_FAMILIES)[number];
+
+/**
+ * How a family's obligations can be established at all.
+ *
+ * - SQUARE_BACKED: the ledger names Square objects, and those must be read back.
+ * - INTERNAL_LEDGER: ChefSire's own accounting, with no Square object of its own. It still has to
+ *   be inspected -- an unpaid balance blocks closure just as a pending refund does -- but that
+ *   inspection belongs to inspectLocalClosureObligations, not here, and inventing a Square object
+ *   for it would be worse than admitting it has none.
+ * - HYBRID: internal accounting that also references a Square object (a seller payout row naming
+ *   the provider payout it was funded from). Both halves are required.
+ */
+export type EvidenceStrategy = "SQUARE_BACKED" | "INTERNAL_LEDGER" | "HYBRID";
+
+export type FamilyRequirement = {
+  strategy: EvidenceStrategy;
+  /** Provider object kinds that MUST each have a declared source. Empty for INTERNAL_LEDGER. */
+  providerKinds: readonly ProviderObjectKind[];
+  /** Local obligation checks that must exist in closure-obligations.ts for this family. */
+  localBlockers: readonly ClosureBlockerCode[];
+  /** Why this family cannot be fully evidenced yet, if it cannot. Coverage refuses while set. */
+  unresolved?: string;
+};
 
 export type ProviderObjectKind =
   | "payment"
@@ -75,7 +106,27 @@ export type ProviderReference = {
   /** Null means the local row claims a provider object but names none. Always a blocker. */
   providerId: string | null;
   localStatus: string | null;
+  /**
+   * What the local ledger says the provider object should be worth, and whether it is supposed to
+   * say anything at all.
+   *
+   * `amountExpectation` is DECLARED per source rather than inferred from a null, because those two
+   * cases must not be confused: "this ledger records the exact amount and it is missing" is a
+   * defect that refuses, while "this object's value is not a single ledger figure" -- an aggregate
+   * payout, a partial refund the ledger does not itemize -- is a reviewed decision. Inferring it
+   * from a null would silently turn the first into the second the day a column went empty.
+   */
+  amountExpectation: AmountExpectation;
+  expectedAmountCents: number | null;
+  expectedCurrency: string | null;
 };
+
+/**
+ * - required: the ledger records this object's exact value, so it must match the provider's.
+ * - not_applicable: the object's value is not a single ledger figure. Each source that claims this
+ *   says why, and the claim is reviewable in one place.
+ */
+export type AmountExpectation = "required" | "not_applicable";
 
 export type ProviderEvidenceVerdict =
   /** A known unsettled obligation. Closure is refused. */
@@ -96,6 +147,10 @@ export type ProviderEvidenceExceptionCode =
   | "UNSETTLED_PAYOUT"
   | "PROVISIONAL_SETTLEMENT"
   | "AMOUNT_MISMATCH"
+  | "CURRENCY_MISMATCH"
+  | "AMOUNT_UNVERIFIABLE"
+  | "LOCAL_PROVIDER_DISAGREEMENT"
+  | "CHECK_NOT_PERFORMED"
   | "PROVIDER_OBJECT_MISSING"
   | "PAGINATION_INCOMPLETE"
   | "READBACK_FAILED"
@@ -155,6 +210,14 @@ export type ProviderObjectState = {
   status: string;
   amountCents: number | null;
   currency: string | null;
+  /**
+   * Which provider-side checks the adapter ACTUALLY performed. The has* flags below report what a
+   * check found; this reports whether it ran. Without it, an adapter that never called the Refunds
+   * or Disputes endpoints would look exactly like one that called them and found nothing -- the
+   * same omission that made a PAID payout read as settled. A required check that is not listed
+   * here is UNAVAILABLE, not clear.
+   */
+  checksPerformed?: readonly ProviderCheck[];
   /** Any refund, dispute, renewal or payout not yet finished, as the provider reports it. */
   hasPendingRefund?: boolean;
   hasOpenDispute?: boolean;
@@ -237,6 +300,31 @@ const KNOWN_STATUSES: Record<ProviderObjectKind, readonly string[]> = {
   order: ["DRAFT", "OPEN", "COMPLETED", "CANCELED"],
 };
 
+/**
+ * The provider-side questions an adapter can answer. A terminal status answers only "did this
+ * object finish", never "is there anything else attached to it" -- a COMPLETED payment can still
+ * have a refund in flight or a dispute opened against it a month later.
+ */
+export const PROVIDER_CHECKS = ["refunds", "disputes", "renewals", "settlement"] as const;
+export type ProviderCheck = (typeof PROVIDER_CHECKS)[number];
+
+/**
+ * Which checks must have been performed before a given kind can reconcile. An adapter that omits
+ * one gets CHECK_NOT_PERFORMED, which is UNAVAILABLE -- the absence of a finding is not a finding.
+ */
+const REQUIRED_CHECKS: Record<ProviderObjectKind, readonly ProviderCheck[]> = {
+  payment: ["refunds", "disputes"],
+  // A refund is itself the object under inspection; its own status is the answer.
+  refund: [],
+  subscription: ["renewals"],
+  invoice: ["refunds"],
+  // A dispute's state IS the dispute check.
+  dispute: [],
+  payout: ["settlement"],
+  payout_entry: ["settlement"],
+  order: ["refunds", "disputes"],
+};
+
 /** Kinds whose terminal statuses can still be reversed by the provider after the fact. */
 const PROVISIONALLY_SETTLED_KINDS: ReadonlySet<ProviderObjectKind> = new Set<ProviderObjectKind>([
   "payout",
@@ -247,6 +335,8 @@ type ReferenceSource = {
   family: ProviderFamily;
   kind: ProviderObjectKind;
   table: string;
+  /** Whether this ledger is expected to pin the object's amount. See {@link AmountExpectation}. */
+  amountExpectation: AmountExpectation;
   /** SQL selecting id, environment, merchant_id, provider_id, local_status for this member. */
   query: (userId: string) => ReturnType<typeof sql>;
 };
@@ -261,10 +351,12 @@ export const PROVIDER_REFERENCE_SOURCES: readonly ReferenceSource[] = [
   {
     family: "MARKETPLACE_ORDERS",
     kind: "payment",
+    amountExpectation: "required",
     table: "orders",
     query: (userId) => sql`
       SELECT id::text AS id, NULL::text AS environment, NULL::text AS merchant_id,
-             square_payment_id AS provider_id, payment_status AS local_status
+             square_payment_id AS provider_id, payment_status AS local_status,
+             ROUND(total_amount::numeric * 100)::int AS expected_amount_cents, 'USD' AS expected_currency
         FROM orders
        WHERE (buyer_id = ${userId} OR seller_id = ${userId})
          AND (square_payment_id IS NOT NULL OR payment_status IN ('captured', 'refunded'))`,
@@ -272,10 +364,13 @@ export const PROVIDER_REFERENCE_SOURCES: readonly ReferenceSource[] = [
   {
     family: "MARKETPLACE_ORDERS",
     kind: "refund",
+    // a partial refund's value is not recorded on the order
+    amountExpectation: "not_applicable",
     table: "orders",
     query: (userId) => sql`
       SELECT id::text AS id, NULL::text AS environment, NULL::text AS merchant_id,
-             square_refund_id AS provider_id, payment_status AS local_status
+             square_refund_id AS provider_id, payment_status AS local_status,
+             NULL::int AS expected_amount_cents, NULL::text AS expected_currency
         FROM orders
        WHERE (buyer_id = ${userId} OR seller_id = ${userId})
          AND (square_refund_id IS NOT NULL OR refund_idempotency_key IS NOT NULL)`,
@@ -283,23 +378,28 @@ export const PROVIDER_REFERENCE_SOURCES: readonly ReferenceSource[] = [
   {
     family: "WEDDING_SUBSCRIPTIONS",
     kind: "subscription",
+    // a subscription has no single amount; its invoices carry the money
+    amountExpectation: "not_applicable",
     table: "wedding_square_subscriptions",
     query: (userId) => sql`
       SELECT id::text AS id, square_environment AS environment, square_merchant_id AS merchant_id,
-             square_subscription_id AS provider_id, provider_status AS local_status
+             square_subscription_id AS provider_id, provider_status AS local_status,
+             NULL::int AS expected_amount_cents, NULL::text AS expected_currency
         FROM wedding_square_subscriptions
        WHERE user_id = ${userId}`,
   },
   {
     family: "WEDDING_INVOICES",
     kind: "invoice",
+    amountExpectation: "required",
     table: "wedding_square_invoice_evidence",
     // The evidence row carries no user_id of its own: it belongs to a member through its
     // subscription. Joining is not an optimization here, it is the only link that exists.
     query: (userId) => sql`
       SELECT e.id::text AS id, e.square_environment AS environment, e.square_merchant_id AS merchant_id,
              e.square_invoice_id AS provider_id,
-             CASE WHEN e.payment_revoked_at IS NULL THEN 'paid' ELSE 'revoked' END AS local_status
+             CASE WHEN e.payment_revoked_at IS NULL THEN 'paid' ELSE 'revoked' END AS local_status,
+             e.verified_amount_cents AS expected_amount_cents, e.verified_currency AS expected_currency
         FROM wedding_square_invoice_evidence e
         JOIN wedding_square_subscriptions s ON s.id = e.wedding_subscription_id
        WHERE s.user_id = ${userId}`,
@@ -307,13 +407,15 @@ export const PROVIDER_REFERENCE_SOURCES: readonly ReferenceSource[] = [
   {
     family: "WEDDING_INVOICES",
     kind: "payment",
+    amountExpectation: "required",
     table: "wedding_square_invoice_evidence",
     // The payment behind the invoice is its own provider object, with its own refunds and disputes,
     // so a paid invoice is not evidence that its payment is settled.
     query: (userId) => sql`
       SELECT e.id::text AS id, e.square_environment AS environment, e.square_merchant_id AS merchant_id,
              e.square_payment_id AS provider_id,
-             CASE WHEN e.payment_revoked_at IS NULL THEN 'paid' ELSE 'revoked' END AS local_status
+             CASE WHEN e.payment_revoked_at IS NULL THEN 'paid' ELSE 'revoked' END AS local_status,
+             e.verified_amount_cents AS expected_amount_cents, e.verified_currency AS expected_currency
         FROM wedding_square_invoice_evidence e
         JOIN wedding_square_subscriptions s ON s.id = e.wedding_subscription_id
        WHERE s.user_id = ${userId}`,
@@ -321,10 +423,12 @@ export const PROVIDER_REFERENCE_SOURCES: readonly ReferenceSource[] = [
   {
     family: "CATERING_PAYMENTS",
     kind: "payment",
+    amountExpectation: "required",
     table: "catering_booking_payment_attempts",
     query: (userId) => sql`
       SELECT a.id::text AS id, NULL::text AS environment, NULL::text AS merchant_id,
-             a.square_payment_id AS provider_id, a.state AS local_status
+             a.square_payment_id AS provider_id, a.state AS local_status,
+             a.processor_amount_cents AS expected_amount_cents, a.processor_currency AS expected_currency
         FROM catering_booking_payment_attempts a
         LEFT JOIN catering_bookings b ON b.id = a.booking_id
        WHERE (a.provider_id = ${userId} OR b.customer_id = ${userId} OR b.provider_id = ${userId})
@@ -334,10 +438,13 @@ export const PROVIDER_REFERENCE_SOURCES: readonly ReferenceSource[] = [
   {
     family: "DRINK_COLLECTION_CHECKOUTS",
     kind: "payment",
+    // the checkout session does not record the captured amount
+    amountExpectation: "not_applicable",
     table: "drink_collection_checkout_sessions",
     query: (userId) => sql`
       SELECT id::text AS id, NULL::text AS environment, NULL::text AS merchant_id,
-             square_payment_id AS provider_id, status AS local_status
+             square_payment_id AS provider_id, status AS local_status,
+             NULL::int AS expected_amount_cents, NULL::text AS expected_currency
         FROM drink_collection_checkout_sessions
        WHERE user_id = ${userId}
          AND (square_payment_id IS NOT NULL OR square_order_id IS NOT NULL)`,
@@ -345,10 +452,13 @@ export const PROVIDER_REFERENCE_SOURCES: readonly ReferenceSource[] = [
   {
     family: "CREATOR_MEMBERSHIPS",
     kind: "subscription",
+    // a subscription has no single amount
+    amountExpectation: "not_applicable",
     table: "creator_memberships",
     query: (userId) => sql`
       SELECT id::text AS id, NULL::text AS environment, NULL::text AS merchant_id,
-             square_subscription_id AS provider_id, status AS local_status
+             square_subscription_id AS provider_id, status AS local_status,
+             NULL::int AS expected_amount_cents, NULL::text AS expected_currency
         FROM creator_memberships
        WHERE (user_id = ${userId} OR creator_user_id = ${userId})
          AND square_subscription_id IS NOT NULL`,
@@ -356,28 +466,179 @@ export const PROVIDER_REFERENCE_SOURCES: readonly ReferenceSource[] = [
   {
     family: "CREATOR_MEMBERSHIP_CHECKOUTS",
     kind: "payment",
+    // the checkout session does not record the captured amount
+    amountExpectation: "not_applicable",
     table: "creator_membership_checkout_sessions",
     query: (userId) => sql`
       SELECT id::text AS id, NULL::text AS environment, NULL::text AS merchant_id,
-             square_payment_id AS provider_id, status AS local_status
+             square_payment_id AS provider_id, status AS local_status,
+             NULL::int AS expected_amount_cents, NULL::text AS expected_currency
         FROM creator_membership_checkout_sessions
        WHERE (user_id = ${userId} OR creator_user_id = ${userId})
          AND (square_payment_id IS NOT NULL OR square_order_id IS NOT NULL)`,
   },
+  {
+    family: "MEAL_PLAN_PURCHASES",
+    kind: "payment",
+    amountExpectation: "required",
+    table: "meal_plan_purchases",
+    query: (userId) => sql`
+      SELECT id::text AS id, NULL::text AS environment, NULL::text AS merchant_id,
+             provider_payment_id AS provider_id, payment_status AS local_status,
+             price_paid_cents AS expected_amount_cents, 'USD' AS expected_currency
+        FROM meal_plan_purchases
+       WHERE user_id = ${userId}
+         AND (provider_payment_id IS NOT NULL OR payment_status IS NOT NULL)`,
+  },
+  {
+    family: "SELLER_PAYOUTS",
+    kind: "payout",
+    // a provider payout aggregates many seller payouts
+    amountExpectation: "not_applicable",
+    table: "payouts",
+    query: (userId) => sql`
+      SELECT id::text AS id, NULL::text AS environment, NULL::text AS merchant_id,
+             provider_payout_id AS provider_id, status AS local_status,
+             NULL::int AS expected_amount_cents, NULL::text AS expected_currency
+        FROM payouts
+       WHERE seller_id = ${userId} AND provider_payout_id IS NOT NULL`,
+  },
 ];
 
 /**
- * Every required family must have at least one source. Without this, forgetting a ledger would
- * quietly improve the verdict: no references found for a family reads exactly like a settled one.
+ * What each family needs before its obligations can be called established.
+ *
+ * Checking only "does this family have at least one source" was too weak: a family with a payment
+ * source but no refund source would have passed while its refunds went unread. So the requirement
+ * is per KIND, and an internal-only family must name the local obligation checks that stand in for
+ * a Square object rather than being silently exempt.
+ */
+export const FAMILY_REQUIREMENTS: Record<ProviderFamily, FamilyRequirement> = {
+  MARKETPLACE_ORDERS: {
+    strategy: "SQUARE_BACKED",
+    providerKinds: ["payment", "refund"],
+    localBlockers: ["MARKETPLACE_ORDERS", "MARKETPLACE_PAYMENTS"],
+  },
+  WEDDING_SUBSCRIPTIONS: {
+    strategy: "SQUARE_BACKED",
+    providerKinds: ["subscription"],
+    localBlockers: ["WEDDING_SUBSCRIPTIONS", "WEDDING_ENROLLMENTS", "WEDDING_CARD_OPERATIONS"],
+  },
+  WEDDING_INVOICES: {
+    strategy: "SQUARE_BACKED",
+    // The invoice AND the payment behind it: a PAID invoice has been observed sitting unchanged
+    // after its payment was fully refunded.
+    providerKinds: ["invoice", "payment"],
+    localBlockers: ["WEDDING_SUBSCRIPTIONS"],
+  },
+  CATERING_PAYMENTS: {
+    strategy: "SQUARE_BACKED",
+    providerKinds: ["payment"],
+    localBlockers: ["CATERING_BOOKINGS", "CATERING_INVOICES", "CATERING_PAYMENT_ATTEMPTS"],
+  },
+  DRINK_COLLECTION_CHECKOUTS: {
+    strategy: "SQUARE_BACKED",
+    providerKinds: ["payment"],
+    localBlockers: ["DRINK_BUNDLE_CHECKOUTS", "DRINK_COLLECTION_PAYMENTS", "DRINK_COLLECTION_PURCHASES"],
+  },
+  DRINK_GIFTS: {
+    // A gift row names no Square object of its own: it is funded through a checkout session, which
+    // DRINK_COLLECTION_CHECKOUTS already reads back. What is left is the gift obligation itself --
+    // an unredeemed gift someone paid for is a debt to the recipient, not to the provider.
+    strategy: "INTERNAL_LEDGER",
+    providerKinds: [],
+    localBlockers: ["DRINK_GIFTS"],
+  },
+  DRINK_COLLECTION_SALES: {
+    strategy: "INTERNAL_LEDGER",
+    providerKinds: [],
+    localBlockers: ["DRINK_COLLECTION_PURCHASES", "CREATOR_PAID_DIGITAL_ACCESS"],
+  },
+  CREATOR_MEMBERSHIPS: {
+    strategy: "SQUARE_BACKED",
+    providerKinds: ["subscription"],
+    localBlockers: ["CREATOR_MEMBERSHIPS"],
+  },
+  CREATOR_MEMBERSHIP_CHECKOUTS: {
+    strategy: "SQUARE_BACKED",
+    providerKinds: ["payment"],
+    localBlockers: ["CREATOR_MEMBERSHIP_CHECKOUTS"],
+  },
+  CREATOR_MEMBERSHIP_SALES: {
+    strategy: "INTERNAL_LEDGER",
+    providerKinds: [],
+    localBlockers: ["CREATOR_MEMBERSHIP_SALES"],
+  },
+  MEAL_PLAN_PURCHASES: {
+    strategy: "SQUARE_BACKED",
+    providerKinds: ["payment"],
+    localBlockers: ["MEAL_PLAN_PAYMENT_EVIDENCE"],
+  },
+  SELLER_COMMISSIONS: {
+    // Checked against the real table rather than assumed: `commissions` has no Square id at all.
+    // It carries payout_id, an internal FK to `payouts`, and that row is where the provider payout
+    // is named -- so SELLER_PAYOUTS reads the provider half and this family is internal-only.
+    // Inventing a provider source here would mean querying a column that does not exist.
+    strategy: "INTERNAL_LEDGER",
+    providerKinds: [],
+    localBlockers: ["SELLER_COMMISSIONS"],
+  },
+  SELLER_PAYOUTS: {
+    strategy: "HYBRID",
+    providerKinds: ["payout"],
+    localBlockers: ["SELLER_PAYOUTS"],
+  },
+  SQUARE_MERCHANT_PAYOUTS: {
+    // Money from Square to ChefSire's own bank account, which is NOT the same obligation as money
+    // ChefSire owes a seller. Settling one settles nothing about the other.
+    strategy: "SQUARE_BACKED",
+    providerKinds: ["payout", "payout_entry"],
+    localBlockers: [],
+    // A merchant payout aggregates many members' transactions, so its existence proves nothing
+    // about one member. Tying it to a member needs payout-entry evidence, and ChefSire keeps no
+    // payout-entry ledger yet. Until it does, this family cannot be evidenced and coverage
+    // refuses -- which is the honest outcome, not a gap to paper over.
+    unresolved: "no local payout-entry ledger exists, so a merchant payout cannot be attributed to one member",
+  },
+};
+
+/**
+ * Every required family must be evidenced: each required provider kind needs its own declared
+ * source, each named local obligation check must actually exist in closure-obligations.ts, and a
+ * family flagged unresolved refuses outright. Without this, forgetting a ledger -- or forgetting
+ * one KIND of a ledger -- would quietly improve the verdict, because no references found for a
+ * family reads exactly like a settled one.
  */
 export function assertProviderFamilyCoverage(): void {
-  const covered = new Set(PROVIDER_REFERENCE_SOURCES.map((source) => source.family));
-  const missing = REQUIRED_PROVIDER_FAMILIES.filter((family) => !covered.has(family));
-  if (missing.length > 0) {
-    throw new ClosureProviderEvidenceUnavailableError(
-      missing[0],
-      `no provider reference source is declared for ${missing.join(", ")}`,
-    );
+  const declared = new Set(PROVIDER_REFERENCE_SOURCES.map((source) => `${source.family}:${source.kind}`));
+  const knownBlockers = new Set<string>(CLOSURE_BLOCKER_CODES);
+  for (const family of REQUIRED_PROVIDER_FAMILIES) {
+    const requirement = FAMILY_REQUIREMENTS[family];
+    if (requirement.unresolved) {
+      throw new ClosureProviderEvidenceUnavailableError(family, requirement.unresolved);
+    }
+    for (const kind of requirement.providerKinds) {
+      if (!declared.has(`${family}:${kind}`)) {
+        throw new ClosureProviderEvidenceUnavailableError(
+          family,
+          `no ${kind} reference source is declared for ${family}`,
+        );
+      }
+    }
+    if (requirement.strategy !== "SQUARE_BACKED" && requirement.localBlockers.length === 0) {
+      throw new ClosureProviderEvidenceUnavailableError(
+        family,
+        `${family} has no Square object and names no local obligation check, so nothing would inspect it`,
+      );
+    }
+    for (const blocker of requirement.localBlockers) {
+      if (!knownBlockers.has(blocker)) {
+        throw new ClosureProviderEvidenceUnavailableError(
+          family,
+          `${family} names the local obligation check ${blocker}, which closure-obligations.ts does not define`,
+        );
+      }
+    }
   }
 }
 
@@ -391,6 +652,15 @@ const rowsOf = (result: any): any[] => result?.rows ?? (Array.isArray(result) ? 
  */
 export async function collectLocalProviderReferences(tx: any, userId: string): Promise<ProviderReference[]> {
   assertProviderFamilyCoverage();
+  return collectDeclaredProviderReferences(tx, userId);
+}
+
+/**
+ * The declared sources, run without the coverage assertion. Exported so the suite can prove every
+ * query executes against the real schema even while a family is unresolved; production code calls
+ * {@link collectLocalProviderReferences}, which refuses first.
+ */
+export async function collectDeclaredProviderReferences(tx: any, userId: string): Promise<ProviderReference[]> {
   const references: ProviderReference[] = [];
   for (const source of PROVIDER_REFERENCE_SOURCES) {
     let rows: any[];
@@ -414,6 +684,9 @@ export async function collectLocalProviderReferences(tx: any, userId: string): P
         merchantId: row.merchant_id == null ? null : String(row.merchant_id),
         providerId: providerId ? providerId : null,
         localStatus: row.local_status == null ? null : String(row.local_status),
+        amountExpectation: source.amountExpectation,
+        expectedAmountCents: row.expected_amount_cents == null ? null : Number(row.expected_amount_cents),
+        expectedCurrency: row.expected_currency == null ? null : String(row.expected_currency),
       });
     }
   }
@@ -444,6 +717,9 @@ const UNAVAILABLE_CODES: ReadonlySet<ProviderEvidenceExceptionCode> = new Set<Pr
   "PAGINATION_INCOMPLETE",
   "READBACK_FAILED",
   "FAMILY_NOT_COVERED",
+  // Both mean "we did not establish this", not "we established it is fine".
+  "CHECK_NOT_PERFORMED",
+  "AMOUNT_UNVERIFIABLE",
 ]);
 
 /**
@@ -469,13 +745,6 @@ export async function reconcileProviderEvidence(
     references: [...references],
     exceptions,
   });
-
-  try {
-    assertProviderFamilyCoverage();
-  } catch (error) {
-    exceptions.push(exception("FAMILY_NOT_COVERED", null, (error as Error).message));
-    return manifest("UNAVAILABLE");
-  }
 
   // Group by what a single readback can answer: one kind, one environment, one merchant.
   type Group = { kind: ProviderObjectKind; environment: string; merchantId: string; refs: ProviderReference[] };
@@ -536,6 +805,53 @@ export async function reconcileProviderEvidence(
         exceptions.push(exception("PROVIDER_STATUS_NOT_TERMINAL", reference,
           `${reference.kind} ${reference.providerId} is ${object.status}`));
       }
+      // Did the adapter actually ask the questions a terminal status does not answer?
+      const performed = new Set<ProviderCheck>(object.checksPerformed ?? []);
+      const unperformed = REQUIRED_CHECKS[reference.kind].filter((check) => !performed.has(check));
+      if (unperformed.length > 0) {
+        exceptions.push(exception("CHECK_NOT_PERFORMED", reference,
+          `${reference.kind} ${reference.providerId} was reconciled without checking ${unperformed.join(", ")}`));
+      }
+
+      // Local says the money moved, the provider says it did not. Terminality is not settlement:
+      // a FAILED payment is a finished attempt, and if the ledger recorded it as captured then one
+      // of the two is wrong and neither may be assumed.
+      // Only for kinds whose local status describes money moving. A subscription that reads CANCELED
+      // is in a normal terminal state and says nothing about a payment, so comparing it this way
+      // would invent a contradiction out of two consistent facts.
+      const MONEY_KINDS: readonly ProviderObjectKind[] = ["payment", "refund", "invoice", "order"];
+      const localClaimsMoneyMoved = MONEY_KINDS.includes(reference.kind) && reference.localStatus != null &&
+        ["captured", "completed", "paid", "refunded", "succeeded"].includes(reference.localStatus.toLowerCase());
+      if (localClaimsMoneyMoved && ["FAILED", "CANCELED", "REJECTED"].includes(object.status)) {
+        exceptions.push(exception("LOCAL_PROVIDER_DISAGREEMENT", reference,
+          `the ledger records ${reference.localStatus} but the provider reports ${object.status}`));
+      }
+
+      // Amounts. A completed payment for the wrong amount must not pass on its status alone, and a
+      // local ledger with no single unambiguous amount for the object cannot verify it at all.
+      // No money moved on a failed or canceled object, so there is nothing to compare; and a source
+      // that declares the amount not applicable has already been reviewed as such.
+      const comparesAmounts = !["FAILED", "CANCELED"].includes(object.status) &&
+        reference.amountExpectation === "required";
+      if (comparesAmounts) {
+        if (reference.expectedAmountCents == null || reference.expectedCurrency == null) {
+          exceptions.push(exception("AMOUNT_UNVERIFIABLE", reference,
+            `the ledger records no single expected amount for ${reference.kind} ${reference.providerId}`));
+        } else if (object.amountCents == null || object.currency == null) {
+          exceptions.push(exception("AMOUNT_UNVERIFIABLE", reference,
+            `the provider reported no amount for ${reference.kind} ${reference.providerId}`));
+        } else {
+          if (object.amountCents !== reference.expectedAmountCents) {
+            exceptions.push(exception("AMOUNT_MISMATCH", reference,
+              `the ledger expects ${reference.expectedAmountCents} but the provider reports ${object.amountCents}`));
+          }
+          if (object.currency !== reference.expectedCurrency) {
+            exceptions.push(exception("CURRENCY_MISMATCH", reference,
+              `the ledger expects ${reference.expectedCurrency} but the provider reports ${object.currency}`));
+          }
+        }
+      }
+
       if (
         PROVISIONALLY_SETTLED_KINDS.has(reference.kind) &&
         TERMINAL_STATUSES[reference.kind].includes(object.status) &&
@@ -571,6 +887,40 @@ export function isProviderEvidenceStale(manifest: ProviderEvidenceManifest, now:
 }
 
 /**
+ * A stable summary of what the ledgers said, used to tell whether the world moved under a decision.
+ *
+ * EVERY field, not just identity: a row whose local status, expected amount, currency or Square
+ * account changed between the readback and the final gate describes a different obligation, even
+ * though it is the same row. Each field is length-prefixed so no combination of values can imitate
+ * another (an id ending in a separator, say).
+ */
+export function providerEvidenceFingerprint(references: readonly ProviderReference[]): string {
+  return references
+    .map((reference) =>
+      [
+        reference.family,
+        reference.kind,
+        reference.table,
+        reference.localRowId,
+        reference.environment,
+        reference.merchantId,
+        reference.providerId,
+        reference.localStatus,
+        reference.amountExpectation,
+        reference.expectedAmountCents,
+        reference.expectedCurrency,
+      ]
+        .map((field) => {
+          const text = field == null ? "" : String(field);
+          return `${text.length}:${text}`;
+        })
+        .join("|"),
+    )
+    .sort()
+    .join("\n");
+}
+
+/**
  * Phase 3. Back inside the final transaction, under the member's lock, before anything
  * irreversible. Refuses unless the evidence is this member's, still fresh, clear, and still matches
  * what the ledgers say right now -- new commerce activity since the readback invalidates it.
@@ -594,12 +944,7 @@ export async function assertProviderEvidenceUsable(
   // Re-read the ledgers under the lock. Anything added, removed or renamed since the readback means
   // the member transacted while we were deciding, and the decision is void.
   const current = await collectLocalProviderReferences(tx, userId);
-  const fingerprint = (references: readonly ProviderReference[]) =>
-    references
-      .map((reference) => `${reference.table}:${reference.localRowId}:${reference.kind}:${reference.providerId ?? ""}`)
-      .sort()
-      .join("\n");
-  if (fingerprint(current) !== fingerprint(manifest.references)) {
+  if (providerEvidenceFingerprint(current) !== providerEvidenceFingerprint(manifest.references)) {
     throw new ClosureProviderEvidenceUnavailableError(
       null,
       "the member's provider-linked records changed after the readback, so the evidence is void",

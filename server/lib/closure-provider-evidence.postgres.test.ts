@@ -13,13 +13,18 @@ import { PG_URL, connectLocalPg, ddl } from "../test-support/authz-pg-harness";
 import {
   ClosureProviderEvidenceUnavailableError,
   PROVIDER_EVIDENCE_FRESHNESS_MS,
+  collectDeclaredProviderReferences,
   collectLocalProviderReferences,
+  providerEvidenceFingerprint,
   assertProviderEvidenceUsable,
   reconcileProviderEvidence,
   type ProviderEvidenceManifest,
 } from "./closure-provider-evidence";
 
 const LEDGER_TABLES = [
+  "payouts",
+  "commissions",
+  "meal_plan_purchases",
   "creator_membership_checkout_sessions",
   "creator_memberships",
   "drink_collection_checkout_sessions",
@@ -44,6 +49,9 @@ async function buildLedgers(local: any): Promise<void> {
     ${ddl(schema.drinkCollectionCheckoutSessions, "drink_collection_checkout_sessions")};
     ${ddl(schema.creatorMemberships, "creator_memberships")};
     ${ddl(schema.creatorMembershipCheckoutSessions, "creator_membership_checkout_sessions")};
+    ${ddl(schema.mealPlanPurchases, "meal_plan_purchases")};
+    ${ddl(schema.commissions, "commissions")};
+    ${ddl(schema.payouts, "payouts")};
   `);
 }
 
@@ -63,7 +71,7 @@ if (!PG_URL) {
 
       // The decisive assertion is not the empty array -- it is that none of the eight queries threw.
       // A query naming a column production does not have would fail here, loudly.
-      const references = await db.transaction((tx: any) => collectLocalProviderReferences(tx, String(member.id)));
+      const references = await db.transaction((tx: any) => collectDeclaredProviderReferences(tx, String(member.id)));
       assert.deepEqual(references, []);
     } finally {
       await dropLedgers(local);
@@ -84,7 +92,7 @@ if (!PG_URL) {
       // produces no rows, and no rows looks exactly like a settled member.
       await local.query("DROP TABLE wedding_square_subscriptions CASCADE");
       await assert.rejects(
-        () => db.transaction((tx: any) => collectLocalProviderReferences(tx, String(member.id))),
+        () => db.transaction((tx: any) => collectDeclaredProviderReferences(tx, String(member.id))),
         (error: any) =>
           error instanceof ClosureProviderEvidenceUnavailableError &&
           error.family === "WEDDING_SUBSCRIPTIONS" &&
@@ -132,7 +140,7 @@ if (!PG_URL) {
         `INSERT INTO creator_memberships(id,user_id,creator_user_id,plan_id,status,square_subscription_id)
          VALUES ('mem-1',$1,$2,'plan-1','active','sqsub_mem')`, [me, them]);
 
-      const references = await db.transaction((tx: any) => collectLocalProviderReferences(tx, me));
+      const references = await db.transaction((tx: any) => collectDeclaredProviderReferences(tx, me));
       const seen = references.map((r) => `${r.family}:${r.kind}:${r.providerId}`).sort();
       assert.deepEqual(seen, [
         "CREATOR_MEMBERSHIPS:subscription:sqsub_mem",
@@ -171,7 +179,7 @@ if (!PG_URL) {
         `INSERT INTO orders(id,buyer_id,seller_id,product_id,quantity,total_amount,platform_fee,seller_amount,fulfillment_method,payment_status)
          VALUES ('order-unmapped',$1,$2,'p1',1,'25.00','2.50','22.50','shipping','captured')`, [String(member.id), String(other.id)]);
 
-      const references = await db.transaction((tx: any) => collectLocalProviderReferences(tx, String(member.id)));
+      const references = await db.transaction((tx: any) => collectDeclaredProviderReferences(tx, String(member.id)));
       assert.equal(references.length, 1);
       assert.equal(references[0].providerId, null);
 
@@ -207,24 +215,38 @@ if (!PG_URL) {
       });
 
       // Evidence gathered when the member had nothing provider-linked.
-      const before = await db.transaction((tx: any) => collectLocalProviderReferences(tx, me));
-      await db.transaction((tx: any) => assertProviderEvidenceUsable(tx, me, clear(before), now));
+      const before = await db.transaction((tx: any) => collectDeclaredProviderReferences(tx, me));
+      assert.deepEqual(before, []);
 
-      // Then they buy something. The decision was made against a world that no longer exists.
+      // What a real run gets TODAY: the final gate asserts coverage first, and the merchant-payout
+      // family cannot be evidenced, so it refuses before it ever compares anything. Asserted so
+      // this suite describes the real behaviour rather than a path the code cannot take.
+      await assert.rejects(
+        () => db.transaction((tx: any) => assertProviderEvidenceUsable(tx, me, clear(before), now)),
+        (error: any) => error instanceof ClosureProviderEvidenceUnavailableError &&
+          error.family === "SQUARE_MERCHANT_PAYOUTS",
+      );
+
+      // Then they buy something, so any decision taken on `before` was taken against a world that
+      // no longer exists. The fingerprint is what detects that, and it does -- proven here against
+      // a real ledger change rather than hand-built references.
       await local.query(
         `INSERT INTO orders(id,buyer_id,seller_id,product_id,quantity,total_amount,platform_fee,seller_amount,fulfillment_method,payment_status,square_payment_id)
          VALUES ('order-late',$1,$2,'p1',1,'25.00','2.50','22.50','shipping','captured','sqpmt_late')`, [me, String(other.id)]);
 
-      await assert.rejects(
-        () => db.transaction((tx: any) => assertProviderEvidenceUsable(tx, me, clear(before), now)),
-        (error: any) =>
-          error instanceof ClosureProviderEvidenceUnavailableError && /changed after the readback/.test(error.message),
-      );
+      const after = await db.transaction((tx: any) => collectDeclaredProviderReferences(tx, me));
+      assert.equal(after.length, 1, "the new purchase is a provider-linked record");
+      assert.notEqual(providerEvidenceFingerprint(after), providerEvidenceFingerprint(before),
+        "a purchase after the readback must void the evidence");
 
-      // Re-gathered evidence matches again. (Still BLOCKED on its own merits once reconciled -- this
-      // gate only checks that the evidence describes the member as they are now.)
-      const after = await db.transaction((tx: any) => collectLocalProviderReferences(tx, me));
-      await db.transaction((tx: any) => assertProviderEvidenceUsable(tx, me, clear(after), now));
+      // And a change to that same row's financial status voids it too, without adding or removing
+      // a row -- the case the original identity-only fingerprint missed.
+      await local.query("UPDATE orders SET payment_status = 'refunded' WHERE id = 'order-late'");
+      const refunded = await db.transaction((tx: any) => collectDeclaredProviderReferences(tx, me));
+      assert.equal(refunded.length, 1, "no row was added or removed -- only its payment status moved");
+      assert.equal(refunded[0].localStatus, "refunded");
+      assert.notEqual(providerEvidenceFingerprint(refunded), providerEvidenceFingerprint(after),
+        "the same row with a changed payment status is a different obligation");
     } finally {
       await dropLedgers(local);
       await local.end();

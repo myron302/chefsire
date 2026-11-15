@@ -9,28 +9,36 @@ import { sql } from "drizzle-orm";
  * Provider-backed subscription/payment/refund/dispute checks remain mandatory
  * before permanent closure can ever be enabled.
  */
-export type ClosureBlockerCode =
-  | "MARKETPLACE_ORDERS"
-  | "MARKETPLACE_PAYMENTS"
-  | "SELLER_COMMISSIONS"
-  | "SELLER_PAYOUTS"
-  | "WEDDING_SUBSCRIPTIONS"
-  | "WEDDING_ENROLLMENTS"
-  | "WEDDING_CARD_OPERATIONS"
-  | "CATERING_BOOKINGS"
-  | "CATERING_INVOICES"
-  | "CATERING_PAYMENT_ATTEMPTS"
-  | "DRINK_BUNDLE_CHECKOUTS"
-  | "DRINK_COLLECTION_PAYMENTS"
-  | "DRINK_COLLECTION_PURCHASES"
-  | "DRINK_GIFTS"
-  | "CREATOR_MEMBERSHIPS"
-  | "CREATOR_MEMBERSHIP_CHECKOUTS"
-  | "CREATOR_MEMBERSHIP_SALES"
-  | "MARKETPLACE_PAID_PLAN"
-  | "SUBSCRIPTION_HISTORY"
-  | "MEAL_PLAN_PAYMENT_EVIDENCE"
-  | "CREATOR_PAID_DIGITAL_ACCESS";
+/**
+ * Runtime list of the local obligation checks, so other modules can assert that a check they rely
+ * on actually exists here instead of naming one by string and hoping. The union below is derived
+ * from it, so the two can never drift.
+ */
+export const CLOSURE_BLOCKER_CODES = [
+  "MARKETPLACE_ORDERS",
+  "MARKETPLACE_PAYMENTS",
+  "SELLER_COMMISSIONS",
+  "SELLER_PAYOUTS",
+  "WEDDING_SUBSCRIPTIONS",
+  "WEDDING_ENROLLMENTS",
+  "WEDDING_CARD_OPERATIONS",
+  "CATERING_BOOKINGS",
+  "CATERING_INVOICES",
+  "CATERING_PAYMENT_ATTEMPTS",
+  "DRINK_BUNDLE_CHECKOUTS",
+  "DRINK_COLLECTION_PAYMENTS",
+  "DRINK_COLLECTION_PURCHASES",
+  "DRINK_GIFTS",
+  "CREATOR_MEMBERSHIPS",
+  "CREATOR_MEMBERSHIP_CHECKOUTS",
+  "CREATOR_MEMBERSHIP_SALES",
+  "MARKETPLACE_PAID_PLAN",
+  "SUBSCRIPTION_HISTORY",
+  "MEAL_PLAN_PAYMENT_EVIDENCE",
+  "CREATOR_PAID_DIGITAL_ACCESS",
+] as const;
+
+export type ClosureBlockerCode = (typeof CLOSURE_BLOCKER_CODES)[number];
 
 export type ClosureBlocker = { code: ClosureBlockerCode; count: number; message: string };
 const rowsOf = (x: any): any[] => x?.rows ?? (Array.isArray(x) ? x : []);
