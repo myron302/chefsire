@@ -215,6 +215,65 @@ test("UNAVAILABLE outranks BLOCKED when both are present", async () => {
     ["UNKNOWN_ENVIRONMENT", "UNMAPPED_PROVIDER_REFERENCE"]);
 });
 
+test("a payout that reads PAID still blocks until the provider's reversal window has closed", async () => {
+  // Square's Payouts overview: a payout initially marked PAID can transition to FAILED if the
+  // seller's bank answers later than Square expects. So PAID alone must not clear.
+  const payout = (over: Partial<ProviderObjectState> = {}) =>
+    reconcileProviderEvidence("user-1", [reference({ kind: "payout", providerId: "po_1" })],
+      portReturning([{ providerId: "po_1", status: "PAID", amountCents: 9710, currency: "USD", ...over }]), NOW);
+
+  const silent = await payout();
+  assert.equal(silent.verdict, "BLOCKED", "an adapter that says nothing about reversal must not clear");
+  assert.deepEqual(silent.exceptions.map((item) => item.code), ["PROVISIONAL_SETTLEMENT"]);
+
+  const stillOpen = await payout({ settlementProvisional: true });
+  assert.equal(stillOpen.verdict, "BLOCKED");
+
+  const closed = await payout({ settlementProvisional: false });
+  assert.equal(closed.verdict, "RECONCILED_LOCAL_AND_PROVIDER", "an explicitly closed window clears");
+
+  // The same leniency must NOT leak to kinds that do not reverse.
+  const payment = await reconcileProviderEvidence("user-1", [reference()], portReturning([settled()]), NOW);
+  assert.equal(payment.verdict, "RECONCILED_LOCAL_AND_PROVIDER",
+    "a payment that is COMPLETED needs no reversal-window claim");
+});
+
+test("a refund that is only APPROVED blocks, because Square does not say it equals COMPLETED", async () => {
+  const manifest = await reconcileProviderEvidence(
+    "user-1",
+    [reference({ kind: "refund", providerId: "rf_1" })],
+    portReturning([{ providerId: "rf_1", status: "APPROVED", amountCents: 500, currency: "USD" }]),
+    NOW,
+  );
+  assert.equal(manifest.verdict, "BLOCKED");
+  assert.deepEqual(manifest.exceptions.map((item) => item.code), ["PROVIDER_STATUS_NOT_TERMINAL"]);
+});
+
+test("the statuses Square actually defines are recognized, so real states do not read as unknown", async () => {
+  // Each of these is a documented Square value. None may produce UNKNOWN_PROVIDER_STATUS, which
+  // would be a refusal for the wrong reason and would hide the real state from whoever reads it.
+  const cases: [ProviderObjectKind, string, "BLOCKED" | "RECONCILED_LOCAL_AND_PROVIDER"][] = [
+    ["invoice", "PARTIALLY_REFUNDED", "BLOCKED"],
+    ["invoice", "REFUNDED", "RECONCILED_LOCAL_AND_PROVIDER"],
+    ["invoice", "PAYMENT_PENDING", "BLOCKED"],
+    ["dispute", "INQUIRY_PROCESSING", "BLOCKED"],
+    ["dispute", "INQUIRY_CLOSED", "RECONCILED_LOCAL_AND_PROVIDER"],
+    ["order", "DRAFT", "BLOCKED"],
+    ["payout", "SENT", "BLOCKED"],
+  ];
+  for (const [kind, status, expected] of cases) {
+    const manifest = await reconcileProviderEvidence(
+      "user-1",
+      [reference({ kind, providerId: `obj_${status}` })],
+      portReturning([{ providerId: `obj_${status}`, status, amountCents: 100, currency: "USD", settlementProvisional: false }]),
+      NOW,
+    );
+    assert.equal(manifest.verdict, expected, `${kind} ${status}: ${JSON.stringify(manifest.exceptions)}`);
+    assert.ok(!manifest.exceptions.some((item) => item.code === "UNKNOWN_PROVIDER_STATUS"),
+      `${kind} ${status} is a documented Square value and must be recognized`);
+  }
+});
+
 test("evidence expires, and an expired manifest is refused rather than downgraded", async () => {
   const port = portReturning([settled()]);
   const manifest = await reconcileProviderEvidence("user-1", [reference()], port, NOW);

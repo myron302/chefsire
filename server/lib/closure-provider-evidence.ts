@@ -94,6 +94,7 @@ export type ProviderEvidenceExceptionCode =
   | "OPEN_DISPUTE"
   | "SCHEDULED_RENEWAL"
   | "UNSETTLED_PAYOUT"
+  | "PROVISIONAL_SETTLEMENT"
   | "AMOUNT_MISMATCH"
   | "PROVIDER_OBJECT_MISSING"
   | "PAGINATION_INCOMPLETE"
@@ -159,6 +160,13 @@ export type ProviderObjectState = {
   hasOpenDispute?: boolean;
   hasScheduledRenewal?: boolean;
   hasUnsettledPayout?: boolean;
+  /**
+   * Set by the adapter when the provider may still reverse a status that otherwise looks final --
+   * a payout marked PAID whose bank-failure window has not closed. Terminal statuses of
+   * {@link PROVISIONALLY_SETTLED_KINDS} are only accepted when this is explicitly false, so an
+   * adapter that cannot tell gets a refusal rather than a clear answer.
+   */
+  settlementProvisional?: boolean;
 };
 
 export type SquareReadbackPort = {
@@ -182,13 +190,33 @@ export const REFUSING_SQUARE_READBACK: SquareReadbackPort = {
   },
 };
 
-/** Provider statuses that count as finished, per kind. Anything else blocks or is unknown. */
+/**
+ * Provider statuses that count as finished, per kind. Anything else blocks or is unknown.
+ *
+ * These were checked against Square's current enum reference rather than written from memory,
+ * because a status in the wrong column here is the one error in this file that produces a false
+ * CLEAR instead of a false refusal. Three of them are not what they look like:
+ *
+ * - `payout: PAID` is NOT final on its own. Square's Payouts overview states that a payout
+ *   initially marked PAID can transition to FAILED if the seller's bank answers later than Square
+ *   expects. So PAID is accepted only when the adapter also reports that the reversal window has
+ *   closed -- see `settlementProvisional` on {@link ProviderObjectState}.
+ * - `refund: APPROVED` is deliberately NOT terminal. Square has two refund enums: RefundStatus
+ *   (PENDING, APPROVED, REJECTED, FAILED) and PaymentRefund.status (PENDING, COMPLETED, REJECTED,
+ *   FAILED). Whether APPROVED equals COMPLETED is asked on Square's own forum and not answered, so
+ *   it blocks rather than clears until an adapter can show otherwise.
+ * - `invoice: PAID` is terminal for the INVOICE and says nothing about its payment. A sandbox
+ *   report has an invoice sitting at PAID with both PaymentRefund objects COMPLETED and the full
+ *   amount refunded. That is why the invoice source also collects the payment behind it as a
+ *   separate object: the invoice's own status cannot be trusted to reflect its refunds.
+ */
 const TERMINAL_STATUSES: Record<ProviderObjectKind, readonly string[]> = {
   payment: ["COMPLETED", "CANCELED", "FAILED"],
   refund: ["COMPLETED", "REJECTED", "FAILED"],
   subscription: ["CANCELED", "DEACTIVATED"],
-  invoice: ["PAID", "CANCELED", "FAILED"],
-  dispute: ["WON", "LOST", "ACCEPTED"],
+  // Square: an invoice cannot be canceled in a terminal state -- PAID, REFUNDED, CANCELED, FAILED.
+  invoice: ["PAID", "REFUNDED", "CANCELED", "FAILED"],
+  dispute: ["WON", "LOST", "ACCEPTED", "INQUIRY_CLOSED"],
   payout: ["PAID", "FAILED"],
   payout_entry: ["PAID", "FAILED"],
   order: ["COMPLETED", "CANCELED"],
@@ -197,14 +225,23 @@ const TERMINAL_STATUSES: Record<ProviderObjectKind, readonly string[]> = {
 /** Every status this module recognizes at all. An unlisted value is UNKNOWN_PROVIDER_STATUS. */
 const KNOWN_STATUSES: Record<ProviderObjectKind, readonly string[]> = {
   payment: ["APPROVED", "PENDING", "COMPLETED", "CANCELED", "FAILED"],
-  refund: ["PENDING", "COMPLETED", "REJECTED", "FAILED"],
+  refund: ["PENDING", "APPROVED", "COMPLETED", "REJECTED", "FAILED"],
   subscription: ["ACTIVE", "PAUSED", "PENDING", "CANCELED", "DEACTIVATED"],
-  invoice: ["DRAFT", "UNPAID", "SCHEDULED", "PARTIALLY_PAID", "PAID", "PAYMENT_PENDING", "CANCELED", "FAILED"],
-  dispute: ["INQUIRY_EVIDENCE_REQUIRED", "EVIDENCE_REQUIRED", "PROCESSING", "WON", "LOST", "ACCEPTED"],
-  payout: ["SENT", "PENDING", "PAID", "FAILED"],
-  payout_entry: ["SENT", "PENDING", "PAID", "FAILED"],
-  order: ["OPEN", "COMPLETED", "CANCELED"],
+  invoice: ["DRAFT", "UNPAID", "SCHEDULED", "PARTIALLY_PAID", "PAID", "PAYMENT_PENDING",
+    "PARTIALLY_REFUNDED", "REFUNDED", "CANCELED", "FAILED"],
+  dispute: ["INQUIRY_EVIDENCE_REQUIRED", "INQUIRY_PROCESSING", "INQUIRY_CLOSED",
+    "EVIDENCE_REQUIRED", "PROCESSING", "WON", "LOST", "ACCEPTED"],
+  // Square's PayoutStatus is exactly these three. There is no PENDING.
+  payout: ["SENT", "PAID", "FAILED"],
+  payout_entry: ["SENT", "PAID", "FAILED"],
+  order: ["DRAFT", "OPEN", "COMPLETED", "CANCELED"],
 };
+
+/** Kinds whose terminal statuses can still be reversed by the provider after the fact. */
+const PROVISIONALLY_SETTLED_KINDS: ReadonlySet<ProviderObjectKind> = new Set<ProviderObjectKind>([
+  "payout",
+  "payout_entry",
+]);
 
 type ReferenceSource = {
   family: ProviderFamily;
@@ -498,6 +535,16 @@ export async function reconcileProviderEvidence(
       if (!TERMINAL_STATUSES[reference.kind].includes(object.status)) {
         exceptions.push(exception("PROVIDER_STATUS_NOT_TERMINAL", reference,
           `${reference.kind} ${reference.providerId} is ${object.status}`));
+      }
+      if (
+        PROVISIONALLY_SETTLED_KINDS.has(reference.kind) &&
+        TERMINAL_STATUSES[reference.kind].includes(object.status) &&
+        object.settlementProvisional !== false
+      ) {
+        // A payout that reads PAID can still come back FAILED, so "looks final" is not final until
+        // the adapter says the reversal window has closed. Unknown counts as open.
+        exceptions.push(exception("PROVISIONAL_SETTLEMENT", reference,
+          `${reference.kind} ${reference.providerId} is ${object.status}, but the provider may still reverse it`));
       }
       if (object.hasPendingRefund) {
         exceptions.push(exception("PENDING_REFUND", reference, `${reference.providerId} has a refund still in flight`));
