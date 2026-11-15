@@ -827,29 +827,40 @@ export async function reconcileProviderEvidence(
       // "checked, found nothing". TypeScript does not prevent this: it describes what the adapter
       // promises, not what the provider sent. So presence and validity are checked together, and
       // an invalid result refuses whether or not the kind required that check.
-      const supplied = (check: ProviderCheck): boolean =>
-        Object.prototype.hasOwnProperty.call(object.checkResults, check);
-      const valid = (check: ProviderCheck): boolean =>
-        supplied(check) && typeof object.checkResults[check] === "boolean";
+      // The map itself is external data too. hasOwnProperty.call(null, ...) throws, so a valid-looking
+      // object with checkResults: null would abort the whole reconciliation instead of recording why
+      // it could not finish -- and an array would quietly answer "no keys". Validate the container
+      // before touching its keys, and do it for every kind, including those requiring no checks.
+      const results = object.checkResults as unknown;
+      if (results == null || typeof results !== "object" || Array.isArray(results)) {
+        exceptions.push(exception("INVALID_CHECK_RESULT", reference,
+          `${reference.kind} ${reference.providerId} reported no usable check-result map`));
+      } else {
+        const map = results as ProviderCheckResults;
+        const supplied = (check: ProviderCheck): boolean =>
+          Object.prototype.hasOwnProperty.call(map, check);
+        const valid = (check: ProviderCheck): boolean =>
+          supplied(check) && typeof map[check] === "boolean";
 
-      for (const check of PROVIDER_CHECKS) {
-        if (supplied(check) && !valid(check)) {
-          exceptions.push(exception("INVALID_CHECK_RESULT", reference,
-            `${reference.kind} ${reference.providerId} reported a ${check} result that is not a boolean`));
+        for (const check of PROVIDER_CHECKS) {
+          if (supplied(check) && !valid(check)) {
+            exceptions.push(exception("INVALID_CHECK_RESULT", reference,
+              `${reference.kind} ${reference.providerId} reported a ${check} result that is not a boolean`));
+          }
         }
-      }
-      for (const check of REQUIRED_CHECKS[reference.kind]) {
-        if (!valid(check)) {
-          exceptions.push(exception("CHECK_NOT_PERFORMED", reference,
-            `${reference.kind} ${reference.providerId} was reconciled without a usable ${check} result`));
+        for (const check of REQUIRED_CHECKS[reference.kind]) {
+          if (!valid(check)) {
+            exceptions.push(exception("CHECK_NOT_PERFORMED", reference,
+              `${reference.kind} ${reference.providerId} was reconciled without a usable ${check} result`));
+          }
         }
-      }
-      // Every result the adapter DID supply is honoured, required for this kind or not: a reported
-      // finding must never be ignored because the kind's required list happens not to mention it.
-      for (const check of PROVIDER_CHECKS) {
-        if (object.checkResults[check] === true) {
-          const finding = CHECK_FINDINGS[check];
-          exceptions.push(exception(finding.code, reference, `${reference.providerId} ${finding.detail}`));
+        // Every result the adapter DID supply is honoured, required for this kind or not: a reported
+        // finding must never be ignored because the kind's required list happens not to mention it.
+        for (const check of PROVIDER_CHECKS) {
+          if (map[check] === true) {
+            const finding = CHECK_FINDINGS[check];
+            exceptions.push(exception(finding.code, reference, `${reference.providerId} ${finding.detail}`));
+          }
         }
       }
 
@@ -932,8 +943,14 @@ export function providerEvidenceFingerprint(references: readonly ProviderReferen
         reference.expectedCurrency,
       ]
         .map((field) => {
-          const text = field == null ? "" : String(field);
-          return `${text.length}:${text}`;
+          // A type marker, not just a length prefix. Length-prefixing stops one value imitating
+          // another across the separator, but `null` and `""` both rendered as an empty string, so
+          // a localStatus going from null to "" produced an identical fingerprint and escaped the
+          // gate. Null, numbers and strings are now encoded distinctly.
+          if (field == null) return "N";
+          if (typeof field === "number") return `I${field}`;
+          const text = String(field);
+          return `S${text.length}:${text}`;
         })
         .join("|"),
     )

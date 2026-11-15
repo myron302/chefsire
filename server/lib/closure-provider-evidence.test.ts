@@ -401,6 +401,24 @@ test("the revalidation fingerprint changes when any field changes, not just iden
     assert.notEqual(providerEvidenceFingerprint([reference(over)]), baseline,
       `a changed ${label} must void the evidence`);
   }
+  // null and "" are different facts and must not share a fingerprint. Length-prefixing alone did
+  // not separate them, so a localStatus going from null to empty escaped the gate.
+  assert.notEqual(
+    providerEvidenceFingerprint([reference({ localStatus: null })]),
+    providerEvidenceFingerprint([reference({ localStatus: "" })]),
+    "null and an empty local status are different obligations",
+  );
+  assert.notEqual(
+    providerEvidenceFingerprint([reference({ expectedAmountCents: null })]),
+    providerEvidenceFingerprint([reference({ expectedAmountCents: 0 })]),
+    "no expected amount and an expected amount of zero are different facts",
+  );
+  // A number and the string of that number must not collide either.
+  assert.notEqual(
+    providerEvidenceFingerprint([reference({ expectedAmountCents: 2500, localStatus: "x" })]),
+    providerEvidenceFingerprint([reference({ expectedAmountCents: null, localStatus: "2500" })]),
+  );
+
   // Order must not matter, or an unrelated re-read would look like a change.
   assert.equal(
     providerEvidenceFingerprint([reference(), reference({ localRowId: "order-2" })]),
@@ -455,6 +473,27 @@ test("a key that is present but not a boolean refuses: types describe promises, 
       checkResults: { refunds: undefined as unknown as boolean } }]), NOW);
   assert.equal(optional.verdict, "UNAVAILABLE");
   assert.deepEqual(optional.exceptions.map((item) => item.code), ["INVALID_CHECK_RESULT"]);
+});
+
+test("a malformed check-result map is recorded as unavailable, never thrown", async () => {
+  // hasOwnProperty.call(null, ...) throws. A valid-looking object with checkResults: null would
+  // abort the whole reconciliation rather than recording why it could not finish, and an array
+  // would quietly answer "no keys" for every check.
+  for (const bad of [null, undefined, [], "refunds", 7] as unknown[]) {
+    const manifest = await reconcileProviderEvidence("user-1", [reference()],
+      portReturning([settled("sqpmt_1", { checkResults: bad as never })]), NOW);
+    assert.equal(manifest.verdict, "UNAVAILABLE", `checkResults ${JSON.stringify(bad)}`);
+    assert.deepEqual(manifest.exceptions.map((item) => item.code), ["INVALID_CHECK_RESULT"]);
+  }
+
+  // Including for a kind that requires no checks at all: there is nothing to be missing, but a
+  // malformed map is still a defect in what the adapter returned.
+  const refund = await reconcileProviderEvidence("user-1",
+    [reference({ kind: "refund", providerId: "rf_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
+    portReturning([{ providerId: "rf_1", status: "COMPLETED", amountCents: 500, currency: "USD",
+      checkResults: null as never }]), NOW);
+  assert.equal(refund.verdict, "UNAVAILABLE");
+  assert.deepEqual(refund.exceptions.map((item) => item.code), ["INVALID_CHECK_RESULT"]);
 });
 
 test("a completed payment for the wrong amount or currency is BLOCKED", async () => {
