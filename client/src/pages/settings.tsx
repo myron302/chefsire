@@ -347,9 +347,15 @@ function SubscriptionSettingsPanel() {
   const marketplaceCurrentTier =
     mySubscriptionQuery.data?.currentTier || "free";
 
+  /**
+   * A paid tier whose status the server did not state is shown as unknown, not as active. The
+   * display had the same fallback the mutation handlers did: `data?.status || "active"` told a
+   * member their paid plan was live on the strength of an absent field. Free is still shown as
+   * inactive, because that is what free means.
+   */
   const marketplaceStatus = marketplaceCurrentTier === "free"
     ? "inactive"
-    : mySubscriptionQuery.data?.status || "active";
+    : mySubscriptionQuery.data?.status || "unknown";
 
   const marketplaceEndsAt = marketplaceCurrentTier === "free"
     ? null
@@ -599,7 +605,7 @@ function SubscriptionSettingsPanel() {
 
   const weddingStatus = weddingCurrentTier === "free"
     ? "inactive"
-    : myWeddingSubscriptionQuery.data?.status || "active";
+    : myWeddingSubscriptionQuery.data?.status || "unknown";
 
   const weddingEndsAt = weddingCurrentTier === "free"
     ? null
@@ -749,7 +755,7 @@ function SubscriptionSettingsPanel() {
 
   const vendorStatus = vendorCurrentTier === "free"
     ? "inactive"
-    : myVendorSubscriptionQuery.data?.status || "active";
+    : myVendorSubscriptionQuery.data?.status || "unknown";
 
   const vendorEndsAt = vendorCurrentTier === "free"
     ? null
@@ -893,7 +899,7 @@ function SubscriptionSettingsPanel() {
 
   const nutritionStatus = nutritionCurrentTier === "free"
     ? "inactive"
-    : myNutritionSubscriptionQuery.data?.status || "active";
+    : myNutritionSubscriptionQuery.data?.status || "unknown";
 
   const nutritionEndsAt = nutritionCurrentTier === "free"
     ? null

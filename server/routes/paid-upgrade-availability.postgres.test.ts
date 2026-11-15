@@ -95,6 +95,20 @@ test("the client never invents an entitlement status the server did not state", 
   assert.match(settings, /vendorStatus: "inactive" as const/);
   // Cancellations are removals, so they remain client-writable.
   assert.match(settings, /subscriptionStatus: "cancelled"/);
+
+  // And the DISPLAY, not just the handlers. GPT's follow-up: the same fallback lived here, so a
+  // paid tier with no status from the server was shown to the member as "Active".
+  for (const [name, query] of [
+    ["marketplaceStatus", "mySubscriptionQuery"],
+    ["weddingStatus", "myWeddingSubscriptionQuery"],
+    ["vendorStatus", "myVendorSubscriptionQuery"],
+    ["nutritionStatus", "myNutritionSubscriptionQuery"],
+  ] as const) {
+    assert.doesNotMatch(settings, new RegExp(`const ${name} =[\\s\\S]{0,120}?${query.replace(/\$/g, "")}\\.data\\?\\.status \\|\\| "active"`),
+      `${name} must not display a paid tier as active on the strength of an absent field`);
+    assert.match(settings, new RegExp(`const ${name} =[\\s\\S]{0,120}?\\.data\\?\\.status \\|\\| "unknown"`),
+      `${name} must show an unknown status as unknown`);
+  }
 });
 
 if (!PG_URL) {
