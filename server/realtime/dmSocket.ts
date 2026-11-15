@@ -1,6 +1,10 @@
 // server/realtime/dmSocket.ts
 import type { Server as HttpServer } from "http";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import {
+  lockMemberForContentWrite,
+  MemberContentWriteBlockedError,
+} from "../lib/member-content-write-lock";
 import { db } from "../db";
 import {
   dmParticipants,
@@ -174,55 +178,95 @@ export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOpti
           // Refused before anything is written, so no message row can exist by the time it answers.
           if (await refuseBookingLinkedThread(socket, threadId)) return;
 
-          // Persist message
-          const [msg] = await db
-            .insert(dmMessages)
-            .values({
-              threadId,
-              senderId: userId,
-              body: String(text || ""),
-              attachments: attachments ?? [],
-            })
-            .returning();
+          // A socket authenticated before a suspension stays connected, and this event never goes
+          // back through HTTP requireAuth. Take the same users-row lock the HTTP send path takes,
+          // in one transaction with the message and the read marker, so nothing lands half-written.
+          const msg = await db.transaction(async (tx: any) => {
+            await lockMemberForContentWrite(tx, userId);
 
-          // Mark my read position
-          await db
-            .update(dmParticipants)
-            .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
-            .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+            const activeMember = await tx
+              .select({ id: dmParticipants.id })
+              .from(dmParticipants)
+              .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
+              .limit(1);
+            if (!activeMember.length) throw new MemberContentWriteBlockedError();
 
-          // Get sender info
-          const [sender] = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
+            const booking = await tx.execute(sql`
+              SELECT 1 FROM catering_booking_conversations
+              WHERE thread_id = ${threadId} LIMIT 1
+            `);
+            const bookingRows = (booking as any)?.rows ?? (Array.isArray(booking) ? booking : []);
+            if (bookingRows.length) throw new MemberContentWriteBlockedError();
 
-          // Create notifications for other participants
-          const otherParticipants = await db
-            .select()
-            .from(dmParticipants)
-            .where(and(eq(dmParticipants.threadId, threadId), ne(dmParticipants.userId, userId)));
-
-          for (const participant of otherParticipants) {
-            await db.insert(notifications).values({
-              userId: participant.userId,
-              type: "dm",
-              title: `New message from ${sender?.displayName || sender?.username || "Someone"}`,
-              message: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
-              linkUrl: `/dm/${threadId}`,
-              metadata: {
+            const [created] = await tx
+              .insert(dmMessages)
+              .values({
                 threadId,
                 senderId: userId,
-                messageId: msg.id,
-              },
-            });
+                body: String(text || ""),
+                attachments: attachments ?? [],
+              })
+              .returning();
+
+            // Mark my read position
+            await tx
+              .update(dmParticipants)
+              .set({ lastReadMessageId: created.id, lastReadAt: new Date() })
+              .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+
+            return created;
+          });
+
+          // Notifications run after the sender's lock is released, deliberately: writing another
+          // participant's row inside it can deadlock against that participant sending back at the
+          // same moment. They are best effort -- the message itself is already committed.
+          try {
+            // Get sender info
+            const [sender] = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, userId))
+              .limit(1);
+
+            // Participants whose accounts can no longer receive keep their place in the thread's
+            // history but stop accruing new alerts. No status row means active.
+            const othersResult = await db.execute(sql`
+              SELECT p.user_id AS "userId" FROM dm_participants p
+              LEFT JOIN account_status st ON st.user_id = p.user_id
+              WHERE p.thread_id = ${threadId} AND p.user_id <> ${userId}
+                AND COALESCE(st.status, 'active') IN ('active', 'restricted')
+            `);
+            const others: { userId: string }[] =
+              (othersResult as any)?.rows ?? (Array.isArray(othersResult) ? othersResult : []);
+
+            if (others.length > 0) {
+              await db.insert(notifications).values(
+                others.map((participant) => ({
+                  userId: participant.userId,
+                  type: "dm",
+                  title: `New message from ${sender?.displayName || sender?.username || "Someone"}`,
+                  message: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
+                  linkUrl: `/dm/${threadId}`,
+                  metadata: {
+                    threadId,
+                    senderId: userId,
+                    messageId: msg.id,
+                  },
+                })),
+              );
+            }
+          } catch {
+            // never break message delivery
           }
 
           // Broadcast to everyone in the room (including sender for confirm)
           ns.to(threadId).emit("message", { threadId, message: msg });
         } catch (e: any) {
-          socket.emit("error", { error: e?.message || "send failed" });
+          if (e instanceof MemberContentWriteBlockedError) {
+            socket.emit("error", { error: e.code });
+          } else {
+            socket.emit("error", { error: e?.message || "send failed" });
+          }
         }
       }
     );

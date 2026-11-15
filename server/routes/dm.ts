@@ -1,7 +1,12 @@
 // server/routes/dm.ts
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray, lt, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import {
+  lockMemberForContentWrite,
+  lockAvailableDmParticipants,
+  MemberContentWriteBlockedError,
+} from "../lib/member-content-write-lock";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import {
@@ -268,51 +273,72 @@ r.post("/threads", requireAuth, async (req, res) => {
 
   const body = z
     .object({
-      participantIds: z.array(z.string()).min(1),
+      participantIds: z.array(z.string()).min(1).max(99),
       title: z.string().max(120).optional(),
       isGroup: z.boolean().optional().default(false),
     })
     .parse(req.body);
 
-  // Reuse 1:1 threads
-  if (!body.isGroup && body.participantIds.length === 1) {
-    const other = body.participantIds[0];
-
-    const mine = await db
-      .select()
-      .from(dmParticipants)
-      .where(eq(dmParticipants.userId, userId));
-    const theirs = await db
-      .select()
-      .from(dmParticipants)
-      .where(eq(dmParticipants.userId, other));
-
-    const mySet = new Set(mine.map((p) => p.threadId));
-    const candidates: string[] = theirs.map((p: { threadId: string }) => p.threadId).filter((id: string) => mySet.has(id));
-    // A booking conversation is never adopted as the pair's generic 1:1 thread. Without this the reuse below would
-    // hand a booking thread id back to a generic caller, and the same two people's ordinary DMs would land inside a
-    // booking's history. The pair keeps a generic thread and one distinct conversation per booking.
-    const linked = await bookingLinkedThreadIds(candidates);
-    const shared = candidates.find((id: string) => !linked.has(id));
-    if (shared) return res.json({ ok: true, threadId: shared, reused: true });
+  // A thread needs someone else in it. Said plainly here, so the participant lock below never has
+  // to answer this case with "this account is no longer available".
+  if (body.participantIds.every((id) => id === userId)) {
+    return res.status(400).json({ ok: false, error: "Pick someone to message." });
   }
 
-  // Create new thread + participants
-  const [thread] = await db
-    .insert(dmThreads)
-    .values({ isGroup: body.isGroup, title: body.title })
-    .returning();
+  try {
+    const result = await db.transaction(async (tx: any) => {
+      // Lock every participant, in id order, for the whole reuse-or-create decision: a status
+      // change committing between the recipient check and the insert would otherwise leave a
+      // thread nobody can write to, or admit a recipient who can no longer receive.
+      await lockAvailableDmParticipants(tx, userId, body.participantIds);
 
-  const uniqueIds = Array.from(new Set([userId, ...body.participantIds]));
-  await db.insert(dmParticipants).values(
-    uniqueIds.map((uid, i) => ({
-      threadId: thread.id,
-      userId: uid,
-      role: i === 0 ? "owner" : "member",
-    }))
-  );
+      // Reuse 1:1 threads
+      if (!body.isGroup && body.participantIds.length === 1) {
+        const other = body.participantIds[0];
 
-  res.json({ ok: true, threadId: thread.id, reused: false });
+        const mine = await tx
+          .select()
+          .from(dmParticipants)
+          .where(eq(dmParticipants.userId, userId));
+        const theirs = await tx
+          .select()
+          .from(dmParticipants)
+          .where(eq(dmParticipants.userId, other));
+
+        const mySet = new Set(mine.map((p: { threadId: string }) => p.threadId));
+        const candidates: string[] = theirs.map((p: { threadId: string }) => p.threadId).filter((id: string) => mySet.has(id));
+        // A booking conversation is never adopted as the pair's generic 1:1 thread. Without this the reuse below would
+        // hand a booking thread id back to a generic caller, and the same two people's ordinary DMs would land inside a
+        // booking's history. The pair keeps a generic thread and one distinct conversation per booking.
+        const linked = await bookingLinkedThreadIds(candidates);
+        const shared = candidates.find((id: string) => !linked.has(id));
+        if (shared) return { threadId: shared, reused: true };
+      }
+
+      // Create new thread + participants
+      const [thread] = await tx
+        .insert(dmThreads)
+        .values({ isGroup: body.isGroup, title: body.title })
+        .returning();
+
+      const uniqueIds = Array.from(new Set([userId, ...body.participantIds]));
+      await tx.insert(dmParticipants).values(
+        uniqueIds.map((uid, i) => ({
+          threadId: thread.id,
+          userId: uid,
+          role: i === 0 ? "owner" : "member",
+        }))
+      );
+
+      return { threadId: thread.id, reused: false };
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    if (error instanceof MemberContentWriteBlockedError) {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
+    throw error;
+  }
 });
 
 /**
@@ -342,23 +368,57 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
 
   if (await refuseBookingLinkedThread(id, res)) return;
 
-  const [msg] = await db
-    .insert(dmMessages)
-    .values({
-      threadId: id,
-      senderId: userId,
-      body: body.text,
-      attachments: body.attachments ?? [],
-    })
-    .returning();
+  // The membership and status checks above happened before this handler took any lock, so they can
+  // go stale mid-request. Re-take them under the sender's users row, in the same transaction as the
+  // message and the read marker, so a suspension cannot be outrun by an in-flight send.
+  let msg: typeof dmMessages.$inferSelect;
+  try {
+    msg = await db.transaction(async (tx: any) => {
+      await lockMemberForContentWrite(tx, userId);
 
-  // Mark my read
-  await db
-    .update(dmParticipants)
-    .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
-    .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+      const currentMembership = await tx
+        .select({ id: dmParticipants.id })
+        .from(dmParticipants)
+        .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
+        .limit(1);
+      if (!currentMembership.length) throw new MemberContentWriteBlockedError();
 
-  // Notify other participants
+      // Re-check the booking link inside the transaction too: the service above reads on its own
+      // connection, so a conversation linked to a booking meanwhile would slip past it.
+      const linked = await tx.execute(sql`
+        SELECT 1 FROM catering_booking_conversations WHERE thread_id = ${id} LIMIT 1
+      `);
+      const linkedRows = (linked as any)?.rows ?? (Array.isArray(linked) ? linked : []);
+      if (linkedRows.length) throw new MemberContentWriteBlockedError();
+
+      const [created] = await tx
+        .insert(dmMessages)
+        .values({
+          threadId: id,
+          senderId: userId,
+          body: body.text,
+          attachments: body.attachments ?? [],
+        })
+        .returning();
+
+      // Mark my read
+      await tx
+        .update(dmParticipants)
+        .set({ lastReadMessageId: created.id, lastReadAt: new Date() })
+        .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+
+      return created;
+    });
+  } catch (error) {
+    if (error instanceof MemberContentWriteBlockedError) {
+      return res.status(409).json({ ok: false, code: error.code, error: error.message });
+    }
+    throw error;
+  }
+
+  // Notify other participants. Deliberately outside the transaction above: writing another
+  // participant's row inside the sender's lock can deadlock against that participant sending in
+  // the opposite direction at the same time.
   try {
     const { users } = await import("../../shared/schema");
     const { notifications } = await import("../../shared/schema");
@@ -369,10 +429,15 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
       .limit(1);
     const senderName = sender?.displayName || sender?.username || "Someone";
 
-    const others = await db
-      .select({ userId: dmParticipants.userId })
-      .from(dmParticipants)
-      .where(and(eq(dmParticipants.threadId, id), ne(dmParticipants.userId, userId)));
+    // Participants whose accounts can no longer receive stay in the thread's history but stop
+    // accruing new alerts. Missing status row means active, as everywhere else.
+    const othersResult = await db.execute(sql`
+      SELECT p.user_id AS "userId" FROM dm_participants p
+      LEFT JOIN account_status st ON st.user_id = p.user_id
+      WHERE p.thread_id = ${id} AND p.user_id <> ${userId}
+        AND COALESCE(st.status, 'active') IN ('active', 'restricted')
+    `);
+    const others: { userId: string }[] = (othersResult as any)?.rows ?? (Array.isArray(othersResult) ? othersResult : []);
 
     if (others.length > 0) {
       await db.insert(notifications).values(
