@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { getStaffAccess, requireStaffPermission } from "../lib/staff-permissions";
 import { hasCurrentAdminAuthority } from "../lib/admin-authority";
+import { inspectMemberClosurePreview } from "../lib/closure-preview";
 import { ACCOUNT_STATUSES, STAFF_SETTABLE_STATUSES, AccountStatusError, getAccountStatus, setAccountStatus, type AccountStatus } from "../lib/account-status";
 
 /**
@@ -130,6 +131,14 @@ r.get("/members/:id", requireStaffPermission("members.view"), async (req, res) =
     console.error("[ops] member record failed", error);
     res.status(500).json({ ok: false, error: "Failed to load member" });
   }
+});
+
+/** Staff can inspect LOCAL closure blockers, but the irreversible operation stays disabled. */
+r.get("/members/:id/closure-preview", requireStaffPermission("members.close"), async (req, res) => {
+  const preview = await inspectMemberClosurePreview(req.params.id);
+  res.set("Cache-Control", "private, no-store");
+  res.status(preview.verification === "unavailable" ? 503 : preview.accountExists ? 200 : 404)
+    .json({ ok: preview.verification !== "unavailable" && preview.accountExists, ...preview });
 });
 
 const statusBody = z.object({

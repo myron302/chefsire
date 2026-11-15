@@ -155,6 +155,15 @@ if (!PG_URL) {
       assert.deepEqual((await staffCall("GET", "/api/ops/admin/members?q=555-0123", "helper")).json.members.map((m: any) => m.username), ["seller"]);
       assert.deepEqual((await staffCall("GET", "/api/ops/admin/members?q=%25", "helper")).json.members, [], "LIKE wildcards are literal");
 
+      // Permanent closure is OFF. Only staff with members.close can inspect the
+      // preview. Incomplete financial schema returns 503, never "eligible".
+      assert.equal((await call("GET", `/api/ops/admin/members/${ids.seller}/closure-preview`, "buyer")).status, 401);
+      assert.equal((await staffCall("GET", `/api/ops/admin/members/${ids.seller}/closure-preview`, "helper")).status, 403);
+      const closurePreview = await staffCall("GET", `/api/ops/admin/members/${ids.seller}/closure-preview`, "owner");
+      assert.equal(closurePreview.status, 503);
+      assert.equal(closurePreview.json.permanentlyDisabled, true);
+      assert.equal(closurePreview.json.verification, "unavailable");
+
       // Member record: transactions visible to orders.view holders.
       const record = (await staffCall("GET", `/api/ops/admin/members/${ids.seller}`, "marketer")).json;
       assert.equal(record.status.status, "active");
