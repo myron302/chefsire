@@ -135,6 +135,7 @@ async function setup(initialInventory = 10): Promise<Harness> {
   await admin.query(`
     CREATE TABLE products (id varchar PRIMARY KEY, inventory integer, is_active boolean NOT NULL DEFAULT true, sales_count integer DEFAULT 0);
     CREATE TABLE users (id varchar PRIMARY KEY, monthly_revenue numeric(10,2) DEFAULT 0);
+    CREATE TABLE account_status (user_id varchar PRIMARY KEY, status text NOT NULL);
   `);
   await admin.query(tableDdl(orders));
   await admin.query(tableDdl(commissions));
@@ -143,7 +144,7 @@ async function setup(initialInventory = 10): Promise<Harness> {
   // commissions_order_uidx on top of the schema-derived tables.
   await enforceMarketplaceCheckoutAtomicity(admin, migration, false);
   await admin.query(`INSERT INTO products (id, inventory) VALUES ('product', $1)`, [initialInventory]);
-  await admin.query(`INSERT INTO users (id) VALUES ('seller')`);
+  await admin.query(`INSERT INTO users (id) VALUES ('seller'), ('buyer')`);
 
   const pool = new pg.Pool({ connectionString: connectionString!, options: `-c search_path=${schema}`, max: 8 });
   const db = drizzle(pool, { schema: dbSchema });
@@ -250,6 +251,32 @@ function assertStillReservedWithoutEvidence(state: Awaited<ReturnType<typeof sna
   assert.equal(state.commissionCount, 0, "no commission without verified capture");
   assert.equal(state.revenue, 0, "no seller revenue without verified capture");
 }
+
+postgresTest("capture preparation refuses deactivated buyers and closed sellers before any stock reservation", async () => {
+  const h = await setup(8);
+  try {
+    const buyerOrder = await seedOrder(h, "buyer-deactivated");
+    await h.admin.query("INSERT INTO account_status (user_id, status) VALUES ('buyer', 'deactivated')");
+    await assert.rejects(
+      reserveMarketplaceCapture(h.deps, buyerOrder, reservationRequest),
+      (error: any) => error.code === "COMMERCE_ACCOUNT_UNAVAILABLE",
+    );
+    assert.equal((await snapshot(h, buyerOrder.id)).inventory, 8);
+    assert.equal((await load(h, buyerOrder.id)).paymentStatus, "unverified");
+    await h.admin.query("DELETE FROM account_status WHERE user_id = 'buyer'");
+
+    const sellerOrder = await seedOrder(h, "seller-closed");
+    await h.admin.query("INSERT INTO account_status (user_id, status) VALUES ('seller', 'closed')");
+    await assert.rejects(
+      reserveMarketplaceCapture(h.deps, sellerOrder, reservationRequest),
+      (error: any) => error.code === "COMMERCE_ACCOUNT_UNAVAILABLE",
+    );
+    assert.equal((await snapshot(h, sellerOrder.id)).inventory, 8);
+    assert.equal((await load(h, sellerOrder.id)).paymentStatus, "unverified");
+  } finally {
+    await teardown(h);
+  }
+});
 
 // ---------------------------------------------------------------- Finding 1
 

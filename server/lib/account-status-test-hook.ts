@@ -2,7 +2,7 @@
  * Test-only override for account status reads, kept free of imports so test setup files can register it without
  * loading the database module early (some suites configure DATABASE_URL after their first imports).
  */
-export type AccountStatusTestRecord = { status: "active" | "restricted" | "suspended"; reason: string | null; changedBy: string | null; changedAt: string | Date | null };
+export type AccountStatusTestRecord = { status: "active" | "restricted" | "suspended" | "deactivated" | "closed"; reason: string | null; changedBy: string | null; changedAt: string | Date | null };
 type StatusReader = (userId: string) => Promise<AccountStatusTestRecord>;
 
 let reader: StatusReader | null = null;

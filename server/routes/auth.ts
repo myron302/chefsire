@@ -273,7 +273,7 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
 
     // Suspended accounts can't sign in by any method.
     const blocked = await signInBlock(user.id);
-    if (blocked) return res.status(blocked.code === "ACCOUNT_SUSPENDED" ? 403 : 503).json({ error: blocked.message, code: blocked.code });
+    if (blocked) return res.status(["ACCOUNT_SUSPENDED", "ACCOUNT_CLOSED"].includes(blocked.code) ? 403 : 503).json({ error: blocked.message, code: blocked.code });
 
     // Create JWT token
     const token = issueAuthToken(user);
@@ -627,7 +627,7 @@ router.get("/auth/google/callback", oauthCallbackLimiter, (req, res, next) => {
 
       // Create JWT token for the user
       const blocked = await signInBlock(user.id);
-      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : "/login?error=service-unavailable");
+      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : blocked.code === "ACCOUNT_CLOSED" ? "/login?error=account-closed" : "/login?error=service-unavailable");
       const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
@@ -675,7 +675,7 @@ router.get("/auth/facebook/callback", requireOptionalOAuth("facebook"),
 
       // Create JWT token for the user
       const blocked = await signInBlock(user.id);
-      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : "/login?error=service-unavailable");
+      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : blocked.code === "ACCOUNT_CLOSED" ? "/login?error=account-closed" : "/login?error=service-unavailable");
       const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie
@@ -720,7 +720,7 @@ router.get("/auth/tiktok/callback", requireOptionalOAuth("tiktok"),
 
       // Create JWT token for the user
       const blocked = await signInBlock(user.id);
-      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : "/login?error=service-unavailable");
+      if (blocked) return res.redirect(blocked.code === "ACCOUNT_SUSPENDED" ? "/login?error=account-suspended" : blocked.code === "ACCOUNT_CLOSED" ? "/login?error=account-closed" : "/login?error=service-unavailable");
       const token = issueAuthToken(user);
 
       // Set token as HTTP-only cookie

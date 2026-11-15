@@ -157,7 +157,7 @@ if (!PG_URL) {
     }
   });
 
-  test("deleting an account that has transaction records is refused with a clear message, never a silent loss", async () => {
+  test("the legacy delete is refused for everyone, before any ledger is read, so no record can be lost", async () => {
     const local = await connectLocalPg();
     const schema = await import("../../shared/schema");
     const { default: users } = await import("./users");
@@ -183,15 +183,23 @@ if (!PG_URL) {
       await local.query(`INSERT INTO orders (buyer_id, seller_id, product_id, quantity, total_amount, platform_fee, seller_amount, fulfillment_method, status)
         VALUES ($1, $2, $3, 1, 5, 0.5, 4.5, 'local_pickup', 'delivered')`, [ids.buyer, ids.seller, product.id]);
       const call = makeCaller(() => `http://127.0.0.1:${(server.address() as AddressInfo).port}`, (who) => ids[who]);
-      for (const who of ["buyer", "seller"]) {
+      // With records, and without any: the same unconditional refusal, never a delete and never a 409 that
+      // depends on reading a ledger.
+      for (const who of ["buyer", "seller", "lurker"]) {
         const res = await call("DELETE", `/api/users/${ids[who]}`, who);
-        assert.equal(res.status, 409, res.text);
-        assert.equal(res.json.code, "ACCOUNT_HAS_RECORDS");
-        assert.match(res.json.message, /deactivate it instead/);
+        assert.equal(res.status, 503, res.text);
+        assert.equal(res.json.code, "PERMANENT_CLOSURE_DISABLED");
+        assert.match(res.json.message, /deactivate your account instead/);
       }
-      assert.equal((await local.query("SELECT count(*)::int n FROM orders")).rows[0].n, 1, "the order record is untouched");
-      // An account with no transaction records isn't refused for records (deletion itself is unchanged by this release).
-      assert.notEqual((await call("DELETE", `/api/users/${ids.lurker}`, "lurker")).status, 409);
+      assert.equal((await call("DELETE", `/api/users/${ids.buyer}`, "seller")).status, 403, "still only your own account");
+      assert.equal((await call("DELETE", `/api/users/${ids.buyer}`, "anon")).status, 401);
+
+      // A ledger that is missing or unreadable cannot turn the refusal into a 500: nothing is read at all.
+      await local.query("DROP TABLE orders CASCADE");
+      const withoutLedger = await call("DELETE", `/api/users/${ids.buyer}`, "buyer");
+      assert.equal(withoutLedger.status, 503, withoutLedger.text);
+      assert.equal(withoutLedger.json.code, "PERMANENT_CLOSURE_DISABLED");
+      assert.equal((await local.query("SELECT count(*)::int n FROM users")).rows[0].n, 3, "no account was removed");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await local.query("DROP TABLE IF EXISTS orders, products, users CASCADE; CREATE TABLE IF NOT EXISTS account_status (user_id varchar PRIMARY KEY, status text NOT NULL, reason text, changed_by varchar, changed_at timestamptz NOT NULL DEFAULT now())");

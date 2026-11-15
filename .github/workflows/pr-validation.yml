@@ -210,6 +210,14 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node --import tsx --test --test-concurrency=1 server/routes/marketplace-order-journey.postgres.test.ts server/routes/marketplace-sample-listings.postgres.test.ts server/routes/marketplace-fulfillment-status.postgres.test.ts server/routes/marketplace-order-detail-access.postgres.test.ts
+      - name: Verify Marketplace Square capture lifecycle and closure-account gates on PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/services/marketplace-checkout-reconciliation.postgres.test.ts
+      - name: Verify catering offer customer/provider account gate on isolated PostgreSQL
+        env:
+          CATERING_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/routes/catering-offer-negotiation-http.test.ts
       - name: Test wedding vendor directory and quote delivery against PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
@@ -244,4 +252,4 @@ jobs:
       - name: Verify Google email ownership and legacy tester reclamation on isolated PostgreSQL
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/routes/auth-account-prehijack.test.ts server/routes/auth-login-username.postgres.test.ts server/routes/auth-login-phone.postgres.test.ts server/routes/recipe-post-create.postgres.test.ts server/routes/nutrition-trial.postgres.test.ts server/routes/admin-staff.postgres.test.ts server/routes/admin-members.postgres.test.ts server/routes/ops-portal.postgres.test.ts server/routes/account-deactivation.postgres.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/routes/auth-account-prehijack.test.ts server/routes/auth-login-username.postgres.test.ts server/routes/auth-login-phone.postgres.test.ts server/routes/recipe-post-create.postgres.test.ts server/routes/nutrition-trial.postgres.test.ts server/routes/admin-staff.postgres.test.ts server/routes/admin-members.postgres.test.ts server/routes/ops-portal.postgres.test.ts server/routes/account-deactivation.postgres.test.ts server/routes/account-closure-safety.postgres.test.ts server/lib/commerce-account-lock.postgres.test.ts

@@ -17,7 +17,7 @@ import { accountStatusTestReader } from "./account-status-test-hook";
  * Nothing is deleted: reinstating (back to active) restores everything exactly as it was. Every change is written to
  * the audit log in the same transaction, with the reason.
  */
-export const ACCOUNT_STATUSES = ["active", "restricted", "suspended", "deactivated"] as const;
+export const ACCOUNT_STATUSES = ["active", "restricted", "suspended", "deactivated", "closed"] as const;
 /** The statuses staff can set. Deactivation is the member's own choice. */
 export const STAFF_SETTABLE_STATUSES = ["active", "restricted", "suspended"] as const;
 export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
@@ -45,11 +45,13 @@ export async function getAccountStatus(userId: string, executor: any = db): Prom
  */
 export async function signInBlock(userId: string): Promise<null | { code: string; message: string }> {
   const suspended = { code: "ACCOUNT_SUSPENDED", message: "This account is suspended. Contact support@chefsire.com if you think this is a mistake." };
+  const closed = { code: "ACCOUNT_CLOSED", message: "This account has been permanently closed and cannot be signed into." };
   try {
     // Suites that run sign-in on a database double answer status reads through the test hook (no transaction there).
     if (accountStatusTestReader()) {
       const { status } = await getAccountStatus(userId);
       if (status === "suspended") return suspended;
+      if (status === "closed") return closed;
       if (status === "deactivated") await reactivateOwnAccount(userId);
       return null;
     }
@@ -59,6 +61,7 @@ export async function signInBlock(userId: string): Promise<null | { code: string
       await tx.execute(sql`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`);
       const { status } = await getAccountStatus(userId, tx);
       if (status === "suspended") return suspended;
+      if (status === "closed") return closed;
       if (status === "deactivated") await reactivateWithin(tx, userId);
       return null;
     });
@@ -85,7 +88,7 @@ export { accountHidden } from "./account-hidden-sql";
 export async function isAccountHidden(userId: string): Promise<boolean> {
   try {
     const { status } = await getAccountStatus(userId);
-    return status === "suspended" || status === "deactivated";
+    return status === "suspended" || status === "deactivated" || status === "closed";
   } catch (error) {
     console.error("[account-status] status unavailable; hiding the account's content until it can be read.", (error as Error)?.message);
     return true;
@@ -117,6 +120,7 @@ export async function setAccountStatus(input: {
     const [user] = rowsOf(await tx.execute(sql`SELECT id, username FROM users WHERE id = ${input.userId} FOR UPDATE`));
     if (!user) throw new AccountStatusError(404, "Member not found");
     const current = await getAccountStatus(input.userId, tx);
+    if (current.status === "closed") throw new AccountStatusError(409, "A permanently closed account cannot be reinstated or changed.");
     if (!input.authorize(current.status, input.status)) throw new AccountStatusError(403, "You don't have permission to do that.");
     if (current.status === input.status) return { from: current.status, to: input.status, changed: false };
     if (input.status === "active") {
