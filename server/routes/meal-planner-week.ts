@@ -26,6 +26,7 @@ import {
   pickRecipeFromPool,
   startOfDay,
   startOfWeekMonday,
+  parseCalendarDate,
   toNonNegativeRoundedInt,
   type MealType,
 } from "./meal-planner-week/utils.js";
@@ -108,7 +109,7 @@ function buildCopyEntrySignature(entry: {
   customCarbs?: number | null;
   customFat?: number | null;
 }) {
-  const dateIso = fmtISODate(startOfDay(new Date(entry.date)));
+  const dateIso = fmtISODate(startOfDay(parseCalendarDate(entry.date)));
   const recipeSig = entry.recipeId ? `recipe:${entry.recipeId}` : "recipe:none";
   const customName = String(entry.customName || "").trim().toLowerCase();
   const customSig = customName
@@ -158,7 +159,7 @@ type CopyImpactAffectedSlot = {
 function createImpactSlotTracker() {
   const slotMap = new Map<string, Omit<CopyImpactAffectedSlot, "summary">>();
   const getOrCreateSlot = (entry: { date: Date | string; mealType: string }) => {
-    const dateIso = fmtISODate(startOfDay(new Date(entry.date)));
+    const dateIso = fmtISODate(startOfDay(parseCalendarDate(entry.date)));
     const mealType = String(entry.mealType || "").trim().toLowerCase();
     const key = `${dateIso}|${mealType}`;
     const existing = slotMap.get(key);
@@ -226,7 +227,10 @@ function mapSharedEntriesToTargetWeek(args: {
 }) {
   const { sourceEntries, sourceWeekStart, targetWeekStart, targetPlanId = null } = args;
   return sourceEntries.map((entry) => {
-    const sourceDate = startOfDay(new Date(entry.date));
+    // The copy's day offset is a difference between calendar days, so the source date has to be
+    // read as one: `new Date(entry.date)` would shift it a day west of UTC and land the copied
+    // meal on the wrong weekday.
+    const sourceDate = startOfDay(parseCalendarDate(entry.date));
     const dayOffset = Math.max(
       0,
       Math.min(6, Math.round((sourceDate.getTime() - startOfDay(sourceWeekStart).getTime()) / (1000 * 60 * 60 * 24)))
@@ -305,7 +309,7 @@ type PublicWeekSummary = {
 };
 
 async function buildPublicWeekSummary(userId: string, weekAnchorRaw: Date | string, viewerId?: string | null): Promise<PublicWeekSummary> {
-  const weekStart = startOfWeekMonday(new Date(weekAnchorRaw));
+  const weekStart = startOfWeekMonday(parseCalendarDate(weekAnchorRaw));
   const weekEnd = endOfDay(addDays(weekStart, 6));
 
   const [plan] = await db
@@ -375,7 +379,7 @@ async function buildPublicWeekSummary(userId: string, weekAnchorRaw: Date | stri
     (sum, entry) => sum + Number(entry?.recipe?.protein || entry?.customProtein || 0),
     0
   );
-  const activePlannedDays = new Set(entries.map((entry) => fmtISODate(new Date(entry.date)))).size;
+  const activePlannedDays = new Set(entries.map((entry) => fmtISODate(parseCalendarDate(entry.date)))).size;
 
   return {
     weekAnchor: fmtISODate(weekStart),
@@ -772,7 +776,7 @@ router.get("/week/shared/:token", optionalAuth, async (req: Request, res: Respon
 
     const summary = await buildPublicWeekSummary(shareRow.user_id, shareRow.week_anchor, (req.user as any)?.id);
 
-    const weekStart = startOfWeekMonday(new Date(shareRow.week_anchor));
+    const weekStart = startOfWeekMonday(parseCalendarDate(shareRow.week_anchor));
     const weekEnd = endOfDay(addDays(weekStart, 6));
     const weekAnchor = summary.weekAnchor;
     const [plan] = await db
@@ -913,7 +917,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       return res.status(400).json({ message: "This is already your week plan." });
     }
 
-    const sourceWeekStart = startOfWeekMonday(new Date(shareRow.week_anchor));
+    const sourceWeekStart = startOfWeekMonday(parseCalendarDate(shareRow.week_anchor));
     const sourceWeekEnd = endOfDay(addDays(sourceWeekStart, 6));
     const [sourcePlan] = await db
       .select()
@@ -1180,7 +1184,7 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
       return res.status(400).json({ message: "This is already your week plan." });
     }
 
-    const sourceWeekStart = startOfWeekMonday(new Date(shareRow.week_anchor));
+    const sourceWeekStart = startOfWeekMonday(parseCalendarDate(shareRow.week_anchor));
     const sourceWeekEnd = endOfDay(addDays(sourceWeekStart, 6));
     const [sourcePlan] = await db
       .select()
