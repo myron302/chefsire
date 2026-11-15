@@ -283,6 +283,13 @@ const NutritionMealPlanner = () => {
   const [dailyNutrition, setDailyNutrition] = useState<any>(null);
   const [nutritionGoals, setNutritionGoals] = useState<any>(null);
   const [isPremium, setIsPremium] = useState(false);
+  /**
+   * Whether this account still has its one cardless trial, as the server records it. `null` means
+   * we could not find out -- in which case the trial IS still offered, because the server refuses a
+   * second one with a clear message anyway, and refusing here would wrongly deny an eligible
+   * member. Only a definite `false` hides the offer.
+   */
+  const [trialEligible, setTrialEligible] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [weeklyMeals, setWeeklyMeals] = useState<Record<string, any>>({});
   const {
@@ -872,6 +879,19 @@ const NutritionMealPlanner = () => {
       }
 
       setIsPremium(hasNutritionAccess);
+
+      // Does this account still have its one trial? Isolated so a failure here cannot break the
+      // planner, and left as null (unknown) rather than guessed.
+      try {
+        const response = await fetch("/api/nutrition/subscription", { credentials: "include" });
+        if (response.ok) {
+          const data = await response.json().catch(() => ({}));
+          const eligible = (data as any)?.trial?.eligible;
+          setTrialEligible(typeof eligible === "boolean" ? eligible : null);
+        }
+      } catch {
+        setTrialEligible(null);
+      }
 
       setNutritionGoals({
         dailyCalorieGoal: 2000,
@@ -1825,23 +1845,36 @@ const NutritionMealPlanner = () => {
           <FeatureItem icon={<Target />} text="Personalized Nutrition Goals" />
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-          <Button
-            size="lg"
-            className="flex-1 bg-white text-orange-600 hover:bg-orange-50 font-semibold text-base sm:text-lg h-12 sm:h-14"
-            onClick={startNutritionTrial}
-          >
-            Start 30-Day Free Trial
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            className="flex-1 border-2 border-white bg-white/20 text-white hover:bg-white hover:text-orange-600 font-semibold text-base sm:text-lg h-12 sm:h-14"
-          >
-            Learn More
-          </Button>
+        {/*
+          One call to action. There used to be a second button here, "Learn More", with no onClick
+          and nowhere to go: the card above already lists every feature and the price, and there is
+          no nutrition detail page to send anyone to, so it was a dead end dressed as a choice.
+        */}
+        <div className="flex flex-col gap-3">
+          {trialEligible === false ? (
+            <Button
+              size="lg"
+              variant="outline"
+              disabled
+              className="w-full border-2 border-white/60 bg-white/10 text-white font-semibold text-base sm:text-lg h-12 sm:h-14"
+            >
+              Free trial already used
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              className="w-full bg-white text-orange-600 hover:bg-orange-50 font-semibold text-base sm:text-lg h-12 sm:h-14"
+              onClick={startNutritionTrial}
+            >
+              Start 30-Day Free Trial
+            </Button>
+          )}
         </div>
-        <p className="text-center text-sm text-orange-100 mt-4">No credit card required • Cancel anytime</p>
+        <p className="text-center text-sm text-orange-100 mt-4">
+          {trialEligible === false
+            ? "Your free trial has been used. Paid Premium isn't open yet — nothing to pay today."
+            : "No credit card required • Cancel anytime"}
+        </p>
       </div>
     </div>
   );
