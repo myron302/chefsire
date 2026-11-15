@@ -383,6 +383,28 @@ test("a check with no result is UNAVAILABLE: presence of the key is the claim, n
   assert.equal(refund.verdict, "RECONCILED_LOCAL_AND_PROVIDER", JSON.stringify(refund.exceptions));
 });
 
+test("a key that is present but not a boolean refuses: types describe promises, not payloads", async () => {
+  // A provider adapter translates external JSON, so at runtime a key can be present holding
+  // undefined, null or a string. Presence alone would pass, and `=== true` would then be false,
+  // reading as "checked, found nothing" -- the same false clear in its last hiding place.
+  for (const bad of [undefined, null, "false", 0, {}] as unknown[]) {
+    const manifest = await reconcileProviderEvidence("user-1", [reference()],
+      portReturning([settled("sqpmt_1", { checkResults: { refunds: bad as boolean, disputes: false } })]), NOW);
+    assert.equal(manifest.verdict, "UNAVAILABLE", `a refunds result of ${JSON.stringify(bad)} must refuse`);
+    assert.deepEqual(manifest.exceptions.map((item) => item.code).sort(),
+      ["CHECK_NOT_PERFORMED", "INVALID_CHECK_RESULT"]);
+  }
+
+  // And on a check this kind does not require, an invalid result still refuses rather than being
+  // quietly ignored -- a refund object needs no refunds check, but a broken one is still a defect.
+  const optional = await reconcileProviderEvidence("user-1",
+    [reference({ kind: "refund", providerId: "rf_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
+    portReturning([{ providerId: "rf_1", status: "COMPLETED", amountCents: 500, currency: "USD",
+      checkResults: { refunds: undefined as unknown as boolean } }]), NOW);
+  assert.equal(optional.verdict, "UNAVAILABLE");
+  assert.deepEqual(optional.exceptions.map((item) => item.code), ["INVALID_CHECK_RESULT"]);
+});
+
 test("a completed payment for the wrong amount or currency is BLOCKED", async () => {
   const wrongAmount = await reconcileProviderEvidence("user-1", [reference()],
     portReturning([settled("sqpmt_1", { amountCents: 9900 })]), NOW);

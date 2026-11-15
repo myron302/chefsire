@@ -150,6 +150,7 @@ export type ProviderEvidenceExceptionCode =
   | "AMOUNT_UNVERIFIABLE"
   | "LOCAL_PROVIDER_DISAGREEMENT"
   | "CHECK_NOT_PERFORMED"
+  | "INVALID_CHECK_RESULT"
   | "PROVIDER_OBJECT_MISSING"
   | "PAGINATION_INCOMPLETE"
   | "READBACK_FAILED"
@@ -717,6 +718,7 @@ const UNAVAILABLE_CODES: ReadonlySet<ProviderEvidenceExceptionCode> = new Set<Pr
   "FAMILY_NOT_COVERED",
   // Both mean "we did not establish this", not "we established it is fine".
   "CHECK_NOT_PERFORMED",
+  "INVALID_CHECK_RESULT",
   "AMOUNT_UNVERIFIABLE",
 ]);
 
@@ -805,10 +807,27 @@ export async function reconcileProviderEvidence(
       }
       // The questions a terminal status does not answer. A required check whose key is absent was
       // not performed, and the absence of a finding is not a finding.
+      // A present key is only a claim if its value is actually a boolean. An adapter translates
+      // external JSON, so at runtime a key can be there holding undefined, null or a string -- and
+      // `{ refunds: undefined }` would otherwise pass presence and then fail `=== true`, reading as
+      // "checked, found nothing". TypeScript does not prevent this: it describes what the adapter
+      // promises, not what the provider sent. So presence and validity are checked together, and
+      // an invalid result refuses whether or not the kind required that check.
+      const supplied = (check: ProviderCheck): boolean =>
+        Object.prototype.hasOwnProperty.call(object.checkResults, check);
+      const valid = (check: ProviderCheck): boolean =>
+        supplied(check) && typeof object.checkResults[check] === "boolean";
+
+      for (const check of PROVIDER_CHECKS) {
+        if (supplied(check) && !valid(check)) {
+          exceptions.push(exception("INVALID_CHECK_RESULT", reference,
+            `${reference.kind} ${reference.providerId} reported a ${check} result that is not a boolean`));
+        }
+      }
       for (const check of REQUIRED_CHECKS[reference.kind]) {
-        if (!Object.prototype.hasOwnProperty.call(object.checkResults, check)) {
+        if (!valid(check)) {
           exceptions.push(exception("CHECK_NOT_PERFORMED", reference,
-            `${reference.kind} ${reference.providerId} was reconciled without a ${check} result`));
+            `${reference.kind} ${reference.providerId} was reconciled without a usable ${check} result`));
         }
       }
       // Every result the adapter DID supply is honoured, required for this kind or not: a reported
