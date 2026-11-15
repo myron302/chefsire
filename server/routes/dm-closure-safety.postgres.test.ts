@@ -7,6 +7,40 @@ import type { AddressInfo } from "node:net";
 import { PG_URL, connectLocalPg, ddl } from "../test-support/authz-pg-harness";
 import { testAuthHeader } from "../test-support/auth-test-env";
 
+const DM_SCHEMA = (usersDdl: string, notificationsDdl: string) => `
+  DROP TABLE IF EXISTS notifications, catering_booking_conversations, dm_messages, dm_participants, dm_threads, users CASCADE;
+  ${usersDdl};
+  CREATE TABLE dm_threads(id varchar PRIMARY KEY DEFAULT gen_random_uuid(),is_group boolean NOT NULL DEFAULT false,
+    title text,created_at timestamp NOT NULL DEFAULT now());
+  CREATE TABLE dm_participants(id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+    thread_id varchar NOT NULL, user_id varchar NOT NULL,role text NOT NULL DEFAULT 'member',
+    last_read_message_id varchar,last_read_at timestamp,notifications_muted boolean NOT NULL DEFAULT false,
+    created_at timestamp DEFAULT now());
+  CREATE TABLE dm_messages(id varchar PRIMARY KEY DEFAULT gen_random_uuid(),thread_id varchar NOT NULL,
+    sender_id varchar NOT NULL,body text NOT NULL,attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
+    created_at timestamp DEFAULT now());
+  CREATE TABLE catering_booking_conversations(booking_id varchar PRIMARY KEY,thread_id varchar UNIQUE);
+  ${notificationsDdl};
+`;
+
+/**
+ * Wait until some backend is blocked on a lock whose query matches `phrase`. The send request runs
+ * in this same process, so without this barrier there is nothing to synchronize against and the
+ * test would be a race rather than a proof.
+ */
+async function lockWait(local: any, phrase: string): Promise<void> {
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const r = await local.query(
+      "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE $1",
+      [`%${phrase}%`],
+    );
+    if (Number(r.rows[0]?.n) > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Expected the DM send to wait on the sender's account lock");
+}
+
 if (!PG_URL) {
   test("DM closure HTTP regression requires CS_TEST_PG_URL", { skip: true }, () => {});
 } else {
@@ -19,21 +53,7 @@ if (!PG_URL) {
     app.use("/api/dm", dmRouter);
     const server = app.listen(0, "127.0.0.1");
     try {
-      await local.query(`
-        DROP TABLE IF EXISTS notifications, catering_booking_conversations, dm_messages, dm_participants, dm_threads, users CASCADE;
-        ${ddl(users, "users")};
-        CREATE TABLE dm_threads(id varchar PRIMARY KEY DEFAULT gen_random_uuid(),is_group boolean NOT NULL DEFAULT false,
-          title text,created_at timestamp NOT NULL DEFAULT now());
-        CREATE TABLE dm_participants(id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-          thread_id varchar NOT NULL, user_id varchar NOT NULL,role text NOT NULL DEFAULT 'member',
-          last_read_message_id varchar,last_read_at timestamp,notifications_muted boolean NOT NULL DEFAULT false,
-          created_at timestamp DEFAULT now());
-        CREATE TABLE dm_messages(id varchar PRIMARY KEY DEFAULT gen_random_uuid(),thread_id varchar NOT NULL,
-          sender_id varchar NOT NULL,body text NOT NULL,attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
-          created_at timestamp DEFAULT now());
-        CREATE TABLE catering_booking_conversations(booking_id varchar PRIMARY KEY,thread_id varchar UNIQUE);
-        ${ddl(notifications, "notifications")};
-      `);
+      await local.query(DM_SCHEMA(ddl(users, "users"), ddl(notifications, "notifications")));
       const [closed, active, friend, newRecipient] = (await local.query(`
         INSERT INTO users(username,email,display_name) VALUES
           ('closed','closed@example.test','Old Person Name'),
@@ -90,4 +110,82 @@ if (!PG_URL) {
       await local.end();
     }
   });
+
+  /**
+   * The two rechecks inside the send transaction, each proved by making the change land while the
+   * request is already blocked on the sender's users row. Both pass without their recheck if the
+   * change is applied before the request starts, which is why the lock barrier is the test.
+   */
+  for (const scenario of [
+    {
+      name: "a sender removed from the thread while its send waits on the account lock is refused",
+      apply: (holder: any, threadId: string, senderId: string) =>
+        holder.query("DELETE FROM dm_participants WHERE thread_id = $1 AND user_id = $2", [threadId, senderId]),
+    },
+    {
+      name: "a thread claimed by a catering booking while its send waits on the account lock is refused",
+      apply: (holder: any, threadId: string) =>
+        holder.query("INSERT INTO catering_booking_conversations(booking_id,thread_id) VALUES ('booking-1',$1)", [threadId]),
+    },
+  ]) {
+    test(scenario.name, async () => {
+      const local = await connectLocalPg();
+      const { users, notifications } = await import("../../shared/schema");
+      const { default: dmRouter } = await import("./dm");
+      const app = express();
+      app.use(express.json());
+      app.use("/api/dm", dmRouter);
+      const server = app.listen(0, "127.0.0.1");
+      try {
+        await local.query(DM_SCHEMA(ddl(users, "users"), ddl(notifications, "notifications")));
+        const [sender, other] = (await local.query(`
+          INSERT INTO users(username,email,display_name) VALUES
+            ('racing-sender','racing-sender@example.test','Racing Sender'),
+            ('racing-other','racing-other@example.test','Other')
+          RETURNING id
+        `)).rows;
+        await local.query("INSERT INTO dm_threads(id) VALUES('racing')");
+        await local.query("INSERT INTO dm_participants(thread_id,user_id) VALUES ('racing',$1),('racing',$2)",
+          [sender.id, other.id]);
+        const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+        // Hold the sender's users row so the request blocks inside the content lock, AFTER the
+        // handler's own pre-checks have already passed.
+        const holder = await local.connect();
+        try {
+          await holder.query("BEGIN");
+          await holder.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [sender.id]);
+          const pending = fetch(`${base}/api/dm/threads/racing/messages`, {
+            method: "POST",
+            headers: { ...testAuthHeader(sender.id), "content-type": "application/json" },
+            body: JSON.stringify({ text: "Sent against stale state" }),
+          });
+          await lockWait(local, "FROM users WHERE id =");
+          await scenario.apply(holder, "racing", sender.id);
+          await holder.query("COMMIT");
+          const response = await pending;
+          const data: any = await response.json();
+          assert.equal(response.status, 409, JSON.stringify(data));
+          assert.equal(data.code, "MEMBER_CONTENT_WRITE_BLOCKED");
+        } finally {
+          await holder.query("ROLLBACK").catch(() => undefined);
+          holder.release();
+        }
+
+        assert.equal((await local.query("SELECT count(*)::int AS n FROM dm_messages")).rows[0].n, 0,
+          "a refused send must leave no message behind");
+        assert.equal((await local.query("SELECT count(*)::int AS n FROM notifications")).rows[0].n, 0,
+          "a refused send must notify nobody");
+        assert.equal(
+          (await local.query("SELECT count(*)::int AS n FROM dm_participants WHERE last_read_message_id IS NOT NULL")).rows[0].n,
+          0,
+          "a refused send must not move anyone's read marker",
+        );
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        await local.query("DROP TABLE IF EXISTS notifications, catering_booking_conversations, dm_messages, dm_participants, dm_threads, users CASCADE");
+        await local.end();
+      }
+    });
+  }
 }
