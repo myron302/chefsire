@@ -471,38 +471,13 @@ r.delete("/:id", requireAuth, async (req, res) => {
       return res.status(409).json({ code: "ACCOUNT_HAS_RECORDS", message: KEEP_RECORDS_MESSAGE });
     }
 
-    // storage.deleteUser runs the whole thing in one transaction: it clears this account's remix
-    // likes and saves and repairs the counters they backed before removing the account, because
-    // those engagement rows reference users(id) with NO ACTION on purpose (see
-    // server/lib/remix-engagement-cleanup.ts). Other related records still rely on their own FK
-    // behaviour.
-    let deleted = false;
-    try {
-      deleted = await storage.deleteUser(userId);
-    } catch (error: any) {
-      // Something else still points at the account (a foreign key): say so plainly instead of a generic failure.
-      if (error?.code === "23503") {
-        console.warn("DELETE /users/:id refused by a reference", error?.constraint ?? error?.detail);
-        return res.status(409).json({ code: "ACCOUNT_HAS_RECORDS", message: KEEP_RECORDS_MESSAGE });
-      }
-      throw error;
-    }
-
-    if (!deleted) {
-      return res.status(500).json({ message: "We couldn't delete your account right now. Please try again." });
-    }
-
-    // Clear auth cookie
-    res.clearCookie("auth_token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+    // The old hard-delete is intentionally disabled: permanent closure must use a tombstone,
+    // retention checks, audit, and deferred media cleanup. Do not add a hard-delete fallback.
+    return res.status(503).json({
+      code: "PERMANENT_CLOSURE_DISABLED",
+      message: "Permanent account closure is not available yet. You can deactivate your account, or contact support@chefsire.com.",
     });
 
-    res.json({
-      message: "Account deleted successfully",
-      deleted: true
-    });
   } catch (error) {
     console.error("DELETE /users/:id error", error);
     res.status(500).json({ message: "We couldn't delete your account right now. Please try again, or email support@chefsire.com." });
