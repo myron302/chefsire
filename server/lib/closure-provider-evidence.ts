@@ -779,15 +779,29 @@ export async function reconcileProviderEvidence(
         `reading ${group.kind} objects from ${group.merchantId} (${group.environment}) failed: ${(error as Error).message}`, null));
       continue;
     }
-    if (!page.complete) {
+    // Everything the port returns is external data, checked the same way as the booleans above:
+    // `!page.complete` would read a missing or non-boolean flag as exhaustive, which is the same
+    // false clear one level up. Only an explicit true counts.
+    if (page?.complete !== true) {
       // A truncated cursor or a default query window means we read part of the history. Part of the
       // history cannot establish settlement.
       exceptions.push(exception("PAGINATION_INCOMPLETE", group.refs[0],
         `the ${group.kind} readback for ${group.merchantId} (${group.environment}) was not exhaustive`, null));
       continue;
     }
+    if (!Array.isArray(page.objects)) {
+      exceptions.push(exception("READBACK_FAILED", group.refs[0],
+        `the ${group.kind} readback for ${group.merchantId} (${group.environment}) returned no object list`, null));
+      continue;
+    }
 
-    const byId = new Map(page.objects.map((object) => [object.providerId, object]));
+    // An object whose own id is not a usable string cannot be matched to a reference, and must not
+    // silently occupy the map under a key nothing will look up.
+    const byId = new Map(
+      page.objects
+        .filter((object) => object != null && typeof object.providerId === "string" && object.providerId.length > 0)
+        .map((object) => [object.providerId, object]),
+    );
     for (const reference of group.refs as ProviderReference[]) {
       const object = byId.get(reference.providerId as string);
       if (!object) {
@@ -796,7 +810,7 @@ export async function reconcileProviderEvidence(
         continue;
       }
       const known = KNOWN_STATUSES[reference.kind];
-      if (!known.includes(object.status)) {
+      if (typeof object.status !== "string" || !known.includes(object.status)) {
         exceptions.push(exception("UNKNOWN_PROVIDER_STATUS", reference,
           `${reference.kind} ${reference.providerId} reports an unrecognized status ${object.status}`));
         continue;
@@ -863,9 +877,12 @@ export async function reconcileProviderEvidence(
         if (reference.expectedAmountCents == null || reference.expectedCurrency == null) {
           exceptions.push(exception("AMOUNT_UNVERIFIABLE", reference,
             `the ledger records no single expected amount for ${reference.kind} ${reference.providerId}`));
-        } else if (object.amountCents == null || object.currency == null) {
+        } else if (!Number.isInteger(object.amountCents) || typeof object.currency !== "string" || object.currency.length === 0) {
+          // Explicitly, not by accident of the comparison: a non-numeric amount would compare
+          // unequal and so block, but it would be reported as a MISMATCH -- a wrong number -- when
+          // the truth is that nothing usable was supplied. Same for a currency that is not a string.
           exceptions.push(exception("AMOUNT_UNVERIFIABLE", reference,
-            `the provider reported no amount for ${reference.kind} ${reference.providerId}`));
+            `the provider reported no usable amount or currency for ${reference.kind} ${reference.providerId}`));
         } else {
           if (object.amountCents !== reference.expectedAmountCents) {
             exceptions.push(exception("AMOUNT_MISMATCH", reference,

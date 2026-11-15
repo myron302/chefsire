@@ -193,6 +193,58 @@ test("an unexhausted cursor or a default query window is UNAVAILABLE, not a shor
   assert.deepEqual(manifest.exceptions.map((item) => item.code), ["PAGINATION_INCOMPLETE"]);
 });
 
+test("everything the port returns is treated as external data, not as a promise kept", async () => {
+  // The same lesson as the check booleans, applied to the port's own return value.
+  const page = (over: any) => ({
+    async readObjects() { return over; },
+  }) as SquareReadbackPort;
+
+  for (const [label, returned] of [
+    ["a missing complete flag", { objects: [settled()] }],
+    ["a non-boolean complete flag", { objects: [settled()], complete: "yes" }],
+    ["a truthy non-true complete flag", { objects: [settled()], complete: 1 }],
+  ] as [string, any][]) {
+    const manifest = await reconcileProviderEvidence("user-1", [reference()], page(returned), NOW);
+    assert.equal(manifest.verdict, "UNAVAILABLE", label);
+    assert.deepEqual(manifest.exceptions.map((item) => item.code), ["PAGINATION_INCOMPLETE"], label);
+  }
+
+  const noList = await reconcileProviderEvidence("user-1", [reference()],
+    page({ complete: true, objects: null }), NOW);
+  assert.equal(noList.verdict, "UNAVAILABLE");
+  assert.deepEqual(noList.exceptions.map((item) => item.code), ["READBACK_FAILED"]);
+
+  // An object with an unusable id cannot be matched, so the reference is simply missing its object.
+  const badId = await reconcileProviderEvidence("user-1", [reference()],
+    page({ complete: true, objects: [{ ...settled(), providerId: null }] }), NOW);
+  assert.equal(badId.verdict, "UNAVAILABLE");
+  assert.deepEqual(badId.exceptions.map((item) => item.code), ["PROVIDER_OBJECT_MISSING"]);
+
+  // A null entry in the list must not take the whole pass down with a TypeError. A crash here is
+  // not a safe failure: it aborts the reconciliation rather than recording why it could not finish.
+  const withHole = await reconcileProviderEvidence("user-1", [reference()],
+    page({ complete: true, objects: [null, settled()] }), NOW);
+  assert.equal(withHole.verdict, "RECONCILED_LOCAL_AND_PROVIDER",
+    "a junk entry beside a good one must not prevent the good one being read");
+
+  // A status of the wrong type is an unknown status, not a comparison that quietly fails.
+  const badStatus = await reconcileProviderEvidence("user-1", [reference()],
+    portReturning([settled("sqpmt_1", { status: 200 as unknown as string })]), NOW);
+  assert.equal(badStatus.verdict, "UNAVAILABLE");
+  assert.deepEqual(badStatus.exceptions.map((item) => item.code), ["UNKNOWN_PROVIDER_STATUS"]);
+
+  // An unusable amount is reported as unverifiable, not as a wrong number.
+  for (const bad of [null, "2500", 25.5, Number.NaN] as unknown[]) {
+    const manifest = await reconcileProviderEvidence("user-1", [reference()],
+      portReturning([settled("sqpmt_1", { amountCents: bad as number })]), NOW);
+    assert.equal(manifest.verdict, "UNAVAILABLE", `amountCents ${JSON.stringify(bad)}`);
+    assert.deepEqual(manifest.exceptions.map((item) => item.code), ["AMOUNT_UNVERIFIABLE"]);
+  }
+  const badCurrency = await reconcileProviderEvidence("user-1", [reference()],
+    portReturning([settled("sqpmt_1", { currency: 840 as unknown as string })]), NOW);
+  assert.deepEqual(badCurrency.exceptions.map((item) => item.code), ["AMOUNT_UNVERIFIABLE"]);
+});
+
 test("a provider object the provider does not have is UNAVAILABLE", async () => {
   const manifest = await reconcileProviderEvidence("user-1", [reference()], portReturning([]), NOW);
   assert.equal(manifest.verdict, "UNAVAILABLE");
