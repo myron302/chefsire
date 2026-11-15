@@ -98,6 +98,8 @@ export async function inspectMemberClosurePreview(
       const privateContentInventory = await inspectClosurePrivateContent(tx, userId);
       checkDeadline();
       const cascadeRisks = await inspectPrivateErasureCascadeRisks(tx);
+      // Last check: if only the final statement crossed the budget, say so rather than returning a clear result.
+      checkDeadline();
       return {
         permanentlyDisabled: true, accountExists: true,
         status: statusRow?.status ?? "active",
