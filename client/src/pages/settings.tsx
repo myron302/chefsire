@@ -268,10 +268,13 @@ function SubscriptionSettingsPanel() {
 
       const nextEndsAt = data?.endsAt ? new Date(data.endsAt).toISOString() : user?.subscriptionEndsAt;
 
+      // Deliberately NOT writing subscriptionStatus here. This response carries a tier and an end
+      // date but no status, so "active" was the client's invention -- the same assumption that let
+      // the store dashboard claim a paid plan before payment. The invalidation below refetches
+      // /my-tier, which is the authoritative status.
       updateUser({
         subscriptionTier: data.tier,
         subscription: data.tier,
-        subscriptionStatus: "active",
         subscriptionEndsAt: nextEndsAt || undefined,
         trialEndDate: nextEndsAt || user?.trialEndDate,
       } as any);
@@ -476,9 +479,16 @@ function SubscriptionSettingsPanel() {
       };
     },
     onSuccess: (data) => {
+      // Only the server's own status is written. Where it omits one for a PAID tier, nothing is
+      // assumed -- "active" there would be the client granting entitlement the server never
+      // stated. A downgrade to free still writes "inactive", because removing access is safe.
       updateUser({
         weddingTier: data.currentTier,
-        weddingStatus: data.status || (data.currentTier === "free" ? "inactive" : "active"),
+        ...(data.status
+          ? { weddingStatus: data.status }
+          : data.currentTier === "free"
+            ? { weddingStatus: "inactive" as const }
+            : {}),
         weddingEndsAt: data.endsAt || null,
       } as any);
       myWeddingSubscriptionQuery.refetch();
@@ -657,9 +667,16 @@ function SubscriptionSettingsPanel() {
       };
     },
     onSuccess: (data) => {
+      // Only the server's own status is written. Where it omits one for a PAID tier, nothing is
+      // assumed -- "active" there would be the client granting entitlement the server never
+      // stated. A downgrade to free still writes "inactive", because removing access is safe.
       updateUser({
         vendorTier: data.currentTier,
-        vendorStatus: data.status || (data.currentTier === "free" ? "inactive" : "active"),
+        ...(data.status
+          ? { vendorStatus: data.status }
+          : data.currentTier === "free"
+            ? { vendorStatus: "inactive" as const }
+            : {}),
         vendorEndsAt: data.endsAt || null,
       } as any);
       myVendorSubscriptionQuery.refetch();

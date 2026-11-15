@@ -73,6 +73,30 @@ test("the store dashboard does not grant a plan locally before payment", () => {
   assert.match(dashboard, /window\.location\.href = data\.url/, "the redirect itself is still intact");
 });
 
+/**
+ * The audit GPT asked for after the store-dashboard fix: the client must never supply an entitlement
+ * status the server did not state. Three Settings handlers used to fill in "active" when the
+ * response omitted a status for a paid tier, which is the same assumption in a milder form.
+ * Removing entitlement is always safe, so a downgrade to free may still be written locally.
+ */
+test("the client never invents an entitlement status the server did not state", () => {
+  const settings = readFileSync(new URL("../../client/src/pages/settings.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(settings, /subscriptionStatus: "active"/,
+    "the marketplace response carries no status, so writing one is the client's invention");
+  for (const field of ["weddingStatus", "vendorStatus"]) {
+    assert.doesNotMatch(settings, new RegExp(`${field}: data\\.status \\|\\| \\(data\\.currentTier === "free" \\? "inactive" : "active"\\)`),
+      `${field} must not fall back to "active" when the server omitted a status`);
+  }
+  // Writing the server's own status, and writing "inactive" on a downgrade, both stay.
+  assert.match(settings, /\? \{ weddingStatus: data\.status \}/);
+  assert.match(settings, /\? \{ vendorStatus: data\.status \}/);
+  assert.match(settings, /weddingStatus: "inactive" as const/);
+  assert.match(settings, /vendorStatus: "inactive" as const/);
+  // Cancellations are removals, so they remain client-writable.
+  assert.match(settings, /subscriptionStatus: "cancelled"/);
+});
+
 if (!PG_URL) {
   test("Paid upgrade availability (requires CS_TEST_PG_URL)", { skip: true }, () => {});
 } else {
@@ -123,15 +147,20 @@ if (!PG_URL) {
           `${module.name} must state whether paid changes are available, not leave it undefined`);
 
         const change = await call("POST", module.change, module.body);
-        const refused = change.status === 503;
+        const where = `${module.name} answered ${change.status} ${JSON.stringify(change.data)}`;
 
-        // The whole point: the two must agree, whichever way the flag points.
-        assert.equal(tiers.data.paidUpgradesAvailable, !refused,
-          `${module.name} advertises paidUpgradesAvailable=${tiers.data.paidUpgradesAvailable} but its paid endpoint answered ${change.status}`);
-
-        if (refused) {
+        // Stated as two implications rather than `flag === !refused`. An earlier version defined
+        // refusal as "status is 503" and availability as its negation, which meant that once the
+        // flag flips to true a 400, 401, 409 or 500 would count as a successful non-refusal and the
+        // test would pass while nothing actually worked. A non-503 failure is not availability.
+        if (tiers.data.paidUpgradesAvailable === false) {
+          assert.equal(change.status, 503, `${module.name} says paid changes are unavailable, so its paid endpoint must refuse: ${where}`);
           assert.equal(change.data.code, SUBSCRIPTION_BILLING_NOT_CONFIGURED,
-            `${module.name} refuses with the shared billing code, so one client check covers all three`);
+            `${module.name} must refuse with the shared billing code, so one client check covers all three: ${where}`);
+        } else {
+          assert.ok(change.status >= 200 && change.status < 300,
+            `${module.name} advertises paid changes, so an authorized request must actually succeed: ${where}`);
+          assert.notEqual(change.data.code, SUBSCRIPTION_BILLING_NOT_CONFIGURED, where);
         }
       }
 
