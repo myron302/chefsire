@@ -58,13 +58,16 @@ function portReturning(
   };
 }
 
-/** A provider object with nothing outstanding AND every applicable check actually performed. */
+/** Every check performed, each with an explicit negative result. */
+const ALL_CLEAR = { refunds: false, disputes: false, renewals: false, settlement: false } as const;
+
+/** A provider object with nothing outstanding AND every check's result actually supplied. */
 const settled = (providerId = "sqpmt_1", over: Partial<ProviderObjectState> = {}): ProviderObjectState => ({
   providerId,
   status: "COMPLETED",
   amountCents: 2500,
   currency: "USD",
-  checksPerformed: ["refunds", "disputes", "renewals", "settlement"],
+  checkResults: { ...ALL_CLEAR },
   ...over,
 });
 
@@ -209,10 +212,10 @@ test("an unrecognized provider status is UNAVAILABLE, so a new Square enum canno
 
 for (const [label, state, expected] of [
   ["a payment still pending", { status: "PENDING" }, "PROVIDER_STATUS_NOT_TERMINAL"],
-  ["a refund in flight", { hasPendingRefund: true }, "PENDING_REFUND"],
-  ["an open dispute", { hasOpenDispute: true }, "OPEN_DISPUTE"],
-  ["a scheduled renewal", { hasScheduledRenewal: true }, "SCHEDULED_RENEWAL"],
-  ["an unsettled payout", { hasUnsettledPayout: true }, "UNSETTLED_PAYOUT"],
+  ["a refund in flight", { checkResults: { ...ALL_CLEAR, refunds: true } }, "PENDING_REFUND"],
+  ["an open dispute", { checkResults: { ...ALL_CLEAR, disputes: true } }, "OPEN_DISPUTE"],
+  ["a scheduled renewal", { checkResults: { ...ALL_CLEAR, renewals: true } }, "SCHEDULED_RENEWAL"],
+  ["a reversible settlement", { checkResults: { ...ALL_CLEAR, settlement: true } }, "PROVISIONAL_SETTLEMENT"],
 ] as const) {
   test(`${label} is BLOCKED`, async () => {
     const manifest = await reconcileProviderEvidence(
@@ -233,10 +236,10 @@ test("a terminal subscription with an unpaid invoice behind it is still BLOCKED"
     async readObjects(kind) {
       if (kind === "subscription") {
         return { objects: [{ providerId: "sub_1", status: "CANCELED", amountCents: null, currency: null,
-          checksPerformed: ["renewals"] }], complete: true };
+          checkResults: { renewals: false } }], complete: true };
       }
       return { objects: [{ providerId: "inv_1", status: "UNPAID", amountCents: 4900, currency: "USD",
-        checksPerformed: ["refunds"] }], complete: true };
+        checkResults: { refunds: false } }], complete: true };
     },
   };
   const manifest = await reconcileProviderEvidence("user-1", [
@@ -264,34 +267,33 @@ test("UNAVAILABLE outranks BLOCKED when both are present", async () => {
 test("a payout that reads PAID still blocks until the provider's reversal window has closed", async () => {
   // Square's Payouts overview: a payout initially marked PAID can transition to FAILED if the
   // seller's bank answers later than Square expects. So PAID alone must not clear.
-  const payout = (over: Partial<ProviderObjectState> = {}) =>
+  const payout = (checkResults: ProviderObjectState["checkResults"]) =>
     reconcileProviderEvidence("user-1",
       [reference({ kind: "payout", providerId: "po_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
-      portReturning([{ providerId: "po_1", status: "PAID", amountCents: 9710, currency: "USD",
-        checksPerformed: ["settlement"], ...over }]), NOW);
+      portReturning([{ providerId: "po_1", status: "PAID", amountCents: 9710, currency: "USD", checkResults }]), NOW);
 
-  const silent = await payout();
-  assert.equal(silent.verdict, "BLOCKED", "an adapter that says nothing about reversal must not clear");
-  assert.deepEqual(silent.exceptions.map((item) => item.code), ["AMOUNT_UNVERIFIABLE", "PROVISIONAL_SETTLEMENT"].slice(1),
-    JSON.stringify(silent.exceptions));
+  const silent = await payout({});
+  assert.equal(silent.verdict, "UNAVAILABLE", "no settlement result at all is unverified, not clear");
+  assert.deepEqual(silent.exceptions.map((item) => item.code), ["CHECK_NOT_PERFORMED"]);
 
-  const stillOpen = await payout({ settlementProvisional: true });
+  const stillOpen = await payout({ settlement: true });
   assert.equal(stillOpen.verdict, "BLOCKED");
+  assert.deepEqual(stillOpen.exceptions.map((item) => item.code), ["PROVISIONAL_SETTLEMENT"]);
 
-  const closed = await payout({ settlementProvisional: false });
+  const closed = await payout({ settlement: false });
   assert.equal(closed.verdict, "RECONCILED_LOCAL_AND_PROVIDER", "an explicitly closed window clears");
 
   // The same leniency must NOT leak to kinds that do not reverse.
   const payment = await reconcileProviderEvidence("user-1", [reference()], portReturning([settled()]), NOW);
   assert.equal(payment.verdict, "RECONCILED_LOCAL_AND_PROVIDER",
-    "a payment that is COMPLETED needs no reversal-window claim");
+    "a payment that is COMPLETED needs no reversal claim beyond its own checks");
 });
 
 test("a refund that is only APPROVED blocks, because Square does not say it equals COMPLETED", async () => {
   const manifest = await reconcileProviderEvidence(
     "user-1",
     [reference({ kind: "refund", providerId: "rf_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
-    portReturning([{ providerId: "rf_1", status: "APPROVED", amountCents: 500, currency: "USD" }]),
+    portReturning([{ providerId: "rf_1", status: "APPROVED", amountCents: 500, currency: "USD", checkResults: {} }]),
     NOW,
   );
   assert.equal(manifest.verdict, "BLOCKED", JSON.stringify(manifest.exceptions));
@@ -315,7 +317,7 @@ test("the statuses Square actually defines are recognized, so real states do not
       "user-1",
       [reference({ kind, providerId: `obj_${status}`, expectedAmountCents: 100, expectedCurrency: "USD" })],
       portReturning([{ providerId: `obj_${status}`, status, amountCents: 100, currency: "USD",
-        settlementProvisional: false, checksPerformed: ["refunds", "disputes", "renewals", "settlement"] }]),
+        checkResults: { ...ALL_CLEAR } }]),
       NOW,
     );
     assert.equal(manifest.verdict, expected, `${kind} ${status}: ${JSON.stringify(manifest.exceptions)}`);
@@ -359,24 +361,26 @@ test("the revalidation fingerprint changes when any field changes, not just iden
   );
 });
 
-test("a check the adapter never performed is UNAVAILABLE, not an absence of findings", async () => {
-  // The same omission that made a PAID payout read as settled: optional flags left unset look
-  // exactly like checks that ran and found nothing.
+test("a check with no result is UNAVAILABLE: presence of the key is the claim, not a list", async () => {
+  // GPT found this three times in a row, each time in a different place: an unset boolean reads as
+  // false, so "I did not look" and "I looked and found nothing" become the same answer. Presence of
+  // the key is now the only way to claim a check ran, so the two cannot be confused.
   const silent = await reconcileProviderEvidence("user-1", [reference()],
-    portReturning([settled("sqpmt_1", { checksPerformed: undefined })]), NOW);
+    portReturning([settled("sqpmt_1", { checkResults: {} })]), NOW);
   assert.equal(silent.verdict, "UNAVAILABLE");
-  assert.deepEqual(silent.exceptions.map((item) => item.code), ["CHECK_NOT_PERFORMED"]);
+  assert.deepEqual(silent.exceptions.map((item) => item.code), ["CHECK_NOT_PERFORMED", "CHECK_NOT_PERFORMED"]);
 
   const partial = await reconcileProviderEvidence("user-1", [reference()],
-    portReturning([settled("sqpmt_1", { checksPerformed: ["refunds"] })]), NOW);
-  assert.equal(partial.verdict, "UNAVAILABLE", "a payment needs refunds AND disputes checked");
+    portReturning([settled("sqpmt_1", { checkResults: { refunds: false } })]), NOW);
+  assert.equal(partial.verdict, "UNAVAILABLE", "a payment needs refunds AND disputes");
+  assert.deepEqual(partial.exceptions.map((item) => item.code), ["CHECK_NOT_PERFORMED"]);
   assert.match(partial.exceptions[0].detail, /disputes/);
 
   // A refund object needs no separate refund check: its own status is the answer.
   const refund = await reconcileProviderEvidence("user-1",
     [reference({ kind: "refund", providerId: "rf_1", amountExpectation: "not_applicable", expectedAmountCents: null, expectedCurrency: null })],
-    portReturning([{ providerId: "rf_1", status: "COMPLETED", amountCents: 500, currency: "USD" }]), NOW);
-  assert.ok(!refund.exceptions.some((item) => item.code === "CHECK_NOT_PERFORMED"));
+    portReturning([{ providerId: "rf_1", status: "COMPLETED", amountCents: 500, currency: "USD", checkResults: {} }]), NOW);
+  assert.equal(refund.verdict, "RECONCILED_LOCAL_AND_PROVIDER", JSON.stringify(refund.exceptions));
 });
 
 test("a completed payment for the wrong amount or currency is BLOCKED", async () => {

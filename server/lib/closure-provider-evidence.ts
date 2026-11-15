@@ -144,7 +144,6 @@ export type ProviderEvidenceExceptionCode =
   | "PENDING_REFUND"
   | "OPEN_DISPUTE"
   | "SCHEDULED_RENEWAL"
-  | "UNSETTLED_PAYOUT"
   | "PROVISIONAL_SETTLEMENT"
   | "AMOUNT_MISMATCH"
   | "CURRENCY_MISMATCH"
@@ -211,25 +210,20 @@ export type ProviderObjectState = {
   amountCents: number | null;
   currency: string | null;
   /**
-   * Which provider-side checks the adapter ACTUALLY performed. The has* flags below report what a
-   * check found; this reports whether it ran. Without it, an adapter that never called the Refunds
-   * or Disputes endpoints would look exactly like one that called them and found nothing -- the
-   * same omission that made a PAID payout read as settled. A required check that is not listed
-   * here is UNAVAILABLE, not clear.
+   * The result of each provider-side check, where PRESENCE of the key is the claim that the check
+   * ran and the VALUE is what it found. There is deliberately no separate "which checks I ran"
+   * list and no optional boolean flags: with those, `{ checksPerformed: ["refunds"] }` and no
+   * result read as "a refund check ran and found nothing", because an absent boolean is falsy.
+   * That is the same omission that made a PAID payout look settled, and it is now impossible to
+   * express -- a missing key cannot be mistaken for `false`.
+   *
+   * - refunds: true if a refund is still in flight
+   * - disputes: true if a dispute is open
+   * - renewals: true if a renewal is still scheduled
+   * - settlement: true if the provider may STILL REVERSE this object (a payout marked PAID whose
+   *   bank-failure window has not closed), false once it cannot
    */
-  checksPerformed?: readonly ProviderCheck[];
-  /** Any refund, dispute, renewal or payout not yet finished, as the provider reports it. */
-  hasPendingRefund?: boolean;
-  hasOpenDispute?: boolean;
-  hasScheduledRenewal?: boolean;
-  hasUnsettledPayout?: boolean;
-  /**
-   * Set by the adapter when the provider may still reverse a status that otherwise looks final --
-   * a payout marked PAID whose bank-failure window has not closed. Terminal statuses of
-   * {@link PROVISIONALLY_SETTLED_KINDS} are only accepted when this is explicitly false, so an
-   * adapter that cannot tell gets a refusal rather than a clear answer.
-   */
-  settlementProvisional?: boolean;
+  checkResults: ProviderCheckResults;
 };
 
 export type SquareReadbackPort = {
@@ -262,8 +256,8 @@ export const REFUSING_SQUARE_READBACK: SquareReadbackPort = {
  *
  * - `payout: PAID` is NOT final on its own. Square's Payouts overview states that a payout
  *   initially marked PAID can transition to FAILED if the seller's bank answers later than Square
- *   expects. So PAID is accepted only when the adapter also reports that the reversal window has
- *   closed -- see `settlementProvisional` on {@link ProviderObjectState}.
+ *   expects. So PAID is accepted only when the adapter also reports, through the required
+ *   `settlement` check, that the reversal window has closed.
  * - `refund: APPROVED` is deliberately NOT terminal. Square has two refund enums: RefundStatus
  *   (PENDING, APPROVED, REJECTED, FAILED) and PaymentRefund.status (PENDING, COMPLETED, REJECTED,
  *   FAILED). Whether APPROVED equals COMPLETED is asked on Square's own forum and not answered, so
@@ -307,6 +301,16 @@ const KNOWN_STATUSES: Record<ProviderObjectKind, readonly string[]> = {
  */
 export const PROVIDER_CHECKS = ["refunds", "disputes", "renewals", "settlement"] as const;
 export type ProviderCheck = (typeof PROVIDER_CHECKS)[number];
+/** A key present means the check ran; its value is the finding. See {@link ProviderObjectState}. */
+export type ProviderCheckResults = { [K in ProviderCheck]?: boolean };
+
+/** What a true result means, per check. */
+const CHECK_FINDINGS: Record<ProviderCheck, { code: ProviderEvidenceExceptionCode; detail: string }> = {
+  refunds: { code: "PENDING_REFUND", detail: "has a refund still in flight" },
+  disputes: { code: "OPEN_DISPUTE", detail: "has an open dispute" },
+  renewals: { code: "SCHEDULED_RENEWAL", detail: "has a renewal still scheduled" },
+  settlement: { code: "PROVISIONAL_SETTLEMENT", detail: "may still be reversed by the provider" },
+};
 
 /**
  * Which checks must have been performed before a given kind can reconcile. An adapter that omits
@@ -324,12 +328,6 @@ const REQUIRED_CHECKS: Record<ProviderObjectKind, readonly ProviderCheck[]> = {
   payout_entry: ["settlement"],
   order: ["refunds", "disputes"],
 };
-
-/** Kinds whose terminal statuses can still be reversed by the provider after the fact. */
-const PROVISIONALLY_SETTLED_KINDS: ReadonlySet<ProviderObjectKind> = new Set<ProviderObjectKind>([
-  "payout",
-  "payout_entry",
-]);
 
 type ReferenceSource = {
   family: ProviderFamily;
@@ -805,12 +803,21 @@ export async function reconcileProviderEvidence(
         exceptions.push(exception("PROVIDER_STATUS_NOT_TERMINAL", reference,
           `${reference.kind} ${reference.providerId} is ${object.status}`));
       }
-      // Did the adapter actually ask the questions a terminal status does not answer?
-      const performed = new Set<ProviderCheck>(object.checksPerformed ?? []);
-      const unperformed = REQUIRED_CHECKS[reference.kind].filter((check) => !performed.has(check));
-      if (unperformed.length > 0) {
-        exceptions.push(exception("CHECK_NOT_PERFORMED", reference,
-          `${reference.kind} ${reference.providerId} was reconciled without checking ${unperformed.join(", ")}`));
+      // The questions a terminal status does not answer. A required check whose key is absent was
+      // not performed, and the absence of a finding is not a finding.
+      for (const check of REQUIRED_CHECKS[reference.kind]) {
+        if (!Object.prototype.hasOwnProperty.call(object.checkResults, check)) {
+          exceptions.push(exception("CHECK_NOT_PERFORMED", reference,
+            `${reference.kind} ${reference.providerId} was reconciled without a ${check} result`));
+        }
+      }
+      // Every result the adapter DID supply is honoured, required for this kind or not: a reported
+      // finding must never be ignored because the kind's required list happens not to mention it.
+      for (const check of PROVIDER_CHECKS) {
+        if (object.checkResults[check] === true) {
+          const finding = CHECK_FINDINGS[check];
+          exceptions.push(exception(finding.code, reference, `${reference.providerId} ${finding.detail}`));
+        }
       }
 
       // Local says the money moved, the provider says it did not. Terminality is not settlement:
@@ -852,28 +859,6 @@ export async function reconcileProviderEvidence(
         }
       }
 
-      if (
-        PROVISIONALLY_SETTLED_KINDS.has(reference.kind) &&
-        TERMINAL_STATUSES[reference.kind].includes(object.status) &&
-        object.settlementProvisional !== false
-      ) {
-        // A payout that reads PAID can still come back FAILED, so "looks final" is not final until
-        // the adapter says the reversal window has closed. Unknown counts as open.
-        exceptions.push(exception("PROVISIONAL_SETTLEMENT", reference,
-          `${reference.kind} ${reference.providerId} is ${object.status}, but the provider may still reverse it`));
-      }
-      if (object.hasPendingRefund) {
-        exceptions.push(exception("PENDING_REFUND", reference, `${reference.providerId} has a refund still in flight`));
-      }
-      if (object.hasOpenDispute) {
-        exceptions.push(exception("OPEN_DISPUTE", reference, `${reference.providerId} has an open dispute`));
-      }
-      if (object.hasScheduledRenewal) {
-        exceptions.push(exception("SCHEDULED_RENEWAL", reference, `${reference.providerId} has a renewal still scheduled`));
-      }
-      if (object.hasUnsettledPayout) {
-        exceptions.push(exception("UNSETTLED_PAYOUT", reference, `${reference.providerId} has an unsettled payout`));
-      }
     }
   }
 
