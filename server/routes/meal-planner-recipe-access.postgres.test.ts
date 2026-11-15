@@ -29,7 +29,8 @@ if (!PG_URL) {
   const schema = await import("../../shared/schema");
   await local.query(`
     DROP TABLE IF EXISTS users, posts, recipes, clubs, club_memberships, club_posts, meal_plans, meal_plan_entries, meal_favorites,
-      meal_streaks, grocery_list_items, meal_planner_analytics_events CASCADE;
+      meal_streaks, grocery_list_items, meal_planner_analytics_events, meal_plan_week_shares,
+      meal_plan_likes, meal_plan_saves, meal_plan_comments, meal_plan_blueprints CASCADE;
     ${ddl(schema.users, "users", ", UNIQUE (username), UNIQUE (email)")};
     ${ddl(schema.posts, "posts")};
     ${ddl(schema.recipes, "recipes")};
@@ -41,7 +42,11 @@ if (!PG_URL) {
     ${ddl(schema.mealFavorites, "meal_favorites")};
     ${ddl(schema.mealStreaks, "meal_streaks")};
     ${ddl(schema.groceryListItems, "grocery_list_items")};
+    ${ddl(schema.mealPlanBlueprints, "meal_plan_blueprints")};
   `);
+  // The shared-week route initializes the meal-social tables, which reference meal_plan_blueprints.
+  // That table was never created here, so the suite only passed where another suite had already
+  // made it -- which is why it could not be wired into CI until now.
   const { default: plannerRouter } = await import("./meal-planner-week");
   const { ensureMealPlannerWeekSchema } = await import("./meal-planner-week/schema");
   await ensureMealPlannerWeekSchema();

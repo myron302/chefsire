@@ -15,6 +15,31 @@ export function endOfDay(d: Date) {
 }
 
 /**
+ * Parses a stored week anchor as a LOCAL calendar date.
+ *
+ * `new Date("2030-01-14")` is not the date it looks like: a date-only string is parsed as UTC
+ * midnight, so on any server west of UTC it lands on the previous evening. The anchor 2030-01-14,
+ * a Monday, became Sunday the 13th at 19:00 on a UTC-5 server, and startOfWeekMonday then walked
+ * back to Monday the 7th -- so a shared week showed the week BEFORE the one that was shared,
+ * normally an empty one. Every share link looked broken, and only on servers west of Greenwich,
+ * which is why it survived: it depends on the deployment's timezone, not the code path.
+ *
+ * A week anchor is a calendar date, not an instant. This builds it in local time so the day of the
+ * week it represents is the day of the week it is.
+ */
+export function parseCalendarDate(value: string | Date | null | undefined): Date {
+  if (value instanceof Date) return startOfDay(value);
+  const text = String(value ?? "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (match) {
+    const [, year, month, day] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  // Anything else (a full timestamp, say) is already an instant; keep the existing behaviour.
+  return startOfDay(new Date(text));
+}
+
+/**
  * Week starts on Monday.
  */
 export function startOfWeekMonday(date: Date) {
@@ -31,8 +56,20 @@ export function addDays(d: Date, days: number) {
   return x;
 }
 
+/**
+ * Formats a LOCAL calendar date, the exact inverse of {@link parseCalendarDate}.
+ *
+ * This used to be `d.toISOString().split("T")[0]`, which is the same calendar-date-as-instant
+ * confusion in the other direction: end-of-day values (23:59:59 local) formatted as the NEXT day
+ * west of UTC, so a seven-day week reported an eight-day span, and local midnight formatted as the
+ * PREVIOUS day east of UTC. Every caller here means a meal-plan day -- a calendar date -- so the
+ * local components are what it should read.
+ */
 export function fmtISODate(d: Date) {
-  return d.toISOString().split("T")[0];
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function toWeekdayName(d: Date) {
