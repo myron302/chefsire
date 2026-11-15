@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { normalizeMediaUrl } from "@/lib/mediaUrl";
 import { cn } from "@/lib/utils";
@@ -54,6 +54,19 @@ export default function MediaCarousel({
     setCurrentIndex(0);
   }, [imageUrl, JSON.stringify(additionalImages ?? [])]);
 
+  // WHY A LOADED VIDEO CAN STILL BE UNWATCHABLE.
+  //
+  // A video the browser cannot decode does not raise an error. An HEVC clip in desktop Chrome reaches
+  // readyState 4 (HAVE_ENOUGH_DATA) and fires `loadeddata` with videoWidth 0 and videoHeight 0: the container
+  // parsed, the duration is known, the controls work, and there is no picture. Left alone that renders as a
+  // black rectangle the viewer has no way to understand, so the absence of dimensions is read here as what it
+  // actually means -- no decodable video track -- and said out loud. New uploads are converted on the server;
+  // this is for anything stored before that, and for a codec no server-side conversion reached.
+  const [undecodable, setUndecodable] = useState(false);
+  useEffect(() => {
+    setUndecodable(false);
+  }, [activeMedia]);
+
   const showPrevious = (event?: React.MouseEvent) => {
     event?.stopPropagation();
     if (!mediaItems.length) return;
@@ -87,7 +100,33 @@ export default function MediaCarousel({
       }}
     >
       {isVideoMediaUrl(activeMedia) ? (
-        <video src={activeMedia} controls muted={mutedVideo} playsInline preload={preloadVideo} className={cn(mediaClassName, videoClassName)} />
+        undecodable ? (
+          <div
+            className={cn("flex flex-col items-center justify-center gap-2 bg-muted px-6 py-10 text-center", mediaClassName)}
+            data-testid={testId ? `${testId}-unplayable` : undefined}
+          >
+            <VideoOff className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm font-medium">This video can&apos;t be played in this browser</p>
+            <p className="text-xs text-muted-foreground">
+              It was recorded in a format this browser has no decoder for. It may play on a phone.
+            </p>
+          </div>
+        ) : (
+          <video
+            src={activeMedia}
+            controls
+            muted={mutedVideo}
+            playsInline
+            preload={preloadVideo}
+            className={cn(mediaClassName, videoClassName)}
+            onLoadedData={(event) => {
+              // Dimensions of zero on a video that reports it has data is the signature of a missing decoder.
+              const video = event.currentTarget;
+              if (video.videoWidth === 0 || video.videoHeight === 0) setUndecodable(true);
+            }}
+            onError={() => setUndecodable(true)}
+          />
+        )
       ) : (
         <img key={activeMedia} src={activeMedia} alt={alt} className={mediaClassName} data-testid={testId} loading="lazy" decoding="async" onError={onMediaImageError} />
       )}

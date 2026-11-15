@@ -94,3 +94,33 @@ export function uploadsStaticHandler(uploadsDir: string): RequestHandler {
     },
   });
 }
+
+/**
+ * What `/uploads` answers for an object that is not there.
+ *
+ * `express.static` calls `next()` on a miss, and the next thing in the chain is the single-page app's catch-all,
+ * so a missing image used to come back as **200 with the application's HTML** -- the same 2,889 bytes for a real
+ * filename whose file had been lost and for a filename invented on the spot. That is wrong in four ways at once:
+ * a 200 tells every cache and crawler the image exists, monitoring cannot tell a broken image from a working
+ * one, each broken `<img>` downloads the whole app shell, and the one thing that does notice -- the browser
+ * failing to decode HTML as an image -- gives the viewer no reason why.
+ *
+ * It also hid a real loss. A store photo uploaded before media moved to R2 is gone from disk, and the mount said
+ * 200 about it, so nothing in the stack ever reported it missing.
+ *
+ * This is terminal: it answers rather than calling `next()`, so a media URL can never fall through to the app
+ * shell. The body is short and inert, never HTML, and is not stored by a cache -- a file that reappears later
+ * must not be masked by a cached absence.
+ */
+export function uploadsNotFoundHandler(): RequestHandler {
+  return (_req, res) => {
+    res
+      .status(404)
+      .set({
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store, must-revalidate",
+      })
+      .send(JSON.stringify({ ok: false, error: "Not found" }));
+  };
+}
