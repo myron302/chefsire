@@ -198,6 +198,7 @@ function SubscriptionSettingsPanel() {
             limits?: Record<string, unknown>;
           }
         >;
+        paidUpgradesAvailable?: boolean;
       };
     },
   });
@@ -267,10 +268,13 @@ function SubscriptionSettingsPanel() {
 
       const nextEndsAt = data?.endsAt ? new Date(data.endsAt).toISOString() : user?.subscriptionEndsAt;
 
+      // Deliberately NOT writing subscriptionStatus here. This response carries a tier and an end
+      // date but no status, so "active" was the client's invention -- the same assumption that let
+      // the store dashboard claim a paid plan before payment. The invalidation below refetches
+      // /my-tier, which is the authoritative status.
       updateUser({
         subscriptionTier: data.tier,
         subscription: data.tier,
-        subscriptionStatus: "active",
         subscriptionEndsAt: nextEndsAt || undefined,
         trialEndDate: nextEndsAt || user?.trialEndDate,
       } as any);
@@ -343,9 +347,15 @@ function SubscriptionSettingsPanel() {
   const marketplaceCurrentTier =
     mySubscriptionQuery.data?.currentTier || "free";
 
+  /**
+   * A paid tier whose status the server did not state is shown as unknown, not as active. The
+   * display had the same fallback the mutation handlers did: `data?.status || "active"` told a
+   * member their paid plan was live on the strength of an absent field. Free is still shown as
+   * inactive, because that is what free means.
+   */
   const marketplaceStatus = marketplaceCurrentTier === "free"
     ? "inactive"
-    : mySubscriptionQuery.data?.status || "active";
+    : mySubscriptionQuery.data?.status || "unknown";
 
   const marketplaceEndsAt = marketplaceCurrentTier === "free"
     ? null
@@ -475,9 +485,16 @@ function SubscriptionSettingsPanel() {
       };
     },
     onSuccess: (data) => {
+      // Only the server's own status is written. Where it omits one for a PAID tier, nothing is
+      // assumed -- "active" there would be the client granting entitlement the server never
+      // stated. A downgrade to free still writes "inactive", because removing access is safe.
       updateUser({
         weddingTier: data.currentTier,
-        weddingStatus: data.status || (data.currentTier === "free" ? "inactive" : "active"),
+        ...(data.status
+          ? { weddingStatus: data.status }
+          : data.currentTier === "free"
+            ? { weddingStatus: "inactive" as const }
+            : {}),
         weddingEndsAt: data.endsAt || null,
       } as any);
       myWeddingSubscriptionQuery.refetch();
@@ -588,7 +605,7 @@ function SubscriptionSettingsPanel() {
 
   const weddingStatus = weddingCurrentTier === "free"
     ? "inactive"
-    : myWeddingSubscriptionQuery.data?.status || "active";
+    : myWeddingSubscriptionQuery.data?.status || "unknown";
 
   const weddingEndsAt = weddingCurrentTier === "free"
     ? null
@@ -613,6 +630,7 @@ function SubscriptionSettingsPanel() {
       return data as {
         ok: boolean;
         tiers: Record<string, { name?: string; price?: number; features?: string[] }>;
+        paidUpgradesAvailable?: boolean;
       };
     },
   });
@@ -655,9 +673,16 @@ function SubscriptionSettingsPanel() {
       };
     },
     onSuccess: (data) => {
+      // Only the server's own status is written. Where it omits one for a PAID tier, nothing is
+      // assumed -- "active" there would be the client granting entitlement the server never
+      // stated. A downgrade to free still writes "inactive", because removing access is safe.
       updateUser({
         vendorTier: data.currentTier,
-        vendorStatus: data.status || (data.currentTier === "free" ? "inactive" : "active"),
+        ...(data.status
+          ? { vendorStatus: data.status }
+          : data.currentTier === "free"
+            ? { vendorStatus: "inactive" as const }
+            : {}),
         vendorEndsAt: data.endsAt || null,
       } as any);
       myVendorSubscriptionQuery.refetch();
@@ -730,7 +755,7 @@ function SubscriptionSettingsPanel() {
 
   const vendorStatus = vendorCurrentTier === "free"
     ? "inactive"
-    : myVendorSubscriptionQuery.data?.status || "active";
+    : myVendorSubscriptionQuery.data?.status || "unknown";
 
   const vendorEndsAt = vendorCurrentTier === "free"
     ? null
@@ -749,6 +774,7 @@ function SubscriptionSettingsPanel() {
       return data as {
         ok: boolean;
         tiers: Record<string, { name?: string; price?: number; features?: string[] }>;
+        paidUpgradesAvailable?: boolean;
       };
     },
   });
@@ -768,6 +794,14 @@ function SubscriptionSettingsPanel() {
         status: "active" | "inactive" | "expired" | "cancelled";
         endsAt?: string | null;
         tierInfo?: { name?: string; price?: number; features?: string[] };
+        // The one-per-account cardless trial, as the server records it. `eligible` is true only
+        // while this account has never started one.
+        trial?: {
+          eligible?: boolean;
+          status?: "eligible" | "active" | "expired" | "cancelled";
+          expiresAt?: string | null;
+          remainingDays?: number;
+        };
       };
     },
   });
@@ -865,7 +899,7 @@ function SubscriptionSettingsPanel() {
 
   const nutritionStatus = nutritionCurrentTier === "free"
     ? "inactive"
-    : myNutritionSubscriptionQuery.data?.status || "active";
+    : myNutritionSubscriptionQuery.data?.status || "unknown";
 
   const nutritionEndsAt = nutritionCurrentTier === "free"
     ? null
@@ -945,12 +979,14 @@ function SubscriptionSettingsPanel() {
       return;
     }
     if (tierKey === marketplaceCurrentTier) return;
+    if (!marketplacePaidUpgradesAvailable) return;
     updateSubscriptionMutation.mutate(tierKey);
   };
 
   const renderMarketplaceActionLabel = (tierKey: string) => {
     if (tierKey === marketplaceCurrentTier) return "Current Plan";
     if (tierKey === "free") return marketplaceCurrentTier === "free" ? "Current Plan" : "Cancel / Free";
+    if (!marketplacePaidUpgradesAvailable) return "Not available yet";
     const targetIdx = subscriptionTierOrder.indexOf(tierKey as (typeof subscriptionTierOrder)[number]);
     if (marketplaceTierIndex !== -1 && targetIdx !== -1 && targetIdx < marketplaceTierIndex) return "Downgrade";
     return "Upgrade";
@@ -995,18 +1031,30 @@ function SubscriptionSettingsPanel() {
     return "Upgrade";
   };
 
+  /**
+   * Whether a paid plan change can actually succeed, as reported by the server from the same
+   * predicate its refusals use. Fail closed while the tiers query is loading or failed: offering an
+   * upgrade that is about to be refused hands the member a red error, which reads as broken rather
+   * than as not yet available.
+   */
+  const vendorPaidUpgradesAvailable = vendorTiersQuery.data?.paidUpgradesAvailable === true;
+  const marketplacePaidUpgradesAvailable = subscriptionTiersQuery.data?.paidUpgradesAvailable === true;
+  const nutritionPaidUpgradesAvailable = nutritionTiersQuery.data?.paidUpgradesAvailable === true;
+
   const onSelectVendorTier = (tierKey: "free" | "professional" | "premium") => {
     if (tierKey === vendorCurrentTier) return;
     if (tierKey === "free") {
       cancelVendorSubscriptionMutation.mutate();
       return;
     }
+    if (!vendorPaidUpgradesAvailable) return;
     updateVendorSubscriptionMutation.mutate(tierKey);
   };
 
   const renderVendorActionLabel = (tierKey: "free" | "professional" | "premium") => {
     if (tierKey === vendorCurrentTier) return "Current Plan";
     if (tierKey === "free") return vendorCurrentTier === "free" ? "Current Plan" : "Cancel / Free";
+    if (!vendorPaidUpgradesAvailable) return "Not available yet";
     const order = ["free", "professional", "premium"];
     const cur = order.indexOf(vendorCurrentTier);
     const tgt = order.indexOf(tierKey);
@@ -1014,18 +1062,32 @@ function SubscriptionSettingsPanel() {
     return "Upgrade";
   };
 
+  /**
+   * The one Nutrition path that actually works today is the cardless trial, and this account only
+   * ever gets one. The server reports whether it is still available, so an eligible member gets
+   * offered the trial rather than a purchase that is going to be refused.
+   */
+  const nutritionTrialEligible = myNutritionSubscriptionQuery.data?.trial?.eligible === true;
+
   const onSelectNutritionTier = (tierKey: "free" | "premium") => {
     if (tierKey === nutritionCurrentTier) return;
     if (tierKey === "free") {
       cancelNutritionSubscriptionMutation.mutate();
       return;
     }
+    if (nutritionTrialEligible) {
+      subscriptionTrialMutation.mutate({ module: "nutrition", tier: "premium", days: 30 });
+      return;
+    }
+    if (!nutritionPaidUpgradesAvailable) return;
     updateNutritionSubscriptionMutation.mutate("premium");
   };
 
   const renderNutritionActionLabel = (tierKey: "free" | "premium") => {
     if (tierKey === nutritionCurrentTier) return "Current Plan";
     if (tierKey === "free") return "Downgrade to Free";
+    if (nutritionTrialEligible) return "Start 30-day free trial";
+    if (!nutritionPaidUpgradesAvailable) return "Not available yet";
     return nutritionCurrentTier === "free" ? "Upgrade" : "Switch to Premium";
   };
 
@@ -1951,9 +2013,13 @@ function SubscriptionSettingsPanel() {
                           )}
 
                           <Button
-                            className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
-                            variant={isCurrent ? "outline" : "default"}
-                            disabled={isMarketplaceBusy || isCurrent}
+                            className={isCurrent || !marketplacePaidUpgradesAvailable ? "" : "bg-orange-500 hover:bg-orange-600"}
+                            variant={isCurrent || !marketplacePaidUpgradesAvailable ? "outline" : "default"}
+                            disabled={
+                              isMarketplaceBusy ||
+                              isCurrent ||
+                              (tierKey !== "free" && !marketplacePaidUpgradesAvailable)
+                            }
                             onClick={() => onSelectMarketplaceTier(tierKey)}
                           >
                             {renderMarketplaceActionLabel(tierKey)}
@@ -2266,9 +2332,13 @@ function SubscriptionSettingsPanel() {
                           )}
 
                           <Button
-                            className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
-                            variant={isCurrent ? "outline" : "default"}
-                            disabled={isVendorBusy || isCurrent}
+                            className={isCurrent || !vendorPaidUpgradesAvailable ? "" : "bg-orange-500 hover:bg-orange-600"}
+                            variant={isCurrent || !vendorPaidUpgradesAvailable ? "outline" : "default"}
+                            disabled={
+                              isVendorBusy ||
+                              isCurrent ||
+                              (tierKey !== "free" && !vendorPaidUpgradesAvailable)
+                            }
                             onClick={() => onSelectVendorTier(tierKey as any)}
                           >
                             {renderVendorActionLabel(tierKey as any)}
@@ -2379,7 +2449,13 @@ function SubscriptionSettingsPanel() {
                           <Button
                             className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
                             variant={isCurrent ? "outline" : "default"}
-                            disabled={isNutritionBusy || isCurrent}
+                            disabled={
+                              isNutritionBusy ||
+                              isCurrent ||
+                              // The cardless trial is a working path, so an eligible member keeps
+                              // a live button even while paid upgrades are unavailable.
+                              (tierKey !== "free" && !nutritionTrialEligible && !nutritionPaidUpgradesAvailable)
+                            }
                             onClick={() => onSelectNutritionTier(tierKey as any)}
                           >
                             {renderNutritionActionLabel(tierKey as any)}

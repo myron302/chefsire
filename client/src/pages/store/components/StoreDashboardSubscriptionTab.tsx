@@ -15,6 +15,12 @@ type StoreDashboardSubscriptionTabProps = {
   tierInfo?: TierInfo;
   trialDaysLeft: number;
   onUpgrade: (tierName: string, isTrial?: boolean) => void;
+  /**
+   * Whether a paid plan change can actually succeed right now, as reported by the server. While it
+   * is false every paid path refuses, so a live "Upgrade with Square" button would hand the seller
+   * a red error on every click -- which reads as broken rather than as not-yet-available.
+   */
+  paidUpgradesAvailable?: boolean;
 };
 
 export default function StoreDashboardSubscriptionTab({
@@ -22,6 +28,7 @@ export default function StoreDashboardSubscriptionTab({
   tierInfo,
   trialDaysLeft,
   onUpgrade,
+  paidUpgradesAvailable = false,
 }: StoreDashboardSubscriptionTabProps) {
   return (
     <>
@@ -60,7 +67,11 @@ export default function StoreDashboardSubscriptionTab({
       <Card>
         <CardHeader>
           <CardTitle>Available Plans</CardTitle>
-          <CardDescription>Upgrade to reduce commission fees and unlock more features</CardDescription>
+          <CardDescription>
+            {paidUpgradesAvailable
+              ? "Upgrade to reduce commission fees and unlock more features"
+              : "Paid plans aren't open yet. These are the plans and prices we're preparing — nothing to pay today."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -86,13 +97,17 @@ export default function StoreDashboardSubscriptionTab({
                 <div className="space-y-2">
                   <Button
                     onClick={() => onUpgrade(plan.id, false)}
-                    className={`w-full ${plan.popular ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-                    variant={plan.popular ? "default" : "outline"}
-                    disabled={currentTier === plan.id}
+                    className={`w-full ${plan.popular && paidUpgradesAvailable ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+                    variant={plan.popular && paidUpgradesAvailable ? "default" : "outline"}
+                    disabled={currentTier === plan.id || !paidUpgradesAvailable}
                   >
-                    {currentTier === plan.id ? "Current Plan" : "Upgrade with Square"}
+                    {currentTier === plan.id
+                      ? "Current Plan"
+                      : paidUpgradesAvailable
+                        ? "Upgrade with Square"
+                        : "Not available yet"}
                   </Button>
-                  {currentTier !== plan.id && (
+                  {currentTier !== plan.id && paidUpgradesAvailable && (
                     <Button
                       onClick={() => onUpgrade(plan.id, true)}
                       variant="ghost"
