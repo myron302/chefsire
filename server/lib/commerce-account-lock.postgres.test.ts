@@ -112,4 +112,62 @@ if (!PG_URL) {
       await local.end();
     }
   });
+
+  test("the two account rows are locked in id order, so opposite-direction purchases cannot deadlock", async () => {
+    const local = await connectLocalPg();
+    const schema = await import("../../shared/schema");
+    const { db } = await import("../db");
+    try {
+      await local.query(`
+        ${DROP_BACK_OFFICE}
+        DROP TABLE IF EXISTS orders, products, users CASCADE;
+        ${ddl(schema.users, "users")};
+        ${BACK_OFFICE_SQL}
+        ${CLOSURE_SQL}
+      `);
+      const mk = async (name: string) => (await local.query(
+        "INSERT INTO users (username, email, display_name, password, auth_version) VALUES ($1, $2, $1, 'x', 1) RETURNING id",
+        [name, `${name}@example.test`],
+      )).rows[0].id;
+      const ids = [await mk("one"), await mk("two")].sort();
+      const [lowerId, higherId] = ids;
+
+      // Hold the LOWER id, then ask the helper for a purchase whose BUYER is the higher id. Locking in buyer order
+      // would take the higher row first and then wait; locking in id order waits on the lower row and never touches
+      // the higher one. A third connection settles which happened.
+      const holder = await local.connect();
+      let settled = false;
+      try {
+        await holder.query("BEGIN");
+        await holder.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [lowerId]);
+
+        const attempt = db.transaction(async (tx: any) => {
+          await lockActiveCommerceAccounts(tx, higherId, lowerId);
+        });
+        await waitForBlockedLock(local, "FROM users WHERE id IN");
+
+        const prober = await local.connect();
+        try {
+          await prober.query("BEGIN");
+          await prober.query("SELECT id FROM users WHERE id = $1 FOR UPDATE NOWAIT", [higherId]);
+          await prober.query("ROLLBACK");
+        } catch (error: any) {
+          await prober.query("ROLLBACK").catch(() => {});
+          assert.fail(`the higher id was already locked, so the lock order is not by id: ${error?.message}`);
+        } finally {
+          prober.release();
+        }
+
+        await holder.query("COMMIT");
+        settled = true;
+        await attempt;
+      } finally {
+        if (!settled) await holder.query("ROLLBACK").catch(() => {});
+        holder.release();
+      }
+    } finally {
+      await local.query(`${CLEAN_UP_BACK_OFFICE} DROP TABLE IF EXISTS orders, products, users CASCADE;`);
+      await local.end();
+    }
+  });
 }
