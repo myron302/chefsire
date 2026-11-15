@@ -27,8 +27,17 @@ import { inspectPrivateErasureCascadeRisks, type ClosureCascadeRisk } from "./cl
  * them coherent either. Only the real closure coordinator takes the users lock and
  * rechecks obligations under it. The pass is bounded by a statement timeout, and a
  * timeout or any other failure returns "unavailable" rather than a clear result.
+ *
+ * Two bounds, because they do different jobs. statement_timeout caps a SINGLE statement, so on its own it would
+ * not stop twenty quick-but-not-instant queries from running far longer in total. A deadline is therefore checked
+ * between steps as well. Worst case the pass lasts the budget plus one statement timeout, which is a real bound on
+ * how long a connection is held. (PostgreSQL 17's transaction_timeout would do this server-side in one setting;
+ * production is on 16.)
  */
-const PREVIEW_STATEMENT_TIMEOUT_MS = 8000;
+const PREVIEW_STATEMENT_TIMEOUT_MS = 4000;
+export const PREVIEW_TOTAL_BUDGET_MS = 8000;
+
+class ClosurePreviewTimeout extends Error {}
 export type MemberClosurePreview = {
   permanentlyDisabled: true;
   accountExists: boolean;
@@ -47,12 +56,21 @@ export type MemberClosurePreview = {
 
 const rowsOf = (r: any): any[] => r?.rows ?? (Array.isArray(r) ? r : []);
 
-export async function inspectMemberClosurePreview(userId: string): Promise<MemberClosurePreview> {
+export async function inspectMemberClosurePreview(
+  userId: string,
+  options: { budgetMs?: number } = {},
+): Promise<MemberClosurePreview> {
+  const budgetMs = options.budgetMs ?? PREVIEW_TOTAL_BUDGET_MS;
+  const startedAt = Date.now();
+  /** Stop between steps once the budget is spent, so the whole pass is bounded, not just each statement. */
+  const checkDeadline = () => {
+    if (Date.now() - startedAt >= budgetMs) throw new ClosurePreviewTimeout("Closure preview exceeded its time budget");
+  };
   try {
     return await db.transaction(async (tx: any): Promise<MemberClosurePreview> => {
-      // Bound the whole pass: a slow catalog traversal must not hold a connection
-      // open indefinitely. Transaction-scoped, so it cannot leak to other work.
+      // Caps any ONE statement. Transaction-scoped, so it cannot leak to other work on this connection.
       await tx.execute(sql`SET LOCAL statement_timeout = ${sql.raw(String(PREVIEW_STATEMENT_TIMEOUT_MS))}`);
+      checkDeadline();
       // Deliberately unlocked: see the note above.
       const [member] = rowsOf(await tx.execute(sql`
         SELECT id FROM users WHERE id = ${userId}
@@ -68,11 +86,17 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
       const [statusRow] = rowsOf(await tx.execute(sql`
         SELECT status FROM account_status WHERE user_id = ${userId}
       `));
+      checkDeadline();
       const localBlockers = await inspectLocalClosureObligations(tx, userId);
+      checkDeadline();
       const dmInventory = await inspectClosureDmInventory(tx, userId);
+      checkDeadline();
       const storeInventory = await inspectClosureStoreInventory(tx, userId);
+      checkDeadline();
       const foreignKeys = await inspectClosureUserForeignKeys(tx);
+      checkDeadline();
       const privateContentInventory = await inspectClosurePrivateContent(tx, userId);
+      checkDeadline();
       const cascadeRisks = await inspectPrivateErasureCascadeRisks(tx);
       return {
         permanentlyDisabled: true, accountExists: true,
@@ -92,16 +116,20 @@ export async function inspectMemberClosurePreview(userId: string): Promise<Membe
         ],
       };
     });
-  } catch {
-    // Never turn a schema failure, missing table or provider issue into a
-    // positive preview. Do not reflect private SQL error details to staff.
+  } catch (error) {
+    // Never turn a schema failure, missing table, slow pass or provider issue into a
+    // positive preview. Do not reflect private SQL error details to staff. Running out
+    // of time says so, so staff can retry rather than read it as a broken account.
+    const timedOut = error instanceof ClosurePreviewTimeout;
     return {
       permanentlyDisabled: true, accountExists: true, status: null,
       localBlockers: [], dmInventory: null, storeInventory: null,
       privateContentInventory: null,
       verification: "unavailable",
       unknownForeignKeyTables: [], manualReviewForeignKeyTables: [], cascadeRisks: [],
-      reasons: ["Closure eligibility cannot be verified; no account data was changed"],
+      reasons: [timedOut
+        ? "Closure eligibility check timed out; no account data was changed"
+        : "Closure eligibility cannot be verified; no account data was changed"],
     };
   }
 }
