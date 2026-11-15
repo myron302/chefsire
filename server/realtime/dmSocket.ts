@@ -5,6 +5,7 @@ import {
   lockMemberForContentWrite,
   MemberContentWriteBlockedError,
 } from "../lib/member-content-write-lock";
+import { lockNotifiableThreadRecipients } from "../lib/dm-notification-recipients";
 import { db } from "../db";
 import {
   dmParticipants,
@@ -217,9 +218,12 @@ export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOpti
             return created;
           });
 
-          // Notifications run after the sender's lock is released, deliberately: writing another
-          // participant's row inside it can deadlock against that participant sending back at the
-          // same moment. They are best effort -- the message itself is already committed.
+          // Notifications run in their own transaction after the sender's lock is released,
+          // deliberately: writing another participant's row inside it can deadlock against that
+          // participant sending back at the same moment. Recipients are locked and re-read inside
+          // that transaction, the same way the HTTP send path does it, so a suspension landing
+          // between choosing recipients and writing their rows cannot slip an alert through.
+          // Best effort -- the message itself is already committed.
           try {
             // Get sender info
             const [sender] = await db
@@ -228,21 +232,12 @@ export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOpti
               .where(eq(users.id, userId))
               .limit(1);
 
-            // Participants whose accounts can no longer receive keep their place in the thread's
-            // history but stop accruing new alerts. No status row means active.
-            const othersResult = await db.execute(sql`
-              SELECT p.user_id AS "userId" FROM dm_participants p
-              LEFT JOIN account_status st ON st.user_id = p.user_id
-              WHERE p.thread_id = ${threadId} AND p.user_id <> ${userId}
-                AND COALESCE(st.status, 'active') IN ('active', 'restricted')
-            `);
-            const others: { userId: string }[] =
-              (othersResult as any)?.rows ?? (Array.isArray(othersResult) ? othersResult : []);
-
-            if (others.length > 0) {
-              await db.insert(notifications).values(
-                others.map((participant) => ({
-                  userId: participant.userId,
+            await db.transaction(async (tx: any) => {
+              const recipients = await lockNotifiableThreadRecipients(tx, threadId, userId);
+              if (recipients.length === 0) return;
+              await tx.insert(notifications).values(
+                recipients.map((recipientId) => ({
+                  userId: recipientId,
                   type: "dm",
                   title: `New message from ${sender?.displayName || sender?.username || "Someone"}`,
                   message: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
@@ -254,7 +249,7 @@ export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOpti
                   },
                 })),
               );
-            }
+            });
           } catch {
             // never break message delivery
           }

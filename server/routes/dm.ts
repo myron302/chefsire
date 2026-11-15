@@ -7,6 +7,7 @@ import {
   lockAvailableDmParticipants,
   MemberContentWriteBlockedError,
 } from "../lib/member-content-write-lock";
+import { lockNotifiableThreadRecipients } from "../lib/dm-notification-recipients";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import {
@@ -416,9 +417,10 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     throw error;
   }
 
-  // Notify other participants. Deliberately outside the transaction above: writing another
-  // participant's row inside the sender's lock can deadlock against that participant sending in
-  // the opposite direction at the same time.
+  // Notify other participants. Deliberately in its own transaction, not the sender's: holding the
+  // sender's row while taking a recipient's row deadlocks against that recipient sending back at
+  // the same moment. Recipients are locked and re-read inside this transaction, so a suspension
+  // landing between choosing recipients and writing their rows cannot slip an alert through.
   try {
     const { users } = await import("../../shared/schema");
     const { notifications } = await import("../../shared/schema");
@@ -429,20 +431,12 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
       .limit(1);
     const senderName = sender?.displayName || sender?.username || "Someone";
 
-    // Participants whose accounts can no longer receive stay in the thread's history but stop
-    // accruing new alerts. Missing status row means active, as everywhere else.
-    const othersResult = await db.execute(sql`
-      SELECT p.user_id AS "userId" FROM dm_participants p
-      LEFT JOIN account_status st ON st.user_id = p.user_id
-      WHERE p.thread_id = ${id} AND p.user_id <> ${userId}
-        AND COALESCE(st.status, 'active') IN ('active', 'restricted')
-    `);
-    const others: { userId: string }[] = (othersResult as any)?.rows ?? (Array.isArray(othersResult) ? othersResult : []);
-
-    if (others.length > 0) {
-      await db.insert(notifications).values(
-        others.map((p) => ({
-          userId: p.userId,
+    await db.transaction(async (tx: any) => {
+      const recipients = await lockNotifiableThreadRecipients(tx, id, userId);
+      if (recipients.length === 0) return;
+      await tx.insert(notifications).values(
+        recipients.map((recipientId) => ({
+          userId: recipientId,
           type: "message",
           title: `New message from ${senderName}`,
           message: body.text.length > 80 ? body.text.slice(0, 80) + "…" : body.text,
@@ -450,7 +444,7 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
           priority: "normal",
         }))
       );
-    }
+    });
   } catch {
     // never break message delivery
   }

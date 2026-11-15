@@ -112,6 +112,71 @@ if (!PG_URL) {
   });
 
   /**
+   * GPT's blocking finding on the first cut of this change: filtering recipients by status in one
+   * statement and inserting in another left a window, so a recipient suspended between the two
+   * still got the alert. The barrier here is the recipient's own users row, which the notification
+   * transaction now takes.
+   */
+  test("a recipient suspended while the notification transaction waits on their row is not notified", async () => {
+    const local = await connectLocalPg();
+    const { users, notifications } = await import("../../shared/schema");
+    const { default: dmRouter } = await import("./dm");
+    const app = express();
+    app.use(express.json());
+    app.use("/api/dm", dmRouter);
+    const server = app.listen(0, "127.0.0.1");
+    try {
+      await local.query(DM_SCHEMA(ddl(users, "users"), ddl(notifications, "notifications")));
+      const [sender, suspended, stayer] = (await local.query(`
+        INSERT INTO users(username,email,display_name) VALUES
+          ('notify-sender','notify-sender@example.test','Notify Sender'),
+          ('notify-suspended','notify-suspended@example.test','Suspended Soon'),
+          ('notify-stayer','notify-stayer@example.test','Still Here')
+        RETURNING id
+      `)).rows;
+      await local.query("INSERT INTO dm_threads(id) VALUES('notify')");
+      await local.query("INSERT INTO dm_participants(thread_id,user_id) VALUES ('notify',$1),('notify',$2),('notify',$3)",
+        [sender.id, suspended.id, stayer.id]);
+      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+      const holder = await local.connect();
+      try {
+        await holder.query("BEGIN");
+        // Hold the recipient's row: the message itself commits, then the notification transaction
+        // blocks here, which is exactly the window the old filter-then-insert left open.
+        await holder.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [suspended.id]);
+        const pending = fetch(`${base}/api/dm/threads/notify/messages`, {
+          method: "POST",
+          headers: { ...testAuthHeader(sender.id), "content-type": "application/json" },
+          body: JSON.stringify({ text: "Sent just before a suspension" }),
+        });
+        await lockWait(local, "FROM users WHERE id IN");
+        await holder.query("INSERT INTO account_status(user_id,status,reason) VALUES($1,'suspended','Suspended mid-send')",
+          [suspended.id]);
+        await holder.query("COMMIT");
+        const response = await pending;
+        assert.equal(response.status, 200, JSON.stringify(await response.json()));
+      } finally {
+        await holder.query("ROLLBACK").catch(() => undefined);
+        holder.release();
+      }
+
+      // The message is the sender's to write and stands. The alert to an account suspended during
+      // the send does not.
+      assert.equal((await local.query("SELECT count(*)::int AS n FROM dm_messages")).rows[0].n, 1);
+      const notified = (await local.query("SELECT user_id FROM notifications ORDER BY user_id")).rows
+        .map((row: any) => row.user_id);
+      assert.deepEqual(notified, [stayer.id],
+        "only the participant still able to receive at insert time may be notified");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await local.query("DELETE FROM account_status WHERE user_id IN (SELECT id FROM users)").catch(() => undefined);
+      await local.query("DROP TABLE IF EXISTS notifications, catering_booking_conversations, dm_messages, dm_participants, dm_threads, users CASCADE");
+      await local.end();
+    }
+  });
+
+  /**
    * The two rechecks inside the send transaction, each proved by making the change land while the
    * request is already blocked on the sender's users row. Both pass without their recheck if the
    * change is applied before the request starts, which is why the lock barrier is the test.
