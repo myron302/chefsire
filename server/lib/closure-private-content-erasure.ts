@@ -19,7 +19,15 @@ const privateNames = new Set<string>(CLOSURE_FK_CLASSES.erase_private);
 const rowsOf = (result: any): any[] => result?.rows ?? (Array.isArray(result) ? result : []);
 export type ClosureContentEraseResult = { counts: { table: string; deleted: number }[]; totalDeleted: number };
 
-/** Child-before-parent ordering so NO ACTION and RESTRICT do not depend on accidental cascades. */
+/**
+ * Child-before-parent ordering so NO ACTION and RESTRICT do not depend on accidental cascades.
+ *
+ * A self-referencing foreign key (a row in the table pointing at another row in the SAME table) is NOT something
+ * table ordering can solve: within one table the rows still have to go in dependency order, and a parent row the
+ * member does not own can point at a child row they do. Callers therefore refuse those tables outright, and this
+ * function ignores the self-edge only because it has already been rejected. A cycle between two different tables
+ * is unorderable and raises, before anything is deleted.
+ */
 function deletionOrder(tables: string[], edges: { child: string; parent: string }[]): string[] {
   const remaining = new Set(tables);
   const result: string[] = [];
@@ -31,6 +39,16 @@ function deletionOrder(tables: string[], edges: { child: string; parent: string 
     for (const table of ready) { result.push(table); remaining.delete(table); }
   }
   return result;
+}
+
+/** Candidate tables whose rows can reference each other. Row-level order is not reviewed, so refuse them. */
+function assertNoSelfReferences(tables: Set<string>, edges: { child: string; parent: string }[]): void {
+  const selfReferencing = Array.from(tables).filter(t => edges.some(e => e.child === t && e.parent === t)).sort();
+  if (selfReferencing.length) {
+    throw new ClosureContentDependencyError(
+      `Private-content tables reference themselves and need reviewed row-level ordering; no rows deleted: ${selfReferencing.join(", ")}`
+    );
+  }
 }
 
 export async function eraseDirectMemberPrivateContentWithinClosure(
@@ -73,6 +91,8 @@ export async function eraseDirectMemberPrivateContentWithinClosure(
     JOIN pg_namespace np ON np.oid = parent.relnamespace
     WHERE con.contype = 'f' AND nc.nspname='public' AND np.nspname='public'
   `)).map(r=>({child:String(r.child),parent:String(r.parent)}));
+  // Refuse before any DELETE: ordering tables cannot make a self-referencing table safe.
+  assertNoSelfReferences(new Set(byTable.keys()), privateEdges);
   const ordered = deletionOrder(Array.from(byTable.keys()), privateEdges);
   const counts: { table: string; deleted: number }[] = [];
   for (const table of ordered) {

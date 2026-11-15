@@ -49,4 +49,57 @@ if (!PG_URL) {
       await local.end();
     }
   });
+
+  test("a private table that references itself is refused outright, and nothing is deleted",async()=>{
+    const local = await connectLocalPg();
+    const { db } = await import("../db");
+    try {
+      // posts.parent_post_id points at another post: ordering tables cannot make that safe, because a post the
+      // member does not own can be the child of one they do.
+      await local.query(`
+        DROP TABLE IF EXISTS likes, posts, users CASCADE;
+        CREATE TABLE users(id varchar PRIMARY KEY);
+        CREATE TABLE posts(id varchar PRIMARY KEY, user_id varchar NOT NULL REFERENCES users(id),
+          parent_post_id varchar REFERENCES posts(id));
+        INSERT INTO users VALUES('closing'),('other');
+        INSERT INTO posts VALUES('my-post','closing',NULL),('their-reply','other','my-post');
+      `);
+      await assert.rejects(
+        db.transaction((tx:any)=>eraseDirectMemberPrivateContentWithinClosure(tx,"closing")),
+        (error: any) => error instanceof ClosureContentDependencyError && /reference themselves/.test(error.message),
+      );
+      assert.equal((await local.query("SELECT count(*)::int n FROM posts")).rows[0].n,2,"nothing was deleted");
+      assert.equal((await local.query("SELECT count(*)::int n FROM users")).rows[0].n,2);
+    } finally {
+      await local.query("DROP TABLE IF EXISTS likes, posts, users CASCADE");
+      await local.end();
+    }
+  });
+
+  test("a cycle between two private tables is refused before any delete, and the transaction rolls back",async()=>{
+    const local = await connectLocalPg();
+    const { db } = await import("../db");
+    try {
+      await local.query(`
+        DROP TABLE IF EXISTS likes, posts, users CASCADE;
+        CREATE TABLE users(id varchar PRIMARY KEY);
+        CREATE TABLE posts(id varchar PRIMARY KEY, user_id varchar NOT NULL REFERENCES users(id), like_id varchar);
+        CREATE TABLE likes(id varchar PRIMARY KEY, user_id varchar NOT NULL REFERENCES users(id),
+          post_id varchar NOT NULL REFERENCES posts(id));
+        ALTER TABLE posts ADD CONSTRAINT posts_like_fk FOREIGN KEY (like_id) REFERENCES likes(id) DEFERRABLE INITIALLY DEFERRED;
+        INSERT INTO users VALUES('closing');
+        INSERT INTO posts VALUES('my-post','closing',NULL);
+        INSERT INTO likes VALUES('my-like','closing','my-post');
+      `);
+      await assert.rejects(
+        db.transaction((tx:any)=>eraseDirectMemberPrivateContentWithinClosure(tx,"closing")),
+        (error: any) => error instanceof ClosureContentDependencyError && /cycle/.test(error.message),
+      );
+      assert.equal((await local.query("SELECT count(*)::int n FROM posts")).rows[0].n,1,"rolled back");
+      assert.equal((await local.query("SELECT count(*)::int n FROM likes")).rows[0].n,1,"rolled back");
+    } finally {
+      await local.query("DROP TABLE IF EXISTS likes, posts, users CASCADE");
+      await local.end();
+    }
+  });
 }

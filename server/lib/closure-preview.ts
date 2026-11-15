@@ -14,7 +14,21 @@ import { inspectPrivateErasureCascadeRisks, type ClosureCascadeRisk } from "./cl
  * billing/dispute checks, held legal records, live table/FK audit, third-party
  * digital entitlements, and tested cleanup are still outstanding. The feature
  * remains OFF; no preview response must ever advertise closure eligibility.
+ *
+ * It takes NO row lock. An earlier version held the member's users row FOR SHARE
+ * across the whole pass, which conflicts with UPDATE and FOR UPDATE on that row:
+ * a staff member opening a preview could stall that member's own purchases and
+ * sign-in while ~20 ledger counts and a full foreign-key traversal ran. Since the
+ * preview authorizes nothing, a stalled live path is a worse outcome than a
+ * slightly inconsistent read.
+ *
+ * The figures are therefore ADVISORY and not a single atomic snapshot: under READ
+ * COMMITTED each statement takes its own snapshot, so a lock would not have made
+ * them coherent either. Only the real closure coordinator takes the users lock and
+ * rechecks obligations under it. The pass is bounded by a statement timeout, and a
+ * timeout or any other failure returns "unavailable" rather than a clear result.
  */
+const PREVIEW_STATEMENT_TIMEOUT_MS = 8000;
 export type MemberClosurePreview = {
   permanentlyDisabled: true;
   accountExists: boolean;
@@ -23,6 +37,7 @@ export type MemberClosurePreview = {
   dmInventory: ClosureDmInventory | null;
   storeInventory: ClosureStoreInventory | null;
   privateContentInventory: ClosurePrivateContentInventory | null;
+  /** "local_only": advisory local figures, not a locked snapshot. "unavailable": nothing could be verified. */
   verification: "local_only" | "unavailable";
   unknownForeignKeyTables: string[];
   manualReviewForeignKeyTables: string[];
@@ -35,10 +50,12 @@ const rowsOf = (r: any): any[] => r?.rows ?? (Array.isArray(r) ? r : []);
 export async function inspectMemberClosurePreview(userId: string): Promise<MemberClosurePreview> {
   try {
     return await db.transaction(async (tx: any): Promise<MemberClosurePreview> => {
-      // Locks to give one coherent local view with write paths that participate
-      // in closure row locking. No persisted changes in this transaction.
+      // Bound the whole pass: a slow catalog traversal must not hold a connection
+      // open indefinitely. Transaction-scoped, so it cannot leak to other work.
+      await tx.execute(sql`SET LOCAL statement_timeout = ${sql.raw(String(PREVIEW_STATEMENT_TIMEOUT_MS))}`);
+      // Deliberately unlocked: see the note above.
       const [member] = rowsOf(await tx.execute(sql`
-        SELECT id FROM users WHERE id = ${userId} FOR SHARE
+        SELECT id FROM users WHERE id = ${userId}
       `));
       if (!member) return {
         permanentlyDisabled: true, accountExists: false, status: null,
