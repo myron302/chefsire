@@ -1,6 +1,11 @@
 // server/realtime/dmSocket.ts
 import type { Server as HttpServer } from "http";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import {
+  lockMemberForContentWrite,
+  MemberContentWriteBlockedError,
+} from "../lib/member-content-write-lock";
+import { lockNotifiableThreadRecipients } from "../lib/dm-notification-recipients";
 import { db } from "../db";
 import {
   dmParticipants,
@@ -174,55 +179,89 @@ export function attachDmRealtime(httpServer: HttpServer, options: DmRealtimeOpti
           // Refused before anything is written, so no message row can exist by the time it answers.
           if (await refuseBookingLinkedThread(socket, threadId)) return;
 
-          // Persist message
-          const [msg] = await db
-            .insert(dmMessages)
-            .values({
-              threadId,
-              senderId: userId,
-              body: String(text || ""),
-              attachments: attachments ?? [],
-            })
-            .returning();
+          // A socket authenticated before a suspension stays connected, and this event never goes
+          // back through HTTP requireAuth. Take the same users-row lock the HTTP send path takes,
+          // in one transaction with the message and the read marker, so nothing lands half-written.
+          const msg = await db.transaction(async (tx: any) => {
+            await lockMemberForContentWrite(tx, userId);
 
-          // Mark my read position
-          await db
-            .update(dmParticipants)
-            .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
-            .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+            const activeMember = await tx
+              .select({ id: dmParticipants.id })
+              .from(dmParticipants)
+              .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
+              .limit(1);
+            if (!activeMember.length) throw new MemberContentWriteBlockedError();
 
-          // Get sender info
-          const [sender] = await db
-            .select()
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
+            const booking = await tx.execute(sql`
+              SELECT 1 FROM catering_booking_conversations
+              WHERE thread_id = ${threadId} LIMIT 1
+            `);
+            const bookingRows = (booking as any)?.rows ?? (Array.isArray(booking) ? booking : []);
+            if (bookingRows.length) throw new MemberContentWriteBlockedError();
 
-          // Create notifications for other participants
-          const otherParticipants = await db
-            .select()
-            .from(dmParticipants)
-            .where(and(eq(dmParticipants.threadId, threadId), ne(dmParticipants.userId, userId)));
-
-          for (const participant of otherParticipants) {
-            await db.insert(notifications).values({
-              userId: participant.userId,
-              type: "dm",
-              title: `New message from ${sender?.displayName || sender?.username || "Someone"}`,
-              message: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
-              linkUrl: `/dm/${threadId}`,
-              metadata: {
+            const [created] = await tx
+              .insert(dmMessages)
+              .values({
                 threadId,
                 senderId: userId,
-                messageId: msg.id,
-              },
+                body: String(text || ""),
+                attachments: attachments ?? [],
+              })
+              .returning();
+
+            // Mark my read position
+            await tx
+              .update(dmParticipants)
+              .set({ lastReadMessageId: created.id, lastReadAt: new Date() })
+              .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+
+            return created;
+          });
+
+          // Notifications run in their own transaction after the sender's lock is released,
+          // deliberately: writing another participant's row inside it can deadlock against that
+          // participant sending back at the same moment. Recipients are locked and re-read inside
+          // that transaction, the same way the HTTP send path does it, so a suspension landing
+          // between choosing recipients and writing their rows cannot slip an alert through.
+          // Best effort -- the message itself is already committed.
+          try {
+            // Get sender info
+            const [sender] = await db
+              .select()
+              .from(users)
+              .where(eq(users.id, userId))
+              .limit(1);
+
+            await db.transaction(async (tx: any) => {
+              const recipients = await lockNotifiableThreadRecipients(tx, threadId, userId);
+              if (recipients.length === 0) return;
+              await tx.insert(notifications).values(
+                recipients.map((recipientId) => ({
+                  userId: recipientId,
+                  type: "dm",
+                  title: `New message from ${sender?.displayName || sender?.username || "Someone"}`,
+                  message: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
+                  linkUrl: `/dm/${threadId}`,
+                  metadata: {
+                    threadId,
+                    senderId: userId,
+                    messageId: msg.id,
+                  },
+                })),
+              );
             });
+          } catch {
+            // never break message delivery
           }
 
           // Broadcast to everyone in the room (including sender for confirm)
           ns.to(threadId).emit("message", { threadId, message: msg });
         } catch (e: any) {
-          socket.emit("error", { error: e?.message || "send failed" });
+          if (e instanceof MemberContentWriteBlockedError) {
+            socket.emit("error", { error: e.code });
+          } else {
+            socket.emit("error", { error: e?.message || "send failed" });
+          }
         }
       }
     );

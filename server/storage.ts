@@ -81,6 +81,7 @@ import { recipeVisibleToViewer } from "./lib/recipe-visibility";
 import { serializePublicUser } from "./serializers/public-user";
 import { CUSTOM_DRINK_OWNER_EDITABLE_FIELDS, type CustomDrinkOwnerPatch } from "../shared/custom-drink-mutations";
 import { purgeRemixEngagementForUser } from "./lib/remix-engagement-cleanup";
+import { lockMemberForContentWrite } from "./lib/member-content-write-lock";
 import type { PasswordHash } from "./lib/password-hash";
 
 /**
@@ -561,14 +562,18 @@ export class DrizzleStorage implements IStorage {
 
   async createPost(insertPost: InsertPost): Promise<Post> {
     const db = getDb();
-    const result = await db.insert(posts).values(insertPost).returning();
-
-    await db
-      .update(users)
-      .set({ postsCount: sql`${users.postsCount} + 1` })
-      .where(eq(users.id, insertPost.userId));
-
-    return result[0];
+    // The status gate runs in middleware, before this call. Serialize the post and its counter
+    // with the author's own users row so a suspension (or, later, a closure) committing mid-request
+    // cannot still land the write. See server/lib/member-content-write-lock.ts.
+    return db.transaction(async (tx: any) => {
+      await lockMemberForContentWrite(tx, insertPost.userId);
+      const [created] = await tx.insert(posts).values(insertPost).returning();
+      await tx
+        .update(users)
+        .set({ postsCount: sql`${users.postsCount} + 1` })
+        .where(eq(users.id, insertPost.userId));
+      return created;
+    });
   }
 
   async updatePost(id: string, updates: Partial<Post>): Promise<Post | undefined> {
@@ -768,6 +773,31 @@ export class DrizzleStorage implements IStorage {
 
   async createRecipe(insertRecipe: InsertRecipe): Promise<Recipe> {
     const db = getDb();
+    // A recipe attached to a post is authored content, and the create-a-post request inserts the
+    // post first: a status change can commit between the two inserts. Lock the post's author.
+    if (insertRecipe.postId) {
+      const postId = insertRecipe.postId;
+      return db.transaction(async (tx: any) => {
+        const [owner] = await tx
+          .select({ userId: posts.userId })
+          .from(posts)
+          .where(eq(posts.id, postId))
+          .limit(1);
+        if (!owner) throw new Error("Recipe post no longer exists");
+        await lockMemberForContentWrite(tx, owner.userId);
+        // Re-read under the lock: the post could have been removed while we waited for it.
+        const [stillPresent] = await tx
+          .select({ id: posts.id })
+          .from(posts)
+          .where(and(eq(posts.id, postId), eq(posts.userId, owner.userId)))
+          .limit(1);
+        if (!stillPresent) throw new Error("Recipe post no longer exists");
+        const [created] = await tx.insert(recipes).values(insertRecipe).returning();
+        return created;
+      });
+    }
+    // Imported recipes with no user-owned post have no author row to lock. Leave the import path
+    // alone rather than inferring an account identity for it.
     const result = await db.insert(recipes).values(insertRecipe).returning();
     return result[0];
   }
@@ -868,8 +898,11 @@ export class DrizzleStorage implements IStorage {
 
   async createStory(insertStory: InsertStory): Promise<Story> {
     const db = getDb();
-    const result = await db.insert(stories).values(insertStory).returning();
-    return result[0];
+    return db.transaction(async (tx: any) => {
+      await lockMemberForContentWrite(tx, insertStory.userId);
+      const [created] = await tx.insert(stories).values(insertStory).returning();
+      return created;
+    });
   }
 
   async getActiveStories(_userId?: string): Promise<StoryWithUser[]> {
@@ -900,26 +933,29 @@ export class DrizzleStorage implements IStorage {
    */
   async likePost(userId: string, postId: string): Promise<Like> {
     const db = getDb();
-    const [inserted] = await db
-      .insert(likes)
-      .values({ userId, postId })
-      .onConflictDoNothing()
-      .returning();
+    return db.transaction(async (tx: any) => {
+      await lockMemberForContentWrite(tx, userId);
+      const [inserted] = await tx
+        .insert(likes)
+        .values({ userId, postId })
+        .onConflictDoNothing()
+        .returning();
 
-    if (!inserted) {
-      const [existing] = await db
-        .select()
-        .from(likes)
-        .where(and(eq(likes.userId, userId), eq(likes.postId, postId)))
-        .limit(1);
-      return existing;
-    }
+      if (!inserted) {
+        const [existing] = await tx
+          .select()
+          .from(likes)
+          .where(and(eq(likes.userId, userId), eq(likes.postId, postId)))
+          .limit(1);
+        return existing;
+      }
 
-    await db
-      .update(posts)
-      .set({ likesCount: sql`${posts.likesCount} + 1` })
-      .where(eq(posts.id, postId));
-    return inserted;
+      await tx
+        .update(posts)
+        .set({ likesCount: sql`${posts.likesCount} + 1` })
+        .where(eq(posts.id, postId));
+      return inserted;
+    });
   }
 
   async unlikePost(userId: string, postId: string): Promise<boolean> {
@@ -963,30 +999,33 @@ export class DrizzleStorage implements IStorage {
    */
   async likeComment(userId: string, commentId: string): Promise<CommentLike> {
     const db = getDb();
-    // Ensure the comment exists before attempting to like
-    const existingComment = await db
-      .select()
-      .from(comments)
-      .where(eq(comments.id, commentId))
-      .limit(1);
-    if (!existingComment[0]) {
-      throw new Error("Comment not found");
-    }
-    // Insert like if it doesn't already exist
-    const [like] = await db
-      .insert(commentLikes)
-      .values({ userId, commentId })
-      .onConflictDoNothing()
-      .returning();
-    // If a new like was inserted, return it.  If the like already existed the
-    // database will not insert a duplicate, and we simply return the existing
-    // record.  We do not maintain a separate likes count on the comments table
-    // because the underlying schema does not include such a column.
-    if (like) {
-      return like;
-    }
-    // Return a synthetic result when the like already exists
-    return { id: '', userId, commentId, createdAt: new Date().toISOString() } as any;
+    return db.transaction(async (tx: any) => {
+      await lockMemberForContentWrite(tx, userId);
+      // Ensure the comment exists before attempting to like
+      const existingComment = await tx
+        .select()
+        .from(comments)
+        .where(eq(comments.id, commentId))
+        .limit(1);
+      if (!existingComment[0]) {
+        throw new Error("Comment not found");
+      }
+      // Insert like if it doesn't already exist
+      const [like] = await tx
+        .insert(commentLikes)
+        .values({ userId, commentId })
+        .onConflictDoNothing()
+        .returning();
+      // If a new like was inserted, return it.  If the like already existed the
+      // database will not insert a duplicate, and we simply return the existing
+      // record.  We do not maintain a separate likes count on the comments table
+      // because the underlying schema does not include such a column.
+      if (like) {
+        return like;
+      }
+      // Return a synthetic result when the like already exists
+      return { id: '', userId, commentId, createdAt: new Date().toISOString() } as any;
+    });
   }
 
   /**
@@ -1037,12 +1076,15 @@ export class DrizzleStorage implements IStorage {
 
   async createComment(insertComment: InsertComment): Promise<Comment> {
     const db = getDb();
-    const result = await db.insert(comments).values(insertComment).returning();
-    await db
-      .update(posts)
-      .set({ commentsCount: sql`${posts.commentsCount} + 1` })
-      .where(eq(posts.id, insertComment.postId));
-    return result[0];
+    return db.transaction(async (tx: any) => {
+      await lockMemberForContentWrite(tx, insertComment.userId);
+      const [created] = await tx.insert(comments).values(insertComment).returning();
+      await tx
+        .update(posts)
+        .set({ commentsCount: sql`${posts.commentsCount} + 1` })
+        .where(eq(posts.id, insertComment.postId));
+      return created;
+    });
   }
 
   /**
