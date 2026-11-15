@@ -18,10 +18,20 @@ So after a member closes, their name and their words survive inside every other 
 notification rows. The sender's own erasure pass cannot touch those rows: they are another member's
 data, and deleting them would silently remove a notification the recipient legitimately received.
 
-**Required at closure:** redact — rewrite `title` and `message` on notifications whose
-`metadata->>'senderId'` (socket path) or whose DM linkage identifies the closing member, keeping the
-row and its read state. The HTTP path currently stores no `senderId` in metadata; adding it is a
-prerequisite for finding these rows cheaply, and should land with the coordinator rather than now.
+**Required at closure:** redact — rewrite **every** field that carries the closing member's identity
+or their words, keeping the row and its read state:
+
+- `title` (holds the display name)
+- `message` (holds up to 80–100 characters of what they wrote)
+- `metadata` — the socket path stores `senderId`, and anything else denormalized into it
+
+Redacting only the visible title and leaving the snippet or the sender id behind does not resolve
+the privacy problem; it just hides it from the list view. Treat the row as redacted only when none
+of its fields identify the member or quote them.
+
+The HTTP path currently stores no `senderId` in metadata. Adding it is a prerequisite for finding
+these rows cheaply, and should land with the coordinator rather than now; until it does, the HTTP
+path's rows have to be found through the thread's participants.
 
 **Deliberately not done in stage 3a.** GPT's draft solved this by replacing the copy with
 "New message" / "You have a new message." for everyone, forever. That trades a visible downgrade of
