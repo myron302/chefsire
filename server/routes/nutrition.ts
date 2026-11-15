@@ -3,7 +3,7 @@ import { Router } from "express";
 import { nutritionEntitlement, revokeNutritionTrial, startNutritionTrialResponse } from "../lib/nutrition-entitlement";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
-import { effectiveSubscriptionPresentation, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+import { effectiveSubscriptionPresentation, hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 import {
   NUTRITION_SUBSCRIPTION_TIERS,
   nutritionTierPriceAsString,
@@ -168,6 +168,9 @@ r.get("/subscription/tiers", requireAuth, async (_req, res) => {
   res.json({
     ok: true,
     tiers: NUTRITION_SUBSCRIPTION_TIERS,
+    // Buying Premium refuses until verified billing exists; the cardless trial is the one path
+    // that works, and GET /api/nutrition/subscription reports whether this account still has it.
+    paidUpgradesAvailable: hasAuthoritativePaidEntitlement(),
   });
 });
 

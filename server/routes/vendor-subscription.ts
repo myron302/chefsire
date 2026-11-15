@@ -148,7 +148,13 @@ async function logVendorSubscriptionHistory(params: {
 
 // GET /api/vendors/subscription/tiers
 r.get("/subscription/tiers", requireAuth, async (_req, res) => {
-  res.json({ ok: true, tiers: VENDOR_SUBSCRIPTION_TIERS });
+  // paidUpgradesAvailable comes from the same predicate the paid refusal below uses, so the plan
+  // buttons cannot drift from what the server will actually do.
+  res.json({
+    ok: true,
+    tiers: VENDOR_SUBSCRIPTION_TIERS,
+    paidUpgradesAvailable: hasAuthoritativePaidEntitlement(),
+  });
 });
 
 // GET /api/vendors/subscription

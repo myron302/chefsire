@@ -33,6 +33,8 @@ test("seller dashboard discards another owner's private state and pending reads,
       if (url.includes("/products")) return Response.json({ products: [{ id: url, name: `Private products ${url}`, isActive: true }] });
       if (url.endsWith("/stats")) return Response.json({ stats: { totalViews: 1, totalSales: 1, totalRevenue: 10 } });
       if (url === "/api/subscriptions/my-tier") return Response.json({ currentTier: "free" });
+      // The dashboard asks whether paid plan changes can succeed, so its buttons can say so.
+      if (url === "/api/subscriptions/tiers") return Response.json({ ok: true, tiers: {}, paidUpgradesAvailable: false });
       if (url.startsWith("/api/orders/my-sales")) return Response.json({ sales: [] });
       throw Error(`Unexpected request: ${url}`);
     },

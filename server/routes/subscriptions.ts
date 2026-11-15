@@ -1,6 +1,7 @@
 // server/routes/subscriptions.ts
 import { Router } from "express";
 import { z } from "zod";
+import { hasAuthoritativePaidEntitlement } from "../lib/subscription-security";
 import { desc, eq, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -157,6 +158,11 @@ router.get("/tiers", async (_req, res) => {
   res.json({
     ok: true,
     tiers: SUBSCRIPTION_TIERS,
+    // So the plan buttons can tell the truth. Every paid change below refuses until verified
+    // billing evidence exists, and a UI that renders a live "Upgrade" button against that is
+    // showing a seller something broken rather than something unavailable. One source of truth:
+    // the same predicate the refusals use.
+    paidUpgradesAvailable: hasAuthoritativePaidEntitlement(),
   });
 });
 

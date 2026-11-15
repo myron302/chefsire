@@ -54,6 +54,8 @@ function StoreDashboardSession() {
   const [socialProof, setSocialProof] = useState<StoreSocialProof | undefined>(undefined);
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_DASHBOARD_STATS);
   const [tier, setTier] = useState<any>(null);
+  // Fail closed: until the server says otherwise, paid plan changes are treated as unavailable.
+  const [paidUpgradesAvailable, setPaidUpgradesAvailable] = useState(false);
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [products, setProducts] = useState<MarketplaceProduct[]>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
@@ -147,6 +149,23 @@ function StoreDashboardSession() {
         const td = await tierRes.json();
         if (signal.aborted) return;
         setTier(td);
+      }
+
+      // Whether a paid plan change can actually succeed, straight from the server rather than
+      // assumed here, so the plan buttons unlock on their own the day billing is verified.
+      // Isolated: this is presentational, and a failure here must not abort the rest of the load.
+      // It also fails closed -- an unreadable answer leaves the paid buttons unavailable.
+      try {
+        const plansRes = await fetch("/api/subscriptions/tiers", { credentials: "include", signal });
+        if (signal.aborted) return;
+        if (plansRes.ok) {
+          const pd = await plansRes.json().catch(() => ({}));
+          if (signal.aborted) return;
+          setPaidUpgradesAvailable((pd as any)?.paidUpgradesAvailable === true);
+        }
+      } catch {
+        if (signal.aborted) return;
+        setPaidUpgradesAvailable(false);
       }
 
       // Recent sales
@@ -286,11 +305,11 @@ function StoreDashboardSession() {
       if (!resp.ok || !data?.url) {
         const errorMsg = data?.error || "Could not start checkout";
         if (isSubscriptionBillingUnavailable(data?.code)) {
+          // Not an error on the seller's part, so not styled as one.
           toast({
-            title: "Coming soon",
+            title: "Paid plans aren't open yet",
             description:
-              "Subscription service is being configured. Please check back later.",
-            variant: "destructive",
+              "Nothing has been charged. We'll turn these on once billing is verified end to end.",
           });
         } else {
           toast({
@@ -301,13 +320,10 @@ function StoreDashboardSession() {
         }
         return;
       }
-      // Optimistically update local trial state before redirect
-      if (isTrial) {
-        const trialEnds = new Date(
-          Date.now() + 30 * 24 * 60 * 60 * 1000,
-        ).toISOString();
-        updateUser({ subscription: tierName as any, trialEndDate: trialEnds });
-      }
+      // Deliberately NOT updating local subscription state here. This used to set the tier and a
+      // 30-day trialEndDate before the member had paid anything, so abandoning the Square checkout
+      // left the client claiming a paid plan. Entitlement is the server's to grant, from verified
+      // provider evidence, and the dashboard picks it up on its next read.
       window.location.href = data.url; // Redirect to Square-hosted checkout
     } catch (e) {
       console.error("Square upgrade error:", e);
@@ -450,6 +466,7 @@ function StoreDashboardSession() {
               tierInfo={tierInfo}
               trialDaysLeft={trialDaysLeft}
               onUpgrade={handleSubscriptionUpgrade}
+              paidUpgradesAvailable={paidUpgradesAvailable}
             />
           </TabsContent>
         </Tabs>
