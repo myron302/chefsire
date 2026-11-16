@@ -12,7 +12,7 @@ import { setupGoogleOAuth } from "./services/google-oauth.service";
 import { setupFacebookOAuth } from "./services/facebook-oauth.service";
 import { setupTikTokOAuth } from "./services/tiktok-oauth.service";
 import { UPLOADS_DIR } from "./lib/uploads-dir";
-import { uploadsStaticHandler } from "./lib/uploads-static";
+import { uploadsNotFoundHandler, uploadsStaticHandler } from "./lib/uploads-static";
 import { CLIENT_STATIC_DIR_CANDIDATES, resolveClientStaticDir } from "./lib/public-static-dirs";
 import { createCorsMiddleware, currentCorsPolicy } from "./lib/cors-policy";
 import { resolveTrustProxy, TrustProxyConfigError, type TrustProxyResolution } from "./lib/proxy-trust";
@@ -104,6 +104,9 @@ app.get("/api", (_req, res) => {
 // (routes/upload.ts, lib/data-uri.ts, routes/auth.ts, etc.). The mount's headers, and why they are what they
 // are, live in lib/uploads-static so the application and its tests exercise one handler.
 app.use("/uploads", uploadsStaticHandler(UPLOADS_DIR));
+// Terminal, so a missing object answers 404 instead of falling through to the single-page app's catch-all and
+// coming back as 200 with the app's HTML. See lib/uploads-static for what that masked.
+app.use("/uploads", uploadsNotFoundHandler());
 
 // Serve built client at dist/public. The candidate locations and the choice between them live in
 // lib/public-static-dirs, which is also what private booking storage validates itself against: this mount is

@@ -24,6 +24,8 @@ import { isR2Configured, publicUrl, uploadFileToR2 } from "../lib/r2";
 import { UnsupportedMediaError, imageUpload, storeUploadedImage } from "../services/image-upload";
 import { generatedMediaKey, generatedMediaName, validateUploadedMedia } from "../services/media-validation";
 import { UPLOAD_STAGING_DIR, ensureUploadDirectories, promoteToUploadsDir } from "../services/upload-staging";
+import { isUndecodableInBrowsers, readVideoCodecs } from "../services/video-codec";
+import { transcodeToPlayableH264 } from "../services/video-transcode";
 
 const router = Router();
 
@@ -132,6 +134,7 @@ const receiveUpload = (privateMarketplaceFile: boolean): RequestHandler => (req,
       return res.status(400).json({ ok: false, error: err.message || "Invalid file type" });
     }
 
+    let transcodedPath: string | null = null;
     try {
       if (!req.file) {
         return res.status(400).json({ ok: false, error: "No file uploaded" });
@@ -153,18 +156,56 @@ const receiveUpload = (privateMarketplaceFile: boolean): RequestHandler => (req,
         return res.status(MEDIA_REJECTION_STATUS[validated.reason]).json({ ok: false, error: MEDIA_REJECTION_MESSAGES[validated.reason] });
       }
 
+      // A VALID CONTAINER IS NOT A PLAYABLE VIDEO.
+      //
+      // Validation above answers "is this really an MP4?". An iPhone on "High Efficiency" records HEVC, which is
+      // a perfectly valid MP4 and so passed that check, uploaded, stored, and then showed desktop viewers a
+      // black box with working controls: readyState 4, no error, videoWidth 0, because the browser has no HEVC
+      // decoder. So the codec is read here and such a file is re-encoded before anything is stored. Refusing it
+      // instead would leave the member unable to post video with no idea which phone setting to change.
+      let storePath = staged;
+      let storeByteSize = req.file.size;
+      let storeExtension = validated.extension;
+      let storeContentType = validated.contentType;
+
+      if (validated.mediaClass === "video") {
+        const codecs = await readVideoCodecs({ path: staged, byteSize: req.file.size });
+        if (isUndecodableInBrowsers(codecs)) {
+          const outcome = await transcodeToPlayableH264(staged, req.file.size);
+          if (outcome.kind === "transcoded") {
+            transcodedPath = outcome.path;
+            storePath = outcome.path;
+            storeByteSize = outcome.byteSize;
+            storeExtension = "mp4";
+            storeContentType = "video/mp4";
+          } else {
+            // Nothing has been stored, so there is nothing to undo. The member is told what to do instead of
+            // being handed a video that will not play.
+            console.error(`[upload] HEVC video could not be converted (${outcome.kind}); codecs=${codecs?.formats.join(",")}`);
+            return res.status(422).json({
+              ok: false,
+              error:
+                outcome.kind === "too-large"
+                  ? "This video is too large to convert. Please upload a shorter clip, or record in H.264."
+                  : "This video uses HEVC (H.265), which most desktop browsers cannot play, and it could not be converted. On iPhone you can switch Settings \u2192 Camera \u2192 Formats to \"Most Compatible\" and re-record, or export the clip as H.264.",
+            });
+          }
+        }
+      }
+
       let fileUrl: string;
 
       if (privateMarketplaceFile) {
-        fileUrl = await storeMarketplaceDigitalFile(req.user!.id, staged);
+        fileUrl = await storeMarketplaceDigitalFile(req.user!.id, storePath);
       } else if (isR2Configured()) {
-        const key = generatedMediaKey("posts", validated.extension);
-        // The content type R2 stores, and therefore the one a browser is handed, is the verified one.
-        await uploadFileToR2(key, staged, validated.contentType);
+        const key = generatedMediaKey("posts", storeExtension);
+        // The content type R2 stores, and therefore the one a browser is handed, is the verified one -- of
+        // whichever file is actually being stored, the original or the re-encoded one.
+        await uploadFileToR2(key, storePath, storeContentType);
         fileUrl = publicUrl(key);
       } else {
-        const filename = generatedMediaName(validated.extension);
-        await promoteToUploadsDir(staged, filename);
+        const filename = generatedMediaName(storeExtension);
+        await promoteToUploadsDir(storePath, filename);
         fileUrl = uploadUrlPath(filename);
       }
 
@@ -172,9 +213,9 @@ const receiveUpload = (privateMarketplaceFile: boolean): RequestHandler => (req,
         ok: true,
         url: fileUrl,
         filename: displayFilename(req.file.originalname),
-        size: req.file.size,
+        size: storeByteSize,
         // The verified type, not the declared one. A client that echoes this is echoing the server's finding.
-        mimetype: validated.contentType,
+        mimetype: storeContentType,
       });
     } catch (error: any) {
       console.error("Error processing upload:", error);
@@ -183,6 +224,9 @@ const receiveUpload = (privateMarketplaceFile: boolean): RequestHandler => (req,
       // A promoted local file has already been renamed out of staging; this removes anything still there --
       // the R2 copy's source, and every rejected or failed upload.
       await discardStagedUpload(req.file);
+      // A re-encoded file lives beside the staged original rather than in place of it, so it needs removing on
+      // every path: the local-storage branch renames it away, and nothing else should leave it behind.
+      if (transcodedPath) await fs.promises.unlink(transcodedPath).catch(() => undefined);
     }
   });
 };
