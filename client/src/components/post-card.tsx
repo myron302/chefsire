@@ -613,6 +613,13 @@ export default function PostCard({
         additionalImages={post.additionalImages}
         alt="Post content"
         mediaClassName="w-full h-96 object-cover"
+        // Video keeps its own shape. Photos are cropped to a uniform h-96 band so the feed reads as a column,
+        // which is a fair trade for a still: the subject is usually centred and a crop still shows it. A video
+        // crops badly -- a portrait clip in the wider desktop column lost its top and bottom to object-cover,
+        // and unlike a photo the viewer cannot re-frame it. So video sizes to its natural ratio (h-auto beats
+        // h-96 here because cn is tailwind-merge, so the later class wins) and is capped at 70vh so a tall
+        // portrait clip cannot take over the whole screen.
+        videoClassName="h-auto max-h-[70vh] object-contain bg-black"
         testId={`img-post-${post.id}`}
         onClick={() => onCardClick?.(post)}
         mutedVideo
