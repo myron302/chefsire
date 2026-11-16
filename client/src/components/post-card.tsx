@@ -619,7 +619,12 @@ export default function PostCard({
         // and unlike a photo the viewer cannot re-frame it. So video sizes to its natural ratio (h-auto beats
         // h-96 here because cn is tailwind-merge, so the later class wins) and is capped at 70vh so a tall
         // portrait clip cannot take over the whole screen.
-        videoClassName="h-auto max-h-[70vh] object-contain bg-black"
+        //
+        // w-auto matters as much as h-auto. With w-full the element still spanned the full card width while the
+        // clamped height was far shorter, so a portrait clip was pillarboxed into a wide black band: uncropped,
+        // but a 289px picture floating in 862px of black. Letting the width follow the clamped height makes the
+        // box hug the video, and mx-auto centres it in the card.
+        videoClassName="w-auto h-auto max-h-[70vh] mx-auto object-contain"
         testId={`img-post-${post.id}`}
         onClick={() => onCardClick?.(post)}
         mutedVideo
