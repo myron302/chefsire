@@ -187,7 +187,11 @@ const receiveUpload = (privateMarketplaceFile: boolean): RequestHandler => (req,
               error:
                 outcome.kind === "too-large"
                   ? "This video is too large to convert. Please upload a shorter clip, or record in H.264."
-                  : "This video uses HEVC (H.265), which most desktop browsers cannot play, and it could not be converted. On iPhone you can switch Settings \u2192 Camera \u2192 Formats to \"Most Compatible\" and re-record, or export the clip as H.264.",
+                  // Naming one phone's setting was a mistake worth not repeating: the first member to see this
+                  // message was on Android and was told how to change an iPhone setting. Phones differ, and the
+                  // camera mode matters more than the brand -- most phones record HEVC only at 4K or 60fps and
+                  // H.264 at 1080p/30 -- so the advice leads with the mode and names both settings.
+                  : "This video uses HEVC (H.265), which most desktop browsers cannot play, and it could not be converted here. Recording at 1080p instead of 4K or 60fps usually produces a video that plays everywhere. You can also change the format in your camera settings: on Android look for \"high efficiency\" or HEVC under video settings and turn it off; on iPhone use Settings \u2192 Camera \u2192 Formats \u2192 \"Most Compatible\".",
             });
           }
         }
