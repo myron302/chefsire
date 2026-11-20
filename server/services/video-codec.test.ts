@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { isUndecodableInBrowsers, readVideoCodecs } from "./video-codec";
+import { isHdrColor, isUndecodableInBrowsers, readVideoCodecs } from "./video-codec";
 
 function box(type: string, ...payloads: Buffer[]): Buffer {
   const body = Buffer.concat(payloads);
@@ -63,7 +63,7 @@ function moovLast(...tracks: Buffer[]): Buffer {
 test("H.264 is recognized whether the index is at the front or the end", async () => {
   for (const [label, file] of [["faststart", moovFirst(trackWith("avc1"))], ["as recorded", moovLast(trackWith("avc1"))]] as const) {
     const report = await readVideoCodecs({ buffer: file });
-    assert.deepEqual(report, { formats: ["avc1"], hasHevc: false, hasBroadlyPlayable: true }, label);
+    assert.deepEqual(report, { formats: ["avc1"], hasHevc: false, hasBroadlyPlayable: true, color: null }, label);
     assert.equal(isUndecodableInBrowsers(report), false, label);
   }
 });
@@ -73,7 +73,7 @@ test("HEVC is caught in both its tag spellings, and with the index at the end", 
   // so a check that knows only one of them lets the other through -- which is the bug, not a near miss.
   for (const format of ["hvc1", "hev1", "dvh1", "dvhe"]) {
     const report = await readVideoCodecs({ buffer: moovLast(trackWith(format)) });
-    assert.deepEqual(report, { formats: [format], hasHevc: true, hasBroadlyPlayable: false }, format);
+    assert.deepEqual(report, { formats: [format], hasHevc: true, hasBroadlyPlayable: false, color: null }, format);
     assert.equal(isUndecodableInBrowsers(report), true, format);
   }
 });
@@ -112,7 +112,7 @@ test("unreadable structure answers unknown, and unknown is never treated as unpl
 
 test("an unrecognized codec counts as neither playable nor HEVC rather than being guessed at", async () => {
   const report = await readVideoCodecs({ buffer: moovLast(trackWith("xyzw")) });
-  assert.deepEqual(report, { formats: ["xyzw"], hasHevc: false, hasBroadlyPlayable: false });
+  assert.deepEqual(report, { formats: ["xyzw"], hasHevc: false, hasBroadlyPlayable: false, color: null });
   assert.equal(isUndecodableInBrowsers(report), false, "not knowing a codec is not knowing it fails");
 });
 
@@ -164,4 +164,63 @@ test("a declared byte size smaller than the file stops the walk at that boundary
   } finally {
     await fs.promises.rm(dir, { recursive: true, force: true });
   }
+});
+
+/** A visual sample entry with the real 86-byte fixed header, optionally carrying a `colr` child box. */
+function visualSampleEntry(format: string, color?: { primaries: number; transfer: number; matrix: number }): Buffer {
+  const fixed = Buffer.alloc(86 - 8); // everything after the box header
+  const children: Buffer[] = [];
+  if (color) {
+    const payload = Buffer.alloc(10);
+    payload.write("nclx", 0, "latin1");
+    payload.writeUInt16BE(color.primaries, 4);
+    payload.writeUInt16BE(color.transfer, 6);
+    payload.writeUInt16BE(color.matrix, 8);
+    children.push(box("colr", payload));
+  }
+  return box(format, fixed, ...children);
+}
+
+/** An stsd whose single entry is a properly shaped visual sample entry. */
+function stsdWithEntry(entry: Buffer): Buffer {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(1, 4);
+  return box("stsd", head, entry);
+}
+
+test("HDR colour tagging is read from the sample entry's colr box", async () => {
+  // HLG (transfer 18) with BT.2020 primaries (9) is what a phone records. Reading this is what decides whether
+  // the video gets tone-mapped, so a parser that quietly returns null sends an HDR video through untouched.
+  const file = Buffer.concat([ftyp(), mdat(512), box("moov", box("trak", box("mdia", box("minf",
+    box("stbl", stsdWithEntry(visualSampleEntry("hvc1", { primaries: 9, transfer: 18, matrix: 9 })))))))]);
+  const report = await readVideoCodecs({ buffer: file });
+  assert.deepEqual(report?.color, { primaries: 9, transfer: 18, matrix: 9 });
+  assert.equal(isHdrColor(report?.color), true);
+});
+
+test("an SDR file reports its own tagging, and a file with none reports null", async () => {
+  const sdr = Buffer.concat([ftyp(), mdat(512), box("moov", box("trak", box("mdia", box("minf",
+    box("stbl", stsdWithEntry(visualSampleEntry("avc1", { primaries: 1, transfer: 1, matrix: 1 })))))))]);
+  const sdrReport = await readVideoCodecs({ buffer: sdr });
+  assert.deepEqual(sdrReport?.color, { primaries: 1, transfer: 1, matrix: 1 });
+  assert.equal(isHdrColor(sdrReport?.color), false);
+
+  const untagged = Buffer.concat([ftyp(), mdat(512), box("moov", box("trak", box("mdia", box("minf",
+    box("stbl", stsdWithEntry(visualSampleEntry("avc1")))))))]);
+  const untaggedReport = await readVideoCodecs({ buffer: untagged });
+  assert.equal(untaggedReport?.color, null);
+  assert.equal(isHdrColor(untaggedReport?.color), false, "absent tagging is not HDR");
+});
+
+test("the colr box is not found by scanning, so text in a fixed field cannot fake it", async () => {
+  // "colr" written into the 32-byte compressorname is the trap a string search falls into. The fixed fields
+  // run to 86 bytes and the walk starts there, so this file has no colour tagging at all.
+  const fixed = Buffer.alloc(78);
+  fixed.write("colr", 40, "latin1");
+  fixed.writeUInt16BE(9, 48);
+  const entry = box("hvc1", fixed);
+  const file = Buffer.concat([ftyp(), mdat(512), box("moov", box("trak", box("mdia", box("minf",
+    box("stbl", stsdWithEntry(entry))))))]);
+  const report = await readVideoCodecs({ buffer: file });
+  assert.equal(report?.color, null);
 });

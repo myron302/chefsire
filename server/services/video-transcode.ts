@@ -38,7 +38,7 @@
 import { spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { readVideoCodecs } from "./video-codec";
+import { isHdrColor, readVideoCodecs } from "./video-codec";
 
 /** Longest a single transcode may run before it is killed. */
 const TRANSCODE_TIMEOUT_MS = 180_000;
@@ -120,6 +120,33 @@ export async function transcodeToPlayableH264(inputPath: string, byteSize: numbe
   if (byteSize > TRANSCODE_MAX_INPUT_BYTES) return { kind: "too-large" };
   if (!(await isTranscodeAvailable())) return { kind: "unavailable" };
 
+  // HDR HAS TO BE TONE-MAPPED, NOT JUST RE-ENCODED.
+  //
+  // A phone records HLG (transfer 18) with BT.2020 primaries. Re-encoding that to H.264 and passing the tags
+  // through produces a file that is technically correct and looks wrong: the phone's display honours HLG and
+  // shows the colour the member shot, while an ordinary monitor renders the same frames flat and grey. The
+  // member sees a vivid video on their phone and a washed-out one on their desktop, from one file.
+  //
+  // So HDR is converted down to SDR here -- linearised, tone-mapped with a highlight roll-off, and returned to
+  // BT.709 -- and the output is tagged BT.709 to match what it now contains. An SDR source is left alone: its
+  // tags are already right, and running it through this chain would only soften it.
+  const source = await readVideoCodecs({ path: inputPath, byteSize });
+  const needsToneMap = isHdrColor(source?.color);
+
+  const filters = [
+    `scale='min(${MAX_OUTPUT_LONG_SIDE},iw)':'min(${MAX_OUTPUT_LONG_SIDE},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=bicubic`,
+  ];
+  if (needsToneMap) {
+    filters.push(
+      "zscale=t=linear:npl=100",
+      "format=gbrpf32le",
+      "zscale=p=bt709",
+      "tonemap=tonemap=hable:desat=0",
+      "zscale=t=bt709:m=bt709:r=tv",
+      "format=yuv420p",
+    );
+  }
+
   const outputPath = path.join(path.dirname(inputPath), `${path.basename(inputPath)}.h264.mp4`);
   const code = await runBounded(
     "ffmpeg",
@@ -129,19 +156,7 @@ export async function transcodeToPlayableH264(inputPath: string, byteSize: numbe
       "-y",
       "-t", String(TRANSCODE_MAX_DURATION_SECONDS),
       "-i", inputPath,
-      // CAP THE LONG SIDE, NOT THE HEIGHT.
-      //
-      // This was `scale=-2:'min(1080,ih)'`, which caps HEIGHT -- correct for a landscape clip and wrong for a
-      // portrait one. A phone video held upright is 1080x1920, so capping its height at 1080 dragged the width
-      // down with it to 608: a member's 1080-wide video was stored 44% narrower than they shot it, and the
-      // resolution was simply gone, the original having been replaced. Landscape clips were untouched, so the
-      // damage fell only on the orientation most phone video is actually shot in.
-      //
-      // Fitting inside a square box caps whichever side is longer and leaves the other alone. `min(1920,iw)`
-      // and `min(1920,ih)` keep the box no larger than the source, so a small video is never upscaled --
-      // force_original_aspect_ratio=decrease alone would happily blow a 640x480 clip up to fill the box.
-      // force_divisible_by=2 keeps both dimensions even, which yuv420p requires.
-      "-vf", `scale='min(${MAX_OUTPUT_LONG_SIDE},iw)':'min(${MAX_OUTPUT_LONG_SIDE},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=bicubic`,
+      "-vf", filters.join(","),
       "-c:v", "libx264",
       "-preset", "veryfast",
       "-crf", "23",
@@ -149,6 +164,8 @@ export async function transcodeToPlayableH264(inputPath: string, byteSize: numbe
       "-pix_fmt", "yuv420p",
       "-profile:v", "high",
       "-level", "4.1",
+      // State what the frames now are. Without this the output inherits nothing and a player has to guess.
+      ...(needsToneMap ? ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"] : []),
       "-c:a", "aac",
       "-b:a", "128k",
       "-ac", "2",

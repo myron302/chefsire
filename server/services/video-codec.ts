@@ -59,6 +59,23 @@ const BROADLY_PLAYABLE = new Set(["avc1", "avc3", "vp08", "vp09", "av01"]);
 /** HEVC sample entry formats. `hvc1` and `hev1` differ only in where parameter sets live, not in decodability. */
 const HEVC_FORMATS = new Set(["hvc1", "hev1", "hvt1", "lhv1", "dvh1", "dvhe"]);
 
+/**
+ * The colour tagging a video carries, read from its `colr` box.
+ *
+ * These are the numbers from ISO/IEC 23001-8. What matters here is the transfer characteristic: 16 (PQ) and
+ * 18 (HLG) mean the frames hold HDR signal, which a browser on an ordinary monitor renders flat and grey
+ * unless the video is tone-mapped down to SDR first.
+ */
+export type VideoColorInfo = { primaries: number; transfer: number; matrix: number };
+
+/** Transfer characteristics that mean HDR: SMPTE 2084 (PQ) and ARIB STD-B67 (HLG). */
+const HDR_TRANSFERS = new Set([16, 18]);
+
+/** True when the colour tagging says the frames are HDR. Absent tagging is not HDR. */
+export function isHdrColor(color: VideoColorInfo | null | undefined): boolean {
+  return !!color && HDR_TRANSFERS.has(color.transfer);
+}
+
 export type VideoCodecReport = {
   /** Every video sample-entry format found, in the order encountered. Lowercased, whitespace trimmed. */
   formats: string[];
@@ -66,6 +83,8 @@ export type VideoCodecReport = {
   hasHevc: boolean;
   /** True when at least one format is broadly playable. A file can hold both; `formats` is the full answer. */
   hasBroadlyPlayable: boolean;
+  /** Colour tagging from the video sample entry, or null when the file carries none. */
+  color: VideoColorInfo | null;
 };
 
 type Reader = (offset: number, length: number) => Promise<Buffer | null>;
@@ -130,7 +149,46 @@ function readBoxHeader(window: Buffer, at: number, remainingToEnd: number): BoxH
  * Layout: version+flags (4), entry_count (4), then each entry as size (4) + format (4) + its own body. The
  * format code is all this needs, so entry bodies are skipped by their declared size and never interpreted.
  */
-function formatsFromStsd(payload: Buffer): string[] {
+/**
+ * Reads a `colr` box out of a visual sample entry's child boxes.
+ *
+ * A VisualSampleEntry's fixed fields run to 86 bytes from the start of the box -- the 8-byte box header, then
+ * 6 reserved + 2 data_reference_index, then 70 bytes of visual fields ending in a 32-byte compressorname -- so
+ * the walk starts there rather than scanning. A blind search for the four letters "colr" would happily find
+ * them inside that compressorname or any other free-text field.
+ *
+ * Getting this offset wrong does not fail loudly: at 78 the walk lands inside the compressorname padding, reads
+ * a zero size, and returns null, which the caller reads as "no colour tagging" -- so an HDR video sails through
+ * untone-mapped, which is exactly the bug this function exists to prevent. The ffmpeg suite catches it because
+ * it asserts the OUTPUT is BT.709 rather than asserting this function's return value.
+ */
+function colorFromSampleEntry(entry: Buffer): VideoColorInfo | null {
+  const VISUAL_SAMPLE_ENTRY_HEADER = 86;
+  let cursor = VISUAL_SAMPLE_ENTRY_HEADER;
+  for (let box = 0; box < 32 && cursor + 8 <= entry.length; box++) {
+    const size = entry.readUInt32BE(cursor);
+    const type = entry.subarray(cursor + 4, cursor + 8).toString("latin1");
+    if (size < 8) return null;
+    if (type === "colr") {
+      // 'colr' payload: colour_type(4), then for 'nclx'/'nclc' three 16-bit indices.
+      const colourType = entry.subarray(cursor + 8, cursor + 12).toString("latin1");
+      if ((colourType === "nclx" || colourType === "nclc") && cursor + 18 <= entry.length) {
+        return {
+          primaries: entry.readUInt16BE(cursor + 12),
+          transfer: entry.readUInt16BE(cursor + 14),
+          matrix: entry.readUInt16BE(cursor + 16),
+        };
+      }
+      return null;
+    }
+    const next = cursor + size;
+    if (!Number.isSafeInteger(next) || next <= cursor) return null;
+    cursor = next;
+  }
+  return null;
+}
+
+function formatsFromStsd(payload: Buffer, colors: VideoColorInfo[]): string[] {
   if (payload.length < 8) return [];
   const entryCount = payload.readUInt32BE(4);
   if (entryCount === 0 || entryCount > 64) return [];
@@ -142,7 +200,11 @@ function formatsFromStsd(payload: Buffer): string[] {
     const size = payload.readUInt32BE(cursor);
     const format = payload.subarray(cursor + 4, cursor + 8).toString("latin1").trim().toLowerCase();
     if (size < 8) break;
-    if (/^[a-z0-9.\-]{2,4}$/.test(format)) formats.push(format);
+    if (/^[a-z0-9.\-]{2,4}$/.test(format)) {
+      formats.push(format);
+      const color = colorFromSampleEntry(payload.subarray(cursor, Math.min(cursor + size, payload.length)));
+      if (color) colors.push(color);
+    }
     const next = cursor + size;
     if (!Number.isSafeInteger(next) || next <= cursor) break;
     cursor = next;
@@ -162,6 +224,7 @@ export async function readVideoCodecs(source: VideoSource): Promise<VideoCodecRe
 
   const { read } = makeReader(source, byteSize);
   const formats: string[] = [];
+  const colors: VideoColorInfo[] = [];
   let boxesVisited = 0;
 
   /** Walks the boxes in [start, end), descending into container boxes and collecting any `stsd` formats. */
@@ -186,7 +249,7 @@ export async function readVideoCodecs(source: VideoSource): Promise<VideoCodecRe
         const payload = bodyBytes <= window.length - header.headerBytes
           ? window.subarray(header.headerBytes, header.headerBytes + bodyBytes)
           : await read(bodyStart, Math.min(bodyBytes, WINDOW_BYTES));
-        if (payload) formats.push(...formatsFromStsd(payload));
+        if (payload) formats.push(...formatsFromStsd(payload, colors));
       } else if (CONTAINER_BOXES.has(header.type)) {
         await walk(bodyStart, boxEnd, depth + 1);
       }
@@ -206,6 +269,7 @@ export async function readVideoCodecs(source: VideoSource): Promise<VideoCodecRe
     formats: unique,
     hasHevc: unique.some((format) => HEVC_FORMATS.has(format)),
     hasBroadlyPlayable: unique.some((format) => BROADLY_PLAYABLE.has(format)),
+    color: colors[0] ?? null,
   };
 }
 
