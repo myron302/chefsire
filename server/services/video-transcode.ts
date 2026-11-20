@@ -49,8 +49,8 @@ export const TRANSCODE_MAX_DURATION_SECONDS = 300;
 /** Inputs larger than this are refused rather than re-encoded, for the same reason. */
 export const TRANSCODE_MAX_INPUT_BYTES = 200 * 1024 * 1024;
 
-/** Tallest output produced. A phone's 4K clip is scaled down; nothing is ever scaled up. */
-const MAX_OUTPUT_HEIGHT = 1080;
+/** Longest side of the output, whichever way up the video is. A 4K clip is scaled down; nothing is scaled up. */
+const MAX_OUTPUT_LONG_SIDE = 1920;
 
 let ffmpegAvailability: Promise<boolean> | null = null;
 
@@ -129,8 +129,19 @@ export async function transcodeToPlayableH264(inputPath: string, byteSize: numbe
       "-y",
       "-t", String(TRANSCODE_MAX_DURATION_SECONDS),
       "-i", inputPath,
-      // Scale to an even-numbered height no taller than the cap, leaving smaller videos untouched.
-      "-vf", `scale=-2:'min(${MAX_OUTPUT_HEIGHT},ih)':flags=bicubic`,
+      // CAP THE LONG SIDE, NOT THE HEIGHT.
+      //
+      // This was `scale=-2:'min(1080,ih)'`, which caps HEIGHT -- correct for a landscape clip and wrong for a
+      // portrait one. A phone video held upright is 1080x1920, so capping its height at 1080 dragged the width
+      // down with it to 608: a member's 1080-wide video was stored 44% narrower than they shot it, and the
+      // resolution was simply gone, the original having been replaced. Landscape clips were untouched, so the
+      // damage fell only on the orientation most phone video is actually shot in.
+      //
+      // Fitting inside a square box caps whichever side is longer and leaves the other alone. `min(1920,iw)`
+      // and `min(1920,ih)` keep the box no larger than the source, so a small video is never upscaled --
+      // force_original_aspect_ratio=decrease alone would happily blow a 640x480 clip up to fill the box.
+      // force_divisible_by=2 keeps both dimensions even, which yuv420p requires.
+      "-vf", `scale='min(${MAX_OUTPUT_LONG_SIDE},iw)':'min(${MAX_OUTPUT_LONG_SIDE},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=bicubic`,
       "-c:v", "libx264",
       "-preset", "veryfast",
       "-crf", "23",
