@@ -613,18 +613,18 @@ export default function PostCard({
         additionalImages={post.additionalImages}
         alt="Post content"
         mediaClassName="w-full h-96 object-cover"
-        // Video keeps its own shape. Photos are cropped to a uniform h-96 band so the feed reads as a column,
-        // which is a fair trade for a still: the subject is usually centred and a crop still shows it. A video
-        // crops badly -- a portrait clip in the wider desktop column lost its top and bottom to object-cover,
-        // and unlike a photo the viewer cannot re-frame it. So video sizes to its natural ratio (h-auto beats
-        // h-96 here because cn is tailwind-merge, so the later class wins) and is capped at 70vh so a tall
-        // portrait clip cannot take over the whole screen.
+        // Video is PILLARBOXED, not shrunk to fit.
         //
-        // w-auto matters as much as h-auto. With w-full the element still spanned the full card width while the
-        // clamped height was far shorter, so a portrait clip was pillarboxed into a wide black band: uncropped,
-        // but a 289px picture floating in 862px of black. Letting the width follow the clamped height makes the
-        // box hug the video, and mx-auto centres it in the card.
-        videoClassName="w-auto h-auto max-h-[70vh] mx-auto object-contain"
+        // Photos are cropped to a uniform h-96 band so the feed reads as a column, which is a fair trade for a
+        // still. A video is different: the viewer cannot re-frame it, so object-contain shows the whole frame.
+        //
+        // The card keeps its full width while doing it. A portrait clip therefore sits full-height in the
+        // middle of a landscape frame with black to either side -- which is what every social feed does with
+        // vertical video, and what people expect to see. An earlier version of this let the box shrink to hug
+        // the video instead, on the grounds that 289px of picture inside 862px of black looked wasteful. That
+        // was taste overruling a correct result: hugging makes the video smaller and the card ragged, and it is
+        // not what the format looks like anywhere else. bg-black makes the bars deliberate rather than a gap.
+        videoClassName="h-auto max-h-[70vh] object-contain bg-black"
         testId={`img-post-${post.id}`}
         onClick={() => onCardClick?.(post)}
         mutedVideo
