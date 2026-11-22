@@ -2,9 +2,9 @@
 
 **Date:** 2026-08-27
 **Scope:** `client/` ↔ `server/` cross-reference, read-only. No code was changed.
-**Method:** Static extraction of every `/api/*` string literal in `client/src` (967 occurrences across 197 files), classified by call kind (`fetch`, `apiRequest`, `useQuery`/`queryFn`, React-Query cache key), then cross-referenced against all 677 Express routes reachable through `server/routes/index.ts` (multi-line route declarations and sub-router registration included). Navigation targets were matched against the 212 `<Route path>` declarations in `App.tsx`, `DrinksRoutes.tsx`, and `DrinksCategorySections.tsx`.
+**Historical snapshot only:** This audit describes the August 2026 parent revision; it has not been re-run against current `main` and must not be used as current launch-readiness evidence. Codex identified an incomplete route inventory; all route-exhaustiveness claims require a fresh extraction before this audit can be accepted.\n**Method:** Static extraction of every `/api/*` string literal in `client/src` (967 occurrences across 197 files), classified by call kind (`fetch`, `apiRequest`, `useQuery`/`queryFn`, React-Query cache key), then cross-referenced against all 677 Express routes reachable through `server/routes/index.ts` (multi-line route declarations and sub-router registration included). Navigation targets were compared against a reported 212 `<Route path>` declarations (Codex independently counted 223; inventory incomplete) in `App.tsx`, `DrinksRoutes.tsx`, and `DrinksCategorySections.tsx`.
 
-Every finding below was confirmed by reading **both** sides of the reference. Anything that could not be confirmed is in [NEEDS MANUAL CHECK](#needs-manual-check) rather than asserted as broken.
+Findings below are historical candidate defects, not verified current defects. Anything that could not be confirmed is in [NEEDS MANUAL CHECK](#needs-manual-check) rather than asserted as broken.
 
 ---
 
@@ -12,7 +12,7 @@ Every finding below was confirmed by reading **both** sides of the reference. An
 
 | Category | P1 | P2 | P3 | Total |
 |---|---|---|---|---|
-| 1. Frontend calls to missing endpoints | 3 | 10 | 1 | 14 |
+| 1. Frontend calls to missing endpoints | 3 | 10 | 0 | 13 |
 | 2. Dead routes / broken navigation | 3 | 3 | 4 | 10 |
 | 3. Non-functional buttons | 5 | 14 | 8 | 27 |
 | 4. Orphaned backend routes (INFO) | — | — | — | 50 routes + 10 unmounted modules |
@@ -75,14 +75,14 @@ const response = await fetch('/api/custom-drinks', {
 const res = await fetch("/api/ocr/receipt", { method: "POST", body: fd });
 ```
 - **What's wrong:** `server/routes/ocr.ts:13` defines `router.post("/receipt", ...)` but `ocr.ts` is not imported in `server/routes/index.ts`. Cloud OCR always throws `"Cloud OCR request failed"`.
-- **Severity:** P2 — the component falls back to local Tesseract, so it degrades rather than hard-fails.
+- **Severity:** P2 — cloud mode reports an error and does not retry local Tesseract. The component was not imported/rendered in the reviewed parent, so this is unreachable UI rather than an observed production outage.
 
 #### 1.5 Restaurant place-details endpoint is never mounted
 - **File:** `client/src/hooks/usePlaceDetails.ts:57`
 ```js
 const res = await fetch(`/api/restaurants/${id}/details?tipsLimit=8`);
 ```
-- **What's wrong:** `server/routes/restaurants.ts:91` defines `router.get("/:id/details", ...)`, but `restaurants.ts` is not imported in `server/routes/index.ts`. BiteMap place detail panels never load.
+- **What's wrong:** `server/routes/restaurants.ts:91` defines `router.get("/:id/details", ...)`, but `restaurants.ts` is not imported in `server/routes/index.ts`. Foursquare-sourced BiteMap details fail on this path; Google-sourced details use the separately mounted `/api/google/:id/details` route.
 - **Severity:** P2.
 
 #### 1.6 Daily Quests widget calls a path with an extra segment
@@ -165,7 +165,7 @@ const { data: responseData } = await fetchWeddingWithFallback([
 
 ## 2. Dead routes / broken navigation
 
-All targets below were matched against the 212 declared `<Route path>` values. Each falls through to `<Route component={NotFound} />` (`App.tsx:417`).
+The original 212-route inventory is incomplete (Codex counted 223 path-bearing declarations across the three files). Targets below require a fresh comprehensive match before claiming exhaustive coverage. Each falls through to `<Route component={NotFound} />` (`App.tsx:417`).
 
 ### P1
 
