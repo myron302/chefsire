@@ -122,7 +122,11 @@ export default function MediaCarousel({
             </p>
           </div>
         ) : (
-          <div className={cn("relative flex items-center justify-center overflow-hidden", videoBackdrop && mediaClassName)}>
+          // The frame spans the card's width and takes its HEIGHT from the video inside it. Giving this
+          // wrapper the photo sizing instead (w-full h-96) made it 384px tall and squeezed the picture to
+          // 216px wide -- narrower than the flat bars it replaced, because the frame was then constraining
+          // the video rather than being shaped by it.
+          <div className={cn("relative flex w-full items-center justify-center overflow-hidden", videoBackdrop && "bg-muted")}>
             {videoBackdrop && (
               // A paused copy, never played: it holds one blurred frame behind the video, so the frame is
               // filled for the cost of a decode rather than a second stream running. aria-hidden and
@@ -143,7 +147,9 @@ export default function MediaCarousel({
             muted={mutedVideo}
             playsInline
             preload={preloadVideo}
-            className={cn("relative", mediaClassName, videoClassName)}
+            // w-auto last so it beats the photo sizing's w-full: the video hugs its own width inside the
+            // full-width frame, which is what leaves room either side for the backdrop.
+            className={cn("relative", mediaClassName, videoClassName, videoBackdrop && "w-auto")}
             onLoadedData={(event) => {
               // Dimensions of zero on a video that reports it has data is the signature of a missing decoder.
               const video = event.currentTarget;
