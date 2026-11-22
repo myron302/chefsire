@@ -89,6 +89,24 @@ export default function MediaCarousel({
     setCurrentIndex((current) => (current === mediaItems.length - 1 ? 0 : current + 1));
   };
 
+  /** The video element itself: bare, or inside the backdrop frame. Only its width class differs between them. */
+  const renderVideo = (extra?: string) => (
+    <video
+      src={activeMedia}
+      controls
+      muted={mutedVideo}
+      playsInline
+      preload={preloadVideo}
+      className={cn(mediaClassName, videoClassName, extra)}
+      onLoadedData={(event) => {
+        // Dimensions of zero on a video that reports it has data is the signature of a missing decoder.
+        const video = event.currentTarget;
+        if (video.videoWidth === 0 || video.videoHeight === 0) setUndecodable(true);
+      }}
+      onError={() => setUndecodable(true)}
+    />
+  );
+
   if (!activeMedia) return null;
 
   return (
@@ -122,11 +140,21 @@ export default function MediaCarousel({
             </p>
           </div>
         ) : (
-          <div className={cn("relative flex items-center justify-center overflow-hidden", videoBackdrop && mediaClassName)}>
-            {videoBackdrop && (
-              // A paused copy, never played: it holds one blurred frame behind the video, so the frame is
-              // filled for the cost of a decode rather than a second stream running. aria-hidden and
-              // pointer-events-none keep it out of the way of anyone reading or clicking the real one.
+          // THE WRAPPER EXISTS ONLY FOR THE BACKDROP.
+          //
+          // Wrapping unconditionally broke the modal views, which pass h-full and rely on a parent with a
+          // definite height. A wrapper sized by its own content gives them nothing to resolve against, so the
+          // video fell back to its intrinsic 1080x1920 and filled the screen. Where there is no backdrop there
+          // is now no wrapper, and those callers see exactly the markup they saw before.
+          //
+          // The frame also takes its HEIGHT from the video rather than imposing one. Giving it the photo
+          // sizing (w-full h-96) made it 384px tall and squeezed the picture to 216px wide -- narrower than
+          // the flat bars it replaced.
+          videoBackdrop ? (
+            <div className="relative flex w-full items-center justify-center overflow-hidden bg-muted">
+              {/* A paused copy, never played: one blurred frame behind the video, for the cost of a decode
+                  rather than a second running stream. aria-hidden and pointer-events-none keep it away from
+                  anyone reading the page or reaching for the controls. */}
               <video
                 src={activeMedia}
                 muted
@@ -136,22 +164,11 @@ export default function MediaCarousel({
                 tabIndex={-1}
                 className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-2xl brightness-75"
               />
-            )}
-          <video
-            src={activeMedia}
-            controls
-            muted={mutedVideo}
-            playsInline
-            preload={preloadVideo}
-            className={cn("relative", mediaClassName, videoClassName)}
-            onLoadedData={(event) => {
-              // Dimensions of zero on a video that reports it has data is the signature of a missing decoder.
-              const video = event.currentTarget;
-              if (video.videoWidth === 0 || video.videoHeight === 0) setUndecodable(true);
-            }}
-            onError={() => setUndecodable(true)}
-          />
-          </div>
+              {renderVideo("relative w-auto")}
+            </div>
+          ) : (
+            renderVideo()
+          )
         )
       ) : (
         <img key={activeMedia} src={activeMedia} alt={alt} className={mediaClassName} data-testid={testId} loading="lazy" decoding="async" onError={onMediaImageError} />
