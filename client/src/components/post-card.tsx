@@ -629,7 +629,11 @@ export default function PostCard({
         // it, and it did not match the panel shown for a video that cannot be played, which already used the
         // theme's muted tone -- so two posts in the same feed framed their video in flatly different colours.
         // bg-muted follows the theme in both light and dark, and the two states now look like one design.
-        videoClassName="h-auto max-h-[70vh] object-contain bg-muted"
+        // 85vh rather than 70vh. A 9:16 clip's width is locked to its height -- 0.5625 of it -- so the only way
+        // to widen the picture without cropping is to let it grow taller. 70vh gave 290px of picture in an
+        // 862px card; 85vh gives 353px, and still leaves the card's header and caption on screen with it.
+        // Full width would need 1532px of height, which is why no cap short of cropping can fill the card.
+        videoClassName="h-auto max-h-[85vh] object-contain bg-muted"
         testId={`img-post-${post.id}`}
         onClick={() => onCardClick?.(post)}
         mutedVideo
