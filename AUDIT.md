@@ -40,7 +40,7 @@ Counts are *findings*, not affected sites: e.g. finding 3.1 is one row covering 
 const resp = await fetch("/api/square/subscription-link", {
   method: "POST",
 ```
-- **What's wrong:** No route exists at `/api/square/*`. `server/routes/index.ts:172` mounts `./stores` (an empty router) at `/square`; the module that actually defines `POST /subscription-link` is `server/routes/square.ts:54`, which is never imported anywhere. The request 404s, `resp.json()` fails or returns the API-404 body, and the user is shown the "Coming soon — Subscription service is being configured" toast (`StoreDashboard.tsx:266`) on every upgrade attempt. Store monetization is fully dead.
+- **What's wrong:** No route exists at `/api/square/*`. `server/routes/index.ts:172` mounts `./stores` (an empty router) at `/square`; the module that actually defines `POST /subscription-link` is `server/routes/square.ts:54`, which is never imported anywhere. The request 404s, `resp.json()` fails or returns the API-404 body, and the 404 instead surfaces as a "Checkout error" toast; "Coming soon" is reserved for a missing plan variation. This historical checkout path is broken.
 - **Severity:** P1 — checkout/monetization dead end.
 
 #### 1.2 Pantry "Add item" premium gate always resolves to false
@@ -315,7 +315,7 @@ Method: every `<Button>`/`<button>` in `client/src` (excluding `components/ui/` 
 - **What's wrong:** No `onClick`. The adjacent Follow button on the same profile header *is* wired, making this a clear omission. A full DM API (`/api/dm/*`) and a `/dm` route both exist.
 - **Severity:** P1 — profile core flow.
 
-#### 3.5 "Download Now" for purchased digital products does nothing
+#### 3.5 Digital download button hidden by response-field mismatch and missing action
 - **File:** `client/src/pages/marketplace/ProductPage.tsx:343`
 ```jsx
 {product.isDigital && product.digitalDownloadUrl && (
@@ -325,7 +325,7 @@ Method: every `<Button>`/`<button>` in `client/src` (excluding `components/ui/` 
   </Button>
 )}
 ```
-- **What's wrong:** No `onClick` and no `href`, even though `product.digitalDownloadUrl` is in scope and guarded on. A buyer of a digital product cannot retrieve it.
+- **What's wrong:** The public product page requires `digitalDownloadUrl`, but the API returns `digitalFileUrl` without mapping it, so the button is hidden. Even if visible, it has no `onClick` or `href`. This is not a purchase-confirmed download page; buyer-authorized fulfillment needs separate verification.
 - **Severity:** P1 — order fulfilment dead end.
 
 ### P2
@@ -420,7 +420,7 @@ Grouped by module. Expected-to-be-uncalled categories are annotated.
 
 ### P1
 
-#### 5.1 Store subscription upgrade shows a "Coming soon" toast for a real 404
+#### 5.1 Store subscription upgrade has a distinct "Coming soon" branch for missing plan variations
 - **File:** `client/src/pages/store/StoreDashboard.tsx:266`
 ```js
 toast({
@@ -429,8 +429,8 @@ toast({
   variant: "destructive",
 });
 ```
-- **What's wrong:** This is the error branch for the broken call in finding 1.1. Because `/api/square/subscription-link` 404s (wrong router mounted), the upgrade flow is presented to users as "not built yet" rather than as the misconfiguration it is.
-- **Severity:** P1 — blocks monetization and masks the root cause.
+- **What's wrong:** `isMissingPlanVariationError` shows "Coming soon" only for a "Missing plan variation" response. The unmounted `/api/square/subscription-link` 404 instead produces an API endpoint error shown as "Checkout error". This is not a second 404 defect; see finding 1.1.
+- **Severity:** P2 — separate configuration messaging; checkout failure is counted in finding 1.1.
 
 #### 5.2 Profile page renders hardcoded mock data in four sections
 - **File:** `client/src/pages/social/profile.tsx`
