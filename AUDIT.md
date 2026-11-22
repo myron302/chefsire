@@ -16,7 +16,7 @@ Findings below are historical candidate defects, not verified current defects. A
 | 2. Dead routes / broken navigation | 3 | 3 | 4 | 10 |
 | 3. Non-functional buttons | 5 | 14 | 8 | 27 |
 | 4. Orphaned backend routes (INFO) | — | — | — | 50 routes + 10 unmounted modules |
-| 5. Placeholder / unfinished UI | 2 | 4 | 4 | 10 |
+| 5. Placeholder / unfinished UI | 1 | 5 | 4 | 10 |
 
 Counts are *findings*, not affected sites: e.g. finding 3.1 is one row covering four dead Save buttons, and finding 2.1 is one row covering 25 dead links.
 
@@ -420,18 +420,6 @@ Grouped by module. Expected-to-be-uncalled categories are annotated.
 
 ### P1
 
-#### 5.1 Store subscription upgrade has a distinct "Coming soon" branch for missing plan variations
-- **File:** `client/src/pages/store/StoreDashboard.tsx:266`
-```js
-toast({
-  title: "Coming soon",
-  description: "Subscription service is being configured. Please check back later.",
-  variant: "destructive",
-});
-```
-- **What's wrong:** `isMissingPlanVariationError` shows "Coming soon" only for a "Missing plan variation" response. The unmounted `/api/square/subscription-link` 404 instead produces an API endpoint error shown as "Checkout error". This is not a second 404 defect; see finding 1.1.
-- **Severity:** P2 — separate configuration messaging; checkout failure is counted in finding 1.1.
-
 #### 5.2 Profile page renders hardcoded mock data in four sections
 - **File:** `client/src/pages/social/profile.tsx`
 ```js
@@ -452,6 +440,19 @@ const { data: drinksData, ... } = useQuery({
 - **Severity:** P1 — user-visible fabricated data on a core page.
 
 ### P2
+
+#### 5.1 Store subscription upgrade has a distinct "Coming soon" branch for missing plan variations
+- **File:** `client/src/pages/store/StoreDashboard.tsx:266`
+```js
+toast({
+  title: "Coming soon",
+  description: "Subscription service is being configured. Please check back later.",
+  variant: "destructive",
+});
+```
+- **What's wrong:** `isMissingPlanVariationError` shows "Coming soon" only for a "Missing plan variation" response. The unmounted `/api/square/subscription-link` 404 instead produces an API endpoint error shown as "Checkout error". This is not a second 404 defect; see finding 1.1.
+- **Severity:** P2 — separate configuration messaging; checkout failure is counted in finding 1.1.
+
 
 #### 5.3 Competitions surface is entirely mock data
 | File | Line | Detail |
