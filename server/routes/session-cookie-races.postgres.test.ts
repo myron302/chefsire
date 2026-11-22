@@ -36,6 +36,13 @@ if (!RAW) {
       : c.name === "auth_version" ? `auth_version integer NOT NULL DEFAULT 1`
       : `${c.name} ${c.columnType === "PgTimestamp" ? "timestamp" : c.columnType === "PgBoolean" ? "boolean" : "text"}`);
   await direct.query(`CREATE TABLE users (${cols.join(",")}); CREATE UNIQUE INDEX users_email_lower_unique ON users (lower(email));`);
+  // The sign-in gate reads account_status for every session it issues (suspended, closed, deactivated), and it
+  // fails CLOSED when the read throws -- which is correct, and is why this suite's eight tests all failed with
+  // "We couldn't sign you in right now" once that gate was added: the table was simply not here. An empty table
+  // means every user reads as active, which is what these tests assume. Production has it from
+  // docs/ops/2026-11-10-account-status.sql; the shared authz harness creates it the same way.
+  await direct.query(`CREATE TABLE IF NOT EXISTS account_status (user_id varchar PRIMARY KEY, status text NOT NULL,
+    reason text, changed_by varchar, changed_at timestamptz NOT NULL DEFAULT now())`);
   const hash = await bcrypt.hash("pw-correct", 4);
   for (const [id, name] of [["u-alice", "alice"], ["u-bob", "bob"]]) {
     await direct.query(`INSERT INTO users (id, username, email, password, email_verified_at, auth_version) VALUES ($1,$2,$3,$4, now(), 1)`, [id, name, `${name}@example.test`, hash]);
