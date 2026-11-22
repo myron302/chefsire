@@ -47,6 +47,12 @@ if (!RAW) {
       : c.name === "auth_version" ? `auth_version integer NOT NULL DEFAULT 1`
       : `${c.name} ${c.columnType === "PgTimestamp" ? "timestamp" : c.columnType === "PgBoolean" ? "boolean" : "text"}`);
   await direct.query(`DROP TABLE IF EXISTS users CASCADE; CREATE TABLE users (${userCols.join(",")}); CREATE UNIQUE INDEX users_email_lower_unique ON users (lower(email));`);
+  // Every path that issues a session reads account_status, and that gate fails CLOSED when the read throws.
+  // Without this table the "success after recovery" case stays 503 ACCOUNT_STATUS_UNAVAILABLE forever, which
+  // looks exactly like the outage never ended -- so the test was failing on a missing fixture, not on the
+  // recovery behaviour it exists to check. Empty table = every user reads as active.
+  await direct.query(`CREATE TABLE IF NOT EXISTS account_status (user_id varchar PRIMARY KEY, status text NOT NULL,
+    reason text, changed_by varchar, changed_at timestamptz NOT NULL DEFAULT now())`);
   const hash = await bcrypt.hash("correct-horse", 4);
   await direct.query(
     `INSERT INTO users (id, username, email, password, email_verified_at, auth_version) VALUES
