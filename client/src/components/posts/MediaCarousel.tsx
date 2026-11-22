@@ -16,6 +16,15 @@ type MediaCarouselProps = {
   onClick?: () => void;
   preloadVideo?: "none" | "metadata" | "auto";
   mutedVideo?: boolean;
+  /**
+   * Fills the frame around a vertical video with a blurred, zoomed copy of the video itself.
+   *
+   * A 9:16 clip in a wide card cannot fill it without cropping -- the picture's width is locked to 0.5625 of
+   * its height -- so a feed either crops the frame or leaves flat bars beside it. The backdrop is the third
+   * answer, and the one every major feed landed on: the card reads as full, like a photo, while the video
+   * itself stays whole.
+   */
+  videoBackdrop?: boolean;
 };
 
 export function getPostMediaItems(imageUrl?: string | null, additionalImages?: string[] | null): string[] {
@@ -43,6 +52,7 @@ export default function MediaCarousel({
   onClick,
   preloadVideo = "metadata",
   mutedVideo = false,
+  videoBackdrop = false,
 }: MediaCarouselProps) {
   const mediaItems = getPostMediaItems(imageUrl, additionalImages);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -112,13 +122,28 @@ export default function MediaCarousel({
             </p>
           </div>
         ) : (
+          <div className={cn("relative flex items-center justify-center overflow-hidden", videoBackdrop && mediaClassName)}>
+            {videoBackdrop && (
+              // A paused copy, never played: it holds one blurred frame behind the video, so the frame is
+              // filled for the cost of a decode rather than a second stream running. aria-hidden and
+              // pointer-events-none keep it out of the way of anyone reading or clicking the real one.
+              <video
+                src={activeMedia}
+                muted
+                playsInline
+                preload="metadata"
+                aria-hidden="true"
+                tabIndex={-1}
+                className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-2xl brightness-75"
+              />
+            )}
           <video
             src={activeMedia}
             controls
             muted={mutedVideo}
             playsInline
             preload={preloadVideo}
-            className={cn(mediaClassName, videoClassName)}
+            className={cn("relative", mediaClassName, videoClassName)}
             onLoadedData={(event) => {
               // Dimensions of zero on a video that reports it has data is the signature of a missing decoder.
               const video = event.currentTarget;
@@ -126,6 +151,7 @@ export default function MediaCarousel({
             }}
             onError={() => setUndecodable(true)}
           />
+          </div>
         )
       ) : (
         <img key={activeMedia} src={activeMedia} alt={alt} className={mediaClassName} data-testid={testId} loading="lazy" decoding="async" onError={onMediaImageError} />

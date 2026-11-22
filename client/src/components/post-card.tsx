@@ -633,7 +633,11 @@ export default function PostCard({
         // to widen the picture without cropping is to let it grow taller. 70vh gave 290px of picture in an
         // 862px card; 85vh gives 353px, and still leaves the card's header and caption on screen with it.
         // Full width would need 1532px of height, which is why no cap short of cropping can fill the card.
-        videoClassName="h-auto max-h-[85vh] object-contain bg-muted"
+        videoClassName="h-auto max-h-[85vh] object-contain"
+        // The frame fills like a photo while the video stays whole: the bars either side are a blurred,
+        // zoomed copy of the clip rather than flat colour. Pictures already filled the card; this is what
+        // makes video read the same way without cutting anything off it.
+        videoBackdrop
         testId={`img-post-${post.id}`}
         onClick={() => onCardClick?.(post)}
         mutedVideo
