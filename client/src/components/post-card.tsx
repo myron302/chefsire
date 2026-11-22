@@ -623,8 +623,13 @@ export default function PostCard({
         // vertical video, and what people expect to see. An earlier version of this let the box shrink to hug
         // the video instead, on the grounds that 289px of picture inside 862px of black looked wasteful. That
         // was taste overruling a correct result: hugging makes the video smaller and the card ragged, and it is
-        // not what the format looks like anywhere else. bg-black makes the bars deliberate rather than a gap.
-        videoClassName="h-auto max-h-[70vh] object-contain bg-black"
+        // not what the format looks like anywhere else.
+        //
+        // The bars are bg-muted rather than pure black. #000 against a light card reads as a hole punched in
+        // it, and it did not match the panel shown for a video that cannot be played, which already used the
+        // theme's muted tone -- so two posts in the same feed framed their video in flatly different colours.
+        // bg-muted follows the theme in both light and dark, and the two states now look like one design.
+        videoClassName="h-auto max-h-[70vh] object-contain bg-muted"
         testId={`img-post-${post.id}`}
         onClick={() => onCardClick?.(post)}
         mutedVideo
