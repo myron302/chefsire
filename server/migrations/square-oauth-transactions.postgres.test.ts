@@ -1,4 +1,5 @@
 /** Executes the P1-06 migrations and their atomic state transitions against an isolated test database. */
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -268,7 +269,27 @@ postgresTest(
         assert.equal(byName[column]?.data_type, "timestamp with time zone", `${column} is not timestamptz`);
       }
       assert.equal(byName.browser_binding_hash?.is_nullable, "NO");
-      assert.equal(byName.superseded_at, undefined, "superseded_at should be dropped");
+      // superseded_at SURVIVES the routine migration, and that is the point.
+      //
+      // The hardening file used to carry `DROP COLUMN IF EXISTS superseded_at`, and the migration validator
+      // refused the whole file for it -- so npm run db:migrate could not run at all, and this suite failed
+      // before reaching any of the assertions above. Dropping a column is irreversible, and routine migrations
+      // in this project are non-destructive by rule.
+      //
+      // The drop moved to server/migration-quarantine/20260928_drop_superseded_at.sql, which runs only through
+      // run-destructive-migration.ts. So the behaviour under test is now two halves, and both are asserted:
+      // the routine path leaves the column alone, and the quarantined script removes it.
+      assert.equal(byName.superseded_at?.data_type, "timestamp without time zone",
+        "the routine migration must not drop a column");
+
+      const quarantined = await readFile(
+        new URL("../migration-quarantine/20260928_drop_superseded_at.sql", import.meta.url), "utf8");
+      await admin.query(quarantined);
+      const afterQuarantine = await admin.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_name = 'square_oauth_transactions' AND column_name = 'superseded_at'`,
+      );
+      assert.equal(afterQuarantine.rows.length, 0, "the quarantined script is what drops superseded_at");
 
       const marker = await admin.query(`SELECT marker FROM payment_methods WHERE user_id = 'seller-a'`);
       assert.equal(marker.rows[0].marker, "preexisting");
