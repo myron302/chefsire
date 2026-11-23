@@ -200,8 +200,8 @@ export default function ShoppingListPage() {
         credentials: "include",
       });
 
-      if (response.ok && (await response.clone().json()) !== null) {
-        const productData = await response.json();
+      const productData = response.ok ? await response.json() : null;
+      if (productData) {
 
         // Add scanned product to shopping list
         await addMutation.mutateAsync({
