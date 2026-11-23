@@ -268,7 +268,7 @@ jobs:
       - name: Suites restored to CI, batch 4 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/migrations/atomic-marketplace-checkout.postgres.test.ts server/migrations/checkout-atomicity-migration.postgres.test.ts server/migrations/marketplace-payment-fulfillment.postgres.test.ts server/migrations/meal-plan-payment-fail-closed.postgres.test.ts server/migrations/payout-integrity-migration.postgres.test.ts server/migrations/square-oauth-transactions.postgres.test.ts server/migrations/wedding-trial.postgres.test.ts server/routes/auth-lookup-exhaustion.postgres.test.ts server/routes/auth-db-outage.postgres.test.ts server/routes/catering-square-payments-http.postgres.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/migrations/atomic-marketplace-checkout.postgres.test.ts server/migrations/checkout-atomicity-migration.postgres.test.ts server/migrations/marketplace-payment-fulfillment.postgres.test.ts server/migrations/meal-plan-payment-fail-closed.postgres.test.ts server/migrations/payout-integrity-migration.postgres.test.ts server/migrations/square-oauth-transactions.postgres.test.ts server/migrations/wedding-trial.postgres.test.ts server/routes/auth-lookup-exhaustion.postgres.test.ts server/routes/account-deletion-authorization.test.ts server/routes/google-oauth-csrf.test.ts server/routes/google-oauth-concurrency.test.ts server/routes/google-oauth-exhaustion.test.ts server/routes/google-oauth-pending-logout.test.ts server/routes/subscription-read-state.test.ts server/routes/auth-db-outage.postgres.test.ts server/routes/catering-square-payments-http.postgres.test.ts
       - name: Suites restored to CI, batch 5 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
@@ -277,3 +277,27 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node --import tsx --test --test-concurrency=1 server/routes/suggestions-recipe-privacy.postgres.test.ts server/routes/wedding-registry-links.postgres.test.ts server/scripts/migration-runner.postgres.test.ts server/scripts/migration-safety.postgres.test.ts server/services/catering-square-payments.postgres.test.ts server/services/catering-square-schema.postgres.test.ts
+      - name: High-risk unit suites restored to CI, batch 1 of 6
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 client/src/components/auth-entry-forms.test.tsx client/src/components/catering/booking-authoritative-editable.test.ts client/src/lib/auth-guard.test.ts client/src/lib/session-controller.test.ts client/src/lib/session-cookie-races.test.ts client/src/lib/session-login-fetch.test.ts client/src/lib/session-verification.test.ts client/src/lib/session-verify-deadline.test.ts
+      - name: High-risk unit suites restored to CI, batch 2 of 6
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 client/src/pages/services/catering-order-token-precision.test.ts client/src/pages/services/catering-session-persistence.test.ts client/src/pages/services/catering-square-payment-state.test.ts client/src/pages/services/wedding-planning/useWeddingSubscription.test.ts client/src/pages/services/wedding-planning/weddingSubscription.test.ts client/src/pages/store/lib/storeDashboard-subscription.test.ts server/boot/env-load-order.test.ts server/boot/verify-auth-config.test.ts
+      - name: High-risk unit suites restored to CI, batch 3 of 6
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/lib/square-checkout-readiness.test.ts server/lib/subscription-security.test.ts server/middleware/admin-authority.test.ts server/middleware/auth.test.ts server/realtime/dm-socket-authentication.test.ts server/realtime/dm-socket-typing-authorization.test.ts server/realtime/notification-socket-error-disclosure.test.ts server/realtime/socket-auth-expiry.test.ts
+      - name: High-risk unit suites restored to CI, batch 4 of 6
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/realtime/socket-auth.test.ts server/routes/catering-booking-adjustments-authorization.test.ts server/routes/catering-booking-billing-authorization.test.ts server/routes/catering-booking-closeout-authorization.test.ts server/routes/catering-booking-execution-authorization.test.ts server/routes/custom-drink-engagement-authorization.test.ts server/routes/custom-drink-photo-delete-authorization.test.ts server/routes/meal-plan-payment-security.test.ts
+      - name: High-risk unit suites restored to CI, batch 5 of 6
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/routes/meal-plan-review-entitlement.test.ts server/routes/nutrition-authorization.test.ts server/routes/nutrition-subscription-cancellation.test.ts server/routes/payout-integrity.test.ts server/routes/posts-social-authorization.test.ts server/routes/square-oauth-security.test.ts server/routes/subscription-authorization.test.ts server/routes/subscription-checkout.test.ts
+      - name: High-risk unit suites restored to CI, batch 6 of 6
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node --import tsx --test --test-concurrency=1 server/routes/subscription-routing.test.ts server/scripts/meal-plan-payment-enforcement.test.ts server/serializers/authenticated-user.test.ts server/serializers/catering-booking-payment-attempt.test.ts server/services/catering-booking-authorization.test.ts server/services/catering-booking-closeout-retry-ordering.test.ts server/services/catering-order-token-timezone.test.ts server/services/catering-square-payment-policy.test.ts

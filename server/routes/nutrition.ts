@@ -3,7 +3,10 @@ import { Router } from "express";
 import { nutritionEntitlement, revokeNutritionTrial, startNutritionTrialResponse } from "../lib/nutrition-entitlement";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
-import { effectiveSubscriptionPresentation, hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
+// effectiveSubscriptionPresentation is deliberately NOT imported: this module derives premium access from the
+// server-verified nutritionEntitlement rather than reconciling the legacy user columns, so the reconciliation
+// helper has nothing to do here. It sat unused in this import for a while and read as though it were in play.
+import { hasAuthoritativePaidEntitlement, paidCancellationUnavailableResponse, paidUpgradeUnavailableResponse } from "../lib/subscription-security";
 import {
   NUTRITION_SUBSCRIPTION_TIERS,
   nutritionTierPriceAsString,

@@ -4,6 +4,10 @@
  * localStorage. Only Google (stub strategy) and /api/auth/me|logout (stub: me trusts the auth_token cookie; logout is down, so the intent stays pending) are faked.
  */
 import "../test-support/auth-test-env";
+// Sign-in consults account_status for every session it issues and FAILS CLOSED when that read throws. These are
+// unit suites with no database, so the read raised a driver error and every OAuth sign-in refused before the flow
+// under test could finish. This registers the standard "active" reader the other database-free suites use.
+import "../test-support/active-account-status";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
