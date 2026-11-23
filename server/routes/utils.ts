@@ -64,7 +64,7 @@ utils.get("/lookup/:barcode", async (req, res) => {
       upc: barcode,
     });
   } catch (error) {
-    console.error("lookup error", err);
+    console.error("lookup error", error);
     return res.status(500).json({ error: "Lookup failed" });
   }
 });
