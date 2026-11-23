@@ -303,7 +303,7 @@ export default function SmoothiesPage() {
   const createSmoothie = async () => {
     if (customSmoothie.ingredients.length >= 3) {
       try {
-        const response = await fetch('/api/custom-drinks', {
+        const response = await fetch('/api/drinks/custom-drinks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -355,7 +355,7 @@ export default function SmoothiesPage() {
 
   const makePremadeRecipe = async (recipe) => {
     try {
-      const response = await fetch('/api/custom-drinks', {
+      const response = await fetch('/api/drinks/custom-drinks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
