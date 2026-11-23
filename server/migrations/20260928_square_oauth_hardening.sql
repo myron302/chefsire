@@ -17,7 +17,18 @@ ALTER TABLE square_oauth_transactions
 --    browser-binding proof and can never satisfy it, so it can no longer be
 --    claimed or consumed. Discard those unusable attempts; callers simply
 --    start a new OAuth connection. This never touches payment_methods.
-DELETE FROM square_oauth_transactions;
+--
+--    The WHERE clause is not a narrowing of intent -- it is the intent stated
+--    exactly. Step 1 adds browser_binding_hash as NULL, so on any database that
+--    predates this file EVERY existing row matches and the effect is identical
+--    to an unqualified DELETE. On a database where this file has already run,
+--    the column is NOT NULL and nothing matches, which is what makes a re-run a
+--    true no-op rather than one that merely looks harmless.
+--
+--    An unqualified DELETE is also refused by the routine migration validator
+--    (server/scripts/migration-safety.ts), and rightly: it cannot prove that a
+--    bare DELETE is bounded. A real predicate is something it can check.
+DELETE FROM square_oauth_transactions WHERE browser_binding_hash IS NULL;
 
 -- 3. Browser binding is mandatory for every transaction going forward.
 ALTER TABLE square_oauth_transactions
@@ -33,11 +44,19 @@ ALTER TABLE square_oauth_transactions
   ALTER COLUMN claimed_at TYPE timestamptz USING claimed_at AT TIME ZONE 'UTC',
   ALTER COLUMN consumed_at TYPE timestamptz USING consumed_at AT TIME ZONE 'UTC';
 
--- 5. A unique-per-user row plus nonce/binding replacement on every new
---    initiation makes stale-attempt bookkeeping unnecessary; drop it if the
---    earlier unmerged migration created it.
-ALTER TABLE square_oauth_transactions
-  DROP COLUMN IF EXISTS superseded_at;
+-- 5. superseded_at is NOT dropped here. A unique-per-user row plus
+--    nonce/binding replacement on every new initiation makes stale-attempt
+--    bookkeeping unnecessary, so the column is unwanted -- but no migration
+--    that ever shipped creates it. It exists only where someone applied an
+--    unmerged migration, which is a developer machine, never production
+--    (verified against the live database: the column is absent there).
+--
+--    Dropping a column is irreversible, and this project's rule is that routine
+--    migrations are non-destructive, so the drop lives in
+--    server/migration-quarantine/20260928_drop_superseded_at.sql and runs only
+--    through run-destructive-migration.ts. Carrying it here would make every
+--    db:migrate run fail the validator for the sake of a column that is not
+--    there.
 
 -- 6. Replace per-request nonce uniqueness with one-row-per-user enforcement,
 --    which is what actually bounds table growth. Drop-then-add makes this
