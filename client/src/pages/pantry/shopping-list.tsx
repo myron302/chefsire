@@ -196,11 +196,11 @@ export default function ShoppingListPage() {
   const handleScanBarcode = async (barcode: string) => {
     try {
       // Fetch product info from barcode
-      const response = await fetch(`/api/products/barcode/${barcode}`, {
+      const response = await fetch(`/api/lookup/${encodeURIComponent(barcode)}`, {
         credentials: "include",
       });
 
-      if (response.ok) {
+      if (response.ok && (await response.clone().json()) !== null) {
         const productData = await response.json();
 
         // Add scanned product to shopping list
