@@ -304,7 +304,7 @@ export default function CaffeinatedDrinksPage() {
   const createDrink = async () => {
     if (customDrink.ingredients.length >= 2) {
       try {
-        const response = await fetch('/api/custom-drinks', {
+        const response = await fetch('/api/drinks/custom-drinks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -356,7 +356,7 @@ export default function CaffeinatedDrinksPage() {
 
   const makePremadeRecipe = async (recipe) => {
     try {
-      const response = await fetch('/api/custom-drinks', {
+      const response = await fetch('/api/drinks/custom-drinks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
