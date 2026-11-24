@@ -20,17 +20,24 @@ type JwtPayload = {
   exp?: number;
 };
 
-/** Attach user to req once verified */
+/**
+ * Attach user to req once verified.
+ *
+ * This extends `Express.User`, not `Request.user`. @types/passport already declares `user?: Express.User` on Request, and a second,
+ * differently typed declaration of the same property does not merge -- it is an error (TS2717) and passport's empty `interface User {}`
+ * is what the rest of the server then sees. That is why `req.user.id` did not type-check anywhere, in this file included. Describing the
+ * shape on `Express.User` is the extension point passport leaves open, so every `req.user` in the server gets these fields.
+ */
 declare global {
   namespace Express {
+    interface User {
+      id: string;
+      email?: string;
+      username?: string;
+      nutritionPremium?: boolean;
+      nutritionTrialEndsAt?: Date | string;
+    }
     interface Request {
-      user?: {
-        id: string;
-        email?: string;
-        username?: string;
-        nutritionPremium?: boolean;
-        nutritionTrialEndsAt?: Date | string;
-      };
       cookies?: {
         auth_token?: string;
         [key: string]: any;
