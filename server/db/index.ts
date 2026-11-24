@@ -1,6 +1,6 @@
 // server/db/index.ts
 import "../lib/load-env";
-import { drizzle } from "drizzle-orm/neon-serverless";
+import { drizzle, type NeonDatabase } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
 import * as schema from "../../shared/schema";
 import { resolveDbSettings } from "../lib/db-config";
@@ -51,7 +51,15 @@ if (pool) {
     });
   }
 }
-export const db = pool ? drizzle(pool, { schema }) : (null as any);
+/**
+ * The Drizzle instance, typed.
+ *
+ * `null as any` on the no-DATABASE_URL branch made the ternary's type `any`, so `db` was `any` everywhere it is imported and every query
+ * result with it -- which is where most of the server's implicit-any parameters come from. The runtime contract is unchanged: this is still
+ * null when there is no DATABASE_URL, and callers still guard with `if (!db)` before using it.
+ */
+export type Database = NeonDatabase<typeof schema>;
+export const db: Database = pool ? drizzle(pool, { schema }) : (null as unknown as Database);
 
 // Gracefully end pool only when it's present
 process.on("beforeExit", () => {

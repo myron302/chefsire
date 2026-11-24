@@ -276,7 +276,7 @@ jobs:
       - name: Suites restored to CI, batch 5 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/routes/club-challenges-authz.postgres.test.ts server/routes/clubs-private-access.postgres.test.ts server/routes/cook-together-duets-recipe-privacy.postgres.test.ts server/routes/marketplace-seller-analytics-authz.postgres.test.ts server/routes/meal-plan-access.postgres.test.ts server/routes/recipe-visibility.postgres.test.ts server/routes/reviews-recipe-privacy.postgres.test.ts server/routes/search-autocomplete-recipe-privacy.postgres.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/routes/club-challenges-authz.postgres.test.ts server/routes/clubs-private-access.postgres.test.ts server/routes/cook-together-duets-recipe-privacy.postgres.test.ts server/routes/query-result-shape.postgres.test.ts server/routes/marketplace-seller-analytics-authz.postgres.test.ts server/routes/meal-plan-access.postgres.test.ts server/routes/recipe-visibility.postgres.test.ts server/routes/reviews-recipe-privacy.postgres.test.ts server/routes/search-autocomplete-recipe-privacy.postgres.test.ts
       - name: Suites restored to CI, batch 6 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
