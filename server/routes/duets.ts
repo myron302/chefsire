@@ -162,7 +162,7 @@ router.post("/create", requireAuth, async (req, res) => {
     }
 
     // Create duet
-    const result = await db.execute(sql`
+    const result = await db.execute<{ id: string }>(sql`
       INSERT INTO recipe_duets (
         original_recipe_id,
         original_user_id,
@@ -187,7 +187,7 @@ router.post("/create", requireAuth, async (req, res) => {
 
     // Send notification to original recipe creator
     if (data.originalUserId !== userId) {
-      const [dueter] = await db.execute(sql`
+      const dueter = await db.execute<{ username: string | null; avatar: string | null }>(sql`
         SELECT username, avatar FROM users WHERE id = ${userId} LIMIT 1
       `);
       const dueterUser = dueter.rows?.[0];

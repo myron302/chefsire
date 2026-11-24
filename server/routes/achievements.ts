@@ -169,14 +169,14 @@ router.get("/", requireAuth, async (req, res) => {
       .limit(1);
 
     // Get quest completion count
-    const [questCount] = await db.execute(sql`
+    const questCount = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM quest_progress
       WHERE user_id = ${userId} AND status = 'completed'
     `);
 
     // Get post count
-    const [postCount] = await db.execute(sql`
+    const postCount = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM posts
       WHERE user_id = ${userId}
@@ -226,13 +226,13 @@ router.post("/check", requireAuth, async (req, res) => {
       .where(eq(users.id, userId))
       .limit(1);
 
-    const [questCount] = await db.execute(sql`
+    const questCount = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM quest_progress
       WHERE user_id = ${userId} AND status = 'completed'
     `);
 
-    const [postCount] = await db.execute(sql`
+    const postCount = await db.execute(sql`
       SELECT COUNT(*) as count
       FROM posts
       WHERE user_id = ${userId}
