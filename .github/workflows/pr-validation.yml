@@ -288,7 +288,7 @@ jobs:
       - name: High-risk unit suites restored to CI, batch 3 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/lib/square-checkout-readiness.test.ts server/lib/subscription-security.test.ts server/middleware/admin-authority.test.ts server/middleware/auth.test.ts server/realtime/dm-socket-authentication.test.ts server/realtime/dm-socket-typing-authorization.test.ts server/realtime/notification-socket-error-disclosure.test.ts server/realtime/socket-auth-expiry.test.ts
+        run: node --import tsx --test --test-concurrency=1 server/lib/schema-push-plan.test.ts server/lib/square-checkout-readiness.test.ts server/lib/subscription-security.test.ts server/middleware/admin-authority.test.ts server/middleware/auth.test.ts server/realtime/dm-socket-authentication.test.ts server/realtime/dm-socket-typing-authorization.test.ts server/realtime/notification-socket-error-disclosure.test.ts server/realtime/socket-auth-expiry.test.ts
       - name: High-risk unit suites restored to CI, batch 4 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test

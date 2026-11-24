@@ -383,6 +383,35 @@ test("splitSqlStatements honours parentheses, quotes, dollar quoting and refuses
   assert.throws(() => splitSqlStatements("SELECT /* x */ 1;"), SchemaPlanParseError);
 });
 
+test("drizzle-kit's own `--> statement-breakpoint` separator is a statement boundary, and nothing else about a `--` is excused", () => {
+  // drizzle-kit emits this between two statements it must apply in order (every drop-and-re-add of a constraint or index contains one).
+  assert.deepEqual(
+    splitSqlStatements(`ALTER TABLE "t" DROP CONSTRAINT "c";\n--> statement-breakpoint\nALTER TABLE "t" ADD CONSTRAINT "c" PRIMARY KEY("a");`),
+    ['ALTER TABLE "t" DROP CONSTRAINT "c";', 'ALTER TABLE "t" ADD CONSTRAINT "c" PRIMARY KEY("a");'],
+    "the separator is not carried into either statement",
+  );
+  assert.deepEqual(splitSqlStatements(`SELECT 1;\r\n--> statement-breakpoint\r\nSELECT 2;`), ["SELECT 1;", "SELECT 2;"], "CRLF output");
+  assert.deepEqual(splitSqlStatements(`SELECT 1;\n  --> statement-breakpoint  \nSELECT 2;`), ["SELECT 1;", "SELECT 2;"], "indented");
+  assert.deepEqual(splitSqlStatements(`SELECT 1;\n--> statement-breakpoint`), ["SELECT 1;"], "a trailing separator is not an unterminated statement");
+  // Everything that is not exactly that whole line is still an SQL comment, and still refused.
+  for (const refused of [
+    `SELECT 1; --> statement-breakpoint\nSELECT 2;`,
+    `SELECT 1;\n--> statement-breakpoint DROP TABLE "victim";\n`,
+    `SELECT 1;\n--> statement-breakpoints\nSELECT 2;`,
+    `SELECT 1;\n-->statement-breakpoint; DROP TABLE "victim";\n`,
+    `SELECT 1;\n-- statement-breakpoint\nSELECT 2;`,
+  ]) assert.throws(() => splitSqlStatements(refused), SchemaPlanParseError, refused);
+  // It can never rewrite the inside of a quoted identifier or a string literal: those are consumed whole.
+  assert.deepEqual(splitSqlStatements(`ALTER TABLE "a\n--> statement-breakpoint\nb" ADD COLUMN "c" text;`), [
+    `ALTER TABLE "a\n--> statement-breakpoint\nb" ADD COLUMN "c" text;`,
+  ]);
+  // A separator in the MIDDLE of a statement joins what it separates rather than hiding it: the result is still classified.
+  assert.deepEqual(classifyPushPlan(splitSqlStatements(`ALTER TABLE "t"\n--> statement-breakpoint\nDROP COLUMN "y";`)).map((item) => item.kind), ["drop_column"]);
+  // End to end: a routine drop-and-re-add of an unchanged constraint reads as the pair it is, so the plan needs no acknowledgement.
+  const paired = wrap(`ALTER TABLE "t" DROP CONSTRAINT "c";\n--> statement-breakpoint\nALTER TABLE "t" ADD CONSTRAINT "c" PRIMARY KEY("a");`);
+  assert.deepEqual(classifyPushPlan(parsePushPlan(paired), { constraints: { [constraintFactKey("public", "t", "c")]: "PRIMARY KEY (a)" }, indexes: {} }), []);
+});
+
 test("parsePushPlan reads drizzle-kit's verbose strict output and never mistakes an unreadable plan for an empty one", () => {
   const output = `No config path provided\n[\u001b[32m✓\u001b[39m] Pulling schema from database...\n${wrap('ALTER TABLE "t" ADD COLUMN "c" text;\nDROP TABLE "u" CASCADE;')}`;
   assert.deepEqual(parsePushPlan(output), ['ALTER TABLE "t" ADD COLUMN "c" text;', 'DROP TABLE "u" CASCADE;']);
