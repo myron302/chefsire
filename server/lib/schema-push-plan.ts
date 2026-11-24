@@ -93,6 +93,25 @@ const foldAscii = (value: string) => value.replace(/[A-Z]/g, (char) => char.toLo
  * Tokenizes PostgreSQL text. Unquoted words are folded to lower case (ASCII only, as PostgreSQL does); quoted identifiers keep their exact
  * spelling. Comments are refused outright: a comment could hide a statement boundary, and drizzle-kit never emits one.
  */
+/**
+ * `--> statement-breakpoint` is drizzle-kit's OWN separator between two statements of one plan, not SQL: the statements on either side of
+ * it are already terminated by their own semicolons, so it carries no meaning for us beyond "the statement ended here". It is recognised
+ * only as a WHOLE LINE (nothing but whitespace before it, nothing but whitespace after it) and only where the tokenizer is between tokens,
+ * which is why it can never match inside a string literal or a quoted identifier: those are consumed whole. Only the marker line itself is
+ * skipped, never anything after it, so no text can hide behind one -- and every SQL comment is still refused outright.
+ */
+const STATEMENT_BREAKPOINT = /^-->[ \t]*statement-breakpoint[ \t]*\r?(?=\n|$)/;
+
+/** True when only spaces and tabs separate `at` from the start of its line. */
+function atLineStart(sql: string, at: number): boolean {
+  for (let index = at - 1; index >= 0; index -= 1) {
+    const char = sql[index];
+    if (char === "\n") return true;
+    if (char !== " " && char !== "\t" && char !== "\r") return false;
+  }
+  return true;
+}
+
 function tokenize(sql: string): Token[] {
   const tokens: Token[] = [];
   const n = sql.length;
@@ -101,6 +120,10 @@ function tokenize(sql: string): Token[] {
   while (i < n) {
     const c = sql[i];
     if (/\s/.test(c)) { i += 1; continue; }
+    if (c === "-" && atLineStart(sql, i)) {
+      const breakpoint = STATEMENT_BREAKPOINT.exec(sql.slice(i));
+      if (breakpoint) { i += breakpoint[0].length; continue; }
+    }
     if ((c === "-" && sql[i + 1] === "-") || (c === "/" && sql[i + 1] === "*")) fail("an SQL comment");
     const s = i;
     if (c === '"') {
@@ -158,21 +181,22 @@ export function splitSqlStatements(text: string): string[] {
   const tokens = tokenize(text);
   const statements: string[] = [];
   let depth = 0;
-  let start = 0;
-  let lastEnd = 0;
+  // Each statement starts at its first TOKEN, not at the end of the previous one: whitespace and drizzle's skipped
+  // `--> statement-breakpoint` separator lines therefore never become part of the statement that follows them.
+  let start: number | null = null;
   for (const token of tokens) {
+    if (start === null) start = token.s;
     if (token.k === "p" && token.v === "(") depth += 1;
     else if (token.k === "p" && token.v === ")") depth -= 1;
     else if (token.k === "p" && token.v === ";" && depth <= 0) {
       const statement = text.slice(start, token.e).trim();
       if (statement !== ";") statements.push(statement);
-      start = token.e;
+      start = null;
       depth = 0;
     }
-    lastEnd = token.e;
   }
   if (depth > 0) throw new SchemaPlanParseError("The push plan ended inside a parenthesis.");
-  if (text.slice(start, Math.max(lastEnd, start)).trim()) throw new SchemaPlanParseError("The push plan ended with an unterminated statement.");
+  if (start !== null) throw new SchemaPlanParseError("The push plan ended with an unterminated statement.");
   return statements;
 }
 
