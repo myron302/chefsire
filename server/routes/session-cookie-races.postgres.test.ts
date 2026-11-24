@@ -123,6 +123,18 @@ if (!RAW) {
       onChange: () => {},
     });
     const flush = async () => { for (let i = 0; i < 12; i++) await new Promise((r) => setTimeout(r, 15)); };
+    /**
+     * A held response only exists once the REAL server has answered: `held` is filled by the fetch wrapper after the round trip, not when the
+     * request is sent. A login here costs a bcrypt verify and several reads through the Neon bridge -- routinely 150-200ms, more under load --
+     * so waiting a fixed number of timer ticks for it is waiting on the machine, not on the controller. Deliver by index and wait for the
+     * response that index names. `sent` is still pushed synchronously, so every assertion about what the controller DID or DID NOT send is
+     * unaffected, and nothing here lets a missing request pass: the wait ends in a failure naming what was sent.
+     */
+    const untilHeld = async (count: number) => {
+      for (let i = 0; i < 400 && held.length < count; i += 1) await new Promise((r) => setTimeout(r, 25));
+      assert.ok(held.length >= count, `expected ${count} answered request(s) in flight, saw ${held.length} (sent: ${sent.join(", ") || "nothing"})`);
+    };
+    const deliver = async (index: number, mode: "ok" | "network" = "ok") => { await untilHeld(index + 1); held[index].deliver(mode); };
     /** Who does the REAL server say the jar's cookie belongs to? */
     const serverView = async () => {
       const res = await fetch(base + "/api/auth/me", { headers: jar.cookie ? { cookie: `auth_token=${jar.cookie}` } : {} });
@@ -133,7 +145,7 @@ if (!RAW) {
       assert.equal(controller.getState().user?.id ?? null, authoritative, `${label}: UI vs server session`);
       assert.equal(JSON.parse(store.get(USER_STORAGE_KEY) ?? "null")?.id ?? null, authoritative, `${label}: localStorage vs server session`);
     };
-    return { jar, store, held, sent, delivered, controller, flush, serverView, assertSynchronized, mangle };
+    return { jar, store, held, sent, delivered, controller, flush, deliver, serverView, assertSynchronized, mangle };
   }
   const login = (b: ReturnType<typeof browser>, who: string, pw = "pw-correct") => b.controller.login(`${who}@example.test`, pw);
 
@@ -144,11 +156,11 @@ if (!RAW) {
     const bb = login(b, "bob");
     await b.flush();
     assert.deepEqual(b.sent, ["login"], "B is not sent while A is in flight");
-    b.held[0].deliver();
+    await b.deliver(0);
     assert.equal((await a).ok, false);
     await b.flush();
     assert.deepEqual(b.sent, ["login", "login"]);
-    b.held[1].deliver();
+    await b.deliver(1);
     assert.deepEqual(await bb, { ok: true });
     await b.flush();
     assert.equal(await b.serverView(), "u-bob");
@@ -162,15 +174,15 @@ if (!RAW) {
     const out = b.controller.logout();
     const bb = login(b, "bob");
     await b.flush();
-    b.held[0].deliver(); // Alice's real Set-Cookie
+    await b.deliver(0); // Alice's real Set-Cookie
     await a;
     await b.flush();
     assert.equal(await b.serverView(), "u-alice", "the stale login's cookie is briefly real");
-    b.held[1].deliver(); // the real logout's clearing Set-Cookie
+    await b.deliver(1); // the real logout's clearing Set-Cookie
     await out;
     await b.flush();
     assert.equal(b.jar.cookie, null);
-    b.held[2].deliver();
+    await b.deliver(2);
     assert.deepEqual(await bb, { ok: true });
     await b.flush();
     assert.deepEqual(b.sent, ["login", "logout", "login"]);
@@ -184,13 +196,13 @@ if (!RAW) {
     await b.flush();
     const bb = login(b, "bob", "wrong");
     await b.flush();
-    b.held[0].deliver();
+    await b.deliver(0);
     await a;
     await b.flush();
     assert.equal(await b.serverView(), "u-alice");
-    b.held[1].deliver(); // 401 for B
+    await b.deliver(1); // 401 for B
     await b.flush();
-    b.held[2].deliver(); // the cleanup logout
+    await b.deliver(2); // the cleanup logout
     assert.equal((await bb).ok, false);
     await b.flush();
     assert.deepEqual(b.sent, ["login", "login", "logout"]);
@@ -203,10 +215,10 @@ if (!RAW) {
     const a = login(b, "alice");
     await b.flush();
     const out = b.controller.logout();
-    b.held[0].deliver();
+    await b.deliver(0);
     await a;
     await b.flush();
-    b.held[1].deliver("network");
+    await b.deliver(1, "network");
     await out;
     await b.flush();
     assert.equal(b.controller.getState().user, null);
@@ -217,7 +229,7 @@ if (!RAW) {
     await reload.flush();
     assert.equal(reload.controller.getState().user, null);
     assert.deepEqual(reload.sent, ["logout"], "no /me: nothing restored from the cookie");
-    reload.held[0].deliver();
+    await reload.deliver(0);
     await reload.flush();
     assert.equal(await reload.serverView(), null);
     assert.equal(reload.store.has(LOGOUT_PENDING_KEY), false);
@@ -229,7 +241,7 @@ if (!RAW) {
       const b = browser();
       const first = login(b, "alice");
       await b.flush();
-      b.held[0].deliver();
+      await b.deliver(0);
       assert.deepEqual(await first, { ok: true });
       await b.flush();
       assert.equal(b.controller.getState().user?.id, "u-alice");
@@ -237,7 +249,7 @@ if (!RAW) {
       b.mangle.next = kind;
       const second = login(b, "bob");
       await b.flush();
-      b.held[1].deliver();
+      await b.deliver(1);
       assert.deepEqual(await second, { ok: true });
       await b.flush();
       assert.equal(b.jar.cookie !== null, true);
@@ -252,13 +264,13 @@ if (!RAW) {
     const b = browser();
     const first = login(b, "alice");
     await b.flush();
-    b.held[0].deliver();
+    await b.deliver(0);
     assert.deepEqual(await first, { ok: true });
     await b.flush();
     b.mangle.next = "proxy-page-no-cookie";
     const second = login(b, "bob");
     await b.flush();
-    b.held[1].deliver();
+    await b.deliver(1);
     const result = await second;
     await b.flush();
     assert.equal(result.ok, false, "never a success for Bob");
