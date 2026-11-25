@@ -5,6 +5,10 @@
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
     "noEmit": true,
+    "target": "ES2022",
+    // Pinned to the pre-target behaviour: esbuild/Vite default this to true at ES2022+, which would
+    // change class-field emit (define vs set) in the error boundaries and Error subclasses at runtime.
+    "useDefineForClassFields": false,
     "module": "ESNext",
     "strict": true,
     "lib": ["esnext", "dom", "dom.iterable"],
