@@ -52,12 +52,12 @@ export function sha256(sql: string): string {
  * general bypass, and there is no environment variable or flag that adds to this list.
  */
 export const REVIEWED_HISTORICAL_DESTRUCTIVE: Readonly<Record<string, { sha256: string; reason: string }>> = {
-  "server:20260928_square_oauth_hardening.sql": {
-    sha256: "37df13978ed253ee21f1b01d6a9b04bd56e6cd84a8f0a2220110a92914b91099",
-    reason:
-      "Empties the short-lived square_oauth_transactions table (unusable pre-binding attempts) and drops its " +
-      "transient superseded_at column. Never touches payment_methods or stored seller credentials.",
-  },
+  // Deliberately empty. The one entry that lived here, server:20260928_square_oauth_hardening.sql, no longer
+  // needs an exception: its bare DELETE was given the predicate that states its real intent, and its DROP COLUMN
+  // moved to server/migration-quarantine/, which the routine runner never scans. The validator now passes that
+  // file on its own merits under any ledger key. The mechanism is kept, and its tests with it, because the next
+  // reviewed historical migration should go through a pinned hash rather than a new code path -- but an empty
+  // list is the stronger position, so nothing is added here to keep it populated.
 };
 
 const TOP_LEVEL_ALLOWED = new Set([

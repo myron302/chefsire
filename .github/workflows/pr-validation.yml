@@ -553,3 +553,9 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node server/scripts/run-ci-batch.mjs server/lib/square-plaintext-finalization-durability.postgres.test.ts
+      - name: Migration safety validator and realtime engine origin guard
+        # The validator is what refuses a destructive migration before it reaches the database, so it is the one
+        # suite whose own failure would be silent everywhere else. It was out of CI until now.
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node server/scripts/run-ci-batch.mjs server/scripts/migration-safety.test.ts server/realtime/engine-origin-guard.test.ts
