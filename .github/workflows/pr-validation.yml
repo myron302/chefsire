@@ -559,3 +559,7 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node server/scripts/run-ci-batch.mjs server/scripts/migration-safety.test.ts server/realtime/engine-origin-guard.test.ts
+      - name: Four suites that had never run in CI
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node server/scripts/run-ci-batch.mjs client/src/pages/services/wedding-planning/weddingRegistry.test.ts client/src/lib/socket-lifecycle.test.ts server/routes/wedding-onboarding.test.ts server/routes/wedding-trial.test.ts

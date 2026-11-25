@@ -54,6 +54,7 @@ if (!PG_URL) {
   await local.query(`
     ${ddl(schema.users, "users", ", UNIQUE (username), UNIQUE (email)")};
     ${ddl(schema.drinkRecipes, "drink_recipes")};
+    ${ddl(schema.drinkEvents, "drink_events")};
     CREATE TABLE drink_challenges (id varchar PRIMARY KEY);
   `);
 
@@ -62,7 +63,19 @@ if (!PG_URL) {
   app.use(express.json());
   app.use("/api/drinks", drinksRouter);
   const server = app.listen(0);
-  test.after(async () => { server.close(); await local.end(); });
+
+  // The recommended-drinks route reaches thecocktaildb.com. That call is nothing to do with premium access, and
+  // leaving it live made this suite depend on the internet: offline, the rejection landed AFTER the test that
+  // triggered it had ended, so the runner reported the whole FILE as failed while all 29 subtests passed. Only
+  // outbound requests are answered here; the suite's own requests to its loopback server go through untouched.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: Parameters<typeof realFetch>[0], init?: Parameters<typeof realFetch>[1]) => {
+    const target = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+    if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(target)) return realFetch(input, init);
+    return new Response(JSON.stringify({ drinks: null }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof realFetch;
+
+  test.after(async () => { globalThis.fetch = realFetch; server.close(); await local.end(); });
   const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/drinks`;
 
   // Slugs deliberately unresolvable as canonical drinks so they are looked up in drink_recipes.
