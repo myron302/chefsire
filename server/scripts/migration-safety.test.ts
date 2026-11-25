@@ -9,6 +9,7 @@ import {
   assertNonDestructive,
   DestructiveMigrationError,
   findDestructiveOperations,
+  isReviewedHistorical,
   REVIEWED_HISTORICAL_DESTRUCTIVE,
   sha256,
 } from "./migration-safety";
@@ -114,7 +115,9 @@ test("the reviewed-historical list is pinned to exact content and is not a gener
     assert.throws(() => assertNonDestructive(key, sql + "\nDROP TABLE users;"), DestructiveMigrationError);
     assert.throws(() => assertNonDestructive("other:" + filename, sql + "\n"), DestructiveMigrationError);
   }
-  assert.equal(Object.keys(REVIEWED_HISTORICAL_DESTRUCTIVE).length, 1);
+  // The list is empty today. The loop above still guards every entry that is ever added back: pinned to exact
+  // content, armed again by any edit, and refused under a different ledger key.
+  assert.equal(Object.keys(REVIEWED_HISTORICAL_DESTRUCTIVE).length, 0);
 });
 
 test("every SQL file in a directory scanned by the runner is safe or explicitly reviewed", () => {
@@ -263,10 +266,32 @@ test("bounded DELETE statements remain supported", () => {
   }
 });
 
-test("the reviewed historical exception covers exactly the two operations it was reviewed for", () => {
+test("the pinning rule holds for an entry that is not on the production list", () => {
+  // Codex's point on #1528: with REVIEWED_HISTORICAL_DESTRUCTIVE empty, the loop in the test above runs zero
+  // times, so nothing exercises the rule the mechanism rests on. This drives it against a synthetic list, so
+  // the behaviour is proved whether or not anything is currently listed.
+  const sql = "DROP TABLE pretend_history;\n";
+  const key = "server:pretend_reviewed.sql";
+  const list = { [key]: { sha256: sha256(sql), reason: "synthetic entry for this test only" } };
+
+  assert.equal(isReviewedHistorical(key, sql, list), true, "exact content under its own key is recognised");
+  assert.equal(isReviewedHistorical(key, sql + "\n", list), false, "one added byte re-arms the guard");
+  assert.equal(isReviewedHistorical("drizzle:pretend_reviewed.sql", sql, list), false, "another ledger key is refused");
+  assert.equal(isReviewedHistorical(key, sql, {}), false, "an empty list recognises nothing");
+  // And the real list does not quietly recognise it.
+  assert.equal(isReviewedHistorical(key, sql), false, "the synthetic entry is not reachable from production state");
+});
+
+test("the square OAuth hardening migration needs no exception and claims none", () => {
+  // It used to need one, for a bare DELETE and a DROP COLUMN. The DELETE now carries the predicate that states
+  // its actual intent, and the DROP COLUMN lives in server/migration-quarantine/, which db:migrate never scans.
+  // So the validator must pass this file with no flagged operations, under any ledger key including one that is
+  // not on the reviewed list -- and the file must not be on that list at all.
   const sql = readFileSync(join(serverDir, "migrations", "20260928_square_oauth_hardening.sql"), "utf-8");
-  assert.deepEqual(ops(sql).sort(), ["DELETE without WHERE", "DROP COLUMN"]);
-  assert.equal(sha256(sql), REVIEWED_HISTORICAL_DESTRUCTIVE["server:20260928_square_oauth_hardening.sql"].sha256);
+  assert.deepEqual(ops(sql), []);
+  assert.doesNotThrow(() => assertNonDestructive("server:20260928_square_oauth_hardening.sql", sql));
+  assert.doesNotThrow(() => assertNonDestructive("unlisted:20260928_square_oauth_hardening.sql", sql));
+  assert.equal(REVIEWED_HISTORICAL_DESTRUCTIVE["server:20260928_square_oauth_hardening.sql"], undefined);
 });
 
 // ---- Unicode-escaped identifiers and other lexing-boundary bypasses (Codex d4b6a8c) -------------------------------

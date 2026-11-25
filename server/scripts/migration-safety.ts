@@ -52,12 +52,12 @@ export function sha256(sql: string): string {
  * general bypass, and there is no environment variable or flag that adds to this list.
  */
 export const REVIEWED_HISTORICAL_DESTRUCTIVE: Readonly<Record<string, { sha256: string; reason: string }>> = {
-  "server:20260928_square_oauth_hardening.sql": {
-    sha256: "37df13978ed253ee21f1b01d6a9b04bd56e6cd84a8f0a2220110a92914b91099",
-    reason:
-      "Empties the short-lived square_oauth_transactions table (unusable pre-binding attempts) and drops its " +
-      "transient superseded_at column. Never touches payment_methods or stored seller credentials.",
-  },
+  // Deliberately empty. The one entry that lived here, server:20260928_square_oauth_hardening.sql, no longer
+  // needs an exception: its bare DELETE was given the predicate that states its real intent, and its DROP COLUMN
+  // moved to server/migration-quarantine/, which the routine runner never scans. The validator now passes that
+  // file on its own merits under any ledger key. The mechanism is kept, and its tests with it, because the next
+  // reviewed historical migration should go through a pinned hash rather than a new code path -- but an empty
+  // list is the stronger position, so nothing is added here to keep it populated.
 };
 
 const TOP_LEVEL_ALLOWED = new Set([
@@ -369,9 +369,19 @@ export function findDestructiveOperations(sql: string): DestructiveFinding[] {
   return findings;
 }
 
-/** True only for a historical file whose exact content was reviewed in Phase 3B. */
-export function isReviewedHistorical(ledgerKey: string, sql: string): boolean {
-  return REVIEWED_HISTORICAL_DESTRUCTIVE[ledgerKey]?.sha256 === sha256(sql);
+/**
+ * True only for a historical file whose exact content was reviewed in Phase 3B.
+ *
+ * `list` exists so the pinning rule can be exercised against a synthetic entry. The production list is empty
+ * today, and a test that loops over it proves nothing while that is true -- but the rule still has to hold for
+ * the next entry someone adds. Callers never pass it.
+ */
+export function isReviewedHistorical(
+  ledgerKey: string,
+  sql: string,
+  list: Readonly<Record<string, { sha256: string; reason: string }>> = REVIEWED_HISTORICAL_DESTRUCTIVE,
+): boolean {
+  return list[ledgerKey]?.sha256 === sha256(sql);
 }
 
 /** Throws DestructiveMigrationError unless the SQL is non-destructive or a reviewed historical file. */
