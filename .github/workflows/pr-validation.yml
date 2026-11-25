@@ -326,6 +326,13 @@ jobs:
           --health-retries 10
     env:
       CI: "true"
+      # Both names, and DATABASE_URL too. Several of these suites read TEST_DATABASE_URL rather than
+      # CS_TEST_PG_URL, and a few construct the app, which reads DATABASE_URL. With those unset the Neon driver
+      # falls back to a placeholder host and the suite fails with ECONNREFUSED ep-private-host.neon.tech -- which
+      # looks like a broken test and is really a missing variable. They were exported locally, so the first run
+      # of this job was the first time they were absent.
+      TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+      DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
     steps:
       - name: Checkout reviewed PR code
         uses: actions/checkout@v4
@@ -381,6 +388,13 @@ jobs:
           --health-retries 10
     env:
       CI: "true"
+      # Both names, and DATABASE_URL too. Several of these suites read TEST_DATABASE_URL rather than
+      # CS_TEST_PG_URL, and a few construct the app, which reads DATABASE_URL. With those unset the Neon driver
+      # falls back to a placeholder host and the suite fails with ECONNREFUSED ep-private-host.neon.tech -- which
+      # looks like a broken test and is really a missing variable. They were exported locally, so the first run
+      # of this job was the first time they were absent.
+      TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+      DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
     steps:
       - name: Checkout reviewed PR code
         uses: actions/checkout@v4
@@ -436,6 +450,13 @@ jobs:
           --health-retries 10
     env:
       CI: "true"
+      # Both names, and DATABASE_URL too. Several of these suites read TEST_DATABASE_URL rather than
+      # CS_TEST_PG_URL, and a few construct the app, which reads DATABASE_URL. With those unset the Neon driver
+      # falls back to a placeholder host and the suite fails with ECONNREFUSED ep-private-host.neon.tech -- which
+      # looks like a broken test and is really a missing variable. They were exported locally, so the first run
+      # of this job was the first time they were absent.
+      TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+      DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
     steps:
       - name: Checkout reviewed PR code
         uses: actions/checkout@v4
