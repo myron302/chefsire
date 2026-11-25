@@ -48,7 +48,9 @@ if (!PG_URL) {
   };
   await local.query(`
     DROP TABLE IF EXISTS users, pantry_items, posts, recipes, recipe_saves, stores, user_drink_stats, custom_drinks, drink_saves,
-      cook_together_sessions, cook_together_participants CASCADE;
+      clubs, club_memberships, cook_together_sessions, cook_together_participants CASCADE;
+    ${ddl(schema.clubs, "clubs")};
+    ${ddl(schema.clubMemberships, "club_memberships")};
     ${ddl(schema.users, "users", ", UNIQUE (username), UNIQUE (email)")};
     ${ddl(schema.pantryItems, "pantry_items")};
     ${ddl(schema.posts, "posts")};
@@ -84,7 +86,7 @@ if (!PG_URL) {
   const ids = { A: "", B: "" };
 
   test.beforeEach(async () => {
-    await local.query(`TRUNCATE users, pantry_items, posts, recipes, recipe_saves, stores, user_drink_stats, custom_drinks, drink_saves, cook_together_sessions, cook_together_participants`);
+    await local.query(`TRUNCATE users, pantry_items, posts, recipes, recipe_saves, stores, user_drink_stats, custom_drinks, drink_saves, clubs, club_memberships, cook_together_sessions, cook_together_participants`);
     for (const [key, name] of [["A", "alice"], ["B", "bob"]] as const) {
       ids[key] = (await local.query(
         `INSERT INTO users (username, email, display_name, password, subscription_tier, monthly_revenue, google_id)
