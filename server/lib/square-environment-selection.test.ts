@@ -251,7 +251,25 @@ test("only square-environment.ts reads SQUARE_ENV, and only square-integration.t
           (code.match(/process\.env\.SQUARE_ENV\s*[!=]==?\s*"sandbox"/g) ?? []).length,
           `${relative} reads SQUARE_ENV somewhere other than a sandbox comparison`,
         );
+        // Greptile on #1529: the bracket form was banned only in the else branch below, so once a file held one
+        // allowed comparison it could add process.env["SQUARE_ENV"] === "production" and stay green. Banned here
+        // too -- the exception is for a comparison spelled exactly one way, not for a file.
+        assert.doesNotMatch(code, /env\[["']SQUARE_ENV["']\]/, `${relative} reads SQUARE_ENV through a bracket`);
+        // Codex on #1529: comparison SHAPE was not enough. `process.env.SQUARE_ENV === "sandbox" ? sandbox : live`
+        // satisfies every check above while selecting an environment -- and selects the live one whenever the
+        // variable is missing or mistyped, which is the exact failure this whole file exists to prevent. A
+        // refusal reads the comparison as a boolean and stops; it never picks a value from it. So no conditional
+        // expression may consume one. `?.` and `??` are ordinary and are not that.
+        for (const read of code.matchAll(/process\.env\.SQUARE_ENV\s*[!=]==?\s*"sandbox"/g)) {
+          const following = code.slice(read.index! + read[0].length, read.index! + read[0].length + 160);
+          assert.doesNotMatch(
+            following.replace(/\?\?/g, "").replace(/\?\./g, ""),
+            /\?/,
+            `${relative} feeds a SQUARE_ENV comparison into a conditional expression rather than refusing on it`,
+          );
+        }
         assert.doesNotMatch(code, /SQUARE_ENV[\s\S]{0,40}"production"/, `${relative} mentions production near SQUARE_ENV`);
+        assert.doesNotMatch(code, /SQUARE_ENV[\s\S]{0,40}'production'/, `${relative} mentions production near SQUARE_ENV`);
         sandboxRefusalReaders.push(unixPath);
       } else {
         assert.doesNotMatch(code, /process\.env\.SQUARE_ENV|env\[["']SQUARE_ENV["']\]/, `${relative} reads SQUARE_ENV directly`);
