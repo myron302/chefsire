@@ -305,6 +305,37 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node --import tsx --test --test-concurrency=1 server/routes/subscription-routing.test.ts server/scripts/meal-plan-payment-enforcement.test.ts server/serializers/authenticated-user.test.ts server/serializers/catering-booking-payment-attempt.test.ts server/services/catering-booking-authorization.test.ts server/services/catering-booking-closeout-retry-ordering.test.ts server/services/catering-order-token-timezone.test.ts server/services/catering-square-payment-policy.test.ts
+
+  restored-unit-suites-1:
+    name: Restored unit suites (1 of 3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: chefsire_wedding_test
+          POSTGRES_USER: chefsire_test
+          POSTGRES_PASSWORD: disposable_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chefsire_test -d chefsire_wedding_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+    steps:
+      - name: Checkout reviewed PR code
+        uses: actions/checkout@v4
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies from lockfile
+        run: npm ci
       - name: Remaining unit suites restored to CI, batch 1 of 17
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
@@ -329,6 +360,37 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node --import tsx --test --test-concurrency=1 server/lib/private-storage-client-tree.test.ts server/lib/private-storage-descendant-symlink.test.ts server/lib/private-storage-path.test.ts server/lib/private-storage-root-swap.test.ts server/lib/private-storage-short-write.test.ts server/lib/private-storage-symlink.test.ts server/lib/private-storage.test.ts server/lib/proxy-trust.test.ts server/lib/r2-private-bucket.test.ts server/lib/r2-private-config.test.ts server/lib/remix-engagement-cleanup.test.ts server/lib/request-origin.matrix.test.ts server/lib/request-origin.test.ts server/lib/retryable-init.test.ts server/lib/safe-public-fetch.test.ts
+
+  restored-unit-suites-2:
+    name: Restored unit suites (2 of 3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: chefsire_wedding_test
+          POSTGRES_USER: chefsire_test
+          POSTGRES_PASSWORD: disposable_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chefsire_test -d chefsire_wedding_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+    steps:
+      - name: Checkout reviewed PR code
+        uses: actions/checkout@v4
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies from lockfile
+        run: npm ci
       - name: Remaining unit suites restored to CI, batch 7 of 17
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
@@ -353,6 +415,37 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node --import tsx --test --test-concurrency=1 server/services/catering-booking-communication-policy.test.ts server/services/catering-booking-concurrency.test.ts server/services/catering-booking-execution-equipment-schedule.test.ts server/services/catering-booking-execution-merged-state.test.ts server/services/catering-booking-execution-policy.test.ts server/services/catering-booking-file-content.test.ts server/services/catering-booking-file-policy.test.ts server/services/catering-booking-links.test.ts server/services/catering-booking-page-lookahead.test.ts server/services/catering-booking-policy.test.ts server/services/catering-booking-storage-cleanup.test.ts server/services/catering-booking-workspace-policy.test.ts server/services/catering-cleanup-attempt-evidence.test.ts server/services/catering-cleanup-claim.test.ts server/services/catering-date.test.ts
+
+  restored-unit-suites-3:
+    name: Restored unit suites (3 of 3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: chefsire_wedding_test
+          POSTGRES_USER: chefsire_test
+          POSTGRES_PASSWORD: disposable_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chefsire_test -d chefsire_wedding_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+    steps:
+      - name: Checkout reviewed PR code
+        uses: actions/checkout@v4
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies from lockfile
+        run: npm ci
       - name: Remaining unit suites restored to CI, batch 13 of 17
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
