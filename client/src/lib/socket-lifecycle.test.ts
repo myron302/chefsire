@@ -14,6 +14,12 @@
  * scripted connector, because some cases -- a transport blip, a late event from a replaced socket
  * -- cannot be produced on demand from a real network.
  */
+// Authentication now resolves the token against the live account row (users.auth_version), which this suite has
+// no table for, and it requires an `av` claim. Both arrived after this file was written, and together they made
+// every valid token here look like a bad credential -- so all three real-server tests failed on the REPLACEMENT
+// socket connecting, not on the eviction they exist to prove. This registers a directory in which every id is a
+// live account at auth version 1; tokens without the claim are still refused.
+import "../../../server/test-support/accept-test-sessions";
 import { TEST_JWT_SECRET } from "../../../server/test-support/auth-test-env";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -29,10 +35,12 @@ const A = "user-A";
 const THREAD_A = "thread-with-A";
 const DM = "/dm";
 
+// `av` is the account's auth version. It is part of every real token, and a token without it is refused outright,
+// so the expired one carries it too: that case must fail on its expiry, not on a missing claim.
 const validToken = (id = A) =>
-  jwt.sign({ id, email: `${id}@chefsire.test` }, TEST_JWT_SECRET, { algorithm: "HS256", expiresIn: "7d" });
+  jwt.sign({ id, av: 1, email: `${id}@chefsire.test` }, TEST_JWT_SECRET, { algorithm: "HS256", expiresIn: "7d" });
 const expiredToken = (id = A) =>
-  jwt.sign({ id, exp: Math.floor(Date.now() / 1000) - 60 }, TEST_JWT_SECRET, { algorithm: "HS256" });
+  jwt.sign({ id, av: 1, exp: Math.floor(Date.now() / 1000) - 60 }, TEST_JWT_SECRET, { algorithm: "HS256" });
 
 /* --------------------------------------------------- a real authenticating server */
 

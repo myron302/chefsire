@@ -22,11 +22,16 @@ await build({
   stdin: { contents: `export { WeddingPlanningWorkspace } from './client/src/pages/services/wedding-planning.tsx'; export { WeddingPlanningRegistrySection } from './client/src/pages/services/wedding-planning/components/WeddingPlanningRegistrySection.tsx';`, resolveDir: root, loader: "ts" },
   absWorkingDir: root, outfile: join(dir, "workspace.mjs"), bundle: true, platform: "node", format: "esm", packages: "external", jsx: "automatic",
   plugins: [{ name: "registry-browser-fixtures", setup(b) {
-    b.onResolve({ filter: /contexts\/UserContext$|hooks\/useGoogleMaps$|hooks\/use-toast$|components\/WeddingTrialSelector$|^wouter$/ }, ({ path }) => ({ path, namespace: "browser-fixture" }));
+    // use-published-vendors was added to the workspace after this suite was written. It calls useQuery, so every
+    // render here died with "No QueryClient set" before it reached the registry. The vendor list has nothing to do
+    // with the registry deletion queue under test, and a real QueryClientProvider would add a vendors fetch that
+    // competes with this suite's stubbed fetch, so it is stubbed like the other out-of-scope hooks above.
+    b.onResolve({ filter: /contexts\/UserContext$|hooks\/useGoogleMaps$|hooks\/use-toast$|components\/WeddingTrialSelector$|lib\/use-published-vendors$|^wouter$/ }, ({ path }) => ({ path, namespace: "browser-fixture" }));
     b.onLoad({ filter: /.*/, namespace: "browser-fixture" }, ({ path }) => ({ contents:
       path.endsWith("UserContext") ? `export const useUser=()=>globalThis.${fixtureKey}.session;` :
       path.endsWith("useGoogleMaps") ? `export const useGoogleMaps=()=>false;` :
       path.endsWith("use-toast") ? `export const useToast=()=>globalThis.${fixtureKey}.toastApi;` :
+      path.endsWith("use-published-vendors") ? `export const usePublishedVendors=()=>({data:[],isLoading:false,isError:false});` :
       path === "wouter" ? `import React from 'react'; export const Link=({children,...p})=>React.createElement('a',p,children);` : `export default function TrialSelector(){return null;}`, loader: "js", resolveDir: root }));
     b.onResolve({ filter: /wedding-planning\/components\/WeddingPlanning[^/]+$/ }, ({ path }) => /WeddingPlanningRegistrySection(?:\.tsx)?$/.test(path) ? undefined : ({ path, namespace: "unrelated-view" }));
     b.onLoad({ filter: /.*/, namespace: "unrelated-view" }, ({ path }) => ({ contents: `export function ${path.split('/').at(-1)}(){return null;}`, loader: "js", resolveDir: root }));

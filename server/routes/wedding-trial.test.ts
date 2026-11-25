@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PgDialect } from "drizzle-orm/pg-core";
 process.env.DATABASE_URL ||= "postgresql://unused:unused@localhost/unused_test";
-const { db } = await import("../db");
+const { db, pool } = await import("../db");
 const { storage } = await import("../storage");
 const { default: router } = await import("./wedding-subscription");
 const { requireWeddingTier, weddingEntitlement } = await import("../lib/wedding-entitlement");
@@ -27,6 +27,11 @@ test("trial activation, isolation, expiration, cancellation and failures", async
   const content = { guests: Array.from({ length: 200 }, (_, id) => ({ id, rsvp: "accepted" })), vendors: Array.from({ length: 30 }, (_, id) => ({ id })), budget: { total: 50000 }, tasks: ["venue"], calendar: ["fitting"], quotes: ["q"], registry: ["r"], documents: ["doc"], attachments: ["r2/key"] };
   const before = structuredClone(content);
   const history: any[] = [];
+  // The legacy cancel guard reads pool.query, not the Drizzle handle, and fails closed on any query
+  // uncertainty. With no database reachable it refused the cancel and downgrade paths with 409 before they ran,
+  // so the response carried a block code instead of trial state. "blocked: false" is what a cardless trial
+  // account really returns; the guard is tested against a real database in the wedding Square suites.
+  t.mock.method(pool, "query", async () => ({ rows: [{ blocked: false }] }));
   t.mock.method(storage, "getUser", async (id: string) => ({ id, weddingTier: "free" }));
   t.mock.method(storage, "updateUser", async () => ({}));
   t.mock.method(db, "insert", () => ({ values: async (row: any) => history.push(row) }));
