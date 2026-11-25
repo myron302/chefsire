@@ -369,9 +369,19 @@ export function findDestructiveOperations(sql: string): DestructiveFinding[] {
   return findings;
 }
 
-/** True only for a historical file whose exact content was reviewed in Phase 3B. */
-export function isReviewedHistorical(ledgerKey: string, sql: string): boolean {
-  return REVIEWED_HISTORICAL_DESTRUCTIVE[ledgerKey]?.sha256 === sha256(sql);
+/**
+ * True only for a historical file whose exact content was reviewed in Phase 3B.
+ *
+ * `list` exists so the pinning rule can be exercised against a synthetic entry. The production list is empty
+ * today, and a test that loops over it proves nothing while that is true -- but the rule still has to hold for
+ * the next entry someone adds. Callers never pass it.
+ */
+export function isReviewedHistorical(
+  ledgerKey: string,
+  sql: string,
+  list: Readonly<Record<string, { sha256: string; reason: string }>> = REVIEWED_HISTORICAL_DESTRUCTIVE,
+): boolean {
+  return list[ledgerKey]?.sha256 === sha256(sql);
 }
 
 /** Throws DestructiveMigrationError unless the SQL is non-destructive or a reviewed historical file. */

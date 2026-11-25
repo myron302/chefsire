@@ -9,6 +9,7 @@ import {
   assertNonDestructive,
   DestructiveMigrationError,
   findDestructiveOperations,
+  isReviewedHistorical,
   REVIEWED_HISTORICAL_DESTRUCTIVE,
   sha256,
 } from "./migration-safety";
@@ -263,6 +264,22 @@ test("bounded DELETE statements remain supported", () => {
   ]) {
     assert.deepEqual(ops(sql), [], sql);
   }
+});
+
+test("the pinning rule holds for an entry that is not on the production list", () => {
+  // Codex's point on #1528: with REVIEWED_HISTORICAL_DESTRUCTIVE empty, the loop in the test above runs zero
+  // times, so nothing exercises the rule the mechanism rests on. This drives it against a synthetic list, so
+  // the behaviour is proved whether or not anything is currently listed.
+  const sql = "DROP TABLE pretend_history;\n";
+  const key = "server:pretend_reviewed.sql";
+  const list = { [key]: { sha256: sha256(sql), reason: "synthetic entry for this test only" } };
+
+  assert.equal(isReviewedHistorical(key, sql, list), true, "exact content under its own key is recognised");
+  assert.equal(isReviewedHistorical(key, sql + "\n", list), false, "one added byte re-arms the guard");
+  assert.equal(isReviewedHistorical("drizzle:pretend_reviewed.sql", sql, list), false, "another ledger key is refused");
+  assert.equal(isReviewedHistorical(key, sql, {}), false, "an empty list recognises nothing");
+  // And the real list does not quietly recognise it.
+  assert.equal(isReviewedHistorical(key, sql), false, "the synthetic entry is not reachable from production state");
 });
 
 test("the square OAuth hardening migration needs no exception and claims none", () => {
