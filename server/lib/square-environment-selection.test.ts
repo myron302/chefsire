@@ -211,69 +211,13 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/**
- * Modules permitted to read SQUARE_ENV, and only to refuse unless it is explicitly "sandbox". Named by pattern
- * rather than listed one by one: the whole wedding Square sandbox subsystem shares this shape, and a file that
- * is not part of it cannot acquire the permission by being added to a list. The count is asserted below so the
- * set cannot grow unnoticed either.
- */
-const SANDBOX_REFUSAL_READER = /^(lib|routes)\/wedding-square-[a-z0-9-]+\.ts$/;
-
 test("only square-environment.ts reads SQUARE_ENV, and only square-integration.ts picks an SDK environment", () => {
-  const sandboxRefusalReaders: string[] = [];
   for (const file of sourceFiles(SERVER)) {
     const relative = path.relative(SERVER, file);
     const text = readFileSync(file, "utf8");
     const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     if (relative !== path.join("lib", "square-environment.ts")) {
-      // The wedding Square sandbox subsystem is the one exception, and it is an exception on purpose.
-      //
-      // Those modules do not select an environment. Each one refuses to act unless SQUARE_ENV is explicitly
-      // "sandbox" -- a second, independent fail-closed check that holds even if the shared policy above were
-      // ever changed or mocked. Routing them through the resolver would make them depend on the thing they
-      // exist to double-check, and the resolver treats an absent variable as Sandbox, which would turn a
-      // refusal into a permission. So the reads stay, and this test pins what they are allowed to be.
-      //
-      // The invariant that actually matters is unchanged: no module outside square-environment.ts may read
-      // SQUARE_ENV to decide WHICH environment to use. These may only read it to say no.
-      const unixPath = relative.split(path.sep).join("/");
-      if (SANDBOX_REFUSAL_READER.test(unixPath) && /process\.env\.SQUARE_ENV/.test(code)) {
-        for (const read of code.match(/process\.env\.SQUARE_ENV\s*[!=]==?\s*"[a-z]*"/g) ?? []) {
-          assert.match(
-            read,
-            /process\.env\.SQUARE_ENV\s*(?:!==\s*"sandbox"|===\s*"sandbox")/,
-            `${relative} compares SQUARE_ENV to something other than "sandbox": ${read}`,
-          );
-        }
-        // A bare read that is not one of those comparisons would escape the check above.
-        assert.equal(
-          (code.match(/process\.env\.SQUARE_ENV/g) ?? []).length,
-          (code.match(/process\.env\.SQUARE_ENV\s*[!=]==?\s*"sandbox"/g) ?? []).length,
-          `${relative} reads SQUARE_ENV somewhere other than a sandbox comparison`,
-        );
-        // Greptile on #1529: the bracket form was banned only in the else branch below, so once a file held one
-        // allowed comparison it could add process.env["SQUARE_ENV"] === "production" and stay green. Banned here
-        // too -- the exception is for a comparison spelled exactly one way, not for a file.
-        assert.doesNotMatch(code, /env\[["']SQUARE_ENV["']\]/, `${relative} reads SQUARE_ENV through a bracket`);
-        // Codex on #1529: comparison SHAPE was not enough. `process.env.SQUARE_ENV === "sandbox" ? sandbox : live`
-        // satisfies every check above while selecting an environment -- and selects the live one whenever the
-        // variable is missing or mistyped, which is the exact failure this whole file exists to prevent. A
-        // refusal reads the comparison as a boolean and stops; it never picks a value from it. So no conditional
-        // expression may consume one. `?.` and `??` are ordinary and are not that.
-        for (const read of code.matchAll(/process\.env\.SQUARE_ENV\s*[!=]==?\s*"sandbox"/g)) {
-          const following = code.slice(read.index! + read[0].length, read.index! + read[0].length + 160);
-          assert.doesNotMatch(
-            following.replace(/\?\?/g, "").replace(/\?\./g, ""),
-            /\?/,
-            `${relative} feeds a SQUARE_ENV comparison into a conditional expression rather than refusing on it`,
-          );
-        }
-        assert.doesNotMatch(code, /SQUARE_ENV[\s\S]{0,40}"production"/, `${relative} mentions production near SQUARE_ENV`);
-        assert.doesNotMatch(code, /SQUARE_ENV[\s\S]{0,40}'production'/, `${relative} mentions production near SQUARE_ENV`);
-        sandboxRefusalReaders.push(unixPath);
-      } else {
-        assert.doesNotMatch(code, /process\.env\.SQUARE_ENV|env\[["']SQUARE_ENV["']\]/, `${relative} reads SQUARE_ENV directly`);
-      }
+      assert.doesNotMatch(code, /process\.env\.SQUARE_ENV|env\[["']SQUARE_ENV["']\]/, `${relative} reads SQUARE_ENV directly`);
     }
     if (relative !== path.join("lib", "square-integration.ts")) {
       assert.doesNotMatch(code, /SquareEnvironment\.(Production|Sandbox)/, `${relative} chooses an SDK environment itself`);
@@ -281,8 +225,6 @@ test("only square-environment.ts reads SQUARE_ENV, and only square-integration.t
     }
     assert.doesNotMatch(code, /isSandbox\b/, `${relative} derives its own sandbox flag`);
   }
-  // Pinned so that a new module reading SQUARE_ENV shows up as a failing count rather than passing quietly.
-  assert.equal(sandboxRefusalReaders.length, 42, `sandbox refusal readers changed:\n${sandboxRefusalReaders.join("\n")}`);
 });
 
 test("marketplace capture, refund and the public config route consult the shared policy before any provider work", () => {
