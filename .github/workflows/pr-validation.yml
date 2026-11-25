@@ -174,6 +174,15 @@ jobs:
         run: node --import tsx --test client/src/components/auth-entry.test.tsx server/routes/google-oauth-state.test.ts
       - name: Build client and server
         run: npm run build
+      # Runs here, on the dist/public the step above just produced, so the page is checked before it can be
+      # deployed rather than after. It needs a real browser: the self-referential CSS custom property that once
+      # rendered the whole site in Times New Roman is invisible to tsc, to vite build (which exits 0 on it) and
+      # to jsdom, which does not compute custom properties at all. Chromium alone -- this is about whether the
+      # cascade resolved, not about cross-browser differences.
+      - name: Install Chromium for the rendering smoke check
+        run: npx playwright install --with-deps chromium
+      - name: Smoke-check that the built feed actually renders
+        run: node --import tsx --test --test-concurrency=1 client/src/render-smoke.browser.test.ts
 
   wedding-square-postgres-migration-tests:
     name: Wedding Square PostgreSQL migration and Drizzle parity
