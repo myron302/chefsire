@@ -55,7 +55,11 @@ if (!PG_URL) {
     ${ddl(schema.users, "users", ", UNIQUE (username), UNIQUE (email)")};
     ${ddl(schema.drinkRecipes, "drink_recipes")};
     ${ddl(schema.drinkEvents, "drink_events")};
-    CREATE TABLE drink_challenges (id varchar PRIMARY KEY);
+    -- Was an id column and nothing else, which was enough while /community-search could not get this far: it
+    -- failed on its external fetch first. With that stubbed, the route reached its own challenges query, which
+    -- selects slug, and returned a 500 -- so the community-search leg of test I was asserting against an empty
+    -- response and proving nothing. Built from the real schema now.
+    ${ddl(schema.drinkChallenges, "drink_challenges")};
   `);
 
   const { default: drinksRouter } = await import("./drinks");
@@ -237,6 +241,37 @@ if (!PG_URL) {
     const list = await get("/collections/explore", "member");
     assert.equal(cardOf(list.json, "memb").items.length, 4);
     assert.ok(cardOf(list.json, "prem").items.length <= PREVIEW);
+  });
+
+  test("J search withholds the premium payload without hiding it from the people entitled to it", async () => {
+    // The other half of the fix. Withholding is easy to get wrong in the generous direction (a buyer can no
+    // longer find what they paid for) and that failure is invisible: search simply returns less. So the
+    // entitled cases are asserted explicitly, and so is the free collection, whose items are public by the
+    // creator's own choice and must never be touched by this.
+    const all = (key: string) => slugsOf(key);
+    for (const path of ["/search?q=p24", "/community-search?q=p24"]) {
+      for (const as of ["buyer", "creator"]) {
+        const r = await get(path, as);
+        const found = all("prem").filter((slug) => r.text.includes(slug));
+        assert.deepEqual(found, all("prem"), `${path} as ${as}: every item of a collection they can access`);
+      }
+      // The member can reach the membership collection but not the purchase one.
+      const member = await get(path, "member");
+      assert.deepEqual(all("memb").filter((s) => member.text.includes(s)), all("memb"), `${path} as member`);
+      assert.deepEqual(leaked(member.text, "prem"), [], `${path} as member must not reach the purchase collection`);
+      // Public collection items are public to everyone, signed in or not.
+      for (const as of [undefined, "nonent"]) {
+        const r = await get(path, as);
+        assert.deepEqual(all("free").filter((s) => r.text.includes(s)), all("free"), `${path} as ${as}: free stays free`);
+      }
+      // And the preview really is the storefront preview, not nothing: a non-entitled viewer still sees it.
+      const nonent = await get(path, "nonent");
+      assert.deepEqual(
+        all("prem").filter((s) => nonent.text.includes(s)),
+        all("prem").slice(0, PREVIEW),
+        `${path}: a non-entitled viewer sees exactly the preview, which also proves this path returns results`,
+      );
+    }
   });
 
   test("F explicitly free/public collections keep their full item list for everyone", async () => {

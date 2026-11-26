@@ -17991,6 +17991,78 @@ async function userHasActiveCollectionReviewAccess(userId: string, collectionId:
  */
 const LOCKED_COLLECTION_PREVIEW_LIMIT = 2;
 
+/**
+ * Slugs that must not be named to this viewer because they are the withheld payload of a locked collection.
+ *
+ * `resolveCollectionWithItems` is the boundary for every route that hydrates a collection, and it is correct.
+ * Search was never a caller: it queries `drink_recipes` directly, so a drink sold inside a premium collection
+ * was discoverable by name to anyone, past the storefront preview, with no grant. Fixing it inside the search
+ * handlers rather than in the boundary keeps one definition of "withheld" and does not change any route that
+ * already goes through the boundary.
+ *
+ * The rule is the boundary's rule, applied per slug:
+ *  - position within a collection is `added_at` then `drink_slug`, exactly as the boundary orders items, so the
+ *    preview is the same two items here as there;
+ *  - a collection is locked for this viewer when it is not public and the viewer has no access to it, where
+ *    access comes only from the canonical inputs (creator, completed purchase, owned bundle, active membership);
+ *  - a slug is withheld only when EVERY collection it appears in withholds it. The same drink placed in a free
+ *    public collection, or inside the preview of a locked one, is public by the creator's own choice, and
+ *    hiding it from search would be a different bug.
+ *
+ * A slug in no collection at all is a standalone recipe and is never withheld. Failure is closed: a viewer with
+ * no id is treated as having no access, and a query that cannot be answered withholds every candidate rather
+ * than naming them.
+ */
+async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: string | null): Promise<Set<string>> {
+  const candidates = [...new Set(slugs.filter((slug) => typeof slug === "string" && slug.length > 0))];
+  if (!db || candidates.length === 0) return new Set();
+  // The access map carries purchases, bundles and memberships; it does NOT carry the collections the viewer
+  // created. The boundary treats ownership as its own term (`isOwner`), so this does too -- without it a
+  // creator could not find their own premium drinks by name.
+
+  try {
+    // Both lists are bound as ONE json parameter each. Interpolating a JS array here makes drizzle emit a
+    // placeholder per element, which is a syntax error inside ANY(...) and an empty pair of parentheses when the
+    // list is empty -- the shape that made the first version of this fail closed on every search.
+    const entitled = [...(await loadOwnedCollectionIdsForUser(viewerUserId))].map(String);
+    const rows: any = await db.execute(sql`
+      WITH ranked AS (
+        SELECT ci.drink_slug AS slug,
+               ci.collection_id,
+               c.access_type,
+               c.user_id AS owner_id,
+               row_number() OVER (
+                 PARTITION BY ci.collection_id
+                 ORDER BY ci.added_at ASC, ci.drink_slug ASC
+               ) AS position
+          FROM drink_collection_items ci
+          JOIN drink_collections c ON c.id = ci.collection_id
+      ),
+      judged AS (
+        SELECT slug,
+               (
+                 access_type <> 'public'
+                 AND owner_id IS DISTINCT FROM ${viewerUserId ?? null}
+                 AND collection_id NOT IN (
+                   SELECT jsonb_array_elements_text(${JSON.stringify(entitled)}::jsonb)
+                 )
+                 AND position > ${LOCKED_COLLECTION_PREVIEW_LIMIT}
+               ) AS withheld
+          FROM ranked
+         WHERE slug IN (
+                 SELECT jsonb_array_elements_text(${JSON.stringify(candidates)}::jsonb)
+               )
+      )
+      SELECT slug FROM judged GROUP BY slug HAVING bool_and(withheld)
+    `);
+    const result: any[] = Array.isArray(rows) ? rows : (rows?.rows ?? []);
+    return new Set(result.map((row: any) => String(row.slug)));
+  } catch (error) {
+    console.error("Error resolving withheld premium slugs; withholding every candidate:", error);
+    return new Set(candidates);
+  }
+}
+
 async function resolveCollectionWithItems(
   collection: typeof drinkCollections.$inferSelect,
   viewerUserId?: string | null,
@@ -23883,7 +23955,7 @@ r.post("/creators/:userId/membership/create-checkout", requireAuth, async (req, 
 
 
 // Search drinks across canonical + user submissions
-r.get("/search", async (req, res) => {
+r.get("/search", optionalAuth, async (req, res) => {
   try {
     const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
     if (!q) return res.json({ ok: true, items: [] });
@@ -23914,14 +23986,23 @@ r.get("/search", async (req, res) => {
       source: "external",
     }));
 
-    const userItems = userMatches.map((item) => ({
-      slug: item.slug,
-      name: item.name,
-      image: item.image ?? null,
-      route: `/drinks/recipe/${item.slug}`,
-      source: "chefsire",
-      sourceCategoryRoute: `/drinks/${item.category}${item.subcategory ? `/${item.subcategory}` : ""}`,
-    }));
+    // Search reads drink_recipes directly and so never passed through resolveCollectionWithItems. Without this
+    // it named the premium payload of a locked collection to anyone who searched for it.
+    const withheld = await withheldPremiumSlugsForViewer(
+      userMatches.map((item) => item.slug),
+      (req as any).user?.id ?? null,
+    );
+
+    const userItems = userMatches
+      .filter((item) => !withheld.has(item.slug))
+      .map((item) => ({
+        slug: item.slug,
+        name: item.name,
+        image: item.image ?? null,
+        route: `/drinks/recipe/${item.slug}`,
+        source: "chefsire",
+        sourceCategoryRoute: `/drinks/${item.category}${item.subcategory ? `/${item.subcategory}` : ""}`,
+      }));
 
     return res.json({ ok: true, items: [...userItems, ...external] });
   } catch (error) {
@@ -23931,7 +24012,7 @@ r.get("/search", async (req, res) => {
 });
 
 // Unified drinks community search (drinks, remixes, creators, challenges)
-r.get("/community-search", async (req, res) => {
+r.get("/community-search", optionalAuth, async (req, res) => {
   try {
     const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
     if (!q) {
@@ -24112,7 +24193,15 @@ r.get("/community-search", async (req, res) => {
       isTrending: item.relevanceScore >= 0.85,
     }));
 
+    // Same unfiltered drink_recipes query as /search, so the same hole: filtered at the point the slugs become
+    // results, which covers the drink list and the remix list below it.
+    const withheldCommunity = await withheldPremiumSlugsForViewer(
+      userRecipeMatches.map((recipe) => recipe.slug),
+      (req as any).user?.id ?? null,
+    );
+
     const userDrinkResults = userRecipeMatches
+      .filter((recipe) => !withheldCommunity.has(recipe.slug))
       .filter((recipe) => !recipe.remixedFromSlug)
       .map((recipe) => ({
         slug: recipe.slug,
@@ -24126,6 +24215,7 @@ r.get("/community-search", async (req, res) => {
       }));
 
     const remixResults = userRecipeMatches
+      .filter((recipe) => !withheldCommunity.has(recipe.slug))
       .filter((recipe) => Boolean(recipe.remixedFromSlug))
       .map((recipe) => ({
         slug: recipe.slug,
