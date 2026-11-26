@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware";
 import { weddingSquareEnrollmentSubmitLimiter } from "../middleware/rate-limit";
 import { weddingSquareOwnerCardReadback } from "../lib/wedding-square-owner-card-readback";
 import { weddingSquareSandboxSubscriptionSubmitter } from "../lib/wedding-square-sandbox-subscription-submitter";
+import { isExplicitSandboxEnvironment } from "../lib/square-environment";
 
 /**
  * Authenticated, *sandbox only* Wedding subscription submit endpoint.
@@ -22,7 +23,7 @@ type Submitter = Pick<typeof weddingSquareSandboxSubscriptionSubmitter, "submit"
 const bodySchema = z.object({ attemptId: z.string().uuid() }).strict();
 
 function sandboxSubmissionEnabled(): boolean {
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       process.env.WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED !== "true") return false;
   const origin = process.env.WEDDING_SQUARE_ALLOWED_ORIGIN;

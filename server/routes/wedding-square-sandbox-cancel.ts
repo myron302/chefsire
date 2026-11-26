@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAuth } from "../middleware";
 import { weddingSquareEnrollmentSubmitLimiter } from "../middleware/rate-limit";
 import { weddingSquareSandboxCancellation } from "../lib/wedding-square-sandbox-cancellation";
+import { isExplicitSandboxEnvironment } from "../lib/square-environment";
 
 /**
  * Owner-only sandbox cancellation. No subscription ID, payment ID, card ID
@@ -22,7 +23,7 @@ export function createWeddingSquareSandboxCancellationRouter(
   router.post("/subscription/sandbox/cancel", auth, limiter, async(req,res) => {
     res.set("Cache-Control","no-store");
     const origin = process.env.WEDDING_SQUARE_ALLOWED_ORIGIN;
-    if (process.env.SQUARE_ENV !== "sandbox" ||
+    if (!isExplicitSandboxEnvironment() ||
         process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
         process.env.WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED !== "true" ||
         !origin) return res.status(503).json({ ok:false, code:"WEDDING_SQUARE_CANCEL_DISABLED" });

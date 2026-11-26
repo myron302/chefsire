@@ -5,6 +5,7 @@ import { weddingSquareReconciliationReadback } from "./wedding-square-reconcilia
 import { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
 import { weddingSquareSandboxPaymentRiskApi } from "./wedding-square-sandbox-payment-risk-api";
 import { WEDDING_MONTHLY_CENTS, WEDDING_CONSENT_VERSION } from "./wedding-square-billing-policy";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 type Db = Pick<PoolClient,"query">;
 type Candidate = Pick<typeof weddingSquareProviderPaymentReadback,"inspect">;
@@ -34,7 +35,7 @@ export class WeddingSquareBillingAuditError extends Error {
  */
 export function createWeddingSquareBillingAudit(db:Db,candidate:Candidate,saved:Saved,merchant:Merchant,risk:Risk){
   return {async inspect(attemptId:string,userId:string){
-    if(process.env.SQUARE_ENV!=="sandbox"||
+    if(!isExplicitSandboxEnvironment()||
        process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
        !valid(attemptId)||!valid(userId))throw new WeddingSquareBillingAuditError();
     try{

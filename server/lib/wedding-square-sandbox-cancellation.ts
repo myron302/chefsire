@@ -4,6 +4,7 @@ import { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbo
 import { weddingSquareCancelTransport } from "./wedding-square-sandbox-cancel-transport";
 import { WEDDING_CONSENT_VERSION, WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
 import {withWeddingOwnerOperationLock,type WeddingBillingDatabase as Db} from "./wedding-square-owner-operation-lock";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Authenticated, sandbox-only cancel-at-period-end for the exact user-owned
@@ -39,7 +40,7 @@ export function createWeddingSquareSandboxCancellation(db: Db, merchant: Merchan
     async cancel(userId: string) {
       const merchantId = process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
       const locationId = process.env.SQUARE_LOCATION_ID;
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           process.env.WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED !== "true" ||
           !canonical.safeParse(userId).success ||

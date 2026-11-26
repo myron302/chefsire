@@ -4,6 +4,7 @@ import { pool } from "../db";
 import { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
 import { weddingSquareSandboxCustomerCardApi } from "./wedding-square-sandbox-customer-card-api";
 import { verifyWeddingSquareCustomerCardOwnership } from "./wedding-square-customer-card-ownership";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Internal trusted source for the existing Wedding ownershipClaim.prepare().
@@ -50,7 +51,7 @@ export function createWeddingSquareOwnerCardReadback(
 ) {
   return {
     async inspect(attemptId: string, authenticatedUserId: string) {
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !uuid.safeParse(attemptId).success ||
           !canonicalId.safeParse(authenticatedUserId).success) {

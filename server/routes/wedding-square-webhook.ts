@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { WebhooksHelper } from "square";
 import { z } from "zod";
 import { pool } from "../db";
+import { isExplicitSandboxEnvironment } from "../lib/square-environment";
 
 /**
  * Wedding Square sandbox-only webhook intake.
@@ -49,7 +50,7 @@ export class WeddingSquareWebhookIntakeError extends Error {
 const WEBHOOK_PATH = "/api/wedding/subscription/webhooks/square";
 
 function sandboxWebhookConfig() {
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.SQUARE_LIVE_PAYMENTS_ENABLED === "true" ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       process.env.WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED !== "true") {

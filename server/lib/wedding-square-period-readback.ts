@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { weddingSquareBillingAudit } from "./wedding-square-billing-audit";
 import { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Conservative, read-only period proof. Square chargedThroughDate proves
@@ -49,7 +50,7 @@ export class WeddingSquarePeriodReadbackError extends Error {
 }
 export function createWeddingSquarePeriodReadback(billing:Billing,saved:Saved,reader:Reader){
   return {async inspect(attemptId:string,userId:string){
-    if(process.env.SQUARE_ENV!=="sandbox"||
+    if(!isExplicitSandboxEnvironment()||
        process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
        !id.safeParse(attemptId).success||!id.safeParse(userId).success)
       throw new WeddingSquarePeriodReadbackError();
@@ -117,7 +118,7 @@ export function createWeddingSquarePeriodReadback(billing:Billing,saved:Saved,re
 
 async function squareGet(type:"subscriptions"|"invoices"|"payments",key:string):Promise<unknown>{
   const token=process.env.SQUARE_ACCESS_TOKEN;
-  if(process.env.SQUARE_ENV!=="sandbox"||
+  if(!isExplicitSandboxEnvironment()||
      process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
      !id.safeParse(token).success||!id.safeParse(key).success)
     throw new WeddingSquarePeriodReadbackError();

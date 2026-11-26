@@ -1,3 +1,4 @@
+import { isExplicitSandboxEnvironment } from "./square-environment";
 /**
  * Pure server-side ownership check for future Wedding Square sandbox enrollment.
  * No browser-supplied customer/card IDs, Square calls, DB writes or entitlements.
@@ -39,7 +40,7 @@ export function verifyWeddingSquareCustomerCardOwnership(input: {
   providerCard: ProviderCard | null;
 }) {
   const { authenticatedUserId, expectedSandboxMerchantId, savedBinding, providerCustomer, providerCard } = input;
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       !exactId(authenticatedUserId) || !exactId(expectedSandboxMerchantId) ||
       !savedBinding || !providerCustomer || !providerCard ||

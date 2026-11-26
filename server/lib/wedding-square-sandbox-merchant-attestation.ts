@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createPlatformSquareClient } from "./square-integration";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Internal-only read-only attestation of ChefSire's PLATFORM Square sandbox
@@ -63,7 +64,7 @@ export function createWeddingSquareSandboxMerchantAttestation(
       // Never fall back from sandbox to live Square environments.
       const merchantId = process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
       const locationId = process.env.SQUARE_LOCATION_ID;
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !configuredId(merchantId) || !configuredId(locationId) ||
           (process.env.SQUARE_CURRENCY !== undefined &&

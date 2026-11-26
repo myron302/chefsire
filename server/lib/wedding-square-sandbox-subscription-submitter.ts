@@ -5,6 +5,7 @@ import { weddingSquareOwnershipClaim } from "./wedding-square-ownership-claim";
 import { weddingSquareConfirmationCoordinator } from "./wedding-square-confirmation-coordinator";
 import { weddingSquareSubmissionState } from "./wedding-square-submission-state";
 import type { prepareWeddingSquareSubscriptionRequest } from "./wedding-square-subscription-request";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Internal ONLY: the first actual Square CreateSubscription integration.
@@ -63,7 +64,7 @@ export function createWeddingSquareSandboxSubscriptionSubmitter(
   return {
     async submit(input: Parameters<Ownership["prepare"]>[0]) {
       // No network, Neon changes or Square client creation when disabled.
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !canonicalId.safeParse(input?.attemptId).success ||
           !canonicalId.safeParse(input?.authenticatedUserId).success ||

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 type Sender = (url: string, init: RequestInit) => Promise<Response>;
 const id = z.string().min(1).max(200).refine(v => !/[\s\x00-\x1f\x7f]/.test(v));
@@ -28,7 +29,7 @@ export async function readWeddingSquareInvoicePaymentCustomer(input: unknown, se
   const fail = () => new Error("Square invoice payment ownership requires reconciliation.");
   try {
     const p = paymentSchema.parse(input);
-    if (process.env.SQUARE_ENV !== "sandbox" || process.env.SQUARE_LIVE_PAYMENTS_ENABLED === "true" ||
+    if (!isExplicitSandboxEnvironment() || process.env.SQUARE_LIVE_PAYMENTS_ENABLED === "true" ||
         process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
         p.location_id !== process.env.SQUARE_LOCATION_ID || !id.safeParse(process.env.SQUARE_ACCESS_TOKEN).success) throw fail();
     // Existing independently read customer bindings remain strict at callers.
