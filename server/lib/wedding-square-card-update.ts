@@ -6,6 +6,7 @@ import {weddingSquareSandboxCardSetupTransport} from "./wedding-square-sandbox-c
 import {weddingSquareCardUpdateTransport} from "./wedding-square-card-update-transport";
 import {WEDDING_CONSENT_VERSION,WEDDING_MONTHLY_CENTS} from "./wedding-square-billing-policy";
 import {withWeddingOwnerOperationLock,type WeddingBillingDatabase as Db} from "./wedding-square-owner-operation-lock";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 type Merchant=Pick<typeof weddingSquareSandboxMerchantAttestation,"inspect">;
 type Cards=Pick<typeof weddingSquareSandboxCustomerCardApi,"getCustomer"|"getCard">;
 type Create=Pick<typeof weddingSquareSandboxCardSetupTransport,"createCard">;
@@ -16,7 +17,7 @@ type Row={id:string;user_id:string;tier:"premium"|"elite";square_customer_id:str
 type Attempt={id:string;replacement_card_id:string|null;expected_provider_version:number;previous_card_id:string;status:string};
 const valid=(v:unknown,n=200):v is string=>typeof v==="string"&&v.length>0&&v.length<=n&&!/[\s\x00-\x1f\x7f]/.test(v);
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export function weddingSquareCardUpdateEnabled(){return process.env.SQUARE_ENV==="sandbox"&&
+export function weddingSquareCardUpdateEnabled(){return isExplicitSandboxEnvironment()&&
  process.env.SQUARE_LIVE_PAYMENTS_ENABLED!=="true"&&process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED==="true"&&
  process.env.WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED==="true"&&process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED==="true"&&
  valid(process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID)&&valid(process.env.SQUARE_LOCATION_ID);}

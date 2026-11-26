@@ -3,6 +3,7 @@ import { createPlatformSquareClient } from "./square-integration";
 import { weddingSquareSandboxSubscriptionReadback } from "./wedding-square-sandbox-subscription-readback";
 import { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
 import { inspectWeddingSquareInvoicePaymentLinkage } from "./wedding-square-invoice-payment-linkage";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Server-only read-only sandbox evidence chain:
@@ -77,7 +78,7 @@ export function createWeddingSquareProviderPaymentReadback(
 ) {
   return {
     async inspect(attemptId: string, authenticatedUserId: string) {
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !canonicalId.safeParse(attemptId).success ||
           !canonicalId.safeParse(authenticatedUserId).success) {

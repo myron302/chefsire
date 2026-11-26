@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { weddingSquareRenewalScan } from "./wedding-square-renewal-scan";
 import { weddingSquareReconciliationBatch } from "./wedding-square-reconciliation-batch";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Signed webhooks are hints, never payment evidence. Queue processing only
@@ -19,7 +20,7 @@ export function createWeddingSquareWebhookDrain(db:Db,renewal:Scan,reconcile:Sca
  let running=false;
  return {
   async run(){
-   if(process.env.SQUARE_ENV!=="sandbox"||
+   if(!isExplicitSandboxEnvironment()||
       process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
       process.env.WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED!=="true"||

@@ -3,6 +3,7 @@ import { pool } from "../db";
 import { weddingSquareProviderPaymentReadback } from "./wedding-square-provider-payment-readback";
 import { weddingSquareEvidenceLedger } from "./wedding-square-evidence-ledger";
 import { weddingSquareRenewalActivation } from "./wedding-square-renewal-activation";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Discover initial and recurring Square invoices without a browser callback.
@@ -41,7 +42,7 @@ export function createWeddingSquareRenewalScan(db: Db, payment: Payment, ledger:
     async run() {
       const merchant = process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
       const location = process.env.SQUARE_LOCATION_ID;
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           process.env.WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED !== "true" ||
           process.env.WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED !== "true" ||

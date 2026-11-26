@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Atomically claims a previously persisted Wedding Square sandbox enrollment
@@ -21,7 +22,7 @@ export class WeddingSquareSubmissionStateError extends Error {
 export function createWeddingSquareSubmissionStateService(database: Queryable) {
   return {
     async claim(attemptId: string, authenticatedUserId: string) {
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !attemptId?.trim() || !authenticatedUserId?.trim() ||
           !database || typeof database.query !== "function") {
@@ -56,7 +57,7 @@ export function createWeddingSquareSubmissionStateService(database: Queryable) {
       }
     },
     async markUnknown(attemptId: string, authenticatedUserId: string) {
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !attemptId?.trim() || !authenticatedUserId?.trim() ||
           !database || typeof database.query !== "function") {

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { WEDDING_CONSENT_VERSION, WEDDING_MONTHLY_CENTS, type WeddingPaidTier } from "./wedding-square-billing-policy";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Wedding-only paid access read model: no legacy tier field, webhook payload,
@@ -39,7 +40,7 @@ export async function readVerifiedWeddingPaid(
   executor: Execution = db,
 ): Promise<VerifiedWeddingPaid | null> {
   if (process.env.WEDDING_SQUARE_VERIFIED_PAID_ENTITLEMENTS_ENABLED !== "true") return null;
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       !canonical(userId)) {
     throw new WeddingSquarePaidEvidenceUnavailableError();

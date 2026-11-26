@@ -4,6 +4,7 @@ import { pool } from "../db";
 import type { verifyWeddingEnrollmentConsent } from "./wedding-square-enrollment-consent";
 import type { weddingSquareSandboxPreflight } from "./wedding-square-enrollment-preflight";
 import { prepareWeddingSquareSubscriptionRequest } from "./wedding-square-subscription-request";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 type Consent = ReturnType<typeof verifyWeddingEnrollmentConsent>;
 type Configuration = ReturnType<typeof weddingSquareSandboxPreflight>;
@@ -38,7 +39,7 @@ export function createWeddingEnrollmentReservationService(database: SqlPool) {
     }): Promise<{ attemptId: string; idempotencyKey: string; status: "reserved" }> {
       // Do not even reserve if the operator has not explicitly enabled sandbox.
       if (process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
-          process.env.SQUARE_ENV !== "sandbox") throw new WeddingEnrollmentReservationError();
+          !isExplicitSandboxEnvironment()) throw new WeddingEnrollmentReservationError();
 
       const idempotencyKey = randomUUID();
       // Shared builder rejects mismatched tier, price, UTC and trial start.

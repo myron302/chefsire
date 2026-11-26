@@ -13,7 +13,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SquareEnvironment } from "square";
-import { SquareEnvironmentConfigError, resolveSquareEnvironment, tryResolveSquareEnvironment } from "./square-environment";
+import { SquareEnvironmentConfigError, isExplicitSandboxEnvironment, resolveSquareEnvironment, tryResolveSquareEnvironment } from "./square-environment";
 import {
   createConnectedSquareClient,
   createPlatformSquareClient,
@@ -24,6 +24,7 @@ import {
   squareOauthAuthorizeUrl,
 } from "./square-integration";
 import { assertSquareSandboxOnly, cateringSquarePaymentsEnabled, cateringSquareSandboxReady, SquareSandboxOnlyError } from "./square-checkout";
+import { weddingSquareSandboxPreflight, WeddingSquareSandboxUnavailableError } from "./wedding-square-enrollment-preflight";
 import { getSquareClient as getDrinksSquareClient, getSquareConfigError, isSquareConfigured, requireWebhookKey } from "./square";
 
 const KEYS = [
@@ -43,6 +44,19 @@ function withEnv<T>(values: Record<string, string | undefined>, fn: () => T): T 
 
 const LIVE = { SQUARE_ENV: "production", NODE_ENV: "production", SQUARE_LIVE_PAYMENTS_ENABLED: "true" };
 const CREDS = { SQUARE_ACCESS_TOKEN: "tok", SQUARE_LOCATION_ID: "loc", SQUARE_APPLICATION_ID: "app", SQUARE_APPLICATION_SECRET: "secret" };
+
+/** The minimum a wedding-square sandbox enrollment preflight accepts, so this file can ask it what it thinks "sandbox" is. */
+const SANDBOX_PREFLIGHT_ENV: Record<string, string> = {
+  WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED: "true",
+  SQUARE_ENV: "sandbox",
+  SQUARE_ACCESS_TOKEN: "tok",
+  WEDDING_SQUARE_SANDBOX_MERCHANT_ID: "merchant",
+  SQUARE_LOCATION_ID: "loc",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_VARIATION_ID: "pv",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID: "ev",
+  WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID: "pp",
+  WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID: "ep",
+};
 
 /* ---------------------------------------------- the policy itself ---------------------------------------------- */
 
@@ -85,6 +99,41 @@ test("SQUARE_ENV=sandbox selects Sandbox whatever NODE_ENV says (value trimmed, 
       });
     }
   }
+});
+
+test("isExplicitSandboxEnvironment: sandbox only when it is said out loud, and never for anything that could be LIVE", () => {
+  // The stricter variant the wedding-square sandbox subsystem needs. It is the only reason any of those 42 modules
+  // used to read SQUARE_ENV themselves, so what it means has to be pinned here rather than inferred from its name.
+  for (const nodeEnv of ["production", "development", "test", undefined]) {
+    withEnv({ SQUARE_ENV: "sandbox", NODE_ENV: nodeEnv }, () => assert.equal(isExplicitSandboxEnvironment(), true, `sandbox / ${nodeEnv}`));
+  }
+  // It does NOT trim or fold case, unlike the policy, and that is deliberate. An earlier version did, which left the
+  // wedding-square subsystem half-converted: these gates accepted "Sandbox" while sandboxEnvironmentSchema in
+  // wedding-square-enrollment-preflight.ts still required the exact token, so enrollment got further in and then
+  // failed anyway. This case holds the helper to the comparison those 44 files were already making, and pins it to
+  // the schema's own literal, so the two cannot drift apart without a test failing.
+  for (const value of [" Sandbox ", "SANDBOX", "Sandbox", "sandbox "]) {
+    withEnv({ SQUARE_ENV: value }, () => assert.equal(isExplicitSandboxEnvironment(), false, `${JSON.stringify(value)} is not the exact token`));
+    assert.throws(() => weddingSquareSandboxPreflight({ ...SANDBOX_PREFLIGHT_ENV, SQUARE_ENV: value }, "premium"), WeddingSquareSandboxUnavailableError, `preflight agrees about ${JSON.stringify(value)}`);
+  }
+  assert.equal(isExplicitSandboxEnvironment({ SQUARE_ENV: "sandbox" } as NodeJS.ProcessEnv), true);
+  assert.doesNotThrow(() => weddingSquareSandboxPreflight({ ...SANDBOX_PREFLIGHT_ENV, SQUARE_ENV: "sandbox" }, "premium"), "and about the exact token");
+  // Unlike the policy, it does NOT default: an unset or blank SQUARE_ENV is "not said", not Sandbox. That is the
+  // difference the subsystem depends on -- the feature must not start on an inherited default.
+  for (const value of [undefined, "", "   "]) {
+    for (const nodeEnv of ["production", "development", "test", undefined]) {
+      withEnv({ SQUARE_ENV: value, NODE_ENV: nodeEnv }, () => assert.equal(isExplicitSandboxEnvironment(), false, `${JSON.stringify(value)} / ${nodeEnv}`));
+    }
+  }
+  // And nothing that is, or could become, LIVE ever reads as sandbox.
+  for (const env of [LIVE, { ...LIVE, SQUARE_LIVE_PAYMENTS_ENABLED: undefined }, { SQUARE_ENV: "production" }, { SQUARE_ENV: "prod" }, { SQUARE_ENV: "live" }, { SQUARE_ENV: "typo" }]) {
+    withEnv(env, () => assert.equal(isExplicitSandboxEnvironment(), false, JSON.stringify(env)));
+  }
+  // It reads the object it is given, like the rest of the policy, and not process.env in that case.
+  withEnv(LIVE, () => {
+    assert.equal(isExplicitSandboxEnvironment({ SQUARE_ENV: "sandbox" } as NodeJS.ProcessEnv), true);
+    assert.equal(isExplicitSandboxEnvironment({} as NodeJS.ProcessEnv), false);
+  });
 });
 
 test("LIVE needs SQUARE_ENV=production AND NODE_ENV=production AND SQUARE_LIVE_PAYMENTS_ENABLED=true; any one missing refuses", () => {
@@ -217,7 +266,14 @@ test("only square-environment.ts reads SQUARE_ENV, and only square-integration.t
     const text = readFileSync(file, "utf8");
     const code = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     if (relative !== path.join("lib", "square-environment.ts")) {
-      assert.doesNotMatch(code, /process\.env\.SQUARE_ENV|env\[["']SQUARE_ENV["']\]/, `${relative} reads SQUARE_ENV directly`);
+      // `process.env.SQUARE_ENV` was the only shape this looked for, so `const env = process.env; env.SQUARE_ENV`
+      // walked straight past it -- which is how routes/wedding-square-sandbox-card-setup.ts kept its own copy of
+      // the comparison while the other 42 files were converted. Any property or destructured read counts now.
+      // A schema KEY that declares the expected value (sandboxEnvironmentSchema's `SQUARE_ENV: z.literal("sandbox")`)
+      // is deliberately still allowed: it validates an environment object handed to it, it does not branch on one.
+      assert.doesNotMatch(code, /\w+\.SQUARE_ENV\b/, `${relative} reads SQUARE_ENV directly`);
+      assert.doesNotMatch(code, /\[["']SQUARE_ENV["']\]/, `${relative} reads SQUARE_ENV directly`);
+      assert.doesNotMatch(code, /\{[^}\n]*\bSQUARE_ENV\s*[,}]/, `${relative} destructures SQUARE_ENV`);
     }
     if (relative !== path.join("lib", "square-integration.ts")) {
       assert.doesNotMatch(code, /SquareEnvironment\.(Production|Sandbox)/, `${relative} chooses an SDK environment itself`);

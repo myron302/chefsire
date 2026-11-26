@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { readVerifiedWeddingPaid } from "./wedding-square-paid-entitlement";
 import { WEDDING_CONSENT_VERSION, WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Server-owned, privacy-preserving Wedding billing management read model.
@@ -52,7 +53,7 @@ export function createWeddingSquareBillingStatus(db:Db, paidReader:PaidReader) {
       const location=process.env.SQUARE_LOCATION_ID;
       // No authoritative configured merchant -> UNKNOWN, never claim Free or
       // a canceled plan. Cardless trial is served by the existing endpoint.
-      if(process.env.SQUARE_ENV!=="sandbox"||!valid(merchant)||!valid(location)) {
+      if(!isExplicitSandboxEnvironment()||!valid(merchant)||!valid(location)) {
         return Object.freeze({
           ok:true as const,billingMode:"disabled" as const,
           enrollmentStatus:"unavailable" as const,

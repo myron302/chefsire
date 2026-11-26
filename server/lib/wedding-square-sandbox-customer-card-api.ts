@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Strict, read-only Square sandbox customer/card retrieval for Wedding.
@@ -38,7 +39,7 @@ export class WeddingSquareCustomerCardApiError extends Error {
 
 function config() {
   const token = process.env.SQUARE_ACCESS_TOKEN;
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       !canonicalId.safeParse(token).success) {
     throw new WeddingSquareCustomerCardApiError();
