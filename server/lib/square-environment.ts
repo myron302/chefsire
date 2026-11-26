@@ -58,17 +58,23 @@ export function resolveSquareEnvironment(env: NodeJS.ProcessEnv = process.env): 
 }
 
 /**
- * True only when `SQUARE_ENV` names Sandbox EXPLICITLY. Unlike {@link resolveSquareEnvironment} this never defaults: an unset or blank
- * `SQUARE_ENV` is not Sandbox here, it is simply "not said".
+ * True only when `SQUARE_ENV` is EXACTLY `sandbox`. Two differences from {@link resolveSquareEnvironment}, both deliberate:
+ * it never defaults (an unset or blank `SQUARE_ENV` is not Sandbox here, it is "not said"), and it does not trim or fold case.
  *
  * The wedding-square sandbox subsystem needs exactly that stricter rule. Every one of its modules refuses to run at all unless the operator
  * has named sandbox out loud, because the feature exists only against Square's sandbox and a missing variable must not let it start on an
- * inherited default. Each of those modules used to ask `process.env.SQUARE_ENV !== "sandbox"` itself -- 45 reads across 42 files, a second
+ * inherited default. Each of those modules used to ask `process.env.SQUARE_ENV !== "sandbox"` itself -- 47 reads across 44 files, a second
  * policy by sheer repetition, and the exact thing square-environment-selection.test.ts exists to prevent. It lives here instead, next to the
- * policy it is a stricter variant of, and (like the policy) it trims and lower-cases, so `Sandbox` and ` sandbox ` mean what they say.
+ * policy it is a stricter variant of.
+ *
+ * It does NOT trim or lower-case, and that is the point rather than an omission. An earlier version of this did, which left the subsystem
+ * half-converted: `SQUARE_ENV=Sandbox` passed these gates but was still refused by `sandboxEnvironmentSchema` in
+ * wedding-square-enrollment-preflight.ts (`z.literal("sandbox")`), so enrollment got further in and then failed anyway. Accepting a new
+ * spelling is a change to make deliberately, in one move, across the subsystem and its schema -- not a side effect of moving a comparison
+ * into a shared function. So this is the comparison those 44 files were already making, character for character.
  */
 export function isExplicitSandboxEnvironment(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.SQUARE_ENV?.trim().toLowerCase() === "sandbox";
+  return env.SQUARE_ENV === "sandbox";
 }
 
 /** Never throws: the environment name, or null when the configuration is missing, invalid or unsafe (callers treat null as "not configured"). */
