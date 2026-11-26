@@ -20373,7 +20373,16 @@ r.get("/remixes/:slug", async (req, res) => {
       .orderBy(desc(drinkRecipes.createdAt))
       .limit(24);
 
-    const items = remixes.map((entry) => ({
+    // The remixes themselves can be the premium payload of a locked collection. The requested slug is the
+    // caller's own input and is echoed below unchanged; what must not be disclosed is other people's items.
+    const withheldRemixes = await withheldPremiumSlugsForViewer(
+      remixes.map((entry) => entry.slug),
+      (req as any).user?.id ?? null,
+    );
+
+    const items = remixes
+      .filter((entry) => !withheldRemixes.has(entry.slug))
+      .map((entry) => ({
       slug: entry.slug,
       name: entry.name,
       image: entry.image ?? null,
@@ -20392,7 +20401,7 @@ r.get("/remixes/:slug", async (req, res) => {
 });
 
 // Fetch remix lineage for a canonical or community drink recipe
-r.get("/remix-chain/:slug", async (req, res) => {
+r.get("/remix-chain/:slug", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20405,6 +20414,15 @@ r.get("/remix-chain/:slug", async (req, res) => {
 
     const currentNode = await resolveRemixChainNode(slug);
     if (!currentNode) {
+      return res.status(404).json({ ok: false, error: "Recipe not found" });
+    }
+
+    // Unlike /remixes/:slug, this route returns the requested drink itself -- name, image, creator -- so a
+    // guessable slug was enough to read the premium payload of a locked collection. A withheld slug gets the
+    // same answer as a slug that does not exist, which is also what keeps the response from confirming it is
+    // there. The chain below is filtered for the same reason: its nodes are other people's recipes.
+    const viewerId = (req as any).user?.id ?? null;
+    if ((await withheldPremiumSlugsForViewer([slug], viewerId)).has(slug)) {
       return res.status(404).json({ ok: false, error: "Recipe not found" });
     }
 
@@ -20452,15 +20470,21 @@ r.get("/remix-chain/:slug", async (req, res) => {
       depth += 1;
     }
 
-    const children = descendants.filter((entry) => entry.depth === 1);
+    const withheldChain = await withheldPremiumSlugsForViewer(
+      [...ancestors.map((entry) => entry.slug), ...descendants.map((entry) => entry.slug)],
+      viewerId,
+    );
+    const visibleAncestors = ancestors.filter((entry) => !withheldChain.has(entry.slug));
+    const visibleDescendants = descendants.filter((entry) => !withheldChain.has(entry.slug));
+    const children = visibleDescendants.filter((entry) => entry.depth === 1);
 
     return res.json({
       ok: true,
       current,
-      parent: ancestors[0] ?? null,
+      parent: visibleAncestors[0] ?? null,
       children,
-      ancestors,
-      descendants,
+      ancestors: visibleAncestors,
+      descendants: visibleDescendants,
     });
   } catch (error) {
     console.error("Error fetching drink remix chain:", error);
@@ -23606,7 +23630,7 @@ function respondToFollowError(res: Response, error: any, message: string, logPre
 }
 
 
-r.get("/creators/:userId", async (req, res) => {
+r.get("/creators/:userId", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -23629,7 +23653,7 @@ r.get("/creators/:userId", async (req, res) => {
 
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
 
-    const recipes = await db
+    const allRecipes = await db
       .select({
         id: drinkRecipes.id,
         slug: drinkRecipes.slug,
@@ -23643,6 +23667,14 @@ r.get("/creators/:userId", async (req, res) => {
       .orderBy(desc(drinkRecipes.createdAt))
       .limit(limit)
       .offset(offset);
+
+    // A creator storefront listed every recipe the creator owns, including the items a buyer is paying for.
+    // The creator themselves still sees all of their own, because ownership is a grant.
+    const withheldCreatorSlugs = await withheldPremiumSlugsForViewer(
+      allRecipes.map((recipe) => recipe.slug).filter((slug): slug is string => typeof slug === "string"),
+      (req as any).user?.id ?? null,
+    );
+    const recipes = allRecipes.filter((recipe) => !withheldCreatorSlugs.has(String(recipe.slug)));
 
     if (recipes.length === 0) {
       return res.json({

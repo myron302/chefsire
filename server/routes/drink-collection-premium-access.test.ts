@@ -274,6 +274,43 @@ if (!PG_URL) {
     }
   });
 
+  test("K every endpoint that reads drink_recipes applies the gate, or provably has nothing to gate", async () => {
+    // Search was not the only route reading drink_recipes without going through the boundary -- it was the one a
+    // test happened to cover. These are every other such route in the file. The ones that return nothing to gate
+    // are asserted too, so that a later change which starts returning recipes from them fails here.
+    const premSlug = slugsOf("prem")[PREVIEW];
+    const withheldOf = (text: string) => leaked(text, "prem").concat(leaked(text, "memb"));
+
+    for (const as of [undefined, "nonent"]) {
+      for (const path of ["/remixes", "/most-remixed", "/recommended", "/whats-new", `/creators/${ids.creator}`]) {
+        const r = await get(path, as);
+        assert.deepEqual(withheldOf(r.text), [], `${path} as ${as ?? "anon"}`);
+      }
+
+      // Returns the requested drink itself, so a guessable slug was enough to read it. A withheld slug gets the
+      // same answer as one that does not exist, which also stops the response confirming it is there.
+      const chain = await get(`/remix-chain/${premSlug}`, as);
+      assert.equal(chain.status, 404, "a withheld slug is indistinguishable from a missing one");
+
+      // Echoes the slug the caller supplied, which discloses nothing; its items are other people's recipes and
+      // are gated.
+      const remixes = await get(`/remixes/${premSlug}`, as);
+      assert.equal(remixes.status, 200);
+      assert.deepEqual(remixes.json.items, [], "no remix of a withheld drink is named");
+    }
+
+    // The creator still sees their whole storefront, and the buyer still reaches the chain they paid for.
+    const own = await get(`/creators/${ids.creator}`, "creator");
+    assert.deepEqual(
+      slugsOf("prem").filter((slug) => own.text.includes(slug)),
+      slugsOf("prem"),
+      "ownership is a grant: the creator sees every item of their own collection",
+    );
+    for (const as of ["creator", "buyer"]) {
+      assert.equal((await get(`/remix-chain/${premSlug}`, as)).status, 200, `${as} can open the chain`);
+    }
+  });
+
   test("F explicitly free/public collections keep their full item list for everyone", async () => {
     for (const as of [undefined, "nonent"]) {
       for (const path of [...listEndpoints(), `/collections/${col.free}`]) {
