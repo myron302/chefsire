@@ -311,6 +311,73 @@ if (!PG_URL) {
     }
   });
 
+  test("L a drink in more than one collection, and who is allowed to make it public", async () => {
+    // Greptile on #1530: every slug in the tests above sat in exactly one collection, so the rule that keeps a
+    // drink searchable when one of its collections exposes it was never exercised -- an implementation that
+    // withheld a slug the moment ANY collection locked it would have passed. These are the shared cases, and
+    // they also pin the ownership condition Codex found missing.
+    const premSlug = slugsOf("prem")[PREVIEW];
+    const visible = async (path: string, as: string | undefined, slug: string) =>
+      (await get(path, as)).text.includes(slug);
+
+    // Starting point: withheld from a non-entitled viewer.
+    assert.equal(await visible("/search?q=p24", "nonent", premSlug), false);
+
+    // The creator puts the same drink in their own public collection. That is the creator's own choice, so it
+    // is public now -- the whole reason the rule is per slug and not per collection.
+    await local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`,
+      [col.free, premSlug],
+    );
+    assert.equal(await visible("/search?q=p24", "nonent", premSlug), true, "the creator can publish their own drink");
+    await local.query(`DELETE FROM drink_collection_items WHERE collection_id = $1 AND drink_slug = $2`, [col.free, premSlug]);
+    assert.equal(await visible("/search?q=p24", "nonent", premSlug), false, "and withdraw it again");
+
+    // Someone else puts it in THEIR public collection. That must change nothing: otherwise anyone who learned a
+    // withheld slug could publish another creator's paid item by adding it to a collection of their own.
+    const foreign = (await local.query(
+      `INSERT INTO drink_collections (user_id, name, description, is_public, access_type, is_premium, price_cents)
+       VALUES ($1, 'foreign-public', 'blurb', true, 'public', false, 0) RETURNING id`,
+      [ids.nonent],
+    )).rows[0].id;
+    await local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`,
+      [foreign, premSlug],
+    );
+    for (const as of [undefined, "nonent"]) {
+      assert.equal(
+        await visible("/search?q=p24", as, premSlug),
+        false,
+        `a collection owned by someone else cannot publish another creator's paid drink (as ${as ?? "anon"})`,
+      );
+      assert.equal((await get(`/user/${premSlug}`, as)).status, 404, "nor make the recipe itself readable");
+    }
+    // And the people entitled to it are still unaffected by any of this.
+    for (const as of ["buyer", "creator"]) {
+      assert.equal(await visible("/search?q=p24", as, premSlug), true, `${as} still finds it`);
+      assert.equal((await get(`/user/${premSlug}`, as)).status, 200, `${as} can still read it`);
+    }
+    await local.query(`DELETE FROM drink_collections WHERE id = $1`, [foreign]);
+
+    // Inside the preview of a second locked collection the creator owns: visible, because the preview is public
+    // by design. Position is added_at then slug, so inserting in the past puts it first.
+    await local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now() - interval '1 day')`,
+      [col.memb, premSlug],
+    );
+    assert.equal(await visible("/search?q=p24", "nonent", premSlug), true, "within a preview, so public");
+    await local.query(`DELETE FROM drink_collection_items WHERE collection_id = $1 AND drink_slug = $2`, [col.memb, premSlug]);
+
+    // A grant to only one of two locked collections is enough.
+    await local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`,
+      [col.memb, premSlug],
+    );
+    assert.equal(await visible("/search?q=p24", "nonent", premSlug), false, "locked in both, no grant to either");
+    assert.equal(await visible("/search?q=p24", "buyer", premSlug), true, "a grant to one of the two is enough");
+    await local.query(`DELETE FROM drink_collection_items WHERE collection_id = $1 AND drink_slug = $2`, [col.memb, premSlug]);
+  });
+
   test("F explicitly free/public collections keep their full item list for everyone", async () => {
     for (const as of [undefined, "nonent"]) {
       for (const path of [...listEndpoints(), `/collections/${col.free}`]) {

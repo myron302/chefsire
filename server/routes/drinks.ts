@@ -18026,7 +18026,27 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
     // list is empty -- the shape that made the first version of this fail closed on every search.
     const entitled = [...(await loadOwnedCollectionIdsForUser(viewerUserId))].map(String);
     const rows: any = await db.execute(sql`
-      WITH ranked AS (
+      WITH wanted AS (
+        SELECT value AS slug
+          FROM jsonb_array_elements_text(${JSON.stringify(candidates)}::jsonb) AS value
+      ),
+      -- Only collections belonging to the recipe's OWN creator can decide whether that recipe is public.
+      -- Codex on #1530: with any collection counting, anyone who learned a withheld slug could add that
+      -- recipe to a public collection of their own and publish someone else's paid item to the world. "Public
+      -- by the creator's own choice" has to mean the creator's, so the join enforces it rather than the
+      -- comment claiming it. A slug with no qualifying collection -- a canonical drink, or a recipe only ever
+      -- added to other people's collections -- is not withheld at all.
+      relevant AS (
+        SELECT DISTINCT ci.collection_id
+          FROM drink_collection_items ci
+          JOIN wanted w ON w.slug = ci.drink_slug
+          JOIN drink_recipes dr ON dr.slug = ci.drink_slug
+          JOIN drink_collections c ON c.id = ci.collection_id AND c.user_id = dr.user_id
+      ),
+      -- Ranking is restricted to those collections. Greptile on #1530: ranking every row of
+      -- drink_collection_items to judge at most a couple of dozen slugs put the whole table's work on every
+      -- search. Items still cannot be filtered BEFORE ranking, or the preview boundary would move.
+      ranked AS (
         SELECT ci.drink_slug AS slug,
                ci.collection_id,
                c.access_type,
@@ -18036,6 +18056,7 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
                  ORDER BY ci.added_at ASC, ci.drink_slug ASC
                ) AS position
           FROM drink_collection_items ci
+          JOIN relevant rel ON rel.collection_id = ci.collection_id
           JOIN drink_collections c ON c.id = ci.collection_id
       ),
       judged AS (
@@ -18049,9 +18070,7 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
                  AND position > ${LOCKED_COLLECTION_PREVIEW_LIMIT}
                ) AS withheld
           FROM ranked
-         WHERE slug IN (
-                 SELECT jsonb_array_elements_text(${JSON.stringify(candidates)}::jsonb)
-               )
+         WHERE slug IN (SELECT slug FROM wanted)
       )
       SELECT slug FROM judged GROUP BY slug HAVING bool_and(withheld)
     `);
@@ -20493,7 +20512,7 @@ r.get("/remix-chain/:slug", optionalAuth, async (req, res) => {
 });
 
 // Fetch a user-submitted drink recipe
-r.get("/user/:slug", async (req, res) => {
+r.get("/user/:slug", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20503,6 +20522,13 @@ r.get("/user/:slug", async (req, res) => {
 
     const recipe = await getUserRecipeBySlug(slug);
     if (!recipe) return res.status(404).json({ ok: false, error: "Recipe not found" });
+
+    // Codex on #1530: gating the lists without gating this route only made the payload one request further
+    // away -- anyone who learned a slug could read the whole recipe here, unauthenticated. Same answer as a
+    // slug that does not exist, so the response does not confirm it is there either.
+    if ((await withheldPremiumSlugsForViewer([slug], (req as any).user?.id ?? null)).has(slug)) {
+      return res.status(404).json({ ok: false, error: "Recipe not found" });
+    }
 
     const creator = recipe.userId
       ? await db.select({ username: users.username }).from(users).where(eq(users.id, recipe.userId)).limit(1)
