@@ -378,6 +378,94 @@ if (!PG_URL) {
     await local.query(`DELETE FROM drink_collection_items WHERE collection_id = $1 AND drink_slug = $2`, [col.memb, premSlug]);
   });
 
+  test("M the four review findings on the first pass of this gate", async () => {
+    // Each of these passed the suite as it stood, which is the point: the gate was right about the case the
+    // tests covered and wrong about four cases they did not reach. Every one is asserted from both sides --
+    // the withheld thing stays withheld, and the public or entitled thing stays available.
+    const premSlug = slugsOf("prem")[PREVIEW];
+    const withheldOf = (text: string) => leaked(text, "prem").concat(leaked(text, "memb"));
+    const recipe = (slug: string, owner: string, remixedFrom?: string) => local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`, [slug, ids[owner], remixedFrom ?? null]);
+    const item = (collectionId: string, slug: string, addedAt = "now()") => local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, ${addedAt})`, [collectionId, slug]);
+    const added = ["p24-stranger-1", "p24-prem-remix-1", "p24-public-remix-1"];
+
+    try {
+    // 1. A collection is qualified to speak for an item only about THAT item. Qualifying it by one of its items
+    //    let it vote on every other item in it, so a stranger could carry a paid slug out of its collection by
+    //    adding it to a public collection of their own alongside a recipe they really do own.
+    const theirOwn = "p24-stranger-1";
+    await recipe(theirOwn, "nonent");
+    const theirs = (await local.query(
+      `INSERT INTO drink_collections (user_id, name, description, is_public, access_type, is_premium, price_cents)
+       VALUES ($1, 'stranger-public', 'blurb', true, 'public', false, 0) RETURNING id`, [ids.nonent])).rows[0].id;
+    await item(theirs, theirOwn);
+    await item(theirs, premSlug);
+    for (const as of [undefined, "nonent"]) {
+      const r = await get("/search?q=p24", as);
+      assert.ok(r.text.includes(theirOwn), `as ${as ?? "anon"}: their own recipe is public and still found`);
+      assert.deepEqual(withheldOf(r.text), [], `as ${as ?? "anon"}: and does not carry the paid slug out with it`);
+      assert.equal((await get(`/user/${premSlug}`, as)).status, 404, "nor make the recipe itself readable");
+    }
+    await local.query(`DELETE FROM drink_collections WHERE id = $1`, [theirs]);
+    await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [theirOwn]);
+
+    // 2. /remixes/:slug decides access from req.user, so without optionalAuth a buyer's own cookie was invisible
+    //    and the remixes they paid for silently disappeared.
+    const paidRemix = "p24-prem-remix-1";
+    await recipe(paidRemix, "creator", premSlug);
+    await item(col.prem, paidRemix);
+    assert.deepEqual((await get(`/remixes/${premSlug}`)).json.items, [], "anonymous: no remix of a withheld drink is named");
+    for (const as of ["buyer", "creator"]) {
+      const r = await get(`/remixes/${premSlug}`, as);
+      assert.deepEqual(r.json.items.map((entry: any) => entry.slug), [paidRemix], `${as} still sees the remix they can reach`);
+    }
+
+    // 3. Removing the withheld NODES from a lineage left the withheld SLUG in the surviving nodes' parent
+    //    references -- and the slug is the whole secret, because it is what the recipe route takes.
+    const publicRemix = "p24-public-remix-1";
+    await recipe(publicRemix, "creator", premSlug);
+    for (const as of [undefined, "nonent"]) {
+      const r = await get(`/remix-chain/${publicRemix}`, as);
+      assert.equal(r.status, 200, "the public remix is still readable in its own right");
+      assert.deepEqual(withheldOf(r.text), [], `as ${as ?? "anon"}: its lineage never names the withheld drink`);
+      assert.equal(r.json.current.remixedFromSlug, null, "the reference is cleared, not just the node removed");
+      assert.equal(r.json.parent, null);
+    }
+    const asCreator = await get(`/remix-chain/${publicRemix}`, "creator");
+    assert.equal(asCreator.json.current.remixedFromSlug, premSlug, "the creator still sees the whole lineage");
+    assert.equal(asCreator.json.parent?.slug, premSlug);
+
+    // 4. Paging first and filtering after made the FIRST page of a storefront empty whenever the newest items
+    //    were the paid ones -- and the storefront asks for no other page.
+    await local.query(`UPDATE drink_recipes SET created_at = now() - interval '10 days' WHERE slug LIKE 'p24-%'`);
+    await local.query(`UPDATE drink_recipes SET created_at = now() WHERE slug = ANY($1)`,
+      [[...slugsOf("prem").slice(PREVIEW), ...slugsOf("memb").slice(PREVIEW), paidRemix]]);
+    for (const as of [undefined, "nonent"]) {
+      const page = await get(`/creators/${ids.creator}?limit=2`, as);
+      assert.equal(page.status, 200);
+      assert.equal((page.json.recentItems ?? []).length, 2, `as ${as ?? "anon"}: a first page of all-withheld newest must not come back empty`);
+      assert.deepEqual(withheldOf(page.text), []);
+    }
+    const newest = [...slugsOf("prem").slice(PREVIEW), ...slugsOf("memb").slice(PREVIEW), paidRemix];
+    const creatorPage = await get(`/creators/${ids.creator}?limit=2`, "creator");
+    const creatorSlugs = (creatorPage.json.recentItems ?? []).map((entry: any) => entry.slug);
+    assert.equal(creatorSlugs.length, 2);
+    assert.deepEqual(
+      creatorSlugs.filter((slug: string) => !newest.includes(slug)),
+      [],
+      "the creator's own first page is still their newest, withheld or not",
+    );
+    } finally {
+      // Leave the fixture as the tests after this one expect it, even when an assertion above failed.
+      await local.query(`DELETE FROM drink_collections WHERE name = 'stranger-public'`);
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [added]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1)`, [added]);
+      await local.query(`UPDATE drink_recipes SET created_at = now() WHERE slug LIKE 'p24-%'`);
+    }
+  });
+
   test("F explicitly free/public collections keep their full item list for everyone", async () => {
     for (const as of [undefined, "nonent"]) {
       for (const path of [...listEndpoints(), `/collections/${col.free}`]) {

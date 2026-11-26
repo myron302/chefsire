@@ -1,6 +1,6 @@
 // server/routes/drinks.ts
 import { Router, type Request, type Response } from "express";
-import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, lte, notInArray, or, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
@@ -18033,15 +18033,19 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
       -- Only collections belonging to the recipe's OWN creator can decide whether that recipe is public.
       -- Codex on #1530: with any collection counting, anyone who learned a withheld slug could add that
       -- recipe to a public collection of their own and publish someone else's paid item to the world. "Public
-      -- by the creator's own choice" has to mean the creator's, so the join enforces it rather than the
+      -- by the creator's own choice" has to mean the creator's, so the SQL enforces it rather than the
       -- comment claiming it. A slug with no qualifying collection -- a canonical drink, or a recipe only ever
       -- added to other people's collections -- is not withheld at all.
+      owners AS (
+        SELECT w.slug, dr.user_id AS creator_id
+          FROM wanted w
+          JOIN drink_recipes dr ON dr.slug = w.slug
+      ),
       relevant AS (
         SELECT DISTINCT ci.collection_id
           FROM drink_collection_items ci
-          JOIN wanted w ON w.slug = ci.drink_slug
-          JOIN drink_recipes dr ON dr.slug = ci.drink_slug
-          JOIN drink_collections c ON c.id = ci.collection_id AND c.user_id = dr.user_id
+          JOIN owners o ON o.slug = ci.drink_slug
+          JOIN drink_collections c ON c.id = ci.collection_id AND c.user_id = o.creator_id
       ),
       -- Ranking is restricted to those collections. Greptile on #1530: ranking every row of
       -- drink_collection_items to judge at most a couple of dozen slugs put the whole table's work on every
@@ -18059,18 +18063,23 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
           JOIN relevant rel ON rel.collection_id = ci.collection_id
           JOIN drink_collections c ON c.id = ci.collection_id
       ),
+      -- The owner condition has to hold for the (slug, collection) PAIR, not merely for the collection.
+      -- Greptile P1 on #1530: qualifying a collection by ONE of its items let that collection vote on every
+      -- other item in it, so an attacker who put their own matching recipe plus someone else's paid slug into
+      -- their own public collection made the paid slug read as public. Ranking still covers every item of a
+      -- relevant collection, because that is what fixes each item's position; only the vote is restricted.
       judged AS (
-        SELECT slug,
+        SELECT r.slug,
                (
-                 access_type <> 'public'
-                 AND owner_id IS DISTINCT FROM ${viewerUserId ?? null}
-                 AND collection_id NOT IN (
+                 r.access_type <> 'public'
+                 AND r.owner_id IS DISTINCT FROM ${viewerUserId ?? null}
+                 AND r.collection_id NOT IN (
                    SELECT jsonb_array_elements_text(${JSON.stringify(entitled)}::jsonb)
                  )
-                 AND position > ${LOCKED_COLLECTION_PREVIEW_LIMIT}
+                 AND r.position > ${LOCKED_COLLECTION_PREVIEW_LIMIT}
                ) AS withheld
-          FROM ranked
-         WHERE slug IN (SELECT slug FROM wanted)
+          FROM ranked r
+          JOIN owners o ON o.slug = r.slug AND r.owner_id IS NOT DISTINCT FROM o.creator_id
       )
       SELECT slug FROM judged GROUP BY slug HAVING bool_and(withheld)
     `);
@@ -20366,7 +20375,7 @@ r.get("/most-remixed", async (req, res) => {
 });
 
 // Fetch remixes linked to a source canonical drink slug
-r.get("/remixes/:slug", async (req, res) => {
+r.get("/remixes/:slug", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20489,17 +20498,39 @@ r.get("/remix-chain/:slug", optionalAuth, async (req, res) => {
       depth += 1;
     }
 
-    const withheldChain = await withheldPremiumSlugsForViewer(
-      [...ancestors.map((entry) => entry.slug), ...descendants.map((entry) => entry.slug)],
-      viewerId,
-    );
-    const visibleAncestors = ancestors.filter((entry) => !withheldChain.has(entry.slug));
-    const visibleDescendants = descendants.filter((entry) => !withheldChain.has(entry.slug));
+    // Greptile P1 on #1530: dropping the withheld NODES was not enough. Every node carries the slug it was
+    // remixed from, and a descendant carries its parent's slug, so a public remix of a withheld premium drink
+    // still printed that drink's slug -- and the slug is the whole secret, because it is what the recipe route
+    // takes. So the chain is cut rather than sieved: the lineage above the first withheld ancestor is not
+    // reported at all (a gap in the list would itself say something is there), a withheld reference on a
+    // surviving node is cleared, and a subtree whose link to `current` runs through a withheld node goes with
+    // it. Those drinks are not hidden anywhere else: they keep their own pages and their own search results.
+    // Only their position in THIS lineage is withheld, which is the thing that named the premium slug.
+    const referencedSlugs = [
+      current.remixedFromSlug,
+      ...ancestors.flatMap((entry) => [entry.slug, entry.remixedFromSlug]),
+      ...descendants.flatMap((entry) => [entry.slug, entry.remixedFromSlug, entry.parentSlug]),
+    ].filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+    const withheldChain = await withheldPremiumSlugsForViewer(referencedSlugs, viewerId);
+    const hidden = (slug: string | null | undefined) => typeof slug === "string" && withheldChain.has(slug);
+
+    const firstWithheldAncestor = ancestors.findIndex((entry) => withheldChain.has(entry.slug));
+    const visibleAncestors = (firstWithheldAncestor === -1 ? ancestors : ancestors.slice(0, firstWithheldAncestor))
+      .map((entry) => (hidden(entry.remixedFromSlug) ? { ...entry, remixedFromSlug: null } : entry));
+
+    // Depth order, so a node is only kept when the node it hangs from was kept.
+    const reachable = new Set<string>([current.slug]);
+    const visibleDescendants: typeof descendants = [];
+    for (const entry of [...descendants].sort((a, b) => a.depth - b.depth)) {
+      if (withheldChain.has(entry.slug) || !reachable.has(entry.parentSlug)) continue;
+      reachable.add(entry.slug);
+      visibleDescendants.push(hidden(entry.remixedFromSlug) ? { ...entry, remixedFromSlug: null } : entry);
+    }
     const children = visibleDescendants.filter((entry) => entry.depth === 1);
 
     return res.json({
       ok: true,
-      current,
+      current: hidden(current.remixedFromSlug) ? { ...current, remixedFromSlug: null } : current,
       parent: visibleAncestors[0] ?? null,
       children,
       ancestors: visibleAncestors,
@@ -23679,7 +23710,22 @@ r.get("/creators/:userId", optionalAuth, async (req, res) => {
 
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
 
-    const allRecipes = await db
+    // A creator storefront listed every recipe the creator owns, including the items a buyer is paying for.
+    // The creator themselves still sees all of their own, because ownership is a grant.
+    //
+    // Greptile P1 on #1530: the first version paged first and filtered after, so a creator whose newest 24
+    // recipes were all premium returned an EMPTY page -- and the storefront only ever asks for the first one,
+    // so their public drinks vanished. The withheld set is therefore decided for the creator's whole
+    // catalogue first and excluded in the query, which makes the page a page of what the viewer may see.
+    const creatorSlugs = (await db
+      .select({ slug: drinkRecipes.slug })
+      .from(drinkRecipes)
+      .where(eq(drinkRecipes.userId, creatorId)))
+      .map((row) => row.slug)
+      .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+    const withheldCreatorSlugs = await withheldPremiumSlugsForViewer(creatorSlugs, (req as any).user?.id ?? null);
+
+    const recipes = await db
       .select({
         id: drinkRecipes.id,
         slug: drinkRecipes.slug,
@@ -23689,18 +23735,12 @@ r.get("/creators/:userId", optionalAuth, async (req, res) => {
         remixedFromSlug: drinkRecipes.remixedFromSlug,
       })
       .from(drinkRecipes)
-      .where(eq(drinkRecipes.userId, creatorId))
+      .where(withheldCreatorSlugs.size === 0
+        ? eq(drinkRecipes.userId, creatorId)
+        : and(eq(drinkRecipes.userId, creatorId), notInArray(drinkRecipes.slug, [...withheldCreatorSlugs])))
       .orderBy(desc(drinkRecipes.createdAt))
       .limit(limit)
       .offset(offset);
-
-    // A creator storefront listed every recipe the creator owns, including the items a buyer is paying for.
-    // The creator themselves still sees all of their own, because ownership is a grant.
-    const withheldCreatorSlugs = await withheldPremiumSlugsForViewer(
-      allRecipes.map((recipe) => recipe.slug).filter((slug): slug is string => typeof slug === "string"),
-      (req as any).user?.id ?? null,
-    );
-    const recipes = allRecipes.filter((recipe) => !withheldCreatorSlugs.has(String(recipe.slug)));
 
     if (recipes.length === 0) {
       return res.json({
