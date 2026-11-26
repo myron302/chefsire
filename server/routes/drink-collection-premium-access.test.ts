@@ -257,16 +257,19 @@ if (!PG_URL) {
     for (const path of ["/search?q=p24", "/community-search?q=p24"]) {
       for (const as of ["buyer", "creator"]) {
         const r = await get(path, as);
+        assert.equal(r.status, 200, `${path} as ${as} answered ${r.status}`);
         const found = all("prem").filter((slug) => r.text.includes(slug));
         assert.deepEqual(found, all("prem"), `${path} as ${as}: every item of a collection they can access`);
       }
       // The member can reach the membership collection but not the purchase one.
       const member = await get(path, "member");
+      assert.equal(member.status, 200, `${path} as member answered ${member.status}`);
       assert.deepEqual(all("memb").filter((s) => member.text.includes(s)), all("memb"), `${path} as member`);
       assert.deepEqual(leaked(member.text, "prem"), [], `${path} as member must not reach the purchase collection`);
       // Public collection items are public to everyone, signed in or not.
       for (const as of [undefined, "nonent"]) {
         const r = await get(path, as);
+        assert.equal(r.status, 200, `${path} as ${as ?? "anon"} answered ${r.status}`);
         assert.deepEqual(all("free").filter((s) => r.text.includes(s)), all("free"), `${path} as ${as}: free stays free`);
       }
       // And the preview really is the storefront preview, not nothing: a non-entitled viewer still sees it.
@@ -356,8 +359,13 @@ if (!PG_URL) {
     // withheld a slug the moment ANY collection locked it would have passed. These are the shared cases, and
     // they also pin the ownership condition Codex found missing.
     const premSlug = slugsOf("prem")[PREVIEW];
-    const visible = async (path: string, as: string | undefined, slug: string) =>
-      (await get(path, as)).text.includes(slug);
+    // Asserting a slug is ABSENT from a body is only worth something if the body is a real answer: a 500 contains
+    // no slugs either. Every case below goes through here, so the status is checked once, for all of them.
+    const visible = async (path: string, as: string | undefined, slug: string) => {
+      const r = await get(path, as);
+      assert.equal(r.status, 200, `${path} as ${as ?? "anon"} answered ${r.status}`);
+      return r.text.includes(slug);
+    };
 
     // Starting point: withheld from a non-entitled viewer.
     assert.equal(await visible("/search?q=p24", "nonent", premSlug), false);
@@ -443,6 +451,7 @@ if (!PG_URL) {
     await item(theirs, premSlug);
     for (const as of [undefined, "nonent"]) {
       const r = await get("/search?q=p24", as);
+      assert.equal(r.status, 200, `as ${as ?? "anon"}: /search answered ${r.status}`);
       assert.ok(r.text.includes(theirOwn), `as ${as ?? "anon"}: their own recipe is public and still found`);
       assert.deepEqual(withheldOf(r.text), [], `as ${as ?? "anon"}: and does not carry the paid slug out with it`);
       assert.equal((await get(`/user/${premSlug}`, as)).status, 404, "nor make the recipe itself readable");
@@ -522,6 +531,7 @@ if (!PG_URL) {
         `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`, [privatePublicAccess, premSlug]);
       for (const as of [undefined, "nonent"]) {
         const r = await get("/search?q=p24", as);
+        assert.equal(r.status, 200, `as ${as ?? "anon"}: /search answered ${r.status}`);
         assert.deepEqual(withheldOf(r.text), [], `as ${as ?? "anon"}: a collection they cannot open publishes nothing`);
         assert.equal((await get(`/user/${premSlug}`, as)).status, 404);
       }
