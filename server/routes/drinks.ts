@@ -18054,6 +18054,7 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
         SELECT ci.drink_slug AS slug,
                ci.collection_id,
                c.access_type,
+               c.is_public,
                c.user_id AS owner_id,
                row_number() OVER (
                  PARTITION BY ci.collection_id
@@ -18068,15 +18069,29 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
       -- other item in it, so an attacker who put their own matching recipe plus someone else's paid slug into
       -- their own public collection made the paid slug read as public. Ranking still covers every item of a
       -- relevant collection, because that is what fixes each item's position; only the vote is restricted.
+      -- A collection shows an item to this viewer only if BOTH hold: the viewer can reach the collection at all,
+      -- and the collection is not locked against them (or the item is inside its public preview).
+      --   REACHABLE  Greptile P1: is_public was not consulted, so a creator's PRIVATE collection whose
+      --               access_type is 'public' -- a working "everything I have made" list -- voted its items
+      --               public for anonymous viewers, including items they sell in a locked collection. Nobody
+      --               can read that collection, so it may not publish anything. Ownership and a grant are
+      --               both reachability too: the creator and a buyer can open it.
+      --   UNLOCKED   not premium_purchase / membership_only for them; the first items of a locked collection
+      --               are still shown, because that preview is the storefront and is public by design.
       judged AS (
         SELECT r.slug,
-               (
-                 r.access_type <> 'public'
-                 AND r.owner_id IS DISTINCT FROM ${viewerUserId ?? null}
-                 AND r.collection_id NOT IN (
-                   SELECT jsonb_array_elements_text(${JSON.stringify(entitled)}::jsonb)
+               NOT (
+                 (
+                   r.is_public
+                   OR r.owner_id IS NOT DISTINCT FROM ${viewerUserId ?? null}
+                   OR r.collection_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(entitled)}::jsonb))
                  )
-                 AND r.position > ${LOCKED_COLLECTION_PREVIEW_LIMIT}
+                 AND (
+                   r.access_type = 'public'
+                   OR r.owner_id IS NOT DISTINCT FROM ${viewerUserId ?? null}
+                   OR r.collection_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(entitled)}::jsonb))
+                   OR r.position <= ${LOCKED_COLLECTION_PREVIEW_LIMIT}
+                 )
                ) AS withheld
           FROM ranked r
           JOIN owners o ON o.slug = r.slug AND r.owner_id IS NOT DISTINCT FROM o.creator_id
@@ -24293,8 +24308,14 @@ r.get("/community-search", optionalAuth, async (req, res) => {
 
     // Same unfiltered drink_recipes query as /search, so the same hole: filtered at the point the slugs become
     // results, which covers the drink list and the remix list below it.
+    //
+    // Greptile P1: a remix result also carries the slug it was remixed FROM, and only the remix's own slug was
+    // being judged. A buyer who publishes their remix of a paid drink outside any locked collection therefore
+    // published the original's slug with it -- and that slug is the whole secret, because it is what the recipe
+    // route takes. Both the result slugs and the slugs they point at go through the gate.
     const withheldCommunity = await withheldPremiumSlugsForViewer(
-      userRecipeMatches.map((recipe) => recipe.slug),
+      [...userRecipeMatches.map((recipe) => recipe.slug),
+       ...userRecipeMatches.map((recipe) => recipe.remixedFromSlug).filter((slug): slug is string => Boolean(slug))],
       (req as any).user?.id ?? null,
     );
 
@@ -24320,7 +24341,9 @@ r.get("/community-search", optionalAuth, async (req, res) => {
         name: recipe.name,
         image: recipe.image ?? null,
         route: `/drinks/recipe/${recipe.slug}`,
-        remixedFromSlug: recipe.remixedFromSlug,
+        // The remix itself is public; the drink it was remixed from may not be. Clearing the reference keeps the
+        // remix in the results without naming the withheld original.
+        remixedFromSlug: recipe.remixedFromSlug && withheldCommunity.has(recipe.remixedFromSlug) ? null : recipe.remixedFromSlug,
         creatorUsername: recipe.creatorUsername ?? null,
         views7d: viewsBySlug.get(recipe.slug) ?? 0,
         remixesCount: remixesBySlug.get(recipe.slug) ?? 0,

@@ -466,6 +466,60 @@ if (!PG_URL) {
     }
   });
 
+  test("N the second review round: a collection nobody can open, and a remix that pointed at a paid original", async () => {
+    const premSlug = slugsOf("prem")[PREVIEW];
+    const withheldOf = (text: string) => leaked(text, "prem").concat(leaked(text, "memb"));
+    const added = ["p24-remix-of-paid-1"];
+
+    try {
+      // 1. is_public was not consulted. A creator's PRIVATE collection whose access_type is 'public' -- the
+      //    working "everything I have made" list -- was voting its items public for anonymous viewers, including
+      //    the ones the creator sells in a locked collection. Nobody can open that collection, so it may not
+      //    publish anything.
+      const privatePublicAccess = (await local.query(
+        `INSERT INTO drink_collections (user_id, name, description, is_public, access_type, is_premium, price_cents)
+         VALUES ($1, 'private-but-access-public', 'blurb', false, 'public', false, 0) RETURNING id`, [ids.creator])).rows[0].id;
+      await local.query(
+        `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`, [privatePublicAccess, premSlug]);
+      for (const as of [undefined, "nonent"]) {
+        const r = await get("/search?q=p24", as);
+        assert.deepEqual(withheldOf(r.text), [], `as ${as ?? "anon"}: a collection they cannot open publishes nothing`);
+        assert.equal((await get(`/user/${premSlug}`, as)).status, 404);
+      }
+      // the creator can open it, so for them it is reachable and unlocked, exactly as before
+      assert.ok((await get("/search?q=p24", "creator")).text.includes(premSlug), "the creator still finds their own");
+      assert.ok((await get("/search?q=p24", "buyer")).text.includes(premSlug), "and so does the buyer");
+      // making that same collection public is the creator's own choice, and then it does publish
+      await local.query(`UPDATE drink_collections SET is_public = true WHERE id = $1`, [privatePublicAccess]);
+      assert.ok((await get("/search?q=p24", "nonent")).text.includes(premSlug), "published once the creator makes the collection public");
+      await local.query(`DELETE FROM drink_collections WHERE id = $1`, [privatePublicAccess]);
+
+      // 2. A remix result carries the slug it was remixed FROM, and only the remix's own slug was judged. A buyer
+      //    publishing their remix of a paid drink outside any locked collection published the original with it.
+      await local.query(
+        `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+         VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`, ["p24-remix-of-paid-1", ids.buyer, premSlug]);
+      for (const as of [undefined, "nonent"]) {
+        const r = await get("/community-search?q=p24", as);
+        assert.equal(r.status, 200);
+        assert.ok(r.text.includes("p24-remix-of-paid-1"), `as ${as ?? "anon"}: the remix itself is public and still listed`);
+        assert.deepEqual(withheldOf(r.text), [], `as ${as ?? "anon"}: without naming the drink it was remixed from`);
+        const remix = (r.json.results?.remixes ?? []).find((entry: any) => entry.slug === "p24-remix-of-paid-1");
+        assert.ok(remix, "listed as a remix");
+        assert.equal(remix.remixedFromSlug, null, "the reference is cleared, not the row dropped");
+      }
+      for (const as of ["buyer", "creator"]) {
+        const r = await get("/community-search?q=p24", as);
+        const remix = (r.json.results?.remixes ?? []).find((entry: any) => entry.slug === "p24-remix-of-paid-1");
+        assert.equal(remix?.remixedFromSlug, premSlug, `${as} sees the real lineage`);
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_collections WHERE name = 'private-but-access-public'`);
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [added]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1)`, [added]);
+    }
+  });
+
   test("F explicitly free/public collections keep their full item list for everyone", async () => {
     for (const as of [undefined, "nonent"]) {
       for (const path of [...listEndpoints(), `/collections/${col.free}`]) {
