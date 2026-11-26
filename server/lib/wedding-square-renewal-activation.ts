@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { weddingSquareSandboxSubscriptionReadback } from "./wedding-square-sandbox-subscription-readback";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Narrow, owner-bound Square PENDING -> ACTIVE lifecycle transition.
@@ -28,7 +29,7 @@ export function createWeddingSquareRenewalActivation(db:Db,readProvider:Provider
     async activate(attemptId:string,userId:string,expectedSubscriptionId:string){
       const merchant=process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
       const location=process.env.SQUARE_LOCATION_ID;
-      if(process.env.SQUARE_ENV!=="sandbox"||
+      if(!isExplicitSandboxEnvironment()||
          process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
          process.env.WEDDING_SQUARE_SANDBOX_RENEWAL_SCAN_ENABLED!=="true"||
          !uuid.test(attemptId)||!opaque(userId)||

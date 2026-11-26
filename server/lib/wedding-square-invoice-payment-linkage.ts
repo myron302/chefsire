@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Offline-only, side-effect-free shape and identity guard for a FUTURE
@@ -82,7 +83,7 @@ export function inspectWeddingSquareInvoicePaymentLinkage(
   invoiceResponse: unknown,
   paymentResponse: unknown,
 ) {
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       (process.env.SQUARE_CURRENCY !== undefined && process.env.SQUARE_CURRENCY !== "USD")) {
     throw new WeddingSquareInvoicePaymentLinkageError();

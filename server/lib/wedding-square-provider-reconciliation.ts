@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { weddingSquareReconciliationReadback } from "./wedding-square-reconciliation-readback";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Validates an independently retrieved Square sandbox subscription against
@@ -40,7 +41,7 @@ function canonicalUtcDate(value: string): boolean {
 }
 
 export function verifyWeddingSquareProviderReconciliation(saved: Saved, provider: unknown) {
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true") {
     throw new WeddingSquareProviderReadbackMismatchError();
   }

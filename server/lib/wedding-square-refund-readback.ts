@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { readWeddingSquareInvoicePaymentCustomer } from "./wedding-square-invoice-payment-customer";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 type Sender = (url: string, init: RequestInit) => Promise<Response>;
 const id = z.string().min(1).max(200).refine(v => !/[\s\x00-\x1f\x7f]/.test(v));
@@ -20,7 +21,7 @@ export class WeddingSquareRefundReadbackError extends Error {
 /** Read ORIGINAL JSON. A signed notification supplies only a lookup hint. */
 export function createWeddingSquareRefundReadback(sender:Sender=fetch){
   async function get(path:string){
-    if(process.env.SQUARE_ENV!=="sandbox"||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
+    if(!isExplicitSandboxEnvironment()||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
        process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
        !id.safeParse(process.env.SQUARE_ACCESS_TOKEN).success)throw new WeddingSquareRefundReadbackError();
     const response=await sender("https://connect.squareupsandbox.com/v2/"+path,{

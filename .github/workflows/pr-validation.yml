@@ -563,3 +563,9 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node server/scripts/run-ci-batch.mjs client/src/pages/services/wedding-planning/weddingRegistry.test.ts client/src/lib/socket-lifecycle.test.ts server/routes/wedding-onboarding.test.ts server/routes/wedding-trial.test.ts
+      - name: Square environment selection, including the one-policy structural guard
+        # The guard that refuses a second Square sandbox/live policy. It was outside CI and failing: 42 files
+        # read SQUARE_ENV directly. Its own failure would be silent everywhere else.
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node server/scripts/run-ci-batch.mjs server/lib/square-environment-selection.test.ts

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Raw sandbox-only Square subscription cancellation transport.
@@ -31,7 +32,7 @@ export class WeddingSquareCancelTransportError extends Error {
 
 async function read(sender: Sender, id: string, method: "GET"|"POST") {
   const token = process.env.SQUARE_ACCESS_TOKEN;
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       process.env.WEDDING_SQUARE_SANDBOX_CANCEL_ENABLED !== "true" ||
       !exact.safeParse(token).success || !exact.safeParse(id).success) {

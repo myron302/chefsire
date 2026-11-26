@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { weddingSquareEvidenceRefresh } from "./wedding-square-evidence-refresh";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Internal, bounded, read-only candidate selector for ongoing sandbox payment
@@ -31,7 +32,7 @@ export function createWeddingSquareReconciliationBatch(db:Db,refresh:Refresh){
   let running=false;
   return {
     async run(){
-      if(process.env.SQUARE_ENV!=="sandbox"||
+      if(!isExplicitSandboxEnvironment()||
          process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
          process.env.WEDDING_SQUARE_SANDBOX_RECONCILIATION_ENABLED!=="true"||
          process.env.WEDDING_SQUARE_SANDBOX_RECONCILIATION_BATCH_ENABLED!=="true"||

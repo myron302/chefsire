@@ -7,6 +7,7 @@ import { weddingSquareSandboxCatalogAttestation } from "./wedding-square-sandbox
 import { weddingSquareSandboxCardSetupTransport } from "./wedding-square-sandbox-card-setup-transport";
 import { weddingSquareSandboxCustomerCardApi } from "./wedding-square-sandbox-customer-card-api";
 import { weddingEnrollmentReservations } from "./wedding-square-enrollment-reservation";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 type Consent = ReturnType<typeof verifyWeddingEnrollmentConsent>;
 type Config = ReturnType<typeof weddingSquareSandboxPreflight>;
@@ -118,7 +119,7 @@ export function createWeddingSquareCardSetupCoordinator(
       verifiedEmailAddress: string;
     }) {
       const { consent, config } = input;
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           process.env.WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED !== "true" ||
           !valid(consent?.userId,100) || !valid(input.verifiedEmailAddress,254) ||

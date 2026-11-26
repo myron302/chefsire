@@ -4,6 +4,7 @@ import { pool } from "../db";
 import { weddingSquarePeriodReadback } from "./wedding-square-period-readback";
 import { weddingSquareBillingAudit } from "./wedding-square-billing-audit";
 import { WEDDING_CONSENT_VERSION, WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * The first write-side evidence recording boundary for Wedding Square.
@@ -45,7 +46,7 @@ export function createWeddingSquareEvidenceLedger(database:Database,period:Perio
     async record(attemptId:string,userId:string) {
       const merchantId=process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
       const locationId=process.env.SQUARE_LOCATION_ID;
-      if(process.env.SQUARE_ENV!=="sandbox"||
+      if(!isExplicitSandboxEnvironment()||
          process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
          process.env.WEDDING_SQUARE_SANDBOX_EVIDENCE_WRITE_ENABLED!=="true"||
          !uuid.safeParse(attemptId).success||!id.safeParse(userId).success||

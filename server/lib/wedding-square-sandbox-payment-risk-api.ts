@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { readWeddingSquareInvoicePaymentCustomer } from "./wedding-square-invoice-payment-customer";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Read-only, sandbox-only risk audit for ONE already owner-bound Square
@@ -44,7 +45,7 @@ export class WeddingSquarePaymentRiskUnavailableError extends Error {
 
 async function rawGet(sender: Sender, pathname: string, params?: URLSearchParams): Promise<unknown> {
   const token = process.env.SQUARE_ACCESS_TOKEN;
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       !id.safeParse(token).success) throw new WeddingSquarePaymentRiskUnavailableError();
   try {

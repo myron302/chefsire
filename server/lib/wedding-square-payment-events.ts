@@ -5,6 +5,7 @@ import { weddingSquareEvidenceRefresh } from "./wedding-square-evidence-refresh"
 import { weddingSquareRefundReadback } from "./wedding-square-refund-readback";
 import { weddingSquareLifecycleEvents } from "./wedding-square-lifecycle-events";
 import { weddingSquareDisputeReadback } from "./wedding-square-dispute-readback";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 type Db=Pick<PoolClient,"query">;
 type Merchant=Pick<typeof weddingSquareSandboxMerchantAttestation,"inspect">;
@@ -26,7 +27,7 @@ export function createWeddingSquarePaymentEvents(db:Db,merchant:Merchant,refresh
   return {async run(){
     const merchantId=process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
     const location=process.env.SQUARE_LOCATION_ID;
-    if(process.env.SQUARE_ENV!=="sandbox"||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
+    if(!isExplicitSandboxEnvironment()||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
        process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
        process.env.WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED!=="true"||
        process.env.WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED!=="true"||

@@ -13,7 +13,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SquareEnvironment } from "square";
-import { SquareEnvironmentConfigError, resolveSquareEnvironment, tryResolveSquareEnvironment } from "./square-environment";
+import { SquareEnvironmentConfigError, isExplicitSandboxEnvironment, resolveSquareEnvironment, tryResolveSquareEnvironment } from "./square-environment";
 import {
   createConnectedSquareClient,
   createPlatformSquareClient,
@@ -85,6 +85,32 @@ test("SQUARE_ENV=sandbox selects Sandbox whatever NODE_ENV says (value trimmed, 
       });
     }
   }
+});
+
+test("isExplicitSandboxEnvironment: sandbox only when it is said out loud, and never for anything that could be LIVE", () => {
+  // The stricter variant the wedding-square sandbox subsystem needs. It is the only reason any of those 42 modules
+  // used to read SQUARE_ENV themselves, so what it means has to be pinned here rather than inferred from its name.
+  for (const value of ["sandbox", " Sandbox ", "SANDBOX"]) {
+    for (const nodeEnv of ["production", "development", "test", undefined]) {
+      withEnv({ SQUARE_ENV: value, NODE_ENV: nodeEnv }, () => assert.equal(isExplicitSandboxEnvironment(), true, `${value} / ${nodeEnv}`));
+    }
+  }
+  // Unlike the policy, it does NOT default: an unset or blank SQUARE_ENV is "not said", not Sandbox. That is the
+  // difference the subsystem depends on -- the feature must not start on an inherited default.
+  for (const value of [undefined, "", "   "]) {
+    for (const nodeEnv of ["production", "development", "test", undefined]) {
+      withEnv({ SQUARE_ENV: value, NODE_ENV: nodeEnv }, () => assert.equal(isExplicitSandboxEnvironment(), false, `${JSON.stringify(value)} / ${nodeEnv}`));
+    }
+  }
+  // And nothing that is, or could become, LIVE ever reads as sandbox.
+  for (const env of [LIVE, { ...LIVE, SQUARE_LIVE_PAYMENTS_ENABLED: undefined }, { SQUARE_ENV: "production" }, { SQUARE_ENV: "prod" }, { SQUARE_ENV: "live" }, { SQUARE_ENV: "typo" }]) {
+    withEnv(env, () => assert.equal(isExplicitSandboxEnvironment(), false, JSON.stringify(env)));
+  }
+  // It reads the object it is given, like the rest of the policy, and not process.env in that case.
+  withEnv(LIVE, () => {
+    assert.equal(isExplicitSandboxEnvironment({ SQUARE_ENV: "sandbox" } as NodeJS.ProcessEnv), true);
+    assert.equal(isExplicitSandboxEnvironment({} as NodeJS.ProcessEnv), false);
+  });
 });
 
 test("LIVE needs SQUARE_ENV=production AND NODE_ENV=production AND SQUARE_LIVE_PAYMENTS_ENABLED=true; any one missing refuses", () => {

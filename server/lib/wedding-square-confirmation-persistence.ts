@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { WEDDING_CONSENT_VERSION, WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
 import type { verifyWeddingSquareCreatedSubscription } from "./wedding-square-subscription-response";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Commit provider identity AND the owning Wedding subscription record in one
@@ -56,7 +57,7 @@ export function createWeddingSquareConfirmationPersistence(database: SqlPool) {
         persistedRequestFingerprint, verifiedResponse } = input;
       const merchantId = process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
       const locationId = process.env.SQUARE_LOCATION_ID;
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !exactId(merchantId) || !exactId(locationId) ||
           !exactId(attemptId) || !exactId(authenticatedUserId) ||
