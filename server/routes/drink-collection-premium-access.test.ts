@@ -520,6 +520,49 @@ if (!PG_URL) {
     }
   });
 
+  test("O a page of withheld newest matches does not swallow the public ones behind it", async () => {
+    // The gate runs in JS, after the database has applied the route's LIMIT. With enough withheld items at the
+    // top of the ordering, the page came back empty while public matches sat just past it -- and none of these
+    // routes paginates, so there was no way to ask for them. Both routes here order by created_at desc and take
+    // 24, so filling that page with withheld rows is deterministic; /search uses the same constant but has no
+    // ORDER BY, so there is no page to pin.
+    const BULK = 30;
+    const bulk = Array.from({ length: BULK }, (_, i) => `p24-bulk-${String(i).padStart(2, "0")}`);
+    try {
+      for (const slug of bulk) {
+        await local.query(
+          `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug, created_at)
+           VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3, now())`, [slug, ids.creator, slugsOf("free")[0]]);
+        await local.query(
+          `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`, [col.prem, slug]);
+      }
+      // Everything that was already here is older, so the whole first page is the withheld bulk.
+      await local.query(`UPDATE drink_recipes SET created_at = now() - interval '10 days' WHERE slug LIKE 'p24-%' AND slug NOT LIKE 'p24-bulk-%'`);
+
+      for (const as of [undefined, "nonent"]) {
+        const community = await get("/community-search?q=p24", as);
+        assert.equal(community.status, 200);
+        assert.deepEqual(leaked(community.text, "prem").concat(leaked(community.text, "memb")), [], `as ${as ?? "anon"}: still withheld`);
+        for (const slug of bulk) assert.equal(community.text.includes(slug), false, `${slug} is past the preview of a locked collection`);
+        const drinks = (community.json.results?.drinks ?? []).map((entry: any) => entry.slug);
+        assert.ok(drinks.length > 0, `as ${as ?? "anon"}: the public matches behind the withheld page are still returned`);
+        assert.ok(slugsOf("free").some((slug) => drinks.includes(slug)), "and they are the free collection's items");
+
+        // /remixes/:slug: every bulk recipe is a remix of the free collection's first drink, and all are withheld.
+        const remixes = await get(`/remixes/${slugsOf("free")[0]}`, as);
+        assert.equal(remixes.status, 200);
+        assert.deepEqual(remixes.json.items.map((entry: any) => entry.slug), [], `as ${as ?? "anon"}: withheld remixes are not named`);
+      }
+      // The creator is entitled to all of them, so for them the page is the bulk, and nothing is lost either way.
+      const asCreator = await get(`/remixes/${slugsOf("free")[0]}`, "creator");
+      assert.equal(asCreator.json.items.length, 24, "the creator's own page is full");
+    } finally {
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [bulk]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1)`, [bulk]);
+      await local.query(`UPDATE drink_recipes SET created_at = now() WHERE slug LIKE 'p24-%'`);
+    }
+  });
+
   test("F explicitly free/public collections keep their full item list for everyone", async () => {
     for (const as of [undefined, "nonent"]) {
       for (const path of [...listEndpoints(), `/collections/${col.free}`]) {

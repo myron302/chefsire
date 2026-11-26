@@ -17992,6 +17992,22 @@ async function userHasActiveCollectionReviewAccess(userId: string, collectionId:
 const LOCKED_COLLECTION_PREVIEW_LIMIT = 2;
 
 /**
+ * How many rows the recipe-matching routes read before the withheld ones are dropped.
+ *
+ * Greptile on #1530: the gate runs in JS, after the database has already applied the route's LIMIT, so a page
+ * whose top rows are all withheld came back short -- or empty -- while plenty of public matches went unseen. None
+ * of these routes paginates, so their answer was always a truncated top-N; what must not happen is the gate
+ * turning a full page into an empty one. They therefore read this multiple of the page and slice afterwards.
+ *
+ * This is a bound, not a proof: a viewer for whom every one of those rows is withheld still gets a short page.
+ * Closing that completely means either paginating these routes or expressing the gate as SQL they can filter by
+ * before the LIMIT -- a second copy of the rule, which is the thing the single boundary exists to avoid. The
+ * multiple is deliberately generous and the extra rows are discarded before any hydration, so the cost is one
+ * wider index scan rather than more work per result.
+ */
+const RECIPE_MATCH_OVERFETCH = 5;
+
+/**
  * Slugs that must not be named to this viewer because they are the withheld payload of a locked collection.
  *
  * `resolveCollectionWithItems` is the boundary for every route that hydrates a collection, and it is correct.
@@ -20414,7 +20430,7 @@ r.get("/remixes/:slug", optionalAuth, async (req, res) => {
       .leftJoin(users, eq(drinkRecipes.userId, users.id))
       .where(eq(drinkRecipes.remixedFromSlug, sourceSlug))
       .orderBy(desc(drinkRecipes.createdAt))
-      .limit(24);
+      .limit(24 * RECIPE_MATCH_OVERFETCH);
 
     // The remixes themselves can be the premium payload of a locked collection. The requested slug is the
     // caller's own input and is echoed below unchanged; what must not be disclosed is other people's items.
@@ -20425,6 +20441,7 @@ r.get("/remixes/:slug", optionalAuth, async (req, res) => {
 
     const items = remixes
       .filter((entry) => !withheldRemixes.has(entry.slug))
+      .slice(0, 24)
       .map((entry) => ({
       slug: entry.slug,
       name: entry.name,
@@ -24088,7 +24105,7 @@ r.get("/search", optionalAuth, async (req, res) => {
             ilike(drinkRecipes.subcategory, `%${q}%`)
           )
         )
-        .limit(20);
+        .limit(20 * RECIPE_MATCH_OVERFETCH);
     }
 
     const external = (await canonicalMatches).results.map((item) => ({
@@ -24108,6 +24125,7 @@ r.get("/search", optionalAuth, async (req, res) => {
 
     const userItems = userMatches
       .filter((item) => !withheld.has(item.slug))
+      .slice(0, 20)
       .map((item) => ({
         slug: item.slug,
         name: item.name,
@@ -24195,7 +24213,7 @@ r.get("/community-search", optionalAuth, async (req, res) => {
           ),
         )
         .orderBy(desc(drinkRecipes.createdAt))
-        .limit(24);
+        .limit(24 * RECIPE_MATCH_OVERFETCH);
 
       creators = await db
         .select({
@@ -24318,6 +24336,8 @@ r.get("/community-search", optionalAuth, async (req, res) => {
        ...userRecipeMatches.map((recipe) => recipe.remixedFromSlug).filter((slug): slug is string => Boolean(slug))],
       (req as any).user?.id ?? null,
     );
+    // Back to the route's own page size once the withheld rows are out (see RECIPE_MATCH_OVERFETCH).
+    userRecipeMatches = userRecipeMatches.filter((recipe) => !withheldCommunity.has(recipe.slug)).slice(0, 24);
 
     const userDrinkResults = userRecipeMatches
       .filter((recipe) => !withheldCommunity.has(recipe.slug))
