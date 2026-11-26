@@ -20203,7 +20203,7 @@ r.post("/submit", requireAuth, async (req, res) => {
 });
 
 // Fetch remixes linked to a source canonical drink slug
-r.get("/remixes", async (req, res) => {
+r.get("/remixes", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20254,7 +20254,17 @@ r.get("/remixes", async (req, res) => {
           .orderBy(desc(drinkRecipes.createdAt))
           .limit(limit)
           .offset(offset));
-    const remixSlugs = remixRows.map((row) => row.slug);
+    // Codex on #1530: this feed is every remix in the database, and the suite that audited it had no remixes in
+    // its fixture, so it proved nothing. A remix can itself be a paid item, and every row also carries the slug it
+    // was remixed FROM, which can be one. Both go through the gate; a withheld source is cleared, not the remix
+    // dropped, because the remix is public in its own right.
+    const withheldFeed = await withheldPremiumSlugsForViewer(
+      [...remixRows.map((row) => row.slug),
+       ...remixRows.map((row) => row.remixedFromSlug).filter((slug): slug is string => Boolean(slug))],
+      (req as any).user?.id ?? null,
+    );
+    const visibleRemixRows = remixRows.filter((row) => !withheldFeed.has(row.slug));
+    const remixSlugs = visibleRemixRows.map((row) => row.slug);
     const remixesCountRows = remixSlugs.length
       ? await db
           .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
@@ -20269,8 +20279,8 @@ r.get("/remixes", async (req, res) => {
         .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
     );
 
-    const items = remixRows.map((entry) => {
-      const sourceSlug = entry.remixedFromSlug ?? null;
+    const items = visibleRemixRows.map((entry) => {
+      const sourceSlug = entry.remixedFromSlug && !withheldFeed.has(entry.remixedFromSlug) ? entry.remixedFromSlug : null;
       const canonicalSource = sourceSlug ? getCanonicalDrinkBySlug(sourceSlug) : null;
       const sourceRoute = canonicalSource?.route ?? (sourceSlug ? `/drinks/recipe/${sourceSlug}` : null);
 
@@ -20308,7 +20318,7 @@ r.get("/remixes", async (req, res) => {
 });
 
 // Fetch canonical/original drinks ranked by remix activity.
-r.get("/most-remixed", async (req, res) => {
+r.get("/most-remixed", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20317,7 +20327,7 @@ r.get("/most-remixed", async (req, res) => {
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const remixAggregateRows = await db
+    let remixAggregateRows = await db
       .select({
         slug: drinkRecipes.remixedFromSlug,
         remixCount: sql<number>`count(*)`,
@@ -20326,6 +20336,14 @@ r.get("/most-remixed", async (req, res) => {
       .from(drinkRecipes)
       .where(sql`${drinkRecipes.remixedFromSlug} is not null`)
       .groupBy(drinkRecipes.remixedFromSlug);
+
+    // Every item of this feed IS a drink that other people remixed, named by slug. A paid one has no visible form
+    // here -- there is nothing left of the item once its slug is withheld -- so it is dropped rather than cleared.
+    const withheldSources = await withheldPremiumSlugsForViewer(
+      remixAggregateRows.map((row) => row.slug).filter((slug): slug is string => Boolean(slug)),
+      (req as any).user?.id ?? null,
+    );
+    remixAggregateRows = remixAggregateRows.filter((row) => row.slug && !withheldSources.has(row.slug));
 
     const sourceSlugs = remixAggregateRows
       .map((row) => row.slug)
@@ -22738,10 +22756,27 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
       }
     }
 
+    // Codex on #1530: every section of this feed is built from remixes, and a remix or the drink it came from can
+    // be a paid item. A row whose own drink is withheld is dropped; a withheld SOURCE is dropped too in the
+    // sections where the source IS the item (trending, most-remixed highlight), and in the remix section the
+    // source is only named in passing, so there the item stays and the reference is cleared.
+    const whatsNewWithheld = await withheldPremiumSlugsForViewer(
+      [
+        ...recentRemixRows.flatMap((row) => [row.slug, row.remixedFromSlug]),
+        ...trendingDrinkRows.map((row) => row.remixedFromSlug),
+        ...mostRemixedRows.map((row) => row.remixedFromSlug),
+        ...followedRows.map((row) => row.slug),
+        ...trendingCreators.map((creator) => creator.topDrink?.slug ?? null),
+      ].filter((slug): slug is string => typeof slug === "string" && slug.length > 0),
+      viewerId,
+    );
+    const shown = (slug: string | null | undefined) => !(typeof slug === "string" && whatsNewWithheld.has(slug));
+
     const items: WhatsNewFeedItem[] = [];
 
     for (const row of recentRemixRows) {
-      const sourceSlug = row.remixedFromSlug ?? null;
+      if (!shown(row.slug)) continue;
+      const sourceSlug = row.remixedFromSlug && shown(row.remixedFromSlug) ? row.remixedFromSlug : null;
       const canonicalSource = sourceSlug ? getCanonicalDrinkBySlug(sourceSlug) : null;
       const sourceName = canonicalSource?.name ?? sourceSlug ?? "another drink";
       items.push({
@@ -22755,12 +22790,12 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
         route: `/drinks/recipe/${row.slug}?community=1`,
         relatedUserId: row.userId ?? null,
         relatedUsername: row.username ?? null,
-        relatedDrinkSlug: sourceSlug,
+        relatedDrinkSlug: shown(sourceSlug) ? sourceSlug : null,
       });
     }
 
     for (const row of trendingDrinkRows) {
-      if (!row.remixedFromSlug) continue;
+      if (!row.remixedFromSlug || !shown(row.remixedFromSlug)) continue;
       const canonicalDrink = getCanonicalDrinkBySlug(row.remixedFromSlug);
       const drinkName = canonicalDrink?.name ?? row.remixedFromSlug;
       items.push({
@@ -22786,12 +22821,12 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
         route: creator.publicRoute,
         relatedUserId: creator.userId,
         relatedUsername: creator.username ?? null,
-        relatedDrinkSlug: creator.topDrink?.slug ?? null,
+        relatedDrinkSlug: shown(creator.topDrink?.slug) ? (creator.topDrink?.slug ?? null) : null,
       });
     }
 
     for (const row of followedRows) {
-      if (!row.userId) continue;
+      if (!row.userId || !shown(row.slug)) continue;
       items.push({
         type: "followed_creator_post",
         createdAt: (row.createdAt ? new Date(row.createdAt) : new Date()).toISOString(),
@@ -22808,7 +22843,7 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
     }
 
     for (const row of mostRemixedRows) {
-      if (!row.remixedFromSlug) continue;
+      if (!row.remixedFromSlug || !shown(row.remixedFromSlug)) continue;
       const canonicalDrink = getCanonicalDrinkBySlug(row.remixedFromSlug);
       const name = canonicalDrink?.name ?? row.remixedFromSlug;
       items.push({
@@ -23834,7 +23869,7 @@ r.get("/creators/:userId", optionalAuth, async (req, res) => {
         name: recipe.name,
         image: recipe.image ?? null,
         createdAt: recipe.createdAt,
-        remixedFromSlug: recipe.remixedFromSlug ?? null,
+        remixedFromSlug: recipe.remixedFromSlug ?? null, // judged below, once the withheld set for this page is known
         route: toDrinkRoute(recipe.slug),
         views7d: metrics.views7d,
         remixesCount,
@@ -23875,18 +23910,28 @@ r.get("/creators/:userId", optionalAuth, async (req, res) => {
       .orderBy(desc(drinkRecipes.createdAt))
       .limit(20);
 
+    // The storefront's own recipes are already filtered, but its remix activity reaches past them: a remix
+    // RECEIVED is somebody else's recipe, and a remix the creator published names the drink it came from -- which
+    // may be a paid item of theirs that this viewer may not see. Both are judged here.
+    const withheldActivity = await withheldPremiumSlugsForViewer(
+      [...remixesReceivedRows.flatMap((row) => [row.slug, row.remixedFromSlug]),
+       ...recipes.map((recipe) => recipe.remixedFromSlug)].filter((slug): slug is string => Boolean(slug)),
+      (req as any).user?.id ?? null,
+    );
+    const activityShown = (slug: string | null | undefined) => !(typeof slug === "string" && withheldActivity.has(slug));
+
     const creatorPublishedRemixes = recipes
       .filter((recipe) => Boolean(recipe.remixedFromSlug))
       .slice(0, 20);
 
     const recentRemixActivity = [
-      ...remixesReceivedRows.map((row) => ({
+      ...remixesReceivedRows.filter((row) => activityShown(row.slug)).map((row) => ({
         type: "received_remix" as const,
         slug: row.slug,
         name: row.name,
         createdAt: row.createdAt,
         route: `/drinks/recipe/${row.slug}`,
-        remixedFromSlug: row.remixedFromSlug ?? null,
+        remixedFromSlug: activityShown(row.remixedFromSlug) ? (row.remixedFromSlug ?? null) : null,
         creatorUsername: row.creatorUsername ?? null,
       })),
       ...creatorPublishedRemixes.map((recipe) => ({
@@ -23895,7 +23940,7 @@ r.get("/creators/:userId", optionalAuth, async (req, res) => {
         name: recipe.name,
         createdAt: recipe.createdAt,
         route: `/drinks/recipe/${recipe.slug}`,
-        remixedFromSlug: recipe.remixedFromSlug ?? null,
+        remixedFromSlug: activityShown(recipe.remixedFromSlug) ? (recipe.remixedFromSlug ?? null) : null,
         creatorUsername: profile[0].username ?? null,
       })),
     ]
@@ -23929,7 +23974,12 @@ r.get("/creators/:userId", optionalAuth, async (req, res) => {
       recentRemixActivity,
       recentItems: items
         .slice(0, limit)
-        .map(({ groceryAdds7d, score, ...item }) => item),
+        .map(({ groceryAdds7d, score, ...item }) => ({
+          ...item,
+          // Same disclosure as the activity list: a card for a public drink must not name the paid drink it was
+          // remixed from.
+          remixedFromSlug: activityShown(item.remixedFromSlug) ? item.remixedFromSlug : null,
+        })),
       limit,
       offset,
     });

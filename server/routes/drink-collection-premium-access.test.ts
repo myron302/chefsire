@@ -50,7 +50,9 @@ if (!PG_URL) {
   const owned = (await local.query(
     `SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND (tablename LIKE 'drink\\_%' OR tablename LIKE 'creator\\_%')`,
   )).rows.map((r: any) => `"${r.tablename}"`);
-  await local.query(`DROP TABLE IF EXISTS ${[...owned, "users"].join(", ")} CASCADE`);
+  // `follows` is created below and matches neither prefix, so it has to be named: without it the suite could be
+  // run once and then failed on "relation already exists" for the rest of the session.
+  await local.query(`DROP TABLE IF EXISTS ${[...owned, "follows", "users"].join(", ")} CASCADE`);
   await local.query(`
     ${ddl(schema.users, "users", ", UNIQUE (username), UNIQUE (email)")};
     ${ddl(schema.drinkRecipes, "drink_recipes")};
@@ -60,6 +62,9 @@ if (!PG_URL) {
     -- selects slug, and returned a 500 -- so the community-search leg of test I was asserting against an empty
     -- response and proving nothing. Built from the real schema now.
     ${ddl(schema.drinkChallenges, "drink_challenges")};
+    -- /whats-new reads the viewer's follows. Without this table the route answered 500 for every signed-in
+    -- viewer, so test K's audit of it was asserting against an error body.
+    ${ddl(schema.follows, "follows")};
   `);
 
   const { default: drinksRouter } = await import("./drinks");
@@ -281,11 +286,34 @@ if (!PG_URL) {
     const premSlug = slugsOf("prem")[PREVIEW];
     const withheldOf = (text: string) => leaked(text, "prem").concat(leaked(text, "memb"));
 
+    // Codex on #1530: /remixes, /most-remixed and /whats-new are all built FROM remixes, and nothing in this
+    // fixture was a remix of anything, so asserting they disclose nothing proved nothing. Two shapes are needed:
+    // a remix that is itself withheld (its own slug must not appear), and a public remix of a withheld drink (the
+    // source's slug must not appear). /most-remixed and the trending sections of /whats-new are keyed ON the
+    // source, so a withheld source has no visible form there at all.
+    const paidRemix = "p24-k-paid-remix";    // in the premium collection, past its preview
+    const publicRemix = "p24-k-public-remix"; // in no collection, remixed from the withheld premium drink
+    const seeded = [paidRemix, publicRemix];
+    try {
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`, [paidRemix, ids.creator, slugsOf("free")[0]]);
+    await local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`, [col.prem, paidRemix]);
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`, [publicRemix, ids.creator, premSlug]);
+
     for (const as of [undefined, "nonent"]) {
       for (const path of ["/remixes", "/most-remixed", "/recommended", "/whats-new", `/creators/${ids.creator}`]) {
         const r = await get(path, as);
+        assert.equal(r.status, 200, `${path} as ${as ?? "anon"} answered ${r.status}: a failed response discloses nothing and proves nothing`);
         assert.deepEqual(withheldOf(r.text), [], `${path} as ${as ?? "anon"}`);
+        assert.equal(r.text.includes(paidRemix), false, `${path} as ${as ?? "anon"}: a remix that is itself withheld`);
       }
+      // ... and the public remix is still there, so the assertions above are not passing on an empty feed.
+      const feed = await get("/remixes", as);
+      assert.ok(feed.text.includes(publicRemix), `as ${as ?? "anon"}: the public remix is public and still listed`);
 
       // Returns the requested drink itself, so a guessable slug was enough to read it. A withheld slug gets the
       // same answer as one that does not exist, which also stops the response confirming it is there.
@@ -293,10 +321,13 @@ if (!PG_URL) {
       assert.equal(chain.status, 404, "a withheld slug is indistinguishable from a missing one");
 
       // Echoes the slug the caller supplied, which discloses nothing; its items are other people's recipes and
-      // are gated.
+      // are gated. It answers 200 for a slug that does not exist, so answering 404 for a withheld one would
+      // itself say the drink is there -- the items are what must be judged, not the route's existence.
       const remixes = await get(`/remixes/${premSlug}`, as);
       assert.equal(remixes.status, 200);
-      assert.deepEqual(remixes.json.items, [], "no remix of a withheld drink is named");
+      const named = remixes.json.items.map((entry: any) => entry.slug);
+      assert.equal(named.includes(paidRemix), false, "a withheld remix of it is not named");
+      assert.ok(named.includes(publicRemix), "a public remix of it is public and is named");
     }
 
     // The creator still sees their whole storefront, and the buyer still reaches the chain they paid for.
@@ -308,6 +339,14 @@ if (!PG_URL) {
     );
     for (const as of ["creator", "buyer"]) {
       assert.equal((await get(`/remix-chain/${premSlug}`, as)).status, 200, `${as} can open the chain`);
+      // The entitled viewer still sees the withheld remix and the drink it came from, in the feeds too.
+      const feed = await get("/remixes", as);
+      assert.ok(feed.text.includes(paidRemix), `${as} still sees the remix they can reach`);
+      assert.ok((await get("/most-remixed", as)).text.includes(premSlug), `${as} still sees the paid drink among the most remixed`);
+    }
+    } finally {
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [seeded]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1)`, [seeded]);
     }
   });
 
