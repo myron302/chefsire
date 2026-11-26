@@ -266,6 +266,12 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node --import tsx --test --test-concurrency=1 server/routes/session-cookie-races.postgres.test.ts
+      - name: Meal-social schema recovery against a real PostgreSQL
+        # The self-healing schema initializer behind every meal-planner social route. It was outside CI, and its
+        # fixture had fallen so far behind the routes that all four of its tests failed.
+        env:
+          TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node server/scripts/run-ci-batch.mjs server/routes/meal-social-recovery.postgres.test.ts
       - name: Suites restored to CI, batch 1 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
