@@ -38,9 +38,14 @@ if (!URL_ENV) {
   await local.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE; CREATE SCHEMA ${SCHEMA};`);
   // Only what the social tables reference, and what the routes under test read.
   await local.query(`CREATE TABLE users (id varchar PRIMARY KEY, username text, display_name text, avatar text)`);
-  await local.query(`CREATE TABLE meal_plan_blueprints (id varchar PRIMARY KEY)`);
+  // The social routes do not just join on the blueprint id: every one of them first asks whether the plan is addressable at
+  // all -- published, or the viewer's own, or one the viewer holds an entitlement for (mealPlanExists). That gate reads
+  // meal_plan_blueprints.status / .creator_id and meal_plan_purchases, so a fixture with only `id` makes every route 500 on
+  // `column b.status does not exist` and this suite can no longer see the initialization behaviour it exists to check.
+  await local.query(`CREATE TABLE meal_plan_blueprints (id varchar PRIMARY KEY, creator_id varchar, status text NOT NULL DEFAULT 'draft')`);
+  await local.query(`CREATE TABLE meal_plan_purchases (id serial PRIMARY KEY, blueprint_id varchar NOT NULL, user_id varchar NOT NULL, payment_status text NOT NULL)`);
   await local.query(`INSERT INTO users (id, username, display_name) VALUES ('user-1', 'one', 'User One'), ('user-2', 'two', 'User Two')`);
-  await local.query(`INSERT INTO meal_plan_blueprints (id) VALUES ('plan-1')`);
+  await local.query(`INSERT INTO meal_plan_blueprints (id, creator_id, status) VALUES ('plan-1', 'user-1', 'published')`);
 
   const { default: app } = await import("../app");
   const { mealSocialSchema } = await import("./meal-social");

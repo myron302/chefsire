@@ -55,7 +55,7 @@ if (!PG_URL) {
     ${ddl(schema.users, "users", ", UNIQUE (username), UNIQUE (email)")};
     ${ddl(schema.drinkRecipes, "drink_recipes")};
     ${ddl(schema.drinkEvents, "drink_events")};
-    CREATE TABLE drink_challenges (id varchar PRIMARY KEY);
+    ${ddl(schema.drinkChallenges, "drink_challenges")};
   `);
 
   const { default: drinksRouter } = await import("./drinks");
@@ -194,10 +194,27 @@ if (!PG_URL) {
   test("I search / discovery / recommendation endpoints do not carry premium collection items", async () => {
     for (const path of ["/search?q=p24", "/community-search?q=p24", "/recommended", "/collections/wishlist", "/collections/purchased"]) {
       const r = await get(path, "nonent");
+      assert.equal(r.status, 200, `${path} answered ${r.status}: a failed response proves nothing about what it would have leaked`);
       for (const key of ["prem", "memb"]) assert.deepEqual(leaked(r.text, key), [], path);
     }
     const anon = await get("/search?q=p24-prem");
+    assert.equal(anon.status, 200);
     assert.deepEqual(leaked(anon.text, "prem"), []);
+  });
+
+  test("I search keeps carrying the premium items for a viewer the access model entitles (the gate must not over-block)", async () => {
+    for (const [as, key] of [["buyer", "prem"], ["creator", "prem"], ["bundler", "prem"], ["member", "memb"]] as const) {
+      for (const path of ["/search?q=p24", "/community-search?q=p24"]) {
+        const r = await get(path, as);
+        assert.equal(r.status, 200, `${path} as ${as}`);
+        for (const slug of slugsOf(key)) assert.ok(r.text.includes(slug), `${path}: ${as} must still find ${slug}`);
+      }
+    }
+    // ... and the free collection's items are discoverable for everyone, signed in or not
+    for (const as of [undefined, "nonent"]) {
+      const r = await get("/search?q=p24", as);
+      for (const slug of slugsOf("free")) assert.ok(r.text.includes(slug), `free ${slug} stays discoverable`);
+    }
   });
 
   test("K spoofed client fields cannot manufacture entitlement", async () => {

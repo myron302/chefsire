@@ -23882,8 +23882,69 @@ r.post("/creators/:userId/membership/create-checkout", requireAuth, async (req, 
 });
 
 
+/**
+ * Drink slugs that must NOT appear on a discovery surface for this viewer.
+ *
+ * A locked collection (premium_purchase / membership_only) publishes its first LOCKED_COLLECTION_PREVIEW_LIMIT items as a
+ * storefront preview and keeps the rest for entitled viewers. That preview limit IS the paywall: a drink recipe is readable
+ * in full from its own route (`GET /api/drinks/user/:slug`) as soon as its slug is known, so any surface that prints the slug
+ * of a past-the-preview item has already handed over the paid payload.
+ *
+ * A slug is undiscoverable only when EVERY collection holding it hides it from this viewer: it sits past the preview of a
+ * collection that is locked for the viewer, and no other collection shows it (an unlocked collection, or inside a preview).
+ * A recipe in no collection at all, a recipe in a public collection, and every item of a collection the viewer created,
+ * bought, holds through a bundle or unlocks with an active membership all stay discoverable.
+ */
+async function loadUndiscoverableDrinkSlugs(slugs: readonly string[], viewerUserId?: string | null): Promise<Set<string>> {
+  const hidden = new Set<string>();
+  const candidates = [...new Set(slugs.filter((slug) => typeof slug === "string" && slug.length > 0))];
+  if (!db || candidates.length === 0) return hidden;
+
+  // The collection tables are created lazily. If that cannot be done here the query below decides: tables that do not exist
+  // mean no collection is locked, and any other failure propagates rather than being treated as "nothing to hide".
+  await ensureDrinkCollectionsSchema().catch(() => undefined);
+
+  // `beforeCount` is how many items of the same collection sort ahead of this one, in the exact order
+  // resolveCollectionWithItems serializes with, so "inside the preview" means the same thing on both paths.
+  const rows = await db
+    .select({
+      drinkSlug: drinkCollectionItems.drinkSlug,
+      collectionId: drinkCollectionItems.collectionId,
+      collectionUserId: drinkCollections.userId,
+      accessType: drinkCollections.accessType,
+      isPremium: drinkCollections.isPremium,
+      beforeCount: sql<number>`(
+        SELECT count(*) FROM ${drinkCollectionItems} earlier
+         WHERE earlier.collection_id = ${drinkCollectionItems.collectionId}
+           AND (earlier.added_at < ${drinkCollectionItems.addedAt}
+                OR (earlier.added_at = ${drinkCollectionItems.addedAt} AND earlier.drink_slug < ${drinkCollectionItems.drinkSlug}))
+      )`,
+    })
+    .from(drinkCollectionItems)
+    .innerJoin(drinkCollections, eq(drinkCollections.id, drinkCollectionItems.collectionId))
+    .where(inArray(drinkCollectionItems.drinkSlug, candidates));
+
+  if (rows.length === 0) return hidden;
+
+  const accessMap = await loadCollectionAccessMapForUser(viewerUserId);
+  const visibleSomewhere = new Set<string>();
+  const hiddenSomewhere = new Set<string>();
+
+  for (const row of rows) {
+    const accessType = collectionAccessTypeForRow({ accessType: row.accessType, isPremium: row.isPremium });
+    const isOwner = Boolean(viewerUserId && viewerUserId === row.collectionUserId);
+    const isOwned = isOwner || Boolean(viewerUserId && accessMap.has(row.collectionId));
+    const isLocked = accessType !== "public" && !isOwned;
+    if (!isLocked || Number(row.beforeCount ?? 0) < LOCKED_COLLECTION_PREVIEW_LIMIT) visibleSomewhere.add(row.drinkSlug);
+    else hiddenSomewhere.add(row.drinkSlug);
+  }
+
+  for (const slug of hiddenSomewhere) if (!visibleSomewhere.has(slug)) hidden.add(slug);
+  return hidden;
+}
+
 // Search drinks across canonical + user submissions
-r.get("/search", async (req, res) => {
+r.get("/search", optionalAuth, async (req, res) => {
   try {
     const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
     if (!q) return res.json({ ok: true, items: [] });
@@ -23914,7 +23975,11 @@ r.get("/search", async (req, res) => {
       source: "external",
     }));
 
-    const userItems = userMatches.map((item) => ({
+    // Items of a locked collection past its public preview are the paid payload: never in a search result for a viewer the
+    // canonical access model does not entitle (see loadUndiscoverableDrinkSlugs).
+    const hiddenSlugs = await loadUndiscoverableDrinkSlugs(userMatches.map((item) => item.slug), resolveEngagementUserId(req));
+
+    const userItems = userMatches.filter((item) => !hiddenSlugs.has(item.slug)).map((item) => ({
       slug: item.slug,
       name: item.name,
       image: item.image ?? null,
@@ -23931,7 +23996,7 @@ r.get("/search", async (req, res) => {
 });
 
 // Unified drinks community search (drinks, remixes, creators, challenges)
-r.get("/community-search", async (req, res) => {
+r.get("/community-search", optionalAuth, async (req, res) => {
   try {
     const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
     if (!q) {
@@ -24061,6 +24126,11 @@ r.get("/community-search", async (req, res) => {
           })),
         );
     }
+
+    // Same boundary as /search: a past-the-preview item of a locked collection is the paid payload and never reaches a
+    // non-entitled viewer's discovery results (see loadUndiscoverableDrinkSlugs).
+    const hiddenSlugs = await loadUndiscoverableDrinkSlugs(userRecipeMatches.map((recipe) => recipe.slug), resolveEngagementUserId(req));
+    userRecipeMatches = userRecipeMatches.filter((recipe) => !hiddenSlugs.has(recipe.slug));
 
     const allSearchSlugs = [
       ...canonicalMatches.results.map((item) => item.sourceId),

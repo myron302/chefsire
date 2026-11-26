@@ -563,3 +563,10 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node server/scripts/run-ci-batch.mjs client/src/pages/services/wedding-planning/weddingRegistry.test.ts client/src/lib/socket-lifecycle.test.ts server/routes/wedding-onboarding.test.ts server/routes/wedding-trial.test.ts
+      - name: Premium drink-collection access and meal-social schema recovery
+        # Both were outside CI. The first is the entitlement boundary for paid drink collections (its search/discovery
+        # case was failing); the second is the self-healing schema initializer behind every meal-planner social route.
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+          TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node server/scripts/run-ci-batch.mjs server/routes/drink-collection-premium-access.test.ts server/routes/meal-social-recovery.postgres.test.ts
