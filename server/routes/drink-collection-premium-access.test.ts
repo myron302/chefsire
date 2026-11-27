@@ -108,7 +108,12 @@ if (!PG_URL) {
     )).rows[0].id;
     for (const [i, slug] of slugsOf(key).entries()) {
       await local.query(`INSERT INTO drink_recipes (id, slug, name, category, user_id) VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2) ON CONFLICT DO NOTHING`, [slug, ids.creator]).catch(() => undefined);
-      await local.query(`INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now() + ($3 || ' seconds')::interval)`, [col[key], slug, String(i)]);
+      // An hour back, a minute apart. Position is added_at then drink_slug, so these four have to sit unambiguously
+      // BEHIND every item a later test adds with a bare now() -- and those tests all mean "past the preview".
+      // Seeded at now()+0..3s, that held only while a test took longer than three seconds to reach them: on a warm
+      // run K, L, M and both Ns saw their own item take a preview slot and read the gate as leaking. The one test
+      // that wants the first preview slot asks for it explicitly, with an added_at a day earlier than this.
+      await local.query(`INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now() - interval '1 hour' + ($3 || ' minutes')::interval)`, [col[key], slug, String(i)]);
     }
   };
   const grant = (userKey: string, colKey: string, status = "completed") =>
@@ -647,6 +652,114 @@ if (!PG_URL) {
       await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [bulk]);
       await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1)`, [bulk]);
       await local.query(`UPDATE drink_recipes SET created_at = now() WHERE slug LIKE 'p24-%'`);
+    }
+  });
+
+  test("Q a private premium collection inside a public bundle: the gate must not be stricter than the boundary", async () => {
+    // Codex on #1530: the new is_public reachability term made the gate disagree with the boundary for one
+    // collection shape. POST /bundles/:id/items accepts any premium_purchase collection of yours, public or not,
+    // and resolveBundleWithCollections hands every included collection to resolveCollectionWithItems with no
+    // is_public filter -- so the public bundle page already shows that collection's two preview recipes to
+    // anonymous visitors. The gate was withholding those same two slugs, which does not hide anything (the
+    // bundle names them) and leaves the page showing two links that 404. Reachability, not unlocking: the items
+    // behind the preview stay withheld.
+    const slugs = [1, 2, 3, 4].map((n) => `p24-bund-${n}`);
+    let privateCol = "";
+    let publicBundle = "";
+    try {
+      privateCol = (await local.query(
+        `INSERT INTO drink_collections (user_id, name, description, is_public, access_type, is_premium, price_cents)
+         VALUES ($1, 'p24-bundled-private', 'blurb', false, 'premium_purchase', true, 700) RETURNING id`, [ids.creator])).rows[0].id;
+      for (const [i, slug] of slugs.entries()) {
+        await local.query(
+          `INSERT INTO drink_recipes (id, slug, name, category, user_id) VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2)`, [slug, ids.creator]);
+        await local.query(
+          `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now() - interval '1 hour' + ($3 || ' minutes')::interval)`,
+          [privateCol, slug, String(i)]);
+      }
+      publicBundle = (await local.query(
+        `INSERT INTO drink_bundles (user_id, name, slug, is_public, is_premium, price_cents)
+         VALUES ($1, 'p24-public-bundle', 'p24-public-bundle', true, true, 1200) RETURNING id`, [ids.creator])).rows[0].id;
+      await local.query(`INSERT INTO drink_bundle_items (bundle_id, collection_id, sort_order) VALUES ($1, $2, 0)`, [publicBundle, privateCol]);
+
+      const preview = slugs.slice(0, PREVIEW);
+      const behind = slugs.slice(PREVIEW);
+      for (const as of [undefined, "nonent"]) {
+        // What the boundary itself says, through the bundle the creator chose to make public.
+        const bundle = await get(`/bundles/${publicBundle}`, as);
+        assert.equal(bundle.status, 200, `as ${as ?? "anon"}: the public bundle is readable`);
+        for (const slug of preview) assert.ok(bundle.text.includes(slug), `as ${as ?? "anon"}: the bundle page names ${slug}`);
+        for (const slug of behind) assert.equal(bundle.text.includes(slug), false, `as ${as ?? "anon"}: and not ${slug}`);
+
+        // The gate has to agree with it, or those two links are dead.
+        for (const slug of preview) {
+          assert.equal((await get(`/user/${slug}`, as)).status, 200, `as ${as ?? "anon"}: ${slug} is a link the bundle page shows`);
+        }
+        for (const slug of behind) {
+          assert.equal((await get(`/user/${slug}`, as)).status, 404, `as ${as ?? "anon"}: ${slug} is the payload`);
+        }
+        const search = await get("/search?q=p24-bund", as);
+        assert.equal(search.status, 200);
+        for (const slug of behind) assert.equal(search.text.includes(slug), false, `as ${as ?? "anon"}: ${slug} is not searchable`);
+      }
+      // Take the bundle out of public view and the collection is unreachable again, preview included.
+      await local.query(`UPDATE drink_bundles SET is_public = false WHERE id = $1`, [publicBundle]);
+      for (const slug of slugs) {
+        assert.equal((await get(`/user/${slug}`)).status, 404, `${slug}: nothing public reaches this collection any more`);
+      }
+      // The creator never lost any of it.
+      for (const slug of slugs) {
+        assert.equal((await get(`/user/${slug}`, "creator")).status, 200, `${slug}: still the creator's own`);
+      }
+    } finally {
+      if (publicBundle) await local.query(`DELETE FROM drink_bundles WHERE id = $1`, [publicBundle]);
+      if (privateCol) await local.query(`DELETE FROM drink_collections WHERE id = $1`, [privateCol]);
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [slugs]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1)`, [slugs]);
+    }
+  });
+
+  test("P the remix discovery feed pages the same way, and it is the page nobody can scroll past", async () => {
+    // The fourth instance of the same shape, and the one that was missed when the other three were fixed: this
+    // feed took its LIMIT from the database and then gated, so thirty withheld remixes at the top of either
+    // ordering returned nothing at all. It is the worst place for that, because the client asks for the first
+    // page and renders no next -- there is no second request that would eventually reach the public rows.
+    const BULK = 30;
+    const bulk = Array.from({ length: BULK }, (_, i) => `p24-feed-${String(i).padStart(2, "0")}`);
+    const source = slugsOf("free")[0];
+    const publicRemix = "p24-feed-public";
+    try {
+      // One remix that belongs to nobody's collection, so it is public on its own terms, and older than the rest.
+      await local.query(
+        `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug, created_at)
+         VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3, now() - interval '1 day')`,
+        [publicRemix, ids.nonent, source]);
+      // Thirty newer remixes, every one of them past the preview of the premium collection.
+      for (const slug of bulk) {
+        await local.query(
+          `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug, created_at)
+           VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3, now())`, [slug, ids.creator, source]);
+        await local.query(
+          `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`, [col.prem, slug]);
+      }
+
+      for (const sort of ["recent", "popular"]) {
+        for (const as of [undefined, "nonent"]) {
+          const feed = await get(`/remixes?sort=${sort}&limit=${BULK}`, as);
+          assert.equal(feed.status, 200, `${sort} as ${as ?? "anon"}: a real answer, not a 500 with no slugs in it`);
+          const slugs = (feed.json.items ?? []).map((entry: any) => entry.slug);
+          for (const slug of bulk) assert.equal(slugs.includes(slug), false, `${sort} as ${as ?? "anon"}: ${slug} is still withheld`);
+          assert.ok(slugs.includes(publicRemix), `${sort} as ${as ?? "anon"}: the public remix behind the withheld page is still returned`);
+        }
+        // The creator is entitled to all thirty, so the fix must not cost them their own full page either.
+        const asCreator = await get(`/remixes?sort=${sort}&limit=${BULK}`, "creator");
+        const creatorSlugs = (asCreator.json.items ?? []).map((entry: any) => entry.slug);
+        assert.equal(creatorSlugs.length, BULK, `${sort}: the creator's page is full, and no wider than asked for`);
+        assert.equal(creatorSlugs.filter((slug: string) => !bulk.includes(slug)).length, 0, `${sort}: and it is their own newest thirty`);
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [bulk]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1) OR slug = $2`, [bulk, publicRemix]);
     }
   });
 

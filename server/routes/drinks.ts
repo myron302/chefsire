@@ -18063,6 +18063,18 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
           JOIN owners o ON o.slug = ci.drink_slug
           JOIN drink_collections c ON c.id = ci.collection_id AND c.user_id = o.creator_id
       ),
+      -- Codex on #1530: a collection inside a PUBLIC bundle is reachable even when the collection itself is not
+      -- public. POST /bundles/:id/items requires only that the collection be yours and premium_purchase, and
+      -- resolveBundleWithCollections hands every included collection to the boundary with no is_public filter, so
+      -- the bundle page already shows that collection's preview to anonymous visitors. Without this term the gate
+      -- was stricter than the boundary for exactly that shape: the bundle displayed two preview recipes whose
+      -- links then 404'd. Reachability only -- the item still has to clear the unlocked test below, so this
+      -- publishes the same two preview items the bundle page does and nothing behind them.
+      bundled AS (
+        SELECT DISTINCT bi.collection_id
+          FROM drink_bundle_items bi
+          JOIN drink_bundles b ON b.id = bi.bundle_id AND b.is_public
+      ),
       -- Ranking is restricted to those collections. Greptile on #1530: ranking every row of
       -- drink_collection_items to judge at most a couple of dozen slugs put the whole table's work on every
       -- search. Items still cannot be filtered BEFORE ranking, or the preview boundary would move.
@@ -18087,7 +18099,8 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
       -- relevant collection, because that is what fixes each item's position; only the vote is restricted.
       -- A collection shows an item to this viewer only if BOTH hold: the viewer can reach the collection at all,
       -- and the collection is not locked against them (or the item is inside its public preview).
-      --   REACHABLE  Greptile P1: is_public was not consulted, so a creator's PRIVATE collection whose
+      --   REACHABLE  is_public, ownership, a grant, or membership of a public bundle -- the four ways a viewer
+      --               can open the collection at all. Greptile P1: is_public was not consulted, so a creator's PRIVATE collection whose
       --               access_type is 'public' -- a working "everything I have made" list -- voted its items
       --               public for anonymous viewers, including items they sell in a locked collection. Nobody
       --               can read that collection, so it may not publish anything. Ownership and a grant are
@@ -18101,6 +18114,7 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
                    r.is_public
                    OR r.owner_id IS NOT DISTINCT FROM ${viewerUserId ?? null}
                    OR r.collection_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(entitled)}::jsonb))
+                   OR r.collection_id IN (SELECT collection_id FROM bundled)
                  )
                  AND (
                    r.access_type = 'public'
@@ -20242,17 +20256,23 @@ r.get("/remixes", optionalAuth, async (req, res) => {
         drinkRecipes.remixedFromSlug
       );
 
+    // Codex on #1530: this feed gates after the LIMIT like the three routes already fixed, and it is the one of
+    // the four whose page a viewer cannot work around -- the client asks for the first page and offers no next.
+    // Thirty withheld remixes at the top of either ordering therefore emptied it. Same constant as the others, so
+    // they cannot drift apart. The offset still counts pre-gate rows, as it always did; widening the window read
+    // at that offset is what stops a full page becoming an empty one, and is not a claim that the pages tile.
+    const remixPageSize = limit * RECIPE_MATCH_OVERFETCH;
     const remixRows = await (sort === "popular"
       ? remixRowsQuery
           .orderBy(
             desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`),
             desc(drinkRecipes.createdAt)
           )
-          .limit(limit)
+          .limit(remixPageSize)
           .offset(offset)
       : remixRowsQuery
           .orderBy(desc(drinkRecipes.createdAt))
-          .limit(limit)
+          .limit(remixPageSize)
           .offset(offset));
     // Codex on #1530: this feed is every remix in the database, and the suite that audited it had no remixes in
     // its fixture, so it proved nothing. A remix can itself be a paid item, and every row also carries the slug it
@@ -20263,7 +20283,8 @@ r.get("/remixes", optionalAuth, async (req, res) => {
        ...remixRows.map((row) => row.remixedFromSlug).filter((slug): slug is string => Boolean(slug))],
       (req as any).user?.id ?? null,
     );
-    const visibleRemixRows = remixRows.filter((row) => !withheldFeed.has(row.slug));
+    // Back to the route's own page size once the withheld rows are out (see RECIPE_MATCH_OVERFETCH).
+    const visibleRemixRows = remixRows.filter((row) => !withheldFeed.has(row.slug)).slice(0, limit);
     const remixSlugs = visibleRemixRows.map((row) => row.slug);
     const remixesCountRows = remixSlugs.length
       ? await db
