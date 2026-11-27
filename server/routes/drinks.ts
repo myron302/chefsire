@@ -9202,7 +9202,7 @@ async function loadCreatorCampaignFunnelBottlenecks(creatorUserId: string, campa
         memberFocused ? analytics.membershipsFromCampaignNote : "Memberships can outpace purchases for some member-first campaigns because they are a parallel native conversion path, not always a post-purchase step.",
       ].filter((value): value is string => Boolean(value)),
     } satisfies CreatorCampaignFunnelBottleneckItem;
-  }).filter((item): item is CreatorCampaignFunnelBottleneckItem => Boolean(item));
+  }).filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   const weakTransitionCounts = new Map<string, { fromStep: CreatorCampaignFunnelStepKey; toStep: CreatorCampaignFunnelStepKey; label: string; affectedCampaigns: number }>();
   for (const item of items) {
@@ -14747,8 +14747,7 @@ export async function loadCreatorCampaignLaunchReadiness(creatorUserId: string, 
     const stagedNeedsFollowerUnlock = rollout.rolloutMode === "staged"
       && rollout.isRolloutActive
       && detail.campaign.visibility !== "members"
-      && rollout.startsWithAudience === "members"
-      && detail.campaign.visibility !== "members";
+      && rollout.startsWithAudience === "members";
     const stagedNeedsPublicUnlock = rollout.rolloutMode === "staged"
       && rollout.isRolloutActive
       && detail.campaign.visibility === "public";
@@ -14959,7 +14958,8 @@ export async function loadCreatorCampaignUnlockReadinessAlerts(creatorUserId: st
   const rolloutByCampaignId = new Map(campaignRows.map((campaign) => [campaign.id, deriveCreatorCampaignRollout(campaign, now)]));
 
   const items = readinessCollection.items
-    .filter((item) => item.preflightKind === "unlock" && item.nextAudience)
+    .filter((item): item is typeof item & { nextAudience: CreatorCampaignRolloutAudience } =>
+      item.preflightKind === "unlock" && Boolean(item.nextAudience))
     .map((item) => {
       const rollout = rolloutByCampaignId.get(item.campaignId);
       const unlockAt = rollout?.nextAudience === item.nextAudience ? rollout.nextUnlockAt ?? null : null;
@@ -15065,7 +15065,7 @@ export async function loadCreatorCampaignUnlockReadinessAlerts(creatorUserId: st
         readinessState: item.readinessState,
       } satisfies CreatorCampaignUnlockReadinessAlert;
     })
-    .filter((item): item is CreatorCampaignUnlockReadinessAlert => Boolean(item))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
     .sort((a, b) => {
       const aTime = a.unlockAt ? new Date(a.unlockAt).getTime() : Number.POSITIVE_INFINITY;
       const bTime = b.unlockAt ? new Date(b.unlockAt).getTime() : Number.POSITIVE_INFINITY;
@@ -20190,7 +20190,7 @@ r.get("/most-remixed", async (req, res) => {
       .select({
         slug: drinkRecipes.remixedFromSlug,
         remixCount: sql<number>`count(*)`,
-        lastRemixAt: sql<Date>`max(${drinkRecipes.createdAt})`,
+        lastRemixAt: sql<Date | null>`max(${drinkRecipes.createdAt})`,
       })
       .from(drinkRecipes)
       .where(sql`${drinkRecipes.remixedFromSlug} is not null`)
@@ -20228,7 +20228,7 @@ r.get("/most-remixed", async (req, res) => {
     const userSourceBySlug = new Map(userSourceRows.map((row) => [row.slug, row]));
 
     const rankedItems: MostRemixedDrinkItem[] = remixAggregateRows
-      .filter((row): row is { slug: string; remixCount: number; lastRemixAt: Date | null } => Boolean(row.slug))
+      .filter((row): row is typeof row & { slug: string } => Boolean(row.slug))
       .map((row) => {
         const canonical = getCanonicalDrinkBySlug(row.slug);
         const userSource = userSourceBySlug.get(row.slug);
@@ -20617,7 +20617,7 @@ r.get("/recommended", async (req, res) => {
   try {
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 8, maxLimit: 24 });
     const recentFromQuery = typeof req.query?.recent === "string" ? req.query.recent : "";
-    const recentFromBody = Array.isArray(req.body?.recent)
+    const recentFromBody: string = Array.isArray(req.body?.recent)
       ? req.body.recent.join(",")
       : typeof req.body?.recent === "string"
         ? req.body.recent
@@ -21054,7 +21054,7 @@ r.get("/drops/:id", optionalAuth, async (req, res) => {
             : "Start checkout directly from this drop.",
           collectionId: linkedCollection!.id,
           collectionRoute: `/drinks/collections/${encodeURIComponent(linkedCollection!.id)}`,
-          promoCode: linkedPromotion?.collectionId === linkedCollection?.id
+          promoCode: linkedPromotion && linkedPromotion.collectionId === linkedCollection?.id
             ? linkedPromotion.code
             : null,
         }
