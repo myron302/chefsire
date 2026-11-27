@@ -425,6 +425,44 @@ if (!PG_URL) {
     await local.query(`DELETE FROM drink_collection_items WHERE collection_id = $1 AND drink_slug = $2`, [col.memb, premSlug]);
   });
 
+  test("N the attacker-owned-collection paths Codex named, each one tried", async () => {
+    // Codex re-raised three claims against the current head. Rather than argue they were already fixed, each is
+    // exercised here, so whichever is true fails and whichever is not stays covered.
+    const premSlug = slugsOf("prem")[PREVIEW];
+    const mine = async (accessType: string, isPublic: boolean) => (await local.query(
+      `INSERT INTO drink_collections (user_id, name, description, is_public, access_type, is_premium, price_cents)
+       VALUES ($1, $2, 'blurb', $3, $4, $5, 0) RETURNING id`,
+      [ids.nonent, `attacker-${accessType}-${isPublic}`, isPublic, accessType, accessType !== "public"],
+    )).rows[0].id;
+
+    for (const [accessType, isPublic] of [["public", true], ["premium_purchase", true], ["membership_only", true], ["public", false]] as const) {
+      const id = await mine(accessType, isPublic);
+      // The attacker also puts a recipe of their own in, which is what qualified their collection before.
+      await local.query(`INSERT INTO drink_recipes (id, slug, name, category, user_id) VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2) ON CONFLICT DO NOTHING`, [`attacker-own-${accessType}-${isPublic}`, ids.nonent]);
+      await local.query(`INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now()), ($1, $3, now() + interval '1 second')`, [id, `attacker-own-${accessType}-${isPublic}`, premSlug]);
+
+      const where = `${accessType}/is_public=${isPublic}`;
+      // Not for the world, and not for the attacker either -- the owner_id exemption must not reach another
+      // creator's item just because the attacker owns the collection it was added to.
+      for (const as of [undefined, "nonent"]) {
+        assert.equal(
+          (await get("/search?q=p24", as)).text.includes(premSlug),
+          false,
+          `an attacker's ${where} collection must not publish another creator's paid drink (as ${as ?? "anon"})`,
+        );
+        assert.equal((await get(`/user/${premSlug}`, as)).status, 404, `nor make it readable (${where}, as ${as ?? "anon"})`);
+        const storefront = await get(`/creators/${ids.creator}`, as);
+        assert.equal(storefront.text.includes(premSlug), false, `nor enumerable on the creator storefront (${where})`);
+      }
+      // The people entitled to it are unaffected throughout.
+      for (const as of ["buyer", "creator"]) {
+        assert.equal((await get("/search?q=p24", as)).text.includes(premSlug), true, `${as} still finds it (${where})`);
+        assert.equal((await get(`/user/${premSlug}`, as)).status, 200, `${as} can still read it (${where})`);
+      }
+      await local.query(`DELETE FROM drink_collections WHERE id = $1`, [id]);
+    }
+  });
+
   test("M the four review findings on the first pass of this gate", async () => {
     // Each of these passed the suite as it stood, which is the point: the gate was right about the case the
     // tests covered and wrong about four cases they did not reach. Every one is asserted from both sides --
