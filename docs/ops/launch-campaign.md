@@ -67,12 +67,25 @@ Updated 2026-11-27 by Claude.
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
 
+### Corrected, so nobody spends another session on it
+
+`schema-push-safety.postgres.test.ts` was carried in the work queue as "0 pass / 2 fail", and it is neither.
+It **passes 2 of 2**, and it has been in CI the whole time, in the job named "Schema push safety and plaintext
+finalization durability", which has a 45 minute budget and has been green.
+
+Its first test takes **18.5 minutes** — it drives real `drizzle-kit` through dozens of pushes against a real
+database. Every attempt to run it locally had a 10 minute cap, so it was killed mid-run and recorded as a
+failure. That reading was then copied into the work queue and repeated.
+
+The guard itself was also verified by hand on 2026-11-27 against a non-exempt database: it refused a plan that
+would strip row-level security, named the statement, offered a scoped token, and the protection survived. Do
+not go looking for a hole in it, and give it 25 minutes before calling it hung.
+
+The same applies to `square-plaintext-finalization-durability.postgres.test.ts`, carried as "9 pass / 1 fail":
+it runs in that same green job. Re-measure before believing a failure count in any queue, including this one.
+
 ### Known and not yet done
 
-- `schema-push-safety.postgres.test.ts` fails 0 of 2. **The guard itself is sound** — verified by hand on
-  2026-11-27 against a non-exempt database: it refused a plan that would strip row-level security, named the
-  statement, offered a scoped token, and the protection survived. The failure is in the harness, not the
-  wrapper. Do not "fix" the guard.
 - `session-cookie-races.postgres.test.ts`, 5 genuine account-switching failures.
 - `POST /collections/:id/items` is fixed in #1530; no other write path has been audited for the same shape.
 - `server/routes/drinks.ts` holds about half the repository's type errors in one file.
