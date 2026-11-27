@@ -43,8 +43,23 @@ Every run, whoever is running it:
 ### The three things that stop for Myron
 
 Spending money, changing real members' data in the production database, and anything needing his password.
-Everything else proceeds. For these, do the preparatory work, write it down here, and carry on with something
-else — do not idle waiting for an answer.
+For these, do the preparatory work, write it down here, and carry on with something else — do not idle waiting
+for an answer.
+
+**Everything else proceeds, except an approval already written down somewhere else in this repository.** Codex
+raised this on #1536 and it was a real gap: these three categories are about Myron's *attention*, not about
+every boundary that exists. A feature whose own document says it may not ship without his sign-off is not
+unblocked merely because shipping it costs no money and touches no member row.
+
+The one of these live today is permanent account closure. `docs/ops/part3b-closure-safety.md` says the hard
+switch may not be changed, merged, deployed, or run against production until Myron explicitly approves **and**
+a legal/retention review is on the record. That is load-bearing here because **`main` deploys automatically**:
+merging closure-enabling code to `main` *is* deploying it, so "merge on green with a clean review" does not
+apply to it. Closure work proceeds as far as a PR that leaves `PERMANENT_CLOSURE_AVAILABLE = false`, and stops
+there.
+
+If you add a boundary like that to another feature's document, add a line for it here too, or the next run will
+not know it exists.
 
 ### What must never be weakened to make a run finish
 
@@ -56,12 +71,18 @@ a red one.
 
 Updated 2026-11-27 by Claude.
 
+### Landed since the last update
+
+- **#1537 — the schema-push guard bypass.** Merged. The hole Codex found on #1536, closed; see the correction
+  below. Verified independently before merging: suite green at 79/0, the five new tests fail when the
+  first-value read is restored, and `pg`'s choice of host read directly off the driver.
+
 ### In flight
 
 | Item | Where | Next action | Owner |
 | --- | --- | --- | --- |
-| Drink premium-collection gate | PR #1530 | merge when Codex confirms; its last three findings were re-posts, disproved by test N | Claude |
-| Flaky leak assertions | PR #1535 | merge; unblocks #1526, which has been red two days for this reason alone | Claude |
+| Drink premium-collection gate | PR #1530 | Codex re-review requested at head `2fdaf487`, which is one unreviewed production commit past its last clean pass. Merge when that comes back clean | Claude |
+| Flaky leak assertions | PR #1535 | green and mergeable; Codex's P2 answered with a code change (foreign resource ids, not just account ids) and a re-review requested at head `4d61cdd`. Merge when it returns | Claude |
 | Custom drink save prefix | PR #1514 | GPT's fix, rebased and given the regression test it lacked; merge on green | Claude |
 | Rendering smoke check | PR #1526 | re-run after #1535 merges | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
@@ -77,9 +98,34 @@ Its first test takes **18.5 minutes** — it drives real `drizzle-kit` through d
 database. Every attempt to run it locally had a 10 minute cap, so it was killed mid-run and recorded as a
 failure. That reading was then copied into the work queue and repeated.
 
-The guard itself was also verified by hand on 2026-11-27 against a non-exempt database: it refused a plan that
-would strip row-level security, named the statement, offered a scoped token, and the protection survived. Do
-not go looking for a hole in it, and give it 25 minutes before calling it hung.
+Give it 25 minutes before calling it hung.
+
+**What this file said about the guard itself was wrong, and is corrected here.** It read: the guard was verified
+by hand against a non-exempt database, it refused a plan that would strip row-level security, so do not go
+looking for a hole in it. The refusal was real. The conclusion was not, and the instruction not to look was the
+worst part of it.
+
+Codex found the hole within the hour, on the very PR that added that sentence. `isDisposableTestDatabase`
+decides whether a destructive plan may be applied with **no approval token and no server-identity check**, so it
+has to agree with the driver about where the connection actually goes — and it did not:
+
+```
+postgres://u:p@localhost/app_test?host=/tmp&host=db.prod.example.com
+```
+
+The guard read the **first** `host`, `/tmp`. The `pg` driver takes the **last**, `db.prod.example.com`. So the
+guard saw a loopback socket and a database named `test`, called it a throwaway, and would have applied
+`DISABLE ROW LEVEL SECURITY` to a remote server without asking anyone.
+
+Fixed and merged in **#1537**, which refuses ambiguity outright rather than matching the driver's last-value
+rule: more than one `host`, a comma-separated host list, or `hostaddr` in any form. A URL that cannot say
+plainly where it points does not get the exemption, whichever value a driver would pick. Verified twice over:
+the five new tests fail when the first-value read is restored, and the driver's choice was read off
+`connectionParameters.host` directly.
+
+**The lesson is the part to keep: verifying that a guard says no is not the same as verifying it cannot be
+walked around.** Two claims of soundness made from a refusal path alone were disproved on 27 Nov. When you
+write "this is sound" into this file, say which paths you checked, and never write that nobody should look.
 
 The same applies to `square-plaintext-finalization-durability.postgres.test.ts`, carried as "9 pass / 1 fail":
 it runs in that same green job. Re-measure before believing a failure count in any queue, including this one.
