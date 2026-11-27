@@ -799,6 +799,48 @@ if (!PG_URL) {
     await local.query(`DELETE FROM drink_collections WHERE id = $1`, [mineId]);
   });
 
+  test("P the remix feed still fills a page when the newest remixes are all withheld", async () => {
+    // Codex on #1530: overfetching a wider window made an empty page less likely, not impossible -- with enough
+    // withheld rows at the top, a wider window is still all withheld. This seeds exactly that: more withheld
+    // remixes than the first block holds, with public ones behind them, and asks for a small page.
+    const seeded: string[] = [];
+    const makeRemix = async (slug: string, owner: string, source: string) => {
+      await local.query(
+        `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug, created_at)
+         VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3, now() + ($4 || ' seconds')::interval)`,
+        [slug, ids[owner], source, String(seeded.length)],
+      );
+      seeded.push(slug);
+    };
+    // Public remixes first (older), then a block of withheld ones on top of them.
+    for (let i = 0; i < 3; i += 1) await makeRemix(`p24-feed-public-${i}`, "creator", slugsOf("free")[0]);
+    const hidden: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const slug = `p24-feed-paid-${i}`;
+      await makeRemix(slug, "creator", slugsOf("free")[0]);
+      await local.query(
+        `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now() + ($3 || ' seconds')::interval)`,
+        [col.prem, slug, String(100 + i)],
+      );
+      hidden.push(slug);
+    }
+
+    const feed = await get("/remixes?sort=recent&limit=2", "nonent");
+    assert.equal(feed.status, 200, feed.text.slice(0, 200));
+    const returned: string[] = (feed.json?.items ?? []).map((item: any) => item.slug);
+    assert.deepEqual(returned.filter((slug) => hidden.includes(slug)), [], "no withheld remix is named");
+    assert.equal(returned.length, 2, `the page is filled from behind the withheld rows, got ${JSON.stringify(returned)}`);
+
+    // The creator, who may see all of them, gets their own newest first.
+    const owner = await get("/remixes?sort=recent&limit=2", "creator");
+    assert.equal((owner.json?.items ?? []).length, 2);
+
+    for (const slug of seeded) {
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = $1`, [slug]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [slug]);
+    }
+  });
+
   test("F explicitly free/public collections keep their full item list for everyone", async () => {
     for (const as of [undefined, "nonent"]) {
       for (const path of [...listEndpoints(), `/collections/${col.free}`]) {

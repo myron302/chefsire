@@ -18006,6 +18006,8 @@ const LOCKED_COLLECTION_PREVIEW_LIMIT = 2;
  * wider index scan rather than more work per result.
  */
 const RECIPE_MATCH_OVERFETCH = 5;
+/** Blocks the remix feed will scan for a full page before giving up, so a viewer who can see little cannot walk the table. */
+const REMIX_FEED_MAX_BLOCKS = 4;
 
 /**
  * Slugs that must not be named to this viewer because they are the withheld payload of a locked collection.
@@ -20256,35 +20258,50 @@ r.get("/remixes", optionalAuth, async (req, res) => {
         drinkRecipes.remixedFromSlug
       );
 
-    // Codex on #1530: this feed gates after the LIMIT like the three routes already fixed, and it is the one of
-    // the four whose page a viewer cannot work around -- the client asks for the first page and offers no next.
-    // Thirty withheld remixes at the top of either ordering therefore emptied it. Same constant as the others, so
-    // they cannot drift apart. The offset still counts pre-gate rows, as it always did; widening the window read
-    // at that offset is what stops a full page becoming an empty one, and is not a claim that the pages tile.
+    // Codex on #1530, twice. First: this feed gated after the LIMIT, so withheld rows at the top emptied it --
+    // and it is the one feed whose page a viewer cannot work around, because the client asks for the first page
+    // and offers no next. Overfetching a wider window made that less likely and did not make it impossible:
+    // with enough withheld rows at the top, a wider window is still all withheld.
+    //
+    // So the window is scanned instead of widened. Rows are read in blocks and gated until the page is full or
+    // the feed runs out, bounded so a viewer who can see nothing cannot make this walk the whole table. The
+    // offset still counts pre-gate rows, as it always did; this does not claim the pages tile exactly.
     const remixPageSize = limit * RECIPE_MATCH_OVERFETCH;
-    const remixRows = await (sort === "popular"
-      ? remixRowsQuery
-          .orderBy(
-            desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`),
-            desc(drinkRecipes.createdAt)
-          )
-          .limit(remixPageSize)
-          .offset(offset)
-      : remixRowsQuery
-          .orderBy(desc(drinkRecipes.createdAt))
-          .limit(remixPageSize)
-          .offset(offset));
-    // Codex on #1530: this feed is every remix in the database, and the suite that audited it had no remixes in
-    // its fixture, so it proved nothing. A remix can itself be a paid item, and every row also carries the slug it
-    // was remixed FROM, which can be one. Both go through the gate; a withheld source is cleared, not the remix
-    // dropped, because the remix is public in its own right.
-    const withheldFeed = await withheldPremiumSlugsForViewer(
-      [...remixRows.map((row) => row.slug),
-       ...remixRows.map((row) => row.remixedFromSlug).filter((slug): slug is string => Boolean(slug))],
-      (req as any).user?.id ?? null,
-    );
-    // Back to the route's own page size once the withheld rows are out (see RECIPE_MATCH_OVERFETCH).
-    const visibleRemixRows = remixRows.filter((row) => !withheldFeed.has(row.slug)).slice(0, limit);
+    const readRemixBlock = (blockOffset: number) =>
+      sort === "popular"
+        ? remixRowsQuery
+            .orderBy(
+              desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`),
+              desc(drinkRecipes.createdAt)
+            )
+            .limit(remixPageSize)
+            .offset(blockOffset)
+        : remixRowsQuery.orderBy(desc(drinkRecipes.createdAt)).limit(remixPageSize).offset(blockOffset);
+
+    type RemixRow = Awaited<ReturnType<typeof readRemixBlock>>[number];
+    const visibleRemixRows: RemixRow[] = [];
+    const withheldFeed = new Set<string>();
+    let blockOffset = offset;
+    for (let block = 0; block < REMIX_FEED_MAX_BLOCKS && visibleRemixRows.length < limit; block += 1) {
+      const rows = await readRemixBlock(blockOffset);
+      if (rows.length === 0) break;
+      blockOffset += rows.length;
+      // A remix can itself be a paid item, and every row also carries the slug it was remixed FROM, which can
+      // be one. Both go through the gate; a withheld source is cleared, not the remix dropped, because the
+      // remix is public in its own right.
+      const withheldBlock = await withheldPremiumSlugsForViewer(
+        [...rows.map((row) => row.slug),
+         ...rows.map((row) => row.remixedFromSlug).filter((slug): slug is string => Boolean(slug))],
+        (req as any).user?.id ?? null,
+      );
+      for (const slug of withheldBlock) withheldFeed.add(slug);
+      for (const row of rows) {
+        if (withheldFeed.has(row.slug)) continue;
+        visibleRemixRows.push(row);
+        if (visibleRemixRows.length === limit) break;
+      }
+      if (rows.length < remixPageSize) break; // the feed is exhausted
+    }
     const remixSlugs = visibleRemixRows.map((row) => row.slug);
     const remixesCountRows = remixSlugs.length
       ? await db
