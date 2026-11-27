@@ -85,7 +85,12 @@ if (!PG_URL) {
   const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const ids = { A: "", B: "" };
 
+  /** Every identifier each user owns, so a leak can be caught by id and not only by marker. */
+  const resourceIds: Record<"A" | "B", Set<string>> = { A: new Set(), B: new Set() };
+
   test.beforeEach(async () => {
+    resourceIds.A.clear();
+    resourceIds.B.clear();
     await local.query(`TRUNCATE users, pantry_items, posts, recipes, recipe_saves, stores, user_drink_stats, custom_drinks, drink_saves, clubs, club_memberships, cook_together_sessions, cook_together_participants`);
     for (const [key, name] of [["A", "alice"], ["B", "bob"]] as const) {
       ids[key] = (await local.query(
@@ -93,17 +98,22 @@ if (!PG_URL) {
          VALUES ($1, $2, $1, $3, 'professional', '4321.00', $4) RETURNING id`,
         [name, `${name}@example.com`, `$2a$10$${name}-HASH-SECRET`, `cus_${name}_SECRET`],
       )).rows[0].id;
+      resourceIds[key].add(ids[key]);
     }
     for (const key of ["A", "B"] as const) {
       const tag = `${key}-secret-item`;
       await local.query(`INSERT INTO pantry_items (user_id, name, expiration_date) VALUES ($1, $2, now() + interval '2 days')`, [ids[key], tag]);
       const post = (await local.query(`INSERT INTO posts (user_id, caption) VALUES ($1, 'p') RETURNING id`, [ids[key]])).rows[0].id;
+      resourceIds[key].add(post);
       const recipe = (await local.query(`INSERT INTO recipes (post_id, title, ingredients) VALUES ($1, $2, $3::jsonb) RETURNING id`, [post, `${key}-recipe`, JSON.stringify([tag])])).rows[0].id;
+      resourceIds[key].add(recipe);
       await local.query(`INSERT INTO recipe_saves (user_id, recipe_id) VALUES ($1, $2)`, [ids[key], recipe]);
       await local.query(`INSERT INTO user_drink_stats (user_id, total_points, badges) VALUES ($1, $2, '[]'::jsonb)`, [ids[key], key === "A" ? 111 : 222]);
       const drink = (await local.query(`INSERT INTO custom_drinks (user_id, name, category, is_public) VALUES ($1, $2, 'smoothies', true) RETURNING id`, [ids[key], `${key}-public-drink`])).rows[0].id;
+      resourceIds[key].add(drink);
       await local.query(`INSERT INTO drink_saves (user_id, drink_id) VALUES ($1, $2)`, [ids[key], drink]);
       const session = (await local.query(`INSERT INTO cook_together_sessions (recipe_id, host_user_id, room_code) VALUES ($1, $2, $3) RETURNING id`, [recipe, ids[key], `${key}-ROOM`])).rows[0].id;
+      resourceIds[key].add(session);
       await local.query(`INSERT INTO cook_together_participants (session_id, user_id, completed, rating) VALUES ($1, $2, true, 5)`, [session, ids[key]]);
     }
     await local.query(`INSERT INTO stores (user_id, handle, name, published) VALUES ($1, 'alice-draft', 'A-draft-store', false), ($2, 'bob-live', 'B-live-store', true)`, [ids.A, ids.B]);
@@ -139,6 +149,14 @@ if (!PG_URL) {
   const withoutIds = (text: string) => text.replace(UUID, "<id>");
   const leaks = (r: { text: string }, ...needles: string[]) => needles.filter((n) => withoutIds(r.text).includes(n));
   const idLeak = (r: { text: string }, id: string) => r.text.includes(id);
+  /**
+   * Codex on #1535: blanking identifiers for the marker search also hides FOREIGN RESOURCE ids, not just
+   * account ids -- B's post, recipe, custom drink or cook-together session appearing in A's response is a leak
+   * that neither the blanked text nor an account-id check would see. So every identifier each user owns is
+   * collected as it is created, and the cross-check asserts that none of the other user's turn up.
+   */
+  const foreignIds = (r: { text: string }, owner: "A" | "B") =>
+    [...resourceIds[owner]].filter((id) => r.text.includes(id));
 
   /** One private self-data read: [label, path template where {id} is the id segment, marker for A's data, marker for B's data]. */
   const families: Array<[string, (id: string) => string, string, string]> = [
@@ -186,6 +204,8 @@ if (!PG_URL) {
         assert.deepEqual(leaks(b, markA), [], `B's response must not carry A's data`);
         assert.equal(idLeak(a, ids.B), false, `A's response must not name B's id`);
         assert.equal(idLeak(b, ids.A), false, `B's response must not name A's id`);
+        assert.deepEqual(foreignIds(a, "B"), [], `A's response must not name any identifier B owns`);
+        assert.deepEqual(foreignIds(b, "A"), [], `B's response must not name any identifier A owns`);
       }
     });
 
