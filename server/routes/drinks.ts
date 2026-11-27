@@ -28522,6 +28522,16 @@ r.post("/collections/:id/items", optionalAuth, async (req, res) => {
     const drink = await resolveDrinkDetailsBySlug(parsed.data.drinkSlug);
     if (!drink) return res.status(404).json({ ok: false, error: "Drink slug not found" });
 
+    // Ownership of the destination collection was the only thing checked here, so a caller could add a drink
+    // they are not allowed to see -- another creator's paid item -- to a collection of their own. Since the
+    // withholding rule now counts only the creator's own collections, that no longer discloses anything, but it
+    // should not be possible at all: it files someone else's paid work under your name, and it is one rule
+    // change away from being a disclosure again. The same gate the read paths use decides it, so a drink you
+    // may legitimately see -- canonical, your own, public, or one you bought -- can still be added.
+    if ((await withheldPremiumSlugsForViewer([parsed.data.drinkSlug], req.user.id)).has(parsed.data.drinkSlug)) {
+      return res.status(403).json({ ok: false, error: "Not authorized", code: "DRINK_NOT_AVAILABLE_TO_VIEWER" });
+    }
+
     await db
       .insert(drinkCollectionItems)
       .values({ collectionId: req.params.id, drinkSlug: parsed.data.drinkSlug })

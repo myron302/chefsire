@@ -126,6 +126,15 @@ if (!PG_URL) {
     try { json = JSON.parse(text); } catch { /* non-json */ }
     return { status: res.status, text, json };
   };
+  const post = async (path: string, as: string, body: unknown) => {
+    const res = await fetch(`${base()}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...testAuthHeader(ids[as]) },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    return { status: res.status, text };
+  };
   const leaked = (text: string, key: string) => slugsOf(key).slice(PREVIEW).filter((s) => text.includes(s));
 
   test.before(async () => {
@@ -761,6 +770,33 @@ if (!PG_URL) {
       await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [bulk]);
       await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1) OR slug = $2`, [bulk, publicRemix]);
     }
+  });
+
+  test("O a drink you are not allowed to see cannot be filed into a collection of your own", async () => {
+    const premSlug = slugsOf("prem")[PREVIEW];
+    const freeSlug = slugsOf("free")[PREVIEW];
+    const mineId = (await local.query(
+      `INSERT INTO drink_collections (user_id, name, description, is_public, access_type, is_premium, price_cents)
+       VALUES ($1, 'nonent-own', 'blurb', true, 'public', false, 0) RETURNING id`,
+      [ids.nonent],
+    )).rows[0].id;
+    const add = (slug: string, as: string) => post(`/collections/${mineId}/items`, as, { drinkSlug: slug });
+
+    const refused = await add(premSlug, "nonent");
+    assert.equal(refused.status, 403, `a paid item they have no grant for: ${refused.text.slice(0, 200)}`);
+    assert.deepEqual(
+      (await local.query(`SELECT drink_slug FROM drink_collection_items WHERE collection_id = $1`, [mineId])).rows,
+      [],
+      "and nothing was written",
+    );
+
+    // Everything they may legitimately see still files normally: a public collection's item, and -- once they
+    // have bought it -- the paid one too.
+    assert.equal((await add(freeSlug, "nonent")).status, 201, "a public drink files normally");
+    await grant("nonent", "prem");
+    assert.equal((await add(premSlug, "nonent")).status, 201, "and the paid one does once bought");
+    await local.query(`DELETE FROM drink_collection_purchases WHERE user_id = $1 AND collection_id = $2`, [ids.nonent, col.prem]);
+    await local.query(`DELETE FROM drink_collections WHERE id = $1`, [mineId]);
   });
 
   test("F explicitly free/public collections keep their full item list for everyone", async () => {
