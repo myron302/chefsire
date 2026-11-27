@@ -123,7 +123,22 @@ if (!PG_URL) {
     const text = await res.text();
     return { status: res.status, text, json: (() => { try { return JSON.parse(text); } catch { return null; } })() };
   }
-  const leaks = (r: { text: string }, ...needles: string[]) => needles.filter((n) => r.text.includes(n));
+  /**
+   * Identifiers are random hex, and the short markers below ("111", "222", "4321") can appear inside one by
+   * chance -- a UUID contains "222" about once every 270 times. A marker found inside a random id is not
+   * evidence that anyone's data leaked, but the raw-text search could not tell the two apart, so this suite
+   * failed in CI roughly one run in a hundred, on whichever family drew an unlucky id. A test that cries wolf
+   * at random is read as noise, and then a real failure is read as noise too.
+   *
+   * So identifiers are blanked before the search. What is NOT lost: B's id leaking into A's response is a real
+   * leak, and the raw text can no longer catch it, so idLeak() below checks for it directly -- which is a
+   * stronger assertion than the one it replaces, because it names the id rather than hoping it contains a
+   * marker.
+   */
+  const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  const withoutIds = (text: string) => text.replace(UUID, "<id>");
+  const leaks = (r: { text: string }, ...needles: string[]) => needles.filter((n) => withoutIds(r.text).includes(n));
+  const idLeak = (r: { text: string }, id: string) => r.text.includes(id);
 
   /** One private self-data read: [label, path template where {id} is the id segment, marker for A's data, marker for B's data]. */
   const families: Array<[string, (id: string) => string, string, string]> = [
@@ -136,6 +151,15 @@ if (!PG_URL) {
     ["saved custom drinks", (id) => `/api/drinks/custom-drinks/saved/${id}`, "A-public-drink", "B-public-drink"],
     ["cook-together history", (id) => `/api/cook-together/user/${id}/history`, "A-ROOM", "B-ROOM"],
   ];
+
+  test("the leak search ignores a marker that only appears inside a random identifier", () => {
+    // Pins the behaviour this suite's reliability now rests on, in both directions.
+    const unlucky = { text: `{"ok":true,"stats":{"user_id":"a1b2c222-4d5e-4f60-8a9b-0c1d2e3f4a5b","total_points":111}}` };
+    assert.deepEqual(leaks(unlucky, "222"), [], "a marker inside an id is not a leak");
+    assert.deepEqual(leaks(unlucky, "111"), ["111"], "a marker in the data still is");
+    const real = { text: `{"ok":true,"stats":[{"total_points":111},{"total_points":222}]}` };
+    assert.deepEqual(leaks(real, "222"), ["222"], "another user's value is still caught");
+  });
 
   for (const [label, path, markA, markB] of families) {
     // `subscription info` shares a marker value between users, and recipe-suggestions legitimately lists other
@@ -158,8 +182,10 @@ if (!PG_URL) {
       assert.equal(b.status, 200, b.text.slice(0, 300));
       assert.ok(b.text.includes(markB));
       if (crossCheck) {
-        assert.ok(!a.text.includes(markB));
-        assert.ok(!b.text.includes(markA));
+        assert.deepEqual(leaks(a, markB), [], `A's response must not carry B's data`);
+        assert.deepEqual(leaks(b, markA), [], `B's response must not carry A's data`);
+        assert.equal(idLeak(a, ids.B), false, `A's response must not name B's id`);
+        assert.equal(idLeak(b, ids.A), false, `B's response must not name A's id`);
       }
     });
 
