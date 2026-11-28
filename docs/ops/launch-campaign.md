@@ -107,6 +107,16 @@ caffeine figure a caffeinated drink is built around does not persist. That needs
 - **#1537 — the schema-push guard bypass.** Merged. The hole Codex found on #1536, closed; see the correction
   below. Verified independently before merging: suite green at 79/0, the five new tests fail when the
   first-value read is restored, and `pg`'s choice of host read directly off the driver.
+- **#1526 — two ways the rendering smoke check could pass on a broken page.** Merged, after sitting red two
+  days on the #1535 flake alone. Both holes re-verified here rather than taken on trust: the feed column lays
+  out 5 of the page's 11 media elements, so the old page-wide floor of 3 was cleared by the sidebar and logo
+  with the whole post list missing; and `--primary: 18 100% 60%` — the `hsl()` wrapper dropped, which is how
+  that token actually breaks — **passes** on main's `color` probe and **fails** on the new `background-color`
+  one, because an inherited property falls back to the inherited value and a non-inherited one falls back to
+  transparent.
+- **#1514 — the custom drink save prefix, and the test that guarded a fixture.** Merged. GPT's fix was right on
+  both counts; Codex's P2 was that the regression test parsed a hard-coded payload of its own, so the defect
+  the PR exists to fix was unguarded. Answered by extraction, six mutations.
 - **#1535 — the leak suite that failed one run in a hundred.** Merged. Codex's P2 was answered with a code
   change, not a reply: the cross-check now asserts that no identifier the *other* user owns appears in a
   response, not merely their account id. Verified by leaking something with no marker in it — appending every
@@ -171,8 +181,8 @@ A row claimed by a session id means hands off until that session's next update o
 
 | Item | Where | Next action | Owner |
 | --- | --- | --- | --- |
-| Custom drink save prefix | PR #1514 | Rebased onto main at `607105ac` (it conflicted with #1530 and #1538 — all three append a step to the same place in `pr-validation.yml`). Codex's P2 answered by extraction; six mutations. Merge on green | Claude `…T9vcsr8u` |
-| Recipe create persistence | PR #1538 | Rebased onto main at `4c012373`, same conflict. Codex clean at the pre-rebase head. Merge on green, and done-condition 1 holds | Claude `…T9vcsr8u` |
+| ~~Custom drink save prefix~~ | ~~PR #1514~~ | **Merged**, green on all six jobs. GPT's fix, plus the four payloads extracted so the pages and the test share one definition — Codex's P2 answered by code and six mutations | — |
+| Recipe create persistence | PR #1538 | **The last item for done-condition 1.** Rebased, and its own step passes; red only on the batch-7 flake recorded below, which it does not touch. Carries the `run-ci-batch.mjs` failure summary. Merge on a green run — and `rerun_failed_jobs` returns **403** for this integration, so a run can only be re-triggered by a real commit, never an empty one | Claude `…T9vcsr8u` |
 | ~~Rendering smoke check~~ | ~~PR #1526~~ | **Merged.** Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
@@ -218,6 +228,39 @@ write "this is sound" into this file, say which paths you checked, and never wri
 
 The same applies to `square-plaintext-finalization-durability.postgres.test.ts`, carried as "9 pass / 1 fail":
 it runs in that same green job. Re-measure before believing a failure count in any queue, including this one.
+
+### Open and owned: batch 7 of 17 failed once, at random, and nobody has named it
+
+This is condition 2's other half and it is live.
+
+On 2026-11-28 the first CI run of #1538 went red on `Restored unit suites (2 of 3)`, at the step **"Remaining
+unit suites restored to CI, batch 7 of 17"**, 1m53s into a 351-test batch — run `46089461110`, job
+`140806716716`. Nothing in #1538 touches any suite in that batch, and #1514 ran batch 7 green at the same base
+eight minutes later.
+
+What was established, so nobody repeats it:
+
+- **It does not reproduce locally.** Five runs of batch 7 — one against a fresh database, four against a dirty
+  one, at `--test-concurrency=1` on a 2-core machine, which is what the runner does. 351 pass / 0 fail each
+  time.
+- **It is not caused by #1538, and not by #1530 either**, which is the other thing that had just landed.
+- **Which test failed could not be read at all.** A job log is fetched as a tail, and these jobs end with the
+  postgres service container dumping hundreds of lines of constraint violations that the constraint tests
+  caused on purpose. The `not ok` line sits thousands of lines above that.
+
+That last point is fixed: `run-ci-batch.mjs` now prints every failing test, by name with its file and line, at
+the **end** of the log, where a 40-line tail still has it — and says so explicitly when a non-zero exit carries
+no `not ok` line at all, which from a tail looked identical. Verified with throwaway probes for all three
+paths. **So the next run that sees this will be able to name it.** That is the whole of the progress; the flake
+itself is untouched.
+
+The guess, recorded as a guess and not as a cause: batch 7 holds four realtime socket suites and four HTTP
+suites that each bind a server, so a port or teardown race between two of them is plausible. Nobody has shown
+it.
+
+**Do not merge anything on a re-run green while this is open without saying so in the merge.** A flake that
+gets retried until it passes is how a real failure comes to be read as noise, which is the thing this campaign
+was set up to stop.
 
 ### Known and not yet done
 
