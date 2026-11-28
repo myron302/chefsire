@@ -16,7 +16,7 @@ export const literalContains = (query: string) => `%${query.replace(/[\\%_]/g, '
 export function trigramMatch(column: any, query: string): SQL {
   const q = searchTerm(query).toLowerCase();
   const partial = sql`lower(${column}) LIKE ${literalContains(q)}`;
-  if (q.length < 3) return partial;
+  if (q.length < 3 || /[\\%_]/.test(q)) return partial;
   const fuzzy = sql`(lower(${column}) % ${q} OR lower(${column}) %> ${q})`;
   // A typo in a word of a long title can fall below PostgreSQL's default whole-string
   // threshold. Preselect with indexed edge trigrams, then apply a fixed word score.

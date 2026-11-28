@@ -77,7 +77,11 @@ test('fuzzy candidates preserve club privacy, inactive/hidden-seller filtering a
 test('short/partial/literal wildcard and injection-like input remain bounded matches', async () => {
   process.env.SEARCH_TRIGRAM_ENABLED = 'true';
   assert.equal((await storage.searchProducts('wh')).length, 2);
-  assert.equal((await storage.searchProducts('50%_')).length, 0);
+  const literalIds = (await local.query(`INSERT INTO products(seller_id,name,description,price,category) VALUES
+    ($1,'50%_sale','literal',1,'tools'), ($1,'50 sale','decoy',1,'tools') RETURNING id`, [owner])).rows.map(r => r.id);
+  try {
+    assert.deepEqual((await storage.searchProducts('50%_')).map(p => p.name), ['50%_sale'], 'wildcard characters are literal, not fuzzy punctuation');
+  } finally { await local.query('DELETE FROM products WHERE id = ANY($1::varchar[])', [literalIds]); }
   assert.equal((await storage.searchProducts("x' OR 1=1 --")).length, 0);
   assert.equal((await storage.searchProducts('zzzzzzzzz')).length, 0);
 });
