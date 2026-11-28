@@ -20852,7 +20852,23 @@ r.get("/trending", optionalAuth, async (req, res) => {
       + (${groceryAddsSql} * 2)
     )`;
 
-    const rows = await db
+    /**
+     * Scanned, not filtered after the LIMIT -- Codex's P2 on #1546, and this route is the worst place in the
+     * repository for that shape rather than the usual bounded one.
+     *
+     * The nine list routes of #1530 filter a page and document that a viewer entitled to nothing gets a short
+     * page, which is defensible because their clients can ask for the next one. This route takes no `limit`
+     * and no `offset`, serves exactly ten, and `TrendingDrinks.tsx` makes ONE request and renders "No trending
+     * drinks yet" for an empty answer. So ten withheld drinks at the top of the leaderboard did not shorten
+     * the page, they EMPTIED it -- and the public drinks with real activity sitting immediately below became
+     * unreachable, with no next page to ask for. That is a functional hole, not a bound.
+     *
+     * `drinkEvents.slug` is appended to the ordering, and that is not decoration: blocks are read at
+     * successive offsets, so two slugs with identical scores could otherwise appear in two blocks or in none.
+     * The aggregate columns tie easily here -- a single view each is the common case.
+     */
+    const PAGE_SIZE = 10;
+    const readTrendingBlock = (blockOffset: number, blockSize: number) => db
       .select({
         slug: drinkEvents.slug,
         score: scoreSql,
@@ -20864,13 +20880,18 @@ r.get("/trending", optionalAuth, async (req, res) => {
       .from(drinkEvents)
       .where(gt(drinkEvents.createdAt, sevenDaysAgo))
       .groupBy(drinkEvents.slug)
-      .orderBy(desc(scoreSql), desc(views24hSql), desc(remixesSql), desc(groceryAddsSql), desc(views7dSql))
-      .limit(10);
+      .orderBy(desc(scoreSql), desc(views24hSql), desc(remixesSql), desc(groceryAddsSql), desc(views7dSql), asc(drinkEvents.slug))
+      .limit(blockSize)
+      .offset(blockOffset);
 
-    // Filtered BEFORE hydration, unlike the list routes of #1530, because here the hydration is the
-    // disclosure: `resolveDrinkDetailsBySlug` takes no viewer and judges nothing.
-    const withheldTrending = await withheldPremiumSlugsForViewer(rows.map((row) => row.slug), (req as any).user?.id ?? null);
-    const visible = rows.filter((row) => !withheldTrending.has(row.slug));
+    // Gated BEFORE hydration, unlike the list routes of #1530, because here the hydration is the disclosure:
+    // `resolveDrinkDetailsBySlug` takes no viewer and judges nothing.
+    const { rows: visible } = await scanVisibleRecipeRows({
+      readBlock: readTrendingBlock,
+      pageSize: PAGE_SIZE,
+      slugOf: (row) => row.slug,
+      viewerUserId: (req as any).user?.id ?? null,
+    });
 
     const resolved = await Promise.all(visible.map((row) => resolveDrinkDetailsBySlug(row.slug)));
 

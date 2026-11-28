@@ -1137,4 +1137,67 @@ if (!PG_URL) {
       await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [child]);
     }
   });
+
+  test("P2 Codex: /trending refills past a full page of withheld drinks instead of going blank", async () => {
+    // The third finding, and the one shape on this PR that is a FUNCTIONAL hole rather than a bound.
+    //
+    // The nine list routes of #1530 filter after the LIMIT and document that a viewer entitled to nothing
+    // gets a short page. That is defensible there because their clients can ask for the next page. /trending
+    // takes no `limit` and no `offset`, serves exactly ten, and TrendingDrinks.tsx makes one request and
+    // renders "No trending drinks yet" for an empty answer -- so withheld drinks occupying the top ten did
+    // not shorten the leaderboard, they emptied it, and public drinks with real activity below them became
+    // unreachable with no next page to ask for.
+    const PAGE_SIZE = 10;
+    const buried = `p24-trend-public`;
+    const withheldTrend = [...Array(11).keys()].map((n) => `p24-trend-withheld-${String(n).padStart(2, "0")}`);
+    // The fixture has to bury the public drink under MORE than a full page, or the old code would have had
+    // room for it and the test would pass against the bug.
+    assert.ok(withheldTrend.length > PAGE_SIZE, "fewer withheld drinks than a page proves nothing");
+
+    const colId = (await local.query(
+      `INSERT INTO drink_collections (user_id, name, description, is_public, access_type, is_premium, price_cents)
+       VALUES ($1, 'col-trend', 'public blurb', true, 'premium_purchase', true, 500) RETURNING id`,
+      [ids.creator],
+    )).rows[0].id;
+    try {
+      // Two preview items first, so all eleven of the others are past the preview and genuinely withheld.
+      // Position is added_at then drink_slug, exactly as the boundary orders items.
+      const preview = ["p24-trend-preview-1", "p24-trend-preview-2"];
+      for (const [i, slug] of [...preview, ...withheldTrend].entries()) {
+        await local.query(
+          `INSERT INTO drink_recipes (id, slug, name, category, user_id) VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2)`,
+          [slug, ids.creator],
+        );
+        await local.query(
+          `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at)
+           VALUES ($1, $2, now() - interval '2 hours' + ($3 || ' minutes')::interval)`,
+          [colId, slug, String(i)],
+        );
+      }
+      await local.query(
+        `INSERT INTO drink_recipes (id, slug, name, category, user_id) VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2)`,
+        [buried, ids.creator],
+      );
+
+      // Each withheld drink outranks the public one, so the public one sits immediately below a full page.
+      for (const slug of withheldTrend) await eventRow(slug, "view", 30);
+      await eventRow(buried, "view", 1);
+
+      // The gate itself must still hold for all eleven -- a refill that leaked would be a worse bug than a
+      // blank leaderboard.
+      for (const [label, as] of nonEntitled) {
+        const r = await get("/trending", as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        for (const slug of withheldTrend) {
+          assert.ok(!r.text.includes(slug), `${label}: /trending leaked ${slug}`);
+        }
+        assert.ok(r.text.includes(buried), `${label}: the public drink below a full page of withheld ones was unreachable`);
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_events WHERE slug LIKE 'p24-trend-%'`);
+      await local.query(`DELETE FROM drink_collection_items WHERE collection_id = $1`, [colId]);
+      await local.query(`DELETE FROM drink_collections WHERE id = $1`, [colId]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug LIKE 'p24-trend-%'`);
+    }
+  });
 }
