@@ -81,7 +81,7 @@ a red one.
 
 ## State
 
-Updated 2026-11-28 19:40 UTC by Claude (session `…01M8KhTB`). Condition 4 came OFF the met list this run; read
+Updated 2026-11-28 19:45 UTC by Claude (session `…01M8KhTB`). Condition 4 came OFF the met list this run; read
 that section before trusting any **MET** here.
 
 ### Status to GPT, 2026-11-28 12:40 UTC (session `…01M8KhTB`)
@@ -393,14 +393,14 @@ is the other half of not colliding.
 | # | Condition | State |
 | --- | --- | --- |
 | 1 | Every suite in CI, or listed with a reason | **NOT met.** Names match, but 607 named tests never run: a missing `TEST_DATABASE_URL` makes them skip and node exits 0. #1541 fixes it and adds a checker. See below |
-| 2 | No suite passes while asserting nothing, and none fails at random | **Half of it moved today.** The one known flake is SOLVED -- batch 7 named itself and was a false assertion about a race, #1551 -- and the sweep on #1548 found two vacuous legs of an existing audit as a side effect. The other half still needs the assert-coverage tool (#1540) to settle what it claims. Previously: **not met, and the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
+| 2 | No suite passes while asserting nothing, and none fails at random | **The flake half is SOLVED; the vacuous half has a tool at last.** Batch 7 named itself and was a false assertion about a race -- fix in **#1549**, which quantified it at 16/30 and replaced it with three order-explicit tests. And the route sweep merged in #1548 found **two vacuous legs of an existing audit** as a side effect: `drink_events` could never be inserted into, so the `/trending` and `/recommended` legs had been asserting that nothing leaked from nothing. What remains is `audit-assert-coverage.mjs` (#1540) settling what it claims to prove. Earlier instances, all fixed: #1526's two holes, #1514's fixture, #1530's racy fixture |
 | 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
-| 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **NOT met, and the count kept rising all day.** #1530 was right about the nine read routes it covered. Then: a tenth (`GET /challenges/:slug/submissions`, no auth middleware at all) plus an ungated write (`POST /challenges/:slug/join`) → **#1546**; then `drink_events` and the three leaderboards reading it, Codex's P1 → also #1546; then four readers serving an ungated *reference* slug, two of them disproving claims this file had just made → **#1548**. **Eight routes in one day.** It holds when both land, and the lesson is in the section below, not in the count |
+| 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **NOT met, and it is now ONE PR away.** #1530 was right about the nine read routes it covered. Then a tenth (`GET /challenges/:slug/submissions`, no auth middleware at all) and an ungated write, then `drink_events` with three leaderboards reading it (Codex's P1) → **#1546, still open, `…01M8KhTC`'s**. Then six readers serving an ungated *reference* slug, two of them disproving claims this file had just made, plus two more found by a tool → **#1548, MERGED**. **Thirteen routes in one day.** Condition 4 holds when #1546 lands; the lesson is in the section below, not in the count |
 | 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
 | 6 | Closure and retention implemented to the matrix his accountant signs off | **Blocked on Myron's accountant.** Two migrations written and unapplied |
 
-So, as of 2026-11-28 19:10 UTC: **none met**, three a merge away (#1541, #1546, #1548), two blocked on Myron
-with the work already done, one unchanged. Condition 4 came OFF the met list this run, which is the second time
+So, as of 2026-11-28 19:45 UTC: **none met**, two a merge away (#1541, #1546), two blocked on Myron with the
+work already done, one unchanged. Condition 4 came OFF the met list this run, which is the second time
 in two days a confident **MET** in this file did not survive somebody checking it. Both times the check was
 cheap and nobody had run it.
 
@@ -411,8 +411,8 @@ one wrong question asked thirteen times, and the question is written up under co
 about to write MET against anything in this file, the thing to ask is not "did I check?" but "what would have
 caught this if I were wrong?"**
 
-**A run starting cold should:** take **#1546 and #1548** first — they are the open security items and together
-they are what unmets condition 4 — then #1545 and #1547. Look at #1541 and #1540 only after reading the Owner
+**A run starting cold should:** take **#1546** first — it is the last open security item and the only thing
+still unmetting condition 4 — then **#1549** (the batch-7 fix), then #1547. #1545 and #1548 are merged. Look at #1541 and #1540 only after reading the Owner
 column *and* re-fetching their branches. **By 18:30 UTC on 2026-11-28 four Claude sessions had been live on
 this repository in one day** (`…T9vcsr8u`, `…01M8KhTD`, `…01M8KhTB`, `…01M8KhTC`), and #1546 changed hands once.
 Re-fetch before you assume anything about who holds what.
@@ -423,7 +423,7 @@ Re-fetch before you assume anything about who holds what.
 | --- | --- | --- | --- |
 | ~~Custom drink save prefix~~ | ~~PR #1514~~ | **Merged**, green on all six jobs. GPT's fix, plus the four payloads extracted so the pages and the test share one definition — Codex's P2 answered by code and six mutations | — |
 | ~~Recipe create persistence~~ | ~~PR #1538~~ | **Merged**, green. Closed done-condition 1 and added the `run-ci-batch.mjs` failure summary. Note for every future run: `rerun_failed_jobs` returns **403** for this integration, so CI can only be re-triggered by a real commit, never an empty one | — |
-| Reference-slug disclosures | **PR #1548** | **Six readers served an ungated reference to a withheld premium drink.** `resolveCollectionWithItems` (the boundary every collection route goes through, so the widest), `GET /user/:slug`, `GET /challenges`, `GET /challenges/:slug`, `POST /challenges/:slug/join`'s no-slug branch (two copies of the slug in one response), and the two the sweep found. Two of them disprove claims this very file made. The rule, stated once: **a reference slug is a slug.** Eleven mutations, 45 pass / 0 fail, `tsc` signatures unchanged. Overlaps #1546 on two harness DDL blocks — whichever lands second conflicts there, trivially | Claude `…01M8KhTB` |
+| ~~Reference-slug disclosures and the sweep~~ | ~~PR #1548~~ | **MERGED**, first-run green, Codex clean on the sweep commit. Six ungated readers of a reference slug closed, and **the sweep is the lasting part** — "which slugs appear in this response, and was each one judged?" now exists as a test, and found two routes nobody had found on its first run. **It contains a deliberate tripwire for #1546**: the three `/trending`-family routes are asserted to STILL leak, so when #1546 lands its CI fails with an instruction to delete `LEAKING_ON_1546` and move those three into `SWEPT_ROUTES`. `…01M8KhTC` has been told, on #1546 | — |
 | Challenge-submission paid-content leak | **PR #1546** | **Changed hands.** `…01M8KhTB` opened it and answered Codex's P1 (`drink_events` + three leaderboards) and P2 (hydrated remix parent); `…01M8KhTC` took it at 18:22 UTC after six hours' silence and pushed `8380d2f0`, answering the `/trending` refill finding — filtering after `LIMIT 10` could return a BLANK leaderboard rather than a short one. **It is `…01M8KhTC`'s row**; the handover and one relayed finding are on the PR | Claude `…01M8KhTC` |
 | ~~The batch-7 timing hypothesis~~ | ~~PR #1545~~ | **Merged**, first-run green on all six jobs — not a re-run, which matters while the batch-7 flake is open. The 600ms cliff in `api-init-isolation.test.ts` is gone and no assertion was weakened; the first version of the change **did** weaken one, and the write-up of *how that was caught* is the part worth reading. Batch 7 itself was green in that run | — |
 | The sweep | **PR #1548**, second half | **The mechanical answer to this whole class, and it works.** One withheld slug planted in every reference position, every parameterless GET in `drinks.ts` called anonymously and as a non-entitled member, assert it appears in none. **First run found two routes nobody had found** — `/creators/leaderboard` and `/creators/trending` compute a `topDrink` over every recipe a creator has with no viewer, so a creator's paid drink could become their public top drink. Eight instances of this class had been found by reading routes one at a time; the sweep found two more immediately | Claude `…01M8KhTB` |
