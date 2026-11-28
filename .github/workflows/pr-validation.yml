@@ -589,5 +589,12 @@ jobs:
         run: node server/scripts/run-ci-batch.mjs server/lib/recipe-create-persistence.postgres.test.ts
       # Done-condition 2's floor, held rather than audited once: fails on any test block that reaches no
       # assertion and is not on the script's allowlist with a recorded reason. Needs no database.
+      #
+      # Its own soundness is guarded first. The gate decides whether other people's work builds, and Codex
+      # found two ways the first version was wrong in both directions at once -- excluding blocks Node runs,
+      # and letting one block's helper vouch for another. Those two cases are fixtures in the suite below, so
+      # the gate cannot regress into trusting itself.
+      - name: The assert-coverage gate is sound in both directions
+        run: node server/scripts/run-ci-batch.mjs server/scripts/audit-assert-coverage.test.ts
       - name: Every test block reaches an assertion
         run: node server/scripts/audit-assert-coverage.mjs --ci

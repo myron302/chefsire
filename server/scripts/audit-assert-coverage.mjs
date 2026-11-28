@@ -45,7 +45,8 @@ const roots = args.filter((a) => !a.startsWith("--"));
  * tool does not follow. "It is fine, trust me" is not a reason: a block that genuinely cannot fail belongs
  * fixed, not listed. Key is `<repo-relative file>::<test title>`.
  *
- * Empty, deliberately. 515 files, zero blocks that reach no assertion, as of 2026-11-28.
+ * Empty, deliberately. 516 files, zero blocks that reach no assertion, as of 2026-11-28 -- including the 19
+ * conditionally-skipped blocks that the first version of the skip rule excluded from the gate entirely.
  */
 const ALLOWED = new Map([
   // ["path/to/suite.test.ts::the test title", "asserts via <helper> imported from <module>"],
@@ -98,6 +99,29 @@ function isAssertionCall(node) {
  */
 const HOOKS = new Set(["before", "after", "beforeEach", "afterEach", "describe", "suite"]);
 
+/**
+ * Whether an options property skips the block NO MATTER WHAT the environment is.
+ *
+ * The first version of this excluded any options object carrying a `skip` property at all, whatever its value,
+ * and Codex was right that this is a hole in the gate rather than a rough edge. `test("x", { skip: false }, fn)`
+ * is RUN by Node -- confirmed, it reports `ok` and not `# SKIP` -- so a block written that way asserted nothing
+ * and passed the gate. The same went for `{ skip: !process.env.SOME_URL }`, which is how several suites in this
+ * repository arrange to skip without a database: outside CI they skip, and IN CI, where the variable is set,
+ * they run. Excluding those meant the gate was blind to them exactly where it matters.
+ *
+ * So only a literal that is always truthy counts: `skip: true`, or `skip: "a reason"`. An expression, a
+ * shorthand `{ skip }`, and `skip: false` are all conditionally runnable, and a conditionally runnable block
+ * gets audited. `todo` follows the same rule -- Node runs a todo block but will not fail on it.
+ */
+function unconditionalSkip(prop) {
+  if (!ts.isPropertyAssignment(prop)) return false;
+  const key = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : "";
+  if (key !== "skip" && key !== "todo") return false;
+  const v = prop.initializer;
+  return v.kind === ts.SyntaxKind.TrueKeyword || ts.isStringLiteral(v) ||
+    ts.isNoSubstitutionTemplateLiteral(v);
+}
+
 function testCall(node, aliases) {
   if (!ts.isCallExpression(node)) return null;
   const name = calleeName(node);
@@ -112,11 +136,8 @@ function testCall(node, aliases) {
   );
   const body = node.arguments.find((a) => ts.isArrowFunction(a) || ts.isFunctionExpression(a));
   if (!body) return null;
-  const skipped = name.endsWith(".skip") || node.arguments.some(
-    (a) => ts.isObjectLiteralExpression(a) && a.properties.some(
-      (p) => ts.isPropertyAssignment(p) && p.name.getText() === "skip",
-    ),
-  );
+  const skipped = name.endsWith(".skip") || name.endsWith(".todo") ||
+    node.arguments.some((a) => ts.isObjectLiteralExpression(a) && a.properties.some(unconditionalSkip));
   const rendered = title
     ? (ts.isTemplateExpression(title) ? title.getText(title.getSourceFile()) : title.text)
     : "(title is not a literal)";
@@ -170,18 +191,55 @@ function auditFile(file) {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, /\.tsx$/.test(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const aliases = testAliases(sf);
 
-  /** Same-file helper functions, so an assertion one hop away still counts. */
-  const helpers = new Map();
-  const collect = (node) => {
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) helpers.set(node.name.text, node.body);
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
-        (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
-      helpers.set(node.name.text, node.initializer.body);
-    }
-    ts.forEachChild(node, collect);
-  };
-  collect(sf);
+  /**
+   * Same-file helper functions, so an assertion one hop away still counts -- resolved LEXICALLY.
+   *
+   * The first version collected every helper in the file into one name-keyed map, and Codex reproduced both
+   * ways that goes wrong. A `const verify = ...` declared inside one test block overwrote a top-level
+   * `verify` used by another, so a legitimate test reading through the outer helper was rejected; and with the
+   * two swapped, an empty block passed because some unrelated block's same-named helper asserted. A flat map
+   * answers "is there any function called verify in this file", which is not the question.
+   *
+   * This walks the parent chain from the call site outwards and takes the first scope that declares the name,
+   * which is what the language does. The source file is parsed with parent pointers for exactly this.
+   */
+  function statementsOf(scope) {
+    if (ts.isSourceFile(scope) || ts.isBlock(scope) || ts.isModuleBlock(scope)) return scope.statements;
+    if (ts.isCaseClause(scope) || ts.isDefaultClause(scope)) return scope.statements;
+    return null;
+  }
 
+  /** The body of a callable named `name` declared directly in this scope, if there is one. */
+  function declaredIn(scope, name) {
+    const stmts = statementsOf(scope);
+    if (!stmts) return undefined;
+    for (const st of stmts) {
+      if (ts.isFunctionDeclaration(st) && st.name && st.name.text === name && st.body) return st.body;
+      if (ts.isVariableStatement(st)) {
+        for (const d of st.declarationList.declarations) {
+          if (ts.isIdentifier(d.name) && d.name.text === name && d.initializer &&
+              (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer))) {
+            return d.initializer.body;
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /** Innermost declaration of `name` visible from `fromNode`, or undefined. */
+  function resolveHelper(name, fromNode) {
+    for (let cur = fromNode; cur; cur = cur.parent) {
+      const body = declaredIn(cur, name);
+      if (body) return body;
+    }
+    return undefined;
+  }
+
+  /**
+   * `seen` holds helper BODIES, not names: two different functions can share a name in one file, and keying
+   * the recursion guard by name was how one of them could stand in for the other.
+   */
   function asserts(node, seen) {
     let found = false;
     const walk = (n) => {
@@ -189,8 +247,11 @@ function auditFile(file) {
       if (ts.isCallExpression(n)) {
         if (isAssertionCall(n)) { found = true; return; }
         const name = calleeName(n).split(".")[0];
-        const helper = helpers.get(name);
-        if (helper && !seen.has(name)) { seen.add(name); if (asserts(helper, seen)) { found = true; return; } }
+        const helper = name ? resolveHelper(name, n) : undefined;
+        if (helper && !seen.has(helper)) {
+          seen.add(helper);
+          if (asserts(helper, seen)) { found = true; return; }
+        }
       }
       ts.forEachChild(n, walk);
     };
@@ -200,9 +261,11 @@ function auditFile(file) {
 
   const empty = [];
   let recognised = 0;
+  let skipped = 0;
   const visit = (node) => {
     const t = testCall(node, aliases);
     if (t) recognised += 1;
+    if (t && t.skipped) skipped += 1;
     if (t && !t.skipped && !asserts(t.body, new Set())) {
       const { line } = sf.getLineAndCharacterOfPosition(t.node.getStart(sf));
       empty.push({ file: relative(ROOT, file), line: line + 1, title: t.title });
@@ -210,7 +273,7 @@ function auditFile(file) {
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  return { empty, recognised };
+  return { empty, recognised, skipped };
 }
 
 const files = roots.length > 0
@@ -224,11 +287,19 @@ const excused = all.length - hits.length;
 // The honest denominator: a file the detector finds no block in was not examined, whatever the scan count says.
 const unrecognised = audited.filter((a) => a.recognised === 0).map((a) => a.file);
 
+const blocks = audited.reduce((n, a) => n + a.recognised, 0);
+const skippedBlocks = audited.reduce((n, a) => n + a.skipped, 0);
+
 if (asJson) {
-  console.log(JSON.stringify({ filesScanned: files.length, hits, excused, unrecognised }, null, 2));
+  console.log(JSON.stringify(
+    { filesScanned: files.length, blocks, checked: blocks - skippedBlocks, unconditionallySkipped: skippedBlocks, hits, excused, unrecognised },
+    null, 2,
+  ));
 } else {
-  const blocks = audited.reduce((n, a) => n + a.recognised, 0);
-  console.log(`audit-assert-coverage: ${files.length} test files, ${blocks} test blocks examined.`);
+  console.log(`audit-assert-coverage: ${files.length} test files, ${blocks} test blocks, ${blocks - skippedBlocks} checked.`);
+  // Say how many are outside the gate. A block the gate does not check is not a block it found clean, and
+  // over-counting them is how the first version excluded 19 conditionally-skipped blocks that do run in CI.
+  if (skippedBlocks > 0) console.log(`${skippedBlocks} unconditionally skipped (skip: true, a string reason, or test.skip), so not checked.`);
   if (unrecognised.length > 0) {
     // Say it out loud: these were counted as scanned and were not examined at all.
     console.log("");
