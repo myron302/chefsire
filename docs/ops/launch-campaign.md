@@ -119,26 +119,61 @@ caffeine figure a caffeinated drink is built around does not persist. That needs
 | The last suite outside CI | **PR #1538** | A directory literally named `the __tests__`, tracked since before any of this, holding a Jest-style suite that could never run: it imports `../src/storage` (no `src/`) and uses `describe`/`it`/`expect` with no Jest or Vitest in the project. Its subject — what `storage.createRecipe` actually writes — had no direct coverage either. Replaced by `server/lib/recipe-create-persistence.postgres.test.ts`, in CI, three mutations of `storage.ts` each caught by the right test. Codex asked to look hard at the deletion specifically |
 | Custom drink payloads | **#1514**, new commit | Codex's P2 answered by extraction rather than argument; six mutations, each caught by the assertion that should catch it |
 
-### Done-condition 1 is one merge away
+### Done-condition 4 is met
+
+**#1530 merged at 00:28 on a green run** (CI run 46085612664, head `2b54b5e8`). Paid drink-collection items are
+reachable only by the people entitled to them, across nine read routes and one write path, and the proof is a
+suite whose every protection was confirmed by breaking it — the mutation table is in the PR and in the commit
+messages. `drink-collection-premium-access.test.ts` runs in CI as its own step.
+
+What is explicitly **not** closed, and is written down in `drinks.ts` rather than implied: the block scan is a
+bound, not a proof. A viewer entitled to nothing still gets an empty page once more than four blocks' worth of
+withheld rows sit on top, and an empty page cannot be told apart from the end of the feed. The scan returns
+`exhausted` so a caller could distinguish them; no caller does yet. Closing it completely means expressing the
+gate as a SQL predicate so the `LIMIT` is visibility-aware — a second copy of the rule, which is the thing the
+single boundary exists to avoid. Somebody should decide which of those two costs to pay; it is not urgent and
+it is not a leak.
+
+### Done-condition 1 is two merges away
 
 Audited against the file list rather than against the claim, which had been recorded as finished twice:
 **514 test files, 513 referenced by a workflow, and no workflow reference pointing at a file that does not
 exist.** The two unaccounted for were `the __tests__/recipe.test.ts` (PR #1538) and
-`server/routes/drink-collection-premium-access.test.ts`, which #1530 adds in its own diff. When #1530 and #1538
-are both in, condition 1 holds with nothing on the exceptions list.
+`server/routes/drink-collection-premium-access.test.ts`, which #1530 brought in when it merged. So **#1538 is
+the last one**, and when it lands condition 1 holds with nothing on the exceptions list.
 
 The reverse check is the one worth repeating, because it is the cheaper lie: a workflow step naming a file that
 does not exist runs nothing and passes. There are none today. The command is in the approval-boundary note
 above; run both directions, not just one.
 
+### Two Claude runs were working this repository at the same time, and should not have been
+
+This is the first thing the next run should read, because it nearly caused real trouble.
+
+Session `…TDdbobm2qH1e6nAbUi` and this one (`…T9vcsr8u5UDB1n7jaW`) were both live between roughly 23:45 and
+00:30. Both read this file, both picked up #1530, and both commented on it minutes apart. At 23:50 I asked
+Codex to review head `2fdaf487` and built an argument into the request — that the bounded over-fetch was
+acceptable on `/search`, `/community-search` and `/remixes/:slug` because their clients can ask for a next
+page. The other session was at that moment proving that premise **wrong**: none of those three routes reads
+`limit` or `offset` at all, so their page *is* the whole answer and widening the window only moves the cliff.
+It pushed `2b54b5e8`, which makes all four routes scan through one shared implementation, and merged #1530 at
+00:28 on a green run.
+
+The outcome was good and the work was done properly — test R seeds 130 withheld rows in front of one public
+match, and the mutation checks are in the commit message. But it was good by luck of who happened to be right.
+Two runs can just as easily push contradictory fixes to the same file, or merge a head the other is mid-review.
+
+**So: a run should say in this file which items it has taken before it starts on them, and check whether
+another run has.** The "In flight" table has an Owner column and it was not being used for that. It is now.
+A row claimed by a session id means hands off until that session's next update or the row goes stale.
+
 ### In flight
 
 | Item | Where | Next action | Owner |
 | --- | --- | --- | --- |
-| Drink premium-collection gate | PR #1530 | Codex re-review requested at head `2fdaf487`, which is one unreviewed production commit past its last clean pass. Merge when that comes back clean | Claude |
-| Flaky leak assertions | PR #1535 | green and mergeable; Codex's P2 answered with a code change (foreign resource ids, not just account ids) and a re-review requested at head `4d61cdd`. Merge when it returns | Claude |
-| Custom drink save prefix | PR #1514 | Codex's P2 answered at head `13196431` by extracting the four payloads so the pages and the test share one definition. Re-review requested; merge on green | Claude |
-| Rendering smoke check | PR #1526 | unblocked: #1535 is merged and the job that was red is green. Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
+| Custom drink save prefix | PR #1514 | Rebased onto main at `607105ac` (it conflicted with #1530 and #1538 — all three append a step to the same place in `pr-validation.yml`). Codex's P2 answered by extraction; six mutations. Merge on green | Claude `…T9vcsr8u` |
+| Recipe create persistence | PR #1538 | Rebased onto main at `4c012373`, same conflict. Codex clean at the pre-rebase head. Merge on green, and done-condition 1 holds | Claude `…T9vcsr8u` |
+| ~~Rendering smoke check~~ | ~~PR #1526~~ | **Merged.** Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
 
@@ -188,6 +223,22 @@ it runs in that same green job. Re-measure before believing a failure count in a
 
 - `POST /collections/:id/items` is fixed in #1530; no other write path has been audited for the same shape.
 - `server/routes/drinks.ts` holds about half the repository's type errors in one file.
+
+### Condition 2 needs a tool nobody has written, and I did not fake one
+
+Condition 2 is *no suite passes while asserting nothing, and no suite fails at random*. Three instances of the
+first kind were found today by hand — #1514's fixture, #1526's two holes, #1530's racy fixture — which is
+reason to think there are more, and reason to want a sweep rather than more luck.
+
+I tried to write one: scan all 513 suites for test blocks containing no assertion. It reported 5,487 hits with
+unreadable names, because splitting TypeScript on `test(` with a regular expression does not find test blocks.
+**The scan was wrong, so there is no finding here, and a number from a scan I do not trust is worse than no
+number** — it is the same mistake as the failure counts corrected twice above, made one step earlier.
+
+Doing it properly means parsing the files (TypeScript's own compiler API is already a dependency) and asking,
+per test block, whether any assertion is reachable from it. That is an afternoon's work and it would hold for
+every future suite. Worth someone's next run; `run-ci-batch.mjs` already covers the easy half by failing a
+batch that reports a skipped test or zero passing ones.
 
 ### Also corrected: the session-cookie suite has no failures
 
