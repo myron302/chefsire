@@ -93,6 +93,33 @@ function envReads(file, text) {
   // NODE_ENV, CORS or SQUARE_ names. But a suite that grew one would have an INVISIBLE gate and land straight
   // back in the silent-green class, so it is reported as undeterminable rather than quietly cleared.
   let opaque = false;
+  /**
+   * Reads that initialise an EXPORTED binding -- the only ones another module can gate on.
+   *
+   * Codex's fifth finding here, and the fifth false clean. marketplace-sample-listings gates on CS_TEST_PG_URL
+   * through `export const PG_URL = process.env.CS_TEST_PG_URL` in authz-pg-harness. But that harness imports
+   * auth-test-env, which imports load-env, whose line 53 reads `process.env.DATABASE_URL` inside an `if` --
+   * module plumbing, nothing a suite could gate on. Taking every transitive read meant the suite "needed"
+   * DATABASE_URL too, so a step supplying only that name cleared it while it skipped: 0 pass, 1 skip, exit 0,
+   * and the audit said no silent skips.
+   *
+   * An imported read therefore counts only when it initialises something exported. The suite's OWN reads still
+   * count however they appear, because those are the gate itself rather than a thing reached through it.
+   */
+  const exported = new Set();
+  const initialisesExport = (node) => {
+    for (let cur = node.parent; cur; cur = cur.parent) {
+      if (ts.isVariableStatement(cur)) {
+        return Boolean(cur.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword));
+      }
+      // A read inside a function body is plumbing, not an export initialiser, however the function is exported.
+      if (ts.isFunctionDeclaration(cur) || ts.isFunctionExpression(cur) || ts.isArrowFunction(cur) ||
+          ts.isMethodDeclaration(cur) || ts.isIfStatement(cur) || ts.isBlock(cur)) {
+        return false;
+      }
+    }
+    return false;
+  };
   const isAssignmentTarget = (node) => {
     const parent = node.parent;
     if (!parent) return false;
@@ -115,6 +142,7 @@ function envReads(file, text) {
       !isAssignmentTarget(node)
     ) {
       reads.add(node.name.text);
+      if (initialisesExport(node)) exported.add(node.name.text);
     }
     // `const { ... } = process.env`
     if (
@@ -136,7 +164,7 @@ function envReads(file, text) {
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  return { reads, opaque, sf };
+  return { reads, exported, opaque, sf };
 }
 
 /**
@@ -162,18 +190,19 @@ function envReads(file, text) {
  * both. Judging on local-when-present is correct for all three.
  */
 function gateReads(file, depth = 0, seen = new Set()) {
-  if (seen.has(file) || depth > 3) return { local: new Set(), inherited: new Set(), opaque: false };
+  if (seen.has(file) || depth > 3) return { local: new Set(), exported: new Set(), inherited: new Set(), opaque: false };
   seen.add(file);
   const own = envReads(file, readFileSync(file, "utf8"));
   const inherited = new Set();
   let opaque = own.opaque;
   for (const imported of localImports(own.sf, file)) {
     const inner = gateReads(imported, depth + 1, seen);
-    for (const name of inner.local) inherited.add(name);
+    // Only what the imported module EXPORTS can be another module's gate.
+    for (const name of inner.exported) inherited.add(name);
     for (const name of inner.inherited) inherited.add(name);
     opaque = opaque || inner.opaque;
   }
-  return { local: own.reads, inherited, opaque };
+  return { local: own.reads, exported: own.exported, inherited, opaque };
 }
 
 /** The names that actually decide this suite's gate: its own if it has any, otherwise the ones it imports. */

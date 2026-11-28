@@ -209,6 +209,39 @@ test("a LOCAL gate is not satisfied by a name the suite merely imports", () => {
   assert.equal(r.exit, 1);
 });
 
+test("Codex on #1541: an unrelated read reached THROUGH the gate module does not satisfy it", () => {
+  // marketplace-sample-listings gates on CS_TEST_PG_URL via `export const PG_URL = process.env.CS_TEST_PG_URL`
+  // in authz-pg-harness -- but that harness imports auth-test-env, which imports load-env, whose line 53 reads
+  // process.env.DATABASE_URL inside an `if`. Taking every transitive read made the suite "need" DATABASE_URL,
+  // so a step supplying only that name cleared it while it skipped. An imported read counts only when it
+  // initialises something EXPORTED.
+  // An exported CONST whose initialiser is a function: the read sits inside the function body, so the walk up
+  // from it reaches an exported VariableStatement. Without the function/block guard this would count as an
+  // export initialiser and leak DATABASE_URL -- which is exactly what the mutation check needs to be able to
+  // show. (A plain `export function` would not: the walk finds no VariableStatement either way, so that
+  // fixture passed the mutation for the wrong reason.)
+  const plumbing = [
+    `export const load = () => {`,
+    `  if (!process.env.DATABASE_URL) { return "fallback"; }`,
+    `  return process.env.DATABASE_URL;`,
+    `};`,
+  ].join("\n");
+  const harness = [
+    `import { load } from "./plumbing";`,
+    `void load;`,
+    `export const PG_URL = process.env.CS_TEST_PG_URL;`,
+  ].join("\n");
+  const body = [
+    `import test from "node:test";`,
+    `import { PG_URL } from "./harness";`,
+    `if (!PG_URL) { test("skipped: requires CS_TEST_PG_URL", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { DATABASE_URL: URL_LITERAL }, {}, { "harness.ts": harness, "plumbing.ts": plumbing });
+  assert.equal(r.hits.length, 1, "DATABASE_URL is plumbing two hops away, not this suite's gate");
+  assert.deepEqual(r.hits[0].wants, ["CS_TEST_PG_URL"], "only the EXPORTED read is a gate");
+  assert.equal(r.exit, 1);
+});
+
 test("a suite that READS a database URL but cannot skip is never reported", () => {
   // This fixture must read a DB name, or the test passes for the wrong reason. The first version did not, so
   // removing the can-this-skip guard from the script changed nothing and the mutation went uncaught -- a test
