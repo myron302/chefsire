@@ -17,7 +17,8 @@
  *
  *   1. text is laid out in the sans-serif it is supposed to be, not in the browser's fallback serif
  *   2. the brand colour resolves to an actual colour, not to nothing
- *   3. nothing that is supposed to be a picture or a video is laid out at zero size
+ *   3. the feed column actually lays out posts, and nothing that is supposed to be a picture or a video
+ *      anywhere on the page is laid out at zero size
  *
  * By default it serves `dist/public` (so a PR is checked before it can be deployed, not after). Point
  * SMOKE_BASE_URL at a deployed origin to run the same three assertions against that instead.
@@ -105,9 +106,14 @@ smokeTest("the built feed renders in its own sans-serif, resolves the brand colo
       const probe = document.createElement("div");
       // Resolving var(--primary) through a real declaration is the only way to prove the token is usable; reading the
       // custom property back only proves a string was stored, even if it is a string no browser can parse.
-      probe.setAttribute("style", "color: var(--primary); position: fixed; left: -9999px");
+      // The property MUST be a non-inherited one. A var() that substitutes an unparseable value makes the declaration
+      // invalid at computed-value time, and such a declaration falls back to the INHERITED value on an inherited
+      // property and to the INITIAL value otherwise. Probing `color` therefore reports the body's perfectly valid text
+      // colour for a token like `18 100% 60%` (hsl() wrapper missing), passing while every background, border and
+      // button built on --primary renders transparent. `background-color` falls back to transparent, so it cannot.
+      probe.setAttribute("style", "background-color: var(--primary); position: fixed; left: -9999px");
       document.body.appendChild(probe);
-      const probedColor = getComputedStyle(probe).color;
+      const probedColor = getComputedStyle(probe).backgroundColor;
       probe.remove();
 
       const nav = document.querySelector("nav, header");
@@ -121,6 +127,9 @@ smokeTest("the built feed renders in its own sans-serif, resolves the brand colo
           src: (el instanceof HTMLImageElement ? el.currentSrc || el.src : el.currentSrc || el.src) || el.getAttribute("src") || "",
           hidden: style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0,
           ariaHidden: el.getAttribute("aria-hidden") === "true",
+          // The feed's own posts, as distinct from the chrome around them: the sidebar sits INSIDE <main>, so
+          // "inside main" cannot tell a post apart from a trending-recipe thumbnail or the header logo.
+          inFeedColumn: Boolean(el.closest("main")) && !el.closest("aside, nav, header"),
         };
       });
 
@@ -148,15 +157,19 @@ smokeTest("the built feed renders in its own sans-serif, resolves the brand colo
     // 2. The brand colour resolves to an actual colour.
     assert.ok(seen.primaryToken.length > 0, "--primary resolved to nothing");
     assert.match(seen.probedColor, /^(rgb|rgba|color|lab|oklab|lch|oklch)\(/i,
-      `var(--primary) did not resolve to a usable colour: a declaration of color: var(--primary) computed to "${seen.probedColor}" (token was "${seen.primaryToken}")`);
+      `var(--primary) did not resolve to a usable colour: a declaration of background-color: var(--primary) computed to "${seen.probedColor}" (token was "${seen.primaryToken}")`);
     assert.doesNotMatch(seen.probedColor, /^rgba\([^)]*,\s*0\s*\)$/i, `var(--primary) resolved to fully transparent ("${seen.probedColor}")`);
 
     // 3. Nothing that is supposed to be a picture or a video is laid out at zero size.
     const expected = seen.media.filter((item) => !item.hidden && !item.ariaHidden && item.src !== "");
-    // Guards the guard: if the page ever stops rendering media at all, this assertion must not start passing vacuously.
-    assert.ok(expected.length >= 3,
-      `expected the feed to lay out at least 3 visible media elements, found ${expected.length} (of ${seen.media.length} img/video in the DOM). `
-      + "Either the page stopped rendering media, or it failed to render at all -- this check cannot pass vacuously.");
+    // Guards the guard: if the feed ever stops rendering posts, this assertion must not start passing vacuously. The
+    // floor is counted in the FEED COLUMN, never page-wide: the sidebar alone lays out five trending-recipe thumbnails
+    // and the header a logo, so a page-wide floor of 3 is still met with the entire post list missing.
+    const inFeed = expected.filter((item) => item.inFeedColumn);
+    assert.ok(inFeed.length >= 3,
+      `expected the feed column to lay out at least 3 visible media elements, found ${inFeed.length} `
+      + `(${expected.length} visible in the whole page, of ${seen.media.length} img/video in the DOM). `
+      + "Either the feed stopped rendering posts, or the page failed to render at all -- this check cannot pass vacuously.");
     const collapsed = expected.filter((item) => item.width === 0 || item.height === 0);
     assert.deepEqual(collapsed, [],
       `${collapsed.length} visible media element(s) are laid out at zero size: `
