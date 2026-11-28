@@ -20081,7 +20081,10 @@ r.get("/challenges/:slug", async (req, res) => {
   }
 });
 
-r.get("/challenges/:slug/submissions", async (req, res) => {
+// `optionalAuth` is not decoration here: this route hydrates the full payload of every submitted drink, so it
+// needs to know who is asking. It had no auth middleware at all, and no entitlement gate, which is why one
+// member submitting a withheld premium slug published that drink to every anonymous caller. See the gate below.
+r.get("/challenges/:slug/submissions", optionalAuth, async (req, res) => {
   try {
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
@@ -20113,9 +20116,23 @@ r.get("/challenges/:slug/submissions", async (req, res) => {
       .limit(limit)
       .offset(offset);
 
-    const detailsBySlug = await resolveDrinkDetailsMapBySlugs(rows.map((row) => row.drinkSlug));
+    // The same gate the nine read routes of #1530 use, applied to the slugs a submission names. A withheld
+    // submission is DROPPED rather than blanked: Greptile's P1 on #1530 established that the slug is itself
+    // the secret -- it is what the recipe route takes -- so a row saying "someone submitted <premium slug>"
+    // discloses exactly what withholding the hydrated drink was meant to prevent.
+    //
+    // THE SAME CAVEAT AS #1530 APPLIES AND IS NOT CLOSED HERE: this filters after `limit`/`offset`, so a
+    // viewer entitled to nothing sees a short page rather than a wrong one, and a page of entirely withheld
+    // submissions is indistinguishable from a challenge nobody entered. That is a bound, not a leak, and
+    // closing it means expressing the gate as a SQL predicate -- a second copy of the rule, which is the
+    // thing the single boundary exists to avoid.
+    const viewerId = (req as any).user?.id ?? null;
+    const withheldSubmissions = await withheldPremiumSlugsForViewer(rows.map((row) => row.drinkSlug), viewerId);
+    const visibleRows = rows.filter((row) => !withheldSubmissions.has(row.drinkSlug));
 
-    const submissions = rows.map((row) => ({
+    const detailsBySlug = await resolveDrinkDetailsMapBySlugs(visibleRows.map((row) => row.drinkSlug));
+
+    const submissions = visibleRows.map((row) => ({
       id: row.id,
       challengeId: row.challengeId,
       userId: row.userId,
@@ -20171,6 +20188,17 @@ r.post("/challenges/:slug/join", requireAuth, async (req, res) => {
 
     const drink = await resolveDrinkDetailsBySlug(normalizedDrinkSlug);
     if (!drink) return res.status(404).json({ ok: false, error: "Drink not found" });
+
+    // The #1530 shape, found by auditing the write paths the record said nobody had audited: the challenge
+    // being active was checked and entitlement to the drink being filed under your name was not, so a member
+    // could enter another creator's paid drink into a public challenge. Here it was not merely untidy -- the
+    // submissions list hydrates what it names, so this write was the way to publish a withheld drink.
+    // `resolveDrinkDetailsBySlug` takes no viewer and judges nothing; the gate is the same one the read
+    // routes use, so a drink you may legitimately see -- canonical, your own, public, or one you bought --
+    // can still be submitted.
+    if ((await withheldPremiumSlugsForViewer([normalizedDrinkSlug], userId)).has(normalizedDrinkSlug)) {
+      return res.status(403).json({ ok: false, error: "Not authorized", code: "DRINK_NOT_AVAILABLE_TO_VIEWER" });
+    }
 
     const inserted = await db
       .insert(drinkChallengeSubmissions)

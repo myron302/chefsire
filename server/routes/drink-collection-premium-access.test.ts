@@ -62,6 +62,9 @@ if (!PG_URL) {
     -- selects slug, and returned a 500 -- so the community-search leg of test I was asserting against an empty
     -- response and proving nothing. Built from the real schema now.
     ${ddl(schema.drinkChallenges, "drink_challenges")};
+    -- /challenges/:slug/submissions hydrates the full drink payload for every submitted slug, and
+    -- /challenges/:slug/join writes a caller-supplied slug into this table. Both are audited below.
+    ${ddl(schema.drinkChallengeSubmissions, "drink_challenge_submissions")};
     -- /whats-new reads the viewer's follows. Without this table the route answered 500 for every signed-in
     -- viewer, so test K's audit of it was asserting against an error body.
     ${ddl(schema.follows, "follows")};
@@ -925,5 +928,118 @@ if (!PG_URL) {
     const r = await get(`/collections/${col.prem}`, "nonent");
     assert.deepEqual(r.json.collection.items.map((i: any) => i.drinkSlug), slugsOf("prem").slice(0, PREVIEW));
     assert.equal(r.json.collection.previewLimit, PREVIEW);
+  });
+
+  // ---- challenge submissions: the write path #1530 did not audit, and the read path behind it -------------
+  //
+  // The record's "known and not yet done" said POST /collections/:id/items was fixed in #1530 and NO OTHER
+  // write path had been audited for the same shape. This is that audit, and it found the shape twice over in
+  // one feature -- once as the same ungated write, and once as an UNGATED READ, which is worse and is a
+  // done-condition 4 failure rather than a tidiness one.
+  //
+  //   POST /challenges/:slug/join      takes drinkSlug from the body, resolves it with no viewer, inserts it
+  //   GET  /challenges/:slug/submissions   has NO auth middleware at all and hydrates name, image, route,
+  //                                        category and subcategory for every submitted slug, no viewer
+  //
+  // So one member submitting a withheld premium slug published that drink to every anonymous caller.
+  const CHALLENGE_SLUG = "p24-challenge";
+  const challengeSubmission = async (userKey: string, slug: string) =>
+    local.query(
+      `INSERT INTO drink_challenge_submissions (challenge_id, user_id, drink_slug)
+       SELECT id, $2, $3 FROM drink_challenges WHERE slug = $1`,
+      [CHALLENGE_SLUG, ids[userKey], slug],
+    );
+
+  test.before(async () => {
+    // No ON CONFLICT: the DDL helper builds these tables from the Drizzle columns and does not carry the
+    // unique indexes, so inferring a conflict target here fails with 42P10.
+    await local.query(
+      `INSERT INTO drink_challenges (slug, title, description, starts_at, ends_at, is_active)
+       SELECT $1, 'c', 'c', now() - interval '1 day', now() + interval '30 days', true
+       WHERE NOT EXISTS (SELECT 1 FROM drink_challenges WHERE slug = $1)`,
+      [CHALLENGE_SLUG],
+    );
+  });
+
+  test("P1 challenge submissions do not publish a withheld premium drink to an anonymous caller", async () => {
+    // Seeded directly, not through the join route, so this tests the READ gate on its own: the row could also
+    // have been written before the write gate existed, or by the creator themselves.
+    const withheld = slugsOf("prem")[2];
+    await challengeSubmission("creator", withheld);
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/challenges/${CHALLENGE_SLUG}/submissions`, as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        assert.ok(!r.text.includes(withheld), `${label}: submissions leaked the withheld premium drink`);
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+    }
+  });
+
+  test("P1 and an entitled viewer still sees the same submission", async () => {
+    // The other half, which matters as much: a gate that hides it from the buyer and the creator too is not a
+    // gate, it is a broken feature.
+    //
+    // Entitlement is per collection and the pairing is the point -- `member` holds an active membership to the
+    // creator, which entitles them to the MEMBERSHIP_ONLY collection and not to the premium-purchase one. The
+    // first version of this test asked `member` about a `prem` slug and failed, correctly, on the code being
+    // right: a fixture that confuses the two routes would have asserted the gate away.
+    for (const [colKey, entitled] of [["prem", ["buyer", "bundler", "creator"]], ["memb", ["member", "creator"]]] as const) {
+      const withheld = slugsOf(colKey)[2];
+      await challengeSubmission("creator", withheld);
+      try {
+        // Non-entitled first, so this test also fails if the gate stops working for the collection type it covers.
+        const anon = await get(`/challenges/${CHALLENGE_SLUG}/submissions`);
+        assert.ok(!anon.text.includes(withheld), `${colKey}: withheld from an anonymous caller`);
+        for (const as of entitled) {
+          const r = await get(`/challenges/${CHALLENGE_SLUG}/submissions`, as);
+          assert.equal(r.status, 200, `${as}: ${r.text}`);
+          assert.ok(r.text.includes(withheld), `${as} is entitled to ${colKey} and must still see the submission`);
+        }
+      } finally {
+        await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+      }
+    }
+  });
+
+  test("P2 joining a challenge with a drink the viewer may not see is refused", async () => {
+    // Exactly the #1530 shape: ownership of the destination was checked (the challenge being active) and
+    // entitlement to the drink being filed under your name was not.
+    const withheld = slugsOf("prem")[3];
+    const r = await post(`/challenges/${CHALLENGE_SLUG}/join`, "nonent", { drinkSlug: withheld });
+    try {
+      assert.equal(r.status, 403, `expected a refusal, got ${r.status}: ${r.text}`);
+      assert.match(r.text, /DRINK_NOT_AVAILABLE_TO_VIEWER/);
+      const rows = await local.query(`SELECT 1 FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+      assert.equal(rows.rowCount, 0, "and nothing was written");
+    } finally {
+      // Cleaned up even on failure: without this, the ungated route's own insert survives into the next test
+      // and makes IT fail too, which is how one defect reads as two.
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+    }
+  });
+
+  test("P2 joining with a drink the viewer IS entitled to still works", async () => {
+    const entitled = slugsOf("prem")[3];
+    const r = await post(`/challenges/${CHALLENGE_SLUG}/join`, "buyer", { drinkSlug: entitled });
+    try {
+      assert.equal(r.status, 201, `a buyer may submit what they bought: ${r.text}`);
+      const rows = await local.query(
+        `SELECT 1 FROM drink_challenge_submissions WHERE drink_slug = $1 AND user_id = $2`, [entitled, ids.buyer]);
+      assert.equal(rows.rowCount, 1, "the buyer's own row is there");
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [entitled]);
+    }
+  });
+
+  test("P2 and a free, public drink is still submittable by anyone", async () => {
+    const free = slugsOf("free")[0];
+    const r = await post(`/challenges/${CHALLENGE_SLUG}/join`, "nonent", { drinkSlug: free });
+    try {
+      assert.equal(r.status, 201, `a public drink must stay submittable: ${r.text}`);
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [free]);
+    }
   });
 }
