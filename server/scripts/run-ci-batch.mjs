@@ -50,17 +50,28 @@ function summariseFailures(tap) {
   const lines = tap.split("\n");
   const failures = [];
   for (let i = 0; i < lines.length; i += 1) {
-    const failed = /^not ok (\d+) - (.+)$/.exec(lines[i]);
+    // Codex on #1538: the first version anchored at the start of the line, and Node INDENTS a child's TAP
+    // result under its parent. So a failing `t.test()` inside another test was invisible, and the summary
+    // named only the parent -- located at the parent's declaration, not at the line that failed. That left
+    // exactly the hole this function exists to close. Indentation is now part of the match, and the depth it
+    // gives is what bounds the search for the failure's own YAML block.
+    const failed = /^(\s*)not ok (\d+) - (.+)$/.exec(lines[i]);
     if (!failed) continue;
-    // Node's TAP puts a YAML block under each failure; `location` names the file and line.
+    const [, indent, , name] = failed;
     let location = "";
-    for (let j = i + 1; j < Math.min(i + 25, lines.length); j += 1) {
-      if (/^not ok |^ok /.test(lines[j])) break;
-      const found = /^\s*location:\s*'?([^'\n]+)'?\s*$/.exec(lines[j]);
+    for (let j = i + 1; j < Math.min(i + 40, lines.length); j += 1) {
+      // Stop at the next result AT THIS DEPTH OR SHALLOWER: a deeper one belongs to a child, and its own
+      // location would be attributed to this failure.
+      const sibling = /^(\s*)(not ok|ok) /.exec(lines[j]);
+      if (sibling && sibling[1].length <= indent.length) break;
+      const found = /^\s*location:\s*'?([^'\n]+?)'?\s*$/.exec(lines[j]);
       if (found) { location = found[1]; break; }
     }
-    failures.push({ name: failed[2], location });
+    failures.push({ name, location, depth: indent.length });
   }
+  // Every failure is reported, parents included: a parent fails because a child did, and naming both says
+  // which outer test the failing child was inside. The child comes first because Node prints it first, and
+  // the output indents by depth so the nesting is visible rather than implied.
   return failures;
 }
 
@@ -81,8 +92,9 @@ child.on("close", (code, signal) => {
       for (const file of files) console.error(`  - ${file}`);
     } else {
       for (const failure of failures) {
-        console.error(`  FAILED: ${failure.name}`);
-        if (failure.location) console.error(`          at ${failure.location}`);
+        const pad = " ".repeat(failure.depth);
+        console.error(`  ${pad}FAILED: ${failure.name}`);
+        if (failure.location) console.error(`  ${pad}        at ${failure.location}`);
       }
     }
     console.error("=========================================================================");
