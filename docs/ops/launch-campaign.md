@@ -144,11 +144,47 @@ gate as a SQL predicate so the `LIMIT` is visibility-aware — a second copy of 
 single boundary exists to avoid. Somebody should decide which of those two costs to pay; it is not urgent and
 it is not a leak.
 
-### Done-condition 1 is MET
+### Done-condition 1 is NOT met, and the way I got that wrong is the lesson
 
-Measured on `main` at `7dfcfcbb`, after #1530 and #1538: **515 test files, 515 referenced by a workflow, and no
-workflow reference pointing at a file that does not exist.** Nothing on the exceptions list, because there are
-no exceptions.
+I wrote in this file that it was met: 515 test files, 515 referenced by a workflow, no reference pointing at a
+missing file. Every one of those numbers is true. **The conclusion was wrong**, and Codex disproved it on the
+very PR that claimed it — the third time in two days that a confident claim in this file lasted under an hour.
+
+Comparing filenames establishes that CI *names* every suite. It does not establish that CI *runs* them. **A
+step can name a suite and still not run it**, because the suite skips when the connection string it reads is
+absent, and node exits 0:
+
+> the `wedding-square-postgres-migration-tests` job supplies `WEDDING_SQUARE_TEST_DATABASE_URL`, and its
+> restored batches supply `CS_TEST_PG_URL`. Nothing supplies `TEST_DATABASE_URL`.
+
+Codex named three suites. Measured with the job's exact environment, it is most of six batches:
+
+| batch | CI today | with the variable |
+| --- | --- | --- |
+| 1 of 6 | **1 pass / 36 skip** | 150 pass |
+| 2 of 6 | 6 / 8 | 65 |
+| 3 of 6 | 3 / 8 | 63 |
+| 4 of 6 | 54 / 38 | 170 |
+| 5 of 6 | 72 / 0 | 72 |
+| 6 of 6 | 12 / 33 | 235 |
+| **total** | **148 pass / 123 skip** | **755 pass** |
+
+**607 tests that CI names have never run**, including database-outage behaviour and authentication during a
+database outage. 123 skipped placeholders passing as green.
+
+**PR #1541 fixes it** and condition 1 holds when that lands: the six steps get the variable and go through
+`run-ci-batch.mjs`, which rejects a skip, and `server/scripts/audit-ci-skips.mjs` reads the workflow and each
+suite's gate and fails CI on any suite that is named and cannot run. Only 26 of the workflow's 120 test steps
+went through the skip-rejecting wrapper, which is why a checker was the right shape rather than rewriting 94
+steps blind.
+
+**One real exception, now listed as the condition requires:** `server/services/video-transcode.ffmpeg.test.ts`
+skips in CI because ffmpeg is not installed. Installing it in that job would change that. It is a listed
+exception rather than a silent one, which is the whole difference.
+
+What to take from this: **the filename check in this file is necessary and nowhere near sufficient.** Run
+`audit-ci-skips.mjs` as well, and when you write "condition 1 is met" again, say which of the three checks you
+ran — names on disk, names in the workflow, and whether the named suites can actually reach a database.
 
 It had been recorded as finished twice before, and both times it was not. The two files unaccounted for were
 `server/routes/drink-collection-premium-access.test.ts`, which #1530 brought in, and
@@ -195,15 +231,19 @@ A row claimed by a session id means hands off until that session's next update o
 
 | # | Condition | State |
 | --- | --- | --- |
-| 1 | Every suite in CI, or listed with a reason | **MET.** 515 files, 515 in CI, no dead steps. Measured, not claimed — see below |
+| 1 | Every suite in CI, or listed with a reason | **NOT met.** Names match, but 607 named tests never run: a missing `TEST_DATABASE_URL` makes them skip and node exits 0. #1541 fixes it and adds a checker. See below |
 | 2 | No suite passes while asserting nothing, and none fails at random | **Not met, and it is the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
 | 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
 | 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **MET** by #1530. Nine read routes, one write path, every protection confirmed by breaking it |
 | 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
 | 6 | Closure and retention implemented to the matrix his accountant signs off | **Blocked on Myron's accountant.** Two migrations written and unapplied |
 
-So: two met, two blocked on Myron with the work already done, one unchanged, and **condition 2 is the one a run
-can actually move.** Start there.
+So: **one met**, one a merge away (#1541), two blocked on Myron with the work already done, one unchanged, and
+condition 2 partly moved — its floor is now gated by `audit-assert-coverage.mjs`, and one flake is still open
+and unnamed.
+
+A run starting cold should: merge #1541 and #1540 if they are green, then chase the batch-7 flake with the
+failure summary that now names it.
 
 ### In flight
 
