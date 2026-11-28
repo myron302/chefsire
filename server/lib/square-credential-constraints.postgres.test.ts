@@ -39,16 +39,26 @@ if (!URL_ENV) {
   }
   const EXPIRES = "2099-01-01T00:00:00Z";
 
+  // Tests 1 and 2 are the ACCEPTANCE side: they insert rows the CHECK must allow, and before this they asserted
+  // nothing at all -- they passed because `insert` did not throw. That is a real assertion (a rejection would
+  // fail the await) but it is blind in one direction: an insert that succeeds while writing NO ROW passes it
+  // just as happily. So they now say what they mean, that the row landed. Found by
+  // server/scripts/audit-assert-coverage.mjs, which reported exactly these two blocks out of 515 files.
+  const accepted = async (h: SquareHarness, columns: Parameters<typeof insert>[1]) => {
+    const result = await insert(h, columns);
+    assert.equal(result.rowCount, 1, `these column values must be accepted and must write a row: ${JSON.stringify(columns)}`);
+  };
+
   test("1. neither token stored is allowed, in every status and with or without an expiry", async () => {
     await run(async (h) => {
-      for (const status of ["active", "pending", "needs_reauthorization", "disconnected", "disabled"]) await insert(h, { status });
-      await insert(h, { status: "active", expires: EXPIRES });
-      await insert(h, { provider: "paypal", status: "active" });
+      for (const status of ["active", "pending", "needs_reauthorization", "disconnected", "disabled"]) await accepted(h, { status });
+      await accepted(h, { status: "active", expires: EXPIRES });
+      await accepted(h, { provider: "paypal", status: "active" });
     });
   });
 
   test("2. BOTH tokens stored in the sealed format with an expiry on a square row is allowed", async () => {
-    await run(async (h) => { await insert(h, { access: SEALED, refresh: SEALED, expires: EXPIRES }); });
+    await run(async (h) => { await accepted(h, { access: SEALED, refresh: SEALED, expires: EXPIRES }); });
   });
 
   test("3. an ACCESS token alone is rejected, even with an expiry on a square row (the NULL-semantics hole)", async () => {
