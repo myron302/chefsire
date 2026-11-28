@@ -18,6 +18,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs } from '../data/detoxes';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { getCanonicalFirstPath } from '@/lib/recipe-interactions';
+import { caffeinatedBuilderPayload, caffeinatedPremadePayload } from '../custom-drink-payload';
 import { sortByName } from '@/lib/sort-by-name';
 
 const caffeinatedSubcategories = [
@@ -307,24 +308,7 @@ export default function CaffeinatedDrinksPage() {
         const response = await fetch('/api/drinks/custom-drinks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: `Custom ${selectedGoal.name} Drink`,
-            category: 'caffeinated',
-            drinkType: selectedGoal.id,
-            ingredients: customDrink.ingredients,
-            calories: Math.round(customDrink.calories),
-            caffeine: Math.round(customDrink.caffeine),
-            carbs: (Math.round(customDrink.carbs * 10) / 10).toString(),
-            sugar: Math.round(customDrink.sugar * 10) / 10,
-            protein: '2',
-            fiber: '0',
-            fat: '0',
-            fitnessGoal: selectedGoal.name,
-            difficulty: 'Custom',
-            prepTime: 4,
-            rating: 5,
-            isPublic: false
-          })
+          body: JSON.stringify(caffeinatedBuilderPayload(selectedGoal, customDrink))
         });
 
         if (!response.ok) {
@@ -361,32 +345,7 @@ export default function CaffeinatedDrinksPage() {
       const response = await fetch('/api/drinks/custom-drinks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: recipe.name,
-          category: 'caffeinated',
-          drinkType: recipe.goalType,
-          ingredients: recipe.ingredients.map(name => ({
-            name,
-            category: 'ingredient',
-            calories: 0,
-            caffeine: 0,
-            carbs: 0,
-            sugar: 0,
-            icon: '☕'
-          })),
-          calories: recipe.calories,
-          caffeine: recipe.caffeine,
-          carbs: Math.round(recipe.calories * 0.5 / 4).toString(),
-          sugar: 10,
-          protein: '2',
-          fiber: '0',
-          fat: '0',
-          fitnessGoal: recipe.goalType,
-          difficulty: recipe.difficulty,
-          prepTime: parseInt(recipe.time),
-          rating: Math.round(recipe.rating),
-          isPublic: false
-        })
+        body: JSON.stringify(caffeinatedPremadePayload(recipe))
       });
 
       if (!response.ok) {
