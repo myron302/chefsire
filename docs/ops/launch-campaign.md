@@ -279,7 +279,7 @@ the Owner column was used. `…TD6mAsTkV` took #1540 and finished Codex's findin
 stayed off it and took #1541 instead. **That is the pattern: claim the row before you start, and read the
 column before you pick.**
 | ~~Rendering smoke check~~ | ~~PR #1526~~ | **Merged.** Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
-| Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
+| Search Intelligence — Phase 1 only | branch `feat/search-trigram-phase1-20261128`; draft PR opening immediately | Claimed before implementation on 2026-11-28. Rebuild from current main: opt-in pg_trgm only, `SEARCH_TRIGRAM_ENABLED` default-off; preserve premium gates. Previous local work and 19-test evidence are unrecoverable, not current evidence. Publish first commit now; no merge, deploy or applied migrations. Places/UX/semantic phases deferred. | Codex `search-phase1-20261128` |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
 
 ### Corrected, so nobody spends another session on it
