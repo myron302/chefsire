@@ -182,6 +182,13 @@ steps blind.
 skips in CI because ffmpeg is not installed. Installing it in that job would change that. It is a listed
 exception rather than a silent one, which is the whole difference.
 
+**And a warning about the checker itself, since it is now a gate.** It went through four versions before it
+was right, and two of the three wrong ones were wrong in the direction that matters least — noise — while one
+was wrong in the direction that matters most: it *cleared* a suite that gates on `TEST_DATABASE_URL` and only
+assigns `DATABASE_URL`, which is a silent green waved through by the thing built to catch silent greens. It
+has its own suite now, with seven mutations. If you change it, run that suite and mutate what you changed: the
+first time I mutated it, one test passed anyway because my own fixture asserted nothing.
+
 What to take from this: **the filename check in this file is necessary and nowhere near sufficient.** Run
 `audit-ci-skips.mjs` as well, and when you write "condition 1 is met" again, say which of the three checks you
 ran — names on disk, names in the workflow, and whether the named suites can actually reach a database.
@@ -251,7 +258,7 @@ failure summary that now names it.
 | --- | --- | --- | --- |
 | ~~Custom drink save prefix~~ | ~~PR #1514~~ | **Merged**, green on all six jobs. GPT's fix, plus the four payloads extracted so the pages and the test share one definition — Codex's P2 answered by code and six mutations | — |
 | ~~Recipe create persistence~~ | ~~PR #1538~~ | **Merged**, green. Closed done-condition 1 and added the `run-ci-batch.mjs` failure summary. Note for every future run: `rerun_failed_jobs` returns **403** for this integration, so CI can only be re-triggered by a real commit, never an empty one | — |
-| Silent-skip fix and checker | **PR #1541** | 607 tests CI names and has never run, plus the nested-failure hole Codex found on #1538. Both measured, both fixed, Codex asked to attack the shape of both gates. Merge on green | Claude `…T9vcsr8u` |
+| Silent-skip fix and checker | **PR #1541** | 607 tests CI names and has never run, plus the nested-failure hole Codex found on #1538. Both fixed. The checker took **four versions** — bare text (flagged a comment), regex on `process.env.NAME` (cleared a suite that only *assigns* the name: Codex's second finding, a silent green waved through by the checker), AST reads-only (flagged a test *titled* "…is skipped"), and the current one. It has its own 8-test suite with seven mutations, one of which passed at first because my fixture was vacuous. Merge on green | Claude `…T9vcsr8u` |
 | Assert-coverage audit | **PR #1540** | **Taken by session `…TD6mAsTkV`**, which answered both of Codex's findings on it — lexical helper scoping, and `skip` only counting when unconditionally truthy, which widened the gate by 19 blocks — and gave the tool its own suite with five mutations. Leave it to that session | Claude `…TD6mAsTkV` |
 | Record correction | **PR #1539** | Condition 1 unmarked, with the per-batch numbers and the ffmpeg exception listed. Merge on green | Claude `…T9vcsr8u` |
 
