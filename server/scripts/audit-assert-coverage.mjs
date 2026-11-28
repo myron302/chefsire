@@ -51,10 +51,22 @@
  * suites changing shape or by a type-aware rewrite that resolves what a value actually is -- and the right
  * place to argue for that is the PR, not a silent 276-line failure in CI.
  *
- * In CI it runs with --ci and FAILS on any block that is not on the allowlist below. The repository has none
- * today, so the gate starts clean: the floor is held from here rather than audited once and forgotten.
+ * IN CI IT REPORTS AND DOES NOT FAIL, on the reviewer's recommendation. `--ci` still exists and still exits 1
+ * on a hard hit, so a person or a future workflow can gate on it -- but the workflow step does not, and the
+ * reason belongs here rather than in a commit nobody will find.
  *
- * Codex reviewed this five times and found twelve holes, every one of them real. They are recorded at
+ * Codex reviewed this six times and found thirteen holes. Every one was real. The last three were false
+ * POSITIVES: correct tests that the gate failed, which is the failure mode that costs other people their
+ * time instead of quietly letting something through. Asked outright whether to gate or report, the reviewer
+ * said report for now. So the honest state is: the floor is MEASURED on every PR and printed, and it is not
+ * yet trustworthy enough to block on. What would change that is type-aware resolution with the real
+ * TypeScript checker -- which is a rewrite, not a fix, and would make most of the thirteen impossible rather
+ * than corrected one at a time.
+ *
+ * What DOES fail CI is this script's own test suite, which is the part that is trustworthy: 34 fixtures and
+ * 27 mutations, every known hole among them.
+ *
+ * Codex reviewed this six times and found thirteen holes, every one of them real. They are recorded at
  * the code that fixes them rather than summarised here, and each is a fixture in
  * audit-assert-coverage.test.ts. The pattern across all five is worth naming: each was a place where the
  * script treated something it could not see as something it had checked.
@@ -157,6 +169,9 @@ function rootIdentifier(expr) {
  * its root counted it as an assertion. Node runs that block and asserts nothing. `call` and `apply` are
  * deliberately NOT here -- `assert.equal.call(null, 1, 1)` does execute the assertion.
  */
+/** Function properties that really do run the function: `f.call(…)` and `f.apply(…)` invoke `f`. */
+const INVOKING_FUNCTION_PROPERTY = new Set(["call", "apply"]);
+
 const DOES_NOT_INVOKE = new Set([
   "bind", "toString", "valueOf", "name", "length", "prototype", "constructor", "caller", "arguments",
 ]);
@@ -535,8 +550,23 @@ function auditFile(file) {
         // `verify.toString()` call a property OF the function and never run its body -- splitting the callee
         // at the first dot treated those as invocations, which Codex reproduced both ways.
         let calledParams = null;
-        if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
-          const helper = resolveHelper(n.expression.text, n);
+        // The identifier whose body this call actually runs: `verify()`, and also `verify.call(null)` and
+        // `verify.apply(null, [])`, which Codex pointed out do invoke it. Round five restricted resolution to
+        // bare identifiers to stop `verify.bind(null)` counting, and over-corrected into failing CI on two
+        // forms that genuinely run the helper. `bind` and `toString` stay excluded by the same list that
+        // excludes them for assertion chains.
+        const invokedHelperName = (() => {
+          if (!ts.isCallExpression(n)) return "";
+          const e = n.expression;
+          if (ts.isIdentifier(e)) return e.text;
+          if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) &&
+              INVOKING_FUNCTION_PROPERTY.has(e.name.text)) {
+            return e.expression.text;
+          }
+          return "";
+        })();
+        if (invokedHelperName !== "") {
+          const helper = resolveHelper(invokedHelperName, n);
           if (helper) {
             calledParams = invokedParameters(helper.fn);
             if (!seen.has(helper.body)) {
@@ -552,12 +582,23 @@ function auditFile(file) {
           if (found) return;
           const isFn = ts.isArrowFunction(arg) || ts.isFunctionExpression(arg);
           const positionRuns = invokes || Boolean(calledParams && calledParams.has(i));
+          // Did we resolve the callee to a same-file helper whose parameter use we can actually read? If so,
+          // "this position is not invoked" is positive knowledge. If not, it is ignorance, and ignorance
+          // belongs in the soft category rather than in a CI failure.
+          const helperKnown = calledParams !== null;
           // A callback passed BY NAME at a position that runs. Codex's twelfth finding, and the only one of
           // the twelve that was a false POSITIVE: `function run(cb) { cb(); }` with `run(verify)` executes
           // `verify`, but walking the identifier `verify` never reached its body, so a legitimate test became
           // a hard hit and failed CI. Extracting an inline callback into a same-file helper must not break
           // the build.
-          if (positionRuns && ts.isIdentifier(arg)) {
+          // Codex's thirteenth: `emitter.once("ready", verify); emitter.emit("ready")` ran the assertion, and
+          // the gate failed CI on it, while the same test with an INLINE listener was correctly soft. So
+          // extracting an inline listener into a named one broke the build. In the permissive pass a named
+          // callback handed to an API we could not resolve is now followed; in the strict pass it still is
+          // not, which is what keeps it out of the hard count. A resolved helper that demonstrably ignores
+          // the argument stays a hard hit in both passes, because there we KNOW.
+          const namedCallbackReachable = positionRuns || (!strict && !helperKnown);
+          if (namedCallbackReachable && ts.isIdentifier(arg)) {
             const named = resolveHelper(arg.text, n);
             if (named && !seen.has(named.body)) {
               seen.add(named.body);

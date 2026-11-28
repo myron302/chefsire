@@ -596,5 +596,13 @@ jobs:
       # the gate cannot regress into trusting itself.
       - name: The assert-coverage gate is sound in both directions
         run: node server/scripts/run-ci-batch.mjs server/scripts/audit-assert-coverage.test.ts
-      - name: Every test block reaches an assertion
-        run: node server/scripts/audit-assert-coverage.mjs --ci
+      # REPORTING ONLY, on the reviewer's recommendation, and the reason is worth keeping next to the step.
+      # Codex found thirteen holes in this analysis over six rounds. Every one was real; the last three were
+      # false POSITIVES -- correct tests that the gate failed -- which is the failure mode that costs other
+      # people their time rather than quietly letting something through. Asked outright whether to gate on it
+      # or report, the reviewer said keep it reporting-only for now, and that is the honest state: the floor
+      # is MEASURED on every PR and printed, and it is not yet trustworthy enough to block on. What would make
+      # it blockable is type-aware resolution using the real TypeScript checker, which is a rewrite rather
+      # than a fix. The suite above is what actually fails CI, and it guards the analysis itself.
+      - name: Measure how many test blocks reach an assertion
+        run: node server/scripts/audit-assert-coverage.mjs

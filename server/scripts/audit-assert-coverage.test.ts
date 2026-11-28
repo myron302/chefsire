@@ -498,6 +498,60 @@ test("a named asserting callback at a position the helper never calls does not c
   assert.deepEqual(titles(r), ["the asserting callback goes to the argument never called"]);
 });
 
+/* ---- Codex's sixth round: both of these were false positives that failed CI on correct code ---- */
+
+test("a helper invoked through .call or .apply is reached, while bind and toString are not", () => {
+  // Round five restricted helper resolution to bare identifiers so that `verify.bind(null)` would stop
+  // counting -- and over-corrected into failing CI on two forms that genuinely run the helper.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function verify() { assert.ok(true); }
+    test("valid through .call", () => { verify.call(null); });
+    test("valid through .apply", () => { verify.apply(null, []); });
+    test("empty through .bind", () => { verify.bind(null); });
+    test("empty through .toString", () => { verify.toString(); });
+  `, { ci: true });
+  assert.deepEqual(titles(r), ["empty through .bind", "empty through .toString"]);
+  assert.equal(r.status, 1, "the two that never run the body are still hits");
+});
+
+test("a named callback handed to an API we cannot resolve is soft, not a build failure", () => {
+  // `emitter.once("ready", verify); emitter.emit("ready")` runs the assertion. The gate failed CI on it while
+  // the INLINE-listener version was correctly soft, so extracting an inline listener into a named one broke
+  // the build. Ignorance about an API belongs in the soft category; it is not knowledge that nothing runs.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    import { EventEmitter } from "node:events";
+    const verify = () => { assert.ok(true); };
+    test("a named listener that is actually emitted", () => {
+      const emitter = new EventEmitter();
+      emitter.once("ready", verify);
+      emitter.emit("ready");
+    });
+  `, { ci: true });
+  assert.deepEqual(titles(r), [], "an unresolved API is ignorance, not a hard hit");
+  assert.deepEqual(r.viaCallback.map((h) => h.title), ["a named listener that is actually emitted"]);
+  assert.equal(r.status, 0);
+});
+
+test("a resolved helper that demonstrably ignores the argument is still a hard hit", () => {
+  // The other side of the same change, and the line between the two: here the tool can READ that the
+  // parameter is never called, so "nothing runs" is knowledge rather than ignorance, and it stays hard.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function ignoresIt(before: () => void, fn: () => void) { fn(); }
+    const asserter = () => { assert.ok(true); };
+    test("the asserting callback goes to the argument never called", () => {
+      ignoresIt(asserter, () => {});
+    });
+  `, { ci: true });
+  assert.deepEqual(titles(r), ["the asserting callback goes to the argument never called"]);
+  assert.equal(r.status, 1);
+});
+
 /* ---- The gate itself ---- */
 
 test("--ci exits non-zero on a hit and zero without one", () => {
