@@ -175,6 +175,40 @@ test("an imported gate that IS satisfied is not reported", () => {
   assert.equal(r.exit, 0);
 });
 
+test("the alias form `test.skip` as a VALUE counts as a skip mechanism", () => {
+  // `const postgresTest = adminUrl ? test : test.skip;` is the dominant postgres pattern here, and `.skip` is
+  // never called at that point. Requiring a following "(" missed schema-push-apply and schema-push-protected,
+  // which skip 23 and 7 tests without TEST_DATABASE_URL, so the audit said 6 where the truth was 8.
+  const body = [
+    `import test from "node:test";`,
+    `const url = process.env.TEST_DATABASE_URL;`,
+    `const pgTest = url ? test : test.skip;`,
+    `pgTest("the real one", () => {});`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { CS_TEST_PG_URL: URL_LITERAL });
+  assert.doesNotMatch(body, /\.skip\s*\(/, "the fixture must use .skip as a value, not a call");
+  assert.equal(r.hits.length, 1, "the alias form is a skip mechanism");
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"]);
+  assert.equal(r.exit, 1);
+});
+
+test("a LOCAL gate is not satisfied by a name the suite merely imports", () => {
+  // Unioning local and imported reads was unsound and live: 35 skippable suites here have a local gate plus an
+  // imported DATABASE_URL their gate does not use, so supplying DATABASE_URL cleared suites whose real gate was
+  // absent. Judged on local reads when there are any.
+  const harness = `process.env.DATABASE_URL ||= "x";\nexport const unrelated = process.env.DATABASE_URL;\n`;
+  const body = [
+    `import test from "node:test";`,
+    `import { unrelated } from "./harness";`,
+    `const url = process.env.TEST_DATABASE_URL;`,
+    `if (!url) { test("skipped: no TEST_DATABASE_URL", { skip: true }, () => {}); } else { test("real", () => { void unrelated; }); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { DATABASE_URL: URL_LITERAL }, {}, { "harness.ts": harness });
+  assert.equal(r.hits.length, 1, "the imported DATABASE_URL must not clear a TEST_DATABASE_URL gate");
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"]);
+  assert.equal(r.exit, 1);
+});
+
 test("a suite that READS a database URL but cannot skip is never reported", () => {
   // This fixture must read a DB name, or the test passes for the wrong reason. The first version did not, so
   // removing the can-this-skip guard from the script changed nothing and the mutation went uncaught -- a test

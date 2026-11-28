@@ -143,23 +143,37 @@ function envReads(file, text) {
  * marketplace-sample-listings.postgres.test.ts: remove CS_TEST_PG_URL from its step and the audit reported
  * zero hits while the suite produced zero passes, one skip, exit 0.
  *
- * Imports are followed to a bounded depth and their reads are UNIONED in. That over-approximates -- a suite
- * importing an unrelated symbol from a module that happens to read a URL inherits that name -- and
- * over-approximating what a suite needs makes this stricter, never looser, which is the only safe direction
- * for a gate to be wrong in.
+ * Local reads and imported reads are kept SEPARATE, and a suite is judged on its local reads when it has any.
+ * Unioning them was unsound, and the unsoundness was live rather than theoretical: 35 skippable suites here
+ * have a local gate plus an imported `DATABASE_URL` their gate does not use, so with one set and
+ * `some(available)`, supplying DATABASE_URL cleared a suite whose real gate was absent. Measured: dropping
+ * TEST_DATABASE_URL from batch 1 while leaving DATABASE_URL reported 4 suites where it should report 8, and
+ * square-connection-service.postgres.test.ts -- 0 pass, 1 skip with that environment -- was one of the four it
+ * cleared. A gate that can clear a silently-green suite is the only failure that costs anything, and it is the
+ * one I had just reintroduced while fixing another.
+ *
+ * Shapes measured across the skippable suites: 21 gate locally only, 53 gate through an import only, 35 do
+ * both. Judging on local-when-present is correct for all three.
  */
 function gateReads(file, depth = 0, seen = new Set()) {
-  if (seen.has(file) || depth > 3) return { reads: new Set(), opaque: false };
+  if (seen.has(file) || depth > 3) return { local: new Set(), inherited: new Set(), opaque: false };
   seen.add(file);
   const own = envReads(file, readFileSync(file, "utf8"));
-  const reads = new Set(own.reads);
+  const inherited = new Set();
   let opaque = own.opaque;
   for (const imported of localImports(own.sf, file)) {
     const inner = gateReads(imported, depth + 1, seen);
-    for (const name of inner.reads) reads.add(name);
+    for (const name of inner.local) inherited.add(name);
+    for (const name of inner.inherited) inherited.add(name);
     opaque = opaque || inner.opaque;
   }
-  return { reads, opaque };
+  return { local: own.reads, inherited, opaque };
+}
+
+/** The names that actually decide this suite's gate: its own if it has any, otherwise the ones it imports. */
+function effectiveGate(file) {
+  const { local, inherited, opaque } = gateReads(file);
+  return { reads: local.size > 0 ? local : inherited, opaque };
 }
 
 /**
@@ -199,8 +213,13 @@ for (const wf of WORKFLOWS) {
         // wedding-square-renewal-scan.test.ts, which has no gate at all, always runs its 7 tests, and simply
         // contains a test NAMED "unchanged invoice is skipped, never reinserted or paid through twice". A
         // checker that reads test titles as control flow is the regex mistake again, one layer in.
-        if (!/\bskip\s*:|\.skip\s*\(/.test(text)) continue;
-        const { reads: wanted, opaque } = gateReads(file);
+        // `.skip` must match as a VALUE, not only as a call. The dominant postgres pattern in this repository
+        // is `const postgresTest = adminUrl ? test : test.skip;` -- the alias form -- where `.skip` is never
+        // invoked at that point. Requiring `(` missed schema-push-apply and schema-push-protected, which skip
+        // 23 and 7 tests respectively without TEST_DATABASE_URL, so the audit reported 6 where the truth was 8.
+        // `\.skip\b` does not match `.skipped`, so a destructured `{ skipped }` result stays out.
+        if (!/\bskip\s*:|\.skip\b/.test(text)) continue;
+        const { reads: wanted, opaque } = effectiveGate(file);
         // Only undeterminable when there is no direct read to go on: a suite with both is judged on the read.
         if (wanted.size === 0 && opaque) {
           findings.push({
