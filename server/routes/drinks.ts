@@ -1,6 +1,6 @@
 // server/routes/drinks.ts
 import { Router, type Request, type Response } from "express";
-import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, lte, notInArray, or, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
@@ -17991,6 +17991,227 @@ async function userHasActiveCollectionReviewAccess(userId: string, collectionId:
  */
 const LOCKED_COLLECTION_PREVIEW_LIMIT = 2;
 
+/**
+ * How many pages' worth of rows one block of a gated scan reads (see scanVisibleRecipeRows).
+ *
+ * This was RECIPE_MATCH_OVERFETCH, and it meant something else: how wide a single window to read in the hope
+ * that enough of it survived the gate. Codex on #1530 retired that reasoning -- a wider window is still all
+ * withheld if enough withheld rows sit on top of it -- so the routes scan instead of widening, and this is now
+ * the size of one round trip rather than a guess about how many rows is enough.
+ */
+const RECIPE_SCAN_BLOCK_MULTIPLE = 5;
+/**
+ * How many blocks a gated scan will read before giving up on filling the page.
+ *
+ * The scan has to stop somewhere, or a viewer entitled to nothing could make any search walk the whole table.
+ * Four blocks is the bound; `exhausted` on the result says whether a short page means the bound was hit or the
+ * rows genuinely ran out.
+ */
+const RECIPE_SCAN_MAX_BLOCKS = 4;
+
+/**
+ * Slugs that must not be named to this viewer because they are the withheld payload of a locked collection.
+ *
+ * `resolveCollectionWithItems` is the boundary for every route that hydrates a collection, and it is correct.
+ * Search was never a caller: it queries `drink_recipes` directly, so a drink sold inside a premium collection
+ * was discoverable by name to anyone, past the storefront preview, with no grant. Fixing it inside the search
+ * handlers rather than in the boundary keeps one definition of "withheld" and does not change any route that
+ * already goes through the boundary.
+ *
+ * The rule is the boundary's rule, applied per slug:
+ *  - position within a collection is `added_at` then `drink_slug`, exactly as the boundary orders items, so the
+ *    preview is the same two items here as there;
+ *  - a collection is locked for this viewer when it is not public and the viewer has no access to it, where
+ *    access comes only from the canonical inputs (creator, completed purchase, owned bundle, active membership);
+ *  - a slug is withheld only when EVERY collection it appears in withholds it. The same drink placed in a free
+ *    public collection, or inside the preview of a locked one, is public by the creator's own choice, and
+ *    hiding it from search would be a different bug.
+ *
+ * A slug in no collection at all is a standalone recipe and is never withheld. Failure is closed: a viewer with
+ * no id is treated as having no access, and a query that cannot be answered withholds every candidate rather
+ * than naming them.
+ */
+async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: string | null): Promise<Set<string>> {
+  const candidates = [...new Set(slugs.filter((slug) => typeof slug === "string" && slug.length > 0))];
+  if (!db || candidates.length === 0) return new Set();
+  // The access map carries purchases, bundles and memberships; it does NOT carry the collections the viewer
+  // created. The boundary treats ownership as its own term (`isOwner`), so this does too -- without it a
+  // creator could not find their own premium drinks by name.
+
+  try {
+    // Both lists are bound as ONE json parameter each. Interpolating a JS array here makes drizzle emit a
+    // placeholder per element, which is a syntax error inside ANY(...) and an empty pair of parentheses when the
+    // list is empty -- the shape that made the first version of this fail closed on every search.
+    const entitled = [...(await loadOwnedCollectionIdsForUser(viewerUserId))].map(String);
+    const rows: any = await db.execute(sql`
+      WITH wanted AS (
+        SELECT value AS slug
+          FROM jsonb_array_elements_text(${JSON.stringify(candidates)}::jsonb) AS value
+      ),
+      -- Only collections belonging to the recipe's OWN creator can decide whether that recipe is public.
+      -- Codex on #1530: with any collection counting, anyone who learned a withheld slug could add that
+      -- recipe to a public collection of their own and publish someone else's paid item to the world. "Public
+      -- by the creator's own choice" has to mean the creator's, so the SQL enforces it rather than the
+      -- comment claiming it. A slug with no qualifying collection -- a canonical drink, or a recipe only ever
+      -- added to other people's collections -- is not withheld at all.
+      owners AS (
+        SELECT w.slug, dr.user_id AS creator_id
+          FROM wanted w
+          JOIN drink_recipes dr ON dr.slug = w.slug
+      ),
+      relevant AS (
+        SELECT DISTINCT ci.collection_id
+          FROM drink_collection_items ci
+          JOIN owners o ON o.slug = ci.drink_slug
+          JOIN drink_collections c ON c.id = ci.collection_id AND c.user_id = o.creator_id
+      ),
+      -- Codex on #1530: a collection inside a PUBLIC bundle is reachable even when the collection itself is not
+      -- public. POST /bundles/:id/items requires only that the collection be yours and premium_purchase, and
+      -- resolveBundleWithCollections hands every included collection to the boundary with no is_public filter, so
+      -- the bundle page already shows that collection's preview to anonymous visitors. Without this term the gate
+      -- was stricter than the boundary for exactly that shape: the bundle displayed two preview recipes whose
+      -- links then 404'd. Reachability only -- the item still has to clear the unlocked test below, so this
+      -- publishes the same two preview items the bundle page does and nothing behind them.
+      bundled AS (
+        SELECT DISTINCT bi.collection_id
+          FROM drink_bundle_items bi
+          JOIN drink_bundles b ON b.id = bi.bundle_id AND b.is_public
+      ),
+      -- Ranking is restricted to those collections. Greptile on #1530: ranking every row of
+      -- drink_collection_items to judge at most a couple of dozen slugs put the whole table's work on every
+      -- search. Items still cannot be filtered BEFORE ranking, or the preview boundary would move.
+      ranked AS (
+        SELECT ci.drink_slug AS slug,
+               ci.collection_id,
+               c.access_type,
+               c.is_public,
+               c.user_id AS owner_id,
+               row_number() OVER (
+                 PARTITION BY ci.collection_id
+                 ORDER BY ci.added_at ASC, ci.drink_slug ASC
+               ) AS position
+          FROM drink_collection_items ci
+          JOIN relevant rel ON rel.collection_id = ci.collection_id
+          JOIN drink_collections c ON c.id = ci.collection_id
+      ),
+      -- The owner condition has to hold for the (slug, collection) PAIR, not merely for the collection.
+      -- Greptile P1 on #1530: qualifying a collection by ONE of its items let that collection vote on every
+      -- other item in it, so an attacker who put their own matching recipe plus someone else's paid slug into
+      -- their own public collection made the paid slug read as public. Ranking still covers every item of a
+      -- relevant collection, because that is what fixes each item's position; only the vote is restricted.
+      -- A collection shows an item to this viewer only if BOTH hold: the viewer can reach the collection at all,
+      -- and the collection is not locked against them (or the item is inside its public preview).
+      --   REACHABLE  is_public, ownership, a grant, or membership of a public bundle -- the four ways a viewer
+      --               can open the collection at all. Greptile P1: is_public was not consulted, so a creator's PRIVATE collection whose
+      --               access_type is 'public' -- a working "everything I have made" list -- voted its items
+      --               public for anonymous viewers, including items they sell in a locked collection. Nobody
+      --               can read that collection, so it may not publish anything. Ownership and a grant are
+      --               both reachability too: the creator and a buyer can open it.
+      --   UNLOCKED   not premium_purchase / membership_only for them; the first items of a locked collection
+      --               are still shown, because that preview is the storefront and is public by design.
+      judged AS (
+        SELECT r.slug,
+               NOT (
+                 (
+                   r.is_public
+                   OR r.owner_id IS NOT DISTINCT FROM ${viewerUserId ?? null}
+                   OR r.collection_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(entitled)}::jsonb))
+                   OR r.collection_id IN (SELECT collection_id FROM bundled)
+                 )
+                 AND (
+                   r.access_type = 'public'
+                   OR r.owner_id IS NOT DISTINCT FROM ${viewerUserId ?? null}
+                   OR r.collection_id IN (SELECT jsonb_array_elements_text(${JSON.stringify(entitled)}::jsonb))
+                   OR r.position <= ${LOCKED_COLLECTION_PREVIEW_LIMIT}
+                 )
+               ) AS withheld
+          FROM ranked r
+          JOIN owners o ON o.slug = r.slug AND r.owner_id IS NOT DISTINCT FROM o.creator_id
+      )
+      SELECT slug FROM judged GROUP BY slug HAVING bool_and(withheld)
+    `);
+    const result: any[] = Array.isArray(rows) ? rows : (rows?.rows ?? []);
+    return new Set(result.map((row: any) => String(row.slug)));
+  } catch (error) {
+    console.error("Error resolving withheld premium slugs; withholding every candidate:", error);
+    return new Set(candidates);
+  }
+}
+
+/**
+ * Read rows in blocks and gate each block until a full page of VISIBLE rows is in hand.
+ *
+ * Codex on #1530, twice over. The gate runs in JS, after the database has applied the route's LIMIT, so a page
+ * whose top rows are all withheld came back short -- or empty, which is the whole answer rather than a short
+ * one, because NONE of these routes paginates: /search and /community-search read only `q`, /remixes/:slug only
+ * the slug, and /remixes takes a limit it is given once by a client that renders no next page. Reading a wider
+ * window first, which is what this replaced, made that less likely and not impossible: with enough withheld
+ * rows on top, a wider window is still all withheld, and raising the multiple cannot fix it.
+ *
+ * So the window is scanned rather than widened. Read a block, gate it, keep what survives, and stop when the
+ * page is full or the block comes back short of the block size, which means the rows ran out.
+ *
+ * The scan is bounded by RECIPE_SCAN_MAX_BLOCKS, so this is still a bound and not a proof -- a viewer entitled
+ * to nothing gets an empty page once more than the bound's worth of withheld rows sit on top. `exhausted` is
+ * returned so a caller can tell that case from the end of the rows rather than having to guess. Closing it
+ * completely needs the gate as a SQL predicate so the LIMIT itself is visibility-aware: a second copy of the
+ * rule, which is the thing the single boundary exists to avoid.
+ *
+ * `readBlock` MUST impose a TOTAL order on its rows. Blocks are read at successive offsets, so an ordering with
+ * ties -- or none at all -- lets the same row come back in two blocks, or no block.
+ */
+async function scanVisibleRecipeRows<T>(options: {
+  readBlock: (blockOffset: number, blockSize: number) => Promise<T[]>;
+  /** How many visible rows the route wants. */
+  pageSize: number;
+  /** The slug that decides whether this row survives the gate. */
+  slugOf: (row: T) => string;
+  viewerUserId?: string | null;
+  /** Further slugs the row names, judged so a withheld one can be cleared from the response rather than naming it. */
+  alsoGate?: (row: T) => Array<string | null | undefined>;
+  startOffset?: number;
+}): Promise<{ rows: T[]; withheld: Set<string>; exhausted: boolean }> {
+  const { readBlock, pageSize, slugOf, viewerUserId, alsoGate, startOffset = 0 } = options;
+  const blockSize = Math.max(pageSize, 1) * RECIPE_SCAN_BLOCK_MULTIPLE;
+  const rows: T[] = [];
+  const withheld = new Set<string>();
+  let blockOffset = startOffset;
+  let exhausted = false;
+
+  for (let block = 0; block < RECIPE_SCAN_MAX_BLOCKS && rows.length < pageSize; block += 1) {
+    const candidates = await readBlock(blockOffset, blockSize);
+    if (candidates.length === 0) {
+      exhausted = true;
+      break;
+    }
+    blockOffset += candidates.length;
+
+    const judged = await withheldPremiumSlugsForViewer(
+      [
+        ...candidates.map(slugOf),
+        ...(alsoGate
+          ? candidates.flatMap((row) => alsoGate(row).filter((slug): slug is string => Boolean(slug)))
+          : []),
+      ],
+      viewerUserId ?? null,
+    );
+    for (const slug of judged) withheld.add(slug);
+
+    for (const row of candidates) {
+      if (withheld.has(slugOf(row))) continue;
+      rows.push(row);
+      if (rows.length === pageSize) break;
+    }
+
+    if (candidates.length < blockSize) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  return { rows, withheld, exhausted };
+}
+
 async function resolveCollectionWithItems(
   collection: typeof drinkCollections.$inferSelect,
   viewerUserId?: string | null,
@@ -20072,7 +20293,7 @@ r.post("/submit", requireAuth, async (req, res) => {
 });
 
 // Fetch remixes linked to a source canonical drink slug
-r.get("/remixes", async (req, res) => {
+r.get("/remixes", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20111,19 +20332,32 @@ r.get("/remixes", async (req, res) => {
         drinkRecipes.remixedFromSlug
       );
 
-    const remixRows = await (sort === "popular"
-      ? remixRowsQuery
-          .orderBy(
-            desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`),
-            desc(drinkRecipes.createdAt)
-          )
-          .limit(limit)
-          .offset(offset)
-      : remixRowsQuery
-          .orderBy(desc(drinkRecipes.createdAt))
-          .limit(limit)
-          .offset(offset));
-    const remixSlugs = remixRows.map((row) => row.slug);
+    // A remix can itself be a paid item, and every row also carries the slug it was remixed FROM, which can be
+    // one. Both go through the gate; a withheld source is cleared rather than the remix dropped, because the
+    // remix is public in its own right. The offset still counts pre-gate rows, as it always did, so this does
+    // not claim the pages tile exactly -- the client asks for one page and renders no next.
+    const { rows: visibleRemixRows, withheld: withheldFeed } = await scanVisibleRecipeRows({
+      readBlock: (blockOffset, blockSize) =>
+        sort === "popular"
+          ? remixRowsQuery
+              .orderBy(
+                desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`),
+                desc(drinkRecipes.createdAt),
+                asc(drinkRecipes.slug)
+              )
+              .limit(blockSize)
+              .offset(blockOffset)
+          : remixRowsQuery
+              .orderBy(desc(drinkRecipes.createdAt), asc(drinkRecipes.slug))
+              .limit(blockSize)
+              .offset(blockOffset),
+      pageSize: limit,
+      slugOf: (row) => row.slug,
+      alsoGate: (row) => [row.remixedFromSlug],
+      viewerUserId: (req as any).user?.id ?? null,
+      startOffset: offset,
+    });
+    const remixSlugs = visibleRemixRows.map((row) => row.slug);
     const remixesCountRows = remixSlugs.length
       ? await db
           .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
@@ -20138,8 +20372,8 @@ r.get("/remixes", async (req, res) => {
         .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
     );
 
-    const items = remixRows.map((entry) => {
-      const sourceSlug = entry.remixedFromSlug ?? null;
+    const items = visibleRemixRows.map((entry) => {
+      const sourceSlug = entry.remixedFromSlug && !withheldFeed.has(entry.remixedFromSlug) ? entry.remixedFromSlug : null;
       const canonicalSource = sourceSlug ? getCanonicalDrinkBySlug(sourceSlug) : null;
       const sourceRoute = canonicalSource?.route ?? (sourceSlug ? `/drinks/recipe/${sourceSlug}` : null);
 
@@ -20177,7 +20411,7 @@ r.get("/remixes", async (req, res) => {
 });
 
 // Fetch canonical/original drinks ranked by remix activity.
-r.get("/most-remixed", async (req, res) => {
+r.get("/most-remixed", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20186,7 +20420,7 @@ r.get("/most-remixed", async (req, res) => {
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const remixAggregateRows = await db
+    let remixAggregateRows = await db
       .select({
         slug: drinkRecipes.remixedFromSlug,
         remixCount: sql<number>`count(*)`,
@@ -20195,6 +20429,14 @@ r.get("/most-remixed", async (req, res) => {
       .from(drinkRecipes)
       .where(sql`${drinkRecipes.remixedFromSlug} is not null`)
       .groupBy(drinkRecipes.remixedFromSlug);
+
+    // Every item of this feed IS a drink that other people remixed, named by slug. A paid one has no visible form
+    // here -- there is nothing left of the item once its slug is withheld -- so it is dropped rather than cleared.
+    const withheldSources = await withheldPremiumSlugsForViewer(
+      remixAggregateRows.map((row) => row.slug).filter((slug): slug is string => Boolean(slug)),
+      (req as any).user?.id ?? null,
+    );
+    remixAggregateRows = remixAggregateRows.filter((row) => row.slug && !withheldSources.has(row.slug));
 
     const sourceSlugs = remixAggregateRows
       .map((row) => row.slug)
@@ -20275,7 +20517,7 @@ r.get("/most-remixed", async (req, res) => {
 });
 
 // Fetch remixes linked to a source canonical drink slug
-r.get("/remixes/:slug", async (req, res) => {
+r.get("/remixes/:slug", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20286,22 +20528,34 @@ r.get("/remixes/:slug", async (req, res) => {
       return res.status(400).json({ ok: false, error: "slug is required" });
     }
 
-    const remixes = await db
-      .select({
-        slug: drinkRecipes.slug,
-        name: drinkRecipes.name,
-        image: drinkRecipes.image,
-        createdAt: drinkRecipes.createdAt,
-        creatorUsername: users.username,
-        creatorId: drinkRecipes.userId,
-      })
-      .from(drinkRecipes)
-      .leftJoin(users, eq(drinkRecipes.userId, users.id))
-      .where(eq(drinkRecipes.remixedFromSlug, sourceSlug))
-      .orderBy(desc(drinkRecipes.createdAt))
-      .limit(24);
+    // The remixes themselves can be the premium payload of a locked collection. The requested slug is the
+    // caller's own input and is echoed below unchanged; what must not be disclosed is other people's items.
+    // This route reads no limit or offset from the request, so its page is the whole answer: the rows are
+    // scanned and gated until a full page of visible ones is in hand, not read once and filtered.
+    const { rows: remixes } = await scanVisibleRecipeRows({
+      readBlock: (blockOffset, blockSize) =>
+        db!
+          .select({
+            slug: drinkRecipes.slug,
+            name: drinkRecipes.name,
+            image: drinkRecipes.image,
+            createdAt: drinkRecipes.createdAt,
+            creatorUsername: users.username,
+            creatorId: drinkRecipes.userId,
+          })
+          .from(drinkRecipes)
+          .leftJoin(users, eq(drinkRecipes.userId, users.id))
+          .where(eq(drinkRecipes.remixedFromSlug, sourceSlug))
+          .orderBy(desc(drinkRecipes.createdAt), asc(drinkRecipes.slug))
+          .limit(blockSize)
+          .offset(blockOffset),
+      pageSize: 24,
+      slugOf: (row) => row.slug,
+      viewerUserId: (req as any).user?.id ?? null,
+    });
 
-    const items = remixes.map((entry) => ({
+    const items = remixes
+      .map((entry) => ({
       slug: entry.slug,
       name: entry.name,
       image: entry.image ?? null,
@@ -20320,7 +20574,7 @@ r.get("/remixes/:slug", async (req, res) => {
 });
 
 // Fetch remix lineage for a canonical or community drink recipe
-r.get("/remix-chain/:slug", async (req, res) => {
+r.get("/remix-chain/:slug", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20333,6 +20587,15 @@ r.get("/remix-chain/:slug", async (req, res) => {
 
     const currentNode = await resolveRemixChainNode(slug);
     if (!currentNode) {
+      return res.status(404).json({ ok: false, error: "Recipe not found" });
+    }
+
+    // Unlike /remixes/:slug, this route returns the requested drink itself -- name, image, creator -- so a
+    // guessable slug was enough to read the premium payload of a locked collection. A withheld slug gets the
+    // same answer as a slug that does not exist, which is also what keeps the response from confirming it is
+    // there. The chain below is filtered for the same reason: its nodes are other people's recipes.
+    const viewerId = (req as any).user?.id ?? null;
+    if ((await withheldPremiumSlugsForViewer([slug], viewerId)).has(slug)) {
       return res.status(404).json({ ok: false, error: "Recipe not found" });
     }
 
@@ -20380,15 +20643,43 @@ r.get("/remix-chain/:slug", async (req, res) => {
       depth += 1;
     }
 
-    const children = descendants.filter((entry) => entry.depth === 1);
+    // Greptile P1 on #1530: dropping the withheld NODES was not enough. Every node carries the slug it was
+    // remixed from, and a descendant carries its parent's slug, so a public remix of a withheld premium drink
+    // still printed that drink's slug -- and the slug is the whole secret, because it is what the recipe route
+    // takes. So the chain is cut rather than sieved: the lineage above the first withheld ancestor is not
+    // reported at all (a gap in the list would itself say something is there), a withheld reference on a
+    // surviving node is cleared, and a subtree whose link to `current` runs through a withheld node goes with
+    // it. Those drinks are not hidden anywhere else: they keep their own pages and their own search results.
+    // Only their position in THIS lineage is withheld, which is the thing that named the premium slug.
+    const referencedSlugs = [
+      current.remixedFromSlug,
+      ...ancestors.flatMap((entry) => [entry.slug, entry.remixedFromSlug]),
+      ...descendants.flatMap((entry) => [entry.slug, entry.remixedFromSlug, entry.parentSlug]),
+    ].filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+    const withheldChain = await withheldPremiumSlugsForViewer(referencedSlugs, viewerId);
+    const hidden = (slug: string | null | undefined) => typeof slug === "string" && withheldChain.has(slug);
+
+    const firstWithheldAncestor = ancestors.findIndex((entry) => withheldChain.has(entry.slug));
+    const visibleAncestors = (firstWithheldAncestor === -1 ? ancestors : ancestors.slice(0, firstWithheldAncestor))
+      .map((entry) => (hidden(entry.remixedFromSlug) ? { ...entry, remixedFromSlug: null } : entry));
+
+    // Depth order, so a node is only kept when the node it hangs from was kept.
+    const reachable = new Set<string>([current.slug]);
+    const visibleDescendants: typeof descendants = [];
+    for (const entry of [...descendants].sort((a, b) => a.depth - b.depth)) {
+      if (withheldChain.has(entry.slug) || !reachable.has(entry.parentSlug)) continue;
+      reachable.add(entry.slug);
+      visibleDescendants.push(hidden(entry.remixedFromSlug) ? { ...entry, remixedFromSlug: null } : entry);
+    }
+    const children = visibleDescendants.filter((entry) => entry.depth === 1);
 
     return res.json({
       ok: true,
-      current,
-      parent: ancestors[0] ?? null,
+      current: hidden(current.remixedFromSlug) ? { ...current, remixedFromSlug: null } : current,
+      parent: visibleAncestors[0] ?? null,
       children,
-      ancestors,
-      descendants,
+      ancestors: visibleAncestors,
+      descendants: visibleDescendants,
     });
   } catch (error) {
     console.error("Error fetching drink remix chain:", error);
@@ -20397,7 +20688,7 @@ r.get("/remix-chain/:slug", async (req, res) => {
 });
 
 // Fetch a user-submitted drink recipe
-r.get("/user/:slug", async (req, res) => {
+r.get("/user/:slug", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20407,6 +20698,13 @@ r.get("/user/:slug", async (req, res) => {
 
     const recipe = await getUserRecipeBySlug(slug);
     if (!recipe) return res.status(404).json({ ok: false, error: "Recipe not found" });
+
+    // Codex on #1530: gating the lists without gating this route only made the payload one request further
+    // away -- anyone who learned a slug could read the whole recipe here, unauthenticated. Same answer as a
+    // slug that does not exist, so the response does not confirm it is there either.
+    if ((await withheldPremiumSlugsForViewer([slug], (req as any).user?.id ?? null)).has(slug)) {
+      return res.status(404).json({ ok: false, error: "Recipe not found" });
+    }
 
     const creator = recipe.userId
       ? await db.select({ username: users.username }).from(users).where(eq(users.id, recipe.userId)).limit(1)
@@ -22553,10 +22851,27 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
       }
     }
 
+    // Codex on #1530: every section of this feed is built from remixes, and a remix or the drink it came from can
+    // be a paid item. A row whose own drink is withheld is dropped; a withheld SOURCE is dropped too in the
+    // sections where the source IS the item (trending, most-remixed highlight), and in the remix section the
+    // source is only named in passing, so there the item stays and the reference is cleared.
+    const whatsNewWithheld = await withheldPremiumSlugsForViewer(
+      [
+        ...recentRemixRows.flatMap((row) => [row.slug, row.remixedFromSlug]),
+        ...trendingDrinkRows.map((row) => row.remixedFromSlug),
+        ...mostRemixedRows.map((row) => row.remixedFromSlug),
+        ...followedRows.map((row) => row.slug),
+        ...trendingCreators.map((creator) => creator.topDrink?.slug ?? null),
+      ].filter((slug): slug is string => typeof slug === "string" && slug.length > 0),
+      viewerId,
+    );
+    const shown = (slug: string | null | undefined) => !(typeof slug === "string" && whatsNewWithheld.has(slug));
+
     const items: WhatsNewFeedItem[] = [];
 
     for (const row of recentRemixRows) {
-      const sourceSlug = row.remixedFromSlug ?? null;
+      if (!shown(row.slug)) continue;
+      const sourceSlug = row.remixedFromSlug && shown(row.remixedFromSlug) ? row.remixedFromSlug : null;
       const canonicalSource = sourceSlug ? getCanonicalDrinkBySlug(sourceSlug) : null;
       const sourceName = canonicalSource?.name ?? sourceSlug ?? "another drink";
       items.push({
@@ -22570,12 +22885,12 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
         route: `/drinks/recipe/${row.slug}?community=1`,
         relatedUserId: row.userId ?? null,
         relatedUsername: row.username ?? null,
-        relatedDrinkSlug: sourceSlug,
+        relatedDrinkSlug: shown(sourceSlug) ? sourceSlug : null,
       });
     }
 
     for (const row of trendingDrinkRows) {
-      if (!row.remixedFromSlug) continue;
+      if (!row.remixedFromSlug || !shown(row.remixedFromSlug)) continue;
       const canonicalDrink = getCanonicalDrinkBySlug(row.remixedFromSlug);
       const drinkName = canonicalDrink?.name ?? row.remixedFromSlug;
       items.push({
@@ -22601,12 +22916,12 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
         route: creator.publicRoute,
         relatedUserId: creator.userId,
         relatedUsername: creator.username ?? null,
-        relatedDrinkSlug: creator.topDrink?.slug ?? null,
+        relatedDrinkSlug: shown(creator.topDrink?.slug) ? (creator.topDrink?.slug ?? null) : null,
       });
     }
 
     for (const row of followedRows) {
-      if (!row.userId) continue;
+      if (!row.userId || !shown(row.slug)) continue;
       items.push({
         type: "followed_creator_post",
         createdAt: (row.createdAt ? new Date(row.createdAt) : new Date()).toISOString(),
@@ -22623,7 +22938,7 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
     }
 
     for (const row of mostRemixedRows) {
-      if (!row.remixedFromSlug) continue;
+      if (!row.remixedFromSlug || !shown(row.remixedFromSlug)) continue;
       const canonicalDrink = getCanonicalDrinkBySlug(row.remixedFromSlug);
       const name = canonicalDrink?.name ?? row.remixedFromSlug;
       items.push({
@@ -23534,7 +23849,7 @@ function respondToFollowError(res: Response, error: any, message: string, logPre
 }
 
 
-r.get("/creators/:userId", async (req, res) => {
+r.get("/creators/:userId", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -23557,6 +23872,21 @@ r.get("/creators/:userId", async (req, res) => {
 
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
 
+    // A creator storefront listed every recipe the creator owns, including the items a buyer is paying for.
+    // The creator themselves still sees all of their own, because ownership is a grant.
+    //
+    // Greptile P1 on #1530: the first version paged first and filtered after, so a creator whose newest 24
+    // recipes were all premium returned an EMPTY page -- and the storefront only ever asks for the first one,
+    // so their public drinks vanished. The withheld set is therefore decided for the creator's whole
+    // catalogue first and excluded in the query, which makes the page a page of what the viewer may see.
+    const creatorSlugs = (await db
+      .select({ slug: drinkRecipes.slug })
+      .from(drinkRecipes)
+      .where(eq(drinkRecipes.userId, creatorId)))
+      .map((row) => row.slug)
+      .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+    const withheldCreatorSlugs = await withheldPremiumSlugsForViewer(creatorSlugs, (req as any).user?.id ?? null);
+
     const recipes = await db
       .select({
         id: drinkRecipes.id,
@@ -23567,7 +23897,9 @@ r.get("/creators/:userId", async (req, res) => {
         remixedFromSlug: drinkRecipes.remixedFromSlug,
       })
       .from(drinkRecipes)
-      .where(eq(drinkRecipes.userId, creatorId))
+      .where(withheldCreatorSlugs.size === 0
+        ? eq(drinkRecipes.userId, creatorId)
+        : and(eq(drinkRecipes.userId, creatorId), notInArray(drinkRecipes.slug, [...withheldCreatorSlugs])))
       .orderBy(desc(drinkRecipes.createdAt))
       .limit(limit)
       .offset(offset);
@@ -23632,7 +23964,7 @@ r.get("/creators/:userId", async (req, res) => {
         name: recipe.name,
         image: recipe.image ?? null,
         createdAt: recipe.createdAt,
-        remixedFromSlug: recipe.remixedFromSlug ?? null,
+        remixedFromSlug: recipe.remixedFromSlug ?? null, // judged below, once the withheld set for this page is known
         route: toDrinkRoute(recipe.slug),
         views7d: metrics.views7d,
         remixesCount,
@@ -23673,18 +24005,28 @@ r.get("/creators/:userId", async (req, res) => {
       .orderBy(desc(drinkRecipes.createdAt))
       .limit(20);
 
+    // The storefront's own recipes are already filtered, but its remix activity reaches past them: a remix
+    // RECEIVED is somebody else's recipe, and a remix the creator published names the drink it came from -- which
+    // may be a paid item of theirs that this viewer may not see. Both are judged here.
+    const withheldActivity = await withheldPremiumSlugsForViewer(
+      [...remixesReceivedRows.flatMap((row) => [row.slug, row.remixedFromSlug]),
+       ...recipes.map((recipe) => recipe.remixedFromSlug)].filter((slug): slug is string => Boolean(slug)),
+      (req as any).user?.id ?? null,
+    );
+    const activityShown = (slug: string | null | undefined) => !(typeof slug === "string" && withheldActivity.has(slug));
+
     const creatorPublishedRemixes = recipes
       .filter((recipe) => Boolean(recipe.remixedFromSlug))
       .slice(0, 20);
 
     const recentRemixActivity = [
-      ...remixesReceivedRows.map((row) => ({
+      ...remixesReceivedRows.filter((row) => activityShown(row.slug)).map((row) => ({
         type: "received_remix" as const,
         slug: row.slug,
         name: row.name,
         createdAt: row.createdAt,
         route: `/drinks/recipe/${row.slug}`,
-        remixedFromSlug: row.remixedFromSlug ?? null,
+        remixedFromSlug: activityShown(row.remixedFromSlug) ? (row.remixedFromSlug ?? null) : null,
         creatorUsername: row.creatorUsername ?? null,
       })),
       ...creatorPublishedRemixes.map((recipe) => ({
@@ -23693,7 +24035,7 @@ r.get("/creators/:userId", async (req, res) => {
         name: recipe.name,
         createdAt: recipe.createdAt,
         route: `/drinks/recipe/${recipe.slug}`,
-        remixedFromSlug: recipe.remixedFromSlug ?? null,
+        remixedFromSlug: activityShown(recipe.remixedFromSlug) ? (recipe.remixedFromSlug ?? null) : null,
         creatorUsername: profile[0].username ?? null,
       })),
     ]
@@ -23727,7 +24069,12 @@ r.get("/creators/:userId", async (req, res) => {
       recentRemixActivity,
       recentItems: items
         .slice(0, limit)
-        .map(({ groceryAdds7d, score, ...item }) => item),
+        .map(({ groceryAdds7d, score, ...item }) => ({
+          ...item,
+          // Same disclosure as the activity list: a card for a public drink must not name the paid drink it was
+          // remixed from.
+          remixedFromSlug: activityShown(item.remixedFromSlug) ? item.remixedFromSlug : null,
+        })),
       limit,
       offset,
     });
@@ -23883,27 +24230,44 @@ r.post("/creators/:userId/membership/create-checkout", requireAuth, async (req, 
 
 
 // Search drinks across canonical + user submissions
-r.get("/search", async (req, res) => {
+r.get("/search", optionalAuth, async (req, res) => {
   try {
     const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
     if (!q) return res.json({ ok: true, items: [] });
 
     const canonicalMatches = searchDrinks({ q, source: "external", pageSize: 10, offset: 0 });
 
+    // Search reads drink_recipes directly and so never passed through resolveCollectionWithItems. Without the
+    // gate it named the premium payload of a locked collection to anyone who searched for it.
+    //
+    // This query had no ORDER BY, so its truncated top-N was whatever the plan happened to return -- which a
+    // block scan cannot work with, because successive offsets would repeat and skip rows. It is ordered newest
+    // first with the slug as a tiebreaker now, which makes the scan well defined and the route's answer
+    // reproducible; what it returns was previously unspecified rather than deliberately chosen.
     let userMatches: any[] = [];
     if (db) {
-      userMatches = await db
-        .select()
-        .from(drinkRecipes)
-        .where(
-          or(
-            ilike(drinkRecipes.name, `%${q}%`),
-            ilike(drinkRecipes.description, `%${q}%`),
-            ilike(drinkRecipes.category, `%${q}%`),
-            ilike(drinkRecipes.subcategory, `%${q}%`)
-          )
-        )
-        .limit(20);
+      userMatches = (
+        await scanVisibleRecipeRows({
+          readBlock: (blockOffset, blockSize) =>
+            db!
+              .select()
+              .from(drinkRecipes)
+              .where(
+                or(
+                  ilike(drinkRecipes.name, `%${q}%`),
+                  ilike(drinkRecipes.description, `%${q}%`),
+                  ilike(drinkRecipes.category, `%${q}%`),
+                  ilike(drinkRecipes.subcategory, `%${q}%`)
+                )
+              )
+              .orderBy(desc(drinkRecipes.createdAt), asc(drinkRecipes.slug))
+              .limit(blockSize)
+              .offset(blockOffset),
+          pageSize: 20,
+          slugOf: (row) => row.slug,
+          viewerUserId: (req as any).user?.id ?? null,
+        })
+      ).rows;
     }
 
     const external = (await canonicalMatches).results.map((item) => ({
@@ -23914,14 +24278,15 @@ r.get("/search", async (req, res) => {
       source: "external",
     }));
 
-    const userItems = userMatches.map((item) => ({
-      slug: item.slug,
-      name: item.name,
-      image: item.image ?? null,
-      route: `/drinks/recipe/${item.slug}`,
-      source: "chefsire",
-      sourceCategoryRoute: `/drinks/${item.category}${item.subcategory ? `/${item.subcategory}` : ""}`,
-    }));
+    const userItems = userMatches
+      .map((item) => ({
+        slug: item.slug,
+        name: item.name,
+        image: item.image ?? null,
+        route: `/drinks/recipe/${item.slug}`,
+        source: "chefsire",
+        sourceCategoryRoute: `/drinks/${item.category}${item.subcategory ? `/${item.subcategory}` : ""}`,
+      }));
 
     return res.json({ ok: true, items: [...userItems, ...external] });
   } catch (error) {
@@ -23931,7 +24296,7 @@ r.get("/search", async (req, res) => {
 });
 
 // Unified drinks community search (drinks, remixes, creators, challenges)
-r.get("/community-search", async (req, res) => {
+r.get("/community-search", optionalAuth, async (req, res) => {
   try {
     const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
     if (!q) {
@@ -23960,6 +24325,9 @@ r.get("/community-search", async (req, res) => {
       creatorUsername: string | null;
       createdAt: Date;
     }> = [];
+    // Empty rather than every candidate when db is absent: there is nothing to judge, and the route returns no
+    // recipe rows at all in that case.
+    let withheldCommunity: Set<string> = new Set();
 
     let creators: Array<{
       userId: string;
@@ -23978,30 +24346,49 @@ r.get("/community-search", async (req, res) => {
     }> = [];
 
     if (db) {
-      userRecipeMatches = await db
-        .select({
-          slug: drinkRecipes.slug,
-          name: drinkRecipes.name,
-          image: drinkRecipes.image,
-          category: drinkRecipes.category,
-          subcategory: drinkRecipes.subcategory,
-          remixedFromSlug: drinkRecipes.remixedFromSlug,
-          creatorUsername: users.username,
-          createdAt: drinkRecipes.createdAt,
-        })
-        .from(drinkRecipes)
-        .leftJoin(users, eq(users.id, drinkRecipes.userId))
-        .where(
-          or(
-            ilike(drinkRecipes.name, queryLike),
-            ilike(drinkRecipes.description, queryLike),
-            ilike(drinkRecipes.category, queryLike),
-            ilike(drinkRecipes.subcategory, queryLike),
-            ilike(users.username, queryLike),
-          ),
-        )
-        .orderBy(desc(drinkRecipes.createdAt))
-        .limit(24);
+      // Same unfiltered drink_recipes query as /search, so the same hole, and the same fix: scanned and gated
+      // until a full page of visible rows is in hand. Gating here rather than further down also means the view
+      // and remix-count queries below are asked about the rows that will be returned, not about 120 candidates
+      // most of which are discarded.
+      //
+      // Greptile P1: a remix result also carries the slug it was remixed FROM, and only the remix's own slug was
+      // judged. A buyer who publishes their remix of a paid drink outside any locked collection therefore
+      // published the original's slug with it -- and that slug is the whole secret, because it is what the
+      // recipe route takes. Both go through the gate; the reference is cleared below, the row is not dropped.
+      const scannedCommunity = await scanVisibleRecipeRows({
+        readBlock: (blockOffset, blockSize) =>
+          db!
+            .select({
+              slug: drinkRecipes.slug,
+              name: drinkRecipes.name,
+              image: drinkRecipes.image,
+              category: drinkRecipes.category,
+              subcategory: drinkRecipes.subcategory,
+              remixedFromSlug: drinkRecipes.remixedFromSlug,
+              creatorUsername: users.username,
+              createdAt: drinkRecipes.createdAt,
+            })
+            .from(drinkRecipes)
+            .leftJoin(users, eq(users.id, drinkRecipes.userId))
+            .where(
+              or(
+                ilike(drinkRecipes.name, queryLike),
+                ilike(drinkRecipes.description, queryLike),
+                ilike(drinkRecipes.category, queryLike),
+                ilike(drinkRecipes.subcategory, queryLike),
+                ilike(users.username, queryLike),
+              ),
+            )
+            .orderBy(desc(drinkRecipes.createdAt), asc(drinkRecipes.slug))
+            .limit(blockSize)
+            .offset(blockOffset),
+        pageSize: 24,
+        slugOf: (row) => row.slug,
+        alsoGate: (row) => [row.remixedFromSlug],
+        viewerUserId: (req as any).user?.id ?? null,
+      });
+      userRecipeMatches = scannedCommunity.rows;
+      withheldCommunity = scannedCommunity.withheld;
 
       creators = await db
         .select({
@@ -24113,6 +24500,7 @@ r.get("/community-search", async (req, res) => {
     }));
 
     const userDrinkResults = userRecipeMatches
+      .filter((recipe) => !withheldCommunity.has(recipe.slug))
       .filter((recipe) => !recipe.remixedFromSlug)
       .map((recipe) => ({
         slug: recipe.slug,
@@ -24126,13 +24514,16 @@ r.get("/community-search", async (req, res) => {
       }));
 
     const remixResults = userRecipeMatches
+      .filter((recipe) => !withheldCommunity.has(recipe.slug))
       .filter((recipe) => Boolean(recipe.remixedFromSlug))
       .map((recipe) => ({
         slug: recipe.slug,
         name: recipe.name,
         image: recipe.image ?? null,
         route: `/drinks/recipe/${recipe.slug}`,
-        remixedFromSlug: recipe.remixedFromSlug,
+        // The remix itself is public; the drink it was remixed from may not be. Clearing the reference keeps the
+        // remix in the results without naming the withheld original.
+        remixedFromSlug: recipe.remixedFromSlug && withheldCommunity.has(recipe.remixedFromSlug) ? null : recipe.remixedFromSlug,
         creatorUsername: recipe.creatorUsername ?? null,
         views7d: viewsBySlug.get(recipe.slug) ?? 0,
         remixesCount: remixesBySlug.get(recipe.slug) ?? 0,
@@ -28219,6 +28610,16 @@ r.post("/collections/:id/items", optionalAuth, async (req, res) => {
 
     const drink = await resolveDrinkDetailsBySlug(parsed.data.drinkSlug);
     if (!drink) return res.status(404).json({ ok: false, error: "Drink slug not found" });
+
+    // Ownership of the destination collection was the only thing checked here, so a caller could add a drink
+    // they are not allowed to see -- another creator's paid item -- to a collection of their own. Since the
+    // withholding rule now counts only the creator's own collections, that no longer discloses anything, but it
+    // should not be possible at all: it files someone else's paid work under your name, and it is one rule
+    // change away from being a disclosure again. The same gate the read paths use decides it, so a drink you
+    // may legitimately see -- canonical, your own, public, or one you bought -- can still be added.
+    if ((await withheldPremiumSlugsForViewer([parsed.data.drinkSlug], req.user.id)).has(parsed.data.drinkSlug)) {
+      return res.status(403).json({ ok: false, error: "Not authorized", code: "DRINK_NOT_AVAILABLE_TO_VIEWER" });
+    }
 
     await db
       .insert(drinkCollectionItems)
