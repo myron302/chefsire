@@ -54,7 +54,7 @@
  * In CI it runs with --ci and FAILS on any block that is not on the allowlist below. The repository has none
  * today, so the gate starts clean: the floor is held from here rather than audited once and forgotten.
  *
- * Codex reviewed this four times and found ten holes, every one of them real. They are recorded at
+ * Codex reviewed this five times and found twelve holes, every one of them real. They are recorded at
  * the code that fixes them rather than summarised here, and each is a fixture in
  * audit-assert-coverage.test.ts. The pattern across all five is worth naming: each was a place where the
  * script treated something it could not see as something it had checked.
@@ -78,7 +78,7 @@ const roots = args.filter((a) => !a.startsWith("--"));
  * tool does not follow. "It is fine, trust me" is not a reason: a block that genuinely cannot fail belongs
  * fixed, not listed. Key is `<repo-relative file>::<test title>`.
  *
- * Empty, deliberately. 519 files, 6,395 blocks, 6,298 checked, zero that reach no assertion, as of
+ * Empty, deliberately. 519 files, 6,398 blocks, 6,301 checked, zero that reach no assertion, as of
  * 2026-11-28 -- and that count now survives a much stricter definition of "reaches an assertion" than the
  * first version used: the receiver has to be an assertion API, and a helper has to actually be called.
  */
@@ -150,9 +150,24 @@ function rootIdentifier(expr) {
   }
 }
 
+/**
+ * Function properties that hand back or describe a function instead of running it.
+ *
+ * Codex's eleventh finding: `assert.equal.bind(null, 1, 2)` is rooted at `assert`, so reducing the chain to
+ * its root counted it as an assertion. Node runs that block and asserts nothing. `call` and `apply` are
+ * deliberately NOT here -- `assert.equal.call(null, 1, 1)` does execute the assertion.
+ */
+const DOES_NOT_INVOKE = new Set([
+  "bind", "toString", "valueOf", "name", "length", "prototype", "constructor", "caller", "arguments",
+]);
+
 function isAssertionCall(node) {
   const root = rootIdentifier(node.expression);
-  return root !== "" && ASSERTION.test(root);
+  if (root === "" || !ASSERTION.test(root)) return false;
+  // The thing being CALLED has to be the assertion operation, not a property of it.
+  const callee = node.expression;
+  if (ts.isPropertyAccessExpression(callee) && DOES_NOT_INVOKE.has(callee.name.text)) return false;
+  return true;
 }
 
 /**
@@ -536,10 +551,22 @@ function auditFile(file) {
         (n.arguments ?? []).forEach((arg, i) => {
           if (found) return;
           const isFn = ts.isArrowFunction(arg) || ts.isFunctionExpression(arg);
-          // A function handed to something that does not call it is not reachable.
+          const positionRuns = invokes || Boolean(calledParams && calledParams.has(i));
+          // A callback passed BY NAME at a position that runs. Codex's twelfth finding, and the only one of
+          // the twelve that was a false POSITIVE: `function run(cb) { cb(); }` with `run(verify)` executes
+          // `verify`, but walking the identifier `verify` never reached its body, so a legitimate test became
+          // a hard hit and failed CI. Extracting an inline callback into a same-file helper must not break
+          // the build.
+          if (positionRuns && ts.isIdentifier(arg)) {
+            const named = resolveHelper(arg.text, n);
+            if (named && !seen.has(named.body)) {
+              seen.add(named.body);
+              if (asserts(named.body, seen, strict)) { found = true; return; }
+            }
+          }
           // In STRICT mode a function handed to something that is not known to call it is unreachable. In
           // permissive mode it is followed, which is what the gate did before and what most suites rely on.
-          if (strict && isFn && !invokes && !(calledParams && calledParams.has(i))) return;
+          if (strict && isFn && !positionRuns) return;
           walk(arg);
         });
         return;

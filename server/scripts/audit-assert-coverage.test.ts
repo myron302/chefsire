@@ -448,6 +448,56 @@ test("a block that reaches no assertion by any route still fails the gate", () =
   assert.equal(r.status, 1);
 });
 
+/* ---- Codex's fifth round: binding an assertion, and a callback passed by name ---- */
+
+test("binding an assertion is not making one, but .call still is", () => {
+  // `assert.equal.bind(null, 1, 2)` is rooted at `assert`, so reducing the chain to its root counted it.
+  // Node runs the block and asserts nothing. `call` and `apply` DO execute, so they must still count --
+  // which is the half that stops this becoming "reject anything with a dot in it".
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    test("only binds an assertion", () => { assert.equal.bind(null, 1, 2); });
+    test("only stringifies an assertion", () => { assert.equal.toString(); });
+    test("calls one through .call", () => { assert.equal.call(null, 1, 1); });
+    test("calls one through .apply", () => { assert.equal.apply(null, [1, 1]); });
+  `);
+  assert.deepEqual(titles(r), ["only binds an assertion", "only stringifies an assertion"]);
+});
+
+test("an asserting callback passed BY NAME at a position that runs is not a hit", () => {
+  // The only one of the twelve findings that was a false POSITIVE, and so the only one that would have
+  // broken someone's build: extracting an inline callback into a same-file helper made a passing test fail
+  // the gate. The positional analysis knew argument zero runs; walking the identifier never reached its body.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function run(cb: () => void) { cb(); }
+    const verify = () => { assert.ok(true); };
+    function silent() { /* nothing */ }
+    test("valid: an asserting named callback at an invoked position", () => run(verify));
+    test("empty: a named callback that asserts nothing", () => run(silent));
+  `, { ci: true });
+  assert.deepEqual(titles(r), ["empty: a named callback that asserts nothing"]);
+  assert.equal(r.status, 1, "the empty one is still a hit");
+});
+
+test("a named asserting callback at a position the helper never calls does not count", () => {
+  // The position has to matter here too, not just for inline arrows. Without this the resolver would clear a
+  // block because SOME argument happens to name an asserting function, whether or not the helper calls it --
+  // which is the round-three mistake (an assertion in a helper nothing calls) wearing an identifier.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function ignoresIt(before: () => void, fn: () => void) { fn(); }
+    const asserter = () => { assert.ok(true); };
+    test("the asserting callback goes to the argument never called", () => {
+      ignoresIt(asserter, () => {});
+    });
+  `);
+  assert.deepEqual(titles(r), ["the asserting callback goes to the argument never called"]);
+});
+
 /* ---- The gate itself ---- */
 
 test("--ci exits non-zero on a hit and zero without one", () => {
