@@ -81,7 +81,7 @@ a red one.
 
 ## State
 
-Updated 2026-11-28 12:40 UTC by Claude (session `…01M8KhTB`). Condition 4 came OFF the met list this run; read
+Updated 2026-11-28 18:35 UTC by Claude (session `…01M8KhTB`). Condition 4 came OFF the met list this run; read
 that section before trusting any **MET** here.
 
 ### Status to GPT, 2026-11-28 12:40 UTC (session `…01M8KhTB`)
@@ -180,23 +180,53 @@ anonymous caller**. **PR #1546** gates both with the same `withheldPremiumSlugsF
 drops a withheld submission rather than blanking it (the slug is itself the secret -- Greptile's P1 on #1530),
 and proves all four protections by mutation. Condition 4 holds again when it lands, and not before.
 
-**Audited in the same pass and found sound, so nobody re-walks them:** `POST /bundles/:id/items` (the
-collection must be yours and premium-purchase), `POST /collections/:id/reviews` (requires current ownership),
-`POST /collections/:id/wishlist` (public-or-owner, and is *for* collections you do not own by design),
-`POST /collections/:id/apply-promo` (public-or-owner, pricing only). `POST /challenges` writes an ungated
-`originalDrinkSlug` but only `getCanonicalDrinkBySlug` ever reads it, so a premium slug there hydrates to null
--- ungated and not a disclosure. `POST /submit` writes an ungated `remixedFromSlug`, which the remix-chain
-route already cuts per viewer.
+**Audited in the same pass and found sound:** `POST /bundles/:id/items` (the collection must be yours and
+premium-purchase), `POST /collections/:id/reviews` (requires current ownership), `POST /collections/:id/wishlist`
+(public-or-owner, and is *for* collections you do not own by design), `POST /collections/:id/apply-promo`
+(public-or-owner, pricing only). Those four still stand.
 
-The three tables that store a caller-supplied drink slug are `drink_collection_items` (#1530),
-`drink_challenge_submissions` (#1546) and `drink_recipes.remixed_from_slug` / `challenge_slug` (above). That
-set came from the **schema columns**, not from grepping routes, so a slug stored inside a `jsonb` payload would
-not have appeared in it. Codex has been asked whether there is one.
+#### And two things this file said were sound were not, both disproved within hours
 
-**`POST /challenges` has no authorization of any kind** and is left alone deliberately: any authenticated
-member can create a site-wide challenge (`insertDrinkChallengeSchema.parse(req.body)` straight into an insert).
-The table has no owner column so it is not mass assignment, and #1546's gate covers the exploit path it opened,
-but somebody should decide whether creating global content is meant to be open.
+The first version of this section also said: *`POST /challenges` writes an ungated `originalDrinkSlug` but only
+`getCanonicalDrinkBySlug` ever reads it, so a premium slug there hydrates to null -- ungated and not a
+disclosure*, and *`POST /submit` writes an ungated `remixedFromSlug`, which the remix-chain route already cuts
+per viewer*. **Codex disproved both on #1547, the PR that wrote them down**, and a third of the same kind turned
+up next to them:
+
+| what was claimed sound | why it was not |
+| --- | --- |
+| `POST /challenges` / `originalDrinkSlug` | `GET /challenges` selects that column explicitly and `GET /challenges/:slug` returns `...challenge`. Returning `canonicalDrink: null` does not unsay the slug sitting beside it |
+| `POST /submit` / `remixedFromSlug` | `GET /user/:slug` gates the slug that was ASKED for and then spreads `...recipe`, parent included. The remix-chain route does cut the lineage; that is a different route |
+| not claimed, found by asking | `resolveCollectionWithItems` -- the single boundary EVERY collection route goes through -- serialized each item's remix parent twice. A preview item is public on purpose; its parent is a different drink and may be paid. The widest of the three |
+
+**PR #1548** fixes all three the same way: the reference is cleared and the carrier kept, six mutations.
+
+**The method error is the part to keep, because one wrong question produced five disclosures across two PRs.**
+Both claims above were reasoned from what a route *computes*. A disclosure is about what a route *serializes*.
+The question that would have caught every instance is **"which slugs appear in this response, and was each one
+judged?"** -- and nobody has a mechanical way to ask it yet. Codex has been asked for one on #1548; until there
+is one, this class will keep being found by hand, one route at a time.
+
+**The rule underneath it, from Greptile's P1 on #1530, is now stated once here rather than re-learned:
+a reference slug is a slug.** The slug is what the recipe route takes, so it is the secret. Every slug in a
+response needs the viewer applied, not only the one the route is named for.
+
+**Tables that store a caller-supplied drink slug -- FOUR, not three**, and the fourth was Codex's P1 on #1546:
+`drink_collection_items` (#1530), `drink_challenge_submissions` (#1546), `drink_recipes.remixed_from_slug` /
+`challenge_slug`, and **`drink_events.slug`** -- which `POST /events` wrote after checking only that the recipe
+existed, and which `/trending`, `/trending/by-category` and `/recommended` all group by with no restriction.
+That set came from the **schema columns**, which is also how the fourth was missed: `drink_events.slug` *is*
+such a column, and the real method was "columns I recognized". A slug inside a `jsonb` payload would not have
+appeared either. Enumerating the READERS -- every call site of `resolveDrinkDetailsBySlug` and
+`resolveDrinkDetailsMapBySlugs` -- turned out to be the better list, and it is what found the `/recommended`
+instance that Codex had not named.
+
+**`POST /challenges` has no authorization of any kind** and is still left alone: any authenticated member can
+create a site-wide challenge (`insertDrinkChallengeSchema.parse(req.body)` straight into an insert). The table
+has no owner column so it is not mass assignment, and #1546 and #1548 between them gate every reader of the
+field it let a member write -- but it is now the second time that route's openness has produced a disclosure,
+and somebody should decide whether creating global content is meant to be open. **That is a product decision,
+not a bug fix, which is why no run has made it.**
 
 ### What #1530 did establish
 
@@ -322,7 +352,7 @@ is the other half of not colliding.
 | 1 | Every suite in CI, or listed with a reason | **NOT met.** Names match, but 607 named tests never run: a missing `TEST_DATABASE_URL` makes them skip and node exits 0. #1541 fixes it and adds a checker. See below |
 | 2 | No suite passes while asserting nothing, and none fails at random | **Not met, and it is the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
 | 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
-| 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **NOT met.** It was recorded as met by #1530, which was right about the nine read routes it covered. A **tenth** read route had never been counted: `GET /challenges/:slug/submissions` had no auth middleware at all and hydrated any submitted drink for any caller, and `POST /challenges/:slug/join` wrote a caller-supplied slug with no entitlement check. **#1546** closes both. See below |
+| 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **NOT met, and the count kept rising all day.** #1530 was right about the nine read routes it covered. Then: a tenth (`GET /challenges/:slug/submissions`, no auth middleware at all) plus an ungated write (`POST /challenges/:slug/join`) → **#1546**; then `drink_events` and the three leaderboards reading it, Codex's P1 → also #1546; then four readers serving an ungated *reference* slug, two of them disproving claims this file had just made → **#1548**. **Eight routes in one day.** It holds when both land, and the lesson is in the section below, not in the count |
 | 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
 | 6 | Closure and retention implemented to the matrix his accountant signs off | **Blocked on Myron's accountant.** Two migrations written and unapplied |
 
@@ -331,9 +361,11 @@ work already done, one unchanged. Condition 4 came OFF the met list this run, wh
 days a confident **MET** in this file did not survive somebody checking it. Both times the check was cheap and
 nobody had run it.
 
-**A run starting cold should:** take #1546 first — it is the only open security item and it unmets a condition
-— then #1545, then look at #1541 and #1540 only after reading the Owner column *and* re-fetching their
-branches, because both have had a live session on them within the hour.
+**A run starting cold should:** take **#1546 and #1548** first — they are the open security items and together
+they are what unmets condition 4 — then #1545 and #1547. Look at #1541 and #1540 only after reading the Owner
+column *and* re-fetching their branches. **By 18:30 UTC on 2026-11-28 four Claude sessions had been live on
+this repository in one day** (`…T9vcsr8u`, `…01M8KhTD`, `…01M8KhTB`, `…01M8KhTC`), and #1546 changed hands once.
+Re-fetch before you assume anything about who holds what.
 
 ### In flight
 
@@ -341,7 +373,8 @@ branches, because both have had a live session on them within the hour.
 | --- | --- | --- | --- |
 | ~~Custom drink save prefix~~ | ~~PR #1514~~ | **Merged**, green on all six jobs. GPT's fix, plus the four payloads extracted so the pages and the test share one definition — Codex's P2 answered by code and six mutations | — |
 | ~~Recipe create persistence~~ | ~~PR #1538~~ | **Merged**, green. Closed done-condition 1 and added the `run-ci-batch.mjs` failure summary. Note for every future run: `rerun_failed_jobs` returns **403** for this integration, so CI can only be re-triggered by a real commit, never an empty one | — |
-| Paid drinks via a challenge submission | **PR #1546** | **Condition 4's tenth read route.** `GET /challenges/:slug/submissions` had no auth middleware and hydrated every submitted drink for every caller; `POST /challenges/:slug/join` wrote a caller-supplied slug ungated. Both gated with the existing `withheldPremiumSlugsForViewer`, four mutations, 45 pass / 0 fail, `tsc` signatures unchanged. Awaiting CI and Codex | Claude `…01M8KhTB` |
+| Reference-slug disclosures | **PR #1548** | **Four more readers served an ungated reference to a withheld premium drink** — `resolveCollectionWithItems` (the boundary every collection route goes through, so the widest), `GET /user/:slug`, `GET /challenges`, `GET /challenges/:slug`. Two of them disprove claims this very file made; the rule, stated once: **a reference slug is a slug.** Six mutations, 43 pass / 0 fail, `tsc` signatures unchanged. Overlaps #1546 on one harness DDL block — whichever lands second conflicts there, trivially | Claude `…01M8KhTB` |
+| Challenge-submission paid-content leak | **PR #1546** | **Changed hands.** `…01M8KhTB` opened it and answered Codex's P1 (`drink_events` + three leaderboards) and P2 (hydrated remix parent); `…01M8KhTC` took it at 18:22 UTC after six hours' silence and pushed `8380d2f0`, answering the `/trending` refill finding — filtering after `LIMIT 10` could return a BLANK leaderboard rather than a short one. **It is `…01M8KhTC`'s row**; the handover and one relayed finding are on the PR | Claude `…01M8KhTC` |
 | The batch-7 timing hypothesis | **PR #1545** | The one thing #1543 left open with *do not cross this off*. `api-init-isolation.test.ts` spun **500ms** for the first of forty requests to reach the init guard then hard-asserted `inFlightDdl === 1`, so a slow start reported "0 !== 1" — the guard looking broken because the harness ran out of patience. 15s now, with a message saying which it is. **No assertion weakened, and the first version of the change DID weaken one** — see the PR: a post-release assertion had been catching a mutation only because it ran before the DDL finished. Awaiting CI and Codex | Claude `…01M8KhTB` |
 | Silent-skip fix and checker | **PR #1541** | **Live again — hands off.** `…T9vcsr8u` resumed at 11:57 UTC after four hours quiet and is on its fifth and sixth rounds of Codex findings. `…01M8KhTB` claimed it at 11:53 reading the silence as "finished", pushed `d6cae344` (the empty-env-value false clean, four mutations), and handed it straight back when the owner reappeared — the owner had built on that commit rather than around it, so nothing collided. Four Codex findings open, and they look like **one** bug: every path where the tool cannot resolve something returns an empty set with `opaque: false`, which the caller reads as *safe* rather than *undeterminable*. The number that decides whether to fix it as one rule or four resolvers is how many of the 514 named suites would become undeterminable hits, and that is one run of the script away | Claude `…T9vcsr8u` |
 | Assert-coverage audit | **PR #1540** | **Live — hands off.** `…01M8KhTD` (the session the earlier entry called `…TD6mAsTkV`) is on round five: **twelve** Codex findings, pushed `f6b1cd02` at 11:58 UTC. Four are open at head, all of the same family — proving an assertion is *reachable* needs interprocedural analysis, so a probe will always exist. Whoever next picks it up should decide **in writing** what the tool claims before answering a thirteenth: for this tool a missed vacuous test is cheap and a false hit breaks CI on a valid test, which is the **opposite** of `audit-ci-skips.mjs`, where a false clean is the expensive one. Those two gates should not be tuned in the same direction | Claude `…01M8KhTD` |
