@@ -27,7 +27,12 @@ import { tmpdir } from "node:os";
 
 const SCRIPT = join(process.cwd(), "server/scripts/audit-assert-coverage.mjs");
 
-type Run = { hits: { file: string; title: string }[]; unrecognised: string[]; status: number };
+type Run = {
+  hits: { file: string; title: string }[];
+  viaCallback: { file: string; title: string }[];
+  unrecognised: string[];
+  status: number;
+};
 
 /** Run the auditor over one fixture source and return what it decided. */
 function audit(source: string, { ci = false, ext = "ts" }: { ci?: boolean; ext?: string } = {}): Run {
@@ -45,8 +50,12 @@ function audit(source: string, { ci = false, ext = "ts" }: { ci?: boolean; ext?:
       status = e.status ?? -1;
       stdout = e.stdout ?? "";
     }
-    const parsed = JSON.parse(stdout) as { hits: { file: string; title: string }[]; unrecognised: string[] };
-    return { hits: parsed.hits, unrecognised: parsed.unrecognised, status };
+    const parsed = JSON.parse(stdout) as {
+      hits: { file: string; title: string }[];
+      viaCallback: { file: string; title: string }[];
+      unrecognised: string[];
+    };
+    return { hits: parsed.hits, viaCallback: parsed.viaCallback ?? [], unrecognised: parsed.unrecognised, status };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -357,6 +366,86 @@ test("a callback handed straight to a call is still followed", () => {
     });
   `);
   assert.deepEqual(titles(r), [], "every one of these runs its callback");
+});
+
+/* ---- Codex's fourth round: calling a property of a helper, and registering a callback ---- */
+
+test("calling a property of a helper is not calling the helper", () => {
+  // `verify.bind(null)` and `verify.toString()` run no assertion. Splitting the callee at the first dot
+  // treated both as invocations, so replacing a real call with either silently bypassed the gate.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function verify() { assert.fail("not invoked"); }
+    test("only binds the helper", () => { verify.bind(null); });
+    test("only stringifies the helper", () => { verify.toString(); });
+    test("actually calls it", () => { verify(); });
+  `);
+  assert.deepEqual(titles(r), ["only binds the helper", "only stringifies the helper"]);
+});
+
+test("a callback a same-file helper calls by position is followed", () => {
+  // The commonest shape here: a helper that sets up, calls what it was given, and tears down. This is a
+  // resolved invocation, so it must NOT be reported -- and the parameter position matters, which the second
+  // block checks: `ignoresIt` never calls `before`, so an assertion only there is not reached.
+  //
+  // My first version of this test expected the second block to be a HARD hit, and it is soft. That is the
+  // design and not a defect, but the design is weaker here than it could be: an assertion is reachable by
+  // SOME route, so the two-pass split files it as soft -- even though in this case the tool positively knows
+  // the parameter is never called, which is stronger evidence than "an API I cannot resolve". Distinguishing
+  // those would mean tracking WHY the strict pass failed. Recorded rather than hidden, because a reader
+  // comparing this test against the header will otherwise think one of them is wrong.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function withKeys(key: string, unused: undefined, fn: () => void) { fn(); }
+    function ignoresIt(before: () => void, fn: () => void) { fn(); }
+    test("asserts inside a helper-invoked callback", () => {
+      withKeys("k", undefined, () => { assert.ok(true); });
+    });
+    test("asserts only in the argument the helper never calls", () => {
+      ignoresIt(() => { assert.fail("never called"); }, () => {});
+    });
+  `);
+  assert.deepEqual(titles(r), [], "the helper-invoked callback is followed, so neither is a hard hit");
+  assert.deepEqual(
+    r.viaCallback.map((h) => h.title),
+    ["asserts only in the argument the helper never calls"],
+    "the argument the helper never calls is reported in the soft category",
+  );
+});
+
+test("a callback merely registered is reported apart, and does not fail the gate", () => {
+  // Codex is right that registering is not calling, and the strict rule that closes it reports 276 blocks on
+  // this repository -- most of them legitimate, because the callback goes through a value no parser can
+  // follow. A 276-hit gate gets skimmed, and then its real hits get skimmed too. So this is reported in its
+  // own category and --ci stays clean. The header explains the trade in full.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    import { EventEmitter } from "node:events";
+    test("the listener is never called", () => {
+      const emitter = new EventEmitter();
+      emitter.on("never-emitted", () => { assert.fail("not invoked"); });
+    });
+  `, { ci: true });
+  assert.deepEqual(titles(r), [], "not a hit: an assertion is reachable by some route");
+  assert.deepEqual(
+    r.viaCallback.map((h) => h.title),
+    ["the listener is never called"],
+    "but it is reported as reachable only through a callback this tool cannot resolve",
+  );
+  assert.equal(r.status, 0, "the soft category must not fail the build");
+});
+
+test("a block that reaches no assertion by any route still fails the gate", () => {
+  const r = audit(`
+    import test from "node:test";
+    test("empty", () => {});
+  `, { ci: true });
+  assert.deepEqual(titles(r), ["empty"]);
+  assert.deepEqual(r.viaCallback, []);
+  assert.equal(r.status, 1);
 });
 
 /* ---- The gate itself ---- */

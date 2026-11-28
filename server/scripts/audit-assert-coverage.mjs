@@ -23,10 +23,38 @@
  *
  * So treat a hit as a question, not a verdict. The point is to make the list short enough to read.
  *
+ * THE CALLBACK QUESTION, and why this reports two numbers instead of failing on one.
+ *
+ * Codex's tenth finding: handing a function to a call does not mean the function runs.
+ *
+ *     const emitter = new EventEmitter();
+ *     emitter.on("never-emitted", () => { assert.fail("not invoked"); });
+ *
+ * Node passes that block, nothing emits, and the assertion never executes -- so deleting the emission from a
+ * test whose only assertion is in its listener left the gate green. Real, and worth closing.
+ *
+ * The obvious close is to follow a callback only into APIs known to invoke it. That was implemented and
+ * MEASURED, and it reported 800 blocks. Following callbacks into same-file helpers that call their own
+ * parameter -- `withKeys(key, undefined, () => { ... })`, resolved by position, which is a resolved
+ * invocation rather than a guess -- brought it to 276. The remainder are not fixable by reading syntax: in
+ * `square-config-error-disconnect.postgres.test.ts` the callback goes to `during`, a function pulled out of an
+ * array by a `for` loop, and no amount of parsing says whether it is called.
+ *
+ * 276 hits in a gate is the failure this script's own history is a record of: a tool whose output is mostly
+ * noise gets skimmed, and then the two real hits in it are skimmed too. So the two questions are kept apart:
+ *
+ *   - reaches NO assertion by any route        -> a hit. Fails --ci. 0 of these today.
+ *   - reaches one ONLY through a callback this
+ *     tool cannot resolve                     -> reported, does not fail. 276 today.
+ *
+ * The second number is an honest statement of the gate's reach, not a to-do list. It can only shrink by the
+ * suites changing shape or by a type-aware rewrite that resolves what a value actually is -- and the right
+ * place to argue for that is the PR, not a silent 276-line failure in CI.
+ *
  * In CI it runs with --ci and FAILS on any block that is not on the allowlist below. The repository has none
  * today, so the gate starts clean: the floor is held from here rather than audited once and forgotten.
  *
- * Codex reviewed this three times and found eight holes, every one of them real. They are recorded at
+ * Codex reviewed this four times and found ten holes, every one of them real. They are recorded at
  * the code that fixes them rather than summarised here, and each is a fixture in
  * audit-assert-coverage.test.ts. The pattern across all five is worth naming: each was a place where the
  * script treated something it could not see as something it had checked.
@@ -50,7 +78,7 @@ const roots = args.filter((a) => !a.startsWith("--"));
  * tool does not follow. "It is fine, trust me" is not a reason: a block that genuinely cannot fail belongs
  * fixed, not listed. Key is `<repo-relative file>::<test title>`.
  *
- * Empty, deliberately. 519 files, 6,391 blocks, 6,294 checked, zero that reach no assertion, as of
+ * Empty, deliberately. 519 files, 6,395 blocks, 6,298 checked, zero that reach no assertion, as of
  * 2026-11-28 -- and that count now survives a much stricter definition of "reaches an assertion" than the
  * first version used: the receiver has to be an assertion API, and a helper has to actually be called.
  */
@@ -321,8 +349,8 @@ function auditFile(file) {
    * whose initializer is not a literal function, a catch variable, and an import -- an imported helper is the
    * one documented allowlist case, and it is reached by this path.
    */
-  const FOUND = (body) => ({ body });
-  const SHADOWED = { body: null };
+  const FOUND = (body, fn) => ({ body, fn });
+  const SHADOWED = { body: null, fn: null };
 
   function declaredIn(scope, name) {
     // Parameters belong to the function-like node, whose body block is a child, so the inner block is
@@ -338,7 +366,7 @@ function auditFile(file) {
     if (!stmts) return undefined;
     for (const st of stmts) {
       if (ts.isFunctionDeclaration(st) && st.name && st.name.text === name) {
-        return st.body ? FOUND(st.body) : SHADOWED;
+        return st.body ? FOUND(st.body, st) : SHADOWED;
       }
       if (ts.isVariableStatement(st)) {
         for (const d of st.declarationList.declarations) {
@@ -346,7 +374,7 @@ function auditFile(file) {
           const callable = d.initializer &&
             (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer));
           // A binding of this name that is not a literal function shadows whatever is outside it.
-          return callable ? FOUND(d.initializer.body) : SHADOWED;
+          return callable ? FOUND(d.initializer.body, d.initializer) : SHADOWED;
         }
       }
       if (ts.isImportDeclaration(st)) {
@@ -368,9 +396,44 @@ function auditFile(file) {
   function resolveHelper(name, fromNode) {
     for (let cur = fromNode; cur; cur = cur.parent) {
       const answer = declaredIn(cur, name);
-      if (answer) return answer.body ?? undefined;
+      if (answer) return answer.body ? { body: answer.body, fn: answer.fn } : undefined;
     }
     return undefined;
+  }
+
+  /**
+   * Which of a helper's parameters does its own body CALL?
+   *
+   * This is how a callback becomes reachable without a list of blessed API names. `withKeys(key, undefined,
+   * () => { ...assertions... })` is the commonest shape in this repository -- a same-file helper that sets
+   * something up, calls the function it was given, and tears down -- and it is a resolved invocation, not a
+   * guess. Codex's `emitter.on("never-emitted", cb)` is not: `on` is a property of an object this tool knows
+   * nothing about, there is no body to read, and the callback stays unreachable.
+   *
+   * Matched by position, so only the argument that is actually called is followed.
+   */
+  function invokedParameters(fn) {
+    const indexes = new Set();
+    if (!fn || !fn.parameters || !fn.body) return indexes;
+    const names = new Map();
+    fn.parameters.forEach((param, i) => {
+      if (ts.isIdentifier(param.name)) names.set(param.name.text, i);
+    });
+    if (names.size === 0) return indexes;
+    const walk = (n) => {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && names.has(n.expression.text)) {
+        indexes.add(names.get(n.expression.text));
+      }
+      // `fn.call(...)`, `fn.apply(...)`, `await fn()` all reach the body too.
+      if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) &&
+          ts.isIdentifier(n.expression.expression) && names.has(n.expression.expression.text) &&
+          ["call", "apply", "bind"].includes(n.expression.name.text) && n.expression.name.text !== "bind") {
+        indexes.add(names.get(n.expression.expression.text));
+      }
+      ts.forEachChild(n, walk);
+    };
+    walk(fn.body);
+    return indexes;
   }
 
   /**
@@ -400,21 +463,85 @@ function auditFile(file) {
     return false;
   }
 
-  function asserts(node, seen) {
+  /**
+   * Calls that are known to RUN a function handed to them, so a callback's body is reachable through them.
+   *
+   * Codex's probe for why this cannot be "any call with a function argument":
+   *
+   *     const emitter = new EventEmitter();
+   *     emitter.on("never-emitted", () => { assert.fail("not invoked"); });
+   *
+   * Node runs the block, nothing emits, and the assertion never executes -- so deleting the emission from a
+   * test whose only assertion lives in its listener left the gate green. Registering a callback is not
+   * calling it. The difference is not visible in the syntax, so this is a list of APIs that do invoke, and
+   * anything not on it makes the block read as empty.
+   *
+   * That is the conservative direction on purpose: the cost is a hit on a block that does assert through
+   * some invoking API not listed here, and a hit is a question in a report that someone reads. The cost the
+   * other way is a block that cannot fail, reading as coverage forever.
+   */
+  const INVOKES_ITS_CALLBACK = new Set([
+    // array and iterable traversal
+    "forEach", "map", "filter", "some", "every", "find", "findIndex", "findLast", "findLastIndex",
+    "flatMap", "reduce", "reduceRight", "sort", "from",
+    // assertion APIs that call the function they are given
+    "rejects", "throws", "doesNotThrow", "doesNotReject",
+    // promise and scheduling shapes that run the body
+    "then", "catch", "finally", "all", "allSettled", "race", "any",
+  ]);
+
+  /** `new Promise(fn)` and `new Map([...])`-style constructors that run what they are given. */
+  function constructorInvokes(n) {
+    if (!ts.isNewExpression(n)) return false;
+    return ts.isIdentifier(n.expression) && n.expression.text === "Promise";
+  }
+
+  function callInvokesItsCallback(n) {
+    if (constructorInvokes(n)) return true;
+    if (!ts.isCallExpression(n)) return false;
+    const e = n.expression;
+    // An immediately-invoked function expression runs by definition.
+    if (ts.isParenthesizedExpression(e) || ts.isArrowFunction(e) || ts.isFunctionExpression(e)) return true;
+    const name = calleeName(n);
+    if (name === "") return true; // cannot read the callee: assume it runs rather than hide an assertion
+    const tail = name.split(".").pop() ?? "";
+    if (INVOKES_ITS_CALLBACK.has(tail)) return true;
+    // A same-file helper called with a callback: the helper's own body decides, and it is followed below.
+    return false;
+  }
+
+  function asserts(node, seen, strict) {
     let found = false;
     const walk = (n) => {
       if (found) return;
-      if (ts.isCallExpression(n)) {
-        if (isAssertionCall(n)) { found = true; return; }
-        const name = calleeName(n).split(".")[0];
-        const helper = name ? resolveHelper(name, n) : undefined;
-        if (helper && !seen.has(helper)) {
-          seen.add(helper);
-          if (asserts(helper, seen)) { found = true; return; }
+      if (ts.isCallExpression(n) || ts.isNewExpression(n)) {
+        if (ts.isCallExpression(n) && isAssertionCall(n)) { found = true; return; }
+        // Only a BARE identifier callee invokes a same-file helper. `verify.bind(null)` and
+        // `verify.toString()` call a property OF the function and never run its body -- splitting the callee
+        // at the first dot treated those as invocations, which Codex reproduced both ways.
+        let calledParams = null;
+        if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
+          const helper = resolveHelper(n.expression.text, n);
+          if (helper) {
+            calledParams = invokedParameters(helper.fn);
+            if (!seen.has(helper.body)) {
+              seen.add(helper.body);
+              if (asserts(helper.body, seen, strict)) { found = true; return; }
+            }
+          }
         }
-        // Still look at the arguments: a callback passed here does run.
-        for (const arg of n.arguments) walk(arg);
-        walk(n.expression);
+        // The receiver still runs: `f().g()` executes `f()`.
+        if (n.expression) walk(n.expression);
+        const invokes = callInvokesItsCallback(n);
+        (n.arguments ?? []).forEach((arg, i) => {
+          if (found) return;
+          const isFn = ts.isArrowFunction(arg) || ts.isFunctionExpression(arg);
+          // A function handed to something that does not call it is not reachable.
+          // In STRICT mode a function handed to something that is not known to call it is unreachable. In
+          // permissive mode it is followed, which is what the gate did before and what most suites rely on.
+          if (strict && isFn && !invokes && !(calledParams && calledParams.has(i))) return;
+          walk(arg);
+        });
         return;
       }
       if (n !== node && onlyRunsWhenCalled(n)) return;
@@ -425,20 +552,27 @@ function auditFile(file) {
   }
 
   const empty = [];
+  const viaCallback = [];
   let recognised = 0;
   let skipped = 0;
   const visit = (node) => {
     const t = testCall(node, aliases);
     if (t) recognised += 1;
     if (t && t.skipped) skipped += 1;
-    if (t && !t.skipped && !asserts(t.body, new Set())) {
-      const { line } = sf.getLineAndCharacterOfPosition(t.node.getStart(sf));
-      empty.push({ file: relative(ROOT, file), line: line + 1, title: t.title });
+    if (t && !t.skipped) {
+      // Two questions, because the answers mean different things. STRICT: is an assertion reachable without
+      // assuming that a function handed to an unknown API gets called? PERMISSIVE: is one reachable at all?
+      const strictly = asserts(t.body, new Set(), true);
+      if (!strictly) {
+        const { line } = sf.getLineAndCharacterOfPosition(t.node.getStart(sf));
+        const where = { file: relative(ROOT, file), line: line + 1, title: t.title };
+        if (asserts(t.body, new Set(), false)) viaCallback.push(where); else empty.push(where);
+      }
     }
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  return { empty, recognised, skipped };
+  return { empty, viaCallback, recognised, skipped };
 }
 
 // From the repository root, not a hand-written list of directories: `operator/` held a suite the workflow
@@ -449,6 +583,7 @@ const files = roots.length > 0
 
 const audited = files.map((f) => ({ file: relative(ROOT, f), ...auditFile(f) }));
 const all = audited.flatMap((a) => a.empty);
+const soft = audited.flatMap((a) => a.viaCallback);
 const hits = all.filter((h) => !ALLOWED.has(`${h.file}::${h.title}`));
 const excused = all.length - hits.length;
 // The honest denominator: a file the detector finds no block in was not examined, whatever the scan count says.
@@ -459,7 +594,7 @@ const skippedBlocks = audited.reduce((n, a) => n + a.skipped, 0);
 
 if (asJson) {
   console.log(JSON.stringify(
-    { filesScanned: files.length, blocks, checked: blocks - skippedBlocks, unconditionallySkipped: skippedBlocks, hits, excused, unrecognised },
+    { filesScanned: files.length, blocks, checked: blocks - skippedBlocks, unconditionallySkipped: skippedBlocks, hits, viaCallback: soft, excused, unrecognised },
     null, 2,
   ));
 } else {
@@ -478,6 +613,12 @@ if (asJson) {
   if (hits.length === 0) {
     console.log("Every test block reaches an assertion, directly or through a same-file helper.");
     if (excused > 0) console.log(`(${excused} on the allowlist, each with a recorded reason.)`);
+    if (soft.length > 0) {
+      console.log("");
+      console.log(`${soft.length} of them reach it ONLY through a callback handed to an API this tool cannot`);
+      console.log("resolve, so it cannot tell a callback that runs from one that is merely registered. These do");
+      console.log("NOT fail the gate -- see 'the callback question' in this script's header for why.");
+    }
   } else {
     console.log("");
     console.log(`${hits.length} test block(s) reach no assertion, so nothing in them can fail:`);
