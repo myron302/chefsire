@@ -51,15 +51,27 @@ raised this on #1536 and it was a real gap: these three categories are about Myr
 every boundary that exists. A feature whose own document says it may not ship without his sign-off is not
 unblocked merely because shipping it costs no money and touches no member row.
 
-The one of these live today is permanent account closure. `docs/ops/part3b-closure-safety.md` says the hard
-switch may not be changed, merged, deployed, or run against production until Myron explicitly approves **and**
-a legal/retention review is on the record. That is load-bearing here because **`main` deploys automatically**:
-merging closure-enabling code to `main` *is* deploying it, so "merge on green with a clean review" does not
-apply to it. Closure work proceeds as far as a PR that leaves `PERMANENT_CLOSURE_AVAILABLE = false`, and stops
-there.
+This matters most because **`main` deploys automatically**: merging a thing to `main` *is* deploying it, so
+"merge on green with a clean review" does not by itself clear a boundary that says "not until he approves".
 
-If you add a boundary like that to another feature's document, add a line for it here too, or the next run will
-not know it exists.
+Codex named one of these, and then, asked whether there were others, named two more. This is the inventory as
+searched on 2026-11-28 — four stops, with the lines they come from:
+
+| What | Written in | What it forbids until Myron approves |
+| --- | --- | --- |
+| Permanent account closure | `docs/ops/part3b-closure-safety.md:12`, `docs/ops/part3b-neon-live-schema-verification.md:31` | changing the hard switch, merging, deploying, or applying the closure migration SQL. Needs his approval **and** a legal/retention review on the record |
+| Wedding Square **sandbox acceptance** deployment | `docs/wedding-square-webhook-setup-20261103.md:95` | deploying the sandbox signing key, URL, token, application id and origin to a runtime. Also needs his token rotation, which is a password thing. **Not the same stop as the live-payment switch** in done-condition 5 — sandbox acceptance comes first and has its own gate |
+| Publishing the generated drink images | `assets/drink-image-review/campaign/handoff/README-HANDOFF.md:5`, `assets/drink-image-review/README.md:3` | integrating or publishing the 33 candidates (and the five pilots). Feature branch only, explicit merge approval, and generation spend needs a budget he has approved — which is the money stop as well |
+| Backend Wedding endpoint renames | `wedding-planning-audit-2026-04-03.md:82` | "Do not merge/rename backend wedding endpoints yet." Undated and the weakest of the four; treat it as a stop until somebody confirms it has lapsed |
+
+Everything else proceeds.
+
+Two notes on keeping this honest. **Searching for these is not optional and not a one-off**: the first version
+of this section named closure alone, said so confidently, and was wrong within four minutes. If you add a
+boundary like that to a feature's document, add a row here, and re-run the search before trusting the table —
+`grep -rilE "(owner|explicit|user) (approval|approves|sign-?off)|do not (merge|deploy)|wait for .*approval"`
+over `docs/`, `assets/` and the root is what produced it. And a stop lapses only when Myron says so, not
+because a document looks old.
 
 ### What must never be weakened to make a run finish
 
@@ -76,6 +88,10 @@ Updated 2026-11-27 by Claude.
 - **#1537 — the schema-push guard bypass.** Merged. The hole Codex found on #1536, closed; see the correction
   below. Verified independently before merging: suite green at 79/0, the five new tests fail when the
   first-value read is restored, and `pg`'s choice of host read directly off the driver.
+- **#1535 — the leak suite that failed one run in a hundred.** Merged. Codex's P2 was answered with a code
+  change, not a reply: the cross-check now asserts that no identifier the *other* user owns appears in a
+  response, not merely their account id. Verified by leaking something with no marker in it — appending every
+  `custom_drinks` id to the stats response fails exactly the new assertion and nothing else.
 
 ### In flight
 
@@ -132,9 +148,30 @@ it runs in that same green job. Re-measure before believing a failure count in a
 
 ### Known and not yet done
 
-- `session-cookie-races.postgres.test.ts`, 5 genuine account-switching failures.
 - `POST /collections/:id/items` is fixed in #1530; no other write path has been audited for the same shape.
 - `server/routes/drinks.ts` holds about half the repository's type errors in one file.
+
+### Also corrected: the session-cookie suite has no failures
+
+This file carried `session-cookie-races.postgres.test.ts` as **"5 genuine account-switching failures"**. It has
+none. Re-measured on 2026-11-28 against a fresh database: **8 pass / 0 fail, three consecutive runs**, tests 5
+to 8 being precisely the account-switching ones. It has also been running in CI all along, inside the step
+"Verify client session controller against the real auth routes on PostgreSQL", which has been green.
+
+They were fixed by #1519, "The session cookie race suite was racing the real server, not the controller", and
+the entry here was never updated. The stale branch `fix/session-cookie-races-harness-timing` is that work and
+can be deleted.
+
+Green, and not vacuously green — two mutations, both in `client/src/lib/session-controller.ts`:
+
+| mutation | result |
+|---|---|
+| `reconcileUncertainSession` accepts whatever session the server confirmed as the requested one | test 8 fails: a login swallowed by a gateway page is reported successful while the previous user is still the real session |
+| the unusable-login-body path reports success without asking the server who is signed in | tests 5, 6, 7 **and** 8 fail: Alice stays displayed while Bob's cookie is in the jar |
+
+So all four account-switching assertions are load-bearing. **That is twice in two runs that a failure count in
+this file was wrong in the direction of more work than exists.** Re-measure before believing one, including the
+ones written above.
 
 ### Blocked on Myron, with the work already done
 
