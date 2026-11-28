@@ -26,6 +26,11 @@
  * In CI it runs with --ci and FAILS on any block that is not on the allowlist below. The repository has none
  * today, so the gate starts clean: the floor is held from here rather than audited once and forgotten.
  *
+ * Codex reviewed this twice and found five holes, in two rounds, every one of them real. They are recorded at
+ * the code that fixes them rather than summarised here, and each is a fixture in
+ * audit-assert-coverage.test.ts. The pattern across all five is worth naming: each was a place where the
+ * script treated something it could not see as something it had checked.
+ *
  * Usage: node server/scripts/audit-assert-coverage.mjs [--ci] [--json] [paths...]
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -45,8 +50,9 @@ const roots = args.filter((a) => !a.startsWith("--"));
  * tool does not follow. "It is fine, trust me" is not a reason: a block that genuinely cannot fail belongs
  * fixed, not listed. Key is `<repo-relative file>::<test title>`.
  *
- * Empty, deliberately. 516 files, zero blocks that reach no assertion, as of 2026-11-28 -- including the 19
- * conditionally-skipped blocks that the first version of the skip rule excluded from the gate entirely.
+ * Empty, deliberately. 519 files, 6,378 blocks, 6,281 checked, zero that reach no assertion, as of
+ * 2026-11-28 -- including the 19 conditionally-skipped blocks and the three JavaScript suites that earlier
+ * versions of this script excluded from the gate without saying so.
  */
 const ALLOWED = new Map([
   // ["path/to/suite.test.ts::the test title", "asserts via <helper> imported from <module>"],
@@ -56,12 +62,25 @@ const ALLOWED = new Map([
 const ASSERTION = /^(assert|expect|should|invariant)$/i;
 const ASSERTION_MEMBER = /^(toBe|toEqual|toThrow|toMatch|rejects|throws|deepEqual|deepStrictEqual|strictEqual|notEqual|ok|fail|match|doesNotMatch|doesNotThrow|doesNotReject|ifError)$/;
 
+/**
+ * Every suite extension this repository actually uses, not just the TypeScript ones.
+ *
+ * The first version matched `.test.(ts|tsx|mts)` and so never opened
+ * `scripts/wedding-square-acceptance-evidence.test.mjs`, `scripts/wedding-square-sandbox-readiness.test.mjs`
+ * or `operator/square-sandbox-fixtures.guard.test.cjs` -- all three executed by the workflow. Codex found it:
+ * removing every assertion from one of them left the gate green. Worse, the filter also kept them out of the
+ * `unrecognised` report, so the tool could not even tell on itself about them. A gate that silently declines
+ * to look at a file is the thing this script exists to catch.
+ */
+const SUITE_FILE = /\.(?:test|spec)\.(?:tsx|ts|mts|cts|jsx|js|mjs|cjs)$/;
+const SKIP_DIR = new Set(["node_modules", ".git", "dist", "build", "coverage", ".next", "uploads", "attached_assets"]);
+
 function testFiles(dir, out = []) {
   for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === ".git" || entry === "dist") continue;
+    if (SKIP_DIR.has(entry)) continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) testFiles(full, out);
-    else if (/\.test\.(ts|tsx|mts)$/.test(entry)) out.push(full);
+    else if (SUITE_FILE.test(entry)) out.push(full);
   }
   return out;
 }
@@ -113,13 +132,39 @@ const HOOKS = new Set(["before", "after", "beforeEach", "afterEach", "describe",
  * shorthand `{ skip }`, and `skip: false` are all conditionally runnable, and a conditionally runnable block
  * gets audited. `todo` follows the same rule -- Node runs a todo block but will not fail on it.
  */
-function unconditionalSkip(prop) {
-  if (!ts.isPropertyAssignment(prop)) return false;
-  const key = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : "";
-  if (key !== "skip" && key !== "todo") return false;
-  const v = prop.initializer;
+function alwaysTruthy(v) {
   return v.kind === ts.SyntaxKind.TrueKeyword || ts.isStringLiteral(v) ||
     ts.isNoSubstitutionTemplateLiteral(v);
+}
+
+/**
+ * Whether an options OBJECT skips the block no matter what, reading its properties in order.
+ *
+ * Order matters because a later spread wins. Codex's probe was
+ * `const options = { skip: false }; test("empty", { skip: true, ...options }, () => {})`, which Node runs --
+ * confirmed, it reports `ok` -- while a check that merely looked for a literal `skip: true` anywhere in the
+ * object excluded it. So a literal truthy skip counts only when no spread follows it; a spread whose contents
+ * this tool cannot see makes the decision unknown, and an unknown skip decision gets audited rather than
+ * excused. A block wrongly audited is a question in a list someone reads; a block wrongly excused is a hole.
+ */
+function unconditionallySkipped(obj) {
+  let skipped = false;
+  for (const prop of obj.properties) {
+    if (ts.isSpreadAssignment(prop)) {
+      // Anything could come out of a spread, including `skip: false`. Decision void from here on.
+      skipped = false;
+      continue;
+    }
+    if (!ts.isPropertyAssignment(prop)) {
+      // Shorthand `{ skip }` is a variable, so conditional by definition.
+      if (ts.isShorthandPropertyAssignment(prop) && ["skip", "todo"].includes(prop.name.text)) skipped = false;
+      continue;
+    }
+    const key = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : "";
+    if (key !== "skip" && key !== "todo") continue;
+    skipped = alwaysTruthy(prop.initializer);
+  }
+  return skipped;
 }
 
 function testCall(node, aliases) {
@@ -137,7 +182,7 @@ function testCall(node, aliases) {
   const body = node.arguments.find((a) => ts.isArrowFunction(a) || ts.isFunctionExpression(a));
   if (!body) return null;
   const skipped = name.endsWith(".skip") || name.endsWith(".todo") ||
-    node.arguments.some((a) => ts.isObjectLiteralExpression(a) && a.properties.some(unconditionalSkip));
+    node.arguments.some((a) => ts.isObjectLiteralExpression(a) && unconditionallySkipped(a));
   const rendered = title
     ? (ts.isTemplateExpression(title) ? title.getText(title.getSourceFile()) : title.text)
     : "(title is not a literal)";
@@ -188,7 +233,7 @@ function testAliases(sf) {
 
 function auditFile(file) {
   const text = readFileSync(file, "utf8");
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, /\.tsx$/.test(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, /\.[jt]sx$/.test(file) ? ts.ScriptKind.TSX : /\.[cm]?js$/.test(file) ? ts.ScriptKind.JS : ts.ScriptKind.TS);
   const aliases = testAliases(sf);
 
   /**
@@ -209,29 +254,84 @@ function auditFile(file) {
     return null;
   }
 
-  /** The body of a callable named `name` declared directly in this scope, if there is one. */
+  /** Does a parameter or variable name -- plain or destructured -- bind `name`? */
+  function bindsName(nameNode, name) {
+    if (!nameNode) return false;
+    if (ts.isIdentifier(nameNode)) return nameNode.text === name;
+    if (ts.isObjectBindingPattern(nameNode) || ts.isArrayBindingPattern(nameNode)) {
+      return nameNode.elements.some((el) => ts.isBindingElement(el) && bindsName(el.name, name));
+    }
+    return false;
+  }
+
+  /**
+   * What this scope says about `name`: a callable body, a binding whose body is unknown, or nothing.
+   *
+   * The three answers have to stay distinct. Codex's probe was
+   *
+   *     function verify() { assert.fail("unused"); }
+   *     function run(verify: () => void) { verify(); }
+   *     test("empty", () => run(() => {}));
+   *
+   * which Node runs and passes while asserting nothing -- confirmed. The call to `verify()` inside `run` is
+   * the PARAMETER, and the parameter's value comes from the call site, so its body is unknown here. Treating
+   * "no declaration in this scope" and "bound in this scope to something I cannot follow" as the same answer
+   * made the walk continue outwards and find the unrelated outer `verify`, which asserts. The empty block
+   * read as asserting.
+   *
+   * So a shadowing binding stops the search and yields no helper, which makes the block read as empty: a
+   * question in the report rather than a hole in the gate. The same goes for a `const verify = makeIt()`
+   * whose initializer is not a literal function, a catch variable, and an import -- an imported helper is the
+   * one documented allowlist case, and it is reached by this path.
+   */
+  const FOUND = (body) => ({ body });
+  const SHADOWED = { body: null };
+
   function declaredIn(scope, name) {
+    // Parameters belong to the function-like node, whose body block is a child, so the inner block is
+    // examined first and this runs only when the block itself did not bind the name.
+    if (ts.isFunctionDeclaration(scope) || ts.isFunctionExpression(scope) || ts.isArrowFunction(scope) ||
+        ts.isMethodDeclaration(scope) || ts.isConstructorDeclaration(scope) ||
+        ts.isGetAccessorDeclaration(scope) || ts.isSetAccessorDeclaration(scope)) {
+      if (scope.parameters.some((param) => bindsName(param.name, name))) return SHADOWED;
+    }
+    if (ts.isCatchClause(scope) && bindsName(scope.variableDeclaration?.name, name)) return SHADOWED;
+
     const stmts = statementsOf(scope);
     if (!stmts) return undefined;
     for (const st of stmts) {
-      if (ts.isFunctionDeclaration(st) && st.name && st.name.text === name && st.body) return st.body;
+      if (ts.isFunctionDeclaration(st) && st.name && st.name.text === name) {
+        return st.body ? FOUND(st.body) : SHADOWED;
+      }
       if (ts.isVariableStatement(st)) {
         for (const d of st.declarationList.declarations) {
-          if (ts.isIdentifier(d.name) && d.name.text === name && d.initializer &&
-              (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer))) {
-            return d.initializer.body;
-          }
+          if (!bindsName(d.name, name)) continue;
+          const callable = d.initializer &&
+            (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer));
+          // A binding of this name that is not a literal function shadows whatever is outside it.
+          return callable ? FOUND(d.initializer.body) : SHADOWED;
         }
+      }
+      if (ts.isImportDeclaration(st)) {
+        const clause = st.importClause;
+        const named = clause?.namedBindings;
+        const binds = (clause?.name && clause.name.text === name) ||
+          (named && ts.isNamespaceImport(named) && named.name.text === name) ||
+          (named && ts.isNamedImports(named) && named.elements.some((el) => el.name.text === name));
+        if (binds) return SHADOWED;
       }
     }
     return undefined;
   }
 
-  /** Innermost declaration of `name` visible from `fromNode`, or undefined. */
+  /**
+   * Innermost binding of `name` visible from `fromNode`: its body if this file declares one, otherwise
+   * undefined -- including when the name is bound to something whose body is not in this file.
+   */
   function resolveHelper(name, fromNode) {
     for (let cur = fromNode; cur; cur = cur.parent) {
-      const body = declaredIn(cur, name);
-      if (body) return body;
+      const answer = declaredIn(cur, name);
+      if (answer) return answer.body ?? undefined;
     }
     return undefined;
   }
@@ -276,9 +376,11 @@ function auditFile(file) {
   return { empty, recognised, skipped };
 }
 
+// From the repository root, not a hand-written list of directories: `operator/` held a suite the workflow
+// runs and no list included it, which is the same silent exclusion one level up.
 const files = roots.length > 0
   ? roots.flatMap((r) => (statSync(r).isDirectory() ? testFiles(r) : [r]))
-  : ["server", "client", "shared", "tools", "scripts"].flatMap((d) => { try { return testFiles(d); } catch { return []; } });
+  : testFiles(ROOT).map((f) => relative(ROOT, f));
 
 const audited = files.map((f) => ({ file: relative(ROOT, f), ...auditFile(f) }));
 const all = audited.flatMap((a) => a.empty);

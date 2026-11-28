@@ -30,10 +30,10 @@ const SCRIPT = join(process.cwd(), "server/scripts/audit-assert-coverage.mjs");
 type Run = { hits: { file: string; title: string }[]; unrecognised: string[]; status: number };
 
 /** Run the auditor over one fixture source and return what it decided. */
-function audit(source: string, { ci = false }: { ci?: boolean } = {}): Run {
+function audit(source: string, { ci = false, ext = "ts" }: { ci?: boolean; ext?: string } = {}): Run {
   const dir = mkdtempSync(join(tmpdir(), "assert-coverage-fixture-"));
   try {
-    writeFileSync(join(dir, "fixture.test.ts"), source);
+    writeFileSync(join(dir, `fixture.test.${ext}`), source);
     const args = [SCRIPT, "--json", dir];
     if (ci) args.push("--ci");
     let status = 0;
@@ -182,6 +182,93 @@ test("a file whose test-declaring call is not recognised is reported rather than
   `);
   assert.deepEqual(titles(r), []);
   assert.equal(r.unrecognised.length, 1, "an unexamined file must not read as an examined one");
+});
+
+/* ---- Codex's second round, on the fixed version: three more holes, all reproduced first ---- */
+
+test("a parameter shadowing a helper name stops the search, so the block reads as empty", () => {
+  // Node runs this and passes while asserting nothing -- confirmed with a probe. The `verify()` inside `run`
+  // is the PARAMETER, whose value comes from the call site, and the first fix walked past it to the unrelated
+  // outer `verify`, which asserts. "Not declared here" and "bound here to something I cannot follow" had to
+  // stop being the same answer.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function verify() { assert.fail("unused"); }
+    function run(verify: () => void) { verify(); }
+    test("empty through a shadowing parameter", () => run(() => {}));
+  `);
+  assert.deepEqual(titles(r), ["empty through a shadowing parameter"]);
+});
+
+test("a destructured parameter shadows just as a plain one does", () => {
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    const verify = () => { assert.fail("unused"); };
+    function run({ verify }: { verify: () => void }) { verify(); }
+    test("empty through a destructured parameter", () => run({ verify: () => {} }));
+  `);
+  assert.deepEqual(titles(r), ["empty through a destructured parameter"]);
+});
+
+test("a binding that is not a literal function shadows the outer helper of the same name", () => {
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function verify() { assert.fail("unused"); }
+    const make = () => () => {};
+    test("empty through a non-literal binding", () => {
+      const verify = make();
+      verify();
+    });
+  `);
+  assert.deepEqual(titles(r), ["empty through a non-literal binding"]);
+});
+
+test("a helper still resolves when nothing shadows it", () => {
+  // The other direction of the same change: stopping at bindings must not stop at every call.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function verify() { assert.equal(1, 1); }
+    function run(fn: () => void) { fn(); verify(); }
+    test("asserts through an unshadowed helper", () => run(() => {}));
+  `);
+  assert.deepEqual(titles(r), []);
+});
+
+test("a spread after a literal skip makes the skip conditional, so the block is audited", () => {
+  // Node runs this and reports `ok`, not `# SKIP` -- confirmed. A later spread wins, so a check that looked
+  // for a literal `skip: true` anywhere in the object excused a block that executes.
+  const r = audit(`
+    import test from "node:test";
+    const options = { skip: false };
+    test("empty, and the spread turns the skip off", { skip: true, ...options }, () => {});
+  `);
+  assert.deepEqual(titles(r), ["empty, and the spread turns the skip off"]);
+});
+
+test("a spread BEFORE a literal skip cannot override it, so that block is still excluded", () => {
+  const r = audit(`
+    import test from "node:test";
+    const options = { skip: false };
+    test("off for good", { ...options, skip: true }, () => {});
+  `);
+  assert.deepEqual(titles(r), [], "the later literal wins, so this one really is skipped");
+});
+
+test("JavaScript suites are discovered, not silently passed over", () => {
+  // The extension filter matched only ts/tsx/mts, so three suites the workflow executes -- two .mjs and one
+  // .cjs -- were never opened, and removing every assertion from one left the gate green. They were kept out
+  // of the unrecognised report too, so the tool could not even tell on itself about them.
+  for (const ext of ["mjs", "cjs", "js"]) {
+    const r = audit(`
+      import test from "node:test";
+      test("empty ${ext} suite", () => {});
+    `, { ext });
+    assert.deepEqual(titles(r), [`empty ${ext} suite`], `a .${ext} suite must be scanned`);
+  }
 });
 
 /* ---- The gate itself ---- */
