@@ -19614,6 +19614,9 @@ async function buildCreatorBadges(userId: string) {
         .limit(1)
     : [];
 
+  // Deliberately left on the strict default (no viewer). This computes BADGES -- rank positions -- not drink
+  // payloads, so a ranking that excludes paid drinks is slightly conservative and discloses nothing. If a
+  // badge ever starts carrying a topDrink, thread the viewer here.
   const trendingRows = await getTrendingDrinkCreators(10);
   const leaderboardRows = await getDrinkCreatorLeaderboard(10);
 
@@ -19735,7 +19738,18 @@ function buildDrinkNotificationFeed(userId: string, items: CreatorActivityItem[]
   });
 }
 
-async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboardRow[]> {
+/**
+ * Both creator rankings compute a `topDrink` over EVERY recipe a creator has, with no viewer, so a creator's
+ * withheld premium drink could become their public "top drink" -- name, image and route, to anonymous callers.
+ *
+ * Found by the route sweep added in this PR rather than by review: it plants one withheld slug in every
+ * reference position and calls every parameterless GET, and these two came back carrying it after eight
+ * instances of this class had already been found by reading routes one at a time.
+ *
+ * `viewerUserId` DEFAULTS TO null, which is the strictest answer, so a caller that forgets to thread a viewer
+ * under-reports rather than discloses. That is the only direction a gate is safe to be wrong in.
+ */
+async function getDrinkCreatorLeaderboard(limit = 10, viewerUserId: string | null = null): Promise<CreatorLeaderboardRow[]> {
   if (!db) return [];
 
   const safeLimit = Math.max(1, Math.min(limit, 50));
@@ -19759,7 +19773,15 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
 
   if (creatorRecipes.length === 0) return [];
 
-  const recipeSlugs = creatorRecipes.map((recipe) => recipe.slug);
+  // The gate: a drink the viewer may not see is not a candidate for anything this function ranks.
+  const withheldCreatorRecipes = await withheldPremiumSlugsForViewer(
+    creatorRecipes.map((recipe) => recipe.slug),
+    viewerUserId,
+  );
+  const visibleCreatorRecipes = creatorRecipes.filter((recipe) => !withheldCreatorRecipes.has(recipe.slug));
+  if (visibleCreatorRecipes.length === 0) return [];
+
+  const recipeSlugs = visibleCreatorRecipes.map((recipe) => recipe.slug);
 
   const eventRows = await db
     .select({
@@ -19805,7 +19827,7 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
   }]));
 
   const recipesByCreator = new Map<string, Array<typeof creatorRecipes[number]>>();
-  for (const recipe of creatorRecipes) {
+  for (const recipe of visibleCreatorRecipes) {
     if (!recipe.userId) continue;
     const current = recipesByCreator.get(recipe.userId) ?? [];
     current.push(recipe);
@@ -19869,7 +19891,7 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
     .slice(0, safeLimit);
 }
 
-async function getTrendingDrinkCreators(limit = 25): Promise<TrendingCreatorRow[]> {
+async function getTrendingDrinkCreators(limit = 25, viewerUserId: string | null = null): Promise<TrendingCreatorRow[]> {
   if (!db) return [];
 
   const safeLimit = Math.max(1, Math.min(limit, 100));
@@ -19897,7 +19919,15 @@ async function getTrendingDrinkCreators(limit = 25): Promise<TrendingCreatorRow[
 
   if (creatorRecipes.length === 0) return [];
 
-  const recipeSlugs = creatorRecipes.map((recipe) => recipe.slug);
+  // The gate: a drink the viewer may not see is not a candidate for anything this function ranks.
+  const withheldCreatorRecipes = await withheldPremiumSlugsForViewer(
+    creatorRecipes.map((recipe) => recipe.slug),
+    viewerUserId,
+  );
+  const visibleCreatorRecipes = creatorRecipes.filter((recipe) => !withheldCreatorRecipes.has(recipe.slug));
+  if (visibleCreatorRecipes.length === 0) return [];
+
+  const recipeSlugs = visibleCreatorRecipes.map((recipe) => recipe.slug);
 
   const eventRows = await db
     .select({
@@ -19946,7 +19976,7 @@ async function getTrendingDrinkCreators(limit = 25): Promise<TrendingCreatorRow[
   }]));
 
   const recipesByCreator = new Map<string, Array<typeof creatorRecipes[number]>>();
-  for (const recipe of creatorRecipes) {
+  for (const recipe of visibleCreatorRecipes) {
     if (!recipe.userId) continue;
     const current = recipesByCreator.get(recipe.userId) ?? [];
     current.push(recipe);
@@ -22880,7 +22910,7 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
       .orderBy(desc(sql`count(*)`))
       .limit(12);
 
-    const trendingCreators = await getTrendingDrinkCreators(8);
+    const trendingCreators = await getTrendingDrinkCreators(8, (req as any).user?.id ?? null);
     const mostRemixedRows = await db
       .select({
         remixedFromSlug: drinkRecipes.remixedFromSlug,
@@ -23062,7 +23092,7 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
 });
 
 
-r.get("/creators/leaderboard", async (req, res) => {
+r.get("/creators/leaderboard", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -23070,7 +23100,7 @@ r.get("/creators/leaderboard", async (req, res) => {
 
     const limitParam = Number(req.query?.limit);
     const limit = Number.isFinite(limitParam) ? limitParam : 10;
-    const leaderboard = await getDrinkCreatorLeaderboard(limit);
+    const leaderboard = await getDrinkCreatorLeaderboard(limit, (req as any).user?.id ?? null);
 
     return res.json({ ok: true, leaderboard, count: leaderboard.length });
   } catch (error) {
@@ -23079,7 +23109,7 @@ r.get("/creators/leaderboard", async (req, res) => {
   }
 });
 
-r.get("/creators/trending", async (req, res) => {
+r.get("/creators/trending", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -23087,7 +23117,7 @@ r.get("/creators/trending", async (req, res) => {
 
     const limitParam = Number(req.query?.limit);
     const limit = Number.isFinite(limitParam) ? limitParam : 25;
-    const creators = await getTrendingDrinkCreators(limit);
+    const creators = await getTrendingDrinkCreators(limit, (req as any).user?.id ?? null);
 
     return res.json({
       ok: true,
@@ -23184,7 +23214,7 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
       .where(eq(drinkRecipes.userId, requestedUserId))
       .orderBy(desc(drinkRecipes.createdAt));
 
-    const creatorLeaderboard = await getDrinkCreatorLeaderboard(250);
+    const creatorLeaderboard = await getDrinkCreatorLeaderboard(250, (req as any).user?.id ?? null);
     const creatorRank = creatorLeaderboard.findIndex((entry) => entry.userId === requestedUserId) + 1;
     const creatorLeaderboardEntry = creatorLeaderboard.find((entry) => entry.userId === requestedUserId) ?? null;
 
