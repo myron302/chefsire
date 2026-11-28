@@ -144,13 +144,27 @@ gate as a SQL predicate so the `LIMIT` is visibility-aware — a second copy of 
 single boundary exists to avoid. Somebody should decide which of those two costs to pay; it is not urgent and
 it is not a leak.
 
-### Done-condition 1 is two merges away
+### Done-condition 1 is MET
 
-Audited against the file list rather than against the claim, which had been recorded as finished twice:
-**514 test files, 513 referenced by a workflow, and no workflow reference pointing at a file that does not
-exist.** The two unaccounted for were `the __tests__/recipe.test.ts` (PR #1538) and
-`server/routes/drink-collection-premium-access.test.ts`, which #1530 brought in when it merged. So **#1538 is
-the last one**, and when it lands condition 1 holds with nothing on the exceptions list.
+Measured on `main` at `7dfcfcbb`, after #1530 and #1538: **515 test files, 515 referenced by a workflow, and no
+workflow reference pointing at a file that does not exist.** Nothing on the exceptions list, because there are
+no exceptions.
+
+It had been recorded as finished twice before, and both times it was not. The two files unaccounted for were
+`server/routes/drink-collection-premium-access.test.ts`, which #1530 brought in, and
+`the __tests__/recipe.test.ts` — a directory named by a mistyped command, holding a Jest-style suite that could
+never have run, replaced by a real one in #1538.
+
+**Check it both directions when you re-check it, and re-check it.** A file outside CI runs nothing. A workflow
+step naming a file that does not exist *also* runs nothing, and it passes — which is the cheaper lie of the
+two. Both commands are one line each:
+
+```
+find . -path ./node_modules -prune -o -name '*.test.ts' -print -o -name '*.test.tsx' -print   -o -name '*.test.mts' -print | sed 's|^\./||' | sort > /tmp/all
+grep -ohE '[A-Za-z0-9_./-]+\.test\.(ts|tsx|mts)' .github/workflows/*.yml | sort -u > /tmp/ci
+comm -23 /tmp/all /tmp/ci   # suites no workflow runs
+comm -13 /tmp/all /tmp/ci   # workflow steps with no file
+```
 
 The reverse check is the one worth repeating, because it is the cheaper lie: a workflow step naming a file that
 does not exist runs nothing and passes. There are none today. The command is in the approval-boundary note
@@ -177,12 +191,27 @@ Two runs can just as easily push contradictory fixes to the same file, or merge 
 another run has.** The "In flight" table has an Owner column and it was not being used for that. It is now.
 A row claimed by a session id means hands off until that session's next update or the row goes stale.
 
+### Where the six conditions stand, 2026-11-28 02:35 UTC
+
+| # | Condition | State |
+| --- | --- | --- |
+| 1 | Every suite in CI, or listed with a reason | **MET.** 515 files, 515 in CI, no dead steps. Measured, not claimed — see below |
+| 2 | No suite passes while asserting nothing, and none fails at random | **Not met, and it is the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
+| 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
+| 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **MET** by #1530. Nine read routes, one write path, every protection confirmed by breaking it |
+| 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
+| 6 | Closure and retention implemented to the matrix his accountant signs off | **Blocked on Myron's accountant.** Two migrations written and unapplied |
+
+So: two met, two blocked on Myron with the work already done, one unchanged, and **condition 2 is the one a run
+can actually move.** Start there.
+
 ### In flight
 
 | Item | Where | Next action | Owner |
 | --- | --- | --- | --- |
 | ~~Custom drink save prefix~~ | ~~PR #1514~~ | **Merged**, green on all six jobs. GPT's fix, plus the four payloads extracted so the pages and the test share one definition — Codex's P2 answered by code and six mutations | — |
-| Recipe create persistence | PR #1538 | **The last item for done-condition 1.** Rebased, and its own step passes; red only on the batch-7 flake recorded below, which it does not touch. Carries the `run-ci-batch.mjs` failure summary. Merge on a green run — and `rerun_failed_jobs` returns **403** for this integration, so a run can only be re-triggered by a real commit, never an empty one | Claude `…T9vcsr8u` |
+| ~~Recipe create persistence~~ | ~~PR #1538~~ | **Merged**, green. Closed done-condition 1 and added the `run-ci-batch.mjs` failure summary. Note for every future run: `rerun_failed_jobs` returns **403** for this integration, so CI can only be re-triggered by a real commit, never an empty one | — |
+| Nothing else is claimed | — | **The queue is empty of unblocked implementation work that this run could identify.** Condition 2's sweep is the next real item and it is described below. Everything else in the table is somebody else's | — |
 | ~~Rendering smoke check~~ | ~~PR #1526~~ | **Merged.** Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
