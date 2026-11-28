@@ -34,7 +34,12 @@ if (!PG_URL) {
   const dialect = new PgDialect();
   const ddl = (table: any, name: string, extra = "") => {
     const cols = Object.values(getTableColumns(table)).map((c: any) => {
-      const type = ({ PgInteger: "integer", PgBoolean: "boolean", PgTimestamp: "timestamp", PgJsonb: "jsonb", PgNumeric: "numeric", PgReal: "real", PgSerial: "serial" } as Record<string, string>)[c.columnType] ?? "text";
+      // PgBigSerial53/64 were missing and `drink_events.id` is a bigserial, so that table became a plain
+      // `text` id with no default and every insert into it failed. Nothing noticed, because no test had ever
+      // inserted one -- which means the /trending and /recommended legs of the audits below were running
+      // against an EMPTY events table, asserting that nothing leaked from nothing. (#1546 carries the same
+      // one-line fix; whichever lands second conflicts here, trivially.)
+      const type = ({ PgInteger: "integer", PgBoolean: "boolean", PgTimestamp: "timestamp", PgJsonb: "jsonb", PgNumeric: "numeric", PgReal: "real", PgSerial: "serial", PgBigSerial53: "bigserial", PgBigSerial64: "bigserial" } as Record<string, string>)[c.columnType] ?? "text";
       let def = "";
       if (c.hasDefault && c.default !== undefined) {
         def = typeof c.default === "object" && c.default !== null && "queryChunks" in c.default
@@ -52,7 +57,10 @@ if (!PG_URL) {
   )).rows.map((r: any) => `"${r.tablename}"`);
   // `follows` is created below and matches neither prefix, so it has to be named: without it the suite could be
   // run once and then failed on "relation already exists" for the rest of the session.
-  await local.query(`DROP TABLE IF EXISTS ${[...owned, "follows", "users"].join(", ")} CASCADE`);
+  // `custom_drinks` matches neither prefix and had to be named: `DROP TABLE users CASCADE` removes its
+  // foreign key but not the table, so it survived with a dangling reference and the CREATE below failed with
+  // "already exists" the first time /custom-drinks/public was brought into the sweep.
+  await local.query(`DROP TABLE IF EXISTS ${[...owned, "follows", "custom_drinks", "users"].join(", ")} CASCADE`);
   await local.query(`
     ${ddl(schema.users, "users", ", UNIQUE (username), UNIQUE (email)")};
     ${ddl(schema.drinkRecipes, "drink_recipes")};
@@ -62,6 +70,12 @@ if (!PG_URL) {
     -- selects slug, and returned a 500 -- so the community-search leg of test I was asserting against an empty
     -- response and proving nothing. Built from the real schema now.
     ${ddl(schema.drinkChallenges, "drink_challenges")};
+    -- /custom-drinks/public reads this through storage. Without it that route answered 500, which the sweep
+    -- below REPORTS rather than skips -- the whole point of reporting it is that it got built instead.
+    ${ddl(schema.customDrinks, "custom_drinks")};
+    -- GET /challenges leftJoins this. Without it that route answered 500 for everyone, so the R3 test below
+    -- would have "failed" on an error body rather than on the disclosure it exists to catch.
+    ${ddl(schema.drinkChallengeSubmissions, "drink_challenge_submissions")};
     -- /whats-new reads the viewer's follows. Without this table the route answered 500 for every signed-in
     -- viewer, so test K's audit of it was asserting against an error body.
     ${ddl(schema.follows, "follows")};
@@ -925,5 +939,246 @@ if (!PG_URL) {
     const r = await get(`/collections/${col.prem}`, "nonent");
     assert.deepEqual(r.json.collection.items.map((i: any) => i.drinkSlug), slugsOf("prem").slice(0, PREVIEW));
     assert.equal(r.json.collection.previewLimit, PREVIEW);
+  });
+
+  // ---- a reference slug is a slug: four more readers serialized one without applying the viewer ----------
+  //
+  // #1530 secured nine read routes against disclosing a withheld premium ITEM. Greptile's P1 on it
+  // established the rule that matters here -- **the slug is the secret**, because the slug is what the recipe
+  // route takes -- and the remix-chain route was taught to cut a lineage for that reason. What nobody then
+  // checked is that the rule applies to every slug in a response, not only the one the route is named for.
+  // Four readers serialize a REFERENCE slug with no viewer applied. Two were found by Codex on #1547 against
+  // claims this suite's own PR had recorded as sound; the first below was found by answering a review
+  // question instead of leaving it, and it is the widest of them.
+  const refChild = "p24-public-child-of-withheld";
+  const refParent = () => slugsOf("prem")[2];
+  const seedReferenceChild = async (collectionId?: string) => {
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`,
+      [refChild, ids.creator, refParent()],
+    );
+    if (collectionId) {
+      // Position 0 of the collection, so it is unambiguously a VISIBLE item and not a withheld one -- the
+      // point is that a public item leaks by reference, which proves nothing if the item is itself withheld.
+      await local.query(
+        `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at)
+         VALUES ($1, $2, now() - interval '2 days')`,
+        [collectionId, refChild],
+      );
+    }
+  };
+  const unseedReferenceChild = async () => {
+    await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = $1`, [refChild]);
+    await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [refChild]);
+  };
+
+  test("R1 a PUBLIC collection item does not name its withheld premium remix parent", async () => {
+    // `resolveCollectionWithItems` is the single boundary EVERY collection route goes through, and it
+    // serialized the parent TWICE -- once as `remixedFromSlug` and again inside `drink`. So this one reaches
+    // explore, featured, the creator storefront, the bundle routes and the detail route: the nine routes
+    // #1530 secured, leaking by reference rather than by item.
+    await seedReferenceChild(col.free);
+    try {
+      for (const [label, as] of nonEntitled) {
+        for (const path of [...listEndpoints(), `/collections/${col.free}`]) {
+          const r = await get(path, as);
+          assert.equal(r.status, 200, `${label} ${path}: ${r.text}`);
+          assert.ok(r.text.includes(refChild), `${label}: ${path} must still carry the public item itself`);
+          assert.ok(!r.text.includes(refParent()), `${label}: ${path} named its withheld premium parent`);
+        }
+      }
+      // The entitled direction, or this is a broken feature rather than a gate.
+      for (const as of ["buyer", "creator"]) {
+        const r = await get(`/collections/${col.free}`, as);
+        assert.ok(r.text.includes(refParent()), `${as} is entitled to the parent and must still see the lineage`);
+      }
+    } finally {
+      await unseedReferenceChild();
+    }
+  });
+
+  test("R2 Codex on #1547: GET /user/:slug does not name a withheld premium remix parent", async () => {
+    // The route gates the requested recipe's OWN slug -- Codex's finding on #1530 -- and then returns
+    // `...recipe`, parent reference included. The record had this written down as sound, on the reasoning that
+    // the remix-chain route cuts the lineage. It does; this route is not that route.
+    await seedReferenceChild();
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/user/${refChild}`, as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        assert.ok(r.text.includes(refChild), `${label}: the public recipe itself must still be readable`);
+        assert.ok(!r.text.includes(refParent()), `${label}: it named its withheld premium parent`);
+      }
+      const buyer = await get(`/user/${refChild}`, "buyer");
+      assert.ok(buyer.text.includes(refParent()), "a buyer is entitled to the parent and must still see it");
+    } finally {
+      await unseedReferenceChild();
+    }
+  });
+
+  test("R3 Codex on #1547: the challenge payloads do not name a withheld premium originalDrinkSlug", async () => {
+    // `POST /challenges` has no authorization at all, so any member can write this field, and GET /challenges
+    // selects it explicitly while GET /challenges/:slug returns `...challenge`. The record had this down as
+    // "ungated and not a disclosure" because only getCanonicalDrinkBySlug reads it and a premium slug
+    // hydrates to null. Returning `canonicalDrink: null` does not unsay the slug sitting beside it.
+    const challengeSlug = "p24-ref-challenge";
+    await local.query(
+      `INSERT INTO drink_challenges (slug, title, description, original_drink_slug, starts_at, ends_at, is_active)
+       SELECT $1, 'c', 'c', $2, now() - interval '1 day', now() + interval '30 days', true
+       WHERE NOT EXISTS (SELECT 1 FROM drink_challenges WHERE slug = $1)`,
+      [challengeSlug, refParent()],
+    );
+    try {
+      for (const [label, as] of nonEntitled) {
+        for (const path of ["/challenges", `/challenges/${challengeSlug}`]) {
+          const r = await get(path, as);
+          assert.equal(r.status, 200, `${label} ${path}: ${r.text}`);
+          assert.ok(r.text.includes(challengeSlug), `${label}: ${path} must still carry the challenge itself`);
+          assert.ok(!r.text.includes(refParent()), `${label}: ${path} named the withheld premium drink`);
+        }
+      }
+      const buyer = await get(`/challenges/${challengeSlug}`, "buyer");
+      assert.ok(buyer.text.includes(refParent()), "a buyer is entitled to it and must still see the reference");
+    } finally {
+      await local.query(`DELETE FROM drink_challenges WHERE slug = $1`, [challengeSlug]);
+    }
+  });
+
+  test("R4 the join route's submitRoute does not carry a withheld premium originalDrinkSlug", async () => {
+    // Found by answering R3's own review question: POST /challenges/:slug/join with no drinkSlug returns the
+    // whole challenge AND builds the slug into a query string, so there were two copies to judge. requireAuth
+    // narrows it to members, which makes it quieter than the list and detail routes and no less of a
+    // disclosure -- any member can both write this field and read it back.
+    const challengeSlug = "p24-join-challenge";
+    await local.query(
+      `INSERT INTO drink_challenges (slug, title, description, original_drink_slug, starts_at, ends_at, is_active)
+       SELECT $1, 'c', 'c', $2, now() - interval '1 day', now() + interval '30 days', true
+       WHERE NOT EXISTS (SELECT 1 FROM drink_challenges WHERE slug = $1)`,
+      [challengeSlug, refParent()],
+    );
+    try {
+      const nonent = await post(`/challenges/${challengeSlug}/join`, "nonent", {});
+      assert.equal(nonent.status, 200, nonent.text);
+      assert.ok(nonent.text.includes(challengeSlug), "the challenge itself must still come back");
+      assert.ok(!nonent.text.includes(refParent()), "a non-entitled member was handed the withheld slug");
+
+      const buyer = await post(`/challenges/${challengeSlug}/join`, "buyer", {});
+      assert.equal(buyer.status, 200, buyer.text);
+      assert.ok(buyer.text.includes(refParent()), "a buyer is entitled and must still get the remix target");
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE challenge_id IN (SELECT id FROM drink_challenges WHERE slug = $1)`, [challengeSlug]);
+      await local.query(`DELETE FROM drink_challenges WHERE slug = $1`, [challengeSlug]);
+    }
+  });
+
+  // ---- the sweep: every parameterless GET, one withheld slug, referenced from every position ------------
+  //
+  // Eight disclosures of this class were found in one day, each by reading one route. The question that would
+  // have caught all eight at once is "which slugs appear in this response, and was each one judged?", and this
+  // is that question asked as a property rather than as a static analysis -- which cannot be argued with and
+  // which covers routes nobody has written yet.
+  //
+  // It plants ONE withheld premium slug in every reference position the schema allows, then calls every
+  // parameterless GET route in drinks.ts and asserts the slug appears in none of them. A route that answers
+  // non-200 is REPORTED, not skipped: a sweep that quietly passes over the routes it cannot reach is the
+  // vacuous test this campaign keeps finding, and R3 above already failed once on a 500 rather than on the
+  // disclosure it exists to catch.
+  const SWEPT_ROUTES = [
+    "/challenges", "/remixes", "/most-remixed", "/whats-new",
+    "/search?q=p24", "/community-search?q=p24", "/collections/explore", "/collections/featured",
+    "/bundles/explore", "/custom-drinks/public", "/creators/leaderboard", "/creators/trending",
+  ];
+
+  // NOT a skip list -- a TRIPWIRE. These three leak on this branch and are fixed on #1546, which this branch
+  // cannot depend on. Rather than quietly dropping them (the vacuous-test move this campaign keeps finding),
+  // the test below asserts that they STILL LEAK. When #1546 lands and they stop, that assertion fails and
+  // whoever merges is told to delete this list and move the three into SWEPT_ROUTES. A skip hides; a tripwire
+  // reminds.
+  const LEAKING_ON_1546 = [
+    "/trending",
+    "/trending/by-category?sourceCategoryRoute=/drinks/cocktails",
+    "/recommended",
+  ];
+
+  test("S the withheld slug appears in no parameterless GET, from any reference position", async () => {
+    const withheld = slugsOf("prem")[2];
+    const child = "p24-sweep-child";
+    const challengeSlug = "p24-sweep-challenge";
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug, created_at)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3, now())`,
+      [child, ids.creator, withheld],
+    );
+    await local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at)
+       VALUES ($1, $2, now() - interval '2 days')`,
+      [col.free, child],
+    );
+    await local.query(
+      `INSERT INTO drink_challenges (slug, title, description, original_drink_slug, starts_at, ends_at, is_active)
+       SELECT $1, 'c', 'c', $2, now() - interval '1 day', now() + interval '30 days', true
+       WHERE NOT EXISTS (SELECT 1 FROM drink_challenges WHERE slug = $1)`,
+      [challengeSlug, withheld],
+    );
+    await local.query(
+      `INSERT INTO drink_challenge_submissions (challenge_id, user_id, drink_slug)
+       SELECT id, $2, $3 FROM drink_challenges WHERE slug = $1`,
+      [challengeSlug, ids.creator, withheld],
+    );
+    for (let i = 0; i < 20; i += 1) {
+      await local.query(
+        `INSERT INTO drink_events (slug, event_type, created_at) VALUES ($1, 'view', now() - interval '1 hour')`,
+        [withheld],
+      );
+    }
+    try {
+      const unreachable: string[] = [];
+      const leaked: string[] = [];
+      for (const path of SWEPT_ROUTES) {
+        for (const as of [undefined, "nonent"]) {
+          const r = await get(path, as);
+          if (r.status !== 200) { unreachable.push(`${path} (${as ?? "anon"}) -> ${r.status}`); continue; }
+          if (r.text.includes(withheld)) leaked.push(`${path} (${as ?? "anon"})`);
+        }
+      }
+      assert.deepEqual(unreachable, [], "every swept route must actually answer, or the sweep proves nothing about it");
+      assert.deepEqual(leaked, [], "these routes named the withheld premium drink");
+
+      // The tripwire. Each of these must STILL leak, because #1546 is where they are fixed and this branch
+      // does not carry that fix. The day one of them stops, this assertion fails and says what to do.
+      const stillLeaking: string[] = [];
+      for (const path of LEAKING_ON_1546) {
+        const r = await get(path);
+        if (r.status === 200 && r.text.includes(withheld)) stillLeaking.push(path);
+      }
+      assert.deepEqual(
+        stillLeaking, LEAKING_ON_1546,
+        "one of the three routes #1546 fixes has stopped leaking -- #1546 has landed. Delete LEAKING_ON_1546 and move its entries into SWEPT_ROUTES",
+      );
+      // The sweep must be able to SEE a leak, or it is decoration. The child is public and is referenced from
+      // the free collection, so it has to show up somewhere -- if it does not, the planting failed and a pass
+      // above means nothing.
+      const explore = await get("/collections/explore");
+      assert.ok(explore.text.includes(child), "the planted public child must be visible, or nothing was planted");
+
+      // AND THE VIEWER MUST ACTUALLY BE THREADED. Without this, hard-coding the strictest viewer in the two
+      // creator rankings passed every assertion above -- it under-reports, which discloses nothing, so the
+      // sweep cannot see it. The creator owns the withheld drink, so their own ranking must still rank it.
+      for (const path of ["/creators/leaderboard", "/creators/trending"]) {
+        const asCreator = await get(path, "creator");
+        assert.equal(asCreator.status, 200, `${path} as creator: ${asCreator.text}`);
+        assert.ok(
+          asCreator.text.includes(withheld),
+          `${path} must still rank the creator's own drink for the creator -- a gate that hides it from its owner is a broken feature`,
+        );
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_events WHERE slug = $1`, [withheld]);
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+      await local.query(`DELETE FROM drink_challenges WHERE slug = $1`, [challengeSlug]);
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = $1`, [child]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [child]);
+    }
   });
 }
