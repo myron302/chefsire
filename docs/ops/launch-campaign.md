@@ -526,10 +526,10 @@ like a retry or a double run. They are neither — line 550 of that suite sits i
 flake and should not be left to fire, whether or not it is the one on record — but removing it is not an
 explanation of the failure, and nothing here should be read as closing that. For whatever else is in those
 fifteen suites, waiting is still right, and for a better reason than exhaustion.
-`run-ci-batch.mjs` now names every failing test at the end of the log, which was not in place when this fired.
-The next occurrence names the test for free, and with the corrected topology above it will point at something
-inside one fresh job rather than at a state-accumulation story that cannot happen. A seventh guess is worth
-less than that.
+`run-ci-batch.mjs` now names every failing test at the end of the STEP, which was not in place when this
+fired. The next occurrence names the test — **fetched with `failed_only` or 250+ lines, not a 40-line tail;
+see the table above for why** — and with the corrected topology it will point at something inside one fresh
+job rather than at a state-accumulation story that cannot happen. A seventh guess is worth less than that.
 
 **Do not merge anything on a re-run green while this is open without saying so in the merge.** A flake that
 gets retried until it passes is how a real failure comes to be read as noise, which is the thing this campaign
