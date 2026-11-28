@@ -144,13 +144,70 @@ gate as a SQL predicate so the `LIMIT` is visibility-aware — a second copy of 
 single boundary exists to avoid. Somebody should decide which of those two costs to pay; it is not urgent and
 it is not a leak.
 
-### Done-condition 1 is two merges away
+### Done-condition 1 is NOT met, and the way I got that wrong is the lesson
 
-Audited against the file list rather than against the claim, which had been recorded as finished twice:
-**514 test files, 513 referenced by a workflow, and no workflow reference pointing at a file that does not
-exist.** The two unaccounted for were `the __tests__/recipe.test.ts` (PR #1538) and
-`server/routes/drink-collection-premium-access.test.ts`, which #1530 brought in when it merged. So **#1538 is
-the last one**, and when it lands condition 1 holds with nothing on the exceptions list.
+I wrote in this file that it was met: 515 test files, 515 referenced by a workflow, no reference pointing at a
+missing file. Every one of those numbers is true. **The conclusion was wrong**, and Codex disproved it on the
+very PR that claimed it — the third time in two days that a confident claim in this file lasted under an hour.
+
+Comparing filenames establishes that CI *names* every suite. It does not establish that CI *runs* them. **A
+step can name a suite and still not run it**, because the suite skips when the connection string it reads is
+absent, and node exits 0:
+
+> the `wedding-square-postgres-migration-tests` job supplies `WEDDING_SQUARE_TEST_DATABASE_URL`, and its
+> restored batches supply `CS_TEST_PG_URL`. Nothing supplies `TEST_DATABASE_URL`.
+
+Codex named three suites. Measured with the job's exact environment, it is most of six batches:
+
+| batch | CI today | with the variable |
+| --- | --- | --- |
+| 1 of 6 | **1 pass / 36 skip** | 150 pass |
+| 2 of 6 | 6 / 8 | 65 |
+| 3 of 6 | 3 / 8 | 63 |
+| 4 of 6 | 54 / 38 | 170 |
+| 5 of 6 | 72 / 0 | 72 |
+| 6 of 6 | 12 / 33 | 235 |
+| **total** | **148 pass / 123 skip** | **755 pass** |
+
+**607 tests that CI names have never run**, including database-outage behaviour and authentication during a
+database outage. 123 skipped placeholders passing as green.
+
+**PR #1541 fixes it** and condition 1 holds when that lands: the six steps get the variable and go through
+`run-ci-batch.mjs`, which rejects a skip, and `server/scripts/audit-ci-skips.mjs` reads the workflow and each
+suite's gate and fails CI on any suite that is named and cannot run. Only 26 of the workflow's 120 test steps
+went through the skip-rejecting wrapper, which is why a checker was the right shape rather than rewriting 94
+steps blind.
+
+**One real exception, now listed as the condition requires:** `server/services/video-transcode.ffmpeg.test.ts`
+skips in CI because ffmpeg is not installed. Installing it in that job would change that. It is a listed
+exception rather than a silent one, which is the whole difference.
+
+**And a warning about the checker itself, since it is now a gate.** It went through four versions before it
+was right, and two of the three wrong ones were wrong in the direction that matters least — noise — while one
+was wrong in the direction that matters most: it *cleared* a suite that gates on `TEST_DATABASE_URL` and only
+assigns `DATABASE_URL`, which is a silent green waved through by the thing built to catch silent greens. It
+has its own suite now, with seven mutations. If you change it, run that suite and mutate what you changed: the
+first time I mutated it, one test passed anyway because my own fixture asserted nothing.
+
+What to take from this: **the filename check in this file is necessary and nowhere near sufficient.** Run
+`audit-ci-skips.mjs` as well, and when you write "condition 1 is met" again, say which of the three checks you
+ran — names on disk, names in the workflow, and whether the named suites can actually reach a database.
+
+It had been recorded as finished twice before, and both times it was not. The two files unaccounted for were
+`server/routes/drink-collection-premium-access.test.ts`, which #1530 brought in, and
+`the __tests__/recipe.test.ts` — a directory named by a mistyped command, holding a Jest-style suite that could
+never have run, replaced by a real one in #1538.
+
+**Check it both directions when you re-check it, and re-check it.** A file outside CI runs nothing. A workflow
+step naming a file that does not exist *also* runs nothing, and it passes — which is the cheaper lie of the
+two. Both commands are one line each:
+
+```
+find . -path ./node_modules -prune -o -name '*.test.ts' -print -o -name '*.test.tsx' -print   -o -name '*.test.mts' -print | sed 's|^\./||' | sort > /tmp/all
+grep -ohE '[A-Za-z0-9_./-]+\.test\.(ts|tsx|mts)' .github/workflows/*.yml | sort -u > /tmp/ci
+comm -23 /tmp/all /tmp/ci   # suites no workflow runs
+comm -13 /tmp/all /tmp/ci   # workflow steps with no file
+```
 
 The reverse check is the one worth repeating, because it is the cheaper lie: a workflow step naming a file that
 does not exist runs nothing and passes. There are none today. The command is in the approval-boundary note
@@ -177,12 +234,38 @@ Two runs can just as easily push contradictory fixes to the same file, or merge 
 another run has.** The "In flight" table has an Owner column and it was not being used for that. It is now.
 A row claimed by a session id means hands off until that session's next update or the row goes stale.
 
+### Where the six conditions stand, 2026-11-28 02:35 UTC
+
+| # | Condition | State |
+| --- | --- | --- |
+| 1 | Every suite in CI, or listed with a reason | **NOT met.** Names match, but 607 named tests never run: a missing `TEST_DATABASE_URL` makes them skip and node exits 0. #1541 fixes it and adds a checker. See below |
+| 2 | No suite passes while asserting nothing, and none fails at random | **Not met, and it is the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
+| 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
+| 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **MET** by #1530. Nine read routes, one write path, every protection confirmed by breaking it |
+| 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
+| 6 | Closure and retention implemented to the matrix his accountant signs off | **Blocked on Myron's accountant.** Two migrations written and unapplied |
+
+So: **one met**, one a merge away (#1541), two blocked on Myron with the work already done, one unchanged, and
+condition 2 partly moved — its floor is now gated by `audit-assert-coverage.mjs`, and one flake is still open
+and unnamed.
+
+A run starting cold should: merge #1541 and #1540 if they are green, then chase the batch-7 flake with the
+failure summary that now names it.
+
 ### In flight
 
 | Item | Where | Next action | Owner |
 | --- | --- | --- | --- |
 | ~~Custom drink save prefix~~ | ~~PR #1514~~ | **Merged**, green on all six jobs. GPT's fix, plus the four payloads extracted so the pages and the test share one definition — Codex's P2 answered by code and six mutations | — |
-| Recipe create persistence | PR #1538 | **The last item for done-condition 1.** Rebased, and its own step passes; red only on the batch-7 flake recorded below, which it does not touch. Carries the `run-ci-batch.mjs` failure summary. Merge on a green run — and `rerun_failed_jobs` returns **403** for this integration, so a run can only be re-triggered by a real commit, never an empty one | Claude `…T9vcsr8u` |
+| ~~Recipe create persistence~~ | ~~PR #1538~~ | **Merged**, green. Closed done-condition 1 and added the `run-ci-batch.mjs` failure summary. Note for every future run: `rerun_failed_jobs` returns **403** for this integration, so CI can only be re-triggered by a real commit, never an empty one | — |
+| Silent-skip fix and checker | **PR #1541** | 607 tests CI names and has never run, plus the nested-failure hole Codex found on #1538. Both fixed. The checker took **four versions** — bare text (flagged a comment), regex on `process.env.NAME` (cleared a suite that only *assigns* the name: Codex's second finding, a silent green waved through by the checker), AST reads-only (flagged a test *titled* "…is skipped"), and the current one. It has its own 8-test suite with seven mutations, one of which passed at first because my fixture was vacuous. Merge on green | Claude `…T9vcsr8u` |
+| Assert-coverage audit | **PR #1540** | **Taken by session `…TD6mAsTkV`**, which answered both of Codex's findings on it — lexical helper scoping, and `skip` only counting when unconditionally truthy, which widened the gate by 19 blocks — and gave the tool its own suite with five mutations. Leave it to that session | Claude `…TD6mAsTkV` |
+| Record correction | **PR #1539** | Condition 1 unmarked, with the per-batch numbers and the ffmpeg exception listed. Merge on green | Claude `…T9vcsr8u` |
+
+Two sessions have now worked this repository at the same time twice, and the second time it went well because
+the Owner column was used. `…TD6mAsTkV` took #1540 and finished Codex's findings on it properly; this session
+stayed off it and took #1541 instead. **That is the pattern: claim the row before you start, and read the
+column before you pick.**
 | ~~Rendering smoke check~~ | ~~PR #1526~~ | **Merged.** Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
