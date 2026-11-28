@@ -1033,4 +1033,31 @@ if (!PG_URL) {
       await local.query(`DELETE FROM drink_challenges WHERE slug = $1`, [challengeSlug]);
     }
   });
+
+  test("R4 the join route's submitRoute does not carry a withheld premium originalDrinkSlug", async () => {
+    // Found by answering R3's own review question: POST /challenges/:slug/join with no drinkSlug returns the
+    // whole challenge AND builds the slug into a query string, so there were two copies to judge. requireAuth
+    // narrows it to members, which makes it quieter than the list and detail routes and no less of a
+    // disclosure -- any member can both write this field and read it back.
+    const challengeSlug = "p24-join-challenge";
+    await local.query(
+      `INSERT INTO drink_challenges (slug, title, description, original_drink_slug, starts_at, ends_at, is_active)
+       SELECT $1, 'c', 'c', $2, now() - interval '1 day', now() + interval '30 days', true
+       WHERE NOT EXISTS (SELECT 1 FROM drink_challenges WHERE slug = $1)`,
+      [challengeSlug, refParent()],
+    );
+    try {
+      const nonent = await post(`/challenges/${challengeSlug}/join`, "nonent", {});
+      assert.equal(nonent.status, 200, nonent.text);
+      assert.ok(nonent.text.includes(challengeSlug), "the challenge itself must still come back");
+      assert.ok(!nonent.text.includes(refParent()), "a non-entitled member was handed the withheld slug");
+
+      const buyer = await post(`/challenges/${challengeSlug}/join`, "buyer", {});
+      assert.equal(buyer.status, 200, buyer.text);
+      assert.ok(buyer.text.includes(refParent()), "a buyer is entitled and must still get the remix target");
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE challenge_id IN (SELECT id FROM drink_challenges WHERE slug = $1)`, [challengeSlug]);
+      await local.query(`DELETE FROM drink_challenges WHERE slug = $1`, [challengeSlug]);
+    }
+  });
 }

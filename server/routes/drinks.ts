@@ -20209,10 +20209,22 @@ r.post("/challenges/:slug/join", requireAuth, async (req, res) => {
     if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
 
     if (!body.drinkSlug) {
+      // A FOURTH reader of the same field, found by answering this PR's own review question rather than
+      // waiting for it to be answered. The "what do I remix?" branch returns the whole challenge AND builds
+      // the slug into a submitRoute query string, so both copies had to be judged. requireAuth narrows this
+      // to members rather than anonymous callers, which makes it quieter than the list and detail routes and
+      // no less of a disclosure: any member can both write this field and read it back.
+      const joinOriginal = typeof challenge.originalDrinkSlug === "string" && challenge.originalDrinkSlug.length > 0
+        ? challenge.originalDrinkSlug
+        : null;
+      const joinOriginalWithheld = joinOriginal
+        ? (await withheldPremiumSlugsForViewer([joinOriginal], userId)).has(joinOriginal)
+        : false;
+      const visibleOriginal = joinOriginalWithheld ? "" : (challenge.originalDrinkSlug || "");
       return res.json({
         ok: true,
-        challenge,
-        submitRoute: `/drinks/submit?remix=${encodeURIComponent(challenge.originalDrinkSlug || "")}&challenge=${encodeURIComponent(challenge.slug)}`,
+        challenge: { ...challenge, originalDrinkSlug: joinOriginalWithheld ? null : challenge.originalDrinkSlug },
+        submitRoute: `/drinks/submit?remix=${encodeURIComponent(visibleOriginal)}&challenge=${encodeURIComponent(challenge.slug)}`,
       });
     }
 
