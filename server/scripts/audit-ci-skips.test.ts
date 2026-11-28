@@ -224,3 +224,47 @@ test("a suite that READS a database URL but cannot skip is never reported", () =
   assert.deepEqual(r.hits, [], "no skip means it always runs, so it is not a silent-skip candidate");
   assert.equal(r.exit, 0);
 });
+
+test("Codex on #1541: a key present with an EMPTY value does not satisfy the gate", () => {
+  // `Object.keys` marked the name available whatever it was set to, and a suite reading `""` skips exactly as
+  // it does with the name unset. The fourth false clean in this file, and the first that needed no suite
+  // trickery at all -- just a workflow line.
+  const r = run({ "a.test.ts": suite({ gate: "TEST_DATABASE_URL" }) }, { TEST_DATABASE_URL: '""' });
+  assert.equal(r.hits.length, 1, "an empty value is not a connection string");
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"]);
+  assert.deepEqual(r.hits[0].available, [], "and it must not be listed as available either");
+  assert.equal(r.exit, 1);
+});
+
+test("Codex on #1541: an empty STEP value overrides a populated job value", () => {
+  // The union could not express this at all: the job supplies a real URL, the step blanks it, and GitHub runs
+  // the step with the blank. Precedence, not union, is what makes this visible.
+  const r = run(
+    { "a.test.ts": suite({ gate: "TEST_DATABASE_URL" }) },
+    { TEST_DATABASE_URL: '""' },
+    { TEST_DATABASE_URL: URL_LITERAL },
+  );
+  assert.equal(r.hits.length, 1, "the step's empty value wins, so the suite skips");
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"]);
+  assert.equal(r.exit, 1);
+});
+
+test("and precedence runs the other way too: a populated step value overrides an empty job value", () => {
+  // The other direction, because a gate that flags everything empty-adjacent is the noise failure. Here the
+  // step genuinely supplies the URL and the suite genuinely runs.
+  const r = run(
+    { "a.test.ts": suite({ gate: "TEST_DATABASE_URL" }) },
+    { TEST_DATABASE_URL: URL_LITERAL },
+    { TEST_DATABASE_URL: '""' },
+  );
+  assert.deepEqual(r.hits, [], "the step's real URL wins, so the suite runs");
+  assert.equal(r.exit, 0);
+});
+
+test("the `NAME:` form with nothing after it is empty too", () => {
+  // Actions passes a null-valued key as the empty string, so it has to be treated the same way. This is the
+  // shape a hand-edited workflow produces by accident.
+  const r = run({ "a.test.ts": suite({ gate: "TEST_DATABASE_URL" }) }, { TEST_DATABASE_URL: "" });
+  assert.equal(r.hits.length, 1, "a key with no value is not a connection string");
+  assert.equal(r.exit, 1);
+});

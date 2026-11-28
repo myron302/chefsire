@@ -190,8 +190,45 @@ const ALLOWED = new Map([
   // ["server/foo.postgres.test.ts", "needs a second cluster; would run if CI started one"],
 ]);
 
-function envNames(obj) {
-  return obj && typeof obj === "object" ? Object.keys(obj) : [];
+/**
+ * The environment names a step can ACTUALLY use: resolved by precedence, with empty values rejected.
+ *
+ * Codex's fourth finding here, and the fourth of the false-clean kind. The version before this one took
+ * `Object.keys` of each layer and unioned them, so a key counted as satisfying a gate whatever it was set to.
+ * Two shapes slipped through, both of which a suite treats as absent and node then exits 0 on:
+ *
+ *   env:
+ *     TEST_DATABASE_URL: ""     # present as a key, empty as a value
+ *
+ *   job env: TEST_DATABASE_URL: postgres://...   # populated
+ *   step env: TEST_DATABASE_URL: ""              # and overridden to nothing, which the union hid entirely
+ *
+ * Precedence is GitHub's: workflow env, then job env, then step env, each layer overriding the last -- so an
+ * empty step-level value does not merely fail to help, it REMOVES a populated job-level one, and a union
+ * could not express that. A value of `null` is the `NAME:` form with nothing after it, which Actions also
+ * passes as the empty string.
+ *
+ * Neither shape exists in pr-validation.yml today -- checked, every database name there has a literal URL --
+ * so this fixes a false clean that has not yet fired rather than one that has. It goes in because the gate is
+ * now a CI gate: the cheap failure in this file is noise and the expensive one is silence, and silence is
+ * what it has produced four times.
+ *
+ * Still not evaluated, and still the documented limit: a value from a secret or a `${{ }}` expression counts
+ * as present, because this tool cannot know what it expands to. There are none in the workflow today.
+ */
+function effectiveEnv(...layers) {
+  const resolved = new Map();
+  for (const layer of layers) {
+    if (!layer || typeof layer !== "object") continue;
+    for (const [name, value] of Object.entries(layer)) resolved.set(name, value);
+  }
+  const usable = new Set();
+  for (const [name, value] of resolved) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    usable.add(name);
+  }
+  return usable;
 }
 
 const findings = [];
@@ -200,13 +237,11 @@ const checked = { steps: 0, files: 0 };
 for (const wf of WORKFLOWS) {
   if (!existsSync(wf)) continue;
   const doc = parse(readFileSync(wf, "utf8"));
-  const topEnv = envNames(doc.env);
   for (const [jobId, job] of Object.entries(doc.jobs ?? {})) {
-    const jobEnv = envNames(job.env);
     for (const step of job.steps ?? []) {
       const run = typeof step.run === "string" ? step.run : "";
       if (!/node .*--test|run-ci-batch\.mjs/.test(run)) continue;
-      const available = new Set([...topEnv, ...jobEnv, ...envNames(step.env)]);
+      const available = effectiveEnv(doc.env, job.env, step.env);
       const viaWrapper = run.includes("run-ci-batch.mjs");
       const files = [...run.matchAll(/\S+\.test\.(?:ts|tsx|mts)/g)].map((m) => m[0]);
       if (files.length === 0) continue;
