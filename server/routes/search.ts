@@ -1,3 +1,4 @@
+import { validateTrigramSearch } from "../lib/search-trigram";
 // server/routes/search.ts
 import { Router } from "express";
 import fs from "node:fs";
@@ -197,7 +198,7 @@ function loadDrinkRouteSearchEntries(index: DrinkIndexFile | null): DrinkRouteSe
  * Unified autocomplete endpoint that searches across users, recipes, drinks, reviews, and pet food.
  * Returns top results from each category.
  */
-router.get("/autocomplete", optionalAuth, async (req, res) => {
+router.get("/autocomplete", validateTrigramSearch, optionalAuth, async (req, res) => {
   try {
     const query = typeof req.query.q === "string" ? req.query.q : "";
 
