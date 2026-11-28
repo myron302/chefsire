@@ -251,7 +251,14 @@ failure summary that now names it.
 | --- | --- | --- | --- |
 | ~~Custom drink save prefix~~ | ~~PR #1514~~ | **Merged**, green on all six jobs. GPT's fix, plus the four payloads extracted so the pages and the test share one definition — Codex's P2 answered by code and six mutations | — |
 | ~~Recipe create persistence~~ | ~~PR #1538~~ | **Merged**, green. Closed done-condition 1 and added the `run-ci-batch.mjs` failure summary. Note for every future run: `rerun_failed_jobs` returns **403** for this integration, so CI can only be re-triggered by a real commit, never an empty one | — |
-| Nothing else is claimed | — | **The queue is empty of unblocked implementation work that this run could identify.** Condition 2's sweep is the next real item and it is described below. Everything else in the table is somebody else's | — |
+| Silent-skip fix and checker | **PR #1541** | 607 tests CI names and has never run, plus the nested-failure hole Codex found on #1538. Both measured, both fixed, Codex asked to attack the shape of both gates. Merge on green | Claude `…T9vcsr8u` |
+| Assert-coverage audit | **PR #1540** | **Taken by session `…TD6mAsTkV`**, which answered both of Codex's findings on it — lexical helper scoping, and `skip` only counting when unconditionally truthy, which widened the gate by 19 blocks — and gave the tool its own suite with five mutations. Leave it to that session | Claude `…TD6mAsTkV` |
+| Record correction | **PR #1539** | Condition 1 unmarked, with the per-batch numbers and the ffmpeg exception listed. Merge on green | Claude `…T9vcsr8u` |
+
+Two sessions have now worked this repository at the same time twice, and the second time it went well because
+the Owner column was used. `…TD6mAsTkV` took #1540 and finished Codex's findings on it properly; this session
+stayed off it and took #1541 instead. **That is the pattern: claim the row before you start, and read the
+column before you pick.**
 | ~~Rendering smoke check~~ | ~~PR #1526~~ | **Merged.** Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
