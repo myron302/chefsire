@@ -415,7 +415,20 @@ was set up to stop.
 ### Known and not yet done
 
 - `POST /collections/:id/items` is fixed in #1530; no other write path has been audited for the same shape.
-- `server/routes/drinks.ts` holds about half the repository's type errors in one file.
+- Type errors. **Re-measured 2026-11-28: 1067 repository-wide, and 38 in `server/routes/drinks.ts`.**
+
+  Both numbers this record and the scheduled prompt carried were stale by a wide margin: the prompt told every
+  run the baseline was **3068**, and this file said drinks.ts held about half of them (it was 1454). A baseline
+  nearly three times the truth is not a harmless old number — a run could add a hundred errors and still
+  report itself comfortably under it. The prompt has been corrected to 1067 with the date beside it.
+
+  Where they actually are now, worst first: `server/routes/drinks/rollout-routes.ts` 68,
+  `server/routes/drinks/dashboard-routes.ts` 59, `client/src/pages/drinks/potent-potables/cocktails/index.tsx`
+  42, `server/routes/drinks.ts` 38. In drinks.ts the remaining shapes are mostly TS18048 (possibly undefined,
+  14) and TS2769 (no overload matches, 9), which are real nullability questions rather than missing
+  annotations — the easy annotation work there is done.
+
+  **Compare signatures, never counts, and re-measure before quoting either.**
 
 ### Condition 2 needs a tool nobody has written, and I did not fake one
 
