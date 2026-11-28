@@ -234,6 +234,18 @@ Two runs can just as easily push contradictory fixes to the same file, or merge 
 another run has.** The "In flight" table has an Owner column and it was not being used for that. It is now.
 A row claimed by a session id means hands off until that session's next update or the row goes stale.
 
+**It happened a third time on 2026-11-28, with the column in use, and the reason is worth writing down here
+rather than rediscovering.** Sessions `…T9vcsr8u` and `…01M8KhTD` both built a silent-skip checker for the same
+Codex finding, ten minutes apart — #1541 and #1542 — and one of them was thrown away. Both runs honoured the
+column. **A row claimed *after* the work is a record, not a lock.** `…01M8KhTD` read this file at 05:50, began,
+and the claim for that item landed at 06:14 while it was already deep in the work.
+
+So the rule needs a second half: **claim the row before doing the work, and re-read this file and re-fetch the
+branches immediately before starting and before each push.** A claim is worth nothing if it is written at the
+end. The duplicate was closed in favour of the earlier PR, and the four things it had that the survivor did not
+were handed over as findings on that PR rather than pushed at a branch another session was working in — which
+is the other half of not colliding.
+
 ### Where the six conditions stand, 2026-11-28 02:35 UTC
 
 | # | Condition | State |
@@ -337,9 +349,36 @@ no `not ok` line at all, which from a tail looked identical. Verified with throw
 paths. **So the next run that sees this will be able to name it.** That is the whole of the progress; the flake
 itself is untouched.
 
-The guess, recorded as a guess and not as a cause: batch 7 holds four realtime socket suites and four HTTP
-suites that each bind a server, so a port or teardown race between two of them is plausible. Nobody has shown
-it.
+#### The guess was wrong, and four mechanisms are now eliminated
+
+The guess recorded here was that batch 7 holds four realtime socket suites and four HTTP suites that each bind
+a server, so a port or teardown race between two of them is plausible. **It is not plausible; it is
+impossible**, and the next run should not spend an hour on it the way this one did. Checked on 2026-11-28 by
+session `…01M8KhTD`:
+
+| mechanism | verdict |
+| --- | --- |
+| a fixed-port collision between two suites | **impossible.** All seven servers in the batch bind **port 0** — an ephemeral port the kernel assigns. `dm-socket-safety.test.ts` binds nothing at all |
+| an in-process race between two suites | **impossible.** `node --test` runs each file in its own child process. Two files cannot contend for an in-process resource; the only channels between them are the database, the filesystem and the OS |
+| `api-init-isolation.test.ts`'s timing budget | **cleared.** Line 311 spins up to 500ms waiting for `inFlightDdl !== 0`, then sleeps a flat 100ms, then hard-asserts `inFlightDdl === 1` — the classic shape of a load-sensitive flake, and worth checking for that reason. Three runs under deliberate CPU starvation (six spinners on two cores): 11/11 each time |
+| state left on the shared database by earlier batches | **cleared.** This is the recipe this file recommended, and it has now been run: a brand-new database, then batches **1 through 7 of 17 in workflow order, in sequence, through `run-ci-batch.mjs`**, nothing cleaned in between. 210 / 260 / 218 / 463 / 182 / 367 passing, then **batch 7 at 351 pass / 0 fail / 0 skip** |
+
+The 351 in that last row is worth noting on its own: it is exactly the batch size this file records, which
+confirms that the fifteen suites being tested are precisely the CI batch and not an approximation of it.
+
+**That makes six failed reproduction attempts across two runs** — the five above plus this one. What remains
+is something only the CI runner has: contention from the three jobs running in parallel, the postgres service
+container rather than a local server, or a genuine one-in-a-hundred inside one of the fifteen suites.
+
+One lead was raised and then withdrawn in the same run, recorded so nobody re-finds it: the job log's final
+statements are two identical `UPDATE catering_booking_amendments SET currency = 'GBP'` 28ms apart, which looked
+like a retry or a double run. They are neither — line 550 of that suite sits inside a loop over two
+`[proposer, responder]` pairs, so two identical statements is simply what it does. Nothing there.
+
+**Recommendation: stop hunting it and let it catch itself.** `run-ci-batch.mjs` now names every failing test at
+the end of the log, which was not in place when this fired. Six attempts have bought four eliminations and no
+cause; a seventh will not do better, and the next occurrence costs nothing and names the test outright. The
+standing rule below is the part that actually protects anybody, and it is unchanged.
 
 **Do not merge anything on a re-run green while this is open without saying so in the merge.** A flake that
 gets retried until it passes is how a real failure comes to be read as noise, which is the thing this campaign
