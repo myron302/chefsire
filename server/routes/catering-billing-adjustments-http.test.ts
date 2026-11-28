@@ -984,9 +984,38 @@ if (!PG_URL) {
     const stale = await pay(bookingId, invoiceId, "2500.00");
     assert.equal(stale.status, 409, stale.text);
     assert.equal(await ledgerPayments(bookingId), 0);
-    const [credit, payment] = await Promise.all([adjust(bookingId, { kind: "credit", amountCents: 20000 }), pay(bookingId, invoiceId, "500.00")]);
+    // THIS IS THE BATCH-7 FLAKE, named at last by run-ci-batch's failure summary on 2026-11-28 (run
+    // 46179328729, job 141085085901: 350 pass / 1 fail of 351) and then reproduced deterministically.
+    //
+    // These two calls used to go through `Promise.all` with `assert.equal(payment.status, 409, "500 against a
+    // 300 balance, whichever order the two commit")`. That claim is FALSE, and the flake was it coming true
+    // about one run in a hundred:
+    //
+    //   credit commits first  -> balance 300, a 500 payment is refused   -> 409
+    //   payment commits first -> balance 500, a 500 payment is EXACTLY it -> 200
+    //
+    // Both are correct. `/billing/payments` takes `lockBilling` and then re-resolves the cap inside the
+    // transaction, so the two requests serialise at the database and whichever wins sees the balance as of its
+    // own commit. That is what a payable cap means. Forced locally: credit-first gives 409 every time,
+    // payment-first gives 200 every time.
+    //
+    // A WRONG EXPECTATION, NOT A HIDDEN DEFECT, and the evidence is three-legged rather than an opinion:
+    //   1. both orders are the documented behaviour of a cap re-checked under lock;
+    //   2. the ORDER-INDEPENDENT invariant is already tested, in this same file, on this same racing pair --
+    //      "payable allocation: a stale form and sibling payments racing a credit can never record more than
+    //      the allocated receivable" asserts `ledgerPayments === (payment.status === 200 ? 1 : 0)` and
+    //      deliberately does NOT assert which status comes back. Someone understood this race already;
+    //   3. the failing assertion's own message describes only the credit-first order, so the author meant the
+    //      sequential case and `Promise.all` was the slip.
+    //
+    // So the race is removed rather than the assertion weakened: sequential credit-then-payment tests exactly
+    // what this test's NAME claims -- a stale form is refused by the server once the credit is in -- and the
+    // racing case keeps its correct coverage in the allocation test. Mutating the cap check still fails this.
+    const credit = await adjust(bookingId, { kind: "credit", amountCents: 20000 });
     assert.equal(credit.status, 201);
-    assert.equal(payment.status, 409, "500 against a 300 balance, whichever order the two commit");
+    const payment = await pay(bookingId, invoiceId, "500.00");
+    assert.equal(payment.status, 409, "once the credit is in, 500 against a 300 balance is refused");
+    assert.equal(await ledgerPayments(bookingId), 0, "and nothing was recorded");
   });
 
   test("payable cap: ordinary Phase 2L payment recording is unchanged on a booking with no adjustments", async () => {
