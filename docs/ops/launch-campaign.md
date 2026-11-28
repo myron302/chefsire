@@ -234,6 +234,18 @@ Two runs can just as easily push contradictory fixes to the same file, or merge 
 another run has.** The "In flight" table has an Owner column and it was not being used for that. It is now.
 A row claimed by a session id means hands off until that session's next update or the row goes stale.
 
+**It happened a third time on 2026-11-28, with the column in use, and the reason is worth writing down here
+rather than rediscovering.** Sessions `…T9vcsr8u` and `…01M8KhTD` both built a silent-skip checker for the same
+Codex finding, ten minutes apart — #1541 and #1542 — and one of them was thrown away. Both runs honoured the
+column. **A row claimed *after* the work is a record, not a lock.** `…01M8KhTD` read this file at 05:50, began,
+and the claim for that item landed at 06:14 while it was already deep in the work.
+
+So the rule needs a second half: **claim the row before doing the work, and re-read this file and re-fetch the
+branches immediately before starting and before each push.** A claim is worth nothing if it is written at the
+end. The duplicate was closed in favour of the earlier PR, and the four things it had that the survivor did not
+were handed over as findings on that PR rather than pushed at a branch another session was working in — which
+is the other half of not colliding.
+
 ### Where the six conditions stand, 2026-11-28 02:35 UTC
 
 | # | Condition | State |
@@ -337,9 +349,64 @@ no `not ok` line at all, which from a tail looked identical. Verified with throw
 paths. **So the next run that sees this will be able to name it.** That is the whole of the progress; the flake
 itself is untouched.
 
-The guess, recorded as a guess and not as a cause: batch 7 holds four realtime socket suites and four HTTP
-suites that each bind a server, so a port or teardown race between two of them is plausible. Nobody has shown
-it.
+#### Two mechanisms eliminated, one hypothesis still open, and a wrong model of CI corrected
+
+The guess recorded here was that batch 7 holds four realtime socket suites and four HTTP suites that each bind
+a server, so a port or teardown race is plausible. That part is settled. But the first version of this section
+claimed four eliminations, and **Codex found two overclaims in it on #1543** — one of them a plain factual
+error about how CI is laid out. Corrected here, because a wrong model in this file sends the next run in the
+wrong direction, which is the whole failure this file exists to stop.
+
+**Eliminated, and these two hold:**
+
+| mechanism | why it is impossible |
+| --- | --- |
+| a fixed-port collision between two suites | All seven servers in the batch bind **port 0**, an ephemeral port the kernel assigns. `dm-socket-safety.test.ts` binds nothing at all |
+| an in-process race between two suites | `node --test` runs each file in its own child process. Two files cannot contend for an in-process resource; the only channels between them are the database, the filesystem and the OS |
+
+**Still open, and recorded as a hypothesis rather than a finding:** `api-init-isolation.test.ts:311-313`
+spins up to 500ms waiting for `inFlightDdl !== 0`, then sleeps a flat 100ms, then hard-asserts
+`inFlightDdl === 1`. If none of the forty requests reaches the initialization guard inside that budget, the
+assertion fails. Three runs under deliberate CPU starvation (six spinners on two cores) passed 11/11, so it is
+**not reproduced**, which is not the same as eliminated — the deadline is still in the test and nothing has
+shown that a CI runner always meets it. **Do not cross this one off.**
+
+**The wrong model, corrected.** This file implied that CI runs the batches in sequence against one database,
+and recommended reproducing by running them that way. That is not the layout:
+
+- batches **1 to 6** are steps of `restored-unit-suites-1`;
+- batch **7** is the **first test step** of `restored-unit-suites-2` (workflow lines 390-434), which declares
+  its **own runner and its own `postgres:16` service container**;
+- so the three `restored-unit-suites-*` jobs share neither a runner nor a database.
+
+Two consequences, and they point the next run somewhere quite different:
+
+1. **Earlier-batch contamination is excluded by the job boundary, not by any experiment.** Batch 7 meets a
+   database that nothing else has touched. The sequential run done on 2026-11-28 — a fresh database, then
+   batches 1 through 7 of 17 in order, 210/260/218/463/182/367 passing and then batch 7 at 351 pass / 0 fail —
+   did **not** model CI, because CI never does that. It is evidence that batch 7 passes after that history,
+   and nothing more.
+2. **Cross-job contention is not a suspect either**, for the same reason. The earlier version of this section
+   listed it; it was wrong.
+
+**So the surface is smaller and more specific than anyone has been treating it as:** the failure happened
+1m53s into the **first test step of a fresh job, against a cold database**. Whatever it is lives inside those
+fifteen suites, or in how they behave against a database on first touch — not in anything that ran before
+them, because nothing did.
+
+The 351 in the sequential run is still worth keeping for one reason: it is exactly the batch size this file
+records, which confirms the fifteen suites being tested are precisely the CI batch and not an approximation.
+
+One lead was raised and withdrawn in the same run, recorded so nobody re-finds it: the job log's final
+statements are two identical `UPDATE catering_booking_amendments SET currency = 'GBP'` 28ms apart, which looked
+like a retry or a double run. They are neither — line 550 of that suite sits inside a loop over two
+`[proposer, responder]` pairs. Nothing there.
+
+**Recommendation: stop hunting and let it catch itself**, but for a better reason than exhaustion.
+`run-ci-batch.mjs` now names every failing test at the end of the log, which was not in place when this fired.
+The next occurrence names the test for free, and with the corrected topology above it will point at something
+inside one fresh job rather than at a state-accumulation story that cannot happen. A seventh guess is worth
+less than that.
 
 **Do not merge anything on a re-run green while this is open without saying so in the merge.** A flake that
 gets retried until it passes is how a real failure comes to be read as noise, which is the thing this campaign
