@@ -1,3 +1,4 @@
+import { validateTrigramSearch } from "../lib/search-trigram";
 // server/routes/users.ts
 import { Router } from "express";
 import { z } from "zod";
@@ -32,7 +33,7 @@ const r = Router();
  * GET /api/users/search
  * Search for users by username, displayName, bio, or specialty
  */
-r.get("/search", async (req, res) => {
+r.get("/search", validateTrigramSearch, async (req, res) => {
   try {
     const query = typeof req.query.q === "string" ? req.query.q : "";
     const limit = typeof req.query.limit === "string"

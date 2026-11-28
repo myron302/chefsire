@@ -587,3 +587,38 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node server/scripts/run-ci-batch.mjs server/lib/recipe-create-persistence.postgres.test.ts
+
+  search-trigram-phase1:
+    name: Opt-in trigram search and premium visibility regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: chefsire_search_test
+          POSTGRES_USER: chefsire_test
+          POSTGRES_PASSWORD: disposable_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chefsire_test -d chefsire_search_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: "true"
+      CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_search_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Test default-off behavior, migration, ranking and privacy
+        run: node server/scripts/run-ci-batch.mjs server/lib/search-trigram.test.ts server/lib/search-trigram.postgres.test.ts
+      - name: Regress existing autocomplete and premium collection visibility with trigram enabled
+        env:
+          SEARCH_TRIGRAM_ENABLED: "true"
+        run: node server/scripts/run-ci-batch.mjs server/routes/search-autocomplete-recipe-privacy.postgres.test.ts server/routes/drink-collection-premium-access.test.ts

@@ -1,3 +1,4 @@
+import { searchTrigramEnabled, searchTerm, literalContains, trigramMatch, trigramOrder } from "./lib/search-trigram";
 // server/storage.ts — COMPLETE FILE WITH DRINKS
 import "./lib/load-env";
 import { drizzle } from "drizzle-orm/neon-serverless";
@@ -427,19 +428,24 @@ export class DrizzleStorage implements IStorage {
 
   async searchUsers(query: string, limit = 20): Promise<User[]> {
     const db = getDb();
-    const searchTerm = `%${query}%`;
+    const enabled = searchTrigramEnabled();
+    if (enabled) query = searchTerm(query);
+    const pattern = enabled ? literalContains(query) : `%${query}%`;
     return db
       .select()
       .from(users)
       .where(
-        or(
-          ilike(users.username, searchTerm),
-          ilike(users.displayName, searchTerm),
-          ilike(users.bio, searchTerm),
-          ilike(users.specialty, searchTerm)
+        enabled ? and(sql`NOT ${accountHidden(users.id)}`, or(
+          trigramMatch(users.username, query), trigramMatch(users.displayName, query),
+          ilike(users.bio, pattern), ilike(users.specialty, pattern)
+        )) : or(
+          ilike(users.username, pattern),
+          ilike(users.displayName, pattern),
+          ilike(users.bio, pattern),
+          ilike(users.specialty, pattern)
         )!
       )
-      .orderBy(desc(users.followersCount))
+      .orderBy(...(enabled ? trigramOrder([users.username, users.displayName], query) : []), desc(users.followersCount), ...(enabled ? [users.id] : []))
       .limit(limit);
   }
 
@@ -1458,13 +1464,18 @@ export class DrizzleStorage implements IStorage {
     limit = 20
   ): Promise<ProductWithSeller[]> {
     const db = getDb();
+    const enabled = searchTrigramEnabled();
+    if (enabled && query) query = searchTerm(query);
     const conditions: any[] = [eq(products.isActive, true), sql`NOT ${accountHidden(products.sellerId)}`];
 
     if (category) conditions.push(eq(products.category, category));
     if (location) conditions.push(eq(products.pickupLocation, location));
     if (query) {
       conditions.push(
-        or(
+        enabled ? or(
+          trigramMatch(products.name, query), ilike(products.description, literalContains(query)),
+          trigramMatch(users.username, query), trigramMatch(users.displayName, query)
+        ) : or(
           sql`${products.name} ILIKE ${"%" + query + "%"}`,
           sql`${products.description} ILIKE ${"%" + query + "%"}`
         )!
@@ -1477,7 +1488,7 @@ export class DrizzleStorage implements IStorage {
       .innerJoin(users, eq(products.sellerId, users.id))
       // @ts-expect-error drizzle typing
       .where(and(...conditions))
-      .orderBy(desc(products.createdAt))
+      .orderBy(...(enabled && query ? trigramOrder([products.name], query) : []), desc(products.createdAt), ...(enabled ? [products.id] : []))
       .offset(offset)
       .limit(limit);
 

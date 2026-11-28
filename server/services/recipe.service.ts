@@ -1,3 +1,4 @@
+import { searchTrigramEnabled, searchTerm, literalContains, trigramMatch, trigramOrder } from "../lib/search-trigram";
 // server/services/recipe.service.ts
 import { eq, desc, and, or, sql, ilike } from "drizzle-orm";
 import { recipes, posts, users, type Recipe, type InsertRecipe, type PostWithUser } from "@shared/schema";
@@ -99,17 +100,19 @@ export class RecipeService {
     }
   ): Promise<any[]> {
     try {
+      const enabled = searchTrigramEnabled();
+      const q = enabled && searchParams.q ? searchTerm(searchParams.q) : searchParams.q;
       let query = db.select().from(recipes);
       // Club-created recipes are visible per the club's privacy; merely being shared into a club changes nothing.
       const conditions: any[] = [recipeVisibleToViewer(sql`${recipes.id}`, searchParams.viewerId)];
 
       if (searchParams.q) {
-        const searchTerm = `%${searchParams.q}%`;
+        const pattern = enabled ? literalContains(q!) : `%${searchParams.q}%`;
         conditions.push(
           or(
-            ilike(recipes.title, searchTerm),
-            sql`${recipes.ingredients}::text ILIKE ${searchTerm}`,
-            sql`${recipes.instructions}::text ILIKE ${searchTerm}`
+            enabled ? trigramMatch(recipes.title, q!) : ilike(recipes.title, pattern),
+            sql`${recipes.ingredients}::text ILIKE ${pattern}`,
+            sql`${recipes.instructions}::text ILIKE ${pattern}`
           )!
         );
       }
@@ -119,6 +122,7 @@ export class RecipeService {
         query = query.where(and(...conditions));
       }
 
+      if (enabled && q) query = query.orderBy(...trigramOrder([recipes.title], q), recipes.id);
       const results = await query
         .limit(searchParams.pageSize || 24)
         .offset(searchParams.offset || 0);

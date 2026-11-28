@@ -1,3 +1,4 @@
+import { validateTrigramSearch } from "../lib/search-trigram";
 // server/routes/recipes.ts
 import { viewerIdFrom } from "../lib/post-visibility";
 import { Router } from "express";
@@ -174,7 +175,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
  * GET /api/recipes/search
  * If q is missing/empty => returns a random page (fresh each request)
  */
-router.get("/search", optionalAuth, async (req, res) => {
+router.get("/search", validateTrigramSearch, optionalAuth, async (req, res) => {
   noStore(res);
   try {
     const { q, cuisines, diets, mealTypes, source, pageSize, offset } = parseRecipeSearchParams(

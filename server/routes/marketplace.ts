@@ -1,3 +1,4 @@
+import { validateTrigramSearch } from "../lib/search-trigram";
 // server/routes/marketplace.ts
 import { viewerIdFrom } from "../lib/post-visibility";
 import { Router } from "express";
@@ -110,7 +111,7 @@ r.get("/products/:id", optionalAuth, async (req, res) => {
 });
 
 // Search products
-r.get("/products", optionalAuth, async (req, res) => {
+r.get("/products", validateTrigramSearch, optionalAuth, async (req, res) => {
   try {
     const filters = searchProductsSchema.parse(req.query);
     const products = await storage.searchProducts(

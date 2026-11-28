@@ -1,0 +1,8 @@
+-- Manual, owner-approved rollout only; NOT read by the application migration runner.
+-- Columns and existing indexes verified READ ONLY against Neon public catalog 2026-11-28.
+-- Execute each statement independently, outside a transaction, on a direct connection.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS search_recipes_title_trgm_idx ON public.recipes USING gin (lower(title) gin_trgm_ops);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS search_users_username_trgm_idx ON public.users USING gin (lower(username) gin_trgm_ops);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS search_users_display_name_trgm_idx ON public.users USING gin (lower(display_name) gin_trgm_ops);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS search_products_name_trgm_idx ON public.products USING gin (lower(name) gin_trgm_ops);
