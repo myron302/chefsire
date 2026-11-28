@@ -295,17 +295,22 @@ all six jobs again. The "Schema push safety and plaintext finalization durabilit
 minutes of a 45-minute budget.
 
 **Push more often than that and CI can never finish.** Measured with `actions/runs?branch=…`, which reports
-each RUN's conclusion rather than each job's:
+each RUN's conclusion rather than each job's. A snapshot at **2026-11-28 19:15Z**, before the pause that
+followed it:
 
 | branch | runs | conclusions |
 | --- | --- | --- |
 | `tests/catering-payable-cap-race-order` (#1549) | 8 | **every one `cancelled`** |
 | `ci/silent-skip-checker` (#1541) | 12 | 3 `success`, 1 `failure`, **8 `cancelled`** |
 
-#1549 had never once completed a full validation while being described in this session as "five of six
-green" — those were the partial results of runs that were then thrown away. #1541 is the contrast that shows
-the cause is **cadence, not the workflow**: the same six jobs completed three times there, on the pushes that
-were followed by a pause rather than another push.
+#1549 had at that point never once completed a full validation while being described in this session as "five
+of six green" — those were the partial results of runs that were then thrown away. #1541 is the contrast that
+shows the cause is **cadence, not the workflow**: the same six jobs completed three times there, on the
+pushes that were followed by a pause rather than another push.
+
+**And the fix worked, which is the other half of the evidence.** After stopping, the next run on #1549
+(`58315469`) completed with conclusion `success` — the ninth run on that branch and the first to finish.
+Nothing about the workflow changed; only the cadence did.
 
 A `check_suite.completed` notification does not catch this either; it says in its own text that it does not
 cover cancelled suites. Nor does a job table: a job marked `success` inside a run marked `cancelled` is not a
@@ -345,7 +350,10 @@ Its first test takes **18.5 minutes** — it drives real `drizzle-kit` through d
 database. Every attempt to run it locally had a 10 minute cap, so it was killed mid-run and recorded as a
 failure. That reading was then copied into the work queue and repeated.
 
-Give it 25 minutes before calling it hung.
+**Give it 35 minutes before calling it hung, not 25.** That number was raised on measurement: in CI the whole
+job ran **19:17:42 to 19:44:32 — 26m50s** (run `46180381624`), comfortably past the 25 minutes this file used
+to allow and still well inside its own 45-minute budget. A 25-minute patience would have had someone killing
+a healthy job.
 
 **What this file said about the guard itself was wrong, and is corrected here.** It read: the guard was verified
 by hand against a non-exempt database, it refused a plan that would strip row-level security, so do not go
