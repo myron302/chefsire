@@ -522,9 +522,10 @@ statements are two identical `UPDATE catering_booking_amendments SET currency = 
 like a retry or a double run. They are neither — line 550 of that suite sits inside a loop over two
 `[proposer, responder]` pairs. Nothing there.
 
-**Recommendation, now that one cause is named: merge #1549, and let the rest catch itself.** The named
-assertion is fixed and should not be left to fire again. For whatever else may be in those fifteen suites,
-waiting is still right, and for a better reason than exhaustion.
+**Recommendation: merge #1549, and let the failure itself catch the rest.** The two-sided assertion is a real
+flake and should not be left to fire, whether or not it is the one on record — but removing it is not an
+explanation of the failure, and nothing here should be read as closing that. For whatever else is in those
+fifteen suites, waiting is still right, and for a better reason than exhaustion.
 `run-ci-batch.mjs` now names every failing test at the end of the log, which was not in place when this fired.
 The next occurrence names the test for free, and with the corrected topology above it will point at something
 inside one fresh job rather than at a state-accumulation story that cannot happen. A seventh guess is worth
