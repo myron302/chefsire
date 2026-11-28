@@ -3,6 +3,7 @@ import { pool } from "../db";
 import { weddingSquareSandboxPaymentRiskApi } from "./wedding-square-sandbox-payment-risk-api";
 import { WEDDING_CONSENT_VERSION,WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
 import { z } from "zod";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Owner-bound, internal payment-specific refresh.
@@ -36,7 +37,7 @@ export function createWeddingSquareEvidenceRefresh(db:Db,risk:Risk){
   return {async refresh(evidenceId:string,userId:string){
     const merchant=process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
     const location=process.env.SQUARE_LOCATION_ID;
-    if(process.env.SQUARE_ENV!=="sandbox"||
+    if(!isExplicitSandboxEnvironment()||
        process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
        process.env.WEDDING_SQUARE_SANDBOX_RECONCILIATION_ENABLED!=="true"||
        !uuid.safeParse(evidenceId).success||!id.safeParse(userId).success||

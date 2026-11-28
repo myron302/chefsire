@@ -4,6 +4,7 @@ import {pool} from "../db";
 import {weddingSquareSandboxSubscriptionReadback,createWeddingSquareSandboxSubscriptionReadback} from "./wedding-square-sandbox-subscription-readback";
 import {weddingSquareReconciliationReadback} from "./wedding-square-reconciliation-readback";
 import {weddingSquareSandboxCatalogAttestation} from "./wedding-square-sandbox-catalog-attestation";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 type Db=Pick<PoolClient,"query">;
 type Provider=Pick<typeof weddingSquareSandboxSubscriptionReadback,"inspect">;
 type Sender=(url:string,init:RequestInit)=>Promise<Response>;
@@ -18,7 +19,7 @@ const uuid=z.string().uuid();
 // Validate ORIGINAL errors before adapting raw snake_case to the existing
 // owner/fingerprint/catalog verifier. SDK normalization can erase errors:null.
 export async function readWeddingSquareLifecycleSubscription(subscriptionId:string,sender:Sender=fetch){
- if(process.env.SQUARE_ENV!=="sandbox"||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
+ if(!isExplicitSandboxEnvironment()||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
     !id.safeParse(process.env.SQUARE_ACCESS_TOKEN).success||!id.safeParse(subscriptionId).success)throw Error("Subscription read unavailable");
  const response=await sender("https://connect.squareupsandbox.com/v2/subscriptions/"+encodeURIComponent(subscriptionId),{
   method:"GET",redirect:"error",signal:AbortSignal.timeout(15000),headers:{
@@ -39,7 +40,7 @@ export function createWeddingSquareLifecycleEvents(db:Db,provider:Provider,sende
   const pending={processed:false as const,grantsEntitlement:false as const};
   const merchant=process.env.WEDDING_SQUARE_SANDBOX_MERCHANT_ID;
   const location=process.env.SQUARE_LOCATION_ID;
-  if(process.env.SQUARE_ENV!=="sandbox"||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
+  if(!isExplicitSandboxEnvironment()||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
      process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
      process.env.WEDDING_SQUARE_SANDBOX_WEBHOOK_ENABLED!=="true"||
      process.env.WEDDING_SQUARE_SANDBOX_PAYMENT_EVENTS_ENABLED!=="true"||

@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Read-only status inspection for an ambiguous sandbox Square enrollment.
@@ -36,7 +37,7 @@ type Row = {
 export function createWeddingSquareReconciliationReadback(database: Database) {
   return {
     async inspect(attemptId: string, authenticatedUserId: string) {
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !canonicalId(attemptId) || !canonicalId(authenticatedUserId) ||
           !database || typeof database.query !== "function") {

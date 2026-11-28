@@ -1048,9 +1048,26 @@ export function isDisposableTestDatabase(databaseUrl: string): boolean {
   try {
     const url = new URL(databaseUrl);
     const host = url.hostname.replace(/^\[|\]$/g, "");
-    const hostParam = url.searchParams.get("host");
-    if (url.searchParams.has("hostaddr")) return false;
+    const hostParams = url.searchParams.getAll("host");
+
+    // Codex on #1536. This function decides whether a destructive plan may be applied with NO approval and no
+    // server-identity check, so it must agree with the driver about where the connection actually goes. It did
+    // not. `postgres://u:p@localhost/app_test?host=/tmp&host=db.prod.example.com` gave `searchParams.get("host")`
+    // the FIRST value, /tmp, while pg uses the LAST, db.prod.example.com -- verified against the installed
+    // driver. The guard saw a loopback socket and a database named "test" and waved through a plan aimed at a
+    // remote server.
+    //
+    // Agreeing with the driver on which value wins would fix that one URL and leave the shape intact, so instead
+    // any ambiguity about the target is refused outright: more than one host, a comma-separated list (libpq
+    // accepts those and pg passes the string through), or hostaddr in any form. A URL that cannot say plainly
+    // where it points does not get the exemption.
+    if (url.searchParams.getAll("hostaddr").length > 0) return false;
+    if (hostParams.length > 1) return false;
+    const hostParam = hostParams.length === 1 ? hostParams[0] : null;
     if (hostParam !== null && !hostParam.startsWith("/")) return false;
+    if (hostParam !== null && hostParam.includes(",")) return false;
+    if (host.includes(",")) return false;
+
     const loopback = ["localhost", "127.0.0.1", "::1"].includes(host) || (host === "" && hostParam !== null);
     const name = decodeURIComponent(url.pathname.replace(/^\//, ""));
     return loopback && /(^|[^a-z0-9])test([^a-z0-9]|$)/i.test(name);

@@ -85,7 +85,12 @@ if (!PG_URL) {
   const base = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const ids = { A: "", B: "" };
 
+  /** Every identifier each user owns, so a leak can be caught by id and not only by marker. */
+  const resourceIds: Record<"A" | "B", Set<string>> = { A: new Set(), B: new Set() };
+
   test.beforeEach(async () => {
+    resourceIds.A.clear();
+    resourceIds.B.clear();
     await local.query(`TRUNCATE users, pantry_items, posts, recipes, recipe_saves, stores, user_drink_stats, custom_drinks, drink_saves, clubs, club_memberships, cook_together_sessions, cook_together_participants`);
     for (const [key, name] of [["A", "alice"], ["B", "bob"]] as const) {
       ids[key] = (await local.query(
@@ -93,17 +98,22 @@ if (!PG_URL) {
          VALUES ($1, $2, $1, $3, 'professional', '4321.00', $4) RETURNING id`,
         [name, `${name}@example.com`, `$2a$10$${name}-HASH-SECRET`, `cus_${name}_SECRET`],
       )).rows[0].id;
+      resourceIds[key].add(ids[key]);
     }
     for (const key of ["A", "B"] as const) {
       const tag = `${key}-secret-item`;
       await local.query(`INSERT INTO pantry_items (user_id, name, expiration_date) VALUES ($1, $2, now() + interval '2 days')`, [ids[key], tag]);
       const post = (await local.query(`INSERT INTO posts (user_id, caption) VALUES ($1, 'p') RETURNING id`, [ids[key]])).rows[0].id;
+      resourceIds[key].add(post);
       const recipe = (await local.query(`INSERT INTO recipes (post_id, title, ingredients) VALUES ($1, $2, $3::jsonb) RETURNING id`, [post, `${key}-recipe`, JSON.stringify([tag])])).rows[0].id;
+      resourceIds[key].add(recipe);
       await local.query(`INSERT INTO recipe_saves (user_id, recipe_id) VALUES ($1, $2)`, [ids[key], recipe]);
       await local.query(`INSERT INTO user_drink_stats (user_id, total_points, badges) VALUES ($1, $2, '[]'::jsonb)`, [ids[key], key === "A" ? 111 : 222]);
       const drink = (await local.query(`INSERT INTO custom_drinks (user_id, name, category, is_public) VALUES ($1, $2, 'smoothies', true) RETURNING id`, [ids[key], `${key}-public-drink`])).rows[0].id;
+      resourceIds[key].add(drink);
       await local.query(`INSERT INTO drink_saves (user_id, drink_id) VALUES ($1, $2)`, [ids[key], drink]);
       const session = (await local.query(`INSERT INTO cook_together_sessions (recipe_id, host_user_id, room_code) VALUES ($1, $2, $3) RETURNING id`, [recipe, ids[key], `${key}-ROOM`])).rows[0].id;
+      resourceIds[key].add(session);
       await local.query(`INSERT INTO cook_together_participants (session_id, user_id, completed, rating) VALUES ($1, $2, true, 5)`, [session, ids[key]]);
     }
     await local.query(`INSERT INTO stores (user_id, handle, name, published) VALUES ($1, 'alice-draft', 'A-draft-store', false), ($2, 'bob-live', 'B-live-store', true)`, [ids.A, ids.B]);
@@ -123,7 +133,30 @@ if (!PG_URL) {
     const text = await res.text();
     return { status: res.status, text, json: (() => { try { return JSON.parse(text); } catch { return null; } })() };
   }
-  const leaks = (r: { text: string }, ...needles: string[]) => needles.filter((n) => r.text.includes(n));
+  /**
+   * Identifiers are random hex, and the short markers below ("111", "222", "4321") can appear inside one by
+   * chance -- a UUID contains "222" about once every 270 times. A marker found inside a random id is not
+   * evidence that anyone's data leaked, but the raw-text search could not tell the two apart, so this suite
+   * failed in CI roughly one run in a hundred, on whichever family drew an unlucky id. A test that cries wolf
+   * at random is read as noise, and then a real failure is read as noise too.
+   *
+   * So identifiers are blanked before the search. What is NOT lost: B's id leaking into A's response is a real
+   * leak, and the raw text can no longer catch it, so idLeak() below checks for it directly -- which is a
+   * stronger assertion than the one it replaces, because it names the id rather than hoping it contains a
+   * marker.
+   */
+  const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  const withoutIds = (text: string) => text.replace(UUID, "<id>");
+  const leaks = (r: { text: string }, ...needles: string[]) => needles.filter((n) => withoutIds(r.text).includes(n));
+  const idLeak = (r: { text: string }, id: string) => r.text.includes(id);
+  /**
+   * Codex on #1535: blanking identifiers for the marker search also hides FOREIGN RESOURCE ids, not just
+   * account ids -- B's post, recipe, custom drink or cook-together session appearing in A's response is a leak
+   * that neither the blanked text nor an account-id check would see. So every identifier each user owns is
+   * collected as it is created, and the cross-check asserts that none of the other user's turn up.
+   */
+  const foreignIds = (r: { text: string }, owner: "A" | "B") =>
+    [...resourceIds[owner]].filter((id) => r.text.includes(id));
 
   /** One private self-data read: [label, path template where {id} is the id segment, marker for A's data, marker for B's data]. */
   const families: Array<[string, (id: string) => string, string, string]> = [
@@ -136,6 +169,15 @@ if (!PG_URL) {
     ["saved custom drinks", (id) => `/api/drinks/custom-drinks/saved/${id}`, "A-public-drink", "B-public-drink"],
     ["cook-together history", (id) => `/api/cook-together/user/${id}/history`, "A-ROOM", "B-ROOM"],
   ];
+
+  test("the leak search ignores a marker that only appears inside a random identifier", () => {
+    // Pins the behaviour this suite's reliability now rests on, in both directions.
+    const unlucky = { text: `{"ok":true,"stats":{"user_id":"a1b2c222-4d5e-4f60-8a9b-0c1d2e3f4a5b","total_points":111}}` };
+    assert.deepEqual(leaks(unlucky, "222"), [], "a marker inside an id is not a leak");
+    assert.deepEqual(leaks(unlucky, "111"), ["111"], "a marker in the data still is");
+    const real = { text: `{"ok":true,"stats":[{"total_points":111},{"total_points":222}]}` };
+    assert.deepEqual(leaks(real, "222"), ["222"], "another user's value is still caught");
+  });
 
   for (const [label, path, markA, markB] of families) {
     // `subscription info` shares a marker value between users, and recipe-suggestions legitimately lists other
@@ -158,8 +200,12 @@ if (!PG_URL) {
       assert.equal(b.status, 200, b.text.slice(0, 300));
       assert.ok(b.text.includes(markB));
       if (crossCheck) {
-        assert.ok(!a.text.includes(markB));
-        assert.ok(!b.text.includes(markA));
+        assert.deepEqual(leaks(a, markB), [], `A's response must not carry B's data`);
+        assert.deepEqual(leaks(b, markA), [], `B's response must not carry A's data`);
+        assert.equal(idLeak(a, ids.B), false, `A's response must not name B's id`);
+        assert.equal(idLeak(b, ids.A), false, `B's response must not name A's id`);
+        assert.deepEqual(foreignIds(a, "B"), [], `A's response must not name any identifier B owns`);
+        assert.deepEqual(foreignIds(b, "A"), [], `B's response must not name any identifier A owns`);
       }
     });
 

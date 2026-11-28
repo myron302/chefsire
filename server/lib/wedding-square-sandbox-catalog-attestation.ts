@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createPlatformSquareClient } from "./square-integration";
 import { weddingSquareSandboxMerchantAttestation } from "./wedding-square-sandbox-merchant-attestation";
 import { WEDDING_MONTHLY_CENTS } from "./wedding-square-billing-policy";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Internal-only, sandbox-only read-only catalog verification for the configured
@@ -133,7 +134,7 @@ export function createWeddingSquareSandboxCatalogAttestation(
       const eliteId = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID;
       const premiumParentId = process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID;
       const eliteParentId = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID;
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           (process.env.SQUARE_CURRENCY !== undefined && process.env.SQUARE_CURRENCY !== "USD") ||
           !configuredId(merchantId) || !configuredId(locationId) ||

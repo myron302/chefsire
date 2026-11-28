@@ -5,7 +5,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 
 // Construct the real route and query builder, but never connect to a database.
 process.env.DATABASE_URL ||= "postgresql://unused:unused@localhost/unused_test";
-const { db } = await import("../db");
+const { db, pool } = await import("../db");
 const { storage } = await import("../storage");
 const { default: router } = await import("./wedding-subscription");
 
@@ -27,6 +27,13 @@ test("authenticated Wedding routes persist onboarding in scoped history only aft
   let failWrite = false;
   let failHistory = false;
   t.mock.method(db, "execute", async () => ({}));
+  // The legacy cancel guard asks pool.query, not the Drizzle handle, whether this account has any unresolved
+  // Square attempt or nonterminal subscription. It fails closed on ANY query uncertainty, so with no database
+  // reachable it refused with 409 before the route ever attempted its write -- and this suite, which exists to
+  // prove that a failed write leaves no onboarding history, could not reach the write at all. Answering
+  // "blocked: false" is what a cardless account really returns; the guard itself is tested against a real
+  // database in the wedding Square suites.
+  t.mock.method(pool, "query", async () => ({ rows: [{ blocked: false }] }));
   t.mock.method(storage, "getUser", async (id: string) => users.get(id));
   t.mock.method(storage, "updateUser", async (id: string, patch: any) => {
     if (failWrite) throw new Error("simulated write failure");

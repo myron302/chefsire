@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 type Sender=(url:string,init:RequestInit)=>Promise<Response>;
 const id=z.string().min(1).max(200).refine(v=>!/[\s\x00-\x1f\x7f]/.test(v));
 const envelope=z.object({errors:z.array(z.unknown()).length(0).optional(),subscription:z.object({
@@ -11,7 +12,7 @@ export class WeddingSquareCardUpdateTransportError extends Error{
 }
 export function createWeddingSquareCardUpdateTransport(sender:Sender=fetch){
  async function request(subscriptionId:string,update?:{cardId:string;version:number}){
-  if(process.env.SQUARE_ENV!=="sandbox"||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
+  if(!isExplicitSandboxEnvironment()||process.env.SQUARE_LIVE_PAYMENTS_ENABLED==="true"||
      process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED!=="true"||
      process.env.WEDDING_SQUARE_SANDBOX_CARD_UPDATE_ENABLED!=="true"||
      !id.safeParse(process.env.SQUARE_ACCESS_TOKEN).success||!id.safeParse(subscriptionId).success||

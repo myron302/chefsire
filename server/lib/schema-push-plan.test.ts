@@ -442,6 +442,34 @@ test("only loopback databases named with a whole-word 'test' are disposable", ()
   assert.equal(isDisposableTestDatabase("postgres://u@localhost/contest_prod"), false);
   assert.equal(isDisposableTestDatabase("postgres://u@localhost/app_test?host=db.prod.example.com"), false, "libpq lets ?host override the URL host");
   assert.equal(isDisposableTestDatabase("postgres://u@localhost/app_test?hostaddr=10.0.0.5"), false);
+  // Codex on #1536, verified against the installed pg driver: with two host parameters the driver takes the
+  // LAST and this function used to read the FIRST, so a URL could show a loopback socket here and connect to a
+  // remote server. Any URL that is ambiguous about its target is refused, whichever value a driver would pick.
+  assert.equal(
+    isDisposableTestDatabase("postgres://u:p@localhost/app_test?host=/tmp&host=db.prod.example.com"),
+    false,
+    "two host parameters: the driver takes the last one",
+  );
+  assert.equal(
+    isDisposableTestDatabase("postgres://u:p@localhost/app_test?host=db.prod.example.com&host=/tmp"),
+    false,
+    "and the other order is no better",
+  );
+  assert.equal(
+    isDisposableTestDatabase("postgres://u:p@localhost/app_test?host=/tmp,db.prod.example.com"),
+    false,
+    "libpq accepts a comma-separated host list",
+  );
+  assert.equal(
+    isDisposableTestDatabase("postgres://u@localhost/app_test?hostaddr=10.0.0.5&hostaddr=127.0.0.1"),
+    false,
+    "more than one hostaddr is still a hostaddr",
+  );
+  assert.equal(
+    isDisposableTestDatabase("postgres:///chefsire_test?host=/var/run/postgresql&host=/tmp"),
+    false,
+    "two sockets are still two targets",
+  );
   assert.equal(isDisposableTestDatabase("postgres://u@localhost,db.prod.example.com/app_test"), false);
   assert.equal(isDisposableTestDatabase("not a url"), false);
 });

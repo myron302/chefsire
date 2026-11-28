@@ -4,6 +4,7 @@ import { weddingSquareReconciliationReadback } from "./wedding-square-reconcilia
 import { verifyWeddingSquareClaimFingerprint } from "./wedding-square-claim-fingerprint";
 import { weddingSquareSandboxCatalogAttestation } from "./wedding-square-sandbox-catalog-attestation";
 import { verifyWeddingSquareProviderReconciliation } from "./wedding-square-provider-reconciliation";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Internal-only, read-only Square sandbox retrieval of a known subscription ID.
@@ -78,7 +79,7 @@ export function createWeddingSquareSandboxSubscriptionReadback(
       const elitePlan = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_VARIATION_ID;
       const premiumParentId = process.env.WEDDING_SQUARE_SANDBOX_PREMIUM_PLAN_ID;
       const eliteParentId = process.env.WEDDING_SQUARE_SANDBOX_ELITE_PLAN_ID;
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           (process.env.SQUARE_CURRENCY !== undefined && process.env.SQUARE_CURRENCY !== "USD") ||
           !exactId(expectedMerchantId) || !exactId(location) ||

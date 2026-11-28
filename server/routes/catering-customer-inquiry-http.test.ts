@@ -43,6 +43,9 @@ if (!PG_URL) {
   await local.query(`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`);
   await local.query(`
     CREATE TABLE users (id varchar PRIMARY KEY, username text, display_name text);
+    -- The commerce account lock reads this on every booking offer. Without it provider-confirm raised a 500
+    -- carrying raw SQL text, and the suite had been skipping entirely, so nothing noticed.
+    CREATE TABLE account_status (user_id varchar PRIMARY KEY REFERENCES users(id), status text NOT NULL);
     CREATE TABLE catering_inquiries (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
       customer_id varchar NOT NULL REFERENCES users(id), chef_id varchar NOT NULL REFERENCES users(id),

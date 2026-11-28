@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { prepareWeddingSquareSubscriptionRequest } from "./wedding-square-subscription-request";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * The Square SDK v43 normalizes malformed 2xx 'errors: null' into undefined,
@@ -38,7 +39,7 @@ export function createWeddingSquareRawSubscriptionApi(sender: Sender = fetch) {
   return {
     async create(request: Request) {
       const token = process.env.SQUARE_ACCESS_TOKEN;
-      if (process.env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !exact.safeParse(token).success ||
           !exact.safeParse(request?.idempotencyKey).success ||

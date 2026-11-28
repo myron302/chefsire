@@ -1,4 +1,5 @@
 import { weddingSquareSandboxCatalogAttestation } from "../lib/wedding-square-sandbox-catalog-attestation";
+import { isExplicitSandboxEnvironment } from "../lib/square-environment";
 
 /**
  * Operator-triggered REAL Square sandbox GET smoke test. It deliberately
@@ -19,7 +20,7 @@ const safeId = (value: unknown) => typeof value === "string" && value.length > 0
 export function createWeddingSquareProviderSmoke(source: Source) {
   return {
     async inspect(env: Env = process.env) {
-      if (env.SQUARE_ENV !== "sandbox" ||
+      if (!isExplicitSandboxEnvironment(env) ||
           env.SQUARE_LIVE_PAYMENTS_ENABLED === "true" ||
           env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !safeId(env.SQUARE_ACCESS_TOKEN) ||

@@ -8,6 +8,7 @@ import { weddingEntitlement } from "../lib/wedding-entitlement";
 import { verifyWeddingEnrollmentConsent } from "../lib/wedding-square-enrollment-consent";
 import { weddingSquareSandboxPreflight } from "../lib/wedding-square-enrollment-preflight";
 import { weddingSquareCardSetupCoordinator } from "../lib/wedding-square-card-setup-coordinator";
+import { isExplicitSandboxEnvironment } from "../lib/square-environment";
 
 /**
  * Sandbox-only Web Payments SDK card setup. Never accepts a provider customer
@@ -35,7 +36,7 @@ const bodySchema = z.object({
 
 export function weddingSquareSandboxCardSetupEnabled() {
   const env = process.env;
-  if (env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment(env) ||
       env.SQUARE_LIVE_PAYMENTS_ENABLED === "true" ||
       env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       env.WEDDING_SQUARE_SANDBOX_SUBMIT_ENABLED !== "true" ||

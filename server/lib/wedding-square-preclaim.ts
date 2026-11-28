@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { weddingSquareSandboxPreflight } from "./wedding-square-enrollment-preflight";
 import { verifyWeddingSquareClaimFingerprint } from "./wedding-square-claim-fingerprint";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Read-only, server-side prerequisite for a future enrollment submitter.
@@ -39,7 +40,7 @@ export function createWeddingSquarePreclaimService(database: Database) {
   return {
     async inspect(attemptId: string, authenticatedUserId: string) {
       if (!canonicalId(attemptId) || !canonicalId(authenticatedUserId) ||
-          process.env.SQUARE_ENV !== "sandbox" ||
+          !isExplicitSandboxEnvironment() ||
           process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
           !database || typeof database.query !== "function") throw new WeddingSquarePreclaimError();
       try {

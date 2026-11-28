@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExplicitSandboxEnvironment } from "./square-environment";
 
 /**
  * Internal sandbox-only Square customer/card writer. Never mount this as an
@@ -40,7 +41,7 @@ export class WeddingSquareCardSetupTransportError extends Error {
 }
 function token() {
   const v = process.env.SQUARE_ACCESS_TOKEN;
-  if (process.env.SQUARE_ENV !== "sandbox" ||
+  if (!isExplicitSandboxEnvironment() ||
       process.env.WEDDING_SQUARE_SANDBOX_ENROLLMENT_ENABLED !== "true" ||
       process.env.WEDDING_SQUARE_SANDBOX_CUSTOMER_CARD_WRITE_ENABLED !== "true" ||
       !id.safeParse(v).success) throw new WeddingSquareCardSetupTransportError();
