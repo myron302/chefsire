@@ -394,25 +394,38 @@ Two consequences, and they point the next run somewhere quite different:
 fifteen suites, or in how they behave against a database on first touch — not in anything that ran before
 them, because nothing did.
 
-**The cold-database case has now been tried, and it does not reproduce either.** It was the lead the
-corrected topology pointed at, and five of the six earlier attempts had not tested it — they ran against a
-database other suites had already populated. Batch 7 alone, through `run-ci-batch.mjs`, against a database
-**created fresh for each run**:
+**The cold-database case has now been tried, three times, and did not reproduce — which leaves it open.**
+It was the lead the corrected topology pointed at, and five of the six earlier attempts had not tested it:
+they ran against a database other suites had already populated. Batch 7 alone, through `run-ci-batch.mjs`,
+against a database **created fresh for each run**: 351 pass / 0 fail / 0 skip, three times, about 119s each.
 
-```
-cold run 1 (chefsire_cold1_test)  351 pass / 0 fail / 0 skip   119s
-cold run 2 (chefsire_cold2_test)  351 pass / 0 fail / 0 skip   119s
-cold run 3 (chefsire_cold3_test)  351 pass / 0 fail / 0 skip   117s
-```
+**Three passing runs are weak evidence, and the number has to be read that way.** If the real rate is about
+one in a hundred, three runs all pass roughly 97% of the time *even if cold first touch is the cause*. Codex
+made this point on #1544, and it is the same distinction that corrected the previous version of this
+section: **non-reproduction is not elimination.** It applies to this hypothesis exactly as it applies to the
+timing budget, so cold-database behaviour stays on the open list.
 
-That is **nine failed reproductions across two runs**. Every mechanism anyone has named is either impossible,
-or has been tried and did not reproduce — and the one hypothesis still standing, the
-`api-init-isolation.test.ts` timing budget, stands only because non-reproduction is not elimination, not
-because there is evidence for it.
+**The attempts, by condition rather than as a total.** An aggregate count implies coverage nobody has
+earned, so here is what has actually been varied:
 
-So the recommendation below is now the considered answer rather than fatigue: nine attempts have produced two
-impossibility proofs and no cause, and the next real occurrence names the failing test for free. **The thing
-worth doing is nothing, until it fires again.**
+| condition tried | runs | result |
+| --- | --- | --- |
+| `--test-concurrency=1`, database already populated | 4 | 351 pass each |
+| `--test-concurrency=1`, fresh database | 1 | 351 pass |
+| after batches 1–6 in sequence, one database | 1 | 351 pass — and this does not match CI, see the topology above |
+| fresh database per run, through `run-ci-batch.mjs` | 3 | 351 pass each |
+| `api-init-isolation` alone under CPU starvation | 3 | 11 pass each |
+
+**Four distinct conditions, nine runs, no reproduction.** Two mechanisms are impossible, for the structural
+reasons above: a fixed-port collision, and an in-process race between two files. **Everything else named is
+open** — the timing budget and cold first touch both — and neither has positive evidence for it.
+
+So the recommendation below is a considered answer rather than fatigue, but it is narrower than "we have
+ruled things out": four conditions tried, none reproduced, two mechanisms structurally impossible, several
+hypotheses still open with no evidence either way. What has changed is the cost of waiting.
+`run-ci-batch.mjs` now names the failing test at the end of the log, which it did not when this fired. **A
+tenth guess is worth less than the next real occurrence, so the thing worth doing is nothing until it fires
+again — and when it does, read the name rather than re-running the batch.**
 
 The 351 in the sequential run is still worth keeping for one reason: it is exactly the batch size this file
 records, which confirms the fifteen suites being tested are precisely the CI batch and not an approximation.
