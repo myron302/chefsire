@@ -384,11 +384,26 @@ under one timing profile and lopsided under another is **one** latent defect see
 mechanism. The cold database was never causal: it shifts lock-acquisition timing enough to change which side
 wins, which is why the experiment surfaced it, but the defect needs no concurrency to demonstrate.
 
-**What CI attribution is and is not.** The suite's window in the batch is roughly 85s to 118s of the step by
-the batch's own timeline, and CI failed at 1m53s; the job log also ended in catering statements. That is
-consistency, not proof, and #1549 says so rather than claiming the case closed. Batch 7 runs **354 pass / 0
-fail / 0 skipped** with the fix (351 + 3 new tests, which also re-confirms the fifteen suites are exactly the
-CI batch).
+**What the CI attribution is, measured rather than estimated.** The failing step's duration in CI is
+**2m01s** (18:17:45 to 18:19:46 on run `46175002077`, step timings from the Actions API), and the same batch
+runs **1m58s to 2m03s** locally — so local timings transfer. Running the batch's files cumulatively:
+
+| files | elapsed |
+| --- | --- |
+| 1 through 13 | **87s** |
+| 1 through 14 (adds `catering-billing-adjustments-http`) | **118s** |
+
+CI failed at **1m53s = 113s**, which falls inside the 14th file's 87-118s window and **before the 15th file
+begins**. The job log also ended in catering statements. That is not proof that this assertion is what failed
+— another test in the same file could have — but it is no longer a guess about which file. Batch 7 runs
+**354 pass / 0 fail / 0 skipped** with the fix (351 + 3 new tests, which also re-confirms the fifteen suites
+are exactly the CI batch).
+
+**Two batch series exist and they are easy to confuse**, which this run nearly did. "Suites restored to CI,
+batch N **of 6**" are steps of `wedding-square-postgres-migration-tests` (12m40s, the job #1541 widens).
+"Remaining unit suites restored to CI, batch N **of 17**" are spread across `restored-unit-suites-1` (1-6),
+`-2` (7-12) and `-3` (13-17). **Batch 7 is the first step of the second job**, as this file already says —
+but a "72-second job" read off the wrong one of these looks like proof that 755 tests cannot have run.
 
 **The other 26 races in that suite were looked at, not assumed.** The four that pair two different operations
 are order-independent for mechanical reasons — a refund's ceiling is money received, which both orders
