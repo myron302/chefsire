@@ -187,7 +187,12 @@ jobs:
   wedding-square-postgres-migration-tests:
     name: Wedding Square PostgreSQL migration and Drizzle parity
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 was enough while 123 of this job's tests were skipping. Supplying TEST_DATABASE_URL to the six
+    # restored batches turns 148 passing tests into 755, and this job already used about 12 of its 15 minutes
+    # -- so the fix for the silent skip would have traded it for a timeout. Batches 1, 4 and 6 alone take five
+    # minutes locally with the variable set. 30 gives room without hiding a hang: the schema-push job next door
+    # has 45 for a single 18-minute test, and a job that finishes early costs nothing.
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
