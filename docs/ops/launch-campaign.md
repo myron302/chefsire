@@ -422,11 +422,27 @@ What was established before it was named, so nobody repeats it:
   postgres service container dumping hundreds of lines of constraint violations that the constraint tests
   caused on purpose. The `not ok` line sits thousands of lines above that.
 
-That last point is fixed: `run-ci-batch.mjs` now prints every failing test, by name with its file and line, at
-the **end** of the log, where a 40-line tail still has it — and says so explicitly when a non-zero exit carries
-no `not ok` line at all, which from a tail looked identical. Verified with throwaway probes for all three
-paths. **So the next run that sees this will be able to name it.** That is the whole of the progress; the flake
-itself is untouched.
+That last point is fixed, but **this file's description of the fix was wrong and is corrected here**, because
+getting it wrong costs the next run the one thing the fix was for. `run-ci-batch.mjs` does print every failing
+test, by name with its file and line, at the end of the STEP, and says so explicitly when a non-zero exit
+carries no `not ok` line at all. What this file claimed is that "a 40-line tail still has it". **It does not,
+and cannot.**
+
+A step's output is not the end of the JOB log. Any job with a service container ends with the container's own
+teardown, and these jobs' postgres dumps the constraint violations the constraint tests caused on purpose.
+Measured on `restored-unit-suites-2` of run `46176865079`: of the last 500 lines of that job's log, **199 are
+container teardown and postgres output**, and the step's own output stops above them.
+
+So the summary sits roughly 200 lines from the end rather than at it:
+
+| how the log is fetched | does the summary appear |
+| --- | --- |
+| 40-line tail | **no** — never reaches the step's output at all |
+| 500-line tail | yes, just above the container dump |
+| `get_job_logs` with `failed_only` and the run id | yes, and this is the one to use |
+
+**So the next run that sees this can name it — if it asks for 250+ lines or uses `failed_only`.** With the
+40-line tail this file recommended, it would read container noise and conclude the summary never printed.
 
 #### Two mechanisms eliminated, one hypothesis still open, and a wrong model of CI corrected
 
