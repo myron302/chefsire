@@ -34,7 +34,13 @@ if (!PG_URL) {
   const dialect = new PgDialect();
   const ddl = (table: any, name: string, extra = "") => {
     const cols = Object.values(getTableColumns(table)).map((c: any) => {
-      const type = ({ PgInteger: "integer", PgBoolean: "boolean", PgTimestamp: "timestamp", PgJsonb: "jsonb", PgNumeric: "numeric", PgReal: "real", PgSerial: "serial" } as Record<string, string>)[c.columnType] ?? "text";
+      // PgBigSerial53/64 were missing, and `drink_events.id` is a bigserial. It therefore became a plain
+      // `text` column with no default, so EVERY insert into this suite's drink_events failed on a not-null
+      // id -- which nothing noticed, because no test had ever inserted one. The /trending and /recommended
+      // legs of the existing audits were running against an empty events table and asserting that nothing
+      // leaked from nothing: a suite passing while asserting nothing, which is the other half of
+      // done-condition 2, inside the suite that proves condition 4.
+      const type = ({ PgInteger: "integer", PgBoolean: "boolean", PgTimestamp: "timestamp", PgJsonb: "jsonb", PgNumeric: "numeric", PgReal: "real", PgSerial: "serial", PgBigSerial53: "bigserial", PgBigSerial64: "bigserial" } as Record<string, string>)[c.columnType] ?? "text";
       let def = "";
       if (c.hasDefault && c.default !== undefined) {
         def = typeof c.default === "object" && c.default !== null && "queryChunks" in c.default
@@ -62,6 +68,9 @@ if (!PG_URL) {
     -- selects slug, and returned a 500 -- so the community-search leg of test I was asserting against an empty
     -- response and proving nothing. Built from the real schema now.
     ${ddl(schema.drinkChallenges, "drink_challenges")};
+    -- /challenges/:slug/submissions hydrates the full drink payload for every submitted slug, and
+    -- /challenges/:slug/join writes a caller-supplied slug into this table. Both are audited below.
+    ${ddl(schema.drinkChallengeSubmissions, "drink_challenge_submissions")};
     -- /whats-new reads the viewer's follows. Without this table the route answered 500 for every signed-in
     -- viewer, so test K's audit of it was asserting against an error body.
     ${ddl(schema.follows, "follows")};
@@ -925,5 +934,364 @@ if (!PG_URL) {
     const r = await get(`/collections/${col.prem}`, "nonent");
     assert.deepEqual(r.json.collection.items.map((i: any) => i.drinkSlug), slugsOf("prem").slice(0, PREVIEW));
     assert.equal(r.json.collection.previewLimit, PREVIEW);
+  });
+
+  // ---- challenge submissions: the write path #1530 did not audit, and the read path behind it -------------
+  //
+  // The record's "known and not yet done" said POST /collections/:id/items was fixed in #1530 and NO OTHER
+  // write path had been audited for the same shape. This is that audit, and it found the shape twice over in
+  // one feature -- once as the same ungated write, and once as an UNGATED READ, which is worse and is a
+  // done-condition 4 failure rather than a tidiness one.
+  //
+  //   POST /challenges/:slug/join      takes drinkSlug from the body, resolves it with no viewer, inserts it
+  //   GET  /challenges/:slug/submissions   has NO auth middleware at all and hydrates name, image, route,
+  //                                        category and subcategory for every submitted slug, no viewer
+  //
+  // So one member submitting a withheld premium slug published that drink to every anonymous caller.
+  const CHALLENGE_SLUG = "p24-challenge";
+  const challengeSubmission = async (userKey: string, slug: string) =>
+    local.query(
+      `INSERT INTO drink_challenge_submissions (challenge_id, user_id, drink_slug)
+       SELECT id, $2, $3 FROM drink_challenges WHERE slug = $1`,
+      [CHALLENGE_SLUG, ids[userKey], slug],
+    );
+
+  test.before(async () => {
+    // No ON CONFLICT: the DDL helper builds these tables from the Drizzle columns and does not carry the
+    // unique indexes, so inferring a conflict target here fails with 42P10.
+    await local.query(
+      `INSERT INTO drink_challenges (slug, title, description, starts_at, ends_at, is_active)
+       SELECT $1, 'c', 'c', now() - interval '1 day', now() + interval '30 days', true
+       WHERE NOT EXISTS (SELECT 1 FROM drink_challenges WHERE slug = $1)`,
+      [CHALLENGE_SLUG],
+    );
+  });
+
+  test("P1 challenge submissions do not publish a withheld premium drink to an anonymous caller", async () => {
+    // Seeded directly, not through the join route, so this tests the READ gate on its own: the row could also
+    // have been written before the write gate existed, or by the creator themselves.
+    const withheld = slugsOf("prem")[2];
+    await challengeSubmission("creator", withheld);
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/challenges/${CHALLENGE_SLUG}/submissions`, as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        assert.ok(!r.text.includes(withheld), `${label}: submissions leaked the withheld premium drink`);
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+    }
+  });
+
+  test("P1 and an entitled viewer still sees the same submission", async () => {
+    // The other half, which matters as much: a gate that hides it from the buyer and the creator too is not a
+    // gate, it is a broken feature.
+    //
+    // Entitlement is per collection and the pairing is the point -- `member` holds an active membership to the
+    // creator, which entitles them to the MEMBERSHIP_ONLY collection and not to the premium-purchase one. The
+    // first version of this test asked `member` about a `prem` slug and failed, correctly, on the code being
+    // right: a fixture that confuses the two routes would have asserted the gate away.
+    for (const [colKey, entitled] of [["prem", ["buyer", "bundler", "creator"]], ["memb", ["member", "creator"]]] as const) {
+      const withheld = slugsOf(colKey)[2];
+      await challengeSubmission("creator", withheld);
+      try {
+        // Non-entitled first, so this test also fails if the gate stops working for the collection type it covers.
+        const anon = await get(`/challenges/${CHALLENGE_SLUG}/submissions`);
+        assert.ok(!anon.text.includes(withheld), `${colKey}: withheld from an anonymous caller`);
+        for (const as of entitled) {
+          const r = await get(`/challenges/${CHALLENGE_SLUG}/submissions`, as);
+          assert.equal(r.status, 200, `${as}: ${r.text}`);
+          assert.ok(r.text.includes(withheld), `${as} is entitled to ${colKey} and must still see the submission`);
+        }
+      } finally {
+        await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+      }
+    }
+  });
+
+  test("P2 joining a challenge with a drink the viewer may not see is refused", async () => {
+    // Exactly the #1530 shape: ownership of the destination was checked (the challenge being active) and
+    // entitlement to the drink being filed under your name was not.
+    const withheld = slugsOf("prem")[3];
+    const r = await post(`/challenges/${CHALLENGE_SLUG}/join`, "nonent", { drinkSlug: withheld });
+    try {
+      assert.equal(r.status, 403, `expected a refusal, got ${r.status}: ${r.text}`);
+      assert.match(r.text, /DRINK_NOT_AVAILABLE_TO_VIEWER/);
+      const rows = await local.query(`SELECT 1 FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+      assert.equal(rows.rowCount, 0, "and nothing was written");
+    } finally {
+      // Cleaned up even on failure: without this, the ungated route's own insert survives into the next test
+      // and makes IT fail too, which is how one defect reads as two.
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [withheld]);
+    }
+  });
+
+  test("P2 joining with a drink the viewer IS entitled to still works", async () => {
+    const entitled = slugsOf("prem")[3];
+    const r = await post(`/challenges/${CHALLENGE_SLUG}/join`, "buyer", { drinkSlug: entitled });
+    try {
+      assert.equal(r.status, 201, `a buyer may submit what they bought: ${r.text}`);
+      const rows = await local.query(
+        `SELECT 1 FROM drink_challenge_submissions WHERE drink_slug = $1 AND user_id = $2`, [entitled, ids.buyer]);
+      assert.equal(rows.rowCount, 1, "the buyer's own row is there");
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [entitled]);
+    }
+  });
+
+  test("P2 and a free, public drink is still submittable by anyone", async () => {
+    const free = slugsOf("free")[0];
+    const r = await post(`/challenges/${CHALLENGE_SLUG}/join`, "nonent", { drinkSlug: free });
+    try {
+      assert.equal(r.status, 201, `a public drink must stay submittable: ${r.text}`);
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [free]);
+    }
+  });
+
+  // ---- Codex on #1546: drink_events is a FOURTH table, and three public leaderboards read it -------------
+  //
+  // The three-table claim in this PR was wrong. `POST /events` stores a caller-supplied slug in
+  // `drink_events.slug` after checking only that the recipe exists, and /trending, /trending/by-category and
+  // /recommended all GROUP BY that column with no restriction on which slugs they will accept, hydrating each
+  // through the viewer-independent `resolveDrinkDetailsBySlug`. So posting view events for a withheld premium
+  // slug put its name, image and route on a public leaderboard. Codex named the first two; /recommended has
+  // the same shape and was found while fixing them.
+  const eventRow = async (slug: string, eventType = "view", count = 1) => {
+    for (let i = 0; i < count; i += 1) {
+      await local.query(
+        `INSERT INTO drink_events (slug, event_type, created_at) VALUES ($1, $2, now() - interval '1 hour')`,
+        [slug, eventType],
+      );
+    }
+  };
+
+  test("P1 Codex: the trending leaderboards do not publish a withheld premium drink", async () => {
+    // Seeded directly, so the READ gate is tested on its own -- these rows could predate the write gate.
+    const withheld = slugsOf("prem")[2];
+    // Enough events to be ranked above the rest of the fixture's traffic, so a pass cannot come from the slug
+    // simply not making the top ten.
+    await eventRow(withheld, "view", 25);
+    await eventRow(withheld, "remix", 5);
+    try {
+      for (const [label, as] of nonEntitled) {
+        for (const path of ["/trending", "/trending/by-category?sourceCategoryRoute=/drinks/cocktails", "/recommended"]) {
+          const r = await get(path, as);
+          assert.equal(r.status, 200, `${label} ${path}: ${r.text}`);
+          assert.ok(!r.text.includes(withheld), `${label}: ${path} leaked the withheld premium drink`);
+        }
+      }
+      // And the other direction, or the gate could be hiding it from everyone.
+      const buyer = await get("/trending", "buyer");
+      assert.ok(buyer.text.includes(withheld), "a buyer is entitled and must still see it ranked");
+    } finally {
+      await local.query(`DELETE FROM drink_events WHERE slug = $1`, [withheld]);
+    }
+  });
+
+  test("P1 Codex: POST /events refuses to log activity against a drink the caller may not see", async () => {
+    const withheld = slugsOf("prem")[2];
+    try {
+      const anon = await fetch(`${base()}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: withheld, eventType: "view" }),
+      });
+      assert.equal(anon.status, 404, "an anonymous caller may not log it");
+      const nonent = await post("/events", "nonent", { slug: withheld, eventType: "view" });
+      assert.equal(nonent.status, 404, `a non-entitled member may not either: ${nonent.text}`);
+      const rows = await local.query(`SELECT 1 FROM drink_events WHERE slug = $1`, [withheld]);
+      assert.equal(rows.rowCount, 0, "and nothing was written");
+
+      // The buyer may, because they bought it -- a 404 for everyone would be a broken feature, not a gate.
+      const buyer = await post("/events", "buyer", { slug: withheld, eventType: "view" });
+      assert.equal(buyer.status, 201, `a buyer may log their own view: ${buyer.text}`);
+    } finally {
+      await local.query(`DELETE FROM drink_events WHERE slug = $1`, [withheld]);
+    }
+  });
+
+  test("P2 Codex: a visible submission does not name its withheld premium remix parent", async () => {
+    // The same hole one level down: the submitted recipe is public, and `resolveDrinkDetailsMapBySlugs`
+    // carries `remixedFromSlug` on everything it hydrates, so the PARENT's slug went out with it.
+    const parent = slugsOf("prem")[2];
+    const child = "p24-child-of-withheld";
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`,
+      [child, ids.nonent, parent],
+    );
+    await challengeSubmission("nonent", child);
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/challenges/${CHALLENGE_SLUG}/submissions`, as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        assert.ok(r.text.includes(child), `${label}: the public submission itself must survive`);
+        assert.ok(!r.text.includes(parent), `${label}: its withheld premium parent was named`);
+      }
+      // The parent is cleared, not the submission dropped -- and an entitled viewer still sees the lineage.
+      const buyer = await get(`/challenges/${CHALLENGE_SLUG}/submissions`, "buyer");
+      assert.ok(buyer.text.includes(parent), "a buyer is entitled to the parent and must still see it");
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [child]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [child]);
+    }
+  });
+
+  test("P2 Codex: /trending refills past a full page of withheld drinks instead of going blank", async () => {
+    // The third finding, and the one shape on this PR that is a FUNCTIONAL hole rather than a bound.
+    //
+    // The nine list routes of #1530 filter after the LIMIT and document that a viewer entitled to nothing
+    // gets a short page. That is defensible there because their clients can ask for the next page. /trending
+    // takes no `limit` and no `offset`, serves exactly ten, and TrendingDrinks.tsx makes one request and
+    // renders "No trending drinks yet" for an empty answer -- so withheld drinks occupying the top ten did
+    // not shorten the leaderboard, they emptied it, and public drinks with real activity below them became
+    // unreachable with no next page to ask for.
+    const PAGE_SIZE = 10;
+    const buried = `p24-trend-public`;
+    const withheldTrend = [...Array(11).keys()].map((n) => `p24-trend-withheld-${String(n).padStart(2, "0")}`);
+    // The fixture has to bury the public drink under MORE than a full page, or the old code would have had
+    // room for it and the test would pass against the bug.
+    assert.ok(withheldTrend.length > PAGE_SIZE, "fewer withheld drinks than a page proves nothing");
+
+    const colId = (await local.query(
+      `INSERT INTO drink_collections (user_id, name, description, is_public, access_type, is_premium, price_cents)
+       VALUES ($1, 'col-trend', 'public blurb', true, 'premium_purchase', true, 500) RETURNING id`,
+      [ids.creator],
+    )).rows[0].id;
+    try {
+      // Two preview items first, so all eleven of the others are past the preview and genuinely withheld.
+      // Position is added_at then drink_slug, exactly as the boundary orders items.
+      const preview = ["p24-trend-preview-1", "p24-trend-preview-2"];
+      for (const [i, slug] of [...preview, ...withheldTrend].entries()) {
+        await local.query(
+          `INSERT INTO drink_recipes (id, slug, name, category, user_id) VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2)`,
+          [slug, ids.creator],
+        );
+        await local.query(
+          `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at)
+           VALUES ($1, $2, now() - interval '2 hours' + ($3 || ' minutes')::interval)`,
+          [colId, slug, String(i)],
+        );
+      }
+      await local.query(
+        `INSERT INTO drink_recipes (id, slug, name, category, user_id) VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2)`,
+        [buried, ids.creator],
+      );
+
+      // Each withheld drink outranks the public one, so the public one sits immediately below a full page.
+      for (const slug of withheldTrend) await eventRow(slug, "view", 30);
+      await eventRow(buried, "view", 1);
+
+      // The gate itself must still hold for all eleven -- a refill that leaked would be a worse bug than a
+      // blank leaderboard.
+      for (const [label, as] of nonEntitled) {
+        const r = await get("/trending", as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        for (const slug of withheldTrend) {
+          assert.ok(!r.text.includes(slug), `${label}: /trending leaked ${slug}`);
+        }
+        assert.ok(r.text.includes(buried), `${label}: the public drink below a full page of withheld ones was unreachable`);
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_events WHERE slug LIKE 'p24-trend-%'`);
+      await local.query(`DELETE FROM drink_collection_items WHERE collection_id = $1`, [colId]);
+      await local.query(`DELETE FROM drink_collections WHERE id = $1`, [colId]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug LIKE 'p24-trend-%'`);
+    }
+  });
+
+  // ---- Codex on #1547: the challenge PAYLOAD and the recipe payload name withheld slugs directly ----------
+  //
+  // #1546 recorded `POST /challenges` as sound because only `getCanonicalDrinkBySlug` ever reads
+  // `originalDrinkSlug`, so a premium slug there hydrates to null. That reasoning was wrong in exactly the way
+  // Greptile's P1 on #1530 was wrong: the SLUG is the secret, because the slug is what the recipe route takes.
+  // `GET /challenges` selects the column and returns it raw, and `GET /challenges/:slug` spreads the whole
+  // row -- both with no auth middleware at all.
+  test("P2 Codex: a challenge does not publish a withheld premium originalDrinkSlug", async () => {
+    const withheld = slugsOf("prem")[2];
+    const challengeSlug = "p24-challenge-original";
+    await local.query(
+      `INSERT INTO drink_challenges (slug, title, description, original_drink_slug, starts_at, ends_at, is_active)
+       VALUES ($1, 'c', 'c', $2, now() - interval '1 day', now() + interval '30 days', true)`,
+      [challengeSlug, withheld],
+    );
+    try {
+      for (const [label, as] of nonEntitled) {
+        for (const path of ["/challenges", `/challenges/${challengeSlug}`]) {
+          const r = await get(path, as);
+          assert.equal(r.status, 200, `${label} ${path}: ${r.text}`);
+          assert.ok(r.text.includes(challengeSlug), `${label} ${path}: the challenge itself must survive`);
+          assert.ok(!r.text.includes(withheld), `${label} ${path}: published the withheld premium slug`);
+        }
+      }
+      // The other direction, twice over: a buyer is entitled, and `optionalAuth` is what lets the route know
+      // it. Without that middleware every caller is anonymous and this assertion is what fails.
+      for (const path of ["/challenges", `/challenges/${challengeSlug}`]) {
+        const buyer = await get(path, "buyer");
+        assert.ok(buyer.text.includes(withheld), `${path}: a buyer is entitled and must still see it`);
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_challenges WHERE slug = $1`, [challengeSlug]);
+    }
+  });
+
+  test("P2 Codex: GET /user/:slug does not publish its withheld premium remix parent", async () => {
+    // The gate on this route judges the recipe's OWN slug, which was the whole of #1530's fix here. The
+    // response then spreads `...recipe`, which carries `remixedFromSlug`.
+    const parent = slugsOf("prem")[2];
+    const child = "p24-child-direct";
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`,
+      [child, ids.nonent, parent],
+    );
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/user/${child}`, as);
+        assert.equal(r.status, 200, `${label}: the public child must still be readable: ${r.text}`);
+        assert.ok(r.text.includes(child), `${label}: the child itself must survive`);
+        assert.ok(!r.text.includes(parent), `${label}: named its withheld premium parent`);
+      }
+      const buyer = await get(`/user/${child}`, "buyer");
+      assert.ok(buyer.text.includes(parent), "a buyer is entitled to the parent and must still see the lineage");
+    } finally {
+      await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [child]);
+    }
+  });
+
+  test("P2 Codex: collection items do not publish a withheld remix parent either", async () => {
+    // The reason the clearing moved INTO `resolveDrinkDetailsMapBySlugs` rather than being fixed per route:
+    // #1546 fixed ONE of its callers, and `resolveCollectionWithItems` is a second live one -- it serializes
+    // `remixedFromSlug` twice, as its own field and again inside `drink`. A public child of a withheld
+    // premium drink, placed in a FREE PUBLIC collection, handed the parent's slug to any caller.
+    //
+    // The other two callers were checked rather than assumed: the cover-image path reads only `.image`, and
+    // /recommended's items are built by `toDiscoveryDrinkCard` and carry no parent reference at all. So this
+    // is the whole of today's exposure, and the helper now covers the next caller too.
+    const parent = slugsOf("prem")[2];
+    const child = "p24-child-in-collection";
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`,
+      [child, ids.creator, parent],
+    );
+    await local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`,
+      [col.free, child],
+    );
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/collections/${col.free}`, as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        assert.ok(r.text.includes(child), `${label}: the child is in a free public collection and must appear`);
+        assert.ok(!r.text.includes(parent), `${label}: a free collection published the withheld premium parent`);
+      }
+      const buyer = await get(`/collections/${col.free}`, "buyer");
+      assert.ok(buyer.text.includes(parent), "a buyer is entitled to the parent and must still see the lineage");
+    } finally {
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = $1`, [child]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [child]);
+    }
   });
 }
