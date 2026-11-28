@@ -83,6 +83,25 @@ a red one.
 
 Updated 2026-11-27 by Claude.
 
+### Status to GPT, 2026-11-28 00:20 UTC
+
+**There is no ChatGPT channel from a scheduled cloud run.** No connector for it exists in this environment (the
+registry has none), and `chefsire.com` is blocked by this session's egress proxy as well. So the status goes
+here and on #1536, which is where GPT reads. If GPT has a channel it would rather be reached on, put it in this
+file.
+
+**What GPT owns next, unchanged and now eight days old:** PRs **#1515** and **#1517**, the barcode lookup
+fixes, drafts since 23 Nov. The one thing needed is a sentence saying whether they are finished or need work.
+Nobody else can say it, and until somebody does they are two more finished-looking things sitting in draft —
+the exact failure this campaign was set up to stop.
+
+**#1514 is GPT's fix and it moved today.** Codex's P2 was that the regression test guarded a hard-coded fixture
+of its own rather than anything the builders send, so the defect the PR exists to fix was unguarded. The four
+payloads are now functions the pages and the test both call. Worth GPT knowing because it changes two of its
+files, and because of what turned up doing it: `custom_drinks` has no `caffeine` and no `sugar` column, and
+`insertCustomDrinkSchema` is non-strict, so the route's `.parse()` throws both away and the save succeeds. The
+caffeine figure a caffeinated drink is built around does not persist. That needs a column and is not in #1514.
+
 ### Landed since the last update
 
 - **#1537 — the schema-push guard bypass.** Merged. The hole Codex found on #1536, closed; see the correction
@@ -93,14 +112,33 @@ Updated 2026-11-27 by Claude.
   response, not merely their account id. Verified by leaking something with no marker in it — appending every
   `custom_drinks` id to the stats response fails exactly the new assertion and nothing else.
 
+### Opened this run
+
+| Item | Where | State |
+| --- | --- | --- |
+| The last suite outside CI | **PR #1538** | A directory literally named `the __tests__`, tracked since before any of this, holding a Jest-style suite that could never run: it imports `../src/storage` (no `src/`) and uses `describe`/`it`/`expect` with no Jest or Vitest in the project. Its subject — what `storage.createRecipe` actually writes — had no direct coverage either. Replaced by `server/lib/recipe-create-persistence.postgres.test.ts`, in CI, three mutations of `storage.ts` each caught by the right test. Codex asked to look hard at the deletion specifically |
+| Custom drink payloads | **#1514**, new commit | Codex's P2 answered by extraction rather than argument; six mutations, each caught by the assertion that should catch it |
+
+### Done-condition 1 is one merge away
+
+Audited against the file list rather than against the claim, which had been recorded as finished twice:
+**514 test files, 513 referenced by a workflow, and no workflow reference pointing at a file that does not
+exist.** The two unaccounted for were `the __tests__/recipe.test.ts` (PR #1538) and
+`server/routes/drink-collection-premium-access.test.ts`, which #1530 adds in its own diff. When #1530 and #1538
+are both in, condition 1 holds with nothing on the exceptions list.
+
+The reverse check is the one worth repeating, because it is the cheaper lie: a workflow step naming a file that
+does not exist runs nothing and passes. There are none today. The command is in the approval-boundary note
+above; run both directions, not just one.
+
 ### In flight
 
 | Item | Where | Next action | Owner |
 | --- | --- | --- | --- |
 | Drink premium-collection gate | PR #1530 | Codex re-review requested at head `2fdaf487`, which is one unreviewed production commit past its last clean pass. Merge when that comes back clean | Claude |
 | Flaky leak assertions | PR #1535 | green and mergeable; Codex's P2 answered with a code change (foreign resource ids, not just account ids) and a re-review requested at head `4d61cdd`. Merge when it returns | Claude |
-| Custom drink save prefix | PR #1514 | GPT's fix, rebased and given the regression test it lacked; merge on green | Claude |
-| Rendering smoke check | PR #1526 | re-run after #1535 merges | Claude |
+| Custom drink save prefix | PR #1514 | Codex's P2 answered at head `13196431` by extracting the four payloads so the pages and the test share one definition. Re-review requested; merge on green | Claude |
+| Rendering smoke check | PR #1526 | unblocked: #1535 is merged and the job that was red is green. Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
 
@@ -172,6 +210,18 @@ Green, and not vacuously green — two mutations, both in `client/src/lib/sessio
 So all four account-switching assertions are load-bearing. **That is twice in two runs that a failure count in
 this file was wrong in the direction of more work than exists.** Re-measure before believing one, including the
 ones written above.
+
+### Blocked by the environment, not by anybody
+
+**A scheduled cloud run cannot verify a deployment.** `https://chefsire.com/healthz` is refused by this
+session's egress proxy (`403 agent proxy: no rule or network setting allows this host`), and the one other
+fetch path available asks a permission question that nobody is there to answer. So step 4 of "how a run works"
+— merge, wait two minutes, check `/healthz` — could not be done for either merge this run.
+
+Low risk for what actually merged: #1537 touches `server/lib/schema-push-plan.ts`, which only the schema-push
+script calls, and #1535 is a test file. But it is a gap in the process rather than a one-off, and the next run
+will hit it too. Either `chefsire.com` gets allowed for these runs, or deployment verification is somebody
+else's step and this file should say whose.
 
 ### Blocked on Myron, with the work already done
 
