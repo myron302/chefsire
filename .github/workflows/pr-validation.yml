@@ -205,6 +205,11 @@ jobs:
     env:
       CI: "true"
       WEDDING_SQUARE_TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+      # At JOB scope, not step scope, and that is the point. Thirty suites in this job's restored batches read
+      # TEST_DATABASE_URL, the batch steps supplied only CS_TEST_PG_URL, and every one of them skipped itself
+      # and exited 0. Five hundred and thirty-seven tests had never run anywhere. A step-level fix would have
+      # closed those five steps and left the next one to repeat it.
+      TEST_DATABASE_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
     steps:
       - name: Checkout reviewed PR code
         uses: actions/checkout@v4
@@ -275,27 +280,27 @@ jobs:
       - name: Suites restored to CI, batch 1 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/db/db-outage.postgres.test.ts server/lib/schema-push-apply.postgres.test.ts server/lib/schema-push-protected.postgres.test.ts server/lib/square-config-error-disconnect.postgres.test.ts server/lib/square-connection-service.postgres.test.ts server/lib/square-connection-snapshot.postgres.test.ts server/lib/square-credential-constraints.postgres.test.ts server/lib/square-failure-classification.postgres.test.ts
+        run: node server/scripts/run-ci-batch.mjs server/db/db-outage.postgres.test.ts server/lib/schema-push-apply.postgres.test.ts server/lib/schema-push-protected.postgres.test.ts server/lib/square-config-error-disconnect.postgres.test.ts server/lib/square-connection-service.postgres.test.ts server/lib/square-connection-snapshot.postgres.test.ts server/lib/square-credential-constraints.postgres.test.ts server/lib/square-failure-classification.postgres.test.ts
       - name: Suites restored to CI, batch 2 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/lib/square-failure-surface.postgres.test.ts server/lib/square-legacy-reconciliation.postgres.test.ts server/lib/square-legacy-shared-merchant.postgres.test.ts server/lib/square-merchant-lock.postgres.test.ts server/lib/square-merchant-revocation-history.postgres.test.ts server/lib/square-mixed-version-reconnect.postgres.test.ts server/lib/square-partial-credentials.postgres.test.ts server/lib/square-partial-residue.postgres.test.ts
+        run: node server/scripts/run-ci-batch.mjs server/lib/square-failure-surface.postgres.test.ts server/lib/square-legacy-reconciliation.postgres.test.ts server/lib/square-legacy-shared-merchant.postgres.test.ts server/lib/square-merchant-lock.postgres.test.ts server/lib/square-merchant-revocation-history.postgres.test.ts server/lib/square-mixed-version-reconnect.postgres.test.ts server/lib/square-partial-credentials.postgres.test.ts server/lib/square-partial-residue.postgres.test.ts
       - name: Suites restored to CI, batch 3 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/lib/square-plaintext-enforcement.postgres.test.ts server/lib/square-revoke-confirmation.postgres.test.ts server/lib/square-revoke-failure-unconfirmed.postgres.test.ts server/lib/square-schema-parity.postgres.test.ts server/lib/square-sealed-readability.postgres.test.ts server/lib/square-token-migration-dry-run.postgres.test.ts server/lib/square-verification-destructive-ordering.postgres.test.ts server/lib/square-verification-ordering.postgres.test.ts
+        run: node server/scripts/run-ci-batch.mjs server/lib/square-plaintext-enforcement.postgres.test.ts server/lib/square-revoke-confirmation.postgres.test.ts server/lib/square-revoke-failure-unconfirmed.postgres.test.ts server/lib/square-schema-parity.postgres.test.ts server/lib/square-sealed-readability.postgres.test.ts server/lib/square-token-migration-dry-run.postgres.test.ts server/lib/square-verification-destructive-ordering.postgres.test.ts server/lib/square-verification-ordering.postgres.test.ts
       - name: Suites restored to CI, batch 4 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/migrations/atomic-marketplace-checkout.postgres.test.ts server/migrations/checkout-atomicity-migration.postgres.test.ts server/migrations/marketplace-payment-fulfillment.postgres.test.ts server/migrations/meal-plan-payment-fail-closed.postgres.test.ts server/migrations/payout-integrity-migration.postgres.test.ts server/migrations/square-oauth-transactions.postgres.test.ts server/migrations/wedding-trial.postgres.test.ts server/routes/auth-lookup-exhaustion.postgres.test.ts server/routes/account-deletion-authorization.test.ts server/routes/google-oauth-csrf.test.ts server/routes/google-oauth-concurrency.test.ts server/routes/google-oauth-exhaustion.test.ts server/routes/google-oauth-pending-logout.test.ts server/routes/subscription-read-state.test.ts server/routes/auth-db-outage.postgres.test.ts server/routes/catering-square-payments-http.postgres.test.ts
+        run: node server/scripts/run-ci-batch.mjs server/migrations/atomic-marketplace-checkout.postgres.test.ts server/migrations/checkout-atomicity-migration.postgres.test.ts server/migrations/marketplace-payment-fulfillment.postgres.test.ts server/migrations/meal-plan-payment-fail-closed.postgres.test.ts server/migrations/payout-integrity-migration.postgres.test.ts server/migrations/square-oauth-transactions.postgres.test.ts server/migrations/wedding-trial.postgres.test.ts server/routes/auth-lookup-exhaustion.postgres.test.ts server/routes/account-deletion-authorization.test.ts server/routes/google-oauth-csrf.test.ts server/routes/google-oauth-concurrency.test.ts server/routes/google-oauth-exhaustion.test.ts server/routes/google-oauth-pending-logout.test.ts server/routes/subscription-read-state.test.ts server/routes/auth-db-outage.postgres.test.ts server/routes/catering-square-payments-http.postgres.test.ts
       - name: Suites restored to CI, batch 5 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/routes/club-challenges-authz.postgres.test.ts server/routes/clubs-private-access.postgres.test.ts server/routes/cook-together-duets-recipe-privacy.postgres.test.ts server/routes/query-result-shape.postgres.test.ts server/routes/marketplace-seller-analytics-authz.postgres.test.ts server/routes/meal-plan-access.postgres.test.ts server/routes/recipe-visibility.postgres.test.ts server/routes/reviews-recipe-privacy.postgres.test.ts server/routes/search-autocomplete-recipe-privacy.postgres.test.ts
+        run: node server/scripts/run-ci-batch.mjs server/routes/club-challenges-authz.postgres.test.ts server/routes/clubs-private-access.postgres.test.ts server/routes/cook-together-duets-recipe-privacy.postgres.test.ts server/routes/query-result-shape.postgres.test.ts server/routes/marketplace-seller-analytics-authz.postgres.test.ts server/routes/meal-plan-access.postgres.test.ts server/routes/recipe-visibility.postgres.test.ts server/routes/reviews-recipe-privacy.postgres.test.ts server/routes/search-autocomplete-recipe-privacy.postgres.test.ts
       - name: Suites restored to CI, batch 6 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
-        run: node --import tsx --test --test-concurrency=1 server/routes/suggestions-recipe-privacy.postgres.test.ts server/routes/wedding-registry-links.postgres.test.ts server/scripts/migration-runner.postgres.test.ts server/scripts/migration-safety.postgres.test.ts server/services/catering-square-payments.postgres.test.ts server/services/catering-square-schema.postgres.test.ts
+        run: node server/scripts/run-ci-batch.mjs server/routes/suggestions-recipe-privacy.postgres.test.ts server/routes/wedding-registry-links.postgres.test.ts server/scripts/migration-runner.postgres.test.ts server/scripts/migration-safety.postgres.test.ts server/services/catering-square-payments.postgres.test.ts server/services/catering-square-schema.postgres.test.ts
       - name: High-risk unit suites restored to CI, batch 1 of 6
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
@@ -587,3 +592,11 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node server/scripts/run-ci-batch.mjs server/lib/recipe-create-persistence.postgres.test.ts
+      # The third direction of done-condition 1, which the filename checks could not see: a step that names a
+      # suite and runs none of it, because the connection string the suite reads is missing from that step's
+      # environment. Thirty suites in one job did exactly that -- 537 tests that had never run anywhere. Static,
+      # needs no database, and catches it for a step that does not exist yet.
+      - name: The silent-skip gate is sound in both directions
+        run: node server/scripts/run-ci-batch.mjs server/scripts/audit-silent-skips.test.ts
+      - name: Every suite a step names can actually run in it
+        run: node server/scripts/audit-silent-skips.mjs --ci
