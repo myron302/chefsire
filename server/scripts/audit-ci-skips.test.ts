@@ -107,6 +107,38 @@ test("a name that appears only in a comment is not a gate", () => {
   assert.equal(r.exit, 0);
 });
 
+test("a test merely NAMED '...is skipped' is not a gate", () => {
+  // This flagged wedding-square-renewal-scan.test.ts, which has no gate, always runs its 7 tests, and simply
+  // contains a test named "unchanged invoice is skipped...". Reading a test title as control flow is the regex
+  // mistake one layer in.
+  const body = [
+    `import test from "node:test";`,
+    `const keys = ["SQUARE_ENV"];`,
+    `const saved = keys.map((k) => process.env[k]);`,
+    `const url = process.env.TEST_DATABASE_URL;`,
+    `test("unchanged invoice is skipped, never paid twice", () => { if (!saved) throw new Error(String(url)); });`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, {});
+  assert.doesNotMatch(body, /skip\s*:|\.skip\s*\(/, "the fixture must contain no skip MECHANISM");
+  assert.match(body, /is skipped/, "only the word, in a title");
+  assert.deepEqual(r.hits, [], "a title is not a gate");
+  assert.equal(r.exit, 0);
+});
+
+test("a gate read dynamically is reported as undeterminable, not quietly cleared", () => {
+  // Destructuring process.env makes the gate invisible to this tool. Silently clearing it would put the suite
+  // back in the silent-green class, so it is reported with a different message instead.
+  const body = [
+    `import test from "node:test";`,
+    `const { TEST_DATABASE_URL: raw } = process.env;`,
+    `if (!raw) { test("skipped: no database", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { CS_TEST_PG_URL: URL_LITERAL });
+  assert.equal(r.hits.length, 1);
+  assert.equal(r.hits[0].undeterminable, true, "it must say it cannot tell, rather than pass or guess");
+  assert.equal(r.exit, 1);
+});
+
 test("a suite that READS a database URL but cannot skip is never reported", () => {
   // This fixture must read a DB name, or the test passes for the wrong reason. The first version did not, so
   // removing the can-this-skip guard from the script changed nothing and the mutation went uncaught -- a test

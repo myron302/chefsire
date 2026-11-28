@@ -63,6 +63,12 @@ const isDbName = (name) => DB_NAMES.includes(name);
 function envReads(file, text) {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const reads = new Set();
+  // A gate this function cannot read: `const { TEST_DATABASE_URL } = process.env`, or `process.env[name]` with
+  // a key it cannot evaluate. Neither appears as a DB gate in this repository today -- checked, not assumed:
+  // no test file destructures process.env at all, and every bracket access is a save/restore helper over
+  // NODE_ENV, CORS or SQUARE_ names. But a suite that grew one would have an INVISIBLE gate and land straight
+  // back in the silent-green class, so it is reported as undeterminable rather than quietly cleared.
+  let opaque = false;
   const isAssignmentTarget = (node) => {
     const parent = node.parent;
     if (!parent) return false;
@@ -86,10 +92,27 @@ function envReads(file, text) {
     ) {
       reads.add(node.name.text);
     }
+    // `const { ... } = process.env`
+    if (
+      ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) && node.initializer &&
+      ts.isPropertyAccessExpression(node.initializer) && ts.isIdentifier(node.initializer.expression) &&
+      node.initializer.expression.text === "process" && node.initializer.name.text === "env"
+    ) {
+      opaque = true;
+    }
+    // `process.env[expr]` where expr is not a string literal, read rather than written
+    if (
+      ts.isElementAccessExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "process" &&
+      node.expression.name.text === "env" && !ts.isStringLiteral(node.argumentExpression) &&
+      !isAssignmentTarget(node) && !(node.parent && ts.isDeleteExpression(node.parent))
+    ) {
+      opaque = true;
+    }
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  return reads;
+  return { reads, opaque };
 }
 
 /**
@@ -125,9 +148,20 @@ for (const wf of WORKFLOWS) {
         if (!existsSync(file)) continue;
         checked.files += 1;
         const text = readFileSync(file, "utf8");
-        // Only suites that can skip at all are candidates.
-        if (!/skip/.test(text)) continue;
-        const wanted = envReads(file, text);
+        // Only suites with a real skip MECHANISM are candidates. Matching the bare word "skip" flagged
+        // wedding-square-renewal-scan.test.ts, which has no gate at all, always runs its 7 tests, and simply
+        // contains a test NAMED "unchanged invoice is skipped, never reinserted or paid through twice". A
+        // checker that reads test titles as control flow is the regex mistake again, one layer in.
+        if (!/\bskip\s*:|\.skip\s*\(/.test(text)) continue;
+        const { reads: wanted, opaque } = envReads(file, text);
+        // Only undeterminable when there is no direct read to go on: a suite with both is judged on the read.
+        if (wanted.size === 0 && opaque) {
+          findings.push({
+            file, job: jobId, step: step.name ?? "(unnamed step)", undeterminable: true,
+            wants: [], available: [...available].filter(isDbName).sort(), viaWrapper,
+          });
+          continue;
+        }
         if (wanted.size === 0) continue;
         if ([...wanted].some((name) => available.has(name))) continue;
         findings.push({
@@ -158,7 +192,12 @@ if (asJson) {
     for (const h of hits) {
       console.log(`  ${h.file}`);
       console.log(`      in job "${h.job}", step "${h.step}"${h.viaWrapper ? " (via run-ci-batch, which will fail it)" : ""}`);
-      console.log(`      reads ${h.wants.join(" or ")}; that step has ${h.available.length ? h.available.join(", ") : "no database URL at all"}`);
+      if (h.undeterminable) {
+        console.log("      its gate reads process.env dynamically, so this tool cannot say which name it needs.");
+        console.log("      Give it a direct `process.env.NAME` read, or add it to ALLOWED with the reason.");
+      } else {
+        console.log(`      reads ${h.wants.join(" or ")}; that step has ${h.available.length ? h.available.join(", ") : "no database URL at all"}`);
+      }
     }
     console.log("");
     console.log("Supply one of the names each suite reads in that job or step. If a suite genuinely cannot run");
