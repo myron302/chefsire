@@ -841,6 +841,65 @@ if (!PG_URL) {
     }
   });
 
+  test("R the three non-paginated routes scan past more than one block of withheld rows", async () => {
+    // Codex on #1530, second pass: a bounded multiple only moves the cliff. /search, /community-search and
+    // /remixes/:slug read no limit or offset from the request at all -- /search and /community-search take only
+    // q, /remixes/:slug only the slug -- so a short page is the whole answer and no client can ask for more.
+    // Raising the multiple cannot fix that; with one block's worth of withheld rows on top, a single widened
+    // window is still entirely withheld. All three scan now, so this seeds more withheld rows than one block
+    // holds (the largest block here is 24 * 5 = 120) and asserts the public match behind them still comes back.
+    const BULK = 130;
+    const bulk = Array.from({ length: BULK }, (_, i) => `p24-scan-w${String(i).padStart(3, "0")}`);
+    const publicSlug = "p24-scan-public";
+    const source = slugsOf("free")[0];
+    try {
+      // The one public match, older than every withheld row, so it sorts behind all of them in all three routes.
+      await local.query(
+        `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug, created_at)
+         VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3, now() - interval '1 day')`,
+        [publicSlug, ids.nonent, source]);
+      // And the wall of withheld ones in front of it: newer, and all past the preview of a locked collection.
+      await local.query(
+        `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug, created_at)
+         SELECT gen_random_uuid(), s, s, 'cocktails', $2, $3, now() FROM unnest($1::text[]) AS s`,
+        [bulk, ids.creator, source]);
+      await local.query(
+        `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at)
+         SELECT $1, s, now() FROM unnest($2::text[]) AS s`, [col.prem, bulk]);
+
+      const withheldNamed = (text: string) => bulk.filter((slug) => text.includes(slug));
+      for (const as of [undefined, "nonent"]) {
+        const who = as ?? "anon";
+
+        const search = await get("/search?q=p24-scan", as);
+        assert.equal(search.status, 200, `${who}: /search answered ${search.status}`);
+        assert.deepEqual(withheldNamed(search.text), [], `${who}: /search names no withheld row`);
+        assert.ok(search.text.includes(publicSlug), `${who}: /search still reaches the public match behind them`);
+
+        const community = await get("/community-search?q=p24-scan", as);
+        assert.equal(community.status, 200, `${who}: /community-search answered ${community.status}`);
+        assert.deepEqual(withheldNamed(community.text), [], `${who}: /community-search names no withheld row`);
+        assert.ok(community.text.includes(publicSlug), `${who}: /community-search still reaches it`);
+
+        const remixes = await get(`/remixes/${source}`, as);
+        assert.equal(remixes.status, 200, `${who}: /remixes/:slug answered ${remixes.status}`);
+        const remixSlugs = (remixes.json.items ?? []).map((entry: any) => entry.slug);
+        assert.deepEqual(remixSlugs.filter((slug: string) => bulk.includes(slug)), [], `${who}: /remixes/:slug names no withheld row`);
+        assert.ok(remixSlugs.includes(publicSlug), `${who}: /remixes/:slug still reaches it`);
+      }
+
+      // The creator is entitled to all 130, so the scan must not cost them a full page either.
+      const asCreatorSearch = await get("/search?q=p24-scan", "creator");
+      assert.equal((asCreatorSearch.json.items ?? []).filter((item: any) => bulk.includes(item.slug)).length, 20,
+        "the creator's /search page is full of their own");
+      const asCreatorRemixes = await get(`/remixes/${source}`, "creator");
+      assert.equal((asCreatorRemixes.json.items ?? []).length, 24, "and their /remixes/:slug page is full");
+    } finally {
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = ANY($1)`, [bulk]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = ANY($1) OR slug = $2`, [bulk, publicSlug]);
+    }
+  });
+
   test("F explicitly free/public collections keep their full item list for everyone", async () => {
     for (const as of [undefined, "nonent"]) {
       for (const path of [...listEndpoints(), `/collections/${col.free}`]) {

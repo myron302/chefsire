@@ -17992,22 +17992,22 @@ async function userHasActiveCollectionReviewAccess(userId: string, collectionId:
 const LOCKED_COLLECTION_PREVIEW_LIMIT = 2;
 
 /**
- * How many rows the recipe-matching routes read before the withheld ones are dropped.
+ * How many pages' worth of rows one block of a gated scan reads (see scanVisibleRecipeRows).
  *
- * Greptile on #1530: the gate runs in JS, after the database has already applied the route's LIMIT, so a page
- * whose top rows are all withheld came back short -- or empty -- while plenty of public matches went unseen. None
- * of these routes paginates, so their answer was always a truncated top-N; what must not happen is the gate
- * turning a full page into an empty one. They therefore read this multiple of the page and slice afterwards.
- *
- * This is a bound, not a proof: a viewer for whom every one of those rows is withheld still gets a short page.
- * Closing that completely means either paginating these routes or expressing the gate as SQL they can filter by
- * before the LIMIT -- a second copy of the rule, which is the thing the single boundary exists to avoid. The
- * multiple is deliberately generous and the extra rows are discarded before any hydration, so the cost is one
- * wider index scan rather than more work per result.
+ * This was RECIPE_MATCH_OVERFETCH, and it meant something else: how wide a single window to read in the hope
+ * that enough of it survived the gate. Codex on #1530 retired that reasoning -- a wider window is still all
+ * withheld if enough withheld rows sit on top of it -- so the routes scan instead of widening, and this is now
+ * the size of one round trip rather than a guess about how many rows is enough.
  */
-const RECIPE_MATCH_OVERFETCH = 5;
-/** Blocks the remix feed will scan for a full page before giving up, so a viewer who can see little cannot walk the table. */
-const REMIX_FEED_MAX_BLOCKS = 4;
+const RECIPE_SCAN_BLOCK_MULTIPLE = 5;
+/**
+ * How many blocks a gated scan will read before giving up on filling the page.
+ *
+ * The scan has to stop somewhere, or a viewer entitled to nothing could make any search walk the whole table.
+ * Four blocks is the bound; `exhausted` on the result says whether a short page means the bound was hit or the
+ * rows genuinely ran out.
+ */
+const RECIPE_SCAN_MAX_BLOCKS = 4;
 
 /**
  * Slugs that must not be named to this viewer because they are the withheld payload of a locked collection.
@@ -18136,6 +18136,80 @@ async function withheldPremiumSlugsForViewer(slugs: string[], viewerUserId?: str
     console.error("Error resolving withheld premium slugs; withholding every candidate:", error);
     return new Set(candidates);
   }
+}
+
+/**
+ * Read rows in blocks and gate each block until a full page of VISIBLE rows is in hand.
+ *
+ * Codex on #1530, twice over. The gate runs in JS, after the database has applied the route's LIMIT, so a page
+ * whose top rows are all withheld came back short -- or empty, which is the whole answer rather than a short
+ * one, because NONE of these routes paginates: /search and /community-search read only `q`, /remixes/:slug only
+ * the slug, and /remixes takes a limit it is given once by a client that renders no next page. Reading a wider
+ * window first, which is what this replaced, made that less likely and not impossible: with enough withheld
+ * rows on top, a wider window is still all withheld, and raising the multiple cannot fix it.
+ *
+ * So the window is scanned rather than widened. Read a block, gate it, keep what survives, and stop when the
+ * page is full or the block comes back short of the block size, which means the rows ran out.
+ *
+ * The scan is bounded by RECIPE_SCAN_MAX_BLOCKS, so this is still a bound and not a proof -- a viewer entitled
+ * to nothing gets an empty page once more than the bound's worth of withheld rows sit on top. `exhausted` is
+ * returned so a caller can tell that case from the end of the rows rather than having to guess. Closing it
+ * completely needs the gate as a SQL predicate so the LIMIT itself is visibility-aware: a second copy of the
+ * rule, which is the thing the single boundary exists to avoid.
+ *
+ * `readBlock` MUST impose a TOTAL order on its rows. Blocks are read at successive offsets, so an ordering with
+ * ties -- or none at all -- lets the same row come back in two blocks, or no block.
+ */
+async function scanVisibleRecipeRows<T>(options: {
+  readBlock: (blockOffset: number, blockSize: number) => Promise<T[]>;
+  /** How many visible rows the route wants. */
+  pageSize: number;
+  /** The slug that decides whether this row survives the gate. */
+  slugOf: (row: T) => string;
+  viewerUserId?: string | null;
+  /** Further slugs the row names, judged so a withheld one can be cleared from the response rather than naming it. */
+  alsoGate?: (row: T) => Array<string | null | undefined>;
+  startOffset?: number;
+}): Promise<{ rows: T[]; withheld: Set<string>; exhausted: boolean }> {
+  const { readBlock, pageSize, slugOf, viewerUserId, alsoGate, startOffset = 0 } = options;
+  const blockSize = Math.max(pageSize, 1) * RECIPE_SCAN_BLOCK_MULTIPLE;
+  const rows: T[] = [];
+  const withheld = new Set<string>();
+  let blockOffset = startOffset;
+  let exhausted = false;
+
+  for (let block = 0; block < RECIPE_SCAN_MAX_BLOCKS && rows.length < pageSize; block += 1) {
+    const candidates = await readBlock(blockOffset, blockSize);
+    if (candidates.length === 0) {
+      exhausted = true;
+      break;
+    }
+    blockOffset += candidates.length;
+
+    const judged = await withheldPremiumSlugsForViewer(
+      [
+        ...candidates.map(slugOf),
+        ...(alsoGate
+          ? candidates.flatMap((row) => alsoGate(row).filter((slug): slug is string => Boolean(slug)))
+          : []),
+      ],
+      viewerUserId ?? null,
+    );
+    for (const slug of judged) withheld.add(slug);
+
+    for (const row of candidates) {
+      if (withheld.has(slugOf(row))) continue;
+      rows.push(row);
+      if (rows.length === pageSize) break;
+    }
+
+    if (candidates.length < blockSize) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  return { rows, withheld, exhausted };
 }
 
 async function resolveCollectionWithItems(
@@ -20258,50 +20332,31 @@ r.get("/remixes", optionalAuth, async (req, res) => {
         drinkRecipes.remixedFromSlug
       );
 
-    // Codex on #1530, twice. First: this feed gated after the LIMIT, so withheld rows at the top emptied it --
-    // and it is the one feed whose page a viewer cannot work around, because the client asks for the first page
-    // and offers no next. Overfetching a wider window made that less likely and did not make it impossible:
-    // with enough withheld rows at the top, a wider window is still all withheld.
-    //
-    // So the window is scanned instead of widened. Rows are read in blocks and gated until the page is full or
-    // the feed runs out, bounded so a viewer who can see nothing cannot make this walk the whole table. The
-    // offset still counts pre-gate rows, as it always did; this does not claim the pages tile exactly.
-    const remixPageSize = limit * RECIPE_MATCH_OVERFETCH;
-    const readRemixBlock = (blockOffset: number) =>
-      sort === "popular"
-        ? remixRowsQuery
-            .orderBy(
-              desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`),
-              desc(drinkRecipes.createdAt)
-            )
-            .limit(remixPageSize)
-            .offset(blockOffset)
-        : remixRowsQuery.orderBy(desc(drinkRecipes.createdAt)).limit(remixPageSize).offset(blockOffset);
-
-    type RemixRow = Awaited<ReturnType<typeof readRemixBlock>>[number];
-    const visibleRemixRows: RemixRow[] = [];
-    const withheldFeed = new Set<string>();
-    let blockOffset = offset;
-    for (let block = 0; block < REMIX_FEED_MAX_BLOCKS && visibleRemixRows.length < limit; block += 1) {
-      const rows = await readRemixBlock(blockOffset);
-      if (rows.length === 0) break;
-      blockOffset += rows.length;
-      // A remix can itself be a paid item, and every row also carries the slug it was remixed FROM, which can
-      // be one. Both go through the gate; a withheld source is cleared, not the remix dropped, because the
-      // remix is public in its own right.
-      const withheldBlock = await withheldPremiumSlugsForViewer(
-        [...rows.map((row) => row.slug),
-         ...rows.map((row) => row.remixedFromSlug).filter((slug): slug is string => Boolean(slug))],
-        (req as any).user?.id ?? null,
-      );
-      for (const slug of withheldBlock) withheldFeed.add(slug);
-      for (const row of rows) {
-        if (withheldFeed.has(row.slug)) continue;
-        visibleRemixRows.push(row);
-        if (visibleRemixRows.length === limit) break;
-      }
-      if (rows.length < remixPageSize) break; // the feed is exhausted
-    }
+    // A remix can itself be a paid item, and every row also carries the slug it was remixed FROM, which can be
+    // one. Both go through the gate; a withheld source is cleared rather than the remix dropped, because the
+    // remix is public in its own right. The offset still counts pre-gate rows, as it always did, so this does
+    // not claim the pages tile exactly -- the client asks for one page and renders no next.
+    const { rows: visibleRemixRows, withheld: withheldFeed } = await scanVisibleRecipeRows({
+      readBlock: (blockOffset, blockSize) =>
+        sort === "popular"
+          ? remixRowsQuery
+              .orderBy(
+                desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`),
+                desc(drinkRecipes.createdAt),
+                asc(drinkRecipes.slug)
+              )
+              .limit(blockSize)
+              .offset(blockOffset)
+          : remixRowsQuery
+              .orderBy(desc(drinkRecipes.createdAt), asc(drinkRecipes.slug))
+              .limit(blockSize)
+              .offset(blockOffset),
+      pageSize: limit,
+      slugOf: (row) => row.slug,
+      alsoGate: (row) => [row.remixedFromSlug],
+      viewerUserId: (req as any).user?.id ?? null,
+      startOffset: offset,
+    });
     const remixSlugs = visibleRemixRows.map((row) => row.slug);
     const remixesCountRows = remixSlugs.length
       ? await db
@@ -20473,31 +20528,33 @@ r.get("/remixes/:slug", optionalAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "slug is required" });
     }
 
-    const remixes = await db
-      .select({
-        slug: drinkRecipes.slug,
-        name: drinkRecipes.name,
-        image: drinkRecipes.image,
-        createdAt: drinkRecipes.createdAt,
-        creatorUsername: users.username,
-        creatorId: drinkRecipes.userId,
-      })
-      .from(drinkRecipes)
-      .leftJoin(users, eq(drinkRecipes.userId, users.id))
-      .where(eq(drinkRecipes.remixedFromSlug, sourceSlug))
-      .orderBy(desc(drinkRecipes.createdAt))
-      .limit(24 * RECIPE_MATCH_OVERFETCH);
-
     // The remixes themselves can be the premium payload of a locked collection. The requested slug is the
     // caller's own input and is echoed below unchanged; what must not be disclosed is other people's items.
-    const withheldRemixes = await withheldPremiumSlugsForViewer(
-      remixes.map((entry) => entry.slug),
-      (req as any).user?.id ?? null,
-    );
+    // This route reads no limit or offset from the request, so its page is the whole answer: the rows are
+    // scanned and gated until a full page of visible ones is in hand, not read once and filtered.
+    const { rows: remixes } = await scanVisibleRecipeRows({
+      readBlock: (blockOffset, blockSize) =>
+        db!
+          .select({
+            slug: drinkRecipes.slug,
+            name: drinkRecipes.name,
+            image: drinkRecipes.image,
+            createdAt: drinkRecipes.createdAt,
+            creatorUsername: users.username,
+            creatorId: drinkRecipes.userId,
+          })
+          .from(drinkRecipes)
+          .leftJoin(users, eq(drinkRecipes.userId, users.id))
+          .where(eq(drinkRecipes.remixedFromSlug, sourceSlug))
+          .orderBy(desc(drinkRecipes.createdAt), asc(drinkRecipes.slug))
+          .limit(blockSize)
+          .offset(blockOffset),
+      pageSize: 24,
+      slugOf: (row) => row.slug,
+      viewerUserId: (req as any).user?.id ?? null,
+    });
 
     const items = remixes
-      .filter((entry) => !withheldRemixes.has(entry.slug))
-      .slice(0, 24)
       .map((entry) => ({
       slug: entry.slug,
       name: entry.name,
@@ -24180,20 +24237,37 @@ r.get("/search", optionalAuth, async (req, res) => {
 
     const canonicalMatches = searchDrinks({ q, source: "external", pageSize: 10, offset: 0 });
 
+    // Search reads drink_recipes directly and so never passed through resolveCollectionWithItems. Without the
+    // gate it named the premium payload of a locked collection to anyone who searched for it.
+    //
+    // This query had no ORDER BY, so its truncated top-N was whatever the plan happened to return -- which a
+    // block scan cannot work with, because successive offsets would repeat and skip rows. It is ordered newest
+    // first with the slug as a tiebreaker now, which makes the scan well defined and the route's answer
+    // reproducible; what it returns was previously unspecified rather than deliberately chosen.
     let userMatches: any[] = [];
     if (db) {
-      userMatches = await db
-        .select()
-        .from(drinkRecipes)
-        .where(
-          or(
-            ilike(drinkRecipes.name, `%${q}%`),
-            ilike(drinkRecipes.description, `%${q}%`),
-            ilike(drinkRecipes.category, `%${q}%`),
-            ilike(drinkRecipes.subcategory, `%${q}%`)
-          )
-        )
-        .limit(20 * RECIPE_MATCH_OVERFETCH);
+      userMatches = (
+        await scanVisibleRecipeRows({
+          readBlock: (blockOffset, blockSize) =>
+            db!
+              .select()
+              .from(drinkRecipes)
+              .where(
+                or(
+                  ilike(drinkRecipes.name, `%${q}%`),
+                  ilike(drinkRecipes.description, `%${q}%`),
+                  ilike(drinkRecipes.category, `%${q}%`),
+                  ilike(drinkRecipes.subcategory, `%${q}%`)
+                )
+              )
+              .orderBy(desc(drinkRecipes.createdAt), asc(drinkRecipes.slug))
+              .limit(blockSize)
+              .offset(blockOffset),
+          pageSize: 20,
+          slugOf: (row) => row.slug,
+          viewerUserId: (req as any).user?.id ?? null,
+        })
+      ).rows;
     }
 
     const external = (await canonicalMatches).results.map((item) => ({
@@ -24204,16 +24278,7 @@ r.get("/search", optionalAuth, async (req, res) => {
       source: "external",
     }));
 
-    // Search reads drink_recipes directly and so never passed through resolveCollectionWithItems. Without this
-    // it named the premium payload of a locked collection to anyone who searched for it.
-    const withheld = await withheldPremiumSlugsForViewer(
-      userMatches.map((item) => item.slug),
-      (req as any).user?.id ?? null,
-    );
-
     const userItems = userMatches
-      .filter((item) => !withheld.has(item.slug))
-      .slice(0, 20)
       .map((item) => ({
         slug: item.slug,
         name: item.name,
@@ -24260,6 +24325,9 @@ r.get("/community-search", optionalAuth, async (req, res) => {
       creatorUsername: string | null;
       createdAt: Date;
     }> = [];
+    // Empty rather than every candidate when db is absent: there is nothing to judge, and the route returns no
+    // recipe rows at all in that case.
+    let withheldCommunity: Set<string> = new Set();
 
     let creators: Array<{
       userId: string;
@@ -24278,30 +24346,49 @@ r.get("/community-search", optionalAuth, async (req, res) => {
     }> = [];
 
     if (db) {
-      userRecipeMatches = await db
-        .select({
-          slug: drinkRecipes.slug,
-          name: drinkRecipes.name,
-          image: drinkRecipes.image,
-          category: drinkRecipes.category,
-          subcategory: drinkRecipes.subcategory,
-          remixedFromSlug: drinkRecipes.remixedFromSlug,
-          creatorUsername: users.username,
-          createdAt: drinkRecipes.createdAt,
-        })
-        .from(drinkRecipes)
-        .leftJoin(users, eq(users.id, drinkRecipes.userId))
-        .where(
-          or(
-            ilike(drinkRecipes.name, queryLike),
-            ilike(drinkRecipes.description, queryLike),
-            ilike(drinkRecipes.category, queryLike),
-            ilike(drinkRecipes.subcategory, queryLike),
-            ilike(users.username, queryLike),
-          ),
-        )
-        .orderBy(desc(drinkRecipes.createdAt))
-        .limit(24 * RECIPE_MATCH_OVERFETCH);
+      // Same unfiltered drink_recipes query as /search, so the same hole, and the same fix: scanned and gated
+      // until a full page of visible rows is in hand. Gating here rather than further down also means the view
+      // and remix-count queries below are asked about the rows that will be returned, not about 120 candidates
+      // most of which are discarded.
+      //
+      // Greptile P1: a remix result also carries the slug it was remixed FROM, and only the remix's own slug was
+      // judged. A buyer who publishes their remix of a paid drink outside any locked collection therefore
+      // published the original's slug with it -- and that slug is the whole secret, because it is what the
+      // recipe route takes. Both go through the gate; the reference is cleared below, the row is not dropped.
+      const scannedCommunity = await scanVisibleRecipeRows({
+        readBlock: (blockOffset, blockSize) =>
+          db!
+            .select({
+              slug: drinkRecipes.slug,
+              name: drinkRecipes.name,
+              image: drinkRecipes.image,
+              category: drinkRecipes.category,
+              subcategory: drinkRecipes.subcategory,
+              remixedFromSlug: drinkRecipes.remixedFromSlug,
+              creatorUsername: users.username,
+              createdAt: drinkRecipes.createdAt,
+            })
+            .from(drinkRecipes)
+            .leftJoin(users, eq(users.id, drinkRecipes.userId))
+            .where(
+              or(
+                ilike(drinkRecipes.name, queryLike),
+                ilike(drinkRecipes.description, queryLike),
+                ilike(drinkRecipes.category, queryLike),
+                ilike(drinkRecipes.subcategory, queryLike),
+                ilike(users.username, queryLike),
+              ),
+            )
+            .orderBy(desc(drinkRecipes.createdAt), asc(drinkRecipes.slug))
+            .limit(blockSize)
+            .offset(blockOffset),
+        pageSize: 24,
+        slugOf: (row) => row.slug,
+        alsoGate: (row) => [row.remixedFromSlug],
+        viewerUserId: (req as any).user?.id ?? null,
+      });
+      userRecipeMatches = scannedCommunity.rows;
+      withheldCommunity = scannedCommunity.withheld;
 
       creators = await db
         .select({
@@ -24411,21 +24498,6 @@ r.get("/community-search", optionalAuth, async (req, res) => {
       remixesCount: remixesBySlug.get(item.sourceId) ?? 0,
       isTrending: item.relevanceScore >= 0.85,
     }));
-
-    // Same unfiltered drink_recipes query as /search, so the same hole: filtered at the point the slugs become
-    // results, which covers the drink list and the remix list below it.
-    //
-    // Greptile P1: a remix result also carries the slug it was remixed FROM, and only the remix's own slug was
-    // being judged. A buyer who publishes their remix of a paid drink outside any locked collection therefore
-    // published the original's slug with it -- and that slug is the whole secret, because it is what the recipe
-    // route takes. Both the result slugs and the slugs they point at go through the gate.
-    const withheldCommunity = await withheldPremiumSlugsForViewer(
-      [...userRecipeMatches.map((recipe) => recipe.slug),
-       ...userRecipeMatches.map((recipe) => recipe.remixedFromSlug).filter((slug): slug is string => Boolean(slug))],
-      (req as any).user?.id ?? null,
-    );
-    // Back to the route's own page size once the withheld rows are out (see RECIPE_MATCH_OVERFETCH).
-    userRecipeMatches = userRecipeMatches.filter((recipe) => !withheldCommunity.has(recipe.slug)).slice(0, 24);
 
     const userDrinkResults = userRecipeMatches
       .filter((recipe) => !withheldCommunity.has(recipe.slug))
