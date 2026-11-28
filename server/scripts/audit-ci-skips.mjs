@@ -760,6 +760,20 @@ function envReads(file) {
   const collect = (name, node) => {
     reads.add(name);
     if (initialisesExport(node)) exported.add(name);
+    // A RESOLVED read that is handed to callers must still leave a signal, and this line is the one my own
+    // opacity/name split forgot. Codex's eleventh finding on this branch:
+    //
+    //     const key = "TEST_DATABASE_URL";
+    //     export function readEnv() { return process.env[key]; }
+    //
+    // The computed key resolves perfectly, so the read comes through HERE rather than the opaque branches --
+    // and here the only question asked was "does it initialise an export?", which it does not. So it
+    // contributed no name (correct: a name a caller might ask for is not this suite's gate) and no opacity
+    // either (wrong: the package demonstrably hands out a database value). It cleared.
+    //
+    // Keeping the name out of the satisfying set is what avoids re-opening the fifth finding; discarding the
+    // signal entirely is a different mistake. Opacity is the conservative answer in both cases.
+    else if (escapesViaReturn(node)) exportedOpaque = true;
   };
   const visit = (node) => {
     if (
