@@ -251,7 +251,7 @@ is the other half of not colliding.
 | # | Condition | State |
 | --- | --- | --- |
 | 1 | Every suite in CI, or listed with a reason | **NOT met.** Names match, but 607 named tests never run: a missing `TEST_DATABASE_URL` makes them skip and node exits 0. #1541 fixes it and adds a checker. See below |
-| 2 | No suite passes while asserting nothing, and none fails at random | **Not met, and it is the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
+| 2 | No suite passes while asserting nothing, and none fails at random | **Not met.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture). **A real two-sided assertion inside batch 7 is found and fixed in #1549** — it demanded one side of a race measured at 16/14 over 30 trials — but whether it is the failure that actually fired is **unknown and unknowable from the surviving log**, so the batch-7 item stays open (below). And the sweep that would find the rest needs a tool nobody has written |
 | 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
 | 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **MET** by #1530. Nine read routes, one write path, every protection confirmed by breaking it |
 | 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
@@ -261,8 +261,11 @@ So: **one met**, one a merge away (#1541), two blocked on Myron with the work al
 condition 2 partly moved — its floor is now gated by `audit-assert-coverage.mjs`, and one flake is still open
 and unnamed.
 
-A run starting cold should: merge #1541 and #1540 if they are green, then chase the batch-7 flake with the
-failure summary that now names it.
+A run starting cold should: merge #1549 (a real two-sided assertion found inside batch 7), then #1541 and
+#1540 if they are green. **Read the batch-7 section before spending a run on it** — one flake out of that
+batch is fixed, the failure that fired is still unexplained, and the attempt to pin it to a file was
+retracted. Do not re-run the batch hoping to reproduce it; the plan is to wait for the next occurrence, which
+now names the failing test.
 
 ### In flight
 
@@ -272,7 +275,8 @@ failure summary that now names it.
 | ~~Recipe create persistence~~ | ~~PR #1538~~ | **Merged**, green. Closed done-condition 1 and added the `run-ci-batch.mjs` failure summary. Note for every future run: `rerun_failed_jobs` returns **403** for this integration, so CI can only be re-triggered by a real commit, never an empty one | — |
 | Silent-skip fix and checker | **PR #1541** | 607 tests CI names and has never run, plus the nested-failure hole Codex found on #1538. Both fixed. The checker took **four versions** — bare text (flagged a comment), regex on `process.env.NAME` (cleared a suite that only *assigns* the name: Codex's second finding, a silent green waved through by the checker), AST reads-only (flagged a test *titled* "…is skipped"), and the current one. It has its own 8-test suite with seven mutations, one of which passed at first because my fixture was vacuous. Merge on green | Claude `…T9vcsr8u` |
 | Assert-coverage audit | **PR #1540** | **Taken by session `…TD6mAsTkV`**, which answered both of Codex's findings on it — lexical helper scoping, and `skip` only counting when unconditionally truthy, which widened the gate by 19 blocks — and gave the tool its own suite with five mutations. Leave it to that session | Claude `…TD6mAsTkV` |
-| Record correction | **PR #1539** | Condition 1 unmarked, with the per-batch numbers and the ffmpeg exception listed. Merge on green | Claude `…T9vcsr8u` |
+| ~~Record correction~~ | ~~PR #1539~~ | **Merged.** Condition 1 unmarked, with the per-batch numbers and the ffmpeg exception listed | — |
+| Batch-7 flake, named | **PR #1549** | The flake is an assertion that demanded one side of a two-sided race (16/14 over 30 trials). Three tests replace it: both orders deterministically, plus the race asserting only what holds in either. Four mutations, **no server change**. Merge on green | Claude `…T9vcsr8u` |
 
 Two sessions have now worked this repository at the same time twice, and the second time it went well because
 the Owner column was used. `…TD6mAsTkV` took #1540 and finished Codex's findings on it properly; this session
@@ -281,6 +285,60 @@ column before you pick.**
 | ~~Rendering smoke check~~ | ~~PR #1526~~ | **Merged.** Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
+
+### Three traps this environment sets, all paid for once
+
+**A PUSH CANCELS THE RUNNING CI, AND THE LONGEST JOB IS 18.5 MINUTES.**
+`pr-validation.yml` declares `concurrency: pr-validation-<pr> / cancel-in-progress: true` and has **no
+`paths-ignore`**, so every push — including a documentation-only one — cancels the run in flight and starts
+all six jobs again. The "Schema push safety and plaintext finalization durability" job takes about 18.5
+minutes of a 45-minute budget.
+
+**Push more often than that and CI can never finish.** Measured with `actions/runs?branch=…`, which reports
+each RUN's conclusion rather than each job's. A snapshot at **2026-11-28 19:15Z**, before the pause that
+followed it:
+
+| branch | runs | conclusions |
+| --- | --- | --- |
+| `tests/catering-payable-cap-race-order` (#1549) | 8 | **every one `cancelled`** |
+| `ci/silent-skip-checker` (#1541) | 12 | 3 `success`, 1 `failure`, **8 `cancelled`** |
+
+#1549 had at that point never once completed a full validation while being described in this session as "five
+of six green" — those were the partial results of runs that were then thrown away. #1541 is the contrast that
+shows the cause is **cadence, not the workflow**: the same six jobs completed three times there, on the
+pushes that were followed by a pause rather than another push.
+
+**And the fix worked, which is the other half of the evidence.** After stopping, the next run on #1549
+(`58315469`) completed with conclusion `success` — the ninth run on that branch and the first to finish.
+Nothing about the workflow changed; only the cadence did.
+
+A `check_suite.completed` notification does not catch this either; it says in its own text that it does not
+cover cancelled suites. Nor does a job table: a job marked `success` inside a run marked `cancelled` is not a
+pass of anything.
+
+So: **batch edits, and do not push while the long job is running unless the push is the point.** A docs
+correction is worth one commit held locally until CI reports, not one push each. And before reading a job
+table as green, check the RUN's conclusion — a job that says `success` inside a run that says `cancelled` is
+not a pass of anything.
+
+### Two traps this environment sets, both paid for once
+
+**`npm ci` rewrites `package-lock.json` here, and it can delete entries.** #1541 went red on all six jobs
+inside 30 seconds at `npm ci`: `Missing: caniuse-lite@1.0.30001829 from lock file`. The branch meant to add
+one line (`"yaml": "^2.6.0"`); the commit also carried the **deletion** of the whole
+`node_modules/caniuse-lite` entry and the file's trailing newline. Cause: `npm ci` runs browserslist's
+postinstall, which updates caniuse-lite on disk and rewrites the lockfile underneath you between a hand edit
+and the commit. `git diff --stat` said one line at the moment it was looked at and twenty-six by the time it
+was committed. The fix is to rebuild the lockfile from `git show origin/main:package-lock.json`, re-apply only
+the intended line, and verify with **`npm ci --ignore-scripts`**, which installs and leaves the file
+byte-identical. **Check `git diff -- package-lock.json` immediately before committing, every time.**
+
+**Two sessions fixed that same lockfile independently, about an hour apart.** The Owner column worked for
+#1540 and #1541 and then failed here, because a session that owns a row and is restarted or compacted comes
+back without knowing it still owns it, picks up the newest red thing, and collides. The second fix found the
+better cause (the postinstall) and was kept; the duplicate was dropped. **So the convention needs one more
+clause: before pushing to a row you own, re-read the row and `git log` the branch — a session returning to its
+own work is as blind as a session arriving at someone else's.**
 
 ### Corrected, so nobody spends another session on it
 
@@ -292,7 +350,10 @@ Its first test takes **18.5 minutes** — it drives real `drizzle-kit` through d
 database. Every attempt to run it locally had a 10 minute cap, so it was killed mid-run and recorded as a
 failure. That reading was then copied into the work queue and repeated.
 
-Give it 25 minutes before calling it hung.
+**Give it 35 minutes before calling it hung, not 25.** That number was raised on measurement: in CI the whole
+job ran **19:17:42 to 19:44:32 — 26m50s** (run `46180381624`), comfortably past the 25 minutes this file used
+to allow and still well inside its own 45-minute budget. A 25-minute patience would have had someone killing
+a healthy job.
 
 **What this file said about the guard itself was wrong, and is corrected here.** It read: the guard was verified
 by hand against a non-exempt database, it refused a plan that would strip row-level security, so do not go
@@ -324,16 +385,96 @@ write "this is sound" into this file, say which paths you checked, and never wri
 The same applies to `square-plaintext-finalization-durability.postgres.test.ts`, carried as "9 pass / 1 fail":
 it runs in that same green job. Re-measure before believing a failure count in any queue, including this one.
 
-### Open and owned: batch 7 of 17 failed once, at random, and nobody has named it
+### Batch 7 of 17 failed once at random, and a real flake inside it is now named
 
-This is condition 2's other half and it is live.
+This is condition 2's other half. **A genuine two-sided assertion in that batch is named and fixed in #1549**,
+and it is written at the top of this section rather than at the end, because three sessions spent two days on
+the mechanisms below and this one was an assertion, not a mechanism.
+
+**It is not established that it is what fired.** The attempt to show that was retracted in the same run that
+made it — the number it rested on was a step DURATION misread as an offset — and the retraction is a few
+paragraphs down. So: one real flake out of that batch, fixed on its own evidence; the batch-7 failure itself
+still unexplained.
 
 On 2026-11-28 the first CI run of #1538 went red on `Restored unit suites (2 of 3)`, at the step **"Remaining
-unit suites restored to CI, batch 7 of 17"**, 1m53s into a 351-test batch — run `46089461110`, job
+unit suites restored to CI, batch 7 of 17"**, a 351-test batch whose step took 1m53s (a DURATION, not an
+offset — see the retraction below) — run `46089461110`, job
 `140806716716`. Nothing in #1538 touches any suite in that batch, and #1514 ran batch 7 green at the same base
 eight minutes later.
 
-What was established, so nobody repeats it:
+#### Found in that batch: an assertion that demanded one side of a coin flip
+
+`catering-billing-adjustments-http.test.ts` is one of batch 7's 15 files, and the last assertion of
+its `payable cap: a stale form…` test fired a $200 credit and a $500 payment together with `Promise.all` and
+demanded `payment.status === 409` — commenting "whichever order the two commit". That comment was the bug.
+Run the same two writes **sequentially, with no concurrency anywhere**, and the order alone decides:
+
+| order | credit | payment | resulting ledger |
+| --- | --- | --- | --- |
+| credit, then payment | 201 | **409** | obligation $300, received $0 |
+| payment, then credit | 200 | 201 | obligation $300, received $500, refund potentially due $200 |
+
+**Both are correct, and no server code changed.** A payment is judged against the obligation as it stands when
+it wins the lock — both writers take `pg_advisory_xact_lock(hashtext('catering-billing:' || bookingId))` and
+read their facts inside it — and `cateringCreditCeilingCents` is deliberately the obligation rather than the
+obligation less what has been received, because a goodwill credit to a customer who has already paid in full
+is a real thing a caterer does. The surplus is reported as `refundPotentiallyDueCents`. Refusing that credit
+would have been the bug; so would "fixing" the server to make the old assertion true.
+
+**30 races on 30 fresh bookings: 16 refused the payment, 14 accepted it.** Near a coin flip in a tight loop.
+
+**Why nine clean runs across four conditions never caught it, and the lesson that generalises.** In situ the
+credit keeps winning, so the per-run rate is low — five earlier local runs, three cold-database runs on #1544
+and #1514's green all sit comfortably inside that. A race that is 50/50 under one timing profile and lopsided
+under another is **one** latent defect seen twice, and "non-reproduction is not elimination" applies to a
+two-sided assertion exactly as it applies to a mechanism. The cold database was never causal: it shifts
+lock-acquisition timing enough to change which side wins, which is why the experiment surfaced it, but the
+defect needs no concurrency to demonstrate.
+
+**THE CI FAILURE IS NOT ATTRIBUTED TO THIS FILE, and the attempt to attribute it was built on a misread
+number. Retracted here in full, because an earlier version of this section had it both ways and the wrong one
+was the confident one.**
+
+What this file has said since the failure is that batch 7 went red **"1m53s into a 351-test batch"**. It then
+reasoned from that: the batch's files run cumulatively to 87s through the 13th and 118s through the 14th, so
+113s lands inside the 14th file's window. The arithmetic is right and the premise is wrong.
+
+**1m53s is the step's DURATION, not an offset into it.** From the Actions API for the original run
+`46089461110`, job `140806716716`: the step "Remaining unit suites restored to CI, batch 7 of 17" ran
+**00:44:39 to 00:46:32** — it started, took 1m53s, and failed. Nothing in that number says when inside the
+batch anything went wrong.
+
+And it cannot, because of how the batch runs: `run-ci-batch.mjs` hands all fifteen files to ONE `node --test`
+invocation and reports failure when the child closes. **An assertion failure does not stop the files after
+it.** So a failure in the 1st file and a failure in the 15th produce the same step: the whole batch runs, the
+step takes about as long as it always does, and the exit code is non-zero at the end. A duration close to the
+local 1m58s-2m03s is evidence the batch RAN TO COMPLETION, which is the opposite of localising the failure.
+
+Codex found this on #1549. Two further points of its, both correct: similar totals across different runs do
+not establish identical per-file boundaries either, and the job log ending in catering statements says only
+that the last files ran, which they always do.
+
+**So what is actually known about the batch-7 failure is what was known before: it happened, in that batch,
+and which test failed was never readable.** The summary added in #1538 did not exist when it fired. The named
+assertion below is a real latent flake in that batch and worth fixing on its own evidence; whether it is THE
+failure is unknown and, from the surviving log, unknowable. Batch 7 runs **354 pass / 0 fail / 0 skipped**
+with the fix (351 + 3 new tests, which also re-confirms the fifteen suites are exactly the CI batch), and the
+standing plan is unchanged: the next occurrence names the test for free.
+
+**Two batch series exist and they are easy to confuse**, which this run nearly did. "Suites restored to CI,
+batch N **of 6**" are steps of `wedding-square-postgres-migration-tests` (12m40s, the job #1541 widens).
+"Remaining unit suites restored to CI, batch N **of 17**" are spread across `restored-unit-suites-1` (1-6),
+`-2` (7-12) and `-3` (13-17). **Batch 7 is the first step of the second job**, as this file already says —
+but a "72-second job" read off the wrong one of these looks like proof that 755 tests cannot have run.
+
+**The other 26 races in that suite were looked at, not assumed.** The four that pair two different operations
+are order-independent for mechanical reasons — a refund's ceiling is money received, which both orders
+satisfy; the payable allocation is oldest-first, so it does not depend on who asks — and 20 trials of each
+gave one outcome every time. Twenty trials cannot tell "order-independent" from "one side wins nearly
+always", which is the whole lesson above, so the mechanism is the reason those are left alone. The rest
+assert "exactly one of N succeeded", which is order-independent by construction.
+
+What was established before it was named, so nobody repeats it:
 
 - **It does not reproduce locally.** Five runs of batch 7 — one against a fresh database, four against a dirty
   one, at `--test-concurrency=1` on a 2-core machine, which is what the runner does. 351 pass / 0 fail each
@@ -343,11 +484,27 @@ What was established, so nobody repeats it:
   postgres service container dumping hundreds of lines of constraint violations that the constraint tests
   caused on purpose. The `not ok` line sits thousands of lines above that.
 
-That last point is fixed: `run-ci-batch.mjs` now prints every failing test, by name with its file and line, at
-the **end** of the log, where a 40-line tail still has it — and says so explicitly when a non-zero exit carries
-no `not ok` line at all, which from a tail looked identical. Verified with throwaway probes for all three
-paths. **So the next run that sees this will be able to name it.** That is the whole of the progress; the flake
-itself is untouched.
+That last point is fixed, but **this file's description of the fix was wrong and is corrected here**, because
+getting it wrong costs the next run the one thing the fix was for. `run-ci-batch.mjs` does print every failing
+test, by name with its file and line, at the end of the STEP, and says so explicitly when a non-zero exit
+carries no `not ok` line at all. What this file claimed is that "a 40-line tail still has it". **It does not,
+and cannot.**
+
+A step's output is not the end of the JOB log. Any job with a service container ends with the container's own
+teardown, and these jobs' postgres dumps the constraint violations the constraint tests caused on purpose.
+Measured on `restored-unit-suites-2` of run `46176865079`: of the last 500 lines of that job's log, **199 are
+container teardown and postgres output**, and the step's own output stops above them.
+
+So the summary sits roughly 200 lines from the end rather than at it:
+
+| how the log is fetched | does the summary appear |
+| --- | --- |
+| 40-line tail | **no** — never reaches the step's output at all |
+| 500-line tail | yes, just above the container dump |
+| `get_job_logs` with `failed_only` and the run id | yes, and this is the one to use |
+
+**So the next run that sees this can name it — if it asks for 250+ lines or uses `failed_only`.** With the
+40-line tail this file recommended, it would read container noise and conclude the summary never printed.
 
 #### Two mechanisms eliminated, one hypothesis still open, and a wrong model of CI corrected
 
@@ -390,7 +547,8 @@ Two consequences, and they point the next run somewhere quite different:
    listed it; it was wrong.
 
 **So the surface is smaller and more specific than anyone has been treating it as:** the failure happened
-1m53s into the **first test step of a fresh job, against a cold database**. Whatever it is lives inside those
+in the **first test step of a fresh job, against a cold database** (the step took 1m53s; that is its whole
+duration and localises nothing inside the batch — see the retraction above). Whatever it is lives inside those
 fifteen suites, or in how they behave against a database on first touch — not in anything that ran before
 them, because nothing did.
 
@@ -402,11 +560,14 @@ statements are two identical `UPDATE catering_booking_amendments SET currency = 
 like a retry or a double run. They are neither — line 550 of that suite sits inside a loop over two
 `[proposer, responder]` pairs. Nothing there.
 
-**Recommendation: stop hunting and let it catch itself**, but for a better reason than exhaustion.
-`run-ci-batch.mjs` now names every failing test at the end of the log, which was not in place when this fired.
-The next occurrence names the test for free, and with the corrected topology above it will point at something
-inside one fresh job rather than at a state-accumulation story that cannot happen. A seventh guess is worth
-less than that.
+**Recommendation: merge #1549, and let the failure itself catch the rest.** The two-sided assertion is a real
+flake and should not be left to fire, whether or not it is the one on record — but removing it is not an
+explanation of the failure, and nothing here should be read as closing that. For whatever else is in those
+fifteen suites, waiting is still right, and for a better reason than exhaustion.
+`run-ci-batch.mjs` now names every failing test at the end of the STEP, which was not in place when this
+fired. The next occurrence names the test — **fetched with `failed_only` or 250+ lines, not a 40-line tail;
+see the table above for why** — and with the corrected topology it will point at something inside one fresh
+job rather than at a state-accumulation story that cannot happen. A seventh guess is worth less than that.
 
 **Do not merge anything on a re-run green while this is open without saying so in the merge.** A flake that
 gets retried until it passes is how a real failure comes to be read as noise, which is the thing this campaign
