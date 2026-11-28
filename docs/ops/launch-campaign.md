@@ -286,6 +286,36 @@ column before you pick.**
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
 
+### Three traps this environment sets, all paid for once
+
+**A PUSH CANCELS THE RUNNING CI, AND THE LONGEST JOB IS 18.5 MINUTES.**
+`pr-validation.yml` declares `concurrency: pr-validation-<pr> / cancel-in-progress: true` and has **no
+`paths-ignore`**, so every push — including a documentation-only one — cancels the run in flight and starts
+all six jobs again. The "Schema push safety and plaintext finalization durability" job takes about 18.5
+minutes of a 45-minute budget.
+
+**Push more often than that and CI can never finish.** Measured with `actions/runs?branch=…`, which reports
+each RUN's conclusion rather than each job's:
+
+| branch | runs | conclusions |
+| --- | --- | --- |
+| `tests/catering-payable-cap-race-order` (#1549) | 8 | **every one `cancelled`** |
+| `ci/silent-skip-checker` (#1541) | 12 | 3 `success`, 1 `failure`, **8 `cancelled`** |
+
+#1549 had never once completed a full validation while being described in this session as "five of six
+green" — those were the partial results of runs that were then thrown away. #1541 is the contrast that shows
+the cause is **cadence, not the workflow**: the same six jobs completed three times there, on the pushes that
+were followed by a pause rather than another push.
+
+A `check_suite.completed` notification does not catch this either; it says in its own text that it does not
+cover cancelled suites. Nor does a job table: a job marked `success` inside a run marked `cancelled` is not a
+pass of anything.
+
+So: **batch edits, and do not push while the long job is running unless the push is the point.** A docs
+correction is worth one commit held locally until CI reports, not one push each. And before reading a job
+table as green, check the RUN's conclusion — a job that says `success` inside a run that says `cancelled` is
+not a pass of anything.
+
 ### Two traps this environment sets, both paid for once
 
 **`npm ci` rewrites `package-lock.json` here, and it can delete entries.** #1541 went red on all six jobs
