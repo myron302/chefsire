@@ -20132,16 +20132,34 @@ r.get("/challenges/:slug/submissions", optionalAuth, async (req, res) => {
 
     const detailsBySlug = await resolveDrinkDetailsMapBySlugs(visibleRows.map((row) => row.drinkSlug));
 
-    const submissions = visibleRows.map((row) => ({
-      id: row.id,
-      challengeId: row.challengeId,
-      userId: row.userId,
-      drinkSlug: row.drinkSlug,
-      createdAt: row.createdAt,
-      creatorUsername: row.username ?? null,
-      creatorAvatar: row.avatar ?? null,
-      drink: detailsBySlug.get(row.drinkSlug) ?? null,
-    }));
+    // Codex's P2 on #1546, and it is the same hole one level down. `resolveDrinkDetailsMapBySlugs` carries
+    // `remixedFromSlug` on every row it hydrates, so a submission that is itself perfectly public can name a
+    // withheld premium PARENT -- submit a standalone recipe through /submit with a premium slug as its remix
+    // parent, enter that recipe here, and the parent's slug went out to anonymous readers. The slug is the
+    // secret, which is why the parent is cleared rather than the submission dropped: the submission is not
+    // the thing being withheld. This is what /drink-remix-chain/:slug already does to a surviving node.
+    const parentSlugs = visibleRows
+      .map((row) => detailsBySlug.get(row.drinkSlug)?.remixedFromSlug)
+      .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+    const withheldParents = parentSlugs.length > 0
+      ? await withheldPremiumSlugsForViewer(parentSlugs, viewerId)
+      : new Set<string>();
+
+    const submissions = visibleRows.map((row) => {
+      const drink = detailsBySlug.get(row.drinkSlug) ?? null;
+      return {
+        id: row.id,
+        challengeId: row.challengeId,
+        userId: row.userId,
+        drinkSlug: row.drinkSlug,
+        createdAt: row.createdAt,
+        creatorUsername: row.username ?? null,
+        creatorAvatar: row.avatar ?? null,
+        drink: drink && drink.remixedFromSlug && withheldParents.has(drink.remixedFromSlug)
+          ? { ...drink, remixedFromSlug: null }
+          : drink,
+      };
+    });
 
     return res.json({
       ok: true,
@@ -20752,8 +20770,16 @@ r.get("/user/:slug", optionalAuth, async (req, res) => {
   }
 });
 
-// Track canonical drink recipe events
-r.post("/events", async (req, res) => {
+// Track canonical drink recipe events.
+//
+// `optionalAuth` is new and is not only for the gate below. This route has always recorded
+// `userId: resolveEngagementUserId(req)`, and that helper reads `req.user.id` -- which nothing was ever
+// setting here, because the route had no auth middleware at all. So every row this route has ever written
+// carried a null user id, and the column has been silently useless. With the gate added that mattered twice
+// over: without a viewer, a buyer logging a view of the collection they bought would have been refused as
+// though they were anonymous. (`server/routes/pet-food.ts` has the same shape and the same dead column; not
+// touched here, because it has no premium gate to get wrong.)
+r.post("/events", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -20772,10 +20798,22 @@ r.post("/events", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Unknown drink slug" });
     }
 
+    // Codex's P1 on #1546, and the most useful of the lot: `drink_events` is a FOURTH table that stores a
+    // caller-supplied slug, and the only check here was that the recipe exists. /trending,
+    // /trending/by-category and /recommended all group by this column with no restriction on which slugs they
+    // will accept, so posting a view event for a withheld premium slug put that drink's name, image and route
+    // on a public leaderboard. Gating the three readers is the fix that matters, and is below; this refuses
+    // the write for the same reason #1530 refused one -- it should not be possible to file activity against
+    // somebody else's paid work, and it keeps the table from accumulating rows the readers must then filter.
+    const eventUserId = resolveEngagementUserId(req);
+    if ((await withheldPremiumSlugsForViewer([slug], eventUserId)).has(slug)) {
+      return res.status(404).json({ ok: false, error: "Unknown drink slug" });
+    }
+
     await db.insert(drinkEvents).values({
       slug,
       eventType,
-      userId: resolveEngagementUserId(req),
+      userId: eventUserId,
     });
 
     return res.status(201).json({ ok: true });
@@ -20785,8 +20823,12 @@ r.post("/events", async (req, res) => {
   }
 });
 
-// Trending canonical drink recipes
-r.get("/trending", async (_req, res) => {
+// Trending canonical drink recipes.
+//
+// `optionalAuth` and the gate below are Codex's P1 on #1546. This route's slug set comes straight out of
+// `drink_events`, which any caller can write to, so without a viewer and a gate a withheld premium drink
+// posted there appeared on a public leaderboard, name and image and all.
+r.get("/trending", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       return res.json({
@@ -20825,12 +20867,17 @@ r.get("/trending", async (_req, res) => {
       .orderBy(desc(scoreSql), desc(views24hSql), desc(remixesSql), desc(groceryAddsSql), desc(views7dSql))
       .limit(10);
 
-    const resolved = await Promise.all(rows.map((row) => resolveDrinkDetailsBySlug(row.slug)));
+    // Filtered BEFORE hydration, unlike the list routes of #1530, because here the hydration is the
+    // disclosure: `resolveDrinkDetailsBySlug` takes no viewer and judges nothing.
+    const withheldTrending = await withheldPremiumSlugsForViewer(rows.map((row) => row.slug), (req as any).user?.id ?? null);
+    const visible = rows.filter((row) => !withheldTrending.has(row.slug));
+
+    const resolved = await Promise.all(visible.map((row) => resolveDrinkDetailsBySlug(row.slug)));
 
     const items = resolved
       .map((item, index) => {
         if (!item) return null;
-        const row = rows[index];
+        const row = visible[index];
         return {
           slug: item.slug,
           name: item.name,
@@ -20862,8 +20909,8 @@ r.get("/trending", async (_req, res) => {
   }
 });
 
-// Trending canonical drinks scoped to a source category route
-r.get("/trending/by-category", async (req, res) => {
+// Trending canonical drinks scoped to a source category route. Same shape as /trending above, same gate.
+r.get("/trending/by-category", optionalAuth, async (req, res) => {
   try {
     const sourceCategoryRoute = typeof req.query?.sourceCategoryRoute === "string"
       ? req.query.sourceCategoryRoute.trim()
@@ -20906,12 +20953,15 @@ r.get("/trending/by-category", async (req, res) => {
       .groupBy(drinkEvents.slug)
       .orderBy(desc(hotScoreSql), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`));
 
-    const resolved = await Promise.all(rows.map((row) => resolveDrinkDetailsBySlug(row.slug)));
+    const withheldCategoryTrending = await withheldPremiumSlugsForViewer(rows.map((row) => row.slug), (req as any).user?.id ?? null);
+    const visible = rows.filter((row) => !withheldCategoryTrending.has(row.slug));
+
+    const resolved = await Promise.all(visible.map((row) => resolveDrinkDetailsBySlug(row.slug)));
 
     const items = resolved
       .map((item, index) => {
         if (!item || item.sourceCategoryRoute !== sourceCategoryRoute) return null;
-        const row = rows[index];
+        const row = visible[index];
         return {
           slug: item.slug,
           name: item.name,
@@ -20938,8 +20988,11 @@ r.get("/trending/by-category", async (req, res) => {
   }
 });
 
-// Recommended canonical drinks based on recently viewed slugs
-r.get("/recommended", async (req, res) => {
+// Recommended canonical drinks based on recently viewed slugs.
+//
+// Third route with the /trending shape, found while fixing the two Codex named: its candidate set is also
+// `drink_events` grouped by slug with no restriction, and its `recent` slugs come straight from the caller.
+r.get("/recommended", optionalAuth, async (req, res) => {
   try {
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 8, maxLimit: 24 });
     const recentFromQuery = typeof req.query?.recent === "string" ? req.query.recent : "";
@@ -20949,7 +21002,7 @@ r.get("/recommended", async (req, res) => {
         ? req.body.recent
         : "";
 
-    const recentSlugs = (recentFromQuery || recentFromBody)
+    let recentSlugs = (recentFromQuery || recentFromBody)
       .split(",")
       .map((slug) => slug.trim())
       .filter(Boolean);
@@ -20996,7 +21049,7 @@ r.get("/recommended", async (req, res) => {
         .map((row) => [row.slug, row.userId])
     );
 
-    const rankedRows = rows
+    let rankedRows = rows
       .map((row) => {
         const creatorId = creatorBySlug.get(row.slug);
         const baseScore = Number(row.score ?? 0);
@@ -21011,6 +21064,17 @@ r.get("/recommended", async (req, res) => {
         };
       })
       .sort((a, b) => b.rankScore - a.rankScore || Number(b.score ?? 0) - Number(a.score ?? 0) || Number(b.views7d ?? 0) - Number(a.views7d ?? 0));
+
+    // Both inputs are caller-reachable: `recentSlugs` is a query parameter and `rankedRows` comes from the
+    // events table. Judged against the signed-in viewer where there is one, falling back to the engagement id
+    // this route already resolves, so an anonymous caller gets the anonymous answer.
+    const recommendViewerId = (req as any).user?.id ?? viewerId ?? null;
+    const withheldRecommend = await withheldPremiumSlugsForViewer(
+      [...recentSlugs, ...rankedRows.map((row) => row.slug)],
+      recommendViewerId,
+    );
+    recentSlugs = recentSlugs.filter((slug) => !withheldRecommend.has(slug));
+    rankedRows = rankedRows.filter((row) => !withheldRecommend.has(row.slug));
 
     const detailsBySlug = await resolveDrinkDetailsMapBySlugs([
       ...recentSlugs,

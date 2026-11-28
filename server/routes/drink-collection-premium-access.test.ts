@@ -34,7 +34,13 @@ if (!PG_URL) {
   const dialect = new PgDialect();
   const ddl = (table: any, name: string, extra = "") => {
     const cols = Object.values(getTableColumns(table)).map((c: any) => {
-      const type = ({ PgInteger: "integer", PgBoolean: "boolean", PgTimestamp: "timestamp", PgJsonb: "jsonb", PgNumeric: "numeric", PgReal: "real", PgSerial: "serial" } as Record<string, string>)[c.columnType] ?? "text";
+      // PgBigSerial53/64 were missing, and `drink_events.id` is a bigserial. It therefore became a plain
+      // `text` column with no default, so EVERY insert into this suite's drink_events failed on a not-null
+      // id -- which nothing noticed, because no test had ever inserted one. The /trending and /recommended
+      // legs of the existing audits were running against an empty events table and asserting that nothing
+      // leaked from nothing: a suite passing while asserting nothing, which is the other half of
+      // done-condition 2, inside the suite that proves condition 4.
+      const type = ({ PgInteger: "integer", PgBoolean: "boolean", PgTimestamp: "timestamp", PgJsonb: "jsonb", PgNumeric: "numeric", PgReal: "real", PgSerial: "serial", PgBigSerial53: "bigserial", PgBigSerial64: "bigserial" } as Record<string, string>)[c.columnType] ?? "text";
       let def = "";
       if (c.hasDefault && c.default !== undefined) {
         def = typeof c.default === "object" && c.default !== null && "queryChunks" in c.default
@@ -1040,6 +1046,95 @@ if (!PG_URL) {
       assert.equal(r.status, 201, `a public drink must stay submittable: ${r.text}`);
     } finally {
       await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [free]);
+    }
+  });
+
+  // ---- Codex on #1546: drink_events is a FOURTH table, and three public leaderboards read it -------------
+  //
+  // The three-table claim in this PR was wrong. `POST /events` stores a caller-supplied slug in
+  // `drink_events.slug` after checking only that the recipe exists, and /trending, /trending/by-category and
+  // /recommended all GROUP BY that column with no restriction on which slugs they will accept, hydrating each
+  // through the viewer-independent `resolveDrinkDetailsBySlug`. So posting view events for a withheld premium
+  // slug put its name, image and route on a public leaderboard. Codex named the first two; /recommended has
+  // the same shape and was found while fixing them.
+  const eventRow = async (slug: string, eventType = "view", count = 1) => {
+    for (let i = 0; i < count; i += 1) {
+      await local.query(
+        `INSERT INTO drink_events (slug, event_type, created_at) VALUES ($1, $2, now() - interval '1 hour')`,
+        [slug, eventType],
+      );
+    }
+  };
+
+  test("P1 Codex: the trending leaderboards do not publish a withheld premium drink", async () => {
+    // Seeded directly, so the READ gate is tested on its own -- these rows could predate the write gate.
+    const withheld = slugsOf("prem")[2];
+    // Enough events to be ranked above the rest of the fixture's traffic, so a pass cannot come from the slug
+    // simply not making the top ten.
+    await eventRow(withheld, "view", 25);
+    await eventRow(withheld, "remix", 5);
+    try {
+      for (const [label, as] of nonEntitled) {
+        for (const path of ["/trending", "/trending/by-category?sourceCategoryRoute=/drinks/cocktails", "/recommended"]) {
+          const r = await get(path, as);
+          assert.equal(r.status, 200, `${label} ${path}: ${r.text}`);
+          assert.ok(!r.text.includes(withheld), `${label}: ${path} leaked the withheld premium drink`);
+        }
+      }
+      // And the other direction, or the gate could be hiding it from everyone.
+      const buyer = await get("/trending", "buyer");
+      assert.ok(buyer.text.includes(withheld), "a buyer is entitled and must still see it ranked");
+    } finally {
+      await local.query(`DELETE FROM drink_events WHERE slug = $1`, [withheld]);
+    }
+  });
+
+  test("P1 Codex: POST /events refuses to log activity against a drink the caller may not see", async () => {
+    const withheld = slugsOf("prem")[2];
+    try {
+      const anon = await fetch(`${base()}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: withheld, eventType: "view" }),
+      });
+      assert.equal(anon.status, 404, "an anonymous caller may not log it");
+      const nonent = await post("/events", "nonent", { slug: withheld, eventType: "view" });
+      assert.equal(nonent.status, 404, `a non-entitled member may not either: ${nonent.text}`);
+      const rows = await local.query(`SELECT 1 FROM drink_events WHERE slug = $1`, [withheld]);
+      assert.equal(rows.rowCount, 0, "and nothing was written");
+
+      // The buyer may, because they bought it -- a 404 for everyone would be a broken feature, not a gate.
+      const buyer = await post("/events", "buyer", { slug: withheld, eventType: "view" });
+      assert.equal(buyer.status, 201, `a buyer may log their own view: ${buyer.text}`);
+    } finally {
+      await local.query(`DELETE FROM drink_events WHERE slug = $1`, [withheld]);
+    }
+  });
+
+  test("P2 Codex: a visible submission does not name its withheld premium remix parent", async () => {
+    // The same hole one level down: the submitted recipe is public, and `resolveDrinkDetailsMapBySlugs`
+    // carries `remixedFromSlug` on everything it hydrates, so the PARENT's slug went out with it.
+    const parent = slugsOf("prem")[2];
+    const child = "p24-child-of-withheld";
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`,
+      [child, ids.nonent, parent],
+    );
+    await challengeSubmission("nonent", child);
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/challenges/${CHALLENGE_SLUG}/submissions`, as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        assert.ok(r.text.includes(child), `${label}: the public submission itself must survive`);
+        assert.ok(!r.text.includes(parent), `${label}: its withheld premium parent was named`);
+      }
+      // The parent is cleared, not the submission dropped -- and an entitled viewer still sees the lineage.
+      const buyer = await get(`/challenges/${CHALLENGE_SLUG}/submissions`, "buyer");
+      assert.ok(buyer.text.includes(parent), "a buyer is entitled to the parent and must still see it");
+    } finally {
+      await local.query(`DELETE FROM drink_challenge_submissions WHERE drink_slug = $1`, [child]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [child]);
     }
   });
 }
