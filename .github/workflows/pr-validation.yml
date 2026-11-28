@@ -579,3 +579,7 @@ jobs:
         env:
           CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
         run: node server/scripts/run-ci-batch.mjs server/routes/drink-collection-premium-access.test.ts
+      - name: Drink builder create contract
+        env:
+          CS_TEST_PG_URL: postgres://chefsire_test:disposable_test_password@127.0.0.1:5432/chefsire_wedding_test
+        run: node server/scripts/run-ci-batch.mjs client/src/pages/drinks/custom-drink-create-contract.test.ts

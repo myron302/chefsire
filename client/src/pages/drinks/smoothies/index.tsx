@@ -18,6 +18,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs } from '../data/detoxes';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { getCanonicalFirstPath } from '@/lib/recipe-interactions';
+import { smoothieBuilderPayload, smoothiePremadePayload } from '../custom-drink-payload';
 import { sortByName } from '@/lib/sort-by-name';
 
 const smoothieSubcategories = [
@@ -303,25 +304,10 @@ export default function SmoothiesPage() {
   const createSmoothie = async () => {
     if (customSmoothie.ingredients.length >= 3) {
       try {
-        const response = await fetch('/api/custom-drinks', {
+        const response = await fetch('/api/drinks/custom-drinks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: `Custom ${selectedGoal.name} Smoothie`,
-            category: 'smoothies',
-            drinkType: selectedGoal.id,
-            ingredients: customSmoothie.ingredients,
-            calories: Math.round(customSmoothie.calories),
-            protein: Math.round(customSmoothie.protein * 10) / 10,
-            carbs: Math.round(customSmoothie.carbs * 10) / 10,
-            fiber: Math.round(customSmoothie.fiber * 10) / 10,
-            fat: 2,
-            fitnessGoal: selectedGoal.name,
-            difficulty: 'Custom',
-            prepTime: 5,
-            rating: 5,
-            isPublic: false
-          })
+          body: JSON.stringify(smoothieBuilderPayload(selectedGoal, customSmoothie))
         });
 
         if (!response.ok) {
@@ -355,33 +341,10 @@ export default function SmoothiesPage() {
 
   const makePremadeRecipe = async (recipe) => {
     try {
-      const response = await fetch('/api/custom-drinks', {
+      const response = await fetch('/api/drinks/custom-drinks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: recipe.name,
-          category: 'smoothies',
-          drinkType: recipe.workoutType,
-          ingredients: recipe.ingredients.map(name => ({
-            name,
-            category: 'ingredient',
-            calories: 0,
-            protein: 0,
-            carbs: 0,
-            fiber: 0,
-            icon: '🥤'
-          })),
-          calories: recipe.calories,
-          protein: recipe.protein,
-          carbs: Math.round(recipe.calories * 0.6 / 4),
-          fiber: 2,
-          fat: 3,
-          fitnessGoal: recipe.workoutType,
-          difficulty: recipe.difficulty,
-          prepTime: parseInt(recipe.time),
-          rating: recipe.rating,
-          isPublic: false
-        })
+        body: JSON.stringify(smoothiePremadePayload(recipe))
       });
 
       if (!response.ok) {
