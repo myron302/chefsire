@@ -412,6 +412,28 @@ less than that.
 gets retried until it passes is how a real failure comes to be read as noise, which is the thing this campaign
 was set up to stop.
 
+### Search Intelligence has a merge gate that is not CI
+
+Myron's instruction, 2026-11-28: **GPT reviews the Search Intelligence work against the specification GPT
+itself wrote, before anything merges.** Green CI and a clean Codex review are not sufficient for these PRs.
+Codex is the one building it, so Codex reviewing it is the author checking their own homework; GPT holds the
+original scope and is the one who can say whether what arrived is what was asked for.
+
+What GPT is checking it against, from its own earlier assignment: pg_trgm indexes and typo-tolerant search that
+handles "wiskey" and "spagetti"; exact matches ranked above fuzzy ones; every existing search category and
+response contract preserved; authorization and private-content visibility respected; Places API (New) with
+field masks, a correct autocomplete session-token lifecycle and location biasing, with BiteMap and Wedding
+Planning left working; autocomplete with thumbnails and categories, useful empty-result suggestions, keyboard
+navigation; and a written evaluation of pgvector that activates no paid service.
+
+So the order for any Search Intelligence PR is: CI green, Codex review answered, **then GPT's sign-off against
+the spec**, then merge. If GPT says a phase is missing or changed, that is a blocker and the PR waits.
+
+The first attempt at this work was lost entirely — built 11 Nov, held unpublished for fifteen days waiting on
+one question about deployment, and gone when the workspace was reclaimed. The rebuild is instructed to push
+the branch after its first commit and open the draft PR immediately, because an open draft PR is the only form
+of that work that survives a reset. **Nobody holds work locally pending an answer again.**
+
 ### Known and not yet done
 
 - `POST /collections/:id/items` is fixed in #1530; no other write path has been audited for the same shape.
