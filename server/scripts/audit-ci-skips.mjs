@@ -670,16 +670,74 @@ function envReads(file) {
    * strict direction. A returned read it CAN resolve adds nothing, because a name a caller might ask for is
    * not a name this suite's gate depends on -- and that distinction is exactly what finding five established.
    */
+  /** Whether `name` appears as the whole of a `return` inside this function's body. */
+  const returnsIdentifier = (fn, name) => {
+    let found = false;
+    const walk = (n) => {
+      if (found) return;
+      if (isFn(n) && n !== fn) return; // a nested function's returns are its own
+      if (ts.isReturnStatement(n) && n.expression && ts.isIdentifier(unwrap(n.expression)) &&
+          unwrap(n.expression).text === name) { found = true; return; }
+      ts.forEachChild(n, walk);
+    };
+    if (fn.body) walk(fn.body);
+    return found;
+  };
+  const enclosingFunction = (node) => {
+    for (let cur = node.parent; cur; cur = cur.parent) if (isFn(cur)) return cur;
+    return null;
+  };
+  const containsThrow = (n) => {
+    let found = false;
+    const walk = (x) => {
+      if (found) return;
+      if (isFn(x)) return;
+      if (ts.isThrowStatement(x)) { found = true; return; }
+      ts.forEachChild(x, walk);
+    };
+    walk(n);
+    return found;
+  };
   const escapesViaReturn = (node) => {
     let returning = false;
     for (let cur = node.parent; cur; cur = cur.parent) {
       if (ts.isReturnStatement(cur)) { returning = true; continue; }
+      // SHAPE: `const v = process.env[name]; return v;` -- the read never crosses the `return` itself. Found
+      // by probing this function's own weak spots rather than waiting for a tenth review round.
+      if (!returning && ts.isVariableDeclaration(cur) && ts.isIdentifier(cur.name)) {
+        const fn = enclosingFunction(cur);
+        if (fn && returnsIdentifier(fn, cur.name.text)) { returning = true; continue; }
+      }
+      // SHAPE: a read in a condition whose branch THROWS. The value does not escape but the OUTCOME does, and
+      // a caller can gate on it with try/catch. Distinguishable from load-env's shape, which is the reason
+      // this is narrow: load-env's branch does a side effect and returns void, and must stay plumbing.
+      if (!returning && ts.isIfStatement(cur) && cur.thenStatement &&
+          (containsThrow(cur.thenStatement) || (cur.elseStatement && containsThrow(cur.elseStatement)))) {
+        returning = true;
+        continue;
+      }
       if (isFn(cur)) {
         if (ts.isArrowFunction(cur) && cur.body === lastChildOnPath(cur, node)) returning = true;
         if (!returning) return false;
         const name = functionName(cur);
-        if (name && nameEscapesFile(sf, name)) return true;
-        returning = false;
+        if (name) {
+          if (nameEscapesFile(sf, name)) return true;
+          // A named function that does not escape may still itself be returned; keep walking, but its own
+          // value is what travels now, not the read's.
+          returning = false;
+          continue;
+        }
+        // SHAPE: an ANONYMOUS function -- `export const api = { get: (name) => process.env[name] }`. It has no
+        // name to test, so whether it escapes is whatever holds it, and the walk carries `returning` outward
+        // instead of giving up. Previously it reset the flag and the read was cleared.
+        continue;
+      }
+      if (returning && ts.isVariableStatement(cur)) {
+        if (cur.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) return true;
+        if (cur.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && namedExports.has(d.name.text))) return true;
+        // NOT a dead end. An inner `const v = process.env[name]` whose `v` is returned is exactly the shape
+        // this walk exists to follow, and ending here on "that statement is not exported" cleared it -- the
+        // enclosing FUNCTION is what decides whether the value leaves the module, so keep going.
         continue;
       }
     }

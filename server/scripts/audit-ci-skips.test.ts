@@ -770,3 +770,62 @@ test("a read used for a SIDE EFFECT inside an exported function is still plumbin
   assert.equal(r.hits.length, 0, "a side-effect read is not a gate, and counting it would flag every load-env importer: " + JSON.stringify(r.hits));
   assert.equal(r.exit, 0);
 });
+
+/*
+ * The six ways a value leaves a module, as a table, because `escapesViaReturn` is a SYNTACTIC approximation of
+ * a dataflow question and the only honest way to hold it in place is to enumerate the shapes.
+ *
+ * These were not handed over by a review. After fixing the returned-read case I wrote down the shapes I
+ * thought the fix would miss, probed all six against the checker, and three of them -- 1, 2 and 4 -- were
+ * MISSED. Finding them cost one probe; receiving them would have cost another review round and another
+ * commit, and the campaign's rule is that a finding is tested rather than argued, which cuts the same way
+ * when the finding is my own.
+ *
+ * Every row is an installed package exporting a gate and a suite that skips without it, so a MISS here is a
+ * suite CI names, runs green, and never executes.
+ */
+const ESCAPE_SHAPES: { label: string; pkg: string; use: string[] }[] = [
+  { label: "assigned to a local, then returned",
+    pkg: `export function readEnv(name) { const v = process.env[name]; return v; }\n`,
+    use: [`import { readEnv } from "shape-pkg";`, `const url = readEnv("TEST_DATABASE_URL");`] },
+  { label: "a method on an exported object literal",
+    pkg: `export const api = { get: (name) => process.env[name] };\n`,
+    use: [`import { api } from "shape-pkg";`, `const url = api.get("TEST_DATABASE_URL");`] },
+  { label: "a closure returned by an exported function",
+    pkg: `export function make(name) { return () => process.env[name]; }\n`,
+    use: [`import { make } from "shape-pkg";`, `const url = make("TEST_DATABASE_URL")();`] },
+  { label: "the read guards a THROW, so the outcome escapes even though the value does not",
+    pkg: `export function readEnv(name) { if (!process.env[name]) { throw new Error("x"); } return 1; }\n`,
+    use: [`import { readEnv } from "shape-pkg";`,
+          `let url: unknown = null; try { url = readEnv("TEST_DATABASE_URL"); } catch { url = null; }`] },
+  { label: "a default export",
+    pkg: `export default function readEnv(name) { return process.env[name]; }\n`,
+    use: [`import readEnv from "shape-pkg";`, `const url = readEnv("TEST_DATABASE_URL");`] },
+  { label: "a const arrow re-exported by a separate export declaration",
+    pkg: `const readEnv = (name) => process.env[name];\nexport { readEnv };\n`,
+    use: [`import { readEnv } from "shape-pkg";`, `const url = readEnv("TEST_DATABASE_URL");`] },
+];
+
+for (const shape of ESCAPE_SHAPES) {
+  test(`a gate escaping as ${shape.label} is not cleared`, () => {
+    const r = run(
+      { "a.test.ts": [
+        `import test from "node:test";`,
+        ...shape.use,
+        `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+      ].join("\n") },
+      { SQUARE_ENV: "sandbox" },
+      {},
+      {},
+      (root) => {
+        mkdirSync(join(root, "node_modules", "shape-pkg"), { recursive: true });
+        writeFileSync(join(root, "node_modules", "shape-pkg", "package.json"), JSON.stringify({ name: "shape-pkg", main: "index.js" }));
+        writeFileSync(join(root, "node_modules", "shape-pkg", "index.js"), shape.pkg);
+      },
+    );
+    assert.equal(r.hits.length, 1, `this shape hands a database value to a caller: ${JSON.stringify(r.hits)}`);
+    assert.equal(r.hits[0].unresolved?.some((u: string) => u.includes("not installed")), false,
+      "the package must be installed, or this tests specifier resolution instead");
+    assert.equal(r.exit, 1);
+  });
+}
