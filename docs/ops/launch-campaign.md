@@ -81,7 +81,7 @@ a red one.
 
 ## State
 
-Updated 2026-11-28 19:10 UTC by Claude (session `…01M8KhTB`). Condition 4 came OFF the met list this run; read
+Updated 2026-11-28 19:40 UTC by Claude (session `…01M8KhTB`). Condition 4 came OFF the met list this run; read
 that section before trusting any **MET** here.
 
 ### Status to GPT, 2026-11-28 12:40 UTC (session `…01M8KhTB`)
@@ -393,7 +393,7 @@ is the other half of not colliding.
 | # | Condition | State |
 | --- | --- | --- |
 | 1 | Every suite in CI, or listed with a reason | **NOT met.** Names match, but 607 named tests never run: a missing `TEST_DATABASE_URL` makes them skip and node exits 0. #1541 fixes it and adds a checker. See below |
-| 2 | No suite passes while asserting nothing, and none fails at random | **Not met, and it is the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
+| 2 | No suite passes while asserting nothing, and none fails at random | **Half of it moved today.** The one known flake is SOLVED -- batch 7 named itself and was a false assertion about a race, #1551 -- and the sweep on #1548 found two vacuous legs of an existing audit as a side effect. The other half still needs the assert-coverage tool (#1540) to settle what it claims. Previously: **not met, and the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
 | 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
 | 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **NOT met, and the count kept rising all day.** #1530 was right about the nine read routes it covered. Then: a tenth (`GET /challenges/:slug/submissions`, no auth middleware at all) plus an ungated write (`POST /challenges/:slug/join`) → **#1546**; then `drink_events` and the three leaderboards reading it, Codex's P1 → also #1546; then four readers serving an ungated *reference* slug, two of them disproving claims this file had just made → **#1548**. **Eight routes in one day.** It holds when both land, and the lesson is in the section below, not in the count |
 | 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
@@ -500,7 +500,69 @@ write "this is sound" into this file, say which paths you checked, and never wri
 The same applies to `square-plaintext-finalization-durability.postgres.test.ts`, carried as "9 pass / 1 fail":
 it runs in that same green job. Re-measure before believing a failure count in any queue, including this one.
 
-### Open and owned: batch 7 of 17 failed once, at random, and nobody has named it
+### CLOSED: batch 7 named itself, and the flake was a false assertion about a race
+
+**Solved on 2026-11-28 at 19:08 UTC, and the failure summary is what solved it.** Everything below this
+heading is the history of not finding it; the finding took twenty minutes once the test had a name.
+
+It fired on **#1547 -- a documentation-only PR**, so nothing in the diff could have caused it. CI run
+`46179328729`, job `141085085901`, 350 pass / 1 fail of 351, and the name sat at the END of the log where a
+40-line tail reaches it:
+
+```
+================ run-ci-batch: FAILED TESTS IN THIS BATCH ================
+  FAILED: payable cap: a stale form that was valid when it opened is still
+          rejected by the server after a concurrent credit
+```
+
+**The cause**, in the last three lines of that test in
+`server/routes/catering-billing-adjustments-http.test.ts`:
+
+```ts
+const [credit, payment] = await Promise.all([ adjust(credit 20000), pay(invoiceId, "500.00") ]);
+assert.equal(payment.status, 409, "500 against a 300 balance, whichever order the two commit");
+```
+
+*Whichever order the two commit* is **false**, and the flake was it coming true:
+
+| order | balance when the payment commits | result |
+| --- | --- | --- |
+| credit first | 300 | 500 refused -> **409** |
+| **payment first** | 500 | 500 is exactly the balance -> **200** |
+
+Reproduced by forcing each order instead of racing: credit-first gives 409 every time, payment-first 200 every
+time. **Both are correct.** `/billing/payments` takes `lockBilling` and re-resolves the cap inside the
+transaction, so the two requests serialise at the database and whichever wins sees the balance as of its own
+commit. Locally the credit always wins; under CI contention the payment sometimes does. **One run in a
+hundred, exactly as recorded.**
+
+**A wrong expectation, not a hidden defect** -- and the second leg of that is the convincing one: the
+order-independent invariant was **already tested in the same file on the same racing pair**. `payable
+allocation: a stale form and sibling payments racing a credit can never record more than the allocated
+receivable` asserts `ledgerPayments === (payment.status === 200 ? 1 : 0)` and deliberately does not assert
+which status comes back. Somebody had written the correct version of the assertion next door. **PR #1551**
+removes the race rather than weakening the assertion; mutating the cap check still fails the corrected test
+and four of its five siblings.
+
+**One question is handed on rather than closed:** when the payment wins, the end state carries a 20000
+overpayment created by a credit that landed after the money. The books are consistent and the allocation test
+says so, but whether that should be *possible* is an accounting question -- it belongs with the retention
+matrix that is already blocked on Myron's accountant, and no server behaviour was changed.
+
+**Three things this cost that are worth keeping:**
+
+1. **Three runs hunted it blind and bought four eliminations and no cause.** The instrumentation found it on
+   its first occurrence. When a flake has no name, build the naming before the hunt.
+2. **The guess in this file was wrong for two days.** It said four realtime socket suites and four HTTP
+   suites binding servers, so a port or teardown race. It was a billing test with a false assertion. A
+   recorded guess reads as a lead; this one sent three runs the wrong way.
+3. **A mutation that changes nothing always passes.** The first attempt to mutate the cap check hit
+   `catering-booking-billing.ts:303` (the adjustments handler) instead of `:534` (payments), because a
+   first-match replace found the wrong one of two identical lines -- and the test passed, which looked like
+   evidence that the protection was gone. **Verify the mutation took effect before believing what it tells
+   you.**
+
+### The history, kept because the eliminations are still true: batch 7 of 17 failed once, at random
 
 This is condition 2's other half and it is live.
 
