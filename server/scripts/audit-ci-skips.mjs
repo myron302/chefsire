@@ -23,6 +23,19 @@
  * comes from a secret or an expression this does not evaluate. It is a floor, like the other audits here --
  * it catches the class that has actually bitten, and says so rather than implying more.
  *
+ * THREE LIMITS, MEASURED RATHER THAN FEARED. Each was a review question on #1541 that I answered by scanning
+ * the repository instead of leaving it as a caveat:
+ *
+ *   - a gate behind a PATH ALIAS (`@/test-support/...`) or a bare package specifier is not followed. No test
+ *     file imports a gate that way today.
+ *   - a gate reached through a RE-EXPORT (`export { PG_URL } from "./harness"`) may not be seen. No gate
+ *     constant is re-exported today.
+ *   - the import walk is bounded at depth 3. The deepest hop at which an exported gate read actually occurs in
+ *     this repository is 1 -- every gate is one import from the suite that uses it.
+ *
+ * So all three are real in principle and unexercised in practice. If one of them becomes exercised, the gate
+ * will go quiet rather than loud, which is the expensive direction: re-run these scans before trusting it.
+ *
  * Usage: node server/scripts/audit-ci-skips.mjs [--ci] [--json] [workflow.yml...]
  */
 import { readFileSync, existsSync, statSync } from "node:fs";
