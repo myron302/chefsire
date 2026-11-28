@@ -26,7 +26,7 @@
  * In CI it runs with --ci and FAILS on any block that is not on the allowlist below. The repository has none
  * today, so the gate starts clean: the floor is held from here rather than audited once and forgotten.
  *
- * Codex reviewed this twice and found five holes, in two rounds, every one of them real. They are recorded at
+ * Codex reviewed this three times and found eight holes, every one of them real. They are recorded at
  * the code that fixes them rather than summarised here, and each is a fixture in
  * audit-assert-coverage.test.ts. The pattern across all five is worth naming: each was a place where the
  * script treated something it could not see as something it had checked.
@@ -50,17 +50,28 @@ const roots = args.filter((a) => !a.startsWith("--"));
  * tool does not follow. "It is fine, trust me" is not a reason: a block that genuinely cannot fail belongs
  * fixed, not listed. Key is `<repo-relative file>::<test title>`.
  *
- * Empty, deliberately. 519 files, 6,378 blocks, 6,281 checked, zero that reach no assertion, as of
- * 2026-11-28 -- including the 19 conditionally-skipped blocks and the three JavaScript suites that earlier
- * versions of this script excluded from the gate without saying so.
+ * Empty, deliberately. 519 files, 6,391 blocks, 6,294 checked, zero that reach no assertion, as of
+ * 2026-11-28 -- and that count now survives a much stricter definition of "reaches an assertion" than the
+ * first version used: the receiver has to be an assertion API, and a helper has to actually be called.
  */
 const ALLOWED = new Map([
   // ["path/to/suite.test.ts::the test title", "asserts via <helper> imported from <module>"],
 ]);
 
-/** Anything that can make a test fail. Deliberately generous: a false negative here hides a real hit. */
+/**
+ * Anything that can make a test fail -- judged by the RECEIVER, not by the method name.
+ *
+ * The first version also counted any call whose last member was in a list of assertion-sounding names, which
+ * included `match`. Codex's probe was `test("empty", () => { "anything".match(/missing/); })`: Node runs it,
+ * it asserts nothing, and the gate passed it because `String.prototype.match` shares a name with
+ * `assert.match`. A real suite does the same thing for setup -- `sample-post-counts.postgres.test.ts` calls
+ * `seed.match(...)` -- so deleting its actual assertion would have left the block reading as covered.
+ *
+ * A method name is not evidence. So an assertion is a call whose receiver is an assertion API: a head
+ * identifier of `assert`/`expect`/`should`/`invariant` (which covers `assert.equal`, `assert.rejects`,
+ * `assert(x)`), or a matcher chained onto a call to one of those (`expect(x).toBe(y)`).
+ */
 const ASSERTION = /^(assert|expect|should|invariant)$/i;
-const ASSERTION_MEMBER = /^(toBe|toEqual|toThrow|toMatch|rejects|throws|deepEqual|deepStrictEqual|strictEqual|notEqual|ok|fail|match|doesNotMatch|doesNotThrow|doesNotReject|ifError)$/;
 
 /**
  * Every suite extension this repository actually uses, not just the TypeScript ones.
@@ -99,13 +110,21 @@ function calleeName(node) {
   return "";
 }
 
+/** The identifier a chain of property accesses and calls bottoms out at: `expect(x).a.b()` -> "expect". */
+function rootIdentifier(expr) {
+  let cur = expr;
+  for (;;) {
+    if (ts.isPropertyAccessExpression(cur) || ts.isElementAccessExpression(cur)) { cur = cur.expression; continue; }
+    if (ts.isCallExpression(cur)) { cur = cur.expression; continue; }
+    if (ts.isNonNullExpression(cur) || ts.isParenthesizedExpression(cur)) { cur = cur.expression; continue; }
+    if (ts.isAwaitExpression(cur)) { cur = cur.expression; continue; }
+    return ts.isIdentifier(cur) ? cur.text : "";
+  }
+}
+
 function isAssertionCall(node) {
-  const name = calleeName(node);
-  if (!name) return false;
-  const head = name.split(".")[0];
-  if (ASSERTION.test(head)) return true;
-  const tail = name.split(".").pop();
-  return ASSERTION_MEMBER.test(tail ?? "");
+  const root = rootIdentifier(node.expression);
+  return root !== "" && ASSERTION.test(root);
 }
 
 /**
@@ -132,6 +151,20 @@ const HOOKS = new Set(["before", "after", "beforeEach", "afterEach", "describe",
  * shorthand `{ skip }`, and `skip: false` are all conditionally runnable, and a conditionally runnable block
  * gets audited. `todo` follows the same rule -- Node runs a todo block but will not fail on it.
  */
+/** A property's key as written, or null when it cannot be read statically. */
+function propertyKey(name) {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) {
+    return name.text;
+  }
+  if (ts.isNumericLiteral(name)) return name.text;
+  if (ts.isComputedPropertyName(name)) {
+    const e = name.expression;
+    if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return e.text;
+    return null; // computed from something this tool does not evaluate
+  }
+  return null;
+}
+
 function alwaysTruthy(v) {
   return v.kind === ts.SyntaxKind.TrueKeyword || ts.isStringLiteral(v) ||
     ts.isNoSubstitutionTemplateLiteral(v);
@@ -160,7 +193,11 @@ function unconditionallySkipped(obj) {
       if (ts.isShorthandPropertyAssignment(prop) && ["skip", "todo"].includes(prop.name.text)) skipped = false;
       continue;
     }
-    const key = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : "";
+    const key = propertyKey(prop.name);
+    // A key this tool cannot read could BE "skip", and a later property wins. Codex's probe was
+    // `{ skip: true, [key]: false }` with `const key = ["skip"].join("")`, which Node runs. So an unreadable
+    // key voids the decision for the same reason a spread does.
+    if (key === null) { skipped = false; continue; }
     if (key !== "skip" && key !== "todo") continue;
     skipped = alwaysTruthy(prop.initializer);
   }
@@ -340,6 +377,29 @@ function auditFile(file) {
    * `seen` holds helper BODIES, not names: two different functions can share a name in one file, and keying
    * the recursion guard by name was how one of them could stand in for the other.
    */
+  /**
+   * A declaration whose body only runs if something calls it, so the walk must NOT descend into it.
+   *
+   * Codex's probe was `test("empty", () => { function unused() { assert.fail("never called"); } })`: Node runs
+   * the block, nothing calls `unused`, and the walk counted the assertion inside it simply because the
+   * declaration sat under the test body. That made the gate's central promise false in the worst direction --
+   * deleting a helper's INVOCATION did not trip it as long as the definition stayed.
+   *
+   * A function expression passed straight to a call is different and is still followed: `rows.forEach(() =>
+   * assert.ok(x))` and `await assert.rejects(async () => { ... })` run their callback, and refusing to look
+   * inside those would reject most of the suites in this repository.
+   */
+  function onlyRunsWhenCalled(n) {
+    if (ts.isFunctionDeclaration(n)) return true;
+    if (ts.isArrowFunction(n) || ts.isFunctionExpression(n)) {
+      const parent = n.parent;
+      // Bound to a name -- reachable only through a resolved call to that name.
+      if (parent && (ts.isVariableDeclaration(parent) || ts.isPropertyAssignment(parent))) return true;
+      return false;
+    }
+    return false;
+  }
+
   function asserts(node, seen) {
     let found = false;
     const walk = (n) => {
@@ -352,7 +412,12 @@ function auditFile(file) {
           seen.add(helper);
           if (asserts(helper, seen)) { found = true; return; }
         }
+        // Still look at the arguments: a callback passed here does run.
+        for (const arg of n.arguments) walk(arg);
+        walk(n.expression);
+        return;
       }
+      if (n !== node && onlyRunsWhenCalled(n)) return;
       ts.forEachChild(n, walk);
     };
     walk(node);

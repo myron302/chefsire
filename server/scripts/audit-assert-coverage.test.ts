@@ -271,6 +271,94 @@ test("JavaScript suites are discovered, not silently passed over", () => {
   }
 });
 
+/* ---- Codex's third round: three more, every one a thing the tool could not see ---- */
+
+test("a method that merely shares a name with an assertion is not one", () => {
+  // `String.prototype.match` is not `assert.match`. Node runs this and it asserts nothing. A real suite,
+  // sample-post-counts.postgres.test.ts, calls `seed.match(...)` for setup, so deleting its actual assertion
+  // would have left the block reading as covered.
+  const r = audit(`
+    import test from "node:test";
+    test("empty, but match looks like an assertion", () => {
+      "anything".match(/missing/);
+    });
+  `);
+  assert.deepEqual(titles(r), ["empty, but match looks like an assertion"]);
+});
+
+test("a matcher chained onto an assertion API still counts", () => {
+  // The other direction of the receiver change: tightening must not reject expect-style chains.
+  //
+  // My first version of this fixture asserted that `(globalThis as any).assert(1)` counts, and it does not.
+  // That was a WRONG EXPECTATION rather than a defect: the receiver of that call is `globalThis`, and the
+  // whole point of the change is that the receiver decides. Recorded here rather than quietly deleted,
+  // because a reader will otherwise wonder whether the rule is too strict. It is strict in the safe
+  // direction -- an unrecognised receiver makes a block read as empty, which is a question in the report.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    declare const expect: (v: unknown) => { toBe: (v: unknown) => void; not: { toBe: (v: unknown) => void } };
+    test("expect chain", () => { expect(1).toBe(1); });
+    test("longer expect chain", () => { expect(1).not.toBe(2); });
+    test("bare assert call", () => { assert(1); });
+  `);
+  assert.deepEqual(titles(r), []);
+});
+
+test("a computed key that cannot be read voids the skip decision", () => {
+  // `{ skip: true, [key]: false }` with a computed key: Node runs it, and a later property wins.
+  const r = audit(`
+    import test from "node:test";
+    const key = ["skip"].join("");
+    test("empty, and a computed key turns the skip off", { skip: true, [key]: false }, () => {});
+  `);
+  assert.deepEqual(titles(r), ["empty, and a computed key turns the skip off"]);
+});
+
+test("a computed key that IS readable is read, not treated as unknown", () => {
+  const r = audit(`
+    import test from "node:test";
+    test("off for good", { ["skip"]: true }, () => {});
+  `);
+  assert.deepEqual(titles(r), [], "a string-literal computed key is as good as a plain one");
+});
+
+test("an assertion in a helper that nothing calls does not count", () => {
+  // The worst of the five in this file: deleting a helper's INVOCATION did not trip the gate as long as the
+  // definition stayed inside the test body.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    test("empty, with an assertion in a helper nothing calls", () => {
+      function unused() { assert.fail("never called"); }
+    });
+  `);
+  assert.deepEqual(titles(r), ["empty, with an assertion in a helper nothing calls"]);
+});
+
+test("a callback handed straight to a call is still followed", () => {
+  // The over-correction direction. Refusing to look inside any function would reject most of this repository:
+  // forEach callbacks, assert.rejects bodies and promise executors all run.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    test("asserts inside a forEach callback", () => {
+      [1, 2].forEach((n) => { assert.ok(n > 0); });
+    });
+    test("asserts inside an assert.rejects body", async () => {
+      await assert.rejects(async () => { throw new Error("x"); });
+    });
+    test("asserts inside a promise executor", async () => {
+      await new Promise<void>((resolve) => { assert.ok(true); resolve(); });
+    });
+    test("asserts through a named helper it does call", () => {
+      const verify = () => { assert.equal(1, 1); };
+      verify();
+    });
+  `);
+  assert.deepEqual(titles(r), [], "every one of these runs its callback");
+});
+
 /* ---- The gate itself ---- */
 
 test("--ci exits non-zero on a hit and zero without one", () => {
