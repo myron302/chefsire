@@ -540,14 +540,35 @@ hundred, exactly as recorded.**
 order-independent invariant was **already tested in the same file on the same racing pair**. `payable
 allocation: a stale form and sibling payments racing a credit can never record more than the allocated
 receivable` asserts `ledgerPayments === (payment.status === 200 ? 1 : 0)` and deliberately does not assert
-which status comes back. Somebody had written the correct version of the assertion next door. **PR #1551**
-removes the race rather than weakening the assertion; mutating the cap check still fails the corrected test
-and four of its five siblings.
+which status comes back. Somebody had written the correct version of the assertion next door.
 
-**One question is handed on rather than closed:** when the payment wins, the end state carries a 20000
-overpayment created by a credit that landed after the money. The books are consistent and the allocation test
-says so, but whether that should be *possible* is an accounting question -- it belongs with the retention
-matrix that is already blocked on Myron's accountant, and no server behaviour was changed.
+**THE FIX IS #1549, NOT #1551.** Two sessions found this race within an hour of each other. `…T9vcsr8u`
+(#1549) got there first and did more with it; `…01M8KhTB` (#1551) had the CI evidence that it was *this* test.
+**#1551 is closed as a duplicate and its evidence is relayed on #1549.** The reasons #1549 is the better fix,
+recorded because the difference is instructive:
+
+- **It quantified the race**: 30 trials on 30 fresh bookings, **16 refused / 14 accepted**. Forcing each order
+  proves order-dependence but not frequency, and frequency is what explains one-in-a-hundred in that slot
+  versus a coin flip in a loop. Its framing is the one to keep: *a race that is 50/50 under one timing profile
+  and lopsided under another is one latent defect, not two.*
+- **It keeps a correct racing test.** #1551 made the calls sequential and leaned on the sibling test 850 lines
+  away. #1549 replaces the racy assertion with three -- both orders pinned deterministically, plus a race test
+  asserting only the order-independent identities, including that the recorded row count matches the answer
+  the caller was given.
+- **Its mutations are on the domain functions** (obligation sign, credit ceiling, `refundPotentiallyDueCents`,
+  `cateringPayableCents`), not on the route's refusal line.
+- **It checked the suite's other 26 races**, and the reason it gives for leaving four of them alone is the most
+  transferable thing either PR produced: **20 identical trials cannot distinguish "order-independent" from
+  "one side nearly always wins"** -- which this very test proves. So those four are justified by mechanism
+  (a refund ceiling is money received; payable allocation is oldest-first), not by trial counts.
+
+**NOT an accounting question after all, and this file briefly said it was.** #1551 flagged the 20000 surplus
+when the payment wins as something for Myron's accountant. #1549 traced it instead: `cateringCreditCeilingCents`
+is **deliberately** the obligation rather than the obligation less receipts -- a goodwill credit to a customer
+who has already paid in full is a real thing a caterer does -- and the surplus is already reported as
+`refundPotentiallyDueCents`, documented as *"money the customer may be owed back. A prompt, never a claim a
+refund happened."* Refusing that credit would be the bug. **Nothing here goes to his accountant**, and the
+earlier line in this file saying it did was wrong. No server behaviour was changed by either PR.
 
 **Three things this cost that are worth keeping:**
 
@@ -561,6 +582,11 @@ matrix that is already blocked on Myron's accountant, and no server behaviour wa
    first-match replace found the wrong one of two identical lines -- and the test passed, which looked like
    evidence that the protection was gone. **Verify the mutation took effect before believing what it tells
    you.**
+4. **Two sessions solved it in parallel and one PR was thrown away**, for the second time in one day (#1542
+   was the first). Both honoured the Owner column; the batch-7 row simply said "open and owned by nobody", so
+   both took it. **A row that is open is an invitation to two runs at once.** The fourth version of the rule,
+   if anyone wants one: when you start on an unowned row, claim it *and* say which head you are on, before the
+   first command.
 
 ### The history, kept because the eliminations are still true: batch 7 of 17 failed once, at random
 
