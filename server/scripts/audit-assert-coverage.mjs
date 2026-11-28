@@ -442,6 +442,20 @@ function auditFile(file) {
    *
    * Matched by position, so only the argument that is actually called is followed.
    */
+  /**
+   * Which of a helper's parameters it actually invokes, or null when that cannot be read.
+   *
+   * Codex on #1540: this walked the whole body, nested functions included, so
+   * `function run(cb) { function unused() { cb(); } }` reported cb as invoked although nothing calls `unused`.
+   * The rest of this file already refuses to look inside a declaration that only runs when called, and this
+   * was the one place that did not.
+   *
+   * Skipping those bodies alone would swap one wrong answer for another: a parameter called only inside a
+   * nested function that IS called would read as "demonstrably not invoked", which is a hard CI failure on a
+   * test that genuinely asserts. So a parameter mentioned inside a skipped body makes the whole answer null --
+   * unknown. Unknown lands in the soft category, which is where ignorance belongs; only what we can read
+   * plainly produces a hard hit.
+   */
   function invokedParameters(fn) {
     const indexes = new Set();
     if (!fn || !fn.parameters || !fn.body) return indexes;
@@ -450,20 +464,36 @@ function auditFile(file) {
       if (ts.isIdentifier(param.name)) names.set(param.name.text, i);
     });
     if (names.size === 0) return indexes;
+    let uncertain = false;
+    const mentionsAParameter = (n) => {
+      let hit = false;
+      const scan = (node) => {
+        if (hit) return;
+        if (ts.isIdentifier(node) && names.has(node.text)) { hit = true; return; }
+        ts.forEachChild(node, scan);
+      };
+      scan(n);
+      return hit;
+    };
     const walk = (n) => {
+      if (onlyRunsWhenCalled(n)) {
+        // Its body runs only if something calls it, and whether anything does is beyond this walk.
+        if (mentionsAParameter(n)) uncertain = true;
+        return;
+      }
       if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && names.has(n.expression.text)) {
         indexes.add(names.get(n.expression.text));
       }
-      // `fn.call(...)`, `fn.apply(...)`, `await fn()` all reach the body too.
+      // `fn.call(...)` and `fn.apply(...)` reach the body too; `fn.bind(...)` does not.
       if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) &&
           ts.isIdentifier(n.expression.expression) && names.has(n.expression.expression.text) &&
-          ["call", "apply", "bind"].includes(n.expression.name.text) && n.expression.name.text !== "bind") {
+          INVOKING_FUNCTION_PROPERTY.has(n.expression.name.text)) {
         indexes.add(names.get(n.expression.expression.text));
       }
       ts.forEachChild(n, walk);
     };
     walk(fn.body);
-    return indexes;
+    return uncertain ? null : indexes;
   }
 
   /**
@@ -578,7 +608,33 @@ function auditFile(file) {
         // The receiver still runs: `f().g()` executes `f()`.
         if (n.expression) walk(n.expression);
         const invokes = callInvokesItsCallback(n);
-        (n.arguments ?? []).forEach((arg, i) => {
+        // Codex on #1540: the helper's parameter indexes were matched against the arguments written at the
+        // CALL SITE, and `run.call(null, verify)` writes `null` first. Position 0 there is the `this` value,
+        // not the helper's first parameter, so every index was off by one through `.call`, and `.apply` does
+        // not pass its arguments positionally at all. These are the arguments the helper actually receives.
+        // When `.apply` is handed something other than an array literal, what arrives is unreadable, so the
+        // positions become unknown rather than wrong.
+        let effectiveArgs = n.arguments ?? [];
+        let positionsReadable = true;
+        if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) &&
+            INVOKING_FUNCTION_PROPERTY.has(n.expression.name.text)) {
+          if (n.expression.name.text === "call") {
+            effectiveArgs = (n.arguments ?? []).slice(1);
+          } else {
+            const spread = (n.arguments ?? [])[1];
+            if (spread && ts.isArrayLiteralExpression(spread)) effectiveArgs = spread.elements;
+            else { effectiveArgs = n.arguments ?? []; positionsReadable = false; }
+          }
+        }
+        if (!positionsReadable) {
+          calledParams = null;
+          // An `.apply` whose argument list is built elsewhere hides where the callback lands and whether it
+          // carries an assertion. That is ignorance, not knowledge that nothing asserts, so the permissive
+          // pass treats it as possibly asserting and the strict pass does not -- which is exactly what files
+          // the block in the soft category instead of failing the build on it.
+          if (!strict) { found = true; return; }
+        }
+        effectiveArgs.forEach((arg, i) => {
           if (found) return;
           const isFn = ts.isArrowFunction(arg) || ts.isFunctionExpression(arg);
           const positionRuns = invokes || Boolean(calledParams && calledParams.has(i));

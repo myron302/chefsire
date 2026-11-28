@@ -568,3 +568,61 @@ test("--ci exits non-zero on a hit and zero without one", () => {
   `, { ci: true });
   assert.equal(good.status, 0);
 });
+
+test("call and apply deliver arguments at the helper's own positions, not the call site's", () => {
+  // Codex on #1540. `run.call(null, verify)` writes `null` first, so matching the helper's parameter indexes
+  // against the call site's arguments was off by one through `.call`, and `.apply` does not pass its arguments
+  // positionally at all. Every block here runs its assertion, so none may be a hard hit.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function run(cb: () => void) { cb(); }
+    test("through call", () => { run.call(null, () => { assert.ok(true); }); });
+    test("through apply", () => { run.apply(null, [() => { assert.ok(true); }]); });
+  `);
+  assert.deepEqual(titles(r), [], "both forms run the callback");
+});
+
+test("apply with an unreadable argument list is unknown, not wrong", () => {
+  // The arguments are built elsewhere, so which position the callback lands in cannot be read. That is
+  // ignorance, and ignorance belongs in the soft category rather than in a build failure.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function run(cb: () => void) { cb(); }
+    const args: [() => void] = [() => { assert.ok(true); }];
+    test("through apply with a variable", () => { run.apply(null, args); });
+  `);
+  assert.deepEqual(titles(r), [], "an unreadable argument list must not fail the build");
+});
+
+test("a parameter called only inside an uncalled nested function is not treated as invoked", () => {
+  // Codex on #1540: the parameter walk descended into nested declarations, so `function run(cb) { function
+  // unused() { cb(); } }` read cb as invoked and the block as asserting. Nothing calls `unused`, so nothing
+  // asserts, and the block must be reported.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function run(cb: () => void) { function unused() { cb(); } }
+    test("nothing actually asserts here", () => {
+      run(() => { assert.fail("never called"); });
+    });
+  `);
+  assert.ok(
+    titles(r).includes("nothing actually asserts here") ||
+      r.viaCallback.some((h) => h.title === "nothing actually asserts here"),
+    "the block must be reported in one category or the other, never treated as asserting",
+  );
+});
+
+test("a parameter called inside a nested function that IS called stays readable", () => {
+  // The other direction of the same fix. Here `go()` runs, so `cb` really is invoked; refusing to look inside
+  // would have made a genuinely asserting test a hard hit.
+  const r = audit(`
+    import test from "node:test";
+    import assert from "node:assert/strict";
+    function run(cb: () => void) { function go() { cb(); } go(); }
+    test("this one does assert", () => { run(() => { assert.ok(true); }); });
+  `);
+  assert.deepEqual(titles(r), [], "a called nested function must not produce a hard hit");
+});
