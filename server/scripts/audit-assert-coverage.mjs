@@ -98,12 +98,12 @@ function isAssertionCall(node) {
  */
 const HOOKS = new Set(["before", "after", "beforeEach", "afterEach", "describe", "suite"]);
 
-function testCall(node) {
+function testCall(node, aliases) {
   if (!ts.isCallExpression(node)) return null;
   const name = calleeName(node);
   const parts = name.split(".");
   const head = parts[0];
-  if (head !== "test" && head !== "it") return null;
+  if (!aliases.has(head)) return null;
   // `test.before(...)` and friends are fixtures, not assertions-bearing blocks.
   if (parts.length > 1 && HOOKS.has(parts[1])) return null;
   if (parts.length > 1 && !["only", "skip", "todo"].includes(parts[1])) return null;
@@ -123,9 +123,52 @@ function testCall(node) {
   return { title: rendered, body, skipped: skipped || parts[1] === "skip" || parts[1] === "todo", node };
 }
 
+/**
+ * Local aliases for `test`, because thirteen suites call one and the detector was blind to every block in them.
+ *
+ * The shape is always the same here: a suite that needs a database writes
+ *
+ *     const postgresTest = connectionString ? test : test.skip;
+ *
+ * so that it skips wholesale when the variable is unset -- `render-smoke.browser.test.ts` uses `smokeTest`,
+ * the migration suites use `postgresTest`. Matching only the literal names `test` and `it` recognised no block
+ * at all in those files, which means "515 files scanned" would have been true and misleading at the same time.
+ * This resolves any local binding initialised from test/it, directly or through a conditional.
+ */
+function testAliases(sf) {
+  const names = new Set(["test", "it"]);
+  const fromTest = (node) => {
+    if (!node) return false;
+    if (ts.isIdentifier(node)) return names.has(node.text);
+    if (ts.isPropertyAccessExpression(node)) {
+      let cur = node;
+      while (ts.isPropertyAccessExpression(cur)) cur = cur.expression;
+      return ts.isIdentifier(cur) && names.has(cur.text);
+    }
+    if (ts.isConditionalExpression(node)) return fromTest(node.whenTrue) || fromTest(node.whenFalse);
+    if (ts.isBinaryExpression(node)) return fromTest(node.left) || fromTest(node.right);
+    if (ts.isParenthesizedExpression(node)) return fromTest(node.expression);
+    return false;
+  };
+  // Repeat to a fixed point: an alias of an alias (rare, but free to support).
+  for (let pass = 0; pass < 3; pass += 1) {
+    const before = names.size;
+    const visit = (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && fromTest(node.initializer)) {
+        names.add(node.name.text);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    if (names.size === before) break;
+  }
+  return names;
+}
+
 function auditFile(file) {
   const text = readFileSync(file, "utf8");
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, /\.tsx$/.test(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const aliases = testAliases(sf);
 
   /** Same-file helper functions, so an assertion one hop away still counts. */
   const helpers = new Map();
@@ -156,8 +199,10 @@ function auditFile(file) {
   }
 
   const empty = [];
+  let recognised = 0;
   const visit = (node) => {
-    const t = testCall(node);
+    const t = testCall(node, aliases);
+    if (t) recognised += 1;
     if (t && !t.skipped && !asserts(t.body, new Set())) {
       const { line } = sf.getLineAndCharacterOfPosition(t.node.getStart(sf));
       empty.push({ file: relative(ROOT, file), line: line + 1, title: t.title });
@@ -165,21 +210,33 @@ function auditFile(file) {
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  return empty;
+  return { empty, recognised };
 }
 
 const files = roots.length > 0
   ? roots.flatMap((r) => (statSync(r).isDirectory() ? testFiles(r) : [r]))
   : ["server", "client", "shared", "tools", "scripts"].flatMap((d) => { try { return testFiles(d); } catch { return []; } });
 
-const all = files.flatMap(auditFile);
+const audited = files.map((f) => ({ file: relative(ROOT, f), ...auditFile(f) }));
+const all = audited.flatMap((a) => a.empty);
 const hits = all.filter((h) => !ALLOWED.has(`${h.file}::${h.title}`));
 const excused = all.length - hits.length;
+// The honest denominator: a file the detector finds no block in was not examined, whatever the scan count says.
+const unrecognised = audited.filter((a) => a.recognised === 0).map((a) => a.file);
 
 if (asJson) {
-  console.log(JSON.stringify({ filesScanned: files.length, hits, excused }, null, 2));
+  console.log(JSON.stringify({ filesScanned: files.length, hits, excused, unrecognised }, null, 2));
 } else {
-  console.log(`audit-assert-coverage: ${files.length} test files scanned.`);
+  const blocks = audited.reduce((n, a) => n + a.recognised, 0);
+  console.log(`audit-assert-coverage: ${files.length} test files, ${blocks} test blocks examined.`);
+  if (unrecognised.length > 0) {
+    // Say it out loud: these were counted as scanned and were not examined at all.
+    console.log("");
+    console.log(`${unrecognised.length} file(s) declare tests in a way this tool does not recognise, so NOTHING`);
+    console.log("in them was examined. Each needs its test-declaring call taught to testAliases():");
+    for (const f of unrecognised) console.log(`  ${f}`);
+    console.log("");
+  }
   if (hits.length === 0) {
     console.log("Every test block reaches an assertion, directly or through a same-file helper.");
     if (excused > 0) console.log(`(${excused} on the allowlist, each with a recorded reason.)`);
