@@ -394,6 +394,26 @@ Two consequences, and they point the next run somewhere quite different:
 fifteen suites, or in how they behave against a database on first touch — not in anything that ran before
 them, because nothing did.
 
+**The cold-database case has now been tried, and it does not reproduce either.** It was the lead the
+corrected topology pointed at, and five of the six earlier attempts had not tested it — they ran against a
+database other suites had already populated. Batch 7 alone, through `run-ci-batch.mjs`, against a database
+**created fresh for each run**:
+
+```
+cold run 1 (chefsire_cold1_test)  351 pass / 0 fail / 0 skip   119s
+cold run 2 (chefsire_cold2_test)  351 pass / 0 fail / 0 skip   119s
+cold run 3 (chefsire_cold3_test)  351 pass / 0 fail / 0 skip   117s
+```
+
+That is **nine failed reproductions across two runs**. Every mechanism anyone has named is either impossible,
+or has been tried and did not reproduce — and the one hypothesis still standing, the
+`api-init-isolation.test.ts` timing budget, stands only because non-reproduction is not elimination, not
+because there is evidence for it.
+
+So the recommendation below is now the considered answer rather than fatigue: nine attempts have produced two
+impossibility proofs and no cause, and the next real occurrence names the failing test for free. **The thing
+worth doing is nothing, until it fires again.**
+
 The 351 in the sequential run is still worth keeping for one reason: it is exactly the batch size this file
 records, which confirms the fifteen suites being tested are precisely the CI batch and not an approximation.
 
