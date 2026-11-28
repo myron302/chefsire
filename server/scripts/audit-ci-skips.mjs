@@ -25,7 +25,8 @@
  *
  * Usage: node server/scripts/audit-ci-skips.mjs [--ci] [--json] [workflow.yml...]
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
+import { dirname, join, resolve as resolvePath } from "node:path";
 import { parse } from "yaml";
 import ts from "typescript";
 
@@ -60,6 +61,23 @@ const isDbName = (name) => DB_NAMES.includes(name);
  * An assignment target is not an input, so it is excluded. Walking the AST rather than matching text also
  * drops names in comments, which the version before this one got wrong the other way.
  */
+/** Relative import specifiers in a file, resolved to files on disk. */
+function localImports(sf, file) {
+  const dir = dirname(file);
+  const out = [];
+  for (const stmt of sf.statements) {
+    const spec = (ts.isImportDeclaration(stmt) || ts.isExportDeclaration(stmt)) ? stmt.moduleSpecifier : undefined;
+    if (!spec || !ts.isStringLiteral(spec) || !spec.text.startsWith(".")) continue;
+    const base = resolvePath(dir, spec.text);
+    // `existsSync` is true for a directory, and `../test-support` is one -- the extension candidates have to
+    // be tried first and the result has to be a FILE.
+    for (const candidate of [`${base}.ts`, `${base}.tsx`, `${base}.mts`, join(base, "index.ts"), base]) {
+      if (existsSync(candidate) && statSync(candidate).isFile()) { out.push(candidate); break; }
+    }
+  }
+  return out;
+}
+
 function envReads(file, text) {
   const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const reads = new Set();
@@ -112,6 +130,35 @@ function envReads(file, text) {
     ts.forEachChild(node, visit);
   };
   visit(sf);
+  return { reads, opaque, sf };
+}
+
+/**
+ * The gate a suite reads, following its own relative imports.
+ *
+ * Codex's third finding here, and the largest: 53 suites in this repository gate on an IMPORTED constant --
+ * `import { PG_URL } from "../test-support/authz-pg-harness"`, where the harness exports
+ * `process.env.CS_TEST_PG_URL`. A suite like that has no local `process.env` read at all, so the version
+ * before this cleared every one of them. Codex reproduced it on
+ * marketplace-sample-listings.postgres.test.ts: remove CS_TEST_PG_URL from its step and the audit reported
+ * zero hits while the suite produced zero passes, one skip, exit 0.
+ *
+ * Imports are followed to a bounded depth and their reads are UNIONED in. That over-approximates -- a suite
+ * importing an unrelated symbol from a module that happens to read a URL inherits that name -- and
+ * over-approximating what a suite needs makes this stricter, never looser, which is the only safe direction
+ * for a gate to be wrong in.
+ */
+function gateReads(file, depth = 0, seen = new Set()) {
+  if (seen.has(file) || depth > 3) return { reads: new Set(), opaque: false };
+  seen.add(file);
+  const own = envReads(file, readFileSync(file, "utf8"));
+  const reads = new Set(own.reads);
+  let opaque = own.opaque;
+  for (const imported of localImports(own.sf, file)) {
+    const inner = gateReads(imported, depth + 1, seen);
+    for (const name of inner.reads) reads.add(name);
+    opaque = opaque || inner.opaque;
+  }
   return { reads, opaque };
 }
 
@@ -153,7 +200,7 @@ for (const wf of WORKFLOWS) {
         // contains a test NAMED "unchanged invoice is skipped, never reinserted or paid through twice". A
         // checker that reads test titles as control flow is the regex mistake again, one layer in.
         if (!/\bskip\s*:|\.skip\s*\(/.test(text)) continue;
-        const { reads: wanted, opaque } = envReads(file, text);
+        const { reads: wanted, opaque } = gateReads(file);
         // Only undeterminable when there is no direct read to go on: a suite with both is judged on the read.
         if (wanted.size === 0 && opaque) {
           findings.push({

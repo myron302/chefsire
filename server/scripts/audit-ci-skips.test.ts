@@ -32,10 +32,17 @@ function suite({ gate, assigns }: { gate: string; assigns?: string }) {
   ].filter(Boolean).join("\n");
 }
 
-function run(files: Record<string, string>, stepEnv: Record<string, string>, jobEnv: Record<string, string> = {}) {
+function run(
+  files: Record<string, string>,
+  stepEnv: Record<string, string>,
+  jobEnv: Record<string, string> = {},
+  /** Modules written beside the suites but NOT named by the workflow step -- imported gates live here. */
+  modules: Record<string, string> = {},
+) {
   const dir = mkdtempSync(join(tmpdir(), "ci-skips-"));
   try {
     mkdirSync(join(dir, "suites"), { recursive: true });
+    for (const [name, body] of Object.entries(modules)) writeFileSync(join(dir, "suites", name), body);
     const named: string[] = [];
     for (const [name, body] of Object.entries(files)) {
       const abs = join(dir, "suites", name);
@@ -137,6 +144,35 @@ test("a gate read dynamically is reported as undeterminable, not quietly cleared
   assert.equal(r.hits.length, 1);
   assert.equal(r.hits[0].undeterminable, true, "it must say it cannot tell, rather than pass or guess");
   assert.equal(r.exit, 1);
+});
+
+test("Codex on #1541: a gate IMPORTED from a local module is followed", () => {
+  // 53 suites in this repository gate on `import { PG_URL } from "../test-support/authz-pg-harness"`, where
+  // the harness exports process.env.CS_TEST_PG_URL. Such a suite has no local process.env read at all, and the
+  // version before this cleared every one of them.
+  const harness = `export const PG_URL = process.env.CS_TEST_PG_URL;\n`;
+  const body = [
+    `import test from "node:test";`,
+    `import { PG_URL } from "./harness";`,
+    `if (!PG_URL) { test("skipped: requires CS_TEST_PG_URL", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { TEST_DATABASE_URL: URL_LITERAL }, {}, { "harness.ts": harness });
+  assert.doesNotMatch(body, /process\.env/, "the suite itself must not read process.env, or this proves nothing");
+  assert.equal(r.hits.length, 1, "the imported gate must be followed");
+  assert.deepEqual(r.hits[0].wants, ["CS_TEST_PG_URL"]);
+  assert.equal(r.exit, 1);
+});
+
+test("an imported gate that IS satisfied is not reported", () => {
+  const harness = `export const PG_URL = process.env.CS_TEST_PG_URL;\n`;
+  const body = [
+    `import test from "node:test";`,
+    `import { PG_URL } from "./harness";`,
+    `if (!PG_URL) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { CS_TEST_PG_URL: URL_LITERAL }, {}, { "harness.ts": harness });
+  assert.deepEqual(r.hits, [], "following imports must not turn every harness user into a hit");
+  assert.equal(r.exit, 0);
 });
 
 test("a suite that READS a database URL but cannot skip is never reported", () => {
