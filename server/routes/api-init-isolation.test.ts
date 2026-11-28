@@ -306,13 +306,49 @@ test("concurrent requests during initialization run the DDL once, never concurre
   let release!: () => void;
   gate = new Promise<void>((resolve) => { release = resolve; });
 
-  const pending = Array.from({ length: 40 }, () => call("GET", "/api/meal-plan-creators", { headers: asUser() }));
-  // Let every request reach the guard and park on the single in-flight initialization.
-  for (let i = 0; i < 50 && inFlightDdl === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+  // Each response marks itself the moment it resolves, so the test can assert that NONE of them answered
+  // while the one initialization was parked -- see below for why that assertion is here.
+  let settled = 0;
+  const pending = Array.from({ length: 40 }, () =>
+    call("GET", "/api/meal-plan-creators", { headers: asUser() }).finally(() => { settled += 1; }),
+  );
+
+  // TWO WALL-CLOCK WAITS, both widened, neither assertion touched. The campaign record carried this test as
+  // the open hypothesis for the batch-7 flake, and the shape was right: it spun for at most 500ms waiting for
+  // the first request to reach the guard and then hard-asserted `inFlightDdl === 1`, so on a two-core runner
+  // with three jobs in parallel a slow start reported "0 !== 1" -- the guard looking broken because the
+  // harness ran out of patience. 15s instead of 500ms, and a message that says which of the two it is.
+  const firstArrival = Date.now() + 15_000;
+  while (inFlightDdl === 0 && Date.now() < firstArrival) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.ok(
+    inFlightDdl > 0,
+    "harness budget, not the guard: no request reached the initialization guard within 15s",
+  );
+
+  // The flat sleep STAYS at 100ms, and stays a sleep: nothing observable counts how many of the forty have
+  // arrived, so this is the lower bound on how long the other thirty-nine are given to park. Unlike the spin
+  // above it is not a cliff -- a late arrival cannot make `inFlightDdl` anything other than 1, because
+  // single-flight is the property under test, so overrunning it cannot fail anything.
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(inFlightDdl, 1, "one statement in flight for forty requests");
+  // And this is the assertion the version before this one did not have, added because removing the race
+  // below would otherwise have cost a real detection. Mutating the guard to fire initialization WITHOUT
+  // awaiting it made the old test fail on "meal_plan_saves created once, 0 !== 1" -- a post-release assertion
+  // about state that had not settled yet, catching the right mutation for the wrong reason and only because
+  // the microtask order happened to fall that way. Stated directly it is deterministic in both directions:
+  // while the gate is closed no request can legitimately have been answered, and a guard that does not wait
+  // answers all forty inside the 100ms above.
+  assert.equal(settled, 0, "no request may be answered while the one initialization is still parked");
   release();
   const responses = await Promise.all(pending);
+
+  // The DDL resumes after `release()` and creates the remaining six tables, which the assertions below are
+  // about. The version before this asserted immediately and was simply lucky about the microtask order: the
+  // same mutation made it fail on "meal_plan_saves created once, 0 !== 1" rather than on the thing the
+  // mutation actually broke. Waiting for the state being asserted about is not a weaker check, it is the
+  // check without the race.
+  const readyBy = Date.now() + 15_000;
+  while (!mealSocialSchema.isReady() && Date.now() < readyBy) await new Promise((resolve) => setTimeout(resolve, 5));
 
   assert.ok(responses.every((r) => r.status === 200), responses.map((r) => r.status).join(","));
   assert.equal(maxInFlightDdl, 1, "the DDL never ran concurrently");
