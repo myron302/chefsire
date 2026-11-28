@@ -1200,4 +1200,98 @@ if (!PG_URL) {
       await local.query(`DELETE FROM drink_recipes WHERE slug LIKE 'p24-trend-%'`);
     }
   });
+
+  // ---- Codex on #1547: the challenge PAYLOAD and the recipe payload name withheld slugs directly ----------
+  //
+  // #1546 recorded `POST /challenges` as sound because only `getCanonicalDrinkBySlug` ever reads
+  // `originalDrinkSlug`, so a premium slug there hydrates to null. That reasoning was wrong in exactly the way
+  // Greptile's P1 on #1530 was wrong: the SLUG is the secret, because the slug is what the recipe route takes.
+  // `GET /challenges` selects the column and returns it raw, and `GET /challenges/:slug` spreads the whole
+  // row -- both with no auth middleware at all.
+  test("P2 Codex: a challenge does not publish a withheld premium originalDrinkSlug", async () => {
+    const withheld = slugsOf("prem")[2];
+    const challengeSlug = "p24-challenge-original";
+    await local.query(
+      `INSERT INTO drink_challenges (slug, title, description, original_drink_slug, starts_at, ends_at, is_active)
+       VALUES ($1, 'c', 'c', $2, now() - interval '1 day', now() + interval '30 days', true)`,
+      [challengeSlug, withheld],
+    );
+    try {
+      for (const [label, as] of nonEntitled) {
+        for (const path of ["/challenges", `/challenges/${challengeSlug}`]) {
+          const r = await get(path, as);
+          assert.equal(r.status, 200, `${label} ${path}: ${r.text}`);
+          assert.ok(r.text.includes(challengeSlug), `${label} ${path}: the challenge itself must survive`);
+          assert.ok(!r.text.includes(withheld), `${label} ${path}: published the withheld premium slug`);
+        }
+      }
+      // The other direction, twice over: a buyer is entitled, and `optionalAuth` is what lets the route know
+      // it. Without that middleware every caller is anonymous and this assertion is what fails.
+      for (const path of ["/challenges", `/challenges/${challengeSlug}`]) {
+        const buyer = await get(path, "buyer");
+        assert.ok(buyer.text.includes(withheld), `${path}: a buyer is entitled and must still see it`);
+      }
+    } finally {
+      await local.query(`DELETE FROM drink_challenges WHERE slug = $1`, [challengeSlug]);
+    }
+  });
+
+  test("P2 Codex: GET /user/:slug does not publish its withheld premium remix parent", async () => {
+    // The gate on this route judges the recipe's OWN slug, which was the whole of #1530's fix here. The
+    // response then spreads `...recipe`, which carries `remixedFromSlug`.
+    const parent = slugsOf("prem")[2];
+    const child = "p24-child-direct";
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`,
+      [child, ids.nonent, parent],
+    );
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/user/${child}`, as);
+        assert.equal(r.status, 200, `${label}: the public child must still be readable: ${r.text}`);
+        assert.ok(r.text.includes(child), `${label}: the child itself must survive`);
+        assert.ok(!r.text.includes(parent), `${label}: named its withheld premium parent`);
+      }
+      const buyer = await get(`/user/${child}`, "buyer");
+      assert.ok(buyer.text.includes(parent), "a buyer is entitled to the parent and must still see the lineage");
+    } finally {
+      await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [child]);
+    }
+  });
+
+  test("P2 Codex: collection items do not publish a withheld remix parent either", async () => {
+    // The reason the clearing moved INTO `resolveDrinkDetailsMapBySlugs` rather than being fixed per route:
+    // #1546 fixed ONE of its callers, and `resolveCollectionWithItems` is a second live one -- it serializes
+    // `remixedFromSlug` twice, as its own field and again inside `drink`. A public child of a withheld
+    // premium drink, placed in a FREE PUBLIC collection, handed the parent's slug to any caller.
+    //
+    // The other two callers were checked rather than assumed: the cover-image path reads only `.image`, and
+    // /recommended's items are built by `toDiscoveryDrinkCard` and carry no parent reference at all. So this
+    // is the whole of today's exposure, and the helper now covers the next caller too.
+    const parent = slugsOf("prem")[2];
+    const child = "p24-child-in-collection";
+    await local.query(
+      `INSERT INTO drink_recipes (id, slug, name, category, user_id, remixed_from_slug)
+       VALUES (gen_random_uuid(), $1, $1, 'cocktails', $2, $3)`,
+      [child, ids.creator, parent],
+    );
+    await local.query(
+      `INSERT INTO drink_collection_items (collection_id, drink_slug, added_at) VALUES ($1, $2, now())`,
+      [col.free, child],
+    );
+    try {
+      for (const [label, as] of nonEntitled) {
+        const r = await get(`/collections/${col.free}`, as);
+        assert.equal(r.status, 200, `${label}: ${r.text}`);
+        assert.ok(r.text.includes(child), `${label}: the child is in a free public collection and must appear`);
+        assert.ok(!r.text.includes(parent), `${label}: a free collection published the withheld premium parent`);
+      }
+      const buyer = await get(`/collections/${col.free}`, "buyer");
+      assert.ok(buyer.text.includes(parent), "a buyer is entitled to the parent and must still see the lineage");
+    } finally {
+      await local.query(`DELETE FROM drink_collection_items WHERE drink_slug = $1`, [child]);
+      await local.query(`DELETE FROM drink_recipes WHERE slug = $1`, [child]);
+    }
+  });
 }

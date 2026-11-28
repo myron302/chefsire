@@ -751,7 +751,24 @@ async function resolveDrinkDetailsBySlug(slug: string): Promise<DrinkDetails | n
   };
 }
 
-async function resolveDrinkDetailsMapBySlugs(slugs: string[]): Promise<Map<string, DrinkDetails>> {
+/**
+ * Hydrates slugs, and clears a withheld remix PARENT reference while keeping the row.
+ *
+ * Codex on #1547, and it is the third place the same hole has turned up: this helper carries
+ * `remixedFromSlug` on everything it hydrates, so a perfectly public recipe can name a withheld premium
+ * parent. #1546 cleared it in the challenge-submissions route, which fixed one of the FOUR callers. The rule
+ * belongs here instead -- a gate copied per route is the thing the single boundary exists to avoid, and the
+ * copy had already missed `/collections` hydration and `/recommended`.
+ *
+ * `viewerUserId` is optional and defaults to ANONYMOUS, which is deliberate: a caller that forgets to pass a
+ * viewer gets the strictest answer, so the failure mode is an entitled viewer missing a lineage link they
+ * could have seen -- never an anonymous caller learning a premium slug. The gate query only runs when some
+ * hydrated row actually names a parent.
+ */
+async function resolveDrinkDetailsMapBySlugs(
+  slugs: string[],
+  viewerUserId?: string | null,
+): Promise<Map<string, DrinkDetails>> {
   const uniqueSlugs = [...new Set(slugs.filter(Boolean))];
   if (uniqueSlugs.length === 0) return new Map();
 
@@ -802,6 +819,18 @@ async function resolveDrinkDetailsMapBySlugs(slugs: string[]): Promise<Map<strin
       category: recipe.category,
       subcategory: recipe.subcategory ?? null,
     });
+  }
+
+  const parentSlugs = [...detailsBySlug.values()]
+    .map((details) => details.remixedFromSlug)
+    .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+  if (parentSlugs.length > 0) {
+    const withheldParents = await withheldPremiumSlugsForViewer(parentSlugs, viewerUserId ?? null);
+    for (const [slug, details] of detailsBySlug) {
+      if (details.remixedFromSlug && withheldParents.has(details.remixedFromSlug)) {
+        detailsBySlug.set(slug, { ...details, remixedFromSlug: null });
+      }
+    }
   }
 
   return detailsBySlug;
@@ -18263,7 +18292,7 @@ async function resolveCollectionWithItems(
   const isLocked = normalizedCollection.accessType !== "public" && !isOwned;
   const visibleItemRows = isLocked ? itemRows.slice(0, LOCKED_COLLECTION_PREVIEW_LIMIT) : itemRows;
 
-  const detailsBySlug = await resolveDrinkDetailsMapBySlugs(visibleItemRows.map((row) => row.drinkSlug));
+  const detailsBySlug = await resolveDrinkDetailsMapBySlugs(visibleItemRows.map((row) => row.drinkSlug), viewerUserId);
 
   const items = visibleItemRows.map((row) => ({
     id: `${normalizedCollection.id}:${row.drinkSlug}`,
@@ -19994,7 +20023,9 @@ async function getTrendingDrinkCreators(limit = 25): Promise<TrendingCreatorRow[
 }
 
 
-r.get("/challenges", async (_req, res) => {
+// `optionalAuth` is not decoration: without a viewer every caller is anonymous, so a buyer would be refused
+// the slug of the drink they bought. That is the mistake #1546 made on POST /events and its test caught.
+r.get("/challenges", optionalAuth, async (req, res) => {
   try {
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
@@ -20032,8 +20063,24 @@ r.get("/challenges", async (_req, res) => {
       )
       .orderBy(desc(drinkChallenges.startsAt));
 
+    // Codex on #1547. `originalDrinkSlug` is caller-supplied -- `POST /challenges` takes it from the body
+    // with no entitlement check -- and this route selects it and hands it back raw, to anyone, with no auth
+    // middleware at all. #1546 recorded this path as sound because only `getCanonicalDrinkBySlug` ever reads
+    // the value, so a premium slug hydrates to null. That reasoning was wrong in exactly the way Greptile's
+    // P1 on #1530 was wrong: the SLUG is the secret, because the slug is what the recipe route takes. A null
+    // `canonicalDrink` beside a published premium slug withholds nothing.
+    const originalSlugs = rows
+      .map((row) => row.originalDrinkSlug)
+      .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+    const withheldOriginals = originalSlugs.length > 0
+      ? await withheldPremiumSlugsForViewer(originalSlugs, (req as any).user?.id ?? null)
+      : new Set<string>();
+
     const items = rows.map((row) => ({
       ...row,
+      originalDrinkSlug: row.originalDrinkSlug && withheldOriginals.has(row.originalDrinkSlug)
+        ? null
+        : row.originalDrinkSlug,
       isActive: challengeIsActiveNow(row),
       submissionsCount: Number(row.submissionsCount ?? 0),
     }));
@@ -20045,7 +20092,7 @@ r.get("/challenges", async (_req, res) => {
   }
 });
 
-r.get("/challenges/:slug", async (req, res) => {
+r.get("/challenges/:slug", optionalAuth, async (req, res) => {
   try {
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
@@ -20060,10 +20107,17 @@ r.get("/challenges/:slug", async (req, res) => {
 
     const canonicalDrink = challenge.originalDrinkSlug ? getCanonicalDrinkBySlug(challenge.originalDrinkSlug) : null;
 
+    // The same leak as the list route above: `...challenge` carries `originalDrinkSlug` whatever it names.
+    const originalWithheld = challenge.originalDrinkSlug
+      ? (await withheldPremiumSlugsForViewer([challenge.originalDrinkSlug], (req as any).user?.id ?? null))
+          .has(challenge.originalDrinkSlug)
+      : false;
+
     return res.json({
       ok: true,
       challenge: {
         ...challenge,
+        ...(originalWithheld ? { originalDrinkSlug: null } : {}),
         isActive: challengeIsActiveNow(challenge),
       },
       canonicalDrink: canonicalDrink
@@ -20130,20 +20184,12 @@ r.get("/challenges/:slug/submissions", optionalAuth, async (req, res) => {
     const withheldSubmissions = await withheldPremiumSlugsForViewer(rows.map((row) => row.drinkSlug), viewerId);
     const visibleRows = rows.filter((row) => !withheldSubmissions.has(row.drinkSlug));
 
-    const detailsBySlug = await resolveDrinkDetailsMapBySlugs(visibleRows.map((row) => row.drinkSlug));
-
-    // Codex's P2 on #1546, and it is the same hole one level down. `resolveDrinkDetailsMapBySlugs` carries
-    // `remixedFromSlug` on every row it hydrates, so a submission that is itself perfectly public can name a
-    // withheld premium PARENT -- submit a standalone recipe through /submit with a premium slug as its remix
-    // parent, enter that recipe here, and the parent's slug went out to anonymous readers. The slug is the
-    // secret, which is why the parent is cleared rather than the submission dropped: the submission is not
-    // the thing being withheld. This is what /drink-remix-chain/:slug already does to a surviving node.
-    const parentSlugs = visibleRows
-      .map((row) => detailsBySlug.get(row.drinkSlug)?.remixedFromSlug)
-      .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
-    const withheldParents = parentSlugs.length > 0
-      ? await withheldPremiumSlugsForViewer(parentSlugs, viewerId)
-      : new Set<string>();
+    // Codex's P2 on #1546 was that a perfectly public submission could still name a withheld premium PARENT,
+    // and it was fixed here, in this one route. Codex on #1547 then found the same leak through two other
+    // callers of the same helper, so the clearing moved INTO `resolveDrinkDetailsMapBySlugs` and this route
+    // only has to say who is asking. The parent is cleared and the submission kept: the submission is not the
+    // thing being withheld, which is what /drink-remix-chain/:slug already does to a surviving node.
+    const detailsBySlug = await resolveDrinkDetailsMapBySlugs(visibleRows.map((row) => row.drinkSlug), viewerId);
 
     const submissions = visibleRows.map((row) => {
       const drink = detailsBySlug.get(row.drinkSlug) ?? null;
@@ -20155,9 +20201,7 @@ r.get("/challenges/:slug/submissions", optionalAuth, async (req, res) => {
         createdAt: row.createdAt,
         creatorUsername: row.username ?? null,
         creatorAvatar: row.avatar ?? null,
-        drink: drink && drink.remixedFromSlug && withheldParents.has(drink.remixedFromSlug)
-          ? { ...drink, remixedFromSlug: null }
-          : drink,
+        drink,
       };
     });
 
@@ -20756,10 +20800,20 @@ r.get("/user/:slug", optionalAuth, async (req, res) => {
       ? await db.select({ username: users.username }).from(users).where(eq(users.id, recipe.userId)).limit(1)
       : [];
 
+    // Codex on #1547. The gate above judges this recipe's OWN slug, and that was the whole of #1530's fix
+    // here -- but the response spreads `...recipe`, which carries `remixedFromSlug`. So a public child of a
+    // withheld premium drink handed its parent's slug to any anonymous caller, through the one route that
+    // already had a gate. The parent is cleared and the recipe kept: the child is not withheld.
+    const parentSlug = (recipe as { remixedFromSlug?: string | null }).remixedFromSlug ?? null;
+    const parentWithheld = parentSlug
+      ? (await withheldPremiumSlugsForViewer([parentSlug], (req as any).user?.id ?? null)).has(parentSlug)
+      : false;
+
     return res.json({
       ok: true,
       recipe: {
         ...recipe,
+        ...(parentWithheld ? { remixedFromSlug: null } : {}),
         creatorId: recipe.userId ?? null,
         creatorUsername: creator[0]?.username ?? null,
       },
@@ -21100,7 +21154,7 @@ r.get("/recommended", optionalAuth, async (req, res) => {
     const detailsBySlug = await resolveDrinkDetailsMapBySlugs([
       ...recentSlugs,
       ...rankedRows.map((row) => row.slug),
-    ]);
+    ], recommendViewerId);
 
     const recentCategoryRoutes = new Set(
       recentSlugs
