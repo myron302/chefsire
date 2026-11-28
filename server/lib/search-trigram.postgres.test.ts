@@ -82,6 +82,60 @@ test('short/partial/literal wildcard and injection-like input remain bounded mat
   assert.equal((await storage.searchProducts('zzzzzzzzz')).length, 0);
 });
 
+test('real HTTP search routes use fuzzy matching and keep response contracts, filters and viewer privacy', async () => {
+  process.env.SEARCH_TRIGRAM_ENABLED = 'true';
+  const { default: express } = await import('express');
+  const { testAuthHeader } = await import('../test-support/auth-test-env');
+  const app = express();
+  app.use('/api/search', (await import('../routes/search')).default);
+  app.use('/api/users', (await import('../routes/users')).default);
+  app.use('/api/recipes', (await import('../routes/recipes')).default);
+  app.use('/api/marketplace', (await import('../routes/marketplace')).default);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise<void>(r => server.on('listening',r));
+  const base = `http://127.0.0.1:${(server.address() as any).port}`;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any, init?: any) => {
+    assert.ok(String(input).startsWith(base), 'no external provider call is expected for ChefSire-only search');
+    return realFetch(input,init);
+  }) as typeof fetch;
+  const get = async (path: string, signedIn = false) => {
+    const response = await fetch(base + path, signedIn ? { headers: testAuthHeader(owner) } : undefined);
+    assert.equal(response.status,200,path);
+    return response.json();
+  };
+  try {
+    const autocomplete = await get('/api/search/autocomplete?q=spagetti&source=chefsire');
+    for (const category of ['users','recipes','drinks','reviews','petFoods']) assert.ok(Array.isArray(autocomplete[category]),category);
+    assert.deepEqual(autocomplete.recipes.map((r: any) => r.title),['Spaghetti','Spaghetti Bolognese']);
+    assert.equal(autocomplete.source,'chefsire');
+    assert.equal(autocomplete.query,'spagetti');
+    const users = await get('/api/users/search?q=wiskey');
+    assert.deepEqual(users.users.map((u: any) => u.username),['whiskey']);
+    assert.ok(!JSON.stringify(users).includes('a@test'),'existing public user serializer stays in use');
+    const products = await get('/api/marketplace/products?query=wiskey&category=ingredients&location=NY');
+    assert.deepEqual(products.products.map((p: any) => p.name),['Whiskey','Bourbon Whiskey']);
+    assert.equal(products.total,2);
+    assert.equal((await get('/api/marketplace/products?query=wiskey&location=LA')).products.length,0);
+    const recipes = await get('/api/recipes/search?q=spagetti&source=chefsire');
+    assert.equal(recipes.ok,true);
+    assert.ok(Array.isArray(recipes.items),'existing recipe route serializes results as items');
+    assert.equal('results' in recipes,false,'do not change the existing response contract');
+    assert.deepEqual(recipes.items.map((r: any) => r.title),['Spaghetti','Spaghetti Bolognese']);
+    const member = await get('/api/search/autocomplete?q=spagetti&source=chefsire',true);
+    assert.ok(member.recipes.some((r: any) => r.title === 'Spaghetti Secret'),'viewer comes from the verified session');
+    for (const path of ['/api/search/autocomplete','/api/users/search','/api/recipes/search','/api/marketplace/products']) {
+      assert.equal((await fetch(base + path + '?q[]=bad')).status,400,path);
+    }
+    delete process.env.SEARCH_TRIGRAM_ENABLED;
+    const legacy = await get('/api/marketplace/products?query=wiskey');
+    assert.deepEqual(legacy.products,[],'flag-off HTTP route retains the legacy match set');
+  } finally {
+    globalThis.fetch = realFetch;
+    await new Promise<void>(r => server.close(() => r()));
+  }
+});
+
 test('20k-product corpus selects the trigram index for the actual candidate predicate', async () => {
   process.env.SEARCH_TRIGRAM_ENABLED = 'true';
   await local.query(`INSERT INTO products(seller_id,name,description,price,category) SELECT $1,'Kitchen item ' || i,md5(i::text),1,'tools' FROM generate_series(1,20000) i`, [owner]);
