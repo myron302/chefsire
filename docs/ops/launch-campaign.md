@@ -182,8 +182,21 @@ and proves all four protections by mutation. Condition 4 holds again when it lan
 
 **Audited in the same pass and found sound:** `POST /bundles/:id/items` (the collection must be yours and
 premium-purchase), `POST /collections/:id/reviews` (requires current ownership), `POST /collections/:id/wishlist`
-(public-or-owner, and is *for* collections you do not own by design), `POST /collections/:id/apply-promo`
-(public-or-owner, pricing only). Those four still stand.
+(public-or-owner, and is *for* collections you do not own by design). Those three still stand.
+
+**The fourth does not, and the word "sound" was the problem.** `POST /collections/:id/apply-promo` was listed
+as "public-or-owner, pricing only" on reasoning, without reading `resolveValidPromotionPricing`. Read since: as
+a *paid-content* question the verdict holds -- it returns the promotion row and a pricing object derived from
+`collection.priceCents`, no items and no slugs, for a collection whose price is already public. But it is an
+**unauthenticated promo-code oracle**: `optionalAuth`, no rate limiting, and four distinguishable answers --
+404 "not found for this collection", 403 "not valid for this collection", 400 "inactive, expired, or fully
+redeemed", and 200 with the discount. An anonymous caller can enumerate codes against any public premium
+collection and learn which exist and what they are worth.
+
+That is abuse and revenue leakage, not a condition-4 disclosure, so **it is open and unowned rather than
+fixed** -- no run has touched it, and it does not block condition 4. It is written here because "sound" in this
+file has now been wrong three times out of seven, and the one thing worse than an open item is a closed one
+that is not.
 
 #### And two things this file said were sound were not, both disproved within hours
 
@@ -199,7 +212,16 @@ up next to them:
 | `POST /submit` / `remixedFromSlug` | `GET /user/:slug` gates the slug that was ASKED for and then spreads `...recipe`, parent included. The remix-chain route does cut the lineage; that is a different route |
 | not claimed, found by asking | `resolveCollectionWithItems` -- the single boundary EVERY collection route goes through -- serialized each item's remix parent twice. A preview item is public on purpose; its parent is a different drink and may be paid. The widest of the three |
 
-**PR #1548** fixes all three the same way: the reference is cleared and the carrier kept, six mutations.
+**PR #1548** fixes all three the same way -- the reference is cleared and the carrier kept -- and then found a
+**fourth** reader of the challenge field by answering its own review question instead of leaving it:
+`POST /challenges/:slug/join`, called with no `drinkSlug`, returned the whole challenge *and* built the slug
+into a `submitRoute` query string. Two copies in one response, each with its own mutation, because gating
+either alone leaves the other leaking. Eight mutations in all.
+
+**That is twice in two PRs that the review questions found more than the review did**, which is worth stating
+as method rather than as luck: on #1546 the question "is there a third place this output reaches a response
+with the parent intact?" found the collection boundary, the widest instance of the lot. **Ask them, then answer
+them yourself.**
 
 **The method error is the part to keep, because one wrong question produced five disclosures across two PRs.**
 Both claims above were reasoned from what a route *computes*. A disclosure is about what a route *serializes*.
