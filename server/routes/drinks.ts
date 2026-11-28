@@ -18265,16 +18265,39 @@ async function resolveCollectionWithItems(
 
   const detailsBySlug = await resolveDrinkDetailsMapBySlugs(visibleItemRows.map((row) => row.drinkSlug));
 
-  const items = visibleItemRows.map((row) => ({
-    id: `${normalizedCollection.id}:${row.drinkSlug}`,
-    drinkSlug: row.drinkSlug,
-    drinkName: detailsBySlug.get(row.drinkSlug)?.name ?? row.drinkSlug,
-    image: detailsBySlug.get(row.drinkSlug)?.image ?? null,
-    route: detailsBySlug.get(row.drinkSlug)?.route ?? `/drinks/recipe/${encodeURIComponent(row.drinkSlug)}`,
-    remixedFromSlug: detailsBySlug.get(row.drinkSlug)?.remixedFromSlug ?? null,
-    addedAt: row.addedAt,
-    drink: detailsBySlug.get(row.drinkSlug) ?? null,
-  }));
+  // A REFERENCE SLUG IS A SLUG. The item list above is bounded by entitlement; the parent each item was
+  // remixed from is a DIFFERENT drink, and this serialized it twice -- once as `remixedFromSlug` and again
+  // inside `drink`. A preview item is public on purpose, so a creator could put a public drink whose parent is
+  // their own paid drink into a public collection and the parent's slug went out to everyone, through every
+  // route that comes through this function: explore, featured, the creator storefront, the bundles and the
+  // detail route. That is the nine routes #1530 secured, leaking by reference instead of by item.
+  //
+  // The parent is CLEARED and the item kept, which is what /drink-remix-chain/:slug does to a surviving node:
+  // the item is not the thing being withheld. Only the parents actually present are judged, so a collection
+  // of drinks with no remix parent costs no extra query.
+  const itemParentSlugs = visibleItemRows
+    .map((row) => detailsBySlug.get(row.drinkSlug)?.remixedFromSlug)
+    .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+  const withheldItemParents = itemParentSlugs.length > 0
+    ? await withheldPremiumSlugsForViewer(itemParentSlugs, viewerUserId ?? null)
+    : new Set<string>();
+  const visibleParentOf = (slug: string | null | undefined) =>
+    typeof slug === "string" && slug.length > 0 && !withheldItemParents.has(slug) ? slug : null;
+
+  const items = visibleItemRows.map((row) => {
+    const details = detailsBySlug.get(row.drinkSlug) ?? null;
+    const parent = visibleParentOf(details?.remixedFromSlug);
+    return {
+      id: `${normalizedCollection.id}:${row.drinkSlug}`,
+      drinkSlug: row.drinkSlug,
+      drinkName: details?.name ?? row.drinkSlug,
+      image: details?.image ?? null,
+      route: details?.route ?? `/drinks/recipe/${encodeURIComponent(row.drinkSlug)}`,
+      remixedFromSlug: parent,
+      addedAt: row.addedAt,
+      drink: details ? { ...details, remixedFromSlug: parent } : null,
+    };
+  });
 
   const coverImage = items[0]?.image ?? null;
   const accessGrants = new Set<CollectionAccessGrant>(collectionAccessMap?.get(normalizedCollection.id) ?? []);
@@ -19994,7 +20017,9 @@ async function getTrendingDrinkCreators(limit = 25): Promise<TrendingCreatorRow[
 }
 
 
-r.get("/challenges", async (_req, res) => {
+// `optionalAuth` so the ungated `originalDrinkSlug` each row carries can be judged against the viewer; see
+// the note on /challenges/:slug below.
+r.get("/challenges", optionalAuth, async (req, res) => {
   try {
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
@@ -20032,8 +20057,20 @@ r.get("/challenges", async (_req, res) => {
       )
       .orderBy(desc(drinkChallenges.startsAt));
 
+    // The same reference-slug gate as the detail route. The challenge itself is not withheld -- only the
+    // paid drink it points at, which a member with no authorization check at all was able to write.
+    const listedOriginals = rows
+      .map((row) => row.originalDrinkSlug)
+      .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+    const withheldOriginals = listedOriginals.length > 0
+      ? await withheldPremiumSlugsForViewer(listedOriginals, (req as any).user?.id ?? null)
+      : new Set<string>();
+
     const items = rows.map((row) => ({
       ...row,
+      originalDrinkSlug: row.originalDrinkSlug && withheldOriginals.has(row.originalDrinkSlug)
+        ? null
+        : row.originalDrinkSlug,
       isActive: challengeIsActiveNow(row),
       submissionsCount: Number(row.submissionsCount ?? 0),
     }));
@@ -20045,7 +20082,7 @@ r.get("/challenges", async (_req, res) => {
   }
 });
 
-r.get("/challenges/:slug", async (req, res) => {
+r.get("/challenges/:slug", optionalAuth, async (req, res) => {
   try {
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
@@ -20060,10 +20097,23 @@ r.get("/challenges/:slug", async (req, res) => {
 
     const canonicalDrink = challenge.originalDrinkSlug ? getCanonicalDrinkBySlug(challenge.originalDrinkSlug) : null;
 
+    // Codex on #1547, and it disproved a line in the record directly. `POST /challenges` has no authorization
+    // of any kind, so any member can write `originalDrinkSlug`; the record said that was not a disclosure
+    // because only getCanonicalDrinkBySlug reads it and a premium slug hydrates to null. Returning
+    // `canonicalDrink: null` does not unsay the slug sitting beside it in `...challenge`.
+    const challengeViewerId = (req as any).user?.id ?? null;
+    const originalSlug = typeof challenge.originalDrinkSlug === "string" && challenge.originalDrinkSlug.length > 0
+      ? challenge.originalDrinkSlug
+      : null;
+    const originalWithheld = originalSlug
+      ? (await withheldPremiumSlugsForViewer([originalSlug], challengeViewerId)).has(originalSlug)
+      : false;
+
     return res.json({
       ok: true,
       challenge: {
         ...challenge,
+        originalDrinkSlug: originalWithheld ? null : challenge.originalDrinkSlug,
         isActive: challengeIsActiveNow(challenge),
       },
       canonicalDrink: canonicalDrink
@@ -20710,10 +20760,23 @@ r.get("/user/:slug", optionalAuth, async (req, res) => {
       ? await db.select({ username: users.username }).from(users).where(eq(users.id, recipe.userId)).limit(1)
       : [];
 
+    // Codex on #1547. The gate above judges the slug that was ASKED for; this spreads `...recipe`, which
+    // carries `remixedFromSlug` -- a different drink, which may be withheld. The record had written this path
+    // down as sound on the reasoning that /drink-remix-chain/:slug cuts the lineage. It does. This is not that
+    // route, and a public child of a paid parent named the parent to anonymous callers.
+    const viewerForParent = (req as any).user?.id ?? null;
+    const parentSlug = typeof recipe.remixedFromSlug === "string" && recipe.remixedFromSlug.length > 0
+      ? recipe.remixedFromSlug
+      : null;
+    const parentWithheld = parentSlug
+      ? (await withheldPremiumSlugsForViewer([parentSlug], viewerForParent)).has(parentSlug)
+      : false;
+
     return res.json({
       ok: true,
       recipe: {
         ...recipe,
+        remixedFromSlug: parentWithheld ? null : recipe.remixedFromSlug,
         creatorId: recipe.userId ?? null,
         creatorUsername: creator[0]?.username ?? null,
       },
