@@ -984,9 +984,86 @@ if (!PG_URL) {
     const stale = await pay(bookingId, invoiceId, "2500.00");
     assert.equal(stale.status, 409, stale.text);
     assert.equal(await ledgerPayments(bookingId), 0);
-    const [credit, payment] = await Promise.all([adjust(bookingId, { kind: "credit", amountCents: 20000 }), pay(bookingId, invoiceId, "500.00")]);
-    assert.equal(credit.status, 201);
-    assert.equal(payment.status, 409, "500 against a 300 balance, whichever order the two commit");
+  });
+
+  /*
+   * The two tests below replace one assertion that used to sit at the end of the stale-form test above: a $200 credit
+   * and a $500 payment fired together with `Promise.all`, asserting the payment was refused "whichever order the two
+   * commit". That claim is false, and measurably so -- run the same two writes SEQUENTIALLY, no concurrency anywhere,
+   * and the order alone decides the answer:
+   *
+   *   credit then payment -> credit 201, payment 409. Obligation $300, nothing received.
+   *   payment then credit -> payment 200, credit 201. Obligation $300, $500 received, $200 refund potentially due.
+   *
+   * Both are correct. The payment is judged against the obligation AS IT STANDS when it is judged ($500 then, $300
+   * after), and `cateringCreditCeilingCents` is deliberately the obligation rather than the obligation less what has
+   * been received -- a goodwill credit granted to a customer who has already paid in full is a real thing a caterer
+   * does, and the surplus it creates is reported as `refundPotentiallyDueCents`, which the ledger documents as "money
+   * the customer may be owed back. A prompt, never a claim a refund happened." Refusing that credit would be the bug.
+   *
+   * So the old assertion was a WRONG EXPECTATION, not a defect it was catching: it demanded one order's answer from a
+   * race that can land either way, and failed roughly one run in three. The two orders are pinned deterministically
+   * here, where they cannot flake and where either one regressing is named plainly, and the race itself is kept in the
+   * test after them -- asserting only what is true in BOTH orders.
+   *
+   * On what each of the three actually watches, measured by mutation rather than claimed: inverting the obligation sign
+   * in `deriveCateringLedgerPosition` fails all three on every run; making the credit ceiling subtract what has been
+   * received, or dropping `refundPotentiallyDueCents` to zero, fails the payment-before-credit test; making
+   * `cateringPayableCents` the invoice remainder again fails the credit-before-payment test. In the race test the
+   * ledger identities (obligation, balance, refund due) are checked every run whichever side wins, while the
+   * row-count-matches-the-answer line can only bite on the branch that actually happened -- which is why the two
+   * orders are also pinned deterministically above rather than left to the race to cover.
+   */
+  test("payable cap, credit before payment: the lowered obligation refuses the full invoice amount", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    await adjust(bookingId, { kind: "credit", amountCents: 200000 });
+    assert.equal((await adjust(bookingId, { kind: "credit", amountCents: 20000 })).status, 201);
+    const refused = await pay(bookingId, invoiceId, "500.00");
+    assert.equal(refused.status, 409, refused.text);
+    assert.equal(await ledgerPayments(bookingId), 0, "nothing was recorded");
+    const summary = (await billing(bookingId)).body.summary;
+    assert.deepEqual(
+      [summary.obligationCents, summary.netReceivedCents, summary.balanceDueCents, summary.refundPotentiallyDueCents],
+      [30000, 0, 30000, 0],
+    );
+  });
+
+  test("payable cap, payment before credit: the payment stands and the later credit reports a refund potentially due", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    await adjust(bookingId, { kind: "credit", amountCents: 200000 });
+    const paid = await pay(bookingId, invoiceId, "500.00");
+    assert.equal(paid.status, 200, "$500 was the whole obligation at the moment it was judged");
+    assert.equal((await adjust(bookingId, { kind: "credit", amountCents: 20000 })).status, 201, "a credit after payment in full is allowed");
+    assert.equal(await ledgerPayments(bookingId), 1, "the payment is not unwound by the credit");
+    const summary = (await billing(bookingId)).body.summary;
+    assert.deepEqual(
+      [summary.obligationCents, summary.netReceivedCents, summary.balanceDueCents, summary.refundPotentiallyDueCents],
+      [30000, 50000, 0, 20000],
+      "over-collection is reported for the provider to settle, never silently absorbed",
+    );
+  });
+
+  test("payable cap: a credit and a payment racing on one booking serialize into one coherent ledger, whichever wins", async () => {
+    const { bookingId, invoiceId } = await billed("0");
+    await adjust(bookingId, { kind: "credit", amountCents: 200000 });
+    const [credit, payment] = await Promise.all([
+      adjust(bookingId, { kind: "credit", amountCents: 20000 }),
+      pay(bookingId, invoiceId, "500.00"),
+    ]);
+    // The credit's ceiling is the obligation, which no payment lowers, so it is accepted in either order.
+    assert.equal(credit.status, 201, credit.text);
+    // The payment's answer is order-dependent and only these two answers are legitimate.
+    assert.ok(payment.status === 200 || payment.status === 409, `unexpected ${payment.status}: ${payment.text}`);
+    const accepted = payment.status === 200;
+    // Whatever the HTTP answer was, the ledger must agree with it -- a 200 that recorded nothing, or a 409 that
+    // recorded money, is a defect this catches on every run regardless of which side won the lock.
+    assert.equal(await ledgerPayments(bookingId), accepted ? 1 : 0, "the row matches the answer the caller was given");
+    const summary = (await billing(bookingId)).body.summary;
+    const received = accepted ? 50000 : 0;
+    assert.equal(summary.obligationCents, 30000, "both credits posted exactly once");
+    assert.equal(summary.netReceivedCents, received);
+    assert.equal(summary.balanceDueCents, Math.max(0, 30000 - received));
+    assert.equal(summary.refundPotentiallyDueCents, Math.max(0, received - 30000));
   });
 
   test("payable cap: ordinary Phase 2L payment recording is unchanged on a booking with no adjustments", async () => {
