@@ -632,5 +632,7 @@ jobs:
       # Done-condition 1's other half: a step can NAME a suite and still not run it, because the suite skips
       # when the connection string it reads is absent -- and node exits 0, so the job is green. Comparing
       # filenames cannot see that; this reads the workflow and each suite's gate.
+      - name: The silent-skip checker's own suite
+        run: node server/scripts/run-ci-batch.mjs server/scripts/audit-ci-skips.test.ts
       - name: No suite CI names is silently skipped
         run: node server/scripts/audit-ci-skips.mjs --ci

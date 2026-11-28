@@ -23,15 +23,18 @@
  * comes from a secret or an expression this does not evaluate. It is a floor, like the other audits here --
  * it catches the class that has actually bitten, and says so rather than implying more.
  *
- * Usage: node server/scripts/audit-ci-skips.mjs [--ci] [--json]
+ * Usage: node server/scripts/audit-ci-skips.mjs [--ci] [--json] [workflow.yml...]
  */
 import { readFileSync, existsSync } from "node:fs";
 import { parse } from "yaml";
+import ts from "typescript";
 
 const args = process.argv.slice(2);
 const ci = args.includes("--ci");
 const asJson = args.includes("--json");
-const WORKFLOWS = [".github/workflows/pr-validation.yml"];
+/** Positional arguments override the workflow list, so the suite below can point this at fixtures. */
+const given = args.filter((a) => !a.startsWith("--"));
+const WORKFLOWS = given.length > 0 ? given : [".github/workflows/pr-validation.yml"];
 
 /**
  * The connection-string names these suites gate on; any one being present is enough for most.
@@ -42,8 +45,52 @@ const WORKFLOWS = [".github/workflows/pr-validation.yml"];
  * that cries wolf about a comment teaches people to ignore it.
  */
 const DB_NAMES = ["TEST_DATABASE_URL", "DATABASE_URL", "CS_TEST_PG_URL", "CATERING_TEST_PG_URL", "WEDDING_SQUARE_TEST_DATABASE_URL", "ADMIN_TEST_PG_URL"];
-const DB_READ = new RegExp(`process\\.env\\.(${DB_NAMES.join("|")})\\b`, "g");
 const isDbName = (name) => DB_NAMES.includes(name);
+
+/**
+ * The database URLs a suite READS, as distinct from the ones it WRITES.
+ *
+ * Codex's second finding here, and it made the gate unsound in the direction that matters. The first version
+ * counted any `process.env.NAME` occurrence, so a suite that gates on TEST_DATABASE_URL and then ASSIGNS
+ * `process.env.DATABASE_URL = scratch.url` -- which session-cookie-races.postgres.test.ts does, at lines 17
+ * and 28 -- looked satisfied by DATABASE_URL alone. Supply only that name and the audit reported clean while
+ * the suite skipped, zero passes, exit 0. The exact silent green this script exists to catch, waved through by
+ * the script.
+ *
+ * An assignment target is not an input, so it is excluded. Walking the AST rather than matching text also
+ * drops names in comments, which the version before this one got wrong the other way.
+ */
+function envReads(file, text) {
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const reads = new Set();
+  const isAssignmentTarget = (node) => {
+    const parent = node.parent;
+    if (!parent) return false;
+    if (ts.isBinaryExpression(parent) && parent.left === node) {
+      // `=` and every compound assignment; a comparison is a read.
+      return parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+        && parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment;
+    }
+    if (ts.isDeleteExpression(parent)) return true;
+    return false;
+  };
+  const visit = (node) => {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "process" &&
+      node.expression.name.text === "env" &&
+      isDbName(node.name.text) &&
+      !isAssignmentTarget(node)
+    ) {
+      reads.add(node.name.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return reads;
+}
 
 /**
  * Suites allowed to be named by CI and skip anyway, each with the reason and what would change it.
@@ -80,7 +127,7 @@ for (const wf of WORKFLOWS) {
         const text = readFileSync(file, "utf8");
         // Only suites that can skip at all are candidates.
         if (!/skip/.test(text)) continue;
-        const wanted = new Set([...text.matchAll(DB_READ)].map((m) => m[1]));
+        const wanted = envReads(file, text);
         if (wanted.size === 0) continue;
         if ([...wanted].some((name) => available.has(name))) continue;
         findings.push({
