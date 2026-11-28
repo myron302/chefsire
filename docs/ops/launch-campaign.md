@@ -251,7 +251,7 @@ is the other half of not colliding.
 | # | Condition | State |
 | --- | --- | --- |
 | 1 | Every suite in CI, or listed with a reason | **NOT met.** Names match, but 607 named tests never run: a missing `TEST_DATABASE_URL` makes them skip and node exits 0. #1541 fixes it and adds a checker. See below |
-| 2 | No suite passes while asserting nothing, and none fails at random | **Not met, but the flake is no longer unnamed.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); the batch-7 flake is **named and fixed in #1549** — an assertion that demanded one side of a two-sided race, measured at 16/14 over 30 trials (below); and the sweep that would find the rest needs a tool nobody has written |
+| 2 | No suite passes while asserting nothing, and none fails at random | **Not met.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture). **A real two-sided assertion inside batch 7 is found and fixed in #1549** — it demanded one side of a race measured at 16/14 over 30 trials — but whether it is the failure that actually fired is **unknown and unknowable from the surviving log**, so the batch-7 item stays open (below). And the sweep that would find the rest needs a tool nobody has written |
 | 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
 | 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **MET** by #1530. Nine read routes, one write path, every protection confirmed by breaking it |
 | 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
@@ -261,8 +261,11 @@ So: **one met**, one a merge away (#1541), two blocked on Myron with the work al
 condition 2 partly moved — its floor is now gated by `audit-assert-coverage.mjs`, and one flake is still open
 and unnamed.
 
-A run starting cold should: merge #1549 (the batch-7 flake, named), then #1541 and #1540 if they are green.
-The batch-7 flake no longer needs chasing — read its section below before spending a run on it.
+A run starting cold should: merge #1549 (a real two-sided assertion found inside batch 7), then #1541 and
+#1540 if they are green. **Read the batch-7 section before spending a run on it** — one flake out of that
+batch is fixed, the failure that fired is still unexplained, and the attempt to pin it to a file was
+retracted. Do not re-run the batch hoping to reproduce it; the plan is to wait for the next occurrence, which
+now names the failing test.
 
 ### In flight
 
@@ -344,20 +347,26 @@ write "this is sound" into this file, say which paths you checked, and never wri
 The same applies to `square-plaintext-finalization-durability.postgres.test.ts`, carried as "9 pass / 1 fail":
 it runs in that same green job. Re-measure before believing a failure count in any queue, including this one.
 
-### Batch 7 of 17 failed once at random, and the flake is now named
+### Batch 7 of 17 failed once at random, and a real flake inside it is now named
 
-This is condition 2's other half. **The answer is in #1549** and is written at the top of this section rather
-than at the end, because three sessions spent two days on the mechanisms below and the thing that was wrong
-was an assertion, not a mechanism.
+This is condition 2's other half. **A genuine two-sided assertion in that batch is named and fixed in #1549**,
+and it is written at the top of this section rather than at the end, because three sessions spent two days on
+the mechanisms below and this one was an assertion, not a mechanism.
+
+**It is not established that it is what fired.** The attempt to show that was retracted in the same run that
+made it — the number it rested on was a step DURATION misread as an offset — and the retraction is a few
+paragraphs down. So: one real flake out of that batch, fixed on its own evidence; the batch-7 failure itself
+still unexplained.
 
 On 2026-11-28 the first CI run of #1538 went red on `Restored unit suites (2 of 3)`, at the step **"Remaining
-unit suites restored to CI, batch 7 of 17"**, 1m53s into a 351-test batch — run `46089461110`, job
+unit suites restored to CI, batch 7 of 17"**, a 351-test batch whose step took 1m53s (a DURATION, not an
+offset — see the retraction below) — run `46089461110`, job
 `140806716716`. Nothing in #1538 touches any suite in that batch, and #1514 ran batch 7 green at the same base
 eight minutes later.
 
-#### Named: an assertion that demanded one side of a coin flip
+#### Found in that batch: an assertion that demanded one side of a coin flip
 
-`catering-billing-adjustments-http.test.ts` is the **14th of batch 7's 15 files**, and the last assertion of
+`catering-billing-adjustments-http.test.ts` is one of batch 7's 15 files, and the last assertion of
 its `payable cap: a stale form…` test fired a $200 credit and a $500 payment together with `Promise.all` and
 demanded `payment.status === 409` — commenting "whichever order the two commit". That comment was the bug.
 Run the same two writes **sequentially, with no concurrency anywhere**, and the order alone decides:
@@ -376,28 +385,43 @@ would have been the bug; so would "fixing" the server to make the old assertion 
 
 **30 races on 30 fresh bookings: 16 refused the payment, 14 accepted it.** Near a coin flip in a tight loop.
 
-**Why nine clean runs across four conditions never caught it, and the lesson that generalises.** At that
-position in the batch the credit keeps winning, so the per-run rate in situ is low — five earlier local runs,
-three cold-database runs on #1544 and #1514's green all sit comfortably inside that. A race that is 50/50
-under one timing profile and lopsided under another is **one** latent defect seen twice, and
-"non-reproduction is not elimination" applies to a named two-sided assertion exactly as it applies to a
-mechanism. The cold database was never causal: it shifts lock-acquisition timing enough to change which side
-wins, which is why the experiment surfaced it, but the defect needs no concurrency to demonstrate.
+**Why nine clean runs across four conditions never caught it, and the lesson that generalises.** In situ the
+credit keeps winning, so the per-run rate is low — five earlier local runs, three cold-database runs on #1544
+and #1514's green all sit comfortably inside that. A race that is 50/50 under one timing profile and lopsided
+under another is **one** latent defect seen twice, and "non-reproduction is not elimination" applies to a
+two-sided assertion exactly as it applies to a mechanism. The cold database was never causal: it shifts
+lock-acquisition timing enough to change which side wins, which is why the experiment surfaced it, but the
+defect needs no concurrency to demonstrate.
 
-**What the CI attribution is, measured rather than estimated.** The failing step's duration in CI is
-**2m01s** (18:17:45 to 18:19:46 on run `46175002077`, step timings from the Actions API), and the same batch
-runs **1m58s to 2m03s** locally — so local timings transfer. Running the batch's files cumulatively:
+**THE CI FAILURE IS NOT ATTRIBUTED TO THIS FILE, and the attempt to attribute it was built on a misread
+number. Retracted here in full, because an earlier version of this section had it both ways and the wrong one
+was the confident one.**
 
-| files | elapsed |
-| --- | --- |
-| 1 through 13 | **87s** |
-| 1 through 14 (adds `catering-billing-adjustments-http`) | **118s** |
+What this file has said since the failure is that batch 7 went red **"1m53s into a 351-test batch"**. It then
+reasoned from that: the batch's files run cumulatively to 87s through the 13th and 118s through the 14th, so
+113s lands inside the 14th file's window. The arithmetic is right and the premise is wrong.
 
-CI failed at **1m53s = 113s**, which falls inside the 14th file's 87-118s window and **before the 15th file
-begins**. The job log also ended in catering statements. That is not proof that this assertion is what failed
-— another test in the same file could have — but it is no longer a guess about which file. Batch 7 runs
-**354 pass / 0 fail / 0 skipped** with the fix (351 + 3 new tests, which also re-confirms the fifteen suites
-are exactly the CI batch).
+**1m53s is the step's DURATION, not an offset into it.** From the Actions API for the original run
+`46089461110`, job `140806716716`: the step "Remaining unit suites restored to CI, batch 7 of 17" ran
+**00:44:39 to 00:46:32** — it started, took 1m53s, and failed. Nothing in that number says when inside the
+batch anything went wrong.
+
+And it cannot, because of how the batch runs: `run-ci-batch.mjs` hands all fifteen files to ONE `node --test`
+invocation and reports failure when the child closes. **An assertion failure does not stop the files after
+it.** So a failure in the 1st file and a failure in the 15th produce the same step: the whole batch runs, the
+step takes about as long as it always does, and the exit code is non-zero at the end. A duration close to the
+local 1m58s-2m03s is evidence the batch RAN TO COMPLETION, which is the opposite of localising the failure.
+
+Codex found this on #1549. Two further points of its, both correct: similar totals across different runs do
+not establish identical per-file boundaries either, and the job log ending in catering statements says only
+that the last files ran, which they always do.
+
+**So what is actually known about the batch-7 failure is what was known before: it happened, in that batch,
+and which test failed was never readable.** The summary added in #1538 did not exist when it fired. The named
+assertion below is a real latent flake in that batch and worth fixing on its own evidence; whether it is THE
+failure is unknown and, from the surviving log, unknowable. Batch 7 runs **354 pass / 0 fail / 0 skipped**
+with the fix (351 + 3 new tests, which also re-confirms the fifteen suites are exactly the CI batch), and the
+standing plan is unchanged: the next occurrence names the test for free.
 
 **Two batch series exist and they are easy to confuse**, which this run nearly did. "Suites restored to CI,
 batch N **of 6**" are steps of `wedding-square-postgres-migration-tests` (12m40s, the job #1541 widens).
@@ -485,7 +509,8 @@ Two consequences, and they point the next run somewhere quite different:
    listed it; it was wrong.
 
 **So the surface is smaller and more specific than anyone has been treating it as:** the failure happened
-1m53s into the **first test step of a fresh job, against a cold database**. Whatever it is lives inside those
+in the **first test step of a fresh job, against a cold database** (the step took 1m53s; that is its whole
+duration and localises nothing inside the batch — see the retraction above). Whatever it is lives inside those
 fifteen suites, or in how they behave against a database on first touch — not in anything that ran before
 them, because nothing did.
 
