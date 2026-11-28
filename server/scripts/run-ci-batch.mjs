@@ -33,17 +33,65 @@ child.stdout.on("data", (chunk) => {
   process.stdout.write(text);
 });
 
+/**
+ * What failed, printed LAST, because last is the only place anyone can read.
+ *
+ * A job's log is fetched as a tail, and these jobs end with the postgres service container dumping its own log
+ * -- hundreds of lines of constraint violations that the constraint tests caused on purpose. The actual
+ * `not ok` line sits thousands of lines above that and is unreachable without downloading the whole log. On
+ * 2026-11-28 batch 7 of 17 failed once, passed on a sibling PR at the same base eight minutes later, and could
+ * not be named at all for that reason: five local reruns could not reproduce it, and the one record of which
+ * test it was could not be read.
+ *
+ * A flake nobody can name is a flake nobody fixes, and that is the same damage as a suite asserting nothing.
+ * So the names go at the very end of the job log, after everything else, where a 40-line tail still has them.
+ */
+function summariseFailures(tap) {
+  const lines = tap.split("\n");
+  const failures = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const failed = /^not ok (\d+) - (.+)$/.exec(lines[i]);
+    if (!failed) continue;
+    // Node's TAP puts a YAML block under each failure; `location` names the file and line.
+    let location = "";
+    for (let j = i + 1; j < Math.min(i + 25, lines.length); j += 1) {
+      if (/^not ok |^ok /.test(lines[j])) break;
+      const found = /^\s*location:\s*'?([^'\n]+)'?\s*$/.exec(lines[j]);
+      if (found) { location = found[1]; break; }
+    }
+    failures.push({ name: failed[2], location });
+  }
+  return failures;
+}
+
 child.on("close", (code, signal) => {
   if (signal) {
     console.error(`run-ci-batch: runner terminated by ${signal}`);
     process.exit(1);
   }
 
+  if (code !== 0) {
+    const failures = summariseFailures(output);
+    console.error("");
+    console.error("================ run-ci-batch: FAILED TESTS IN THIS BATCH ================");
+    if (failures.length === 0) {
+      // Exit code without a `not ok` line: a crash, an unhandled rejection, or a suite that died on import.
+      console.error("The runner exited non-zero but printed no `not ok` line. That usually means a suite failed");
+      console.error("to load, or the process died outside a test. The batch was:");
+      for (const file of files) console.error(`  - ${file}`);
+    } else {
+      for (const failure of failures) {
+        console.error(`  FAILED: ${failure.name}`);
+        if (failure.location) console.error(`          at ${failure.location}`);
+      }
+    }
+    console.error("=========================================================================");
+    process.exit(code ?? 1);
+  }
+
   // Node's runner prints "# skipped N" in the summary, not "# skip N".
   const skipped = Number(/^# skipped (\d+)$/m.exec(output)?.[1] ?? 0);
   const passed = Number(/^# pass (\d+)$/m.exec(output)?.[1] ?? 0);
-
-  if (code !== 0) process.exit(code ?? 1);
 
   if (skipped > 0) {
     // Name the suites so the fix is obvious: the skip reason is printed by each suite above this line.
