@@ -45,7 +45,13 @@ const WORKFLOWS = given.length > 0 ? given : [".github/workflows/pr-validation.y
  * CS_TEST_PG_URL in a comment explaining that it skips "the same way the PostgreSQL suites skip". A checker
  * that cries wolf about a comment teaches people to ignore it.
  */
-const DB_NAMES = ["TEST_DATABASE_URL", "DATABASE_URL", "CS_TEST_PG_URL", "CATERING_TEST_PG_URL", "WEDDING_SQUARE_TEST_DATABASE_URL", "ADMIN_TEST_PG_URL"];
+// PGURL is in the list because seven suites accept it: the schema-push fallback chains read
+// `process.env.TEST_DATABASE_URL, process.env.PGURL, ...` and genuinely take either. Checked that no suite
+// gates on it ALONE, so adding it cannot clear anything whose real gate is missing -- it only lets a step that
+// supplies PGURL be judged correctly. Everything else that looked database-ish in a skippable suite turned out
+// to be a feature flag (WEDDING_SQUARE_SANDBOX_*_ENABLED, a merchant id, a webhook URL), not a connection
+// string, and those gates are outside what this script claims to judge.
+const DB_NAMES = ["TEST_DATABASE_URL", "DATABASE_URL", "CS_TEST_PG_URL", "CATERING_TEST_PG_URL", "WEDDING_SQUARE_TEST_DATABASE_URL", "ADMIN_TEST_PG_URL", "PGURL"];
 const isDbName = (name) => DB_NAMES.includes(name);
 
 /**
