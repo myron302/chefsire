@@ -81,7 +81,39 @@ a red one.
 
 ## State
 
-Updated 2026-11-27 by Claude.
+Updated 2026-11-28 19:45 UTC by Claude (session `…01M8KhTB`). Condition 4 came OFF the met list this run; read
+that section before trusting any **MET** here.
+
+### Status to GPT, 2026-11-28 12:40 UTC (session `…01M8KhTB`)
+
+**Confirming the channel finding below, from a second run:** there is still no ChatGPT connector in this
+environment — the MCP registry has none — and no way for a scheduled cloud run to reach GPT except this file
+and #1536. **That is now two runs that could not report to GPT as the prompt asks**, which makes it a process
+gap rather than one run's bad luck. Somebody should either give GPT a channel that works from here (an issue it
+watches, a label, a comment convention) or change the instruction. Until then every run's status lands in a
+file GPT has to be told to read.
+
+**Done this run:**
+
+- **#1543 merged.** Batch-7 eliminations plus the Owner-column rule, docs only, first-run green on all six
+  jobs, Codex clean at `7121a2b1`.
+- **#1546 opened — the one GPT should look at.** Done-condition 4 is **not met**: `GET
+  /challenges/:slug/submissions` had no auth middleware at all and hydrated every submitted drink for every
+  caller, and `POST /challenges/:slug/join` wrote a caller-supplied slug with no entitlement check. One member
+  entering a withheld premium drink into a challenge published it to anonymous callers. Found by doing the
+  write-path audit this file had listed as not done since #1530.
+- **#1545 opened.** The batch-7 timing hypothesis #1543 left open: a 600ms wall-clock cliff in
+  `api-init-isolation.test.ts`. Fixed without weakening any assertion — and the first attempt *did* weaken one,
+  which is written up in the PR because the method matters more than the fix.
+- **#1541:** contributed `d6cae344` (the empty-value false clean) and handed the row back when its original
+  session resumed. Not mine.
+- **Batch 7 run three more times against a fresh database each time:** 351 / 0 / 0. Nine failed reproductions.
+
+**What GPT owns, and it has not moved in eight days:** PRs **#1515** and **#1517**. See below.
+
+**What nobody owns and somebody should:** `POST /challenges` has no authorization of any kind — any member can
+create site-wide content. #1546 closes the paid-content path it opened, but the open-creation question is a
+product decision, not a bug fix.
 
 ### Status to GPT, 2026-11-28 00:20 UTC
 
@@ -129,7 +161,117 @@ caffeine figure a caffeinated drink is built around does not persist. That needs
 | The last suite outside CI | **PR #1538** | A directory literally named `the __tests__`, tracked since before any of this, holding a Jest-style suite that could never run: it imports `../src/storage` (no `src/`) and uses `describe`/`it`/`expect` with no Jest or Vitest in the project. Its subject — what `storage.createRecipe` actually writes — had no direct coverage either. Replaced by `server/lib/recipe-create-persistence.postgres.test.ts`, in CI, three mutations of `storage.ts` each caught by the right test. Codex asked to look hard at the deletion specifically |
 | Custom drink payloads | **#1514**, new commit | Codex's P2 answered by extraction rather than argument; six mutations, each caught by the assertion that should catch it |
 
-### Done-condition 4 is met
+### Done-condition 4 was recorded as met, and a tenth read route was never counted
+
+**Read this before trusting any "MET" in this file.** The paragraph below is what #1530 established and it still
+holds. What it did NOT establish is the thing the heading used to claim, and the gap was in this file's own
+"known and not yet done" list the whole time: *"`POST /collections/:id/items` is fixed in #1530; no other write
+path has been audited for the same shape."* Somebody finally audited them on 2026-11-28, and the shape was in
+the challenge feature twice:
+
+- `POST /challenges/:slug/join` takes `drinkSlug` from the body, resolves it with `resolveDrinkDetailsBySlug`
+  -- which takes no viewer and judges nothing -- and inserts it as a submission. The same hole #1530 closed on
+  collection items.
+- `GET /challenges/:slug/submissions` had **no auth middleware at all**, and hydrated name, image, route,
+  category and subcategory for every submitted slug, for every caller, with no viewer.
+
+So one member entering a withheld premium drink into an active challenge **published that drink to every
+anonymous caller**. **PR #1546** gates both with the same `withheldPremiumSlugsForViewer` the read routes use,
+drops a withheld submission rather than blanking it (the slug is itself the secret -- Greptile's P1 on #1530),
+and proves all four protections by mutation. Condition 4 holds again when it lands, and not before.
+
+**Audited in the same pass and found sound:** `POST /bundles/:id/items` (the collection must be yours and
+premium-purchase), `POST /collections/:id/reviews` (requires current ownership), `POST /collections/:id/wishlist`
+(public-or-owner, and is *for* collections you do not own by design). Those three still stand.
+
+**The fourth does not, and the word "sound" was the problem.** `POST /collections/:id/apply-promo` was listed
+as "public-or-owner, pricing only" on reasoning, without reading `resolveValidPromotionPricing`. Read since: as
+a *paid-content* question the verdict holds -- it returns the promotion row and a pricing object derived from
+`collection.priceCents`, no items and no slugs, for a collection whose price is already public. But it is an
+**unauthenticated promo-code oracle**: `optionalAuth`, no rate limiting, and four distinguishable answers --
+404 "not found for this collection", 403 "not valid for this collection", 400 "inactive, expired, or fully
+redeemed", and 200 with the discount. An anonymous caller can enumerate codes against any public premium
+collection and learn which exist and what they are worth.
+
+That is abuse and revenue leakage, not a condition-4 disclosure, so **it is open and unowned rather than
+fixed** -- no run has touched it, and it does not block condition 4. It is written here because "sound" in this
+file has now been wrong three times out of seven, and the one thing worse than an open item is a closed one
+that is not.
+
+#### And two things this file said were sound were not, both disproved within hours
+
+The first version of this section also said: *`POST /challenges` writes an ungated `originalDrinkSlug` but only
+`getCanonicalDrinkBySlug` ever reads it, so a premium slug there hydrates to null -- ungated and not a
+disclosure*, and *`POST /submit` writes an ungated `remixedFromSlug`, which the remix-chain route already cuts
+per viewer*. **Codex disproved both on #1547, the PR that wrote them down**, and a third of the same kind turned
+up next to them:
+
+| what was claimed sound | why it was not |
+| --- | --- |
+| `POST /challenges` / `originalDrinkSlug` | `GET /challenges` selects that column explicitly and `GET /challenges/:slug` returns `...challenge`. Returning `canonicalDrink: null` does not unsay the slug sitting beside it |
+| `POST /submit` / `remixedFromSlug` | `GET /user/:slug` gates the slug that was ASKED for and then spreads `...recipe`, parent included. The remix-chain route does cut the lineage; that is a different route |
+| not claimed, found by asking | `resolveCollectionWithItems` -- the single boundary EVERY collection route goes through -- serialized each item's remix parent twice. A preview item is public on purpose; its parent is a different drink and may be paid. The widest of the three |
+
+**PR #1548** fixes all three the same way -- the reference is cleared and the carrier kept -- and then found a
+**fourth** reader of the challenge field by answering its own review question instead of leaving it:
+`POST /challenges/:slug/join`, called with no `drinkSlug`, returned the whole challenge *and* built the slug
+into a `submitRoute` query string. Two copies in one response, each with its own mutation, because gating
+either alone leaves the other leaking. Eight mutations in all.
+
+**That is twice in two PRs that the review questions found more than the review did**, which is worth stating
+as method rather than as luck: on #1546 the question "is there a third place this output reaches a response
+with the parent intact?" found the collection boundary, the widest instance of the lot. **Ask them, then answer
+them yourself.**
+
+**The method error is the part to keep, because one wrong question produced thirteen disclosures across three
+PRs.** Every wrong claim was reasoned from what a route *computes*. A disclosure is about what a route
+*serializes*. The question that would have caught every instance is **"which slugs appear in this response, and
+was each one judged?"**
+
+**That question now exists as a test**, on #1548, and it is the most useful thing to come out of the day. It
+plants ONE withheld premium slug in every reference position the schema allows -- a public recipe remixed from
+it, that recipe in a public collection, a challenge pointing at it, a submission naming it, view events for it
+-- then calls every parameterless GET in `drinks.ts` anonymously and as a non-entitled member, and asserts the
+slug appears in none of them. **Its first run found two routes nobody had found**, after eight instances had
+already been found by reading routes one at a time: `/creators/leaderboard` and `/creators/trending` both
+compute a `topDrink` over every recipe a creator has, with no viewer.
+
+Three properties of it are worth copying to any future gate here:
+
+- **A route that answers non-200 is REPORTED, not skipped.** Two came back 500 because the harness never built
+  tables they read. A sweep that quietly passes over what it cannot reach is the vacuous test this campaign
+  keeps finding -- and one test on that same branch had already failed on a 500 rather than on the disclosure
+  it existed to catch.
+- **Routes fixed on a branch it cannot depend on are a TRIPWIRE, not a skip list.** The three #1546 fixes are
+  asserted to *still leak*; the day one stops, the assertion fails and names what to do. A skip hides, a
+  tripwire reminds.
+- **A strict default hides a forgotten viewer.** The new gates default to "no viewer", which is the safe
+  direction -- but hard-coding that default passed every disclosure assertion, because under-reporting
+  discloses nothing. The sweep only caught it once it also asserted that an owner still sees their own drink.
+  **Every gate in this file now has that blind spot**, and each needs its own "the entitled still see it" half.
+
+**The rule underneath it, from Greptile's P1 on #1530, is now stated once here rather than re-learned:
+a reference slug is a slug.** The slug is what the recipe route takes, so it is the secret. Every slug in a
+response needs the viewer applied, not only the one the route is named for.
+
+**Tables that store a caller-supplied drink slug -- FOUR, not three**, and the fourth was Codex's P1 on #1546:
+`drink_collection_items` (#1530), `drink_challenge_submissions` (#1546), `drink_recipes.remixed_from_slug` /
+`challenge_slug`, and **`drink_events.slug`** -- which `POST /events` wrote after checking only that the recipe
+existed, and which `/trending`, `/trending/by-category` and `/recommended` all group by with no restriction.
+That set came from the **schema columns**, which is also how the fourth was missed: `drink_events.slug` *is*
+such a column, and the real method was "columns I recognized". A slug inside a `jsonb` payload would not have
+appeared either. Enumerating the READERS -- every call site of `resolveDrinkDetailsBySlug` and
+`resolveDrinkDetailsMapBySlugs` -- turned out to be the better list, and it is what found the `/recommended`
+instance that Codex had not named.
+
+**`POST /challenges` has no authorization of any kind** and is still left alone: any authenticated member can
+create a site-wide challenge (`insertDrinkChallengeSchema.parse(req.body)` straight into an insert). The table
+has no owner column so it is not mass assignment, and #1546 and #1548 between them gate every reader of the
+field it let a member write -- but it is now the second time that route's openness has produced a disclosure,
+and somebody should decide whether creating global content is meant to be open. **That is a product decision,
+not a bug fix, which is why no run has made it.**
+
+### What #1530 did establish
 
 **#1530 merged at 00:28 on a green run** (CI run 46085612664, head `2b54b5e8`). Paid drink-collection items are
 reachable only by the people entitled to them, across nine read routes and one write path, and the proof is a
@@ -251,18 +393,29 @@ is the other half of not colliding.
 | # | Condition | State |
 | --- | --- | --- |
 | 1 | Every suite in CI, or listed with a reason | **NOT met.** Names match, but 607 named tests never run: a missing `TEST_DATABASE_URL` makes them skip and node exits 0. #1541 fixes it and adds a checker. See below |
-| 2 | No suite passes while asserting nothing, and none fails at random | **Not met, and it is the live one.** Four instances of the first kind were found and fixed in two days (#1526's two holes, #1514's fixture, #1530's racy fixture); one flake is open and unnamed (batch 7, below); and the sweep that would find the rest needs a tool nobody has written |
+| 2 | No suite passes while asserting nothing, and none fails at random | **The flake half is SOLVED; the vacuous half has a tool at last.** Batch 7 named itself and was a false assertion about a race -- fix in **#1549**, which quantified it at 16/30 and replaced it with three order-explicit tests. And the route sweep merged in #1548 found **two vacuous legs of an existing audit** as a side effect: `drink_events` could never be inserted into, so the `/trending` and `/recommended` legs had been asserting that nothing leaked from nothing. What remains is `audit-assert-coverage.mjs` (#1540) settling what it claims to prove. Earlier instances, all fixed: #1526's two holes, #1514's fixture, #1530's racy fixture |
 | 3 | A signed-in member can complete every journey on the live site | **Blocked on Myron** — needs a session, which needs his password |
-| 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **MET** by #1530. Nine read routes, one write path, every protection confirmed by breaking it |
+| 4 | Paid content reachable only by the entitled, proved by a test that fails when the gate is removed | **NOT met, and it is now ONE PR away.** #1530 was right about the nine read routes it covered. Then a tenth (`GET /challenges/:slug/submissions`, no auth middleware at all) and an ungated write, then `drink_events` with three leaderboards reading it (Codex's P1) → **#1546, still open, `…01M8KhTC`'s**. Then six readers serving an ungated *reference* slug, two of them disproving claims this file had just made, plus two more found by a tool → **#1548, MERGED**. **Thirteen routes in one day.** Condition 4 holds when #1546 lands; the lesson is in the section below, not in the count |
 | 5 | Square billing live-capable but not live, and turning it on is Myron's act | Unchanged. The sandbox-acceptance deployment is a separate, earlier stop and also his |
 | 6 | Closure and retention implemented to the matrix his accountant signs off | **Blocked on Myron's accountant.** Two migrations written and unapplied |
 
-So: **one met**, one a merge away (#1541), two blocked on Myron with the work already done, one unchanged, and
-condition 2 partly moved — its floor is now gated by `audit-assert-coverage.mjs`, and one flake is still open
-and unnamed.
+So, as of 2026-11-28 19:45 UTC: **none met**, two a merge away (#1541, #1546), two blocked on Myron with the
+work already done, one unchanged. Condition 4 came OFF the met list this run, which is the second time
+in two days a confident **MET** in this file did not survive somebody checking it. Both times the check was
+cheap and nobody had run it.
 
-A run starting cold should: merge #1541 and #1540 if they are green, then chase the batch-7 flake with the
-failure summary that now names it.
+**And then the count kept rising for eight more hours.** Condition 4 started the day recorded as MET. By the
+end of it, **thirteen routes** had been found disclosing paid content or a reference to it, across three PRs,
+and the last two were found by a tool rather than by a person. That is not thirteen separate mistakes — it is
+one wrong question asked thirteen times, and the question is written up under condition 4 below. **If you are
+about to write MET against anything in this file, the thing to ask is not "did I check?" but "what would have
+caught this if I were wrong?"**
+
+**A run starting cold should:** take **#1546** first — it is the last open security item and the only thing
+still unmetting condition 4 — then **#1549** (the batch-7 fix), then #1547. #1545 and #1548 are merged. Look at #1541 and #1540 only after reading the Owner
+column *and* re-fetching their branches. **By 18:30 UTC on 2026-11-28 four Claude sessions had been live on
+this repository in one day** (`…T9vcsr8u`, `…01M8KhTD`, `…01M8KhTB`, `…01M8KhTC`), and #1546 changed hands once.
+Re-fetch before you assume anything about who holds what.
 
 ### In flight
 
@@ -270,17 +423,40 @@ failure summary that now names it.
 | --- | --- | --- | --- |
 | ~~Custom drink save prefix~~ | ~~PR #1514~~ | **Merged**, green on all six jobs. GPT's fix, plus the four payloads extracted so the pages and the test share one definition — Codex's P2 answered by code and six mutations | — |
 | ~~Recipe create persistence~~ | ~~PR #1538~~ | **Merged**, green. Closed done-condition 1 and added the `run-ci-batch.mjs` failure summary. Note for every future run: `rerun_failed_jobs` returns **403** for this integration, so CI can only be re-triggered by a real commit, never an empty one | — |
-| Silent-skip fix and checker | **PR #1541** | 607 tests CI names and has never run, plus the nested-failure hole Codex found on #1538. Both fixed. The checker took **four versions** — bare text (flagged a comment), regex on `process.env.NAME` (cleared a suite that only *assigns* the name: Codex's second finding, a silent green waved through by the checker), AST reads-only (flagged a test *titled* "…is skipped"), and the current one. It has its own 8-test suite with seven mutations, one of which passed at first because my fixture was vacuous. Merge on green | Claude `…T9vcsr8u` |
-| Assert-coverage audit | **PR #1540** | **Taken by session `…TD6mAsTkV`**, which answered both of Codex's findings on it — lexical helper scoping, and `skip` only counting when unconditionally truthy, which widened the gate by 19 blocks — and gave the tool its own suite with five mutations. Leave it to that session | Claude `…TD6mAsTkV` |
-| Record correction | **PR #1539** | Condition 1 unmarked, with the per-batch numbers and the ffmpeg exception listed. Merge on green | Claude `…T9vcsr8u` |
-
-Two sessions have now worked this repository at the same time twice, and the second time it went well because
-the Owner column was used. `…TD6mAsTkV` took #1540 and finished Codex's findings on it properly; this session
-stayed off it and took #1541 instead. **That is the pattern: claim the row before you start, and read the
-column before you pick.**
+| ~~Reference-slug disclosures and the sweep~~ | ~~PR #1548~~ | **MERGED**, first-run green, Codex clean on the sweep commit. Six ungated readers of a reference slug closed, and **the sweep is the lasting part** — "which slugs appear in this response, and was each one judged?" now exists as a test, and found two routes nobody had found on its first run. **It contains a deliberate tripwire for #1546**: the three `/trending`-family routes are asserted to STILL leak, so when #1546 lands its CI fails with an instruction to delete `LEAKING_ON_1546` and move those three into `SWEPT_ROUTES`. `…01M8KhTC` has been told, on #1546 | — |
+| Challenge-submission paid-content leak | **PR #1546** | **Changed hands.** `…01M8KhTB` opened it and answered Codex's P1 (`drink_events` + three leaderboards) and P2 (hydrated remix parent); `…01M8KhTC` took it at 18:22 UTC after six hours' silence and pushed `8380d2f0`, answering the `/trending` refill finding — filtering after `LIMIT 10` could return a BLANK leaderboard rather than a short one. **It is `…01M8KhTC`'s row**; the handover and one relayed finding are on the PR | Claude `…01M8KhTC` |
+| ~~The batch-7 timing hypothesis~~ | ~~PR #1545~~ | **Merged**, first-run green on all six jobs — not a re-run, which matters while the batch-7 flake is open. The 600ms cliff in `api-init-isolation.test.ts` is gone and no assertion was weakened; the first version of the change **did** weaken one, and the write-up of *how that was caught* is the part worth reading. Batch 7 itself was green in that run | — |
+| The sweep | **PR #1548**, second half | **The mechanical answer to this whole class, and it works.** One withheld slug planted in every reference position, every parameterless GET in `drinks.ts` called anonymously and as a non-entitled member, assert it appears in none. **First run found two routes nobody had found** — `/creators/leaderboard` and `/creators/trending` compute a `topDrink` over every recipe a creator has with no viewer, so a creator's paid drink could become their public top drink. Eight instances of this class had been found by reading routes one at a time; the sweep found two more immediately | Claude `…01M8KhTB` |
+| Silent-skip fix and checker | **PR #1541** | **Live again — hands off.** `…T9vcsr8u` resumed at 11:57 UTC after four hours quiet and is on its fifth and sixth rounds of Codex findings. `…01M8KhTB` claimed it at 11:53 reading the silence as "finished", pushed `d6cae344` (the empty-env-value false clean, four mutations), and handed it straight back when the owner reappeared — the owner had built on that commit rather than around it, so nothing collided. Four Codex findings open, and they look like **one** bug: every path where the tool cannot resolve something returns an empty set with `opaque: false`, which the caller reads as *safe* rather than *undeterminable*. The number that decides whether to fix it as one rule or four resolvers is how many of the 514 named suites would become undeterminable hits, and that is one run of the script away | Claude `…T9vcsr8u` |
+| Assert-coverage audit | **PR #1540** | **Live — hands off.** `…01M8KhTD` (the session the earlier entry called `…TD6mAsTkV`) is on round five: **twelve** Codex findings, pushed `f6b1cd02` at 11:58 UTC. Four are open at head, all of the same family — proving an assertion is *reachable* needs interprocedural analysis, so a probe will always exist. Whoever next picks it up should decide **in writing** what the tool claims before answering a thirteenth: for this tool a missed vacuous test is cheap and a false hit breaks CI on a valid test, which is the **opposite** of `audit-ci-skips.mjs`, where a false clean is the expensive one. Those two gates should not be tuned in the same direction | Claude `…01M8KhTD` |
+| ~~Record correction~~ | ~~PR #1539~~ | **Merged.** | — |
 | ~~Rendering smoke check~~ | ~~PR #1526~~ | **Merged.** Both holes re-verified here rather than taken from the original run — the feed column lays out 5 of 11 media elements, so a page-wide floor of 3 was cleared by chrome alone; and `--primary: 18 100% 60%` (hsl wrapper dropped) **passes** on main's `color` probe and **fails** on this branch's `background-color` one. Nobody but Greptile ever reviewed it; Codex asked. Merge on its last job plus that pass | Claude |
 | Search Intelligence | unpublished, Codex local | Codex is unblocked as of 27 Nov: Plesk tracks `main` with automatic deploy, so a feature-branch push cannot deploy. It is publishing draft PRs with both feature flags default-off | Codex |
 | Barcode lookup fixes | PRs #1515, #1517 | drafts since 23 Nov; GPT to say whether they are finished or need work | GPT |
+
+(The paragraph that used to sit in the middle of this table, splitting it in two, has moved below where it
+belongs. A broken table is a small thing; a broken table in the file every run reads first is not.)
+
+#### The Owner column, third version: staleness is not a lock either
+
+Three sessions have now overlapped on this repository. The rule has been rewritten twice and needed it both
+times:
+
+1. **First version:** have an Owner column. It existed and was not used for claiming, and two sessions both
+   picked up #1530 and commented minutes apart.
+2. **Second version (#1543):** claim the row **before** doing the work, because a row claimed afterwards is a
+   record and not a lock. Two sessions had still built the same silent-skip checker ten minutes apart, both
+   honouring the column, because the claim landed at 06:14 while the other was already deep in it.
+3. **Third version, 2026-11-28:** **a claim cannot tell a paused session from a finished one.**
+   `…01M8KhTB` claimed #1541 at 11:53 having reasoned that four hours of silence meant the session was over.
+   It was not — `…T9vcsr8u` resumed at 11:57 and pushed twice. Nothing was lost, because it built on the
+   commit rather than around it and the row was handed straight back, but the reasoning was wrong and the next
+   one may not be so lucky.
+
+**So: say which head you are on and when.** That is what actually resolved it — the 11:57 comment naming
+`fdd51194` is how the other session learned within four minutes that the row was alive. A claim says who
+*intends* to work; a head and a timestamp say who *is*. Write both, and re-fetch the branch immediately before
+each push.
 
 ### Corrected, so nobody spends another session on it
 
@@ -324,7 +500,95 @@ write "this is sound" into this file, say which paths you checked, and never wri
 The same applies to `square-plaintext-finalization-durability.postgres.test.ts`, carried as "9 pass / 1 fail":
 it runs in that same green job. Re-measure before believing a failure count in any queue, including this one.
 
-### Open and owned: batch 7 of 17 failed once, at random, and nobody has named it
+### CLOSED: batch 7 named itself, and the flake was a false assertion about a race
+
+**Solved on 2026-11-28 at 19:08 UTC, and the failure summary is what solved it.** Everything below this
+heading is the history of not finding it; the finding took twenty minutes once the test had a name.
+
+It fired on **#1547 -- a documentation-only PR**, so nothing in the diff could have caused it. CI run
+`46179328729`, job `141085085901`, 350 pass / 1 fail of 351, and the name sat at the END of the log where a
+40-line tail reaches it:
+
+```
+================ run-ci-batch: FAILED TESTS IN THIS BATCH ================
+  FAILED: payable cap: a stale form that was valid when it opened is still
+          rejected by the server after a concurrent credit
+```
+
+**The cause**, in the last three lines of that test in
+`server/routes/catering-billing-adjustments-http.test.ts`:
+
+```ts
+const [credit, payment] = await Promise.all([ adjust(credit 20000), pay(invoiceId, "500.00") ]);
+assert.equal(payment.status, 409, "500 against a 300 balance, whichever order the two commit");
+```
+
+*Whichever order the two commit* is **false**, and the flake was it coming true:
+
+| order | balance when the payment commits | result |
+| --- | --- | --- |
+| credit first | 300 | 500 refused -> **409** |
+| **payment first** | 500 | 500 is exactly the balance -> **200** |
+
+Reproduced by forcing each order instead of racing: credit-first gives 409 every time, payment-first 200 every
+time. **Both are correct.** `/billing/payments` takes `lockBilling` and re-resolves the cap inside the
+transaction, so the two requests serialise at the database and whichever wins sees the balance as of its own
+commit. Locally the credit always wins; under CI contention the payment sometimes does. **One run in a
+hundred, exactly as recorded.**
+
+**A wrong expectation, not a hidden defect** -- and the second leg of that is the convincing one: the
+order-independent invariant was **already tested in the same file on the same racing pair**. `payable
+allocation: a stale form and sibling payments racing a credit can never record more than the allocated
+receivable` asserts `ledgerPayments === (payment.status === 200 ? 1 : 0)` and deliberately does not assert
+which status comes back. Somebody had written the correct version of the assertion next door.
+
+**THE FIX IS #1549, NOT #1551.** Two sessions found this race within an hour of each other. `…T9vcsr8u`
+(#1549) got there first and did more with it; `…01M8KhTB` (#1551) had the CI evidence that it was *this* test.
+**#1551 is closed as a duplicate and its evidence is relayed on #1549.** The reasons #1549 is the better fix,
+recorded because the difference is instructive:
+
+- **It quantified the race**: 30 trials on 30 fresh bookings, **16 refused / 14 accepted**. Forcing each order
+  proves order-dependence but not frequency, and frequency is what explains one-in-a-hundred in that slot
+  versus a coin flip in a loop. Its framing is the one to keep: *a race that is 50/50 under one timing profile
+  and lopsided under another is one latent defect, not two.*
+- **It keeps a correct racing test.** #1551 made the calls sequential and leaned on the sibling test 850 lines
+  away. #1549 replaces the racy assertion with three -- both orders pinned deterministically, plus a race test
+  asserting only the order-independent identities, including that the recorded row count matches the answer
+  the caller was given.
+- **Its mutations are on the domain functions** (obligation sign, credit ceiling, `refundPotentiallyDueCents`,
+  `cateringPayableCents`), not on the route's refusal line.
+- **It checked the suite's other 26 races**, and the reason it gives for leaving four of them alone is the most
+  transferable thing either PR produced: **20 identical trials cannot distinguish "order-independent" from
+  "one side nearly always wins"** -- which this very test proves. So those four are justified by mechanism
+  (a refund ceiling is money received; payable allocation is oldest-first), not by trial counts.
+
+**NOT an accounting question after all, and this file briefly said it was.** #1551 flagged the 20000 surplus
+when the payment wins as something for Myron's accountant. #1549 traced it instead: `cateringCreditCeilingCents`
+is **deliberately** the obligation rather than the obligation less receipts -- a goodwill credit to a customer
+who has already paid in full is a real thing a caterer does -- and the surplus is already reported as
+`refundPotentiallyDueCents`, documented as *"money the customer may be owed back. A prompt, never a claim a
+refund happened."* Refusing that credit would be the bug. **Nothing here goes to his accountant**, and the
+earlier line in this file saying it did was wrong. No server behaviour was changed by either PR.
+
+**Three things this cost that are worth keeping:**
+
+1. **Three runs hunted it blind and bought four eliminations and no cause.** The instrumentation found it on
+   its first occurrence. When a flake has no name, build the naming before the hunt.
+2. **The guess in this file was wrong for two days.** It said four realtime socket suites and four HTTP
+   suites binding servers, so a port or teardown race. It was a billing test with a false assertion. A
+   recorded guess reads as a lead; this one sent three runs the wrong way.
+3. **A mutation that changes nothing always passes.** The first attempt to mutate the cap check hit
+   `catering-booking-billing.ts:303` (the adjustments handler) instead of `:534` (payments), because a
+   first-match replace found the wrong one of two identical lines -- and the test passed, which looked like
+   evidence that the protection was gone. **Verify the mutation took effect before believing what it tells
+   you.**
+4. **Two sessions solved it in parallel and one PR was thrown away**, for the second time in one day (#1542
+   was the first). Both honoured the Owner column; the batch-7 row simply said "open and owned by nobody", so
+   both took it. **A row that is open is an invitation to two runs at once.** The fourth version of the rule,
+   if anyone wants one: when you start on an unowned row, claim it *and* say which head you are on, before the
+   first command.
+
+### The history, kept because the eliminations are still true: batch 7 of 17 failed once, at random
 
 This is condition 2's other half and it is live.
 
@@ -364,12 +628,25 @@ wrong direction, which is the whole failure this file exists to stop.
 | a fixed-port collision between two suites | All seven servers in the batch bind **port 0**, an ephemeral port the kernel assigns. `dm-socket-safety.test.ts` binds nothing at all |
 | an in-process race between two suites | `node --test` runs each file in its own child process. Two files cannot contend for an in-process resource; the only channels between them are the database, the filesystem and the OS |
 
-**Still open, and recorded as a hypothesis rather than a finding:** `api-init-isolation.test.ts:311-313`
-spins up to 500ms waiting for `inFlightDdl !== 0`, then sleeps a flat 100ms, then hard-asserts
-`inFlightDdl === 1`. If none of the forty requests reaches the initialization guard inside that budget, the
-assertion fails. Three runs under deliberate CPU starvation (six spinners on two cores) passed 11/11, so it is
-**not reproduced**, which is not the same as eliminated — the deadline is still in the test and nothing has
-shown that a CI runner always meets it. **Do not cross this one off.**
+**Was open as a hypothesis; the shape is now fixed in #1545, and still nobody has reproduced the flake.**
+`api-init-isolation.test.ts` spun up to 500ms waiting for `inFlightDdl !== 0`, then slept a flat 100ms, then
+hard-asserted `inFlightDdl === 1`. If none of the forty requests reached the initialization guard inside that
+~600ms, the assertion reported **"0 !== 1"** — the guard looking broken because the harness had run out of
+patience. Three runs under deliberate CPU starvation passed 11/11, so it was never reproduced and **#1545 does
+not claim to have found the batch-7 flake.** It removes the cliff regardless, because a 600ms wall-clock
+deadline in a test is a suite that fails at random whether or not it is *this* random failure, and that is half
+of done-condition 2.
+
+**The part of #1545 worth reading is the mistake in it.** The first version of the change replaced the flat
+sleep with a clock-free "no response has settled yet" check, reasoning that the sleep was scaffolding. A
+mutation of the production guard — fire initialization without awaiting it — then **passed** where it had
+previously failed. Measuring what the old test had actually caught it with showed
+`ddlFor("meal_plan_saves").length === 1`: a post-release assertion about DDL that had not finished running,
+failing on "0 !== 1" because the microtask order happened to fall that way. **The right mutation caught for
+the wrong reason, and by luck** — had the order fallen the other way, that mutation would have gone through
+silently all along. Both halves are stated as assertions now. The lesson for any test change in this
+repository: *run the mutation before AND after, because "this assertion was only scaffolding" is a claim about
+detection, and detection is measurable.*
 
 **The wrong model, corrected.** This file implied that CI runs the batches in sequence against one database,
 and recommended reproducing by running them that way. That is not the layout:
@@ -402,6 +679,11 @@ statements are two identical `UPDATE catering_booking_amendments SET currency = 
 like a retry or a double run. They are neither — line 550 of that suite sits inside a loop over two
 `[proposer, responder]` pairs. Nothing there.
 
+**The cold-database experiment has now been run, three times: 351 pass / 0 fail / 0 skip each, 113-125s.**
+That was the one cheap thing the corrected topology pointed at and nobody had tried — batch 7 alone against a
+database created fresh for each run, which five of the six earlier attempts could not test because they reused
+a populated one. **Nine failed reproductions now.**
+
 **Recommendation: stop hunting and let it catch itself**, but for a better reason than exhaustion.
 `run-ci-batch.mjs` now names every failing test at the end of the log, which was not in place when this fired.
 The next occurrence names the test for free, and with the corrected topology above it will point at something
@@ -414,7 +696,10 @@ was set up to stop.
 
 ### Known and not yet done
 
-- `POST /collections/:id/items` is fixed in #1530; no other write path has been audited for the same shape.
+- ~~`POST /collections/:id/items` is fixed in #1530; no other write path has been audited for the same
+  shape.~~ **Done on 2026-11-28.** The audit found the same shape in the challenge feature and a tenth
+  ungated read route with it; see condition 4 above and #1546. The remaining question is whether any drink slug
+  is stored inside a `jsonb` payload, which a schema-column search would not have found.
 - `server/routes/drinks.ts` holds about half the repository's type errors in one file.
 
 ### Condition 2 needs a tool nobody has written, and I did not fake one
