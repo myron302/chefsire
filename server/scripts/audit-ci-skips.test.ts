@@ -38,10 +38,20 @@ function run(
   jobEnv: Record<string, string> = {},
   /** Modules written beside the suites but NOT named by the workflow step -- imported gates live here. */
   modules: Record<string, string> = {},
+  /**
+   * Anything else the fixture needs on disk before the audit runs: a node_modules package, a tsconfig, a
+   * barrel chain. It receives the fixture ROOT, with `suites/` already created inside it.
+   *
+   * The fixture root is a fresh temporary directory with no tsconfig and no node_modules above it, so an
+   * unresolvable specifier really is unresolvable -- which is what makes the undeterminable tests mean
+   * something rather than depend on this repository's own layout.
+   */
+  prepare: (root: string) => void = () => {},
 ) {
   const dir = mkdtempSync(join(tmpdir(), "ci-skips-"));
   try {
     mkdirSync(join(dir, "suites"), { recursive: true });
+    prepare(dir);
     for (const [name, body] of Object.entries(modules)) writeFileSync(join(dir, "suites", name), body);
     const named: string[] = [];
     for (const [name, body] of Object.entries(files)) {
@@ -299,5 +309,300 @@ test("the `NAME:` form with nothing after it is empty too", () => {
   // shape a hand-edited workflow produces by accident.
   const r = run({ "a.test.ts": suite({ gate: "TEST_DATABASE_URL" }) }, { TEST_DATABASE_URL: "" });
   assert.equal(r.hits.length, 1, "a key with no value is not a connection string");
+  assert.equal(r.exit, 1);
+});
+
+/* ---------------------------------------------------------------------------------------------------------
+ * UNKNOWN IS NEVER SAFE.
+ *
+ * Codex's last four findings on #1541 were one bug seen four ways: when this script could not resolve
+ * something it returned no gate names, and no gate names was read as "safe". Each fixture below is a suite
+ * that really does produce 0 passes, 1 skip and exit 0, and each one the script cleared silently.
+ * ------------------------------------------------------------------------------------------------------- */
+
+/** A suite with no process.env read of its own, gated entirely on an imported binding. */
+const importedGateSuite = (spec: string) => [
+  `import test from "node:test";`,
+  `import { PG_URL } from "${spec}";`,
+  `if (!PG_URL) { test("skipped: requires CS_TEST_PG_URL", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+].join("\n");
+
+test("Codex on #1541: a gate behind a BARE PACKAGE specifier is not cleared", () => {
+  // The leading-dot test discarded every non-relative specifier with no trace, so a gate published as a
+  // package was invisible and the suite was reported safe. It is reported as undeterminable rather than
+  // named, because reasoning about a published package's exports is a different job from resolving this
+  // repository's own modules -- but it is reported.
+  const body = importedGateSuite("fake-harness");
+  const r = run({ "a.test.ts": body }, { TEST_DATABASE_URL: URL_LITERAL }, {}, {}, (root) => {
+    mkdirSync(join(root, "node_modules", "fake-harness"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "fake-harness", "package.json"), JSON.stringify({ name: "fake-harness", main: "index.js" }));
+    writeFileSync(join(root, "node_modules", "fake-harness", "index.js"), `export const PG_URL = process.env.CS_TEST_PG_URL;\n`);
+  });
+  assert.doesNotMatch(body, /process\.env/, "the suite must have no local read, or this proves nothing");
+  assert.equal(r.hits.length, 1, "a gate in a package is still a gate");
+  assert.equal(r.hits[0].undeterminable, true);
+  assert.equal(r.exit, 1);
+});
+
+test("an installed package that reads no database name anywhere is cleared on EVIDENCE, not assumption", () => {
+  // The noise direction, and the reason the rule above is affordable: 13 external packages are reachable from
+  // the suites in this repository and none of them reads a database name in code. If every bare specifier
+  // were undeterminable instead, the gate would fail on every suite that imports express.
+  const r = run({ "a.test.ts": [
+    `import test from "node:test";`,
+    `import { thing } from "harmless-pkg";`,
+    `const url = process.env.TEST_DATABASE_URL;`,
+    `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => { void thing; }); }`,
+  ].join("\n") }, { TEST_DATABASE_URL: URL_LITERAL }, {}, {}, (root) => {
+    mkdirSync(join(root, "node_modules", "harmless-pkg"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "harmless-pkg", "package.json"), JSON.stringify({ name: "harmless-pkg", main: "index.js" }));
+    writeFileSync(join(root, "node_modules", "harmless-pkg", "index.js"), `export const thing = process.env.NODE_ENV;\n`);
+  });
+  assert.deepEqual(r.hits, [], "a package that cannot be a connection-string gate must not make a suite undeterminable");
+  assert.equal(r.exit, 0);
+});
+
+test("a database name in a package's MARKDOWN is not a read", () => {
+  // @neondatabase/serverless shows `process.env.DATABASE_URL` in its README a dozen times and reads it
+  // nowhere in code. Scanning documentation would have made every suite importing it undeterminable -- the
+  // same mistake as the version of this script that cried wolf about a comment, one directory out.
+  const r = run({ "a.test.ts": [
+    `import test from "node:test";`,
+    `import { thing } from "documented-pkg";`,
+    `const url = process.env.TEST_DATABASE_URL;`,
+    `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => { void thing; }); }`,
+  ].join("\n") }, { TEST_DATABASE_URL: URL_LITERAL }, {}, {}, (root) => {
+    mkdirSync(join(root, "node_modules", "documented-pkg"), { recursive: true });
+    writeFileSync(join(root, "node_modules", "documented-pkg", "package.json"), JSON.stringify({ name: "documented-pkg", main: "index.js" }));
+    writeFileSync(join(root, "node_modules", "documented-pkg", "index.js"), `export const thing = 1;\n`);
+    writeFileSync(join(root, "node_modules", "documented-pkg", "README.md"), `const sql = neon(process.env.DATABASE_URL);\n`);
+  });
+  assert.deepEqual(r.hits, [], "documentation is not code");
+  assert.equal(r.exit, 0);
+});
+
+test("a package that is NOT INSTALLED cannot be judged, so it is reported", () => {
+  // Without the package there is nothing to read. Clearing it would mean the gate's answer depended on
+  // whether npm ci had run, which is the worst possible property for a gate to have.
+  const r = run({ "a.test.ts": importedGateSuite("absent-pkg") }, { TEST_DATABASE_URL: URL_LITERAL });
+  assert.equal(r.hits.length, 1);
+  assert.equal(r.hits[0].undeterminable, true);
+  assert.match(String(r.hits[0].unresolved), /absent-pkg \(not installed\)/);
+  assert.equal(r.exit, 1);
+});
+
+test("Codex on #1541: a gate behind a tsconfig PATH ALIAS is resolved and named", () => {
+  // Discarded by the same leading-dot test as the bare specifier. Resolving it rather than merely reporting
+  // it matters: `@shared/*` is reachable from four suites here, and reporting those as undeterminable would
+  // be four false alarms on a green repository.
+  const r = run({ "a.test.ts": importedGateSuite("@fx/harness") }, { TEST_DATABASE_URL: URL_LITERAL }, {}, {}, (root) => {
+    mkdirSync(join(root, "support"), { recursive: true });
+    writeFileSync(join(root, "tsconfig.json"), JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@fx/*": ["./support/*"] } } }));
+    writeFileSync(join(root, "support", "harness.ts"), `export const PG_URL = process.env.CS_TEST_PG_URL;\n`);
+  });
+  assert.equal(r.hits.length, 1);
+  assert.deepEqual(r.hits[0].wants, ["CS_TEST_PG_URL"], "resolved, not merely flagged");
+  assert.equal(r.exit, 1);
+});
+
+test("an alias declared in an EXTENDED tsconfig is followed, and a satisfied alias gate is not reported", () => {
+  // This is the repository's own shape: server/tsconfig.json is nearer to every server suite than the root
+  // one and declares no paths of its own -- it extends the root. Stopping at the nearest tsconfig turned four
+  // real, satisfied suites into undeterminable hits.
+  const r = run({ "a.test.ts": importedGateSuite("@fx/harness") }, { CS_TEST_PG_URL: URL_LITERAL }, {}, {}, (root) => {
+    mkdirSync(join(root, "support"), { recursive: true });
+    writeFileSync(join(root, "tsconfig.base.json"), JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@fx/*": ["./support/*"] } } }));
+    // The suites live in suites/, and THIS is the tsconfig nearest to them: it has no paths, only an extends.
+    writeFileSync(join(root, "suites", "tsconfig.json"), JSON.stringify({ extends: "../tsconfig.base.json" }));
+    writeFileSync(join(root, "support", "harness.ts"), `export const PG_URL = process.env.CS_TEST_PG_URL;\n`);
+  });
+  assert.deepEqual(r.hits, [], "the alias resolves through extends, and its gate is supplied");
+  assert.equal(r.exit, 0);
+});
+
+test("Codex on #1541: a barrel chain FOUR imports deep is followed", () => {
+  // The depth bound was 3, picked without evidence, and at the cutoff this returned empty sets with
+  // opaque: false -- so a longer chain was not merely unresolved, it was cleared.
+  const r = run({ "a.test.ts": importedGateSuite("./barrel1") }, { TEST_DATABASE_URL: URL_LITERAL }, {}, {
+    "barrel1.ts": `export { PG_URL } from "./barrel2";\n`,
+    "barrel2.ts": `export { PG_URL } from "./barrel3";\n`,
+    "barrel3.ts": `export { PG_URL } from "./harness";\n`,
+    "harness.ts": `export const PG_URL = process.env.CS_TEST_PG_URL;\n`,
+  });
+  assert.equal(r.hits.length, 1, "four hops is still four hops from a gate");
+  assert.deepEqual(r.hits[0].wants, ["CS_TEST_PG_URL"]);
+  assert.equal(r.exit, 1);
+});
+
+test("an import CYCLE terminates instead of recurring forever", () => {
+  // Removing the depth bound means cycle detection is the only thing that stops the walk. A suite whose
+  // harness imports a module that imports the harness back must still report its gate.
+  const r = run({ "a.test.ts": importedGateSuite("./harness") }, { TEST_DATABASE_URL: URL_LITERAL }, {}, {
+    "harness.ts": `import { other } from "./other";\nvoid other;\nexport const PG_URL = process.env.CS_TEST_PG_URL;\n`,
+    "other.ts": `import { PG_URL } from "./harness";\nexport const other = PG_URL;\n`,
+  });
+  assert.equal(r.hits.length, 1);
+  assert.deepEqual(r.hits[0].wants, ["CS_TEST_PG_URL"]);
+  assert.equal(r.exit, 1);
+});
+
+test("Codex on #1541: a binding exported by a SEPARATE export declaration is a gate", () => {
+  // `const PG_URL = process.env.CS_TEST_PG_URL; export { PG_URL };` exports the binding, but its
+  // VariableStatement carries no export modifier, so requiring the modifier dropped the read and cleared the
+  // suite. `export { X as Y }` names the local binding in propertyName, which is the one that matters.
+  const r = run({ "a.test.ts": importedGateSuite("./harness") }, { TEST_DATABASE_URL: URL_LITERAL }, {}, {
+    "harness.ts": `const RAW = process.env.CS_TEST_PG_URL;\nexport { RAW as PG_URL };\n`,
+  });
+  assert.equal(r.hits.length, 1);
+  assert.deepEqual(r.hits[0].wants, ["CS_TEST_PG_URL"]);
+  assert.equal(r.exit, 1);
+});
+
+test("Codex on #1541: `process.env[\"NAME\"]` is the same read as `process.env.NAME`", () => {
+  // The only one of the four that was a plain omission rather than unknown-is-safe reasoning: the dot
+  // visitor did not see a literal bracket access, and the undeterminable fallback explicitly excluded one,
+  // so both the wanted set and opaque stayed empty.
+  const body = [
+    `import test from "node:test";`,
+    `const raw = process.env["CS_TEST_PG_URL"];`,
+    `if (!raw) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { TEST_DATABASE_URL: URL_LITERAL });
+  assert.doesNotMatch(body, /process\.env\.[A-Z]/, "the fixture must use bracket notation only");
+  assert.equal(r.hits.length, 1);
+  assert.deepEqual(r.hits[0].wants, ["CS_TEST_PG_URL"], "named, not merely flagged");
+  assert.equal(r.exit, 1);
+});
+
+test("an ASSIGNMENT through bracket notation is not a read either", () => {
+  // The dot-notation rule, applied to the branch Codex asked for. Without it the fix would reintroduce the
+  // very first false clean: a suite that gates on one name and assigns another looking satisfied by the
+  // assigned one.
+  const body = [
+    `import test from "node:test";`,
+    `const raw = process.env.TEST_DATABASE_URL;`,
+    `if (!raw) { test("skipped", { skip: true }, () => {}); } else { process.env["DATABASE_URL"] = raw; test("real", () => {}); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { DATABASE_URL: URL_LITERAL });
+  assert.match(body, /process\.env\["DATABASE_URL"\] =/, "the fixture must assign through brackets");
+  assert.equal(r.hits.length, 1);
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"], "the assigned name is not an input");
+  assert.equal(r.exit, 1);
+});
+
+test("an UNRESOLVABLE relative import makes a suite undeterminable", () => {
+  // The general case of the rule, with nothing exotic about it: a specifier that points at no file on disk.
+  const r = run({ "a.test.ts": importedGateSuite("./missing-harness") }, { TEST_DATABASE_URL: URL_LITERAL });
+  assert.equal(r.hits.length, 1);
+  assert.equal(r.hits[0].undeterminable, true);
+  assert.match(String(r.hits[0].unresolved), /\.\/missing-harness/);
+  assert.equal(r.exit, 1);
+});
+
+test("an unknown does not clear a suite whose visible gate IS satisfied", () => {
+  // The decision rule itself, and the half that was wrong. A suite was only undeterminable when it had NO
+  // read at all, so an unresolvable import sitting beside a satisfied read was waved through -- which is how
+  // all three resolution findings could clear a suite rather than merely under-report it.
+  const body = [
+    `import test from "node:test";`,
+    `import { extra } from "./missing-harness";`,
+    `const url = process.env.TEST_DATABASE_URL;`,
+    `if (!url || !extra) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { TEST_DATABASE_URL: URL_LITERAL });
+  assert.equal(r.hits.length, 1, "a satisfied read does not license ignoring the part it cannot see");
+  assert.equal(r.hits[0].undeterminable, true);
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"], "and it says what it COULD see");
+  assert.equal(r.exit, 1);
+});
+
+/* ---------------------------------------------------------------------------------------------------------
+ * COMPUTED KEYS. Calling a resolvable thing unknown is how a gate becomes noise: treating every
+ * `process.env[k]` as unknowable made 33 real, satisfied Square suites undeterminable in one stroke.
+ * ------------------------------------------------------------------------------------------------------- */
+
+test("a computed key from an imported string CONSTANT is resolved, not feared", () => {
+  // `process.env[SECRET_BOX_KEY_ENV]` is the save/restore shape in 30 Square suites, and the name it holds is
+  // an encryption key, not a database. Reporting those would be 30 false alarms.
+  const r = run({ "a.test.ts": [
+    `import test from "node:test";`,
+    `import { KEY_ENV } from "./names";`,
+    `const url = process.env.TEST_DATABASE_URL;`,
+    `process.env[KEY_ENV] = "x";`,
+    `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n") }, { TEST_DATABASE_URL: URL_LITERAL }, {}, { "names.ts": `export const KEY_ENV = "SOME_ENCRYPTION_KEY";\n` });
+  assert.deepEqual(r.hits, [], "a knowable key that is not a database name changes nothing");
+  assert.equal(r.exit, 0);
+});
+
+test("and a computed key that resolves TO a database name is collected as a read", () => {
+  // The same mechanism in the direction that matters: if the constant names the gate, the gate is named.
+  const r = run({ "a.test.ts": [
+    `import test from "node:test";`,
+    `import { DB_ENV } from "./names";`,
+    `const url = process.env[DB_ENV];`,
+    `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n") }, { CS_TEST_PG_URL: URL_LITERAL }, {}, { "names.ts": `export const DB_ENV = "TEST_DATABASE_URL";\n` });
+  assert.equal(r.hits.length, 1);
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"], "resolved through the constant, and named");
+  assert.equal(r.exit, 1);
+});
+
+test("a callback parameter over an `as const` array of literals is resolved", () => {
+  // `const keys = [...] as const; const old = keys.map((k) => process.env[k]);` -- nine Wedding Square suites.
+  // The `as const` wrapper is an AsExpression, which the first version of the array reader did not see
+  // through, so these stayed undeterminable after the constant case was handled.
+  const r = run({ "a.test.ts": [
+    `import test from "node:test";`,
+    `const keys = ["SQUARE_ENV", "SQUARE_LOCATION_ID"] as const;`,
+    `const saved = keys.map((k) => process.env[k]);`,
+    `const url = process.env.WEDDING_SQUARE_TEST_DATABASE_URL;`,
+    `if (!url) { test("skipped", { skip: true }, () => { void saved; }); } else { test("real", () => {}); }`,
+  ].join("\n") }, { WEDDING_SQUARE_TEST_DATABASE_URL: URL_LITERAL });
+  assert.deepEqual(r.hits, [], "the keys are right there in the file");
+  assert.equal(r.exit, 0);
+});
+
+test("a helper that takes the NAME as a string is followed to its call sites", () => {
+  // Two things at once. The noise half: `withoutConfig(variable, fn)` driven by a for-of over literals is the
+  // catering shape, and it is knowable. The sound half: this closes a blind spot Codex raised on this PR and
+  // nobody had closed -- a gate read through a helper called with "TEST_DATABASE_URL" is now a read OF
+  // TEST_DATABASE_URL rather than a miss.
+  const r = run({ "a.test.ts": [
+    `import test from "node:test";`,
+    `function readEnv(name: string) { return process.env[name]; }`,
+    `const url = readEnv("TEST_DATABASE_URL");`,
+    `for (const other of ["SQUARE_ENV", "SQUARE_LOCATION_ID"]) { void readEnv(other); }`,
+    `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n") }, { CS_TEST_PG_URL: URL_LITERAL });
+  assert.equal(r.hits.length, 1, "the gate is read through the helper");
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"], "and the helper's literal argument names it");
+  assert.equal(r.exit, 1);
+});
+
+test("ONE unknowable call site poisons the whole parameter", () => {
+  // If any caller passes something this tool cannot evaluate, the parameter is unknowable and the suite is
+  // reported. Otherwise the computed-key resolution above would be a new way to clear a suite quietly, which
+  // is the whole bug this change exists to remove.
+  //
+  // The fixture needs BOTH a knowable and an unknowable call site, and that is not a stylistic choice. My
+  // first version had only the dynamic one, so the collected set came out empty and the empty-set branch
+  // excluded it anyway: removing the `unknown` flag from the script changed nothing and the mutation went
+  // uncaught. A test passing for the wrong reason, in the suite for a tool built to find exactly that --
+  // the third time that trap has been hit on this branch. With a knowable site present, dropping the flag
+  // resolves the key to "SQUARE_ENV", finds no database name, and clears a suite that skips.
+  const body = [
+    `import test from "node:test";`,
+    `function readEnv(name: string) { return process.env[name]; }`,
+    `void readEnv("SQUARE_ENV");`,
+    `const chosen = String(Math.random());`,
+    `const url = readEnv(chosen);`,
+    `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n");
+  const r = run({ "a.test.ts": body }, { TEST_DATABASE_URL: URL_LITERAL });
+  assert.match(body, /readEnv\("SQUARE_ENV"\)/, "one call site must be knowable, or the flag is not what is tested");
+  assert.match(body, /readEnv\(chosen\)/, "and one must not be");
+  assert.equal(r.hits.length, 1);
+  assert.equal(r.hits[0].undeterminable, true, "unknowable means reported, not cleared");
   assert.equal(r.exit, 1);
 });

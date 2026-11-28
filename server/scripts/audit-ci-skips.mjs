@@ -23,23 +23,46 @@
  * comes from a secret or an expression this does not evaluate. It is a floor, like the other audits here --
  * it catches the class that has actually bitten, and says so rather than implying more.
  *
- * THREE LIMITS, MEASURED RATHER THAN FEARED. Each was a review question on #1541 that I answered by scanning
- * the repository instead of leaving it as a caveat:
+ * UNKNOWN IS NEVER SAFE, which is the one rule that replaces four resolvers. Codex found four more false
+ * cleans on #1541 and they were all the same line of reasoning: when this script could not resolve something
+ * it returned an empty set of gate names, and the caller read an empty set as "this suite has no gate", i.e.
+ * as safe. A bare package specifier was dropped silently; a traversal that hit the depth bound of 3 returned
+ * nothing; an exported binding whose declaration carried no `export` modifier was dropped; and
+ * `process.env["CS_TEST_PG_URL"]` was neither collected nor flagged. Each one cleared a suite that really did
+ * produce 0 passes, 1 skip and exit 0 -- the exact silent green this script exists to catch.
  *
- *   - a gate behind a PATH ALIAS (`@/test-support/...`) or a bare package specifier is not followed. No test
- *     file imports a gate that way today.
- *   - a gate reached through a RE-EXPORT (`export { PG_URL } from "./harness"`) may not be seen. No gate
- *     constant is re-exported today.
- *   - the import walk is bounded at depth 3. The deepest hop at which an exported gate read actually occurs in
- *     this repository is 1 -- every gate is one import from the suite that uses it.
+ * So: anything unresolvable now makes the suite UNDETERMINABLE, and an undeterminable suite is reported. The
+ * resolvers below exist to keep that from being noisy, not to decide safety:
  *
- * So all three are real in principle and unexercised in practice. If one of them becomes exercised, the gate
- * will go quiet rather than loud, which is the expensive direction: re-run these scans before trusting it.
+ *   - relative specifiers, tsconfig `paths` aliases (read from the nearest tsconfig.json) and installed
+ *     packages are resolved and followed;
+ *   - a `node:` builtin is ignored, because a builtin cannot export a connection string;
+ *   - an installed package is ignored only after its own code is scanned and found to contain no
+ *     `process.env.<DB name>` read at all -- evidence rather than assumption;
+ *   - the import walk is no longer bounded by depth, only by cycle detection, so a barrel chain of any length
+ *     is followed;
+ *   - and anything left -- an unresolvable relative path, an alias with no tsconfig, a package that is not
+ *     installed, a package that does read one of these names, a dynamically-read gate -- is reported.
+ *
+ * The mirror of that rule is that calling a RESOLVABLE thing unknown is how a gate becomes noise, and a gate
+ * nobody reads is how the silent skips got four days of green. So computed keys are resolved rather than
+ * feared -- `process.env[SECRET_BOX_KEY_ENV]`, `keys.map((k) => process.env[k])` over an `as const` array,
+ * and a `readEnv(name)` helper followed to its call sites. Treating all three as unknowable reported 33 real,
+ * satisfied Square suites. Following the helper also closes a blind spot that was open the whole time: a gate
+ * read through a helper called with "TEST_DATABASE_URL" is now a read OF that name rather than a miss.
+ *
+ * Measured on this repository at the time of the change: 130 candidate suites, 285 modules reached, 9 alias
+ * specifiers (all `@shared/*`), 13 external packages, and ZERO of those packages reads a database name in
+ * code (the two matches in @neondatabase/serverless are in its README). The honest rule therefore costs no
+ * noise here -- and that number, not an argument, is what decided its shape. Re-measure it before trusting
+ * this paragraph: if it ever reports a satisfied suite as undeterminable, the answer is a better resolver,
+ * never a quieter rule.
  *
  * Usage: node server/scripts/audit-ci-skips.mjs [--ci] [--json] [workflow.yml...]
  */
-import { readFileSync, existsSync, statSync } from "node:fs";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
+import { dirname, join, extname, resolve as resolvePath } from "node:path";
+import { builtinModules } from "node:module";
 import { parse } from "yaml";
 import ts from "typescript";
 
@@ -80,25 +103,391 @@ const isDbName = (name) => DB_NAMES.includes(name);
  * An assignment target is not an input, so it is excluded. Walking the AST rather than matching text also
  * drops names in comments, which the version before this one got wrong the other way.
  */
-/** Relative import specifiers in a file, resolved to files on disk. */
-function localImports(sf, file) {
-  const dir = dirname(file);
-  const out = [];
-  for (const stmt of sf.statements) {
-    const spec = (ts.isImportDeclaration(stmt) || ts.isExportDeclaration(stmt)) ? stmt.moduleSpecifier : undefined;
-    if (!spec || !ts.isStringLiteral(spec) || !spec.text.startsWith(".")) continue;
-    const base = resolvePath(dir, spec.text);
+/**
+ * MODULE RESOLUTION, in service of "unknown is never safe".
+ *
+ * Every branch here either resolves a specifier to a file this script can read, ignores it for a stated
+ * reason that cannot hide a gate, or records it as unresolved -- and unresolved propagates up as opaque.
+ */
+const BUILTIN = new Set(builtinModules);
+/** `node:test` is not in builtinModules under its bare name, so the prefix has to be checked separately. */
+const isBuiltinSpec = (spec) => spec.startsWith("node:") || BUILTIN.has(spec);
+
+const SOURCE_EXT = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
+
+/** A specifier's base path turned into an actual file, the way a bundler would. */
+function resolveToFile(base) {
+  const candidates = [];
+  // `moduleResolution: bundler` with `allowImportingTsExtensions`: "./x.js" may well be x.ts on disk.
+  if (/\.m?js$/.test(base)) candidates.push(base.replace(/\.mjs$/, ".mts").replace(/\.js$/, ".ts"));
+  if (/\.cjs$/.test(base)) candidates.push(base.replace(/\.cjs$/, ".cts"));
+  candidates.push(...SOURCE_EXT.map((e) => base + e), `${base}.d.ts`, base);
+  candidates.push(...SOURCE_EXT.map((e) => join(base, `index${e}`)), join(base, "index.d.ts"));
+  for (const candidate of candidates) {
     // `existsSync` is true for a directory, and `../test-support` is one -- the extension candidates have to
     // be tried first and the result has to be a FILE.
-    for (const candidate of [`${base}.ts`, `${base}.tsx`, `${base}.mts`, join(base, "index.ts"), base]) {
-      if (existsSync(candidate) && statSync(candidate).isFile()) { out.push(candidate); break; }
+    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+}
+
+/**
+ * The tsconfig that declares `paths` for a file, found by walking up and following `extends`.
+ *
+ * Both halves are load-bearing here and the first version had neither: `server/tsconfig.json` is nearer to
+ * every server suite than the root one and declares no `paths` of its own -- it `extends` the root. Stopping
+ * at the nearest file left nine `@shared/*` specifiers unresolved, which under the new rule turned four real
+ * suites into undeterminable hits. `baseUrl` and `paths` resolve against the directory of the config that
+ * DECLARES them, which is why that directory is what gets returned.
+ */
+const tsconfigCache = new Map();
+function readTsconfig(file, depth = 0) {
+  if (depth > 8 || !existsSync(file) || !statSync(file).isFile()) return null;
+  const parsed = ts.parseConfigFileTextToJson(file, readFileSync(file, "utf8"));
+  const config = parsed.config ?? {};
+  if (config.compilerOptions?.paths) {
+    return { dir: dirname(file), paths: config.compilerOptions.paths, baseUrl: config.compilerOptions.baseUrl ?? "." };
+  }
+  if (typeof config.extends === "string") {
+    const base = config.extends.startsWith(".")
+      ? resolveToFile(resolvePath(dirname(file), config.extends)) ?? resolvePath(dirname(file), config.extends)
+      : null;
+    if (base) return readTsconfig(base, depth + 1);
+  }
+  return null;
+}
+function pathsFor(dir) {
+  const chain = [];
+  for (let cur = dir; ; cur = dirname(cur)) {
+    if (tsconfigCache.has(cur)) {
+      const hit = tsconfigCache.get(cur);
+      for (const d of chain) tsconfigCache.set(d, hit);
+      return hit;
     }
+    chain.push(cur);
+    const found = readTsconfig(join(cur, "tsconfig.json"));
+    if (found) {
+      for (const d of chain) tsconfigCache.set(d, found);
+      return found;
+    }
+    const parent = dirname(cur);
+    if (parent === cur) {
+      for (const d of chain) tsconfigCache.set(d, null);
+      return null;
+    }
+  }
+}
+
+/**
+ * The paths a tsconfig alias could mean, or null when the specifier is not an alias at all.
+ *
+ * Codex's finding was that a gate behind `@/test-support/...` was discarded by the leading-dot test with no
+ * trace. This repository defines `@/*` -> client/src and `@shared/*` -> shared, and nine `@shared/*`
+ * specifiers are reachable from the suites examined.
+ */
+function aliasCandidates(file, spec) {
+  const found = pathsFor(dirname(file));
+  const paths = found?.paths;
+  if (!paths) return null;
+  const base = resolvePath(found.dir, found.baseUrl);
+  const out = [];
+  for (const [pattern, targets] of Object.entries(paths)) {
+    if (!Array.isArray(targets)) continue;
+    const star = pattern.indexOf("*");
+    if (star >= 0) {
+      const pre = pattern.slice(0, star);
+      const post = pattern.slice(star + 1);
+      if (!spec.startsWith(pre) || !spec.endsWith(post) || spec.length < pre.length + post.length) continue;
+      const stem = spec.slice(pre.length, spec.length - post.length);
+      for (const t of targets) out.push(resolvePath(base, t.replace("*", stem)));
+    } else if (pattern === spec) {
+      for (const t of targets) out.push(resolvePath(base, t));
+    }
+  }
+  return out.length > 0 ? out : null;
+}
+
+/** The installed directory for a bare specifier's package, by the same upward walk node does. */
+function packageDirFor(fromDir, pkg) {
+  for (let cur = fromDir; ; cur = dirname(cur)) {
+    const candidate = join(cur, "node_modules", pkg);
+    if (existsSync(candidate) && statSync(candidate).isDirectory()) return candidate;
+    const parent = dirname(cur);
+    if (parent === cur) return null;
+  }
+}
+
+/**
+ * Whether an installed package could possibly BE a gate: does its own code read any of these names anywhere?
+ *
+ * This is the one place the script clears something it has not followed, and it clears it on evidence. A
+ * package with no `process.env.<DB name>` read in any code file cannot be the module a suite gates on, so
+ * there is nothing to follow. A package that does read one is reported as undeterminable rather than
+ * reasoned about, because reasoning about a published package's exports is a different job.
+ *
+ * Markdown is deliberately out of scope: @neondatabase/serverless shows `process.env.DATABASE_URL` in its
+ * README a dozen times and reads it nowhere in code, and a checker that cries wolf about documentation is
+ * the version of this script that cried wolf about a comment.
+ */
+const DB_READ_IN_CODE = /process\.env(?:\.|\[\s*["'])(?:TEST_DATABASE_URL|DATABASE_URL|CS_TEST_PG_URL|CATERING_TEST_PG_URL|WEDDING_SQUARE_TEST_DATABASE_URL|ADMIN_TEST_PG_URL|PGURL)\b/;
+const CODE_EXT = new Set(SOURCE_EXT);
+const packageGateCache = new Map();
+function packageCouldGate(dir) {
+  if (packageGateCache.has(dir)) return packageGateCache.get(dir);
+  let answer = false;
+  const stack = [dir];
+  while (stack.length > 0 && !answer) {
+    let entries;
+    try { entries = readdirSync(stack.pop(), { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      const full = join(entry.parentPath ?? entry.path, entry.name);
+      if (entry.isDirectory()) { stack.push(full); continue; }
+      if (!CODE_EXT.has(extname(entry.name))) continue;
+      let text;
+      try { text = readFileSync(full, "utf8"); } catch { continue; }
+      if (DB_READ_IN_CODE.test(text)) { answer = true; break; }
+    }
+  }
+  packageGateCache.set(dir, answer);
+  return answer;
+}
+
+/**
+ * A file's imports, split into the ones this script followed and the ones it could not judge.
+ *
+ * An unresolved specifier is NOT dropped. That was the bug behind four of Codex's findings at once.
+ */
+function resolveImports(sf, file) {
+  const dir = dirname(file);
+  const files = [];
+  const unresolved = [];
+  for (const stmt of sf.statements) {
+    const spec = (ts.isImportDeclaration(stmt) || ts.isExportDeclaration(stmt)) ? stmt.moduleSpecifier : undefined;
+    if (!spec || !ts.isStringLiteral(spec)) continue;
+    const text = spec.text;
+    if (isBuiltinSpec(text)) continue;
+    if (text.startsWith(".")) {
+      const resolved = resolveToFile(resolvePath(dir, text));
+      if (resolved) files.push(resolved); else unresolved.push(text);
+      continue;
+    }
+    const aliased = aliasCandidates(file, text);
+    if (aliased) {
+      const resolved = aliased.map(resolveToFile).find(Boolean);
+      if (resolved) files.push(resolved); else unresolved.push(text);
+      continue;
+    }
+    const pkg = text.startsWith("@") ? text.split("/").slice(0, 2).join("/") : text.split("/")[0];
+    const pkgDir = packageDirFor(dir, pkg);
+    // Not installed is not the same as harmless: without the package there is nothing to read, so the only
+    // honest answer is that the gate cannot be judged.
+    if (!pkgDir) { unresolved.push(`${text} (not installed)`); continue; }
+    if (packageCouldGate(pkgDir)) unresolved.push(`${text} (package reads a database name)`);
+  }
+  return { files, unresolved };
+}
+
+const sourceCache = new Map();
+function sourceOf(file) {
+  if (!sourceCache.has(file)) {
+    sourceCache.set(file, ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));
+  }
+  return sourceCache.get(file);
+}
+
+/**
+ * String-literal constants a module declares: `export const SECRET_BOX_KEY_ENV = "SQUARE_OAUTH_..."`.
+ *
+ * Needed because `process.env[SECRET_BOX_KEY_ENV]` is a COMPUTED key whose value is perfectly knowable, and
+ * treating every computed key as unknowable made 33 Square suites undeterminable in one stroke -- all of them
+ * save/restore helpers over an imported encryption-key name that has nothing to do with a database. An
+ * unknown must never clear a suite, but calling a resolvable thing unknown is how a gate becomes noise, and
+ * noise is how a gate stops being read.
+ */
+const constantsCache = new Map();
+function stringConstants(file) {
+  if (constantsCache.has(file)) return constantsCache.get(file);
+  const out = new Map();
+  const sf = sourceOf(file);
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
+        ts.isStringLiteral(node.initializer)) {
+      out.set(node.name.text, node.initializer.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  constantsCache.set(file, out);
+  return out;
+}
+
+/** Where an imported local name came from, specifier by specifier. */
+function importSources(file) {
+  const sf = sourceOf(file);
+  const out = new Map();
+  for (const stmt of sf.statements) {
+    if (!ts.isImportDeclaration(stmt) || !stmt.importClause || !ts.isStringLiteral(stmt.moduleSpecifier)) continue;
+    const bindings = stmt.importClause.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) out.set(element.name.text, stmt.moduleSpecifier.text);
   }
   return out;
 }
 
-function envReads(file, text) {
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+/** The string a computed-key identifier stands for, or null when this script genuinely cannot say. */
+function literalForIdentifier(file, name, seen = new Set()) {
+  if (seen.has(file)) return null;
+  seen.add(file);
+  const own = stringConstants(file);
+  if (own.has(name)) return own.get(name);
+  const from = importSources(file).get(name);
+  const { files } = resolveImports(sourceOf(file), file);
+  // Prefer the module the name was actually imported from; fall back to the rest, since a re-export chain
+  // can put the declaration one hop further along.
+  const ordered = from
+    ? [...files].sort((a, b) => (b.includes(from.replace(/^\.+\//, "")) ? 1 : 0) - (a.includes(from.replace(/^\.+\//, "")) ? 1 : 0))
+    : files;
+  for (const imported of ordered) {
+    const found = literalForIdentifier(imported, name, seen);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+/**
+ * A computed key's possible names: `process.env[k]` where k is not a literal but is still knowable.
+ *
+ * Three shapes, all of them real in this repository and none of them a gate -- which is exactly why they have
+ * to be resolved rather than reported. Calling a resolvable thing unknown would have made 33 suites
+ * undeterminable, and a gate that cries wolf 33 times stops being read, which is how the silent skips got
+ * four days of green in the first place.
+ *
+ *   process.env[SECRET_BOX_KEY_ENV]          an imported string constant
+ *   keys.map((key) => process.env[key])      a callback parameter over an array of literals
+ *   const saved = process.env[name]          a save/restore helper, called with literals
+ *
+ * The third shape also answers a blind spot Codex raised on this PR and nobody had closed: a gate read
+ * through a helper that takes the NAME as a string. If such a helper is called with "TEST_DATABASE_URL", that
+ * is now collected as a read of TEST_DATABASE_URL rather than missed.
+ *
+ * Returns null when it genuinely cannot say, and null means undeterminable, not safe.
+ */
+const ITERATORS = new Set(["map", "forEach", "filter", "flatMap", "some", "every", "find"]);
+
+/** `["A","B"] as const` is an AsExpression wrapping the array, which the first version did not see through. */
+function unwrap(node) {
+  let cur = node;
+  while (cur && (ts.isAsExpression(cur) || ts.isParenthesizedExpression(cur) || ts.isTypeAssertionExpression?.(cur) ||
+                 ts.isSatisfiesExpression?.(cur))) cur = cur.expression;
+  return cur;
+}
+
+/** The string literals of an array expression, or null if any element is unknowable. */
+function elementLiterals(file, expression) {
+  const node = unwrap(expression);
+  if (!node || !ts.isArrayLiteralExpression(node)) return null;
+  const out = [];
+  for (const element of node.elements) {
+    if (ts.isStringLiteral(element)) { out.push(element.text); continue; }
+    if (ts.isIdentifier(element)) {
+      const lit = literalForIdentifier(file, element.text);
+      if (lit !== null) { out.push(lit); continue; }
+    }
+    return null;
+  }
+  return out;
+}
+
+/** The string literals in `const NAME = ["a", "b"]`, or null if that is not what NAME is. */
+function arrayLiterals(file, sf, name) {
+  let found = null;
+  const visit = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name && node.initializer) {
+      // One unknowable element makes the whole array unknowable, which is the strict direction.
+      found = elementLiterals(file, node.initializer);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+}
+
+/**
+ * The strings an identifier can hold at a use site: a constant, or a `for (const x of [...])` binding.
+ *
+ * The for-of shape is how `catering-square-payments` drives one test per webhook variable, and it reaches
+ * `process.env[variable]` through a helper -- two indirections that are both perfectly determinable.
+ */
+function identifierLiterals(file, sf, at, name) {
+  const constant = literalForIdentifier(file, name);
+  if (constant !== null) return [constant];
+  for (let cur = at; cur; cur = cur.parent) {
+    if (!ts.isForOfStatement(cur)) continue;
+    const list = cur.initializer;
+    if (!ts.isVariableDeclarationList(list)) continue;
+    const declares = list.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name);
+    if (!declares) continue;
+    const subject = unwrap(cur.expression);
+    if (ts.isIdentifier(subject)) return arrayLiterals(file, sf, subject.text);
+    return elementLiterals(file, cur.expression);
+  }
+  return null;
+}
+
+/** The literal(s) that reach a function's parameter at `index`, from its call sites in the same file. */
+function parameterLiterals(file, sf, fn, index) {
+  const parent = fn.parent;
+  // Shape 2: a callback to array.map / forEach / ... -- the array's elements are what the parameter takes.
+  if (index === 0 && parent && ts.isCallExpression(parent) && parent.arguments.includes(fn) &&
+      ts.isPropertyAccessExpression(parent.expression) && ITERATORS.has(parent.expression.name.text)) {
+    const subject = unwrap(parent.expression.expression);
+    if (ts.isIdentifier(subject)) return arrayLiterals(file, sf, subject.text);
+    return elementLiterals(file, parent.expression.expression);
+  }
+  // Shape 3: a named helper. Every call site must pass something knowable at that position, or the answer is
+  // "cannot say" -- one dynamic call site is enough to make the whole parameter unknowable.
+  let fnName = null;
+  if (ts.isFunctionDeclaration(fn) && fn.name) fnName = fn.name.text;
+  else if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) fnName = parent.name.text;
+  if (!fnName) return null;
+  const out = [];
+  let unknown = false;
+  const visit = (node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === fnName) {
+      const arg = node.arguments[index];
+      if (!arg) { unknown = true; }
+      else if (ts.isStringLiteral(arg)) out.push(arg.text);
+      else if (ts.isIdentifier(arg)) {
+        const lits = identifierLiterals(file, sf, node, arg.text);
+        if (lits) out.push(...lits); else unknown = true;
+      } else unknown = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  if (unknown || out.length === 0) return null;
+  return out;
+}
+
+function computedKeyNames(file, sf, node) {
+  const arg = node.argumentExpression;
+  if (ts.isStringLiteral(arg)) return [arg.text];
+  if (!arg || !ts.isIdentifier(arg)) return null;
+  const direct = identifierLiterals(file, sf, node, arg.text);
+  if (direct) return direct;
+  for (let cur = node.parent; cur; cur = cur.parent) {
+    if (!(ts.isArrowFunction(cur) || ts.isFunctionExpression(cur) || ts.isFunctionDeclaration(cur) ||
+          ts.isMethodDeclaration(cur))) continue;
+    const index = cur.parameters.findIndex((param) => ts.isIdentifier(param.name) && param.name.text === arg.text);
+    if (index < 0) continue;
+    return parameterLiterals(file, sf, cur, index);
+  }
+  return null;
+}
+
+function envReads(file) {
+  const sf = sourceOf(file);
   const reads = new Set();
   // A gate this function cannot read: `const { TEST_DATABASE_URL } = process.env`, or `process.env[name]` with
   // a key it cannot evaluate. Neither appears as a DB gate in this repository today -- checked, not assumed:
@@ -120,10 +509,27 @@ function envReads(file, text) {
    * count however they appear, because those are the gate itself rather than a thing reached through it.
    */
   const exported = new Set();
+  /**
+   * Names this module exports through a separate `export { X }` declaration.
+   *
+   * Codex's finding: `const PG_URL = process.env.CS_TEST_PG_URL; export { PG_URL };` exports the binding, but
+   * its VariableStatement carries no export modifier, so requiring the modifier dropped the gate and cleared
+   * the suite. `export { X as Y }` names the LOCAL binding in propertyName, so that is the one to collect.
+   */
+  const namedExports = new Set();
+  for (const stmt of sf.statements) {
+    if (!ts.isExportDeclaration(stmt) || stmt.moduleSpecifier) continue;
+    const clause = stmt.exportClause;
+    if (!clause || !ts.isNamedExports(clause)) continue;
+    for (const element of clause.elements) namedExports.add((element.propertyName ?? element.name).text);
+  }
   const initialisesExport = (node) => {
     for (let cur = node.parent; cur; cur = cur.parent) {
       if (ts.isVariableStatement(cur)) {
-        return Boolean(cur.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword));
+        if (cur.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) return true;
+        return cur.declarationList.declarations.some(
+          (d) => ts.isIdentifier(d.name) && namedExports.has(d.name.text),
+        );
       }
       // A read inside a function body is plumbing, not an export initialiser, however the function is exported.
       if (ts.isFunctionDeclaration(cur) || ts.isFunctionExpression(cur) || ts.isArrowFunction(cur) ||
@@ -144,18 +550,21 @@ function envReads(file, text) {
     if (ts.isDeleteExpression(parent)) return true;
     return false;
   };
+  const isProcessEnv = (expr) =>
+    ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression) &&
+    expr.expression.text === "process" && expr.name.text === "env";
+  const collect = (name, node) => {
+    reads.add(name);
+    if (initialisesExport(node)) exported.add(name);
+  };
   const visit = (node) => {
     if (
       ts.isPropertyAccessExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === "process" &&
-      node.expression.name.text === "env" &&
+      isProcessEnv(node.expression) &&
       isDbName(node.name.text) &&
       !isAssignmentTarget(node)
     ) {
-      reads.add(node.name.text);
-      if (initialisesExport(node)) exported.add(node.name.text);
+      collect(node.name.text, node);
     }
     // `const { ... } = process.env`
     if (
@@ -165,14 +574,22 @@ function envReads(file, text) {
     ) {
       opaque = true;
     }
-    // `process.env[expr]` where expr is not a string literal, read rather than written
+    // `process.env["NAME"]` is the same read as `process.env.NAME` and was collected by neither branch:
+    // the dot visitor does not see it, and the undeterminable fallback below explicitly excluded a literal.
+    // So both the wanted set and `opaque` stayed empty and the suite was cleared -- Codex's finding, and the
+    // only one of the four that was a plain omission rather than the unknown-is-safe reasoning.
     if (
-      ts.isElementAccessExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) && node.expression.expression.text === "process" &&
-      node.expression.name.text === "env" && !ts.isStringLiteral(node.argumentExpression) &&
-      !isAssignmentTarget(node) && !(node.parent && ts.isDeleteExpression(node.parent))
+      ts.isElementAccessExpression(node) && isProcessEnv(node.expression) &&
+      node.argumentExpression && !isAssignmentTarget(node) &&
+      !(node.parent && ts.isDeleteExpression(node.parent))
     ) {
-      opaque = true;
+      // A literal that is not a database name is as irrelevant here as `process.env.NODE_ENV` is.
+      const names = computedKeyNames(file, sf, node);
+      if (names) {
+        for (const name of names) if (isDbName(name)) collect(name, node);
+      } else {
+        opaque = true;
+      }
     }
     ts.forEachChild(node, visit);
   };
@@ -202,26 +619,39 @@ function envReads(file, text) {
  * Shapes measured across the skippable suites: 21 gate locally only, 53 gate through an import only, 35 do
  * both. Judging on local-when-present is correct for all three.
  */
-function gateReads(file, depth = 0, seen = new Set()) {
-  if (seen.has(file) || depth > 3) return { local: new Set(), exported: new Set(), inherited: new Set(), opaque: false };
+const readsCache = new Map();
+function cachedEnvReads(file) {
+  if (!readsCache.has(file)) readsCache.set(file, envReads(file));
+  return readsCache.get(file);
+}
+
+function gateReads(file, seen = new Set()) {
+  // Cycle detection replaces the depth bound. The bound was 3, picked without evidence, and Codex built a
+  // four-hop barrel chain that walked straight through it: at the cutoff this returned empty sets with
+  // `opaque: false`, which the caller read as "no gate". The graph is finite; `seen` is what makes the walk
+  // terminate, and a module already visited on this walk has already contributed its exports upward.
+  if (seen.has(file)) return { local: new Set(), exported: new Set(), inherited: new Set(), unresolved: [], opaque: false };
   seen.add(file);
-  const own = envReads(file, readFileSync(file, "utf8"));
+  const own = cachedEnvReads(file);
+  const { files, unresolved } = resolveImports(own.sf, file);
   const inherited = new Set();
+  const unknown = [...unresolved];
   let opaque = own.opaque;
-  for (const imported of localImports(own.sf, file)) {
-    const inner = gateReads(imported, depth + 1, seen);
+  for (const imported of files) {
+    const inner = gateReads(imported, seen);
     // Only what the imported module EXPORTS can be another module's gate.
     for (const name of inner.exported) inherited.add(name);
     for (const name of inner.inherited) inherited.add(name);
     opaque = opaque || inner.opaque;
+    unknown.push(...inner.unresolved);
   }
-  return { local: own.reads, exported: own.exported, inherited, opaque };
+  return { local: own.reads, exported: own.exported, inherited, unresolved: unknown, opaque: opaque || unknown.length > 0 };
 }
 
 /** The names that actually decide this suite's gate: its own if it has any, otherwise the ones it imports. */
 function effectiveGate(file) {
-  const { local, inherited, opaque } = gateReads(file);
-  return { reads: local.size > 0 ? local : inherited, opaque };
+  const { local, inherited, opaque, unresolved } = gateReads(file);
+  return { reads: local.size > 0 ? local : inherited, opaque, unresolved: [...new Set(unresolved)].sort() };
 }
 
 /**
@@ -302,25 +732,33 @@ for (const wf of WORKFLOWS) {
         // 23 and 7 tests respectively without TEST_DATABASE_URL, so the audit reported 6 where the truth was 8.
         // `\.skip\b` does not match `.skipped`, so a destructured `{ skipped }` result stays out.
         if (!/\bskip\s*:|\.skip\b/.test(text)) continue;
-        const { reads: wanted, opaque } = effectiveGate(file);
-        // Only undeterminable when there is no direct read to go on: a suite with both is judged on the read.
-        if (wanted.size === 0 && opaque) {
+        const { reads: wanted, opaque, unresolved } = effectiveGate(file);
+        const satisfied = wanted.size > 0 && [...wanted].some((name) => available.has(name));
+        // A named gate that the step does not supply is the clearest answer there is, so it is reported first
+        // even when something else about the file was unresolvable.
+        if (wanted.size > 0 && !satisfied) {
           findings.push({
-            file, job: jobId, step: step.name ?? "(unnamed step)", undeterminable: true,
-            wants: [], available: [...available].filter(isDbName).sort(), viaWrapper,
+            file,
+            job: jobId,
+            step: step.name ?? "(unnamed step)",
+            wants: [...wanted].sort(),
+            available: [...available].filter(isDbName).sort(),
+            viaWrapper,
           });
           continue;
         }
-        if (wanted.size === 0) continue;
-        if ([...wanted].some((name) => available.has(name))) continue;
-        findings.push({
-          file,
-          job: jobId,
-          step: step.name ?? "(unnamed step)",
-          wants: [...wanted].sort(),
-          available: [...available].filter(isDbName).sort(),
-          viaWrapper,
-        });
+        // AN UNKNOWN NEVER CLEARS A SUITE. Previously a suite was only undeterminable when it had no read at
+        // all, so anything unresolvable alongside a satisfied read was waved through -- which is how the
+        // depth bound, the bare specifier and the separate export declaration each cleared a suite that
+        // skipped. If this script cannot see the whole gate, it says so rather than approving it.
+        if (opaque) {
+          findings.push({
+            file, job: jobId, step: step.name ?? "(unnamed step)", undeterminable: true,
+            wants: [...wanted].sort(), unresolved,
+            available: [...available].filter(isDbName).sort(), viaWrapper,
+          });
+          continue;
+        }
       }
     }
   }
@@ -342,8 +780,12 @@ if (asJson) {
       console.log(`  ${h.file}`);
       console.log(`      in job "${h.job}", step "${h.step}"${h.viaWrapper ? " (via run-ci-batch, which will fail it)" : ""}`);
       if (h.undeterminable) {
-        console.log("      its gate reads process.env dynamically, so this tool cannot say which name it needs.");
-        console.log("      Give it a direct `process.env.NAME` read, or add it to ALLOWED with the reason.");
+        console.log("      this tool CANNOT SEE the whole of this suite's gate, so it will not clear it.");
+        if (h.wants.length > 0) console.log(`      what it can see: ${h.wants.join(" or ")}`);
+        if (h.unresolved?.length) console.log(`      what it cannot resolve: ${h.unresolved.join(", ")}`);
+        else console.log("      its gate reads process.env dynamically (destructured, or a computed key).");
+        console.log("      Give it a direct `process.env.NAME` read, make the import resolvable, or add it to");
+        console.log("      ALLOWED with the reason.");
       } else {
         console.log(`      reads ${h.wants.join(" or ")}; that step has ${h.available.length ? h.available.join(", ") : "no database URL at all"}`);
       }
