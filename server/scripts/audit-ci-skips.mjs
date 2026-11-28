@@ -576,6 +576,13 @@ function computedKeyNames(file, sf, node) {
   return null;
 }
 
+/** The child of `ancestor` that `node` sits inside -- how a walk upward knows which branch it came up. */
+function lastChildOnPath(ancestor, node) {
+  let prev = node;
+  for (let cur = node.parent; cur; prev = cur, cur = cur.parent) if (cur === ancestor) return prev;
+  return null;
+}
+
 function envReads(file) {
   const sf = sourceOf(file);
   const reads = new Set();
@@ -622,6 +629,15 @@ function envReads(file) {
     if (!clause || !ts.isNamedExports(clause)) continue;
     for (const element of clause.elements) namedExports.add((element.propertyName ?? element.name).text);
   }
+  const isFn = (node) => ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) || ts.isMethodDeclaration(node);
+  /** The name a function is reached by, for the escape test: its own, or the variable it is assigned to. */
+  const functionName = (fn) => {
+    if ((ts.isFunctionDeclaration(fn) || ts.isMethodDeclaration(fn)) && fn.name && ts.isIdentifier(fn.name)) return fn.name.text;
+    const parent = fn.parent;
+    if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) return parent.name.text;
+    return null;
+  };
   const initialisesExport = (node) => {
     for (let cur = node.parent; cur; cur = cur.parent) {
       if (ts.isVariableStatement(cur)) {
@@ -634,6 +650,37 @@ function envReads(file) {
       if (ts.isFunctionDeclaration(cur) || ts.isFunctionExpression(cur) || ts.isArrowFunction(cur) ||
           ts.isMethodDeclaration(cur) || ts.isIfStatement(cur) || ts.isBlock(cur)) {
         return false;
+      }
+    }
+    return false;
+  };
+  /**
+   * Whether a read's VALUE reaches a caller outside this file: it is returned, by a function whose name leaves
+   * the module. `export function readEnv(name) { return process.env[name]; }` is a gate generator.
+   *
+   * THIS FEEDS THE OPACITY SIGNAL ONLY, NEVER THE SET OF NAMES, and the difference is the whole of the tenth
+   * finding on this branch. My first attempt made a returned read count as an exported read, so its name
+   * joined the set a suite's gate is checked against -- and `satisfied` is "the step supplies ANY of these",
+   * so a LOOSER set makes clearing EASIER, not safer. It immediately re-opened the fifth finding: the fixture
+   * module there returns `process.env.DATABASE_URL` from an exported arrow, DATABASE_URL joined the gate set,
+   * the step supplied it, and a suite gating on CS_TEST_PG_URL was cleared while it skipped. The regression
+   * test for finding five caught it, which is the only reason it is not finding eleven.
+   *
+   * So: a returned read that this script could not resolve makes the module undeterminable, which is the
+   * strict direction. A returned read it CAN resolve adds nothing, because a name a caller might ask for is
+   * not a name this suite's gate depends on -- and that distinction is exactly what finding five established.
+   */
+  const escapesViaReturn = (node) => {
+    let returning = false;
+    for (let cur = node.parent; cur; cur = cur.parent) {
+      if (ts.isReturnStatement(cur)) { returning = true; continue; }
+      if (isFn(cur)) {
+        if (ts.isArrowFunction(cur) && cur.body === lastChildOnPath(cur, node)) returning = true;
+        if (!returning) return false;
+        const name = functionName(cur);
+        if (name && nameEscapesFile(sf, name)) return true;
+        returning = false;
+        continue;
       }
     }
     return false;
@@ -672,7 +719,7 @@ function envReads(file) {
       node.initializer.expression.text === "process" && node.initializer.name.text === "env"
     ) {
       opaque = true;
-      if (initialisesExport(node)) exportedOpaque = true;
+      if (initialisesExport(node) || escapesViaReturn(node)) exportedOpaque = true;
     }
     // `process.env["NAME"]` is the same read as `process.env.NAME` and was collected by neither branch:
     // the dot visitor does not see it, and the undeterminable fallback below explicitly excluded a literal.
@@ -689,7 +736,7 @@ function envReads(file) {
         for (const name of names) if (isDbName(name)) collect(name, node);
       } else {
         opaque = true;
-        if (initialisesExport(node)) exportedOpaque = true;
+        if (initialisesExport(node) || escapesViaReturn(node)) exportedOpaque = true;
       }
     }
     ts.forEachChild(node, visit);

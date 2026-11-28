@@ -712,22 +712,61 @@ test("Codex on #1541: a package exporting a COMPUTED env read could be a gate, e
   assert.equal(r.exit, 1);
 });
 
-test("a package whose computed read is INTERNAL plumbing does not make every importer undeterminable", () => {
-  // The other direction of the same narrowing, and the reason it is a narrowing rather than a loophole. This
-  // package reads a computed key inside a function -- what express, pg and playwright actually do -- and
-  // exports nothing initialised from it, so a suite importing it keeps its own satisfied gate.
+test("Codex on #1541: a read RETURNED by an exported function is a gate another module can use", () => {
+  // `export function readEnv(name) { return process.env[name]; }` in an installed package, with the suite
+  // gating on `!readEnv("TEST_DATABASE_URL")`. The parameter is unknowable -- an exported helper's callers are
+  // not all in its file -- but that uncertainty was being thrown away one step later, because "inside a
+  // function body" was treated as plumbing however the function was reached.
+  //
+  // THE TEST BELOW THIS ONE USED TO ASSERT THIS HOLE AS CORRECT BEHAVIOUR. See its comment.
   const r = run(
-    { "a.test.ts": suite({ gate: "TEST_DATABASE_URL" }) + `\nimport "internal-pkg";\n` },
+    { "a.test.ts": [
+      `import test from "node:test";`,
+      `import { readEnv } from "returning-pkg";`,
+      `const url = readEnv("TEST_DATABASE_URL");`,
+      `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+    ].join("\n") },
+    { SQUARE_ENV: "sandbox" },
+    {},
+    {},
+    (root) => {
+      mkdirSync(join(root, "node_modules", "returning-pkg"), { recursive: true });
+      writeFileSync(join(root, "node_modules", "returning-pkg", "package.json"), JSON.stringify({ name: "returning-pkg", main: "index.js" }));
+      writeFileSync(join(root, "node_modules", "returning-pkg", "index.js"),
+        `export function readEnv(name) { return process.env[name]; }\n`);
+    },
+  );
+  assert.equal(r.hits.length, 1, "a function that hands out env values is a gate generator: " + JSON.stringify(r.hits));
+  assert.equal(r.hits[0].unresolved?.some((u: string) => u.includes("not installed")), false,
+    "the package must be installed, or this tests specifier resolution instead");
+  assert.equal(r.exit, 1);
+});
+
+test("a read used for a SIDE EFFECT inside an exported function is still plumbing", () => {
+  // The other direction, and the reason the rule is "the value reaches the caller" rather than "inside an
+  // exported function". This is `load-env.ts`'s real shape: a read in an `if` condition inside an exported
+  // function that returns nothing. Counting it would undo the fifth finding on this branch, where every suite
+  // whose harness chain reaches load-env was made to "need" DATABASE_URL and a step supplying only that name
+  // cleared a suite that skipped.
+  //
+  // THIS TEST PREVIOUSLY ASSERTED THE OPPOSITE OF WHAT IT MEANT. Its fixture was
+  // `export function pick(name) { return process.env[name]; }` -- a RETURNED read, which is exactly the gate
+  // generator the test above now covers -- and it asserted zero hits. So the ninth finding on this branch was
+  // sitting in the suite as an assertion that the hole was correct, which is worse than not having tested it:
+  // a wrong test is a wrong specification, and the next person to touch this code would have read it as one.
+  // The fixture now reads a name it never returns.
+  const r = run(
+    { "a.test.ts": suite({ gate: "TEST_DATABASE_URL" }) + `\nimport "plumbing-pkg";\n` },
     { TEST_DATABASE_URL: URL_LITERAL },
     {},
     {},
     (root) => {
-      mkdirSync(join(root, "node_modules", "internal-pkg"), { recursive: true });
-      writeFileSync(join(root, "node_modules", "internal-pkg", "package.json"), JSON.stringify({ name: "internal-pkg", main: "index.js" }));
-      writeFileSync(join(root, "node_modules", "internal-pkg", "index.js"),
-        `export function pick(name) { return process.env[name]; }\nexport const port = 5432;\n`);
+      mkdirSync(join(root, "node_modules", "plumbing-pkg"), { recursive: true });
+      writeFileSync(join(root, "node_modules", "plumbing-pkg", "package.json"), JSON.stringify({ name: "plumbing-pkg", main: "index.js" }));
+      writeFileSync(join(root, "node_modules", "plumbing-pkg", "index.js"),
+        `export function boot(name) {\n  if (!process.env[name]) { globalThis.__booted = false; }\n}\nexport const port = 5432;\n`);
     },
   );
-  assert.equal(r.hits.length, 0, "internal plumbing is not a gate, and flagging it would flag 125 real suites: " + JSON.stringify(r.hits));
+  assert.equal(r.hits.length, 0, "a side-effect read is not a gate, and counting it would flag every load-env importer: " + JSON.stringify(r.hits));
   assert.equal(r.exit, 0);
 });
