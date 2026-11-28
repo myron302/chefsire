@@ -606,3 +606,128 @@ test("ONE unknowable call site poisons the whole parameter", () => {
   assert.equal(r.hits[0].undeterminable, true, "unknowable means reported, not cleared");
   assert.equal(r.exit, 1);
 });
+
+/* --------------------------------------------------------------------------------------------------------- *
+ * Round five. Four more false cleans, every one of them the same sentence as the four before: a place where
+ * this script concluded SAFE without having resolved the gate. That they keep arriving one round at a time is
+ * the real finding -- the rule was being applied case by case instead of structurally -- and it is written at
+ * the top of the script now rather than only in these tests.
+ * --------------------------------------------------------------------------------------------------------- */
+
+test("Codex on #1541: a file-wide constant does not override a PARAMETER of the same name", () => {
+  // `const key = "NODE_ENV"` and a helper whose parameter is also called `key`. The constant map is keyed by
+  // name and knows nothing about scope, so the access inside the helper resolved to NODE_ENV -- a value that
+  // parameter never holds. Not a missed gate but a WRONG one: the script named a read it had invented.
+  const r = run({ "a.test.ts": [
+    `import test from "node:test";`,
+    `const key = "NODE_ENV";`,
+    `function readEnv(key: string) { return process.env[key]; }`,
+    `void key;`,
+    `const url = readEnv("TEST_DATABASE_URL");`,
+    `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+  ].join("\n") }, { CS_TEST_PG_URL: URL_LITERAL });
+  assert.equal(r.hits.length, 1, "the binding visible at the access is the parameter, not the constant");
+  assert.deepEqual(r.hits[0].wants, ["TEST_DATABASE_URL"]);
+  assert.equal(r.exit, 1);
+});
+
+test("Codex on #1541: an EXPORTED helper's parameter is never settled by the call sites in its own file", () => {
+  // The harness exports the helper and calls it once itself. One local call site is not a sample of the
+  // callers -- the one that matters is in the suite, in another file -- so resolving the parameter from it
+  // produced NODE_ENV, no database read, no opaque flag, and a cleared suite that skips.
+  const r = run(
+    { "a.test.ts": [
+      `import test from "node:test";`,
+      `import { readEnv } from "./harness";`,
+      `const url = readEnv("TEST_DATABASE_URL");`,
+      `if (!url) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+    ].join("\n") },
+    { CS_TEST_PG_URL: URL_LITERAL },
+    {},
+    { "harness.ts": [
+      `export function readEnv(name: string) { return process.env[name]; }`,
+      `export const mode = readEnv("NODE_ENV");`,
+    ].join("\n") },
+  );
+  assert.equal(r.hits.length, 1, "an exported helper's parameter is an unknown, and an unknown is never safe");
+  assert.equal(r.hits[0].undeterminable, true);
+  assert.equal(r.exit, 1);
+});
+
+test("Codex on #1541: a local read that is not the gate does not discard the IMPORTED gate", () => {
+  // The exact mirror of the finding that produced the local-reads-win rule. This suite gates solely on an
+  // imported PG_URL and touches DATABASE_URL only to save it; preferring local reads made DATABASE_URL the
+  // whole gate, so a step supplying it cleared a suite that skips. Locality cannot establish which input
+  // gates, so the honest answer is that this script cannot tell.
+  const r = run(
+    { "a.test.ts": [
+      `import test from "node:test";`,
+      `import { PG_URL } from "./harness";`,
+      `const saved = process.env.DATABASE_URL;`,
+      `void saved;`,
+      `if (!PG_URL) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+    ].join("\n") },
+    { DATABASE_URL: URL_LITERAL },
+    {},
+    { "harness.ts": `export const PG_URL = process.env.CS_TEST_PG_URL;\n` },
+  );
+  assert.equal(r.hits.length, 1, "the imported gate is not satisfied and must not be discarded");
+  assert.equal(r.hits[0].undeterminable, true, "which of the two gates cannot be told apart from locality");
+  assert.equal(r.exit, 1);
+});
+
+test("Codex on #1541: a package exporting a COMPUTED env read could be a gate, even with no literal to match", () => {
+  // `const key = "CS_TEST_PG_URL"; export const PG_URL = process.env[key];` names nothing the literal scan
+  // looks for, so the package read as harmless and the suite cleared.
+  //
+  // The strict version of this -- any computed `process.env[...]` anywhere in a package -- was written and
+  // measured against this repository before being rejected: express, pg and playwright each have one, and it
+  // made 125 of 130 candidate suites undeterminable. The question is narrower: does the unknown read
+  // initialise something the package EXPORTS? Only then can a suite gate on it. The two tests after this one
+  // are what keep that narrowing honest.
+  const r = run(
+    { "a.test.ts": [
+      `import test from "node:test";`,
+      `import { PG_URL } from "computed-pkg";`,
+      `if (!PG_URL) { test("skipped", { skip: true }, () => {}); } else { test("real", () => {}); }`,
+    ].join("\n") },
+    { SQUARE_ENV: "sandbox" },
+    {},
+    {},
+    (root) => {
+      mkdirSync(join(root, "node_modules", "computed-pkg"), { recursive: true });
+      writeFileSync(join(root, "node_modules", "computed-pkg", "package.json"), JSON.stringify({ name: "computed-pkg", main: "index.js" }));
+      writeFileSync(join(root, "node_modules", "computed-pkg", "index.js"),
+        `const key = "CS_TEST_PG_URL";\nexport const PG_URL = process.env[key];\n`);
+    },
+  );
+  assert.equal(r.hits.length, 1, "a package that could export a gate is not cleared by the absence of a literal");
+  // THE FOURTH TIME on this branch that a fixture of mine passed for the wrong reason, and the first three are
+  // written up a few tests above. I passed the `prepare` callback in the `modules` position, so no package was
+  // ever written, the specifier came back "not installed" -- which is ALSO reported -- and the test went green
+  // without once exercising the thing it names. This assertion is what makes it impossible to repeat: the hit
+  // has to be about a package that exists.
+  assert.equal(r.hits[0].unresolved?.some((u: string) => u.includes("not installed")), false,
+    `the package must be installed, or this tests specifier resolution instead: ${JSON.stringify(r.hits[0].unresolved)}`);
+  assert.equal(r.exit, 1);
+});
+
+test("a package whose computed read is INTERNAL plumbing does not make every importer undeterminable", () => {
+  // The other direction of the same narrowing, and the reason it is a narrowing rather than a loophole. This
+  // package reads a computed key inside a function -- what express, pg and playwright actually do -- and
+  // exports nothing initialised from it, so a suite importing it keeps its own satisfied gate.
+  const r = run(
+    { "a.test.ts": suite({ gate: "TEST_DATABASE_URL" }) + `\nimport "internal-pkg";\n` },
+    { TEST_DATABASE_URL: URL_LITERAL },
+    {},
+    {},
+    (root) => {
+      mkdirSync(join(root, "node_modules", "internal-pkg"), { recursive: true });
+      writeFileSync(join(root, "node_modules", "internal-pkg", "package.json"), JSON.stringify({ name: "internal-pkg", main: "index.js" }));
+      writeFileSync(join(root, "node_modules", "internal-pkg", "index.js"),
+        `export function pick(name) { return process.env[name]; }\nexport const port = 5432;\n`);
+    },
+  );
+  assert.equal(r.hits.length, 0, "internal plumbing is not a gate, and flagging it would flag 125 real suites: " + JSON.stringify(r.hits));
+  assert.equal(r.exit, 0);
+});

@@ -246,6 +246,32 @@ function packageCouldGate(dir) {
       let text;
       try { text = readFileSync(full, "utf8"); } catch { continue; }
       if (DB_READ_IN_CODE.test(text)) { answer = true; break; }
+      // THE ABSENCE OF THAT LITERAL IS NOT EVIDENCE OF SAFETY -- Codex's finding, and the last of this
+      // round. A package can export a gate without naming it: `const key = "CS_TEST_PG_URL"; export const
+      // PG_URL = process.env[key];` matches no literal pattern, so scanning for one cleared a suite that
+      // skipped.
+      //
+      // The strict reading of that -- any computed `process.env[...]` makes a package undeterminable -- was
+      // written and MEASURED before being rejected: express, pg and playwright each have one somewhere
+      // inside, and it turned 125 of the 130 candidate suites undeterminable. A gate that flags everything
+      // is a gate nobody reads, which is the same failure as one that flags nothing.
+      //
+      // So the question asked is narrower and is asked of the AST rather than a second regex, because every
+      // regex in this script's history has missed a case the AST did not: does an unevaluable read here
+      // initialise something this file EXPORTS? Only then can another module gate on it. Measured across the
+      // installed packages these suites import, that is true of none of them and true of Codex's fixture.
+      if (/process\.env\s*\[/.test(text)) {
+        try {
+          const read = envReads(full);
+          // EITHER kind of answer makes the package a possible gate, and getting this wrong once is why both
+          // are named here. My first version asked only `exportedOpaque` -- is there an unevaluable read
+          // behind an export -- and the fixture still cleared, because in Codex's case the read is not
+          // unevaluable at all: `const key = "CS_TEST_PG_URL"` is a constant this script resolves perfectly
+          // well, so the package exports a KNOWN database gate and the old literal regex simply could not see
+          // it. The test caught that, which is the only reason this comment is not a sixth finding.
+          if (read.exportedOpaque || read.exported.size > 0) { answer = true; break; }
+        } catch { /* unparsable: falls through to the literal scan's answer */ }
+      }
     }
   }
   packageGateCache.set(dir, answer);
@@ -420,19 +446,77 @@ function arrayLiterals(file, sf, name) {
  * `process.env[variable]` through a helper -- two indirections that are both perfectly determinable.
  */
 function identifierLiterals(file, sf, at, name) {
+  // THE BINDING VISIBLE AT THE USE SITE WINS, and the file-wide constant is only the fallback.
+  //
+  // Codex's finding, and it was a false clean of the worst kind -- the checker resolved a name to a value it
+  // never holds. `const key = "NODE_ENV"; function readEnv(key) { return process.env[key]; }` with the suite
+  // gating on `readEnv("TEST_DATABASE_URL")` resolved the access to NODE_ENV, because the file-wide constant
+  // map is keyed by name alone and knows nothing about scope. The gate became invisible and the suite cleared.
+  //
+  // So the walk outward from the access happens FIRST, and `literalForIdentifier` is consulted only once
+  // nothing between the access and the file scope declares the name.
+  for (let cur = at; cur; cur = cur.parent) {
+    // A parameter of an enclosing function: its values are its call sites' arguments, not any constant.
+    if (ts.isArrowFunction(cur) || ts.isFunctionExpression(cur) || ts.isFunctionDeclaration(cur) ||
+        ts.isMethodDeclaration(cur)) {
+      const index = cur.parameters.findIndex((param) => ts.isIdentifier(param.name) && param.name.text === name);
+      if (index >= 0) return parameterLiterals(file, sf, cur, index);
+    }
+    if (ts.isForOfStatement(cur)) {
+      const list = cur.initializer;
+      if (ts.isVariableDeclarationList(list) &&
+          list.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name)) {
+        const subject = unwrap(cur.expression);
+        if (ts.isIdentifier(subject)) return arrayLiterals(file, sf, subject.text);
+        return elementLiterals(file, cur.expression);
+      }
+    }
+    // A local declaration in an enclosing block or function body shadows the file-wide one. If its
+    // initializer is a string literal that IS the answer; anything else and this script cannot say.
+    if (ts.isBlock(cur) || ts.isFunctionDeclaration(cur) || ts.isArrowFunction(cur) ||
+        ts.isFunctionExpression(cur) || ts.isMethodDeclaration(cur) || ts.isCaseClause(cur)) {
+      const body = ts.isBlock(cur) ? cur.statements : (cur.body && ts.isBlock(cur.body) ? cur.body.statements : null);
+      if (body) {
+        for (const stmt of body) {
+          if (!ts.isVariableStatement(stmt)) continue;
+          for (const decl of stmt.declarationList.declarations) {
+            if (!ts.isIdentifier(decl.name) || decl.name.text !== name) continue;
+            if (decl.initializer && ts.isStringLiteral(decl.initializer)) return [decl.initializer.text];
+            return null;
+          }
+        }
+      }
+    }
+  }
   const constant = literalForIdentifier(file, name);
   if (constant !== null) return [constant];
-  for (let cur = at; cur; cur = cur.parent) {
-    if (!ts.isForOfStatement(cur)) continue;
-    const list = cur.initializer;
-    if (!ts.isVariableDeclarationList(list)) continue;
-    const declares = list.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name);
-    if (!declares) continue;
-    const subject = unwrap(cur.expression);
-    if (ts.isIdentifier(subject)) return arrayLiterals(file, sf, subject.text);
-    return elementLiterals(file, cur.expression);
-  }
   return null;
+}
+
+/**
+ * Whether this name leaves the file: an `export` modifier on its declaration, or an `export { name }` list.
+ *
+ * It matters for ONE reason. A helper's parameter is resolved from its call sites, and this script reads one
+ * file at a time -- so for an exported helper the call sites it can see are not all of them.
+ */
+function nameEscapesFile(sf, name) {
+  let escapes = false;
+  const exported = (node) => node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) === true;
+  const visit = (node) => {
+    if (escapes) return;
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name && exported(node)) { escapes = true; return; }
+    if (ts.isVariableStatement(node) && exported(node) &&
+        node.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name)) {
+      escapes = true; return;
+    }
+    if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause) &&
+        node.exportClause.elements.some((e) => (e.propertyName ?? e.name).text === name)) {
+      escapes = true; return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return escapes;
 }
 
 /** The literal(s) that reach a function's parameter at `index`, from its call sites in the same file. */
@@ -451,6 +535,12 @@ function parameterLiterals(file, sf, fn, index) {
   if (ts.isFunctionDeclaration(fn) && fn.name) fnName = fn.name.text;
   else if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) fnName = parent.name.text;
   if (!fnName) return null;
+  // AN EXPORTED HELPER'S CALL SITES ARE NOT ALL IN THIS FILE, so the ones that are cannot settle its
+  // parameter. Codex's finding: a harness exporting `function readEnv(name) { return process.env[name]; }`
+  // and calling `readEnv("NODE_ENV")` itself made the parameter resolve to NODE_ENV alone, while the suite
+  // importing it gated on `readEnv("TEST_DATABASE_URL")`. One local call site looked like proof and was a
+  // coincidence of which caller happened to live in the same file.
+  if (nameEscapesFile(sf, fnName)) return null;
   const out = [];
   let unknown = false;
   const visit = (node) => {
@@ -495,6 +585,15 @@ function envReads(file) {
   // NODE_ENV, CORS or SQUARE_ names. But a suite that grew one would have an INVISIBLE gate and land straight
   // back in the silent-green class, so it is reported as undeterminable rather than quietly cleared.
   let opaque = false;
+  /**
+   * An unevaluable read that initialises an EXPORTED binding -- the only kind another module can GATE on.
+   *
+   * `opaque` alone is too blunt a question to ask of an installed package: express, pg and playwright all read
+   * `process.env[...]` with a computed key somewhere inside, and treating that as "could gate" made 125 of the
+   * 130 candidate suites undeterminable in one stroke. What matters is whether the unknown read could become
+   * another module's gate, which means it must initialise something the package exports.
+   */
+  let exportedOpaque = false;
   /**
    * Reads that initialise an EXPORTED binding -- the only ones another module can gate on.
    *
@@ -573,6 +672,7 @@ function envReads(file) {
       node.initializer.expression.text === "process" && node.initializer.name.text === "env"
     ) {
       opaque = true;
+      if (initialisesExport(node)) exportedOpaque = true;
     }
     // `process.env["NAME"]` is the same read as `process.env.NAME` and was collected by neither branch:
     // the dot visitor does not see it, and the undeterminable fallback below explicitly excluded a literal.
@@ -589,12 +689,13 @@ function envReads(file) {
         for (const name of names) if (isDbName(name)) collect(name, node);
       } else {
         opaque = true;
+        if (initialisesExport(node)) exportedOpaque = true;
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(sf);
-  return { reads, exported, opaque, sf };
+  return { reads, exported, opaque, exportedOpaque, sf };
 }
 
 /**
@@ -648,9 +749,34 @@ function gateReads(file, seen = new Set()) {
   return { local: own.reads, exported: own.exported, inherited, unresolved: unknown, opaque: opaque || unknown.length > 0 };
 }
 
-/** The names that actually decide this suite's gate: its own if it has any, otherwise the ones it imports. */
+/**
+ * The names that actually decide this suite's gate: its own if it has any, otherwise the ones it imports --
+ * and an explicit "cannot say" when BOTH exist and disagree.
+ *
+ * Codex's finding, and it is the exact mirror of the one before it. An earlier round unioned local and
+ * imported reads, which let an unrelated transitive `DATABASE_URL` read satisfy a suite that gates only on
+ * `CS_TEST_PG_URL`; the fix was to prefer local reads when a file has any. That fix then cleared the reverse
+ * case: a suite that imports `PG_URL = process.env.CS_TEST_PG_URL`, saves `process.env.DATABASE_URL` locally
+ * for a restore, and skips solely on `!PG_URL`. Supplying only DATABASE_URL cleared it, and the suite skipped.
+ *
+ * LOCALITY ALONE CANNOT ESTABLISH WHICH INPUT GATES. Telling them apart needs the skip condition's own
+ * dependencies, which this script does not compute. So where the two sets disagree it reports undeterminable
+ * rather than picking one: a wrong pick in either direction is a silent green.
+ *
+ * Measured before being written: NO suite in this repository is in that state today -- 514 named suites, zero
+ * with an imported database name their local reads do not already include. So this closes a real hole at no
+ * cost to the report, which is the same footing as the destructuring case above.
+ */
 function effectiveGate(file) {
   const { local, inherited, opaque, unresolved } = gateReads(file);
+  const inheritedOnly = [...inherited].filter((name) => !local.has(name));
+  if (local.size > 0 && inheritedOnly.length > 0) {
+    return {
+      reads: local,
+      opaque: true,
+      unresolved: [...new Set([...unresolved, `cannot tell whether this suite gates on its own ${[...local].sort().join("/")} or the imported ${inheritedOnly.sort().join("/")}`])].sort(),
+    };
+  }
   return { reads: local.size > 0 ? local : inherited, opaque, unresolved: [...new Set(unresolved)].sort() };
 }
 
